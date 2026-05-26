@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { resolveModel } from "../extensions/model-precedence.ts";
-import type { SubagentsConfig } from "../extensions/model-precedence.ts";
+import { resolveModel } from "../src/model-precedence.ts";
+import type { SubagentsConfig } from "../src/model-precedence.ts";
 
 const defaultConfig: SubagentsConfig = {
   agent: { default: null },

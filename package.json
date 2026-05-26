@@ -31,7 +31,7 @@
     "@sinclair/typebox": "^0.34.49"
   },
   "files": [
-    "extensions/",
+    "src/",
     "README.md",
     "LICENSE"
   ],

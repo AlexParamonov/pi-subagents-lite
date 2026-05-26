@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { isUnsafeName, isSymlink, safeReadFile } from "../extensions/utils.ts";
+import { isUnsafeName, isSymlink, safeReadFile } from "../src/utils.ts";
 import { tempDirFixture } from "./fixtures";
 
 /* ------------------------------------------------------------------ */

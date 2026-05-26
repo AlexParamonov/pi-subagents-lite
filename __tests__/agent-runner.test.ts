@@ -40,21 +40,21 @@ const mockModules = vi.hoisted(() => {
   };
 });
 
-vi.mock("../extensions/agent-types.js", () => ({
+vi.mock("../src/agent-types.js", () => ({
   getConfig: mockModules.mockGetConfig,
   getAgentConfig: mockModules.mockGetAgentConfig,
   getToolNamesForType: mockModules.mockGetToolNamesForType,
 }));
 
-vi.mock("../extensions/prompts.js", () => ({
+vi.mock("../src/prompts.js", () => ({
   buildAgentPrompt: mockModules.mockBuildAgentPrompt,
 }));
 
-vi.mock("../extensions/context.js", () => ({
+vi.mock("../src/context.js", () => ({
   extractText: mockModules.mockExtractText,
 }));
 
-vi.mock("../extensions/skill-loader.js", () => ({
+vi.mock("../src/skill-loader.js", () => ({
   preloadSkills: mockModules.mockPreloadSkills,
 }));
 
@@ -68,7 +68,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, EXCLUDED_TOOL_NAMES } from "../extensions/agent-runner.js";
+import { runAgent, EXCLUDED_TOOL_NAMES } from "../src/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",

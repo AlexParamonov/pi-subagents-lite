@@ -33,7 +33,7 @@ vi.mock("node:crypto", () => ({
   randomUUID: mockModules.mockRandomUUID,
 }));
 
-vi.mock("../extensions/agent-runner.js", () => ({
+vi.mock("../src/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
 }));
 
@@ -54,8 +54,8 @@ function mockRunResult(overrides?: Partial<ReturnType<typeof mockRunResult>>) {
 }
 
 // --- Import the module under test ---
-import { AgentManager } from "../extensions/agent-manager.js";
-import type { ConcurrencyConfig } from "../extensions/agent-manager.js";
+import { AgentManager } from "../src/agent-manager.js";
+import type { ConcurrencyConfig } from "../src/agent-manager.js";
 
 describe("AgentManager concurrency", () => {
   let manager: AgentManager;

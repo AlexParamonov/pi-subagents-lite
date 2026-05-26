@@ -102,7 +102,7 @@ export function hasParam(schema: any, paramName: string): boolean {
  * Returns the factory function for chaining.
  */
 export async function loadExtension(api: any) {
-  const factory = (await import("../extensions/index.js")).default;
+  const factory = (await import("../src/index.js")).default;
   return factory(api);
 }
 

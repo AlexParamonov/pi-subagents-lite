@@ -15,9 +15,9 @@ import {
   scanAgentFilesInDir,
   mergeAgents,
   parseExtensions,
-} from "../extensions/agent-discovery.ts";
-import { migrateConfig } from "../extensions/config-migration.ts";
-import type { AgentConfigFromMd } from "../extensions/agent-discovery.ts";
+} from "../src/agent-discovery.ts";
+import { migrateConfig } from "../src/config-migration.ts";
+import type { AgentConfigFromMd } from "../src/agent-discovery.ts";
 import { makeAgentMd, tempDirWithFiles } from "./fixtures";
 
 /* ------------------------------------------------------------------ */

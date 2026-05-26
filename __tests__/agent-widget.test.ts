@@ -9,15 +9,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentManager } from "../extensions/agent-manager.js";
-import type { AgentActivity } from "../extensions/ui/agent-widget.js";
-import { AgentWidget } from "../extensions/ui/agent-widget.js";
+import type { AgentManager } from "../src/agent-manager.js";
+import type { AgentActivity } from "../src/ui/agent-widget.js";
+import { AgentWidget } from "../src/ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
 /* ------------------------------------------------------------------ */
 
-vi.mock("../extensions/agent-types.js", () => ({
+vi.mock("../src/agent-types.js", () => ({
   getConfig: (type: string) => ({
     displayName: type.charAt(0).toUpperCase() + type.slice(1),
     tools: [],

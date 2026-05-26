@@ -87,15 +87,15 @@ vi.mock("@earendil-works/pi-tui", () => ({
   }),
 }));
 
-vi.mock("../extensions/model-selector.js", () => ({
+vi.mock("../src/model-selector.js", () => ({
   ModelSelectorDialog: class {},
 }));
 
-vi.mock("../extensions/model-precedence.js", () => ({
+vi.mock("../src/model-precedence.js", () => ({
   resolveModel: vi.fn((_type, _config, _cfg, parentModel: string) => parentModel),
 }));
 
-vi.mock("../extensions/agent-types.js", () => ({
+vi.mock("../src/agent-types.js", () => ({
   resolveType: vi.fn((name: string) => name),
   getAgentConfig: vi.fn(() => ({})),
   registerAgents: vi.fn(),
@@ -103,20 +103,20 @@ vi.mock("../extensions/agent-types.js", () => ({
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
 }));
 
-vi.mock("../extensions/agent-discovery.js", () => ({
+vi.mock("../src/agent-discovery.js", () => ({
   scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
   mergeAgents: vi.fn().mockReturnValue(new Map()),
   AgentConfigFromMd: {},
 }));
 
-vi.mock("../extensions/config-migration.js", () => ({
+vi.mock("../src/config-migration.js", () => ({
   migrateConfig: vi.fn((old: any) => ({
     agent: { default: old.default ?? null },
     concurrency: { default: 4 },
   })),
 }));
 
-vi.mock("../extensions/agent-runner.js", () => ({
+vi.mock("../src/agent-runner.js", () => ({
   runAgent: vi.fn(),
   resumeAgent: vi.fn(),
   steerAgent: vi.fn(),
@@ -126,11 +126,11 @@ vi.mock("../extensions/agent-runner.js", () => ({
   ],
 }));
 
-vi.mock("../extensions/default-agents.js", () => ({
+vi.mock("../src/default-agents.js", () => ({
   DEFAULT_AGENTS: new Map(),
 }));
 
-vi.mock("../extensions/ui/agent-widget.js", () => ({
+vi.mock("../src/ui/agent-widget.js", () => ({
   AgentWidget: class {},
   formatTokens: vi.fn(),
   formatTurns: vi.fn(),
