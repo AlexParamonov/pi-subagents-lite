@@ -81,6 +81,9 @@ let piInstance: ExtensionAPI;
 // Nudge scheduling (200ms hold to batch completion notifications)
 // ============================================================================
 
+/** Agent IDs that were spawned as background — only these trigger a nudge on completion. */
+const backgroundAgentIds = new Set<string>();
+
 const pendingNudges = new Set<string>();
 let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -818,8 +821,11 @@ function ensureManagerAndWidget(): void {
   };
   manager = new AgentManager(
     (record) => {
-      // Schedule nudge BEFORE removing activity — nudge reads turn count
-      scheduleNudge(record.id, record);
+      // Only nudge for background (async) agents — sync agents already returned via tool result
+      if (backgroundAgentIds.has(record.id)) {
+        scheduleNudge(record.id, record);
+        backgroundAgentIds.delete(record.id);
+      }
 
       // Mark finished and update widget BEFORE deleting activity —
       // renderFinishedLine reads activity for turn count, tokens, etc.
@@ -1032,6 +1038,7 @@ async function executeSpawnBackground(
     isBackground: true,
     ...bgCallbacks,
   });
+  backgroundAgentIds.add(agentId);
   agentActivity.set(agentId, bgState);
   widget?.ensureTimer();
   widget?.update();
