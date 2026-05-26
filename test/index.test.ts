@@ -373,15 +373,9 @@ describe("command registration", () => {
     expect(agentsCmd!.description).toBeDefined();
   });
 
-  it("registers /steer command", () => {
-    const steerCmd = api.commands.find((c) => c.name === "steer");
-    expect(steerCmd).toBeDefined();
-    expect(steerCmd!.description).toBeDefined();
-  });
-
-  it("registers both commands", () => {
+  it("registers only /agents command", () => {
     const cmdNames = api.commands.map((c) => c.name).sort();
-    expect(cmdNames).toEqual(["agents", "steer"]);
+    expect(cmdNames).toEqual(["agents"]);
   });
 });
 

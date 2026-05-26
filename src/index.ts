@@ -18,7 +18,6 @@
  *
  * Commands:
  *   - /agents: Management menu with 5 sub-menus
- *   - /steer: Steer running agents
  *
  * Events:
  *   - tool_call: Inject model into Agent tool calls
@@ -580,8 +579,7 @@ async function showRunningAgentsMenu(
 }
 
 /**
- * Send a steer message to a specific agent. Extracted for reuse by both
- * the /steer command and the per-agent action menu.
+ * Send a steer message to a specific agent. Used by the per-agent action menu.
  */
 async function steerAgentById(
   agentId: string,
@@ -695,35 +693,6 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   }
 
   ctx.ui.notify(lines.join("\n"), "info");
-}
-
-// ============================================================================
-// /steer command handler
-// ============================================================================
-
-async function handleSteerCommand(
-  _args: string,
-  ctx: ExtensionCommandContext,
-): Promise<void> {
-  const running = manager?.listAgents().filter(
-    (r) => r.status === "running" || r.status === "queued",
-  ) ?? [];
-  if (running.length === 0) {
-    ctx.ui.notify("No running agents to steer", "info");
-    return;
-  }
-
-  const options = running.map((r) =>
-    `${r.id.slice(0, 8)} · ${r.type} · ${r.description || "no description"}`,
-  );
-
-  const choice = await ctx.ui.select("Select agent to steer", options);
-  if (!choice) return;
-
-  const idx = options.indexOf(choice);
-  if (idx < 0) return;
-
-  await steerAgentById(running[idx].id, ctx);
 }
 
 // ============================================================================
@@ -1199,13 +1168,6 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const modelOptions = ctx.modelRegistry.getAvailable().map((m) => `${m.provider}/${m.id}`);
       await showAgentsMainMenu(ctx, modelOptions);
-    },
-  });
-
-  pi.registerCommand("steer", {
-    description: "Steer a running subagent (user-facing)",
-    handler: async (args: string, ctx: ExtensionCommandContext) => {
-      await handleSteerCommand(args, ctx);
     },
   });
 
