@@ -18,6 +18,7 @@ export interface SubagentsConfig {
   };
   concurrency: {
     default: number;
+    providers?: Record<string, number>;
     models?: Record<string, number>;
   };
 }

@@ -52,8 +52,10 @@ function isTerminalStatus(status: AgentRecord["status"]): boolean {
 
 /** Configuration for per-model concurrency limits. */
 export interface ConcurrencyConfig {
-  /** Default concurrency limit for models not in the models map. */
+  /** Default concurrency limit for models not in the models or providers map. */
   default: number;
+  /** Per-provider concurrency limits keyed by provider name (e.g. "llamacpp"). */
+  providers?: Record<string, number>;
   /** Per-model concurrency limits keyed by "provider/modelId". */
   models: Record<string, number>;
 }
@@ -115,10 +117,13 @@ export class AgentManager {
   /** Per-model concurrency slots keyed by "provider/modelId". */
   private concurrencySlots = new Map<string, ConcurrencySlot>();
 
+  /** Per-provider concurrency slots — shared pool for all models from a provider. */
+  private providerSlots = new Map<string, ConcurrencySlot>();
+
   /** Default concurrency limit for models not in the slots map. */
   private defaultConcurrency: number;
 
-  /** Queue of background agents waiting to start, keyed by modelKey. */
+  /** Queue of agents waiting to start, keyed by modelKey. */
   private queue: { id: string; modelKey: string; args: SpawnArgs }[] = [];
 
   constructor(
@@ -129,6 +134,13 @@ export class AgentManager {
     this.onComplete = onComplete;
     this.onStart = onStart;
     this.defaultConcurrency = concurrency?.default ?? 4;
+
+    // Initialize per-provider slots from config (shared pool)
+    if (concurrency?.providers) {
+      for (const [provider, limit] of Object.entries(concurrency.providers)) {
+        this.providerSlots.set(provider, { limit: Math.max(1, limit), running: 0 });
+      }
+    }
 
     // Initialize per-model slots from config
     if (concurrency?.models) {
@@ -151,6 +163,18 @@ export class AgentManager {
   setConcurrency(config: ConcurrencyConfig): void {
     this.defaultConcurrency = config.default;
 
+    // Update per-provider slots (shared pool)
+    if (config.providers) {
+      for (const [provider, limit] of Object.entries(config.providers)) {
+        const existing = this.providerSlots.get(provider);
+        if (existing) {
+          existing.limit = Math.max(1, limit);
+        } else {
+          this.providerSlots.set(provider, { limit: Math.max(1, limit), running: 0 });
+        }
+      }
+    }
+
     // Update existing slots and create new ones
     for (const [modelKey, limit] of Object.entries(config.models)) {
       const existing = this.concurrencySlots.get(modelKey);
@@ -167,15 +191,23 @@ export class AgentManager {
 
   /**
    * Get or create a concurrency slot for a model key.
-   * Unknown models get the default limit.
+   * Precedence: per-model slot > per-provider shared slot > default (per-model).
+   * Returns { slot, isProviderSlot } so caller knows which slot to decrement.
    */
-  private getSlot(modelKey: string): ConcurrencySlot {
+  private getSlot(modelKey: string): { slot: ConcurrencySlot; isProviderSlot: boolean } {
+    // 1. Check per-model slot
     let slot = this.concurrencySlots.get(modelKey);
-    if (!slot) {
-      slot = { limit: Math.max(1, this.defaultConcurrency), running: 0 };
-      this.concurrencySlots.set(modelKey, slot);
-    }
-    return slot;
+    if (slot) return { slot, isProviderSlot: false };
+
+    // 2. Check per-provider shared slot
+    const provider = modelKey.split("/")[0];
+    const providerSlot = this.providerSlots.get(provider);
+    if (providerSlot) return { slot: providerSlot, isProviderSlot: true };
+
+    // 3. Create per-model slot with default limit
+    slot = { limit: Math.max(1, this.defaultConcurrency), running: 0 };
+    this.concurrencySlots.set(modelKey, slot);
+    return { slot, isProviderSlot: false };
   }
 
   /**
@@ -193,11 +225,11 @@ export class AgentManager {
     const abortController = new AbortController();
     const args: SpawnArgs = { pi, ctx, type, prompt, options };
 
-    // Check per-model concurrency — applies to both foreground and background agents
+    // Check concurrency — applies to both foreground and background agents
     let queued = false;
     let concurrencySlot: ConcurrencySlot | undefined;
     if (options.modelKey) {
-      const slot = this.getSlot(options.modelKey);
+      const { slot } = this.getSlot(options.modelKey);
       if (slot.running >= slot.limit) {
         queued = true;
         this.queue.push({ id, modelKey: options.modelKey, args });

@@ -103,48 +103,17 @@ function scheduleNudge(agentId: string, record: AgentRecord): void {
 function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   if (!record) return;
 
-
-
-  // Format duration
+  // Stats go in details only (rendered by the UI message renderer).
+  // Content is just the result text — the model only sees this.
+  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
   const elapsedMs = record.completedAt
     ? record.completedAt - record.startedAt
     : 0;
-  const elapsedSec = Math.round(elapsedMs / 1000);
-  const durationStr = elapsedSec >= 60
-    ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
-    : `${elapsedSec}s`;
 
-  const statusIcon = record.status === "completed" ? "✓" : record.status === "error" ? "✗" : "…";
-
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const activity = agentActivity.get(agentId);
-
-  // Build stats for the header
-  const statsParts: string[] = [];
-  if (record.toolUses > 0) statsParts.push(`${record.toolUses}🛠 `);
-  if (activity) {
-    statsParts.push(formatTurns(activity.turnCount, activity.maxTurns));
-  }
-  if (totalTokens > 0) {
-    const contextPct = getSessionContextPercent(record.session);
-    statsParts.push(formatSessionTokens(totalTokens, contextPct, { fg: () => (s: string) => s } as any, record.compactionCount));
-  }
-  statsParts.push(durationStr);
-  const statsLine = statsParts.join("·");
-
-  const name = getDisplayName(record.type);
-  const desc = record.description || "";
-  const header = `${statusIcon} ${name}·${statsLine}\n  ${desc}`;
-
-  // Full result text for the model to see directly
-  const resultText = record.result ? `\n${record.result}` : "";
-  const tailLine = record.outputFile ? `\n  tail -f ${record.outputFile}` : "";
-  const content = `${header}${tailLine}${resultText}`;
-
-  // Build details for renderResult (includes outputFile for tail -f)
   const details: Record<string, unknown> = {
     type: record.type,
     description: record.description,
+    status: record.status,
     outputFile: record.outputFile,
     turnCount: record.turnCount ?? agentActivity.get(agentId)?.turnCount,
     maxTurns: record.maxTurns,
@@ -159,7 +128,7 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   piInstance.sendMessage(
     {
       customType: "subagent-result",
-      content: [{ type: "text", text: content }],
+      content: record.result ?? "",
       details,
       display: true,
     },
@@ -494,6 +463,69 @@ async function showConcurrencySettingsMenu(
       ctx.ui.notify(`Default concurrency limit set to ${parsed}`, "info");
       manager?.setConcurrency({
         default: __config.concurrency.default,
+        providers: __config.concurrency.providers ?? {},
+        models: __config.concurrency.models ?? {},
+      });
+    });
+
+    // Extract unique providers from model options
+    const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
+
+    // Per-provider limits
+    const providerLimits = __config.concurrency.providers ?? {};
+    const configuredProviders = Object.keys(providerLimits);
+    if (configuredProviders.length > 0) {
+      items.push("─── per-provider limits ───");
+      actions.push(async () => {}); // separator
+
+      for (const provider of configuredProviders) {
+        items.push(`${provider}  ·  ${providerLimits[provider]} slots`);
+        actions.push(async () => {
+          const input = await ctx.ui.input(
+            `Concurrency slots for ${provider}`,
+            String(providerLimits[provider]),
+          );
+          if (input === undefined) return;
+          const parsed = parseInt(input.trim(), 10);
+          if (isNaN(parsed) || parsed < 1) {
+            ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
+            return;
+          }
+          const updated = { ...__config };
+          updated.concurrency.providers = { ...providerLimits, [provider]: parsed };
+          __config = updated;
+          saveConfigAtomic(updated);
+          ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
+          manager?.setConcurrency({
+            default: __config.concurrency.default,
+            providers: __config.concurrency.providers ?? {},
+            models: __config.concurrency.models ?? {},
+          });
+        });
+      }
+    }
+
+    // Add per-provider limit
+    items.push("Add per-provider limit...");
+    actions.push(async () => {
+      const currentProviders = __config.concurrency.providers ?? {};
+      const provider = await ctx.ui.select("Select provider", providers);
+      if (provider === undefined) return;
+      const input = await ctx.ui.input("Concurrency slots", "1");
+      if (input === undefined) return;
+      const parsed = parseInt(input.trim(), 10);
+      if (isNaN(parsed) || parsed < 1) {
+        ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
+        return;
+      }
+      const updated = { ...__config };
+      updated.concurrency.providers = { ...currentProviders, [provider]: parsed };
+      __config = updated;
+      saveConfigAtomic(updated);
+      ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
+      manager?.setConcurrency({
+        default: __config.concurrency.default,
+        providers: __config.concurrency.providers ?? {},
         models: __config.concurrency.models ?? {},
       });
     });
@@ -525,6 +557,7 @@ async function showConcurrencySettingsMenu(
           ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
           manager?.setConcurrency({
             default: __config.concurrency.default,
+            providers: __config.concurrency.providers ?? {},
             models: __config.concurrency.models ?? {},
           });
         });
@@ -555,6 +588,7 @@ async function showConcurrencySettingsMenu(
       ctx.ui.notify(`${modelKey.trim()} concurrency set to ${parsed}`, "info");
       manager?.setConcurrency({
         default: __config.concurrency.default,
+        providers: __config.concurrency.providers ?? {},
         models: __config.concurrency.models ?? {},
       });
     });
@@ -779,6 +813,7 @@ function ensureManagerAndWidget(): void {
 
   const concurrencyConfig = {
     default: __config.concurrency.default,
+    providers: __config.concurrency.providers ?? {},
     models: __config.concurrency.models ?? {},
   };
   manager = new AgentManager(
@@ -1195,6 +1230,65 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(`${icon} ${theme.fg("dim", text)}`, 0, 0);
     },
+  });
+
+  // ========================================================================
+  // Message renderer — subagent-result (background agent completion)
+  // ========================================================================
+  // Renders a collapsible stats card matching the foreground Agent tool card.
+  // Stats come from `details` (UI-only), content is just the result text.
+
+  pi.registerMessageRenderer("subagent-result", (message, options, theme) => {
+    const { expanded } = options as { expanded?: boolean };
+    const d = message.details as Record<string, unknown> | undefined;
+    const text = (message.content as string)?.trim() || "";
+
+    if (!d || d.turnCount == null) {
+      // Minimal card — no stats (shouldn't happen, but handle gracefully)
+      const typeName = getDisplayName((d?.type as string) || "");
+      const desc = (d?.description as string) || "";
+      let lines = `${theme.fg("success", "✓")}`;
+      if (typeName) lines += ` ${theme.bold(typeName)}`;
+      if (desc) lines += `\n  ${theme.fg("text", desc)}`;
+      if (d?.outputFile) {
+        lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+      }
+      return new Text(lines, 0, 0);
+    }
+
+    // Rich stats card — matching the foreground Agent tool renderResult
+    const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
+    const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+    const typeName = getDisplayName((d.type as string) || "");
+    const desc = (d.description as string) || "";
+
+    const parts: string[] = [];
+    if ((d.toolUses as number) > 0) {
+      parts.push(`${d.toolUses}🛠 `);
+    }
+    if ((d.turnCount as number) > 0) {
+      parts.push(formatTurns(d.turnCount as number, d.maxTurns as number | undefined));
+    }
+    if ((d.tokens as number) > 0) {
+      const tokenText = formatSessionTokens(
+        d.tokens as number,
+        d.contextPercent as number | null,
+        theme,
+        (d.compactions as number) ?? 0,
+      );
+      parts.push(tokenText);
+    }
+    parts.push(formatMs(d.durationMs as number));
+
+    const statsLine = parts.join("·");
+    let lines = `${icon} ${theme.bold(typeName)}·${statsLine}\n  ${theme.fg("text", desc)}`;
+    if ((d.outputFile as string)) {
+      lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+    }
+    if (expanded && text) {
+      lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
+    }
+    return new Text(lines, 0, 0);
   });
 
   // ========================================================================

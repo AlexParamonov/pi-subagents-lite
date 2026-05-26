@@ -1,9 +1,14 @@
 # Per-model concurrency pools
 
 The AgentManager uses per-model concurrency limits instead of a single global
-`maxConcurrent` pool. Each `"provider/modelId"` key can have its own slot count,
-with a `"default"` fallback. Configured via `/agents` > Concurrency settings,
-persisted in `~/.pi/agent/subagents-lite.json`.
+`maxConcurrent` pool. Limits follow a precedence chain:
+
+1. **Per-model**: `"provider/modelId"` key gets its own slot count
+2. **Per-provider**: `"provider"` key applies to all models from that provider
+3. **Default**: fallback for any model not covered above
+
+Configured via `/agents` > Concurrency settings, persisted in
+`~/.pi/agent/subagents-lite.json`.
 
 ## Why
 
@@ -11,7 +16,10 @@ Different local models consume different GPU memory. A 4B model may fit several
 slots while a 27B model fits only one. Cloud APIs have their own rate limits.
 A single global pool can't express these constraints.
 
-When a spawn hits its per-model limit, the agent is queued with status `"queued"`
+Per-provider limits let you set a blanket limit for all models from a provider
+(e.g. `llamacpp: 2`) without configuring each model individually.
+
+When a spawn hits its limit, the agent is queued with status `"queued"`
 and starts automatically when a slot frees up.
 
 ## Trade-off

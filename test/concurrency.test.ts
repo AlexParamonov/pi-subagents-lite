@@ -278,6 +278,100 @@ describe("AgentManager concurrency", () => {
     });
   });
 
+  describe("per-provider limit", () => {
+    it("applies provider limit to all models from that provider", () => {
+      const config: ConcurrencyConfig = {
+        default: 4,
+        providers: { llamacpp: 2 },
+        models: {},
+      };
+      manager = new AgentManager(onComplete, config);
+
+      const deferred1 = makeResolvablePromise();
+      const deferred2 = makeResolvablePromise();
+      const deferred3 = makeResolvablePromise();
+      mockModules.mockRunAgent
+        .mockReturnValueOnce(deferred1.promise)
+        .mockReturnValueOnce(deferred2.promise)
+        .mockReturnValueOnce(deferred3.promise);
+
+      const ctx = fakeCtx();
+      const pi = fakePi();
+
+      // Two different llamacpp models — share the provider limit of 2
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/27b",
+        isBackground: true,
+      });
+      // Third llamacpp model — should be queued (provider limit reached)
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/3b",
+        isBackground: true,
+      });
+
+      expect(manager.getRecord(id1)?.status).toBe("running");
+      expect(manager.getRecord(id2)?.status).toBe("running");
+      expect(manager.getRecord(id3)?.status).toBe("queued");
+
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
+
+      // A different provider uses the default limit
+      const id4 = manager.spawn(pi, ctx, "general-purpose", "task 4", {
+        description: "task 4",
+        modelKey: "claude/sonnet",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id4)?.status).toBe("running");
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(3);
+
+      // Clean up
+      deferred1.resolve(mockRunResult());
+      deferred2.resolve(mockRunResult());
+      deferred3.resolve(mockRunResult());
+    });
+
+    it("per-model limit overrides per-provider limit", () => {
+      const config: ConcurrencyConfig = {
+        default: 4,
+        providers: { llamacpp: 2 },
+        models: { "llamacpp/4b": 1 },
+      };
+      manager = new AgentManager(onComplete, config);
+
+      const deferred1 = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred1.promise);
+
+      const ctx = fakeCtx();
+      const pi = fakePi();
+
+      // llamacpp/4b has per-model limit of 1 (overrides provider limit of 2)
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+
+      expect(manager.getRecord(id1)?.status).toBe("running");
+      expect(manager.getRecord(id2)?.status).toBe("queued");
+
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
+
+      deferred1.resolve(mockRunResult());
+    });
+  });
+
   describe("config update mid-session", () => {
     it("applies new limit when setConcurrency is called", () => {
       const config: ConcurrencyConfig = { default: 1, models: { "llamacpp/4b": 1 } };
