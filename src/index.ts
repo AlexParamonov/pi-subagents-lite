@@ -1103,7 +1103,6 @@ async function executeSpawnForeground(
     durationMs: elapsedMs,
     description: spawnOptions.description,
     compactions: record.compactionCount,
-    outputFile: record.outputFile,
   };
 
   if (record.status === "error") {
@@ -1207,9 +1206,6 @@ export default function (pi: ExtensionAPI) {
 
         const statsLine = parts.join("·");
         let lines = `${icon} ${theme.bold(typeName)}·${statsLine}\n  ${theme.fg("text", desc)}`;
-        if ((d.outputFile as string)) {
-          lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-        }
         if (expanded && text) {
           lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
         }
