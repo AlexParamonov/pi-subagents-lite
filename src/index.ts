@@ -25,7 +25,7 @@
  *   - session_shutdown: Abort all, dispose manager
  */
 
-import { Text } from "@earendil-works/pi-tui";
+import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -1243,52 +1243,74 @@ export default function (pi: ExtensionAPI) {
     const d = message.details as Record<string, unknown> | undefined;
     const text = (message.content as string)?.trim() || "";
 
-    if (!d || d.turnCount == null) {
+    // Build the content inside the purple card
+    const inner = new Container();
+
+    // Title — matches default CustomMessageComponent style
+    const titleText = theme.fg("customMessageLabel", `[subagent-result]`);
+    inner.addChild(new Text(titleText, 0, 0));
+    inner.addChild(new Spacer(1));
+
+    if (d && d.turnCount != null) {
+      // Rich stats card — matching the foreground Agent tool renderResult
+      const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
+      const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+      const typeName = getDisplayName((d.type as string) || "");
+      const desc = (d.description as string) || "";
+
+      const parts: string[] = [];
+      if ((d.toolUses as number) > 0) {
+        parts.push(`${d.toolUses}🛠 `);
+      }
+      if ((d.turnCount as number) > 0) {
+        parts.push(formatTurns(d.turnCount as number, d.maxTurns as number | undefined));
+      }
+      if ((d.tokens as number) > 0) {
+        const tokenText = formatSessionTokens(
+          d.tokens as number,
+          d.contextPercent as number | null,
+          theme,
+          (d.compactions as number) ?? 0,
+        );
+        parts.push(tokenText);
+      }
+      parts.push(formatMs(d.durationMs as number));
+
+      const statsLine = parts.join("·");
+      let headerLine = `${icon} ${theme.bold(typeName)}·${statsLine}\n  ${theme.fg("text", desc)}`;
+      if ((d.outputFile as string)) {
+        headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+      }
+      inner.addChild(new Text(headerLine, 0, 0));
+
+      // Result text — only when expanded (collapsible)
+      if (expanded && text) {
+        inner.addChild(new Spacer(1));
+        const resultLines = text.split("\n").map(l => `  ${l}`).join("\n");
+        inner.addChild(new Text(resultLines, 0, 0));
+      }
+    } else {
       // Minimal card — no stats (shouldn't happen, but handle gracefully)
       const typeName = getDisplayName((d?.type as string) || "");
       const desc = (d?.description as string) || "";
-      let lines = `${theme.fg("success", "✓")}`;
-      if (typeName) lines += ` ${theme.bold(typeName)}`;
-      if (desc) lines += `\n  ${theme.fg("text", desc)}`;
+      let line = `${theme.fg("success", "✓")}`;
+      if (typeName) line += ` ${theme.bold(typeName)}`;
+      if (desc) line += `\n  ${theme.fg("text", desc)}`;
       if (d?.outputFile) {
-        lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+        line += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
       }
-      return new Text(lines, 0, 0);
+      inner.addChild(new Text(line, 0, 0));
     }
 
-    // Rich stats card — matching the foreground Agent tool renderResult
-    const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
-    const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-    const typeName = getDisplayName((d.type as string) || "");
-    const desc = (d.description as string) || "";
+    // Wrap in purple card matching default CustomMessageComponent styling
+    const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+    box.addChild(inner);
 
-    const parts: string[] = [];
-    if ((d.toolUses as number) > 0) {
-      parts.push(`${d.toolUses}🛠 `);
-    }
-    if ((d.turnCount as number) > 0) {
-      parts.push(formatTurns(d.turnCount as number, d.maxTurns as number | undefined));
-    }
-    if ((d.tokens as number) > 0) {
-      const tokenText = formatSessionTokens(
-        d.tokens as number,
-        d.contextPercent as number | null,
-        theme,
-        (d.compactions as number) ?? 0,
-      );
-      parts.push(tokenText);
-    }
-    parts.push(formatMs(d.durationMs as number));
-
-    const statsLine = parts.join("·");
-    let lines = `${icon} ${theme.bold(typeName)}·${statsLine}\n  ${theme.fg("text", desc)}`;
-    if ((d.outputFile as string)) {
-      lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-    }
-    if (expanded && text) {
-      lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
-    }
-    return new Text(lines, 0, 0);
+    const outer = new Container();
+    outer.addChild(new Spacer(1));
+    outer.addChild(box);
+    outer.addChild(new Spacer(1));
+    return outer;
   });
 
   // ========================================================================
