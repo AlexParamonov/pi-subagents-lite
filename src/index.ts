@@ -43,6 +43,7 @@ import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { steerAgent } from "./agent-runner.js";
 import type { AgentRecord, ThinkingLevel } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
+import { ResultViewer } from "./result-viewer.js";
 import { AgentManager } from "./agent-manager.js";
 import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
 import { AgentWidget, formatTurns, formatMs, formatSessionTokens, getDisplayName, type AgentActivity, type UICtx } from "./ui/agent-widget.js";
@@ -536,46 +537,54 @@ async function showConcurrencySettingsMenu(
 async function showRunningAgentsMenu(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
-  const records = manager?.listAgents() ?? [];
-  const running = records.filter((r) => r.status === "running" || r.status === "queued");
+  // Loop so sub-actions navigate back to this menu; only Escape closes
+  while (true) {
+    const records = manager?.listAgents() ?? [];
+    const running = records.filter((r) => r.status === "running" || r.status === "queued");
 
-  if (records.length === 0) {
-    ctx.ui.notify("No agents have been spawned this session", "info");
-    return;
+    if (records.length === 0) {
+      ctx.ui.notify("No agents have been spawned this session", "info");
+      return;
+    }
+
+    const items: string[] = [];
+    const actions: Array<() => Promise<void>> = [];
+
+    for (const record of records) {
+      const elapsed = Math.round((Date.now() - record.startedAt) / 1000);
+      const statusIcon = record.status === "running" ? "▶" :
+        record.status === "completed" ? "✓" :
+        record.status === "queued" ? "⏳" :
+        record.status === "error" ? "✗" : "•";
+      items.push(
+        `${statusIcon} ${record.id.slice(0, 8)}  ${record.type}  ${record.status}  ${elapsed}s`,
+      );
+
+      actions.push(async () => {
+        await showAgentActions(ctx, record);
+      });
+    }
+
+    if (running.length > 0) {
+      items.push("─── actions ───");
+      actions.push(async () => {}); // separator
+
+      items.push(`Stop ${running.length} running agent(s)`);
+      actions.push(async () => {
+        for (const record of running) {
+          manager?.abort(record.id);
+        }
+        ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
+      });
+    }
+
+    const choice = await ctx.ui.select("Running Agents", items);
+    if (choice === undefined) return;
+    const idx = items.indexOf(choice);
+    if (idx >= 0 && idx < actions.length) {
+      await actions[idx]();
+    }
   }
-
-  const items: string[] = [];
-  const actions: Array<() => Promise<void>> = [];
-
-  for (const record of records) {
-    const elapsed = Math.round((Date.now() - record.startedAt) / 1000);
-    const statusIcon = record.status === "running" ? "▶" :
-      record.status === "completed" ? "✓" :
-      record.status === "queued" ? "⏳" :
-      record.status === "error" ? "✗" : "•";
-    items.push(
-      `${statusIcon} ${record.id.slice(0, 8)}  ${record.type}  ${record.status}  ${elapsed}s`,
-    );
-
-    actions.push(async () => {
-      await showAgentActions(ctx, record);
-    });
-  }
-
-  if (running.length > 0) {
-    items.push("─── actions ───");
-    actions.push(async () => {}); // separator
-
-    items.push(`Stop ${running.length} running agent(s)`);
-    actions.push(async () => {
-      for (const record of running) {
-        manager?.abort(record.id);
-      }
-      ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
-    });
-  }
-
-  await runMenu(ctx, "Running Agents", items, actions);
 }
 
 /**
@@ -642,20 +651,30 @@ async function showAgentActions(
   if (hasResult) {
     items.push("View result");
     actions.push(async () => {
-      const result = record.result!;
-      const truncated = result.length > 500;
-      const display = truncated ? result.slice(0, 500) + "\n  … (truncated)" : result;
-      const header = truncated
-        ? `Result (${result.length} chars, showing first 500):`
-        : "Result:";
-      ctx.ui.notify(`${header}\n${display}`, "info");
+      await ctx.ui.custom<void>(
+        (tui, theme, _kb, done) =>
+          new ResultViewer(
+            `${getDisplayName(record.type)} · ${record.id.slice(0, 8)}`,
+            record.result!,
+            { onClose: () => done() },
+            theme,
+          ),
+      );
     });
   }
 
   if (hasError) {
     items.push("View error");
     actions.push(async () => {
-      ctx.ui.notify(`Error:\n${record.error!}`, "info");
+      await ctx.ui.custom<void>(
+        (tui, theme, _kb, done) =>
+          new ResultViewer(
+            `${getDisplayName(record.type)} · Error`,
+            record.error!,
+            { onClose: () => done() },
+            theme,
+          ),
+      );
     });
   }
 
