@@ -191,11 +191,26 @@ export class AgentManager {
   ): string {
     const id = randomUUID().slice(0, 17);
     const abortController = new AbortController();
+    const args: SpawnArgs = { pi, ctx, type, prompt, options };
+
+    // Check per-model concurrency — applies to both foreground and background agents
+    let queued = false;
+    let concurrencySlot: ConcurrencySlot | undefined;
+    if (options.modelKey) {
+      const slot = this.getSlot(options.modelKey);
+      if (slot.running >= slot.limit) {
+        queued = true;
+        this.queue.push({ id, modelKey: options.modelKey, args });
+      } else {
+        concurrencySlot = slot;
+      }
+    }
+
     const record: AgentRecord = {
       id,
       type,
       description: options.description,
-      status: options.isBackground ? "queued" : "running",
+      status: queued ? "queued" : "running",
       toolUses: 0,
       startedAt: Date.now(),
       abortController,
@@ -206,19 +221,7 @@ export class AgentManager {
     };
     this.agents.set(id, record);
 
-    const args: SpawnArgs = { pi, ctx, type, prompt, options };
-
-    // Check per-model concurrency for background agents
-    let concurrencySlot: ConcurrencySlot | undefined;
-    if (options.isBackground && options.modelKey) {
-      const slot = this.getSlot(options.modelKey);
-      if (slot.running >= slot.limit) {
-        // Queue it — will be started when a running agent of this model completes
-        this.queue.push({ id, modelKey: options.modelKey, args });
-        return id;
-      }
-      concurrencySlot = slot;
-    }
+    if (queued) return id;
 
     // startAgent can throw — clean up record so callers don't see an orphan
     try {
@@ -326,13 +329,11 @@ export class AgentManager {
           record.outputCleanup = undefined;
         }
 
-        if (options.isBackground) {
-          // Decrement per-model concurrency count
-          if (concurrencySlot) concurrencySlot.running--;
+        // Decrement per-model concurrency count
+        if (concurrencySlot) concurrencySlot.running--;
 
-          try { this.onComplete?.(record); } catch { /* ignore */ }
-          this.drainQueue();
-        }
+        try { this.onComplete?.(record); } catch { /* ignore */ }
+        this.drainQueue();
       });
 
     record.promise = promise;
@@ -365,7 +366,7 @@ export class AgentManager {
 
   /**
    * Spawn an agent and wait for completion (foreground use).
-   * Foreground agents bypass the concurrency queue.
+   * Respects per-model concurrency limits — queued if at capacity, awaited on completion.
    */
   async spawnAndWait(
     pi: ExtensionAPI,

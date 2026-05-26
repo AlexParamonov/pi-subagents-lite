@@ -7,7 +7,7 @@
  *   - Different models queue independently
  *   - Default limit for unknown models
  *   - Config update mid-session applies to new spawns
- *   - Foreground agents bypass the queue
+ *   - Foreground agents respect concurrency limits (queued when at capacity)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -312,14 +312,17 @@ describe("AgentManager concurrency", () => {
     });
   });
 
-  describe("foreground bypasses queue", () => {
-    it("starts foreground agent immediately regardless of limit", () => {
+  describe("foreground respects concurrency", () => {
+    it("queues foreground agent when limit is reached", () => {
       const config: ConcurrencyConfig = { default: 1, models: { "llamacpp/4b": 1 } };
       manager = new AgentManager(onComplete, config);
 
       // Deferred for the first agent
-      const deferred = makeResolvablePromise();
-      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      const deferred1 = makeResolvablePromise();
+      const deferred2 = makeResolvablePromise();
+      mockModules.mockRunAgent
+        .mockReturnValueOnce(deferred1.promise)
+        .mockReturnValueOnce(deferred2.promise);
 
       const ctx = fakeCtx();
       const pi = fakePi();
@@ -331,7 +334,7 @@ describe("AgentManager concurrency", () => {
         isBackground: true,
       });
 
-      // Spawn foreground agent — should bypass queue
+      // Spawn foreground agent — should be queued (limit reached)
       const id2 = manager.spawn(pi, ctx, "general-purpose", "fg task", {
         description: "fg task",
         modelKey: "llamacpp/4b",
@@ -339,8 +342,18 @@ describe("AgentManager concurrency", () => {
       });
 
       expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("running");
-      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
+      expect(manager.getRecord(id2)?.status).toBe("queued");
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
+
+      // Complete the first agent — foreground agent should start
+      deferred1.resolve(mockRunResult());
+
+      // Wait for async drain
+      return new Promise((r) => setTimeout(r, 10)).then(() => {
+        expect(manager.getRecord(id2)?.status).toBe("running");
+        expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
+        deferred2.resolve(mockRunResult());
+      });
     });
   });
 });
