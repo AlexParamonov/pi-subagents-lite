@@ -211,8 +211,8 @@ describe("Agent tool schema — stealth", () => {
     expect(hasParam(agentTool()!.parameters, "description")).toBe(true);
   });
 
-  it("includes subagent_type param", () => {
-    expect(hasParam(agentTool()!.parameters, "subagent_type")).toBe(true);
+  it("includes agent param", () => {
+    expect(hasParam(agentTool()!.parameters, "agent")).toBe(true);
   });
 
   it("includes thinking param (optional)", () => {
@@ -343,7 +343,7 @@ describe("tool_call listener — guards", () => {
       input: {
         prompt: "do something",
         description: "test",
-        subagent_type: "Explore",
+        agent: "Explore",
       },
     };
 

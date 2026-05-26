@@ -307,7 +307,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
 
   const lines: string[] = [
     "# Agent Types and Capabilities\n",
-    "The following agent types are available. Use the `subagent_type` parameter to select one.\n",
+    "The following agent types are available. Use the `agent` parameter to select one.\n",
   ];
 
   for (const { name, config } of agents) {
@@ -334,7 +334,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("|-----------|-------------|");
   lines.push("| `prompt` | The task for the agent (required) |");
   lines.push("| `description` | One-line summary of what the agent should do (required) |");
-  lines.push("| `subagent_type` | Which agent type to use (default: general-purpose) |");
+  lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
   lines.push("| `thinking` | Optional thinking mode override (e.g., `high`, `medium`, `low`, `off`) |");
   lines.push("| `max_turns` | Optional turn limit |");
   lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
@@ -832,7 +832,7 @@ async function executeAgentTool(
   ctx: ExtensionContext,
 ): Promise<any> {
   // Resolve type — default to general-purpose when not specified
-  const type = (params.subagent_type as string) || "general-purpose";
+  const type = (params.agent as string) || "general-purpose";
   const resolvedType = resolveType(type);
   if (!resolvedType) {
     return errorResult(`Unknown agent type: ${type}`);
@@ -1041,7 +1041,7 @@ async function toolCallListener(
   if (event.toolName !== "Agent") return;
 
   const input = event.input;
-  const subagentType = input.subagent_type as string | undefined;
+  const subagentType = input.agent as string | undefined;
   const agentConfig = subagentType ? getAgentConfig(subagentType) : undefined;
 
   // Resolve effective model using precedence chain
@@ -1078,7 +1078,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       prompt: Type.String(),
       description: Type.String(),
-      subagent_type: Type.Optional(Type.String()),
+      agent: Type.Optional(Type.String()),
       thinking: Type.Optional(Type.String()),
       run_in_background: Type.Optional(Type.Boolean()),
       resume: Type.Optional(Type.String()),
@@ -1086,7 +1086,7 @@ export default function (pi: ExtensionAPI) {
     execute: executeAgentTool,
 
     renderCall(args, theme) {
-      const typeName = getDisplayName((args.subagent_type as string) || "");
+      const typeName = getDisplayName((args.agent as string) || "");
       const label = typeName || "Agent";
       return new Text("▸ " + theme.fg("accent", theme.bold(label)), 0, 0);
     },

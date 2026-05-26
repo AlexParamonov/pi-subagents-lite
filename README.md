@@ -7,7 +7,7 @@ Lightweight sub-agents for [pi](https://pi.dev). A focused fork of [pi-subagents
 
 ## Features
 
-- **Agent tool** — spawn foreground or background sub-agents with `Agent({ prompt, description, subagent_type, run_in_background, ... })`
+- **Agent tool** — spawn foreground or background sub-agents with `Agent({ prompt, description, agent, run_in_background, ... })`
 - **Auto-delivered results** — background agents notify you on completion, no polling needed
 - **steer_subagent** — inject messages into running agents mid-execution
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter
@@ -36,14 +36,14 @@ pi install git:github.com/AlexParamonov/pi-subagents-lite
 ```ts
 // Spawn a foreground agent
 Agent({
-  subagent_type: "Explore",
+  agent: "Explore",
   prompt: "Find all files that handle authentication",
   description: "Find auth files",
 })
 
 // Spawn a background agent (result auto-delivered)
 Agent({
-  subagent_type: "Explore",
+  agent: "Explore",
   prompt: "Find all files that handle authentication",
   description: "Find auth files",
   run_in_background: true,
