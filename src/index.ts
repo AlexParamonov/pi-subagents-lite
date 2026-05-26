@@ -1041,7 +1041,6 @@ async function executeSpawnBackground(
     return errorResult("Failed to create agent");
   }
   const bgDetails: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
-  if (record?.outputFile) bgDetails.outputFile = record.outputFile;
   if (record.status === "queued") {
     return successResult(`[Agent queued] Concurrency limit reached. It will start automatically when a slot frees up. Do NOT poll — you will be notified when ready.
 
@@ -1104,7 +1103,6 @@ async function executeSpawnForeground(
     durationMs: elapsedMs,
     description: spawnOptions.description,
     compactions: record.compactionCount,
-    outputFile: record.outputFile,
   };
 
   if (record.status === "error") {
@@ -1208,9 +1206,6 @@ export default function (pi: ExtensionAPI) {
 
         const statsLine = parts.join("·");
         let lines = `${icon} ${theme.bold(typeName)}·${statsLine}\n  ${theme.fg("text", desc)}`;
-        if ((d.outputFile as string)) {
-          lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-        }
         if (expanded && text) {
           lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
         }
@@ -1222,9 +1217,6 @@ export default function (pi: ExtensionAPI) {
         let lines = `${icon}`;
         if (typeName) lines += ` ${theme.bold(typeName)}`;
         if (desc) lines += `\n  ${theme.fg("text", desc)}`;
-        if (d && (d.outputFile as string)) {
-          lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-        }
         return new Text(lines, 0, 0);
       }
 
