@@ -138,14 +138,30 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
 
   // Full result text for the model to see directly
   const resultText = record.result ? `\n${record.result}` : "";
-  const content = `${header}${resultText}`;
+  const tailLine = record.outputFile ? `\n  tail -f ${record.outputFile}` : "";
+  const content = `${header}${tailLine}${resultText}`;
+
+  // Build details for renderResult (includes outputFile for tail -f)
+  const details: Record<string, unknown> = {
+    type: record.type,
+    description: record.description,
+    outputFile: record.outputFile,
+    turnCount: record.turnCount ?? agentActivity.get(agentId)?.turnCount,
+    maxTurns: record.maxTurns,
+    toolUses: record.toolUses,
+    tokens: totalTokens,
+    contextPercent: getSessionContextPercent(record.session),
+    durationMs: elapsedMs,
+    compactions: record.compactionCount,
+  };
 
   // Deliver the result directly to the session so the model sees it.
   piInstance.sendMessage(
     {
       customType: "subagent-result",
       content: [{ type: "text", text: content }],
-      display: false,
+      details,
+      display: true,
     },
     {
       deliverAs: "steer",
