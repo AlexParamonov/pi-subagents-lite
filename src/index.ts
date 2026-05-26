@@ -278,7 +278,7 @@ async function showAgentsMainMenu(
     "2. Concurrency settings — Set per-model slot limits",
     "3. Running agents — List running/queued agents",
     "4. Agent types — List available agent types and their configs",
-    "5. Agent briefing — Send agent types/capabilities info to LLM",
+    "5. Agent briefing — Send agent types/capabilities info to LLM (Optional, if having issues)",
     "",
     "Press Escape to close",
   ];
@@ -286,7 +286,7 @@ async function showAgentsMainMenu(
   // Loop so sub-menus navigate back to root; only Escape at root closes
   while (true) {
     const choice = await ctx.ui.select("Subagents Management", menuItems);
-    if (choice === undefined) return;
+    if (choice === undefined || choice === "Press Escape to close") return;
 
     if (choice.startsWith("1.")) {
       await showModelSettingsMenu(ctx, modelOptions);
@@ -337,10 +337,8 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("| `description` | One-line summary of what the agent should do (required) |");
   lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
   lines.push("| `thinking` | Optional thinking mode override (e.g., `high`, `medium`, `low`, `off`) |");
-  lines.push("| `max_turns` | Optional turn limit |");
   lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
   lines.push("| `resume` | Agent ID to resume from; when set, `prompt` is appended to the previous conversation |");
-  lines.push("| `isolated` | When `true`, agent gets only built-in tools — saves tokens for focused tasks |");
   lines.push("");
 
   // Usage guidelines
@@ -348,10 +346,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("- Agents start fresh with their config — they do NOT inherit the parent conversation");
   lines.push("- For parallel tasks, spawn multiple `run_in_background: true` agents in one turn");
   lines.push("  → Results are auto-delivered — do NOT poll, the result will arrive when ready");
-  lines.push("- Use `isolated: true` for focused tasks that don't need extension tools");
   lines.push("- Use `resume` to continue an incomplete agent's conversation");
-  lines.push("- The `steer_subagent` tool sends a steering message to interrupt and redirect a running agent");
-
   piInstance.sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }
@@ -360,178 +355,207 @@ async function showModelSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const items: string[] = [];
-  const actions: Array<() => Promise<void>> = [];
+  // Loop so actions stay in this menu; only Back/Escape leaves
+  while (true) {
+    const items: string[] = [];
+    const actions: Array<() => Promise<void>> = [];
 
-  // Global default
-  const globalLabel = __config.agent.default
-    ? `Global default model · ${__config.agent.default}`
-    : "Global default model · (inherits parent)";
-  items.push(globalLabel);
-  actions.push(async () => {
-    const chosen = await promptModelSelection(
-      ctx, modelOptions, __config.agent.default ?? "(inherits parent)",
-    );
-    if (chosen === null) return;
-
-    const updated = { ...__config };
-    updated.agent = { ...updated.agent };
-    updated.agent.default = chosen === "(inherits parent)" ? null : chosen;
-    __config = updated;
-    saveConfigAtomic(updated);
-    ctx.ui.notify(
-      chosen === "(inherits parent)"
-        ? "Global default cleared — agents inherit parent model"
-        : `Global default model set to ${chosen}`,
-      "info",
-    );
-  });
-
-  items.push("─── per-type overrides ───");
-  actions.push(async () => {}); // separator
-
-  // Per-type overrides
-  const types = getAllTypes();
-  for (const typeName of types) {
-    const cfg = getAgentConfig(typeName);
-    const currentOverride = __config.agent[typeName];
-    const displayModel = currentOverride
-      ? currentOverride
-      : (cfg?.model ?? __config.agent.default ?? "(inherits parent)");
-    const frontmatterHint = currentOverride && cfg?.model ? ` → ${cfg.model}` : "";
-    items.push(`${typeName}  ·  ${displayModel}${frontmatterHint}`);
-
+    // Global default
+    const globalLabel = __config.agent.default
+      ? `Global default model · ${__config.agent.default}`
+      : "Global default model · (inherits parent)";
+    items.push(globalLabel);
     actions.push(async () => {
-      const currentDisplay = __config.agent[typeName] ?? cfg?.model ?? __config.agent.default ?? "(inherits parent)";
-      const chosen = await promptModelSelection(ctx, modelOptions, currentDisplay);
+      const chosen = await promptModelSelection(
+        ctx, modelOptions, __config.agent.default ?? "(inherits parent)",
+      );
       if (chosen === null) return;
 
       const updated = { ...__config };
       updated.agent = { ...updated.agent };
-      updated.agent[typeName] = chosen === "(inherits parent)" ? null : chosen;
+      updated.agent.default = chosen === "(inherits parent)" ? null : chosen;
       __config = updated;
       saveConfigAtomic(updated);
       ctx.ui.notify(
         chosen === "(inherits parent)"
-          ? `${typeName} inherits parent model`
-          : `${typeName} model set to ${chosen}`,
+          ? "Global default cleared — agents inherit parent model"
+          : `Global default model set to ${chosen}`,
         "info",
       );
     });
-  }
 
-  // Clear all overrides
-  items.push("Clear all overrides");
-  actions.push(async () => {
-    const hasOverrides = Object.entries(__config.agent).some(
-      ([k, v]) => k !== "default" && v != null,
-    );
-    if (!hasOverrides && __config.agent.default === null) {
-      ctx.ui.notify("No overrides to clear", "info");
-      return;
+    items.push("─── per-type overrides ───");
+    actions.push(async () => {}); // separator
+
+    // Per-type overrides
+    const types = getAllTypes();
+    for (const typeName of types) {
+      const cfg = getAgentConfig(typeName);
+      const currentOverride = __config.agent[typeName];
+      const displayModel = currentOverride
+        ? currentOverride
+        : (cfg?.model ?? __config.agent.default ?? "(inherits parent)");
+      const frontmatterHint = currentOverride && cfg?.model ? ` → ${cfg.model}` : "";
+      items.push(`${typeName}  ·  ${displayModel}${frontmatterHint}`);
+
+      actions.push(async () => {
+        const currentDisplay = __config.agent[typeName] ?? cfg?.model ?? __config.agent.default ?? "(inherits parent)";
+        const chosen = await promptModelSelection(ctx, modelOptions, currentDisplay);
+        if (chosen === null) return;
+
+        const updated = { ...__config };
+        updated.agent = { ...updated.agent };
+        updated.agent[typeName] = chosen === "(inherits parent)" ? null : chosen;
+        __config = updated;
+        saveConfigAtomic(updated);
+        ctx.ui.notify(
+          chosen === "(inherits parent)"
+            ? `${typeName} inherits parent model`
+            : `${typeName} model set to ${chosen}`,
+          "info",
+        );
+      });
     }
-    const updated = { ...__config };
-    updated.agent = { default: __config.agent.default };
-    __config = updated;
-    saveConfigAtomic(updated);
-    ctx.ui.notify("All model overrides cleared", "info");
-  });
 
-  await runMenu(ctx, "Model Settings", items, actions);
+    // Clear all overrides
+    items.push("Clear all overrides");
+    actions.push(async () => {
+      const hasOverrides = Object.entries(__config.agent).some(
+        ([k, v]) => k !== "default" && v != null,
+      );
+      if (!hasOverrides && __config.agent.default === null) {
+        ctx.ui.notify("No overrides to clear", "info");
+        return;
+      }
+      const updated = { ...__config };
+      updated.agent = { default: __config.agent.default };
+      __config = updated;
+      saveConfigAtomic(updated);
+      ctx.ui.notify("All model overrides cleared", "info");
+    });
+
+    // Append blank spacer + "Back" as the last items
+    items.push("");
+    actions.push(async () => {});
+    items.push("Back");
+    actions.push(async () => {});
+
+    const choice = await ctx.ui.select("Model Settings", items);
+    if (choice === undefined || choice === "Back") return;
+    const idx = items.indexOf(choice);
+    if (idx >= 0 && idx < actions.length) {
+      await actions[idx]();
+    }
+  }
 }
 
 async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const items: string[] = [];
-  const actions: Array<() => Promise<void>> = [];
+  // Loop so actions stay in this menu; only Back/Escape leaves
+  while (true) {
+    const items: string[] = [];
+    const actions: Array<() => Promise<void>> = [];
 
-  // Global default
-  items.push(`Default concurrency limit · ${__config.concurrency.default}`);
-  actions.push(async () => {
-    const input = await ctx.ui.input(
-      "Default concurrency limit",
-      String(__config.concurrency.default),
-    );
-    if (input === undefined) return;
-    const parsed = parseInt(input.trim(), 10);
-    if (isNaN(parsed) || parsed < 1) {
-      ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
-      return;
-    }
-    const updated = { ...__config };
-    updated.concurrency = { ...updated.concurrency, default: parsed };
-    __config = updated;
-    saveConfigAtomic(updated);
-    ctx.ui.notify(`Default concurrency limit set to ${parsed}`, "info");
-    manager?.setConcurrency({
-      default: __config.concurrency.default,
-      models: __config.concurrency.models ?? {},
-    });
-  });
-
-  // Per-model limits
-  const models = __config.concurrency.models ?? {};
-  const modelKeys = Object.keys(models);
-  if (modelKeys.length > 0) {
-    items.push("─── per-model limits ───");
-    actions.push(async () => {}); // separator
-
-    for (const modelKey of modelKeys) {
-      items.push(`${modelKey}  ·  ${models[modelKey]} slots`);
-      actions.push(async () => {
-        const input = await ctx.ui.input(
-          `Concurrency slots for ${modelKey}`,
-          String(models[modelKey]),
-        );
-        if (input === undefined) return;
-        const parsed = parseInt(input.trim(), 10);
-        if (isNaN(parsed) || parsed < 1) {
-          ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
-          return;
-        }
-        const updated = { ...__config };
-        updated.concurrency.models = { ...models, [modelKey]: parsed };
-        __config = updated;
-        saveConfigAtomic(updated);
-        ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
-        manager?.setConcurrency({
-          default: __config.concurrency.default,
-          models: __config.concurrency.models ?? {},
-        });
+    // Global default
+    items.push(`Default concurrency limit · ${__config.concurrency.default}`);
+    actions.push(async () => {
+      const input = await ctx.ui.input(
+        "Default concurrency limit",
+        String(__config.concurrency.default),
+      );
+      if (input === undefined) return;
+      const parsed = parseInt(input.trim(), 10);
+      if (isNaN(parsed) || parsed < 1) {
+        ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
+        return;
+      }
+      const updated = { ...__config };
+      updated.concurrency = { ...updated.concurrency, default: parsed };
+      __config = updated;
+      saveConfigAtomic(updated);
+      ctx.ui.notify(`Default concurrency limit set to ${parsed}`, "info");
+      manager?.setConcurrency({
+        default: __config.concurrency.default,
+        models: __config.concurrency.models ?? {},
       });
+    });
+
+    // Per-model limits
+    const models = __config.concurrency.models ?? {};
+    const modelKeys = Object.keys(models);
+    if (modelKeys.length > 0) {
+      items.push("─── per-model limits ───");
+      actions.push(async () => {}); // separator
+
+      for (const modelKey of modelKeys) {
+        items.push(`${modelKey}  ·  ${models[modelKey]} slots`);
+        actions.push(async () => {
+          const input = await ctx.ui.input(
+            `Concurrency slots for ${modelKey}`,
+            String(models[modelKey]),
+          );
+          if (input === undefined) return;
+          const parsed = parseInt(input.trim(), 10);
+          if (isNaN(parsed) || parsed < 1) {
+            ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
+            return;
+          }
+          const updated = { ...__config };
+          updated.concurrency.models = { ...models, [modelKey]: parsed };
+          __config = updated;
+          saveConfigAtomic(updated);
+          ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
+          manager?.setConcurrency({
+            default: __config.concurrency.default,
+            models: __config.concurrency.models ?? {},
+          });
+        });
+      }
+    }
+
+    // Add per-model limit
+    items.push("Add per-model limit...");
+    actions.push(async () => {
+      const currentModels = __config.concurrency.models ?? {};
+      const modelKey = await promptModelSelection(
+        ctx,
+        modelOptions,
+        __config.agent.default ?? "(inherits parent)",
+      );
+      if (modelKey === null) return;
+      const input = await ctx.ui.input("Concurrency slots", "1");
+      if (input === undefined) return;
+      const parsed = parseInt(input.trim(), 10);
+      if (isNaN(parsed) || parsed < 1) {
+        ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
+        return;
+      }
+      const updated = { ...__config };
+      updated.concurrency.models = { ...currentModels, [modelKey.trim()]: parsed };
+      __config = updated;
+      saveConfigAtomic(updated);
+      ctx.ui.notify(`${modelKey.trim()} concurrency set to ${parsed}`, "info");
+      manager?.setConcurrency({
+        default: __config.concurrency.default,
+        models: __config.concurrency.models ?? {},
+      });
+    });
+
+    // Append blank spacer + "Back" as the last items
+    items.push("");
+    actions.push(async () => {});
+    items.push("Back");
+    actions.push(async () => {});
+
+    const choice = await ctx.ui.select("Concurrency Settings", items);
+    if (choice === undefined || choice === "Back") return;
+    const idx = items.indexOf(choice);
+    if (idx >= 0 && idx < actions.length) {
+      await actions[idx]();
     }
   }
-
-  // Add per-model limit
-  items.push("Add per-model limit...");
-  actions.push(async () => {
-    const modelKey = await promptModelSelection(
-      ctx,
-      modelOptions,
-      __config.agent.default ?? "(inherits parent)",
-    );
-    if (modelKey === null) return;
-    const input = await ctx.ui.input("Concurrency slots", "1");
-    if (input === undefined) return;
-    const parsed = parseInt(input.trim(), 10);
-    if (isNaN(parsed) || parsed < 1) {
-      ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
-      return;
-    }
-    const updated = { ...__config };
-    updated.concurrency.models = { ...models, [modelKey.trim()]: parsed };
-    __config = updated;
-    saveConfigAtomic(updated);
-    ctx.ui.notify(`${modelKey.trim()} concurrency set to ${parsed}`, "info");
-    manager?.setConcurrency({
-      default: __config.concurrency.default,
-      models: __config.concurrency.models ?? {},
-    });
-  });
-
-  await runMenu(ctx, "Concurrency Settings", items, actions);
 }
 
 async function showRunningAgentsMenu(
@@ -578,8 +602,14 @@ async function showRunningAgentsMenu(
       });
     }
 
+    // Append blank spacer + "Back" as the last items
+    items.push("");
+    actions.push(async () => {});
+    items.push("Back");
+    actions.push(async () => {});
+
     const choice = await ctx.ui.select("Running Agents", items);
-    if (choice === undefined) return;
+    if (choice === undefined || choice === "Back") return;
     const idx = items.indexOf(choice);
     if (idx >= 0 && idx < actions.length) {
       await actions[idx]();
@@ -682,6 +712,12 @@ async function showAgentActions(
     ctx.ui.notify(`Agent ${record.id.slice(0, 8)} — no actions available`, "info");
     return;
   }
+
+  // Append blank spacer + "Back" as the last items
+  items.push("");
+  actions.push(async () => {});
+  items.push("Back");
+  actions.push(async () => {});
 
   await runMenu(ctx, `Agent ${record.id.slice(0, 8)}`, items, actions);
 }
@@ -892,27 +928,6 @@ async function executeAgentTool(
   }
 
   return executeSpawnForeground(resolvedType, prompt, ctx, spawnOptions);
-}
-
-async function executeSteerSubagent(
-  _toolCallId: string,
-  params: Record<string, unknown>,
-  _signal: AbortSignal | undefined,
-  _onUpdate: ((update: any) => void) | undefined,
-  ctx: ExtensionContext,
-): Promise<any> {
-  const agentId = params.agent_id as string;
-  const message = params.message as string;
-
-  if (!agentId || !message) {
-    return errorResult("agent_id and message are required");
-  }
-
-  const ok = await manager.steer(agentId, message);
-  if (!ok) {
-    return errorResult(`Agent not found or not running: ${agentId}`);
-  }
-  return successResult(`Steer message sent to ${agentId}`);
 }
 
 // ============================================================================
@@ -1164,18 +1179,6 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(`${icon} ${theme.fg("dim", text)}`, 0, 0);
     },
-  });
-
-  // steer_subagent — stealth schema
-  pi.registerTool({
-    name: "steer_subagent",
-    label: "Steer Subagent",
-    description: ".",
-    parameters: Type.Object({
-      agent_id: Type.String(),
-      message: Type.String(),
-    }),
-    execute: executeSteerSubagent,
   });
 
   // ========================================================================

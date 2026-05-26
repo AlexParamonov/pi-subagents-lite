@@ -5,7 +5,6 @@
  *   - Tool schema shapes (stealth schemas with description: ".", no promptSnippet/promptGuidelines)
  *   - Listener guards (only mutates event.input.model for Agent tool)
  *   - Schema field exclusion (no model, inherit_context, schedule, isolation params)
- *   - Get_subagent_result and steer_subagent tool schemas
  *
  * These tests mock ExtensionAPI and verify registration behavior.
  * Full integration testing is manual via pi TUI.
@@ -116,7 +115,6 @@ vi.mock("../src/agent-runner.js", () => ({
   steerAgent: vi.fn(),
   EXCLUDED_TOOL_NAMES: [
     "Agent",
-    "steer_subagent",
   ],
 }));
 
@@ -238,32 +236,6 @@ describe("Agent tool schema — stealth", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  steer_subagent schema                                             */
-/* ------------------------------------------------------------------ */
-
-describe("steer_subagent tool schema — stealth", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
-  it("has stealth schema (description '.', no promptSnippet/promptGuidelines)", () => {
-    const tool = findTool(api, "steer_subagent");
-    expect(tool).toBeDefined();
-    expectStealthSchema(tool!);
-  });
-
-  it("includes agent_id, message params", () => {
-    const tool = findTool(api, "steer_subagent");
-    expect(tool).toBeDefined();
-    expect(hasParam(tool!.parameters, "agent_id")).toBe(true);
-    expect(hasParam(tool!.parameters, "message")).toBe(true);
-  });
-});
-
-/* ------------------------------------------------------------------ */
 /*  Tool Registration Count                                           */
 /* ------------------------------------------------------------------ */
 
@@ -275,16 +247,13 @@ describe("tool registration", () => {
     await loadExtension(api.api);
   });
 
-  it("registers exactly 2 tools", () => {
-    expect(api.tools).toHaveLength(2);
+  it("registers exactly 1 tool", () => {
+    expect(api.tools).toHaveLength(1);
   });
 
-  it("registers Agent and steer_subagent", () => {
-    const names = api.tools.map((t) => t.name).sort();
-    expect(names).toEqual([
-      "Agent",
-      "steer_subagent",
-    ]);
+  it("registers Agent tool", () => {
+    const names = api.tools.map((t) => t.name);
+    expect(names).toEqual(["Agent"]);
   });
 });
 
@@ -306,21 +275,9 @@ describe("tool_call listener — guards", () => {
   it("does not mutate event.input.model for non-Agent tools", async () => {
     expect(toolCallHandler()).toBeDefined();
     const event = {
-      toolName: "steer_subagent",
+      toolName: "bash",
       toolCallId: "call_123",
-      input: { agent_id: "abc123" },
-    };
-    const result = await toolCallHandler()!(event, {});
-
-    expect(event.input.model).toBeUndefined();
-    expect(result).toBeUndefined();
-  });
-
-  it("does not mutate event.input.model for steer_subagent tool calls", async () => {
-    const event = {
-      toolName: "steer_subagent",
-      toolCallId: "call_456",
-      input: { agent_id: "abc123", message: "wrap up" },
+      input: { command: "echo hello" },
     };
     const result = await toolCallHandler()!(event, {});
 

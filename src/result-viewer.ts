@@ -1,21 +1,21 @@
 /**
- * result-viewer.ts — TUI scrollable text viewer for agent results.
+ * result-viewer.ts — TUI scrollable markdown viewer for agent results.
  *
  * Used by the /agents > running agents menu to display agent results
  * in a bordered, scrollable panel with keyboard navigation.
+ * Renders markdown so headings, code blocks, lists, etc. are styled.
  */
 
 import {
   Container,
   type Component,
-  type Focusable,
   getKeybindings,
   Markdown,
   Spacer,
   Text,
+  type MarkdownTheme,
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import type { MarkdownTheme } from "@earendil-works/pi-tui";
 
 // Theme type from ctx.ui.custom() callback
 type Theme = any;
@@ -32,29 +32,51 @@ export interface ResultViewerCallbacks {
 /*  ResultViewer                                                       */
 /* ------------------------------------------------------------------ */
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 14;
 
 /**
- * A scrollable text viewer with bordered frame.
+ * Build a MarkdownTheme from the TUI theme instance.
+ */
+function buildMarkdownTheme(theme: Theme): MarkdownTheme {
+  return {
+    heading: (text: string) => theme.fg("accent", theme.bold(text)),
+    link: (text: string) => theme.fg("accent", text),
+    linkUrl: (text: string) => theme.fg("muted", text),
+    code: (text: string) => theme.fg("accent", text),
+    codeBlock: (text: string) => text,
+    codeBlockBorder: (text: string) => theme.fg("muted", text),
+    quote: (text: string) => theme.fg("muted", text),
+    quoteBorder: (text: string) => theme.fg("muted", text),
+    hr: (text: string) => theme.fg("muted", text),
+    listBullet: (text: string) => theme.fg("accent", text),
+    bold: (text: string) => theme.bold(text),
+    italic: (text: string) => (theme.italic ? theme.italic(text) : text),
+    strikethrough: (text: string) => text,
+    underline: (text: string) => text,
+  };
+}
+
+/**
+ * A scrollable markdown viewer with bordered frame.
  *
  * Rendering:
  *   - Top border
  *   - Title bar with agent info
  *   - Separator
- *   - Scrolled text content
+ *   - Paginated markdown content
  *   - Scroll position indicator (when scrollable)
- *   - Bottom border with key hints
+ *   - Key hints footer
+ *   - Bottom border
  *
- * Key bindings: up/down/pageup/pagedown/escape
+ * Key bindings: up/down/pageup/pagedown/g/G/escape
  */
 export class ResultViewer extends Container implements Component {
-  private textLines: string[];
+  private markdown: Markdown;
+  private renderedLines: string[];
   private viewport: Container;
   private scrollOffset: number;
-  private totalLines: number;
   private theme: Theme;
   private callbacks: ResultViewerCallbacks;
-  private title: string;
 
   constructor(
     title: string,
@@ -64,23 +86,30 @@ export class ResultViewer extends Container implements Component {
   ) {
     super();
 
-    this.title = title;
-    this.textLines = text.split("\n");
-    this.totalLines = this.textLines.length;
-    this.scrollOffset = 0;
     this.callbacks = callbacks;
     this.theme = theme;
+    this.scrollOffset = 0;
+
+    // Build markdown renderer (pre-render to get total lines)
+    const mdTheme = buildMarkdownTheme(theme);
+    this.markdown = new Markdown(text, 0, 0, mdTheme);
+    // Pre-render at a reasonable width to get line count
+    this.renderedLines = this.markdown.render(78);
 
     // Build UI
     this.addChild(new DynamicBorder());
     this.addChild(new Spacer(1));
 
     // Title bar
-    this.addChild(new Text(this.theme.fg("accent", theme.bold(` ${title}`)), 0, 0));
+    this.addChild(
+      new Text(this.theme.fg("accent", theme.bold(` ${title}`)), 0, 0),
+    );
     this.addChild(new Spacer(1));
 
     // Separator
-    this.addChild(new Text(this.theme.fg("muted", "─".repeat(72)), 0, 0));
+    this.addChild(
+      new Text(this.theme.fg("muted", "─".repeat(78)), 0, 0),
+    );
     this.addChild(new Spacer(1));
 
     // Scrollable viewport
@@ -114,7 +143,7 @@ export class ResultViewer extends Container implements Component {
 
     // Down
     if (kb.matches(keyData, "tui.select.down")) {
-      if (this.scrollOffset < this.totalLines - 1) {
+      if (this.scrollOffset < this.renderedLines.length - 1) {
         this.scrollOffset++;
         this.updateViewport();
       }
@@ -130,14 +159,11 @@ export class ResultViewer extends Container implements Component {
 
     // PageDown
     if (kb.matches(keyData, "tui.select.pageDown")) {
-      this.scrollOffset = Math.min(this.totalLines - 1, this.scrollOffset + PAGE_SIZE);
+      this.scrollOffset = Math.min(
+        this.renderedLines.length - 1,
+        this.scrollOffset + PAGE_SIZE,
+      );
       this.updateViewport();
-      return;
-    }
-
-    // Escape / Ctrl+C — close
-    if (kb.matches(keyData, "tui.select.cancel")) {
-      this.callbacks.onClose();
       return;
     }
 
@@ -150,8 +176,14 @@ export class ResultViewer extends Container implements Component {
 
     // 'G' — jump to bottom
     if (keyData === "G") {
-      this.scrollOffset = this.totalLines - 1;
+      this.scrollOffset = this.renderedLines.length - 1;
       this.updateViewport();
+      return;
+    }
+
+    // Escape / Ctrl+C — close
+    if (kb.matches(keyData, "tui.select.cancel")) {
+      this.callbacks.onClose();
       return;
     }
   }
@@ -161,19 +193,24 @@ export class ResultViewer extends Container implements Component {
   private updateViewport(): void {
     this.viewport.clear();
 
-    const visibleLines = Math.min(PAGE_SIZE + 4, this.totalLines - this.scrollOffset);
+    const visibleLines = Math.min(
+      PAGE_SIZE,
+      this.renderedLines.length - this.scrollOffset,
+    );
     for (let i = 0; i < visibleLines; i++) {
       const lineIdx = this.scrollOffset + i;
-      const line = this.textLines[lineIdx] ?? "";
-      this.viewport.addChild(new Text(`${line}`, 0, 0));
+      const line = this.renderedLines[lineIdx] ?? "";
+      this.viewport.addChild(new Text(line, 0, 0));
     }
 
     // Scroll position indicator
-    if (this.totalLines > PAGE_SIZE + 4) {
-      const pct = Math.round((this.scrollOffset / this.totalLines) * 100);
+    if (this.renderedLines.length > PAGE_SIZE) {
+      const pct = Math.round(
+        (this.scrollOffset / this.renderedLines.length) * 100,
+      );
       const indicator = this.theme.fg(
         "muted",
-        `  (${this.scrollOffset + 1}/${this.totalLines} lines · ${pct}%)`,
+        `  (${this.scrollOffset + 1}/${this.renderedLines.length} · ${pct}%)`,
       );
       this.viewport.addChild(new Text(indicator, 0, 0));
     }
