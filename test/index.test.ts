@@ -109,12 +109,6 @@ vi.mock("../src/agent-discovery.js", () => ({
   AgentConfigFromMd: {},
 }));
 
-vi.mock("../src/config-migration.js", () => ({
-  migrateConfig: vi.fn((old: any) => ({
-    agent: { default: old.default ?? null },
-    concurrency: { default: 4 },
-  })),
-}));
 
 vi.mock("../src/agent-runner.js", () => ({
   runAgent: vi.fn(),

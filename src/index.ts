@@ -41,7 +41,6 @@ import type { SubagentsConfig } from "./model-precedence.js";
 import { resolveModel } from "./model-precedence.js";
 import { resolveType, getAgentConfig, registerAgents, getAvailableTypes, getAllTypes } from "./agent-types.js";
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
-import { migrateConfig, type OldConfig } from "./config-migration.js";
 import { steerAgent } from "./agent-runner.js";
 import type { AgentRecord, ThinkingLevel } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
@@ -56,8 +55,6 @@ import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.js
 
 const CONFIG_DIR = path.join(process.env.HOME || "", ".pi", "agent");
 const CONFIG_PATH = path.join(CONFIG_DIR, "subagents.json");
-const OLD_CONFIG_PATH = path.join(CONFIG_DIR, "subagent-model-defaults.json");
-
 // ============================================================================
 // Module-level state
 // ============================================================================
@@ -208,31 +205,11 @@ function buildModelOptions(rawOptions: string[]): ModelOption[] {
 // ============================================================================
 
 function loadConfig(): SubagentsConfig {
-  // Try new config path first
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     return JSON.parse(raw) as SubagentsConfig;
   } catch {
-    // File doesn't exist or is invalid — try migration
-  }
-
-  // Try migrating from old config
-  try {
-    const oldRaw = fs.readFileSync(OLD_CONFIG_PATH, "utf-8");
-    const oldConfig = JSON.parse(oldRaw) as OldConfig;
-    const migrated = migrateConfig(oldConfig);
-    saveConfigAtomic(migrated);
-
-    // Rename old config to .bak
-    try {
-      fs.renameSync(OLD_CONFIG_PATH, OLD_CONFIG_PATH + ".bak");
-    } catch {
-      // Best effort — ignore rename failures
-    }
-
-    return migrated;
-  } catch {
-    // No old config either — return defaults
+    // File doesn't exist or is invalid — return defaults
   }
 
   return {

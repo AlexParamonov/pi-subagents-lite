@@ -1,12 +1,11 @@
 /**
- * agent-discovery.test.ts — Tests for agent file parsing, merging, and config migration.
+ * agent-discovery.test.ts — Tests for agent file parsing, merging, and config.
  *
  * Covers:
  *   - parseAgentFile: parses all frontmatter fields into AgentConfigFromMd
  *   - parseExtensions: handles false/'false'/'none' → false, true/'true'/'all' → true, string → array
  *   - scanAgentFilesInDir: scans directory for .md files
  *   - mergeAgents: per-field merge default < user < project, returns Map<string, AgentConfig>
- *   - migrateConfig: pure function migration from old config format
  */
 
 import { describe, it, expect } from "vitest";
@@ -16,7 +15,6 @@ import {
   mergeAgents,
   parseExtensions,
 } from "../src/agent-discovery.ts";
-import { migrateConfig } from "../src/config-migration.ts";
 import type { AgentConfigFromMd } from "../src/agent-discovery.ts";
 import { makeAgentMd, tempDirWithFiles } from "./fixtures";
 
@@ -422,88 +420,3 @@ describe("mergeAgents", () => {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/*  Config Migration                                                   */
-/* ------------------------------------------------------------------ */
-
-describe("migrateConfig", () => {
-  it("migrates subagent-model-defaults.json format to SubagentsConfig", () => {
-    const oldConfig = {
-      default: "anthropic/claude-sonnet-4-6",
-      overrides: {
-        Explore: "anthropic/claude-haiku-4-5-20251001",
-      },
-    };
-    const result = migrateConfig(oldConfig);
-    expect(result).toEqual({
-      agent: {
-        default: "anthropic/claude-sonnet-4-6",
-        Explore: "anthropic/claude-haiku-4-5-20251001",
-      },
-      concurrency: {
-        default: 4,
-      },
-    });
-  });
-
-  it("handles empty overrides", () => {
-    const oldConfig = {
-      default: "anthropic/claude-sonnet-4-6",
-      overrides: {},
-    };
-    const result = migrateConfig(oldConfig);
-    expect(result).toEqual({
-      agent: {
-        default: "anthropic/claude-sonnet-4-6",
-      },
-      concurrency: {
-        default: 4,
-      },
-    });
-  });
-
-  it("handles null default", () => {
-    const oldConfig = {
-      default: null,
-      overrides: {},
-    };
-    const result = migrateConfig(oldConfig);
-    expect(result).toEqual({
-      agent: {
-        default: null,
-      },
-      concurrency: {
-        default: 4,
-      },
-    });
-  });
-
-  it("handles undefined default", () => {
-    const oldConfig = {
-      default: undefined,
-      overrides: {},
-    };
-    const result = migrateConfig(oldConfig);
-    expect(result).toEqual({
-      agent: {
-        default: null,
-      },
-      concurrency: {
-        default: 4,
-      },
-    });
-  });
-
-  it("is a pure function with no side effects", () => {
-    const oldConfig = {
-      default: "model/x",
-      overrides: { Explore: "model/y" },
-    };
-    const original = JSON.parse(JSON.stringify(oldConfig));
-    const result = migrateConfig(oldConfig);
-    // Original should be unchanged
-    expect(oldConfig).toEqual(original);
-    // Should return a new object
-    expect(result).not.toBe(oldConfig as any);
-  });
-});
