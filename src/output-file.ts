@@ -133,12 +133,12 @@ export function streamToOutputFile(
     while (writtenCount < messages.length) {
       const msg = messages[writtenCount];
       if (msg.role === "assistant") {
-        const lines = formatMessageLine("ASSISTANT", msg.content);
+        const lines = formatMessageLine("ASSISTANT", msg.content as any);
         if (lines) {
           try { appendFileSync(path, lines, "utf-8"); } catch { /* ignore write errors */ }
         }
       } else if (msg.role === "user") {
-        const text = extractUserText(msg.content);
+        const text = extractUserText(msg.content as any);
         if (text.trim()) {
           try { appendFileSync(path, `${timestamp()} [USER] ${text}\n`, "utf-8"); } catch { /* ignore */ }
         }

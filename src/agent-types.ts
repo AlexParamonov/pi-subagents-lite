@@ -125,7 +125,7 @@ export function getConfig(type: string): ReturnType<typeof toSubagentTypeConfig>
     ? config
     : agents.get("general-purpose");
 
-  if (activeConfig?.enabled !== false) {
+  if (activeConfig && activeConfig.enabled !== false) {
     return toSubagentTypeConfig(activeConfig);
   }
 

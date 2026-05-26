@@ -11,7 +11,7 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
 import { getConfig } from "../agent-types.js";
-import type { AgentInvocation, SubagentType } from "../types.js";
+import type { AgentInvocation, AgentRecord, SubagentType } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type SessionLike } from "../usage.js";
 
 // ---- Constants ----
@@ -278,9 +278,9 @@ export class AgentWidget {
   /** Categorize all agents into running, queued, and visible finished groups. */
   private categorizeAgents() {
     const allAgents = this.manager.listAgents();
-    const running: AgentInvocation[] = [];
-    const queued: AgentInvocation[] = [];
-    const finished: AgentInvocation[] = [];
+    const running: AgentRecord[] = [];
+    const queued: AgentRecord[] = [];
+    const finished: AgentRecord[] = [];
     for (const a of allAgents) {
       if (a.status === "running") running.push(a);
       else if (a.status === "queued") queued.push(a);
@@ -388,7 +388,7 @@ export class AgentWidget {
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
   private buildFinishedBlocks(
-    finished: AgentInvocation[],
+    finished: AgentRecord[],
     theme: Theme,
     w: number,
   ): RenderBlock[] {
@@ -407,7 +407,7 @@ export class AgentWidget {
 
   /** Build RenderBlocks for running agents. */
   private buildRunningBlocks(
-    running: AgentInvocation[],
+    running: AgentRecord[],
     theme: Theme,
     w: number,
     frame: string,
@@ -435,7 +435,7 @@ export class AgentWidget {
 
   /** Build a single RenderBlock for queued agents, or undefined if none. */
   private buildQueuedBlock(
-    queued: AgentInvocation[],
+    queued: AgentRecord[],
     theme: Theme,
     w: number,
   ): RenderBlock | undefined {
@@ -580,12 +580,12 @@ export class AgentWidget {
   /** Clear widget, status bar, timer, and stale finished-turn-age entries. */
   private clearWidget() {
     if (this.widgetRegistered) {
-      this.uiCtx.setWidget(WIDGET_KEY, undefined);
+      this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
       this.tui = undefined;
     }
     if (this.lastStatusText !== undefined) {
-      this.uiCtx.setStatus(STATUS_KEY, undefined);
+      this.uiCtx?.setStatus(STATUS_KEY, undefined);
       this.lastStatusText = undefined;
     }
     if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
@@ -604,7 +604,7 @@ export class AgentWidget {
     const total = runningCount + queuedCount;
     const newStatusText = `${statusParts.join(", ")} agent${total === 1 ? "" : "s"}`;
     if (newStatusText !== this.lastStatusText) {
-      this.uiCtx.setStatus(STATUS_KEY, newStatusText);
+      this.uiCtx?.setStatus(STATUS_KEY, newStatusText);
       this.lastStatusText = newStatusText;
     }
   }
@@ -645,18 +645,19 @@ export class AgentWidget {
       this.widgetRegistered = true;
     } else {
       // Widget already registered — just request a re-render of existing components.
-      this.tui?.requestRender();
+      this.tui?.requestRender?.();
     }
   }
 
   dispose() {
-    if (this.widgetInterval) {
-      clearInterval(this.widgetInterval);
+    const interval = this.widgetInterval;
+    if (interval != null) {
+      clearInterval(interval);
       this.widgetInterval = undefined;
     }
     if (this.uiCtx) {
-      this.uiCtx.setWidget(WIDGET_KEY, undefined);
-      this.uiCtx.setStatus(STATUS_KEY, undefined);
+      this.uiCtx?.setWidget(WIDGET_KEY, undefined);
+      this.uiCtx?.setStatus(STATUS_KEY, undefined);
     }
     this.widgetRegistered = false;
     this.tui = undefined;

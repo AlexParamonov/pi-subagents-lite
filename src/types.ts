@@ -8,11 +8,11 @@
  * From AgentInvocation: removed inheritContext, isolation.
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { LifetimeUsage } from "./usage.js";
 
-export type { ThinkingLevel };
+/** Thinking level for agent models. */
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 /** Agent type: any string name (built-in defaults or user-defined). */
 export type SubagentType = string;
@@ -91,6 +91,6 @@ export interface AgentInvocation {
 
 export interface EnvInfo {
   isGitRepo: boolean;
-  branch: string;
+  branch: string | null;
   platform: string;
 }

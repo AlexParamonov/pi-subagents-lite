@@ -380,7 +380,7 @@ function mergeAgentOverrides(
  * fields fall through to the existing values.
  */
 function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
-  return compactDefined({
+  const obj: Record<string, unknown> = {
     name: md.name,
     displayName: md.display_name,
     description: md.description,
@@ -394,7 +394,8 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     enabled: md.enabled,
     systemPrompt: md.systemPrompt,
     source: md.source === "project" ? "project" : "global",
-  });
+  };
+  return compactDefined(obj) as Partial<AgentConfig>;
 }
 
 /**

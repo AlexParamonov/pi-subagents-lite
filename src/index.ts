@@ -145,6 +145,7 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
     {
       customType: "subagent-result",
       content: [{ type: "text", text: content }],
+      display: false,
     },
     {
       deliverAs: "steer",
@@ -242,8 +243,7 @@ async function promptModelSelection(
         onSelect: (m) => done(m),
         onCancel: () => done(null),
       }, theme);
-    },
-    { overlay: true },
+    }, // no overlay — renders inline below editor, matching pi's model selector look and feel
   );
 }
 
@@ -465,7 +465,10 @@ async function showConcurrencySettingsMenu(
     __config = updated;
     saveConfigAtomic(updated);
     ctx.ui.notify(`Default concurrency limit set to ${parsed}`, "info");
-    manager?.setConcurrency(__config.concurrency);
+    manager?.setConcurrency({
+      default: __config.concurrency.default,
+      models: __config.concurrency.models ?? {},
+    });
   });
 
   // Per-model limits
@@ -493,7 +496,10 @@ async function showConcurrencySettingsMenu(
         __config = updated;
         saveConfigAtomic(updated);
         ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
-        manager?.setConcurrency(__config.concurrency);
+        manager?.setConcurrency({
+          default: __config.concurrency.default,
+          models: __config.concurrency.models ?? {},
+        });
       });
     }
   }
@@ -519,7 +525,10 @@ async function showConcurrencySettingsMenu(
     __config = updated;
     saveConfigAtomic(updated);
     ctx.ui.notify(`${modelKey.trim()} concurrency set to ${parsed}`, "info");
-    manager?.setConcurrency(__config.concurrency);
+    manager?.setConcurrency({
+      default: __config.concurrency.default,
+      models: __config.concurrency.models ?? {},
+    });
   });
 
   await runMenu(ctx, "Concurrency Settings", items, actions);
@@ -983,9 +992,9 @@ async function executeSpawnForeground(
     }
   };
 
+  const { isBackground: _isBackground, ...spawnOpts } = spawnOptions;
   const record = await manager.spawnAndWait(piInstance, ctx, resolvedType, prompt, {
-    ...spawnOptions,
-    isBackground: false,
+    ...spawnOpts,
     ...fgCallbacks,
   });
 
@@ -1091,7 +1100,7 @@ export default function (pi: ExtensionAPI) {
       const typeName = getDisplayName((d?.type as string) || "");
       const desc = (d?.description as string) || "";
 
-      if (d?.turnCount != null) {
+      if (d && d.turnCount != null) {
         // Rich stats card — format with theme (matching pi-subagents style)
         const parts: string[] = [];
         if ((d.toolUses as number) > 0) {
@@ -1127,7 +1136,7 @@ export default function (pi: ExtensionAPI) {
         let lines = `${icon}`;
         if (typeName) lines += ` ${theme.bold(typeName)}`;
         if (desc) lines += `\n  ${theme.fg("text", desc)}`;
-        if ((d?.outputFile as string)) {
+        if (d && (d.outputFile as string)) {
           lines += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
         }
         return new Text(lines, 0, 0);
