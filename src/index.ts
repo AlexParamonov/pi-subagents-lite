@@ -559,7 +559,7 @@ async function showRunningAgentsMenu(
     );
 
     actions.push(async () => {
-      await showAgentDetail(ctx, record);
+      await showAgentActions(ctx, record);
     });
   }
 
@@ -579,44 +579,94 @@ async function showRunningAgentsMenu(
   await runMenu(ctx, "Running Agents", items, actions);
 }
 
-async function showAgentDetail(
+/**
+ * Send a steer message to a specific agent. Extracted for reuse by both
+ * the /steer command and the per-agent action menu.
+ */
+async function steerAgentById(
+  agentId: string,
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  const record = manager?.getRecord(agentId);
+  if (!record) {
+    ctx.ui.notify("Agent not found", "error");
+    return;
+  }
+
+  const message = await ctx.ui.input(`Steer ${record.type}`);
+  if (!message?.trim()) return;
+
+  try {
+    if (!record.session) {
+      if (!record.pendingSteers) {
+        record.pendingSteers = [];
+      }
+      record.pendingSteers.push(message.trim());
+      ctx.ui.notify(`Steer message queued for ${record.id.slice(0, 8)}…`, "info");
+    } else {
+      await steerAgent(record.session, message.trim());
+      ctx.ui.notify(`Steer sent to ${record.id.slice(0, 8)}…`, "info");
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.ui.notify(`Steer failed: ${msg}`, "error");
+  }
+}
+
+/**
+ * Sub-menu with actions for a single agent. Replaces the old showAgentDetail
+ * notify popup — clicking an agent in the running agents menu opens actions.
+ */
+async function showAgentActions(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
 ): Promise<void> {
-  const elapsed = record.completedAt
-    ? Math.round((record.completedAt - record.startedAt) / 1000)
-    : Math.round((Date.now() - record.startedAt) / 1000);
+  const items: string[] = [];
+  const actions: Array<() => Promise<void>> = [];
 
-  // Look up activity for turn count
-  const activity = agentActivity.get(record.id);
-  const turnStr = activity
-    ? `Turns: ${activity.turnCount}${activity.maxTurns != null ? ` / ${activity.maxTurns}` : ""}`
-    : "";
+  const isRunning = record.status === "running" || record.status === "queued";
+  const hasResult = !!record.result && record.result.length > 0;
+  const hasError = !!record.error && record.error.length > 0;
 
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const tokenStr = totalTokens > 0
-    ? `Token usage: ${totalTokens.toLocaleString()} total`
-    : "";
+  if (isRunning) {
+    items.push("Steer");
+    actions.push(async () => {
+      await steerAgentById(record.id, ctx);
+    });
 
-  const compactionStr = record.compactionCount > 0
-    ? `Compactions: ${record.compactionCount}`
-    : "";
+    items.push("Stop");
+    actions.push(async () => {
+      manager?.abort(record.id);
+      ctx.ui.notify(`Stopped ${record.id.slice(0, 8)}`, "info");
+    });
+  }
 
-  const lines = [
-    `Agent: ${record.id}`,
-    `Type: ${record.type}`,
-    `Status: ${record.status}`,
-    `Duration: ${elapsed}s`,
-    turnStr,
-    `Tool uses: ${record.toolUses}`,
-    tokenStr,
-    compactionStr,
-    record.invocation?.modelName ? `Model: ${record.invocation.modelName}` : "",
-    record.result ? `\nResult:\n${record.result.slice(0, 500)}` : "",
-    record.error ? `\nError: ${record.error}` : "",
-  ].filter(Boolean).join("\n");
+  if (hasResult) {
+    items.push("View result");
+    actions.push(async () => {
+      const result = record.result!;
+      const truncated = result.length > 500;
+      const display = truncated ? result.slice(0, 500) + "\n  … (truncated)" : result;
+      const header = truncated
+        ? `Result (${result.length} chars, showing first 500):`
+        : "Result:";
+      ctx.ui.notify(`${header}\n${display}`, "info");
+    });
+  }
 
-  ctx.ui.notify(lines, "info");
+  if (hasError) {
+    items.push("View error");
+    actions.push(async () => {
+      ctx.ui.notify(`Error:\n${record.error!}`, "info");
+    });
+  }
+
+  if (items.length === 0) {
+    ctx.ui.notify(`Agent ${record.id.slice(0, 8)} — no actions available`, "info");
+    return;
+  }
+
+  await runMenu(ctx, `Agent ${record.id.slice(0, 8)}`, items, actions);
 }
 
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
@@ -673,25 +723,7 @@ async function handleSteerCommand(
   const idx = options.indexOf(choice);
   if (idx < 0) return;
 
-  const record = running[idx];
-  const message = await ctx.ui.input(`Steer ${record.type}`);
-  if (!message?.trim()) return;
-
-  try {
-    if (!record.session) {
-      if (!record.pendingSteers) {
-        record.pendingSteers = [];
-      }
-      record.pendingSteers.push(message.trim());
-      ctx.ui.notify(`Steer message queued for ${record.id.slice(0, 8)}…`, "info");
-    } else {
-      await steerAgent(record.session, message.trim());
-      ctx.ui.notify(`Steer sent to ${record.id.slice(0, 8)}…`, "info");
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    ctx.ui.notify(`Steer failed: ${msg}`, "error");
-  }
+  await steerAgentById(running[idx].id, ctx);
 }
 
 // ============================================================================
