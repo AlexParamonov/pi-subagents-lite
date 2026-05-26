@@ -42,7 +42,7 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/index.ts"
+      "./src/index.ts"
     ]
   },
   "devDependencies": {
