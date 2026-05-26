@@ -78,7 +78,7 @@ let widget: AgentWidget | undefined;
 let piInstance: ExtensionAPI;
 
 // ============================================================================
-// Nudge scheduling (200ms hold for get_subagent_result cancellation)
+// Nudge scheduling (200ms hold to batch completion notifications)
 // ============================================================================
 
 const pendingNudges = new Set<string>();
@@ -103,8 +103,7 @@ function scheduleNudge(agentId: string, record: AgentRecord): void {
 function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   if (!record) return;
 
-  // Skip if result was consumed during the hold
-  if (record.resultConsumed) return;
+
 
   // Format duration
   const elapsedMs = record.completedAt
@@ -141,8 +140,7 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   const resultText = record.result ? `\n${record.result}` : "";
   const content = `${header}${resultText}`;
 
-  // Deliver the result directly to the session so the model sees it
-  // without needing a separate get_subagent_result call.
+  // Deliver the result directly to the session so the model sees it.
   piInstance.sendMessage(
     {
       customType: "subagent-result",
@@ -705,9 +703,7 @@ function ensureManagerAndWidget(): void {
   manager = new AgentManager(
     (record) => {
       // Schedule nudge BEFORE removing activity — nudge reads turn count
-      if (!record.resultConsumed) {
-        scheduleNudge(record.id, record);
-      }
+      scheduleNudge(record.id, record);
 
       // Mark finished and update widget BEFORE deleting activity —
       // renderFinishedLine reads activity for turn count, tokens, etc.
@@ -867,104 +863,6 @@ async function executeAgentTool(
   }
 
   return executeSpawnForeground(resolvedType, prompt, ctx, spawnOptions);
-}
-
-async function executeGetSubagentResult(
-  _toolCallId: string,
-  params: Record<string, unknown>,
-  signal: AbortSignal | undefined,
-  _onUpdate: ((update: any) => void) | undefined,
-  ctx: ExtensionContext,
-): Promise<any> {
-  const agentId = params.agent_id as string;
-  const wait = params.wait as boolean | undefined;
-  const verbose = params.verbose as boolean | undefined;
-
-  if (!agentId) {
-    return errorResult("agent_id is required");
-  }
-
-  const record = manager?.getRecord(agentId);
-  if (!record) {
-    return errorResult(`Agent not found: ${agentId}`);
-  }
-
-  // If wait is true and agent is still running, wait for completion
-  // Race against the abort signal so the user can interrupt (send a message)
-  // instead of being blocked until the agent finishes.
-  if (wait && (record.status === "running" || record.status === "queued") && record.promise) {
-    try {
-      if (signal) {
-        await Promise.race([
-          record.promise,
-          new Promise<void>((_, reject) =>
-            signal.addEventListener("abort", () => reject(), { once: true }),
-          ),
-        ]);
-      } else {
-        await record.promise;
-      }
-    } catch {
-      // Agent errored or wait was interrupted (user sent a message)
-    }
-  }
-
-  // Don't mark consumed if the wait was interrupted — the agent is still
-  // running and the model may call get_subagent_result again to retry.
-  if (wait && signal?.aborted && (record.status === "running" || record.status === "queued")) {
-    const lines: string[] = [];
-    lines.push(`Status: ${record.status} (wait interrupted)`);
-    if (record.error) lines.push(`Error: ${record.error}`);
-    if (record.result) lines.push(`\n--- Partial result ---\n${record.result}`);
-    return successResult(lines.join("\n"));
-  }
-
-  // Mark as consumed — this suppresses the completion notification
-  record.resultConsumed = true;
-
-  const lines: string[] = [];
-  const elapsed = record.completedAt
-    ? Math.round((record.completedAt - record.startedAt) / 1000)
-    : Math.round((Date.now() - record.startedAt) / 1000);
-
-  lines.push(`Status: ${record.status}`);
-  lines.push(`Duration: ${elapsed}s`);
-
-  if (record.error) {
-    lines.push(`Error: ${record.error}`);
-  }
-
-  if (verbose) {
-    // Verbose mode: include stowed tool call details
-    lines.push(`Type: ${record.type}`);
-    lines.push(`Tool uses: ${record.toolUses}`);
-    lines.push(`Compactions: ${record.compactionCount}`);
-    const usage = record.lifetimeUsage;
-    lines.push(`Token usage: ${usage.input + usage.output} total (${usage.input} in / ${usage.output} out)`);
-  }
-
-  // Include the agent's result text
-  if (record.result) {
-    lines.push(`\n--- Result ---\n${record.result}`);
-  }
-
-  // Pass structured details for rich renderResult card
-  const elapsedMs = record.completedAt
-    ? record.completedAt - record.startedAt
-    : Date.now() - record.startedAt;
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const resultDetails = {
-    type: record.type,
-    description: record.description,
-    turnCount: 0,
-    toolUses: record.toolUses,
-    tokens: totalTokens,
-    contextPercent: null,
-    durationMs: elapsedMs,
-    outputFile: record.outputFile,
-  };
-
-  return successResult(lines.join("\n"), resultDetails as any);
 }
 
 async function executeSteerSubagent(
@@ -1238,20 +1136,6 @@ export default function (pi: ExtensionAPI) {
       return new Text(`${icon} ${theme.fg("dim", text)}`, 0, 0);
     },
   });
-
-  // get_subagent_result — temporarily disabled
-  // Results are auto-delivered via nudge on completion; polling is no longer needed.
-  // pi.registerTool({
-  //   name: "get_subagent_result",
-  //   label: "Get Subagent Result",
-  //   description: ".",
-  //   parameters: Type.Object({
-  //     agent_id: Type.String(),
-  //     wait: Type.Optional(Type.Boolean()),
-  //     verbose: Type.Optional(Type.Boolean()),
-  //   }),
-  //   execute: executeGetSubagentResult,
-  // });
 
   // steer_subagent — stealth schema
   pi.registerTool({

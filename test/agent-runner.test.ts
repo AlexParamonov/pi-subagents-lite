@@ -128,16 +128,12 @@ describe("EXCLUDED_TOOL_NAMES", () => {
     expect(EXCLUDED_TOOL_NAMES).toContain("Agent");
   });
 
-  it("contains get_subagent_result", () => {
-    expect(EXCLUDED_TOOL_NAMES).toContain("get_subagent_result");
-  });
-
   it("contains steer_subagent", () => {
     expect(EXCLUDED_TOOL_NAMES).toContain("steer_subagent");
   });
 
-  it("contains exactly 3 entries", () => {
-    expect(EXCLUDED_TOOL_NAMES).toHaveLength(3);
+  it("contains exactly 2 entries", () => {
+    expect(EXCLUDED_TOOL_NAMES).toHaveLength(2);
   });
 });
 
@@ -257,11 +253,11 @@ describe("runAgent — tool filtering", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
-  it("filters out Agent, get_subagent_result, steer_subagent from active tools", async () => {
+  it("filters out Agent, steer_subagent from active tools", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
       "read", "bash", "edit",
-      "Agent", "get_subagent_result", "steer_subagent",
+      "Agent", "steer_subagent",
       "grep",
     ]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
@@ -277,7 +273,6 @@ describe("runAgent — tool filtering", () => {
     expect(session.setActiveToolsByName).toHaveBeenCalledWith(
       expect.not.arrayContaining([
         "Agent",
-        "get_subagent_result",
         "steer_subagent",
       ]),
     );
@@ -293,7 +288,7 @@ describe("runAgent — tool filtering", () => {
   it("isolated=true skips tool filtering block (extensions=false)", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "Agent", "get_subagent_result",
+      "read", "bash", "edit", "Agent",
     ]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
