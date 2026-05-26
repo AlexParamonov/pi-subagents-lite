@@ -4,17 +4,20 @@
  * Pure function — no side effects, no file I/O, no pi SDK imports.
  *
  * Precedence chain (highest to lowest):
- *   1. config.agent[subagentType]  (per-type override)
- *   2. config.agent["default"]     (global default)
- *   3. agentConfig?.model          (agent config / frontmatter)
- *   4. parentModelId               (inherit from parent)
+ *   1. sessionOverrides[subagentType]  (session per-type override)
+ *   2. sessionOverrides["default"]     (session global default)
+ *   3. config.agent[subagentType]      (config per-type override)
+ *   4. config.agent["default"]         (config global default)
+ *   5. agentConfig?.model              (agent config / frontmatter)
+ *   6. parentModelId                   (inherit from parent)
  */
 
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {
   agent: {
     default: string | null;
-    [agentType: string]: string | null | undefined;
+    forceBackground: boolean;
+    [agentType: string]: string | null | undefined | boolean;
   };
   concurrency: {
     default: number;
@@ -24,48 +27,55 @@ export interface SubagentsConfig {
 }
 
 /**
+ * Shape of session-only model overrides.
+ * Same as config.agent but without the forceBackground flag.
+ * Not persisted — cleared on session_start.
+ */
+export interface SessionModelOverrides {
+  default: string | null;
+  [agentType: string]: string | null | undefined;
+}
+
+/**
+/** Options for resolveModel. */
+export interface ResolveModelOptions {
+  /** The type of subagent being spawned. */
+  subagentType: string;
+  /** The agent's config (from .md frontmatter or defaults). */
+  agentConfig?: { model?: string };
+  /** The global subagents-lite.json config (model overrides). */
+  config: SubagentsConfig;
+  /** The parent agent's model ID (final fallback). */
+  parentModelId: string;
+  /** Session-only overrides (checked first). */
+  sessionOverrides?: SessionModelOverrides;
+}
+
+/**
  * Resolve the model for a subagent invocation.
  *
  * Returns the first non-null, non-undefined, non-empty-string value
  * from the precedence chain. If all are empty/null, returns parentModelId.
- *
- * @param subagentType - The type of subagent being spawned
- * @param agentConfig - The agent's config (from .md frontmatter or defaults)
- * @param config - The global subagents-lite.json config (model overrides)
- * @param parentModelId - The parent agent's model ID (final fallback)
- * @returns The resolved model ID string
  */
-export function resolveModel(
-  subagentType: string,
-  agentConfig: { model?: string } | undefined,
-  config: SubagentsConfig,
-  parentModelId: string,
-): string {
-  // Level 1: per-type override
-  const perTypeOverride = config.agent[subagentType];
-  if (isValidValue(perTypeOverride)) {
-    return perTypeOverride;
-  }
+export function resolveModel(options: ResolveModelOptions): string {
+  const { subagentType, agentConfig, config, parentModelId, sessionOverrides } = options;
 
-  // Level 2: global default override
-  const globalDefault = config.agent["default"];
-  if (isValidValue(globalDefault)) {
-    return globalDefault;
-  }
-
-  // Level 3: agent config/frontmatter model
-  if (agentConfig && isValidValue(agentConfig.model)) {
-    return agentConfig.model;
-  }
-
-  // Level 4: parent model (final fallback)
-  return parentModelId;
+  // Precedence chain: session > config > frontmatter > parent
+  const candidates: Array<string | boolean | null | undefined> = [
+    sessionOverrides?.[subagentType],
+    sessionOverrides?.["default"],
+    config.agent[subagentType],
+    config.agent["default"],
+    agentConfig?.model,
+    parentModelId, // final fallback (always a valid string)
+  ];
+  return candidates.find(isValidValue) ?? parentModelId;
 }
 
 /**
  * Check if a value is a valid non-empty model string.
  * Returns true for non-null, non-undefined, non-empty strings.
  */
-function isValidValue(value: string | null | undefined): value is string {
+function isValidValue(value: string | boolean | null | undefined): value is string {
   return typeof value === "string" && value.length > 0;
 }

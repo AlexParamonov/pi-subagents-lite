@@ -1,6 +1,6 @@
 {
   "name": "pi-subagents-lite",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lightweight sub-agents for pi — spawn specialized agents with isolated sessions, tools, and models.",
   "keywords": [
     "pi-package",
@@ -11,7 +11,9 @@
   ],
   "author": "AlexParamonov",
   "license": "MIT",
+  "packageManager": "bun@1",
   "engines": {
+    "bun": ">=1.0.0",
     "node": ">=18"
   },
   "repository": {

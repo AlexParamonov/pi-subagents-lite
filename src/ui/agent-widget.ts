@@ -1,18 +1,22 @@
 /**
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  *
- * Ported from upstream pi-subagents. Adaptations:
- *   - buildInvocationTags removes inheritContext and isolation: "worktree" (fields
- *     we cut from AgentInvocation)
- *   - Import paths use relative imports within our extension
- *   - addUsage/getLifetimeTotal/getSessionContextPercent imported from ../usage.js
+ * Ported from upstream pi-subagents.
+ * Import paths use relative imports within our extension.
+ * addUsage/getLifetimeTotal/getSessionContextPercent imported from ../usage.js.
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
 import { getConfig } from "../agent-types.js";
-import type { AgentInvocation, AgentRecord, SubagentType } from "../types.js";
-import { getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type SessionLike } from "../usage.js";
+import type { AgentRecord, SubagentType } from "../types.js";
+import {
+  formatTokens,
+  getLifetimeTotal,
+  getSessionContextPercent,
+  type LifetimeUsage,
+  type SessionLike,
+} from "../usage.js";
 
 // ---- Constants ----
 
@@ -20,10 +24,10 @@ import { getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type Se
 const MAX_WIDGET_LINES = 12;
 
 /** Braille spinner frames for animated running indicator. */
-export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/** Statuses that indicate an error/non-success outcome (used for linger behavior and icon rendering). */
-export const ERROR_STATUSES = new Set(["error", "aborted", "steered", "stopped"]);
+/** Non-success statuses — used for linger behavior and icon rendering. */
+const ERROR_STATUSES = new Set(["error", "aborted", "steered", "stopped"]);
 
 /** Tree-drawing connectors used in the widget header/continuation lines. */
 const BRANCH = "├─";
@@ -58,7 +62,7 @@ const TOOL_DISPLAY: Record<string, string> = {
 
 // ---- Types ----
 
-export type Theme = {
+type Theme = {
   fg(color: string, text: string): string;
   bold(text: string): string;
 };
@@ -102,13 +106,6 @@ export interface AgentActivity {
 
 // ---- Formatting helpers ----
 
-/** Format a token count compactly: "33.8k", "1.2M". */
-export function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
-  return `${count}`;
-}
-
 /**
  * Token count with optional context-fill % and compaction-count annotations.
  * Thresholds for percent: <70% dim, 70–85% warning, ≥85% error.
@@ -119,7 +116,7 @@ export function formatTokens(count: number): string {
  *   "12.3k(↻ 2)"                 — compactions only (e.g. right after compact)
  *   "12.3k(45%·↻ 2)"             — both
  */
-export function formatSessionTokens(
+function formatSessionTokens(
   tokens: number,
   percent: number | null,
   theme: Theme,
@@ -143,35 +140,56 @@ export function formatSessionTokens(
 }
 
 /** Format turn count with optional max limit: "5≤30⟳" or "5⟳". */
-export function formatTurns(turnCount: number, maxTurns?: number | null): string {
+function formatTurns(turnCount: number, maxTurns?: number | null): string {
   return maxTurns != null ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
 }
 
-/** Format milliseconds as human-readable duration. */
+/** Format milliseconds as a compact human-readable duration: "1h 1m 1s", "5m 37s", "10s", "<1s". */
 export function formatMs(ms: number): string {
-  return Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}s` : "0.0s";
+  if (!Number.isFinite(ms) || ms < 1000) return "<1s";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+
+  return parts.join(" ");
+}
+
+/**
+ * Build common stats parts: toolUses · turns · tokens with context %.
+ * Shared by AgentWidget and index.ts for consistent stats display.
+ */
+export function buildStatsParts(
+  args: {
+    toolUses: number;
+    turnCount?: number;
+    maxTurns?: number;
+    tokens: number;
+    contextPercent: number | null;
+    compactions: number;
+  },
+  theme: Theme,
+): string[] {
+  const parts: string[] = [];
+  if (args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
+  if (args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns));
+  if (args.tokens > 0) {
+    parts.push(formatSessionTokens(
+      args.tokens, args.contextPercent, theme, args.compactions,
+    ));
+  }
+  return parts;
 }
 
 /** Get display name for any agent type (built-in or custom). */
 export function getDisplayName(type: SubagentType): string {
   return getConfig(type).displayName;
-}
-
-/**
- * Build invocation tags from the invocation record.
- * Adapted from upstream: removed inheritContext and isolation: "worktree" checks
- * because our AgentInvocation doesn't have those fields.
- */
-export function buildInvocationTags(
-  invocation: AgentInvocation | undefined,
-): { modelName?: string; tags: string[] } {
-  const tags: string[] = [];
-  if (!invocation) return { tags };
-  if (invocation.thinking) tags.push(`thinking: ${invocation.thinking}`);
-  if (invocation.isolated) tags.push("isolated");
-  if (invocation.runInBackground) tags.push("background");
-  if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
-  return { modelName: invocation.modelName, tags };
 }
 
 /**
@@ -194,7 +212,7 @@ function truncateLine(text: string, len = 60): string {
 }
 
 /** Build a human-readable activity string from currently-running tools or response text. */
-export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {
@@ -227,7 +245,7 @@ export class AgentWidget {
   private uiCtx: UICtx | undefined;
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
-  /** Tracks how many turns each finished agent has survived. Key: agent ID, Value: turns since finished. */
+  /** Finished agents: agent ID → turns since finished. */
   private finishedTurnAge = new Map<string, number>();
 
 
@@ -304,8 +322,11 @@ export class AgentWidget {
   }
 
   /** Build the icon and status suffix for a finished agent. */
-  private finishedIconAndStatus(status: string, error?: string, theme?: Theme): { icon: string; statusText: string } {
-    if (!theme) return { icon: "?", statusText: "" }; // should not happen
+  private finishedIconAndStatus(
+    status: string,
+    error: string | undefined,
+    theme: Theme,
+  ): { icon: string; statusText: string } {
     switch (status) {
       case "completed":
         return { icon: theme.fg("success", "✓"), statusText: "" };
@@ -335,31 +356,18 @@ export class AgentWidget {
     const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
     const { icon, statusText } = this.finishedIconAndStatus(a.status, a.error, theme);
 
-    const parts: string[] = [];
     const activity = this.agentActivity.get(a.id);
+    const statsParts = buildStatsParts({
+      toolUses: a.toolUses,
+      turnCount: activity?.turnCount ?? a.turnCount,
+      maxTurns: activity?.maxTurns ?? a.maxTurns,
+      tokens: getLifetimeTotal(activity?.lifetimeUsage ?? a.lifetimeUsage),
+      contextPercent: getSessionContextPercent(activity?.session ?? a.session),
+      compactions: a.compactionCount,
+    }, theme);
+    statsParts.push(duration);
 
-    // Tool uses
-    if (a.toolUses > 0) parts.push(`${a.toolUses}🛠 `);
-
-    // Turn count — prefer activity (live), fall back to record (after cleanup)
-    if (activity) {
-      parts.push(formatTurns(activity.turnCount, activity.maxTurns));
-    } else if (a.turnCount != null) {
-      parts.push(formatTurns(a.turnCount, a.maxTurns));
-    }
-
-    // Token usage with context % — read from record if activity was cleaned up
-    const tokens = getLifetimeTotal(activity?.lifetimeUsage ?? a.lifetimeUsage);
-    if (tokens > 0) {
-      const contextPct = getSessionContextPercent(activity?.session ?? a.session);
-      const tokenText = formatSessionTokens(tokens, contextPct, theme, a.compactionCount);
-      parts.push(tokenText);
-    }
-
-    parts.push(duration);
-
-    // Wrap stats in dim, re-applying after any ANSI reset from formatSessionTokens.
-    const statsLine = parts.join("·");
+    const statsLine = statsParts.join("·");
     return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", a.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
@@ -369,20 +377,15 @@ export class AgentWidget {
     activity: AgentActivity | undefined,
     theme: Theme,
   ): string {
-    const toolUses = activity?.toolUses ?? agent.toolUses;
-    const elapsed = formatMs(Date.now() - agent.startedAt);
-
-    const tokens = getLifetimeTotal(activity?.lifetimeUsage);
-    const contextPercent = getSessionContextPercent(activity?.session);
-    const tokenText = tokens > 0
-      ? formatSessionTokens(tokens, contextPercent, theme, agent.compactionCount)
-      : "";
-
-    const parts: string[] = [];
-    if (toolUses > 0) parts.push(`${toolUses}🛠 `);
-    if (activity) parts.push(formatTurns(activity.turnCount, activity.maxTurns));
-    if (tokenText) parts.push(tokenText);
-    parts.push(elapsed);
+    const parts = buildStatsParts({
+      toolUses: activity?.toolUses ?? agent.toolUses,
+      turnCount: activity?.turnCount,
+      maxTurns: activity?.maxTurns,
+      tokens: getLifetimeTotal(activity?.lifetimeUsage),
+      contextPercent: getSessionContextPercent(activity?.session),
+      compactions: agent.compactionCount,
+    }, theme);
+    parts.push(formatMs(Date.now() - agent.startedAt));
     return parts.join("·");
   }
 
@@ -396,7 +399,7 @@ export class AgentWidget {
     const blocks: RenderBlock[] = [];
     for (const a of finished) {
       blocks.push({
-        header: truncate(theme.fg("dim", BRANCH) + " " + this.renderFinishedLine(a, theme)),
+        header: truncate(`${theme.fg("dim", BRANCH)} ${this.renderFinishedLine(a, theme)}`),
         continuations: a.outputFile
           ? [truncate(theme.fg("dim", `${VLINE}    tail -f ${a.outputFile}`))]
           : [],
@@ -420,8 +423,9 @@ export class AgentWidget {
       const statsLine = this.buildStatsLine(a, bg, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
+      const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}`;
       blocks.push({
-        header: truncate(`${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}`),
+        header: truncate(headerLine),
         continuations: [
           ...(a.outputFile
             ? [truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.outputFile}`))]
@@ -441,10 +445,8 @@ export class AgentWidget {
   ): RenderBlock | undefined {
     if (queued.length === 0) return undefined;
     const truncate = (line: string) => truncateToWidth(line, w);
-    return {
-      header: truncate(theme.fg("dim", BRANCH) + ` ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`),
-      continuations: [],
-    };
+    const header = `${theme.fg("dim", BRANCH)} ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`;
+    return { header: truncate(header), continuations: [] };
   }
 
   /**
@@ -471,7 +473,7 @@ export class AgentWidget {
     const headingIcon = hasActive ? "●" : "○";
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
-    // ---- Build blocks with placeholder connectors (BRANCH for headers, VLINE for continuations) ----
+    // Build blocks with placeholder connectors (BRANCH for headers, VLINE for continuations)
     // Separate arrays so overflow logic can apply priority: running > queued > finished.
     const finishedBlocks = this.buildFinishedBlocks(finished, theme, w);
     const runningBlocks = this.buildRunningBlocks(running, theme, w, frame);
@@ -489,7 +491,8 @@ export class AgentWidget {
     const maxBody = MAX_WIDGET_LINES - 1; // heading takes 1 line
     const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
 
-    const lines: string[] = [truncate(theme.fg(headingColor, headingIcon) + " " + theme.fg(headingColor, "Agents"))];
+    const heading = `${theme.fg(headingColor, headingIcon)} ${theme.fg(headingColor, "Agents")}`;
+    const lines: string[] = [truncate(heading)];
 
     if (totalBody <= maxBody) {
       // Everything fits — render all blocks with correct connectors.
@@ -570,7 +573,8 @@ export class AgentWidget {
           const parts: string[] = [];
           if (hiddenRunning > 0) parts.push(`${hiddenRunning} running`);
           if (hiddenFinished > 0) parts.push(`${hiddenFinished} finished`);
-          return theme.fg("dim", CORNER) + ` ${theme.fg("dim", `+${hiddenRunning + hiddenFinished} more (${parts.join(", ")})`)}`;
+          const summary = `+${hiddenRunning + hiddenFinished} more (${parts.join(", ")})`;
+          return `${theme.fg("dim", CORNER)} ${theme.fg("dim", summary)}`;
         })()
       : undefined;
 
@@ -588,7 +592,10 @@ export class AgentWidget {
       this.uiCtx?.setStatus(STATUS_KEY, undefined);
       this.lastStatusText = undefined;
     }
-    if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
+    if (this.widgetInterval) {
+      clearInterval(this.widgetInterval);
+      this.widgetInterval = undefined;
+    }
     // Clean up stale entries
     const allAgents = this.manager.listAgents();
     for (const [id] of this.finishedTurnAge) {

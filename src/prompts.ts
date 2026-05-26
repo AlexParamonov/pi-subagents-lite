@@ -48,14 +48,14 @@ export function buildAgentPrompt(
       extraSections.push(`\n# Preloaded Skill: ${skill.name}\n${skill.content}`);
     }
   }
-  const extrasSuffix = extraSections.length > 0 ? "\n\n" + extraSections.join("\n") : "";
+  const extrasSuffix = extraSections.length > 0 ? `\n\n${extraSections.join("\n")}` : "";
 
   const header = `You are a pi coding agent sub-agent.
 You have been invoked to handle a specific task autonomously.
 
 ${envBlock}`;
 
-  return activeAgentTag + header + "\n\n" + config.systemPrompt + extrasSuffix;
+  return `${activeAgentTag}${header}\n\n${config.systemPrompt}${extrasSuffix}`;
 }
 
 

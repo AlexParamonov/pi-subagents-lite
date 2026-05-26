@@ -66,7 +66,7 @@ export interface AgentRecord {
   outputCleanup?: () => void;
   /**
    * Lifetime usage breakdown, accumulated via `message_end` events. Survives
-   * compaction. Total = input + output + cacheWrite (cacheRead deliberately
+   * compaction. Total = input + output + cacheWrite + cost (cacheRead deliberately
    * excluded — see issue #38). Initialized to zeros at spawn.
    */
   lifetimeUsage: LifetimeUsage;
@@ -93,4 +93,19 @@ export interface EnvInfo {
   isGitRepo: boolean;
   branch: string | null;
   platform: string;
+}
+
+/** Reason for a context compaction event. */
+export type CompactionReason = "manual" | "threshold" | "overflow";
+
+/** Info payload emitted when a session compacts successfully. */
+export interface CompactionInfo {
+  reason: CompactionReason;
+  tokensBefore: number;
+}
+
+/** Parsed "provider/model-id" key. */
+export interface ModelKey {
+  provider: string;
+  modelId: string;
 }

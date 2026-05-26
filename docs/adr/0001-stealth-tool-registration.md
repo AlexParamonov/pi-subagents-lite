@@ -21,6 +21,11 @@ run at call time with full context.
 
 ## Trade-off
 
-The LLM cannot meaningfully call the Agent tool until briefed by `/agents`. The schema tells
-it nothing. This is acceptable because `/agents` is the intended entry point — running it
-once at session start is the expected workflow.
+The minimal schema (`description: "."`, no parameter descriptions) means the LLM must infer
+usage from the tool name and parameter names alone. In practice this works — models use the
+Agent and StopAgent tools without issues. The optional `/agents` briefing can supplement
+understanding when the LLM needs to discover available agent types, but is not required for
+basic tool invocation.
+
+Registering at init time (rather than runtime) avoids system prompt rebuilds and KV-cache
+invalidation on mid-session tool changes.

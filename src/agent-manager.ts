@@ -17,13 +17,27 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
 import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./output-file.js";
-import type { AgentInvocation, AgentRecord, SubagentType, ThinkingLevel } from "./types.js";
-import { addUsage, getLifetimeTotal } from "./usage.js";
+import type {
+  AgentInvocation,
+  AgentRecord,
+  CompactionInfo,
+  SubagentType,
+  ThinkingLevel,
+} from "./types.js";
+import { addUsage, getLifetimeTotal, type LifetimeUsage } from "./usage.js";
+import { errorMessage } from "./utils.js";
 
-/** Safely extract a human-readable error message from an unknown exception. */
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+/** How often to check for expired agent records (milliseconds). */
+const CLEANUP_INTERVAL_MS = 60_000;
+
+/** Age after which a completed agent record is evicted (milliseconds). */
+const CLEANUP_AGE_CUTOFF_MS = 10 * 60_000;
+
+/** Length of short agent ID (UUID prefix). */
+const AGENT_ID_LENGTH = 17;
+
+/** Default per-model concurrency limit when not specified in config. */
+const DEFAULT_CONCURRENCY_LIMIT = 4;
 
 /**
  * Create a cleanup function for the output file stream.
@@ -35,12 +49,13 @@ function createOutputCleanup(
   path: string,
   record: AgentRecord,
 ): () => void {
-  const outputStats = { turnCount: 0, toolUseCount: 0, totalTokens: 0 };
+  const outputStats = { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
   const cleanup = streamToOutputFile(session, path, outputStats);
   return () => {
     outputStats.turnCount = record.turnCount ?? 0;
     outputStats.toolUseCount = record.toolUses;
     outputStats.totalTokens = getLifetimeTotal(record.lifetimeUsage);
+    outputStats.cost = record.lifetimeUsage.cost;
     cleanup();
   };
 }
@@ -57,7 +72,7 @@ export interface ConcurrencyConfig {
   /** Per-provider concurrency limits keyed by provider name (e.g. "llamacpp"). */
   providers?: Record<string, number>;
   /** Per-model concurrency limits keyed by "provider/modelId". */
-  models: Record<string, number>;
+  models?: Record<string, number>;
 }
 
 type OnAgentComplete = (record: AgentRecord) => void;
@@ -103,9 +118,9 @@ export interface SpawnOptions {
   /** Called at the end of each agentic turn with the cumulative count. */
   onTurnEnd?: (turnCount: number) => void;
   /** Called once per assistant message_end with that message's usage delta. */
-  onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
+  onAssistantUsage?: (usage: LifetimeUsage) => void;
   /** Called when the session successfully compacts. */
-  onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
+  onCompaction?: (info: CompactionInfo) => void;
 }
 
 export class AgentManager {
@@ -133,24 +148,19 @@ export class AgentManager {
   ) {
     this.onComplete = onComplete;
     this.onStart = onStart;
-    this.defaultConcurrency = concurrency?.default ?? 4;
+    this.defaultConcurrency = concurrency?.default ?? DEFAULT_CONCURRENCY_LIMIT;
 
     // Initialize per-provider slots from config (shared pool)
-    if (concurrency?.providers) {
-      for (const [provider, limit] of Object.entries(concurrency.providers)) {
-        this.providerSlots.set(provider, { limit: Math.max(1, limit), running: 0 });
-      }
+    for (const [provider, limit] of Object.entries(concurrency?.providers ?? {})) {
+      this.applyConcurrencyEntry(this.providerSlots, provider, limit);
     }
 
     // Initialize per-model slots from config
-    if (concurrency?.models) {
-      for (const [modelKey, limit] of Object.entries(concurrency.models)) {
-        this.concurrencySlots.set(modelKey, { limit: Math.max(1, limit), running: 0 });
-      }
+    for (const [modelKey, limit] of Object.entries(concurrency?.models ?? {})) {
+      this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
     }
 
-    // Cleanup completed agents after 10 minutes (but keep sessions for resume)
-    this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
+    this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
     this.cleanupInterval.unref();
   }
 
@@ -164,25 +174,13 @@ export class AgentManager {
     this.defaultConcurrency = config.default;
 
     // Update per-provider slots (shared pool)
-    if (config.providers) {
-      for (const [provider, limit] of Object.entries(config.providers)) {
-        const existing = this.providerSlots.get(provider);
-        if (existing) {
-          existing.limit = Math.max(1, limit);
-        } else {
-          this.providerSlots.set(provider, { limit: Math.max(1, limit), running: 0 });
-        }
-      }
+    for (const [provider, limit] of Object.entries(config.providers ?? {})) {
+      this.applyConcurrencyEntry(this.providerSlots, provider, limit);
     }
 
     // Update existing slots and create new ones
-    for (const [modelKey, limit] of Object.entries(config.models)) {
-      const existing = this.concurrencySlots.get(modelKey);
-      if (existing) {
-        existing.limit = Math.max(1, limit);
-      } else {
-        this.concurrencySlots.set(modelKey, { limit: Math.max(1, limit), running: 0 });
-      }
+    for (const [modelKey, limit] of Object.entries(config.models ?? {})) {
+      this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
     }
 
     // Start queued agents if the new limits allow
@@ -190,24 +188,38 @@ export class AgentManager {
   }
 
   /**
+   * Update or create a concurrency slot entry.
+   * If the key already exists in the map, updates its limit.
+   * Otherwise, creates a new slot with the given limit and running=0.
+   */
+  private applyConcurrencyEntry(map: Map<string, ConcurrencySlot>, key: string, limit: number): void {
+    const safeLimit = Math.max(1, limit);
+    const existing = map.get(key);
+    if (existing) {
+      existing.limit = safeLimit;
+    } else {
+      map.set(key, { limit: safeLimit, running: 0 });
+    }
+  }
+
+  /**
    * Get or create a concurrency slot for a model key.
    * Precedence: per-model slot > per-provider shared slot > default (per-model).
-   * Returns { slot, isProviderSlot } so caller knows which slot to decrement.
    */
-  private getSlot(modelKey: string): { slot: ConcurrencySlot; isProviderSlot: boolean } {
+  private getSlot(modelKey: string): ConcurrencySlot {
     // 1. Check per-model slot
     let slot = this.concurrencySlots.get(modelKey);
-    if (slot) return { slot, isProviderSlot: false };
+    if (slot) return slot;
 
     // 2. Check per-provider shared slot
     const provider = modelKey.split("/")[0];
     const providerSlot = this.providerSlots.get(provider);
-    if (providerSlot) return { slot: providerSlot, isProviderSlot: true };
+    if (providerSlot) return providerSlot;
 
     // 3. Create per-model slot with default limit
     slot = { limit: Math.max(1, this.defaultConcurrency), running: 0 };
     this.concurrencySlots.set(modelKey, slot);
-    return { slot, isProviderSlot: false };
+    return slot;
   }
 
   /**
@@ -221,7 +233,7 @@ export class AgentManager {
     prompt: string,
     options: SpawnOptions,
   ): string {
-    const id = randomUUID().slice(0, 17);
+    const id = randomUUID().slice(0, AGENT_ID_LENGTH);
     const abortController = new AbortController();
     const args: SpawnArgs = { pi, ctx, type, prompt, options };
 
@@ -229,7 +241,7 @@ export class AgentManager {
     let queued = false;
     let concurrencySlot: ConcurrencySlot | undefined;
     if (options.modelKey) {
-      const { slot } = this.getSlot(options.modelKey);
+      const slot = this.getSlot(options.modelKey);
       if (slot.running >= slot.limit) {
         queued = true;
         this.queue.push({ id, modelKey: options.modelKey, args });
@@ -246,7 +258,7 @@ export class AgentManager {
       toolUses: 0,
       startedAt: Date.now(),
       abortController,
-      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
       compactionCount: 0,
       invocation: options.invocation,
       maxTurns: options.maxTurns,
@@ -300,29 +312,21 @@ export class AgentManager {
       isolated: options.isolated,
       thinkingLevel: options.thinkingLevel,
       signal: record.abortController!.signal,
-      onToolActivity: (activity) => {
-        if (activity.type === "end") record.toolUses++;
-        options.onToolActivity?.(activity);
-      },
+      ...this.createRecordCallbacks(record, options),
       onTurnEnd: (turnCount) => {
         record.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
       },
       onTextDelta: options.onTextDelta,
-      onAssistantUsage: (usage) => {
-        addUsage(record.lifetimeUsage, usage);
-        options.onAssistantUsage?.(usage);
-      },
-      onCompaction: (info) => {
-        record.compactionCount++;
-        options.onCompaction?.(info);
-      },
       onSessionCreated: (session) => {
         record.session = session;
         // Flush any steers that arrived before the session was ready
         if (record.pendingSteers?.length) {
           for (const msg of record.pendingSteers) {
-            session.steer(msg).catch(() => {});
+            session.steer(msg).catch(() => {
+              // Steer is advisory — a failure here (e.g. session already aborting)
+              // is fine; the user can re-send if needed.
+            });
           }
           record.pendingSteers = undefined;
         }
@@ -364,11 +368,45 @@ export class AgentManager {
         // Decrement per-model concurrency count
         if (concurrencySlot) concurrencySlot.running--;
 
-        try { this.onComplete?.(record); } catch { /* ignore */ }
+        this.safeNotifyComplete(record);
         this.drainQueue();
       });
 
     record.promise = promise;
+  }
+
+  /** Notify completion callback, ignoring any errors. */
+  private safeNotifyComplete(record: AgentRecord): void {
+    try { this.onComplete?.(record); } catch { /* ignore */ }
+  }
+
+  /**
+   * Build common record-tracking callbacks shared by startAgent and resume.
+   * Updates the record's toolUses, lifetimeUsage, and compactionCount.
+   * When options are provided, also forwards events to the caller.
+   */
+  private createRecordCallbacks(
+    record: AgentRecord,
+    options?: Pick<SpawnOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
+  ): {
+    onToolActivity: (activity: ToolActivity) => void;
+    onAssistantUsage: (usage: LifetimeUsage) => void;
+    onCompaction: (info: CompactionInfo) => void;
+  } {
+    return {
+      onToolActivity: (activity) => {
+        if (activity.type === "end") record.toolUses++;
+        options?.onToolActivity?.(activity);
+      },
+      onAssistantUsage: (usage) => {
+        addUsage(record.lifetimeUsage, usage);
+        options?.onAssistantUsage?.(usage);
+      },
+      onCompaction: (info) => {
+        record.compactionCount++;
+        options?.onCompaction?.(info);
+      },
+    };
   }
 
   /** Start queued agents up to the per-model concurrency limits. */
@@ -390,27 +428,10 @@ export class AgentManager {
         record.error = errorMessage(err);
         record.completedAt = Date.now();
         started.add(entry.id);
-        this.onComplete?.(record);
+        this.safeNotifyComplete(record);
       }
     }
     this.queue = this.queue.filter(e => !started.has(e.id));
-  }
-
-  /**
-   * Spawn an agent and wait for completion (foreground use).
-   * Respects per-model concurrency limits — queued if at capacity, awaited on completion.
-   */
-  async spawnAndWait(
-    pi: ExtensionAPI,
-    ctx: ExtensionContext,
-    type: SubagentType,
-    prompt: string,
-    options: Omit<SpawnOptions, "isBackground">,
-  ): Promise<AgentRecord> {
-    const id = this.spawn(pi, ctx, type, prompt, { ...options, isBackground: false });
-    const record = this.agents.get(id)!;
-    await record.promise;
-    return record;
   }
 
   /**
@@ -432,15 +453,7 @@ export class AgentManager {
 
     try {
       const responseText = await resumeAgent(record.session, prompt, {
-        onToolActivity: (activity) => {
-          if (activity.type === "end") record.toolUses++;
-        },
-        onAssistantUsage: (usage) => {
-          addUsage(record.lifetimeUsage, usage);
-        },
-        onCompaction: (info) => {
-          record.compactionCount++;
-        },
+        ...this.createRecordCallbacks(record),
         signal,
       });
       record.status = "completed";
@@ -476,6 +489,7 @@ export class AgentManager {
       await record.session.steer(message);
       return true;
     } catch {
+      // steer failures are surfaced to the caller via the boolean return value
       return false;
     }
   }
@@ -526,7 +540,7 @@ export class AgentManager {
   }
 
   private cleanup() {
-    const cutoff = Date.now() - 10 * 60_000;
+    const cutoff = Date.now() - CLEANUP_AGE_CUTOFF_MS;
     for (const [id, record] of this.agents) {
       if (!isTerminalStatus(record.status)) continue;
       if ((record.completedAt ?? 0) >= cutoff) continue;

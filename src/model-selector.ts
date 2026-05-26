@@ -10,7 +10,6 @@
 
 import {
   Container,
-  type Component,
   type Focusable,
   fuzzyFilter,
   getKeybindings,
@@ -37,7 +36,7 @@ export interface ModelOption {
   provider: string;
 }
 
-export interface ModelSelectorCallbacks {
+interface ModelSelectorCallbacks {
   onSelect: (value: string) => void;
   onCancel: () => void;
 }
@@ -126,9 +125,20 @@ export class ModelSelectorDialog extends Container implements Focusable {
   handleInput(keyData: string): void {
     const kb = getKeybindings();
 
+    // Navigation keys — no-op when list is empty
+    if (this.filteredItems.length === 0) {
+      if (
+        kb.matches(keyData, "tui.select.up") ||
+        kb.matches(keyData, "tui.select.down") ||
+        kb.matches(keyData, "tui.select.pageUp") ||
+        kb.matches(keyData, "tui.select.pageDown")
+      ) {
+        return;
+      }
+    }
+
     // Up — wrap to bottom
     if (kb.matches(keyData, "tui.select.up")) {
-      if (this.filteredItems.length === 0) return;
       this.selectedIndex =
         this.selectedIndex === 0
           ? this.filteredItems.length - 1
@@ -139,7 +149,6 @@ export class ModelSelectorDialog extends Container implements Focusable {
 
     // Down — wrap to top
     if (kb.matches(keyData, "tui.select.down")) {
-      if (this.filteredItems.length === 0) return;
       this.selectedIndex =
         this.selectedIndex === this.filteredItems.length - 1
           ? 0
@@ -150,7 +159,6 @@ export class ModelSelectorDialog extends Container implements Focusable {
 
     // PageUp — jump up one page
     if (kb.matches(keyData, "tui.select.pageUp")) {
-      if (this.filteredItems.length === 0) return;
       this.selectedIndex = Math.max(0, this.selectedIndex - MAX_VISIBLE);
       this.updateList();
       return;
@@ -158,7 +166,6 @@ export class ModelSelectorDialog extends Container implements Focusable {
 
     // PageDown — jump down one page
     if (kb.matches(keyData, "tui.select.pageDown")) {
-      if (this.filteredItems.length === 0) return;
       this.selectedIndex = Math.min(
         this.filteredItems.length - 1,
         this.selectedIndex + MAX_VISIBLE,
@@ -242,19 +249,12 @@ export class ModelSelectorDialog extends Container implements Focusable {
       const isSelected = i === this.selectedIndex;
       const isCurrent = item.value === this.currentModel;
 
-      let line: string;
-      if (isSelected) {
-        const prefix = this.theme.fg("accent", "→ ");
-        const modelText = this.theme.fg("accent", item.label);
-        const providerBadge = this.theme.fg("muted", `[${item.provider}]`);
-        const checkmark = isCurrent ? this.theme.fg("success", " ✓") : "";
-        line = `${prefix}${modelText} ${providerBadge}${checkmark}`;
-      } else {
-        const modelText = `  ${item.label}`;
-        const providerBadge = this.theme.fg("muted", `[${item.provider}]`);
-        const checkmark = isCurrent ? this.theme.fg("success", " ✓") : "";
-        line = `${modelText} ${providerBadge}${checkmark}`;
-      }
+      const modelText = isSelected
+        ? this.theme.fg("accent", "→ ") + this.theme.fg("accent", item.label)
+        : `  ${item.label}`;
+      const providerBadge = this.theme.fg("muted", `[${item.provider}]`);
+      const checkmark = isCurrent ? this.theme.fg("success", " ✓") : "";
+      const line = `${modelText} ${providerBadge}${checkmark}`;
 
       this.listContainer.addChild(new Text(line, 0, 0));
     }

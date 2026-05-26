@@ -14,20 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentConfig, ThinkingLevel } from "./types.js";
-
-/* ------------------------------------------------------------------ */
-/*  Validation helpers                                                 */
-/* ------------------------------------------------------------------ */
-
-const VALID_THINKING_LEVELS: readonly ThinkingLevel[] = [
-  "off", "minimal", "low", "medium", "high", "xhigh",
-] as const;
-
-/** Validate and narrow a raw thinking value to ThinkingLevel. */
-function validateThinking(raw: string | undefined): ThinkingLevel | undefined {
-  if (raw === undefined) return undefined;
-  return VALID_THINKING_LEVELS.includes(raw as ThinkingLevel) ? (raw as ThinkingLevel) : undefined;
-}
+import { parseThinkingLevel } from "./utils.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -46,6 +33,7 @@ export interface AgentConfigFromMd {
   max_turns?: number;
   disallowed_tools?: string[];
   enabled?: boolean;
+  isolated?: boolean;
   systemPrompt: string;
   source: "user" | "project";
 }
@@ -180,7 +168,7 @@ export function parseExtensions(
 /* ------------------------------------------------------------------ */
 
 /** Extract a non-empty string value from frontmatter. */
-export function parseString(
+function parseString(
   frontmatter: Record<string, unknown>,
   key: string,
 ): string | undefined {
@@ -189,7 +177,7 @@ export function parseString(
 }
 
 /** Extract a string array from frontmatter (array or comma-separated string). */
-export function parseStringArray(
+function parseStringArray(
   frontmatter: Record<string, unknown>,
   key: string,
 ): string[] | undefined {
@@ -199,6 +187,31 @@ export function parseStringArray(
   }
   if (typeof v === "string" && v.length > 0) {
     return splitCommaList(v);
+  }
+  return undefined;
+}
+
+/** Extract a boolean from frontmatter (true/false or "true"/"false"). */
+function parseBoolean(
+  frontmatter: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const v = frontmatter[key];
+  if (v === true || v === "true") return true;
+  if (v === false || v === "false") return false;
+  return undefined;
+}
+
+/** Extract a number from frontmatter (number or numeric string). */
+function parseNumber(
+  frontmatter: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const v = frontmatter[key];
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && v.length > 0) {
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
   }
   return undefined;
 }
@@ -233,42 +246,19 @@ export function parseAgentFile(
 ): AgentConfigFromMd {
   const { frontmatter, body } = parseFrontmatter(content);
 
-  const extensions = parseExtensions(frontmatter.extensions);
-  const skills = parseExtensions(frontmatter.skills);
-
-  // enabled field
-  const enabledRaw = frontmatter.enabled;
-  let enabled: boolean | undefined;
-  if (enabledRaw === "false" || enabledRaw === false) {
-    enabled = false;
-  } else if (enabledRaw === "true" || enabledRaw === true) {
-    enabled = true;
-  }
-
-  // max_turns field
-  const maxTurnsRaw = frontmatter.max_turns;
-  let maxTurns: number | undefined;
-  if (typeof maxTurnsRaw === "number") {
-    maxTurns = maxTurnsRaw;
-  } else if (typeof maxTurnsRaw === "string" && maxTurnsRaw.length > 0) {
-    const parsed = Number(maxTurnsRaw);
-    if (!Number.isNaN(parsed)) {
-      maxTurns = parsed;
-    }
-  }
-
   return {
     name: parseString(frontmatter, "name"),
     display_name: parseString(frontmatter, "display_name"),
     description: parseString(frontmatter, "description"),
     tools: parseStringArray(frontmatter, "tools"),
-    extensions,
-    skills,
+    extensions: parseExtensions(frontmatter.extensions),
+    skills: parseExtensions(frontmatter.skills),
     model: parseString(frontmatter, "model"),
-    thinking: validateThinking(parseString(frontmatter, "thinking")),
-    max_turns: maxTurns,
+    thinking: parseThinkingLevel(parseString(frontmatter, "thinking")),
+    max_turns: parseNumber(frontmatter, "max_turns"),
     disallowed_tools: parseStringArray(frontmatter, "disallowed_tools"),
-    enabled,
+    enabled: parseBoolean(frontmatter, "enabled"),
+    isolated: parseBoolean(frontmatter, "isolated"),
     systemPrompt: body,
     source: source,
   };
@@ -392,6 +382,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     maxTurns: md.max_turns,
     disallowedTools: md.disallowed_tools,
     enabled: md.enabled,
+    isolated: md.isolated,
     systemPrompt: md.systemPrompt,
     source: md.source === "project" ? "project" : "global",
   };

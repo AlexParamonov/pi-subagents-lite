@@ -12,7 +12,7 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
 /** All known built-in tool names. */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
@@ -36,8 +36,8 @@ export function registerAgents(userAgents: Map<string, AgentConfig>): void {
   }
 }
 
-/** Case-insensitive key resolution, also matches displayName. */
-function resolveKey(name: string): string | undefined {
+/** Resolve a type name case-insensitively. Also matches displayName. Returns the canonical key or undefined. */
+export function resolveType(name: string): string | undefined {
   if (!name) return undefined;
   if (agents.has(name)) return name;
   const lower = name.toLowerCase();
@@ -48,14 +48,9 @@ function resolveKey(name: string): string | undefined {
   return undefined;
 }
 
-/** Resolve a type name case-insensitively. Returns the canonical key or undefined. */
-export function resolveType(name: string): string | undefined {
-  return resolveKey(name);
-}
-
 /** Get the agent config for a type (case-insensitive). */
 export function getAgentConfig(name: string): AgentConfig | undefined {
-  const key = resolveKey(name);
+  const key = resolveType(name);
   return key ? agents.get(key) : undefined;
 }
 
@@ -71,26 +66,6 @@ export function getAllTypes(): string[] {
   return [...agents.keys()];
 }
 
-/** Get names of default agents currently in the registry. */
-export function getDefaultAgentNames(): string[] {
-  return [...agents.entries()]
-    .filter(([_, config]) => config.isDefault === true)
-    .map(([name]) => name);
-}
-
-/** Get names of user-defined agents (non-defaults) currently in the registry. */
-export function getUserAgentNames(): string[] {
-  return [...agents.entries()]
-    .filter(([_, config]) => config.isDefault !== true)
-    .map(([name]) => name);
-}
-
-/** Check if a type is valid and enabled (case-insensitive). */
-export function isValidType(type: string): boolean {
-  const config = getAgentConfig(type);
-  return config !== undefined && config.enabled !== false;
-}
-
 /** Get built-in tool names for a type (case-insensitive). */
 export function getToolNamesForType(type: string): string[] {
   const config = getAgentConfig(type);
@@ -99,14 +74,16 @@ export function getToolNamesForType(type: string): string[] {
     : [...BUILTIN_TOOL_NAMES];
 }
 
-/** Convert an AgentConfig to the SubagentTypeConfig shape used by getConfig. */
-function toSubagentTypeConfig(config: AgentConfig): {
+/** Resolved config shape returned by getConfig. */
+interface ResolvedAgentConfig {
   displayName: string;
   description: string;
   builtinToolNames: string[];
   extensions: true | string[] | false;
   skills: true | string[] | false;
-} {
+}
+
+function toResolved(config: AgentConfig): ResolvedAgentConfig {
   return {
     displayName: config.displayName ?? config.name,
     description: config.description,
@@ -117,16 +94,17 @@ function toSubagentTypeConfig(config: AgentConfig): {
 }
 
 /** Get config for a type (case-insensitive). Falls back to general-purpose. */
-export function getConfig(type: string): ReturnType<typeof toSubagentTypeConfig> {
-  const key = resolveKey(type);
-  const config = key ? agents.get(key) : undefined;
+export function getConfig(type: string): ResolvedAgentConfig {
+  const resolvedKey = resolveType(type);
+  const config = resolvedKey ? agents.get(resolvedKey) : undefined;
 
-  const activeConfig = (config?.enabled !== false)
+  // If config exists and is enabled, use it; otherwise fall back to general-purpose
+  const activeConfig = config?.enabled !== false
     ? config
     : agents.get("general-purpose");
 
   if (activeConfig && activeConfig.enabled !== false) {
-    return toSubagentTypeConfig(activeConfig);
+    return toResolved(activeConfig);
   }
 
   // Absolute fallback — general-purpose was disabled or missing

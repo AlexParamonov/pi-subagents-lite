@@ -56,11 +56,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  Text: class {},
-  truncateToWidth: (text: string) => text,
-}));
-
-vi.mock("@earendil-works/pi-tui", () => ({
+  Box: class {},
   Container: class {
     children: any[] = [];
     addChild(c: any) {
@@ -69,6 +65,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
     clear() {
       this.children = [];
     }
+    invalidate() { /* noop */ }
+    render(_width: number): string[] { return []; }
   },
   Input: class {
     onSubmit: (() => void) | null = null;
@@ -80,6 +78,16 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
   Spacer: class {},
   Text: class {},
+  Markdown: class {
+    text: string;
+    constructor(text: string, _w: number, _h: number, _theme: any) {
+      this.text = text;
+    }
+    render(_width: number) {
+      return [this.text];
+    }
+  },
+  truncateToWidth: (text: string) => text,
   fuzzyFilter: (items: any[], _query: string, _fn: any) => items,
   getKeybindings: () => ({
     matches: () => false,
@@ -91,7 +99,7 @@ vi.mock("../src/model-selector.js", () => ({
 }));
 
 vi.mock("../src/model-precedence.js", () => ({
-  resolveModel: vi.fn((_type, _config, _cfg, parentModel: string) => parentModel),
+  resolveModel: vi.fn((opts: any) => opts?.parentModelId ?? ""),
 }));
 
 vi.mock("../src/agent-types.js", () => ({
@@ -124,14 +132,9 @@ vi.mock("../src/default-agents.js", () => ({
 
 vi.mock("../src/ui/agent-widget.js", () => ({
   AgentWidget: class {},
-  formatTokens: vi.fn(),
-  formatTurns: vi.fn(),
+  buildStatsParts: vi.fn(),
   formatMs: vi.fn(),
-  describeActivity: vi.fn(),
   getDisplayName: vi.fn(),
-  buildInvocationTags: vi.fn(),
-  formatSessionTokens: vi.fn(),
-  formatDuration: vi.fn(),
   SPINNER: [],
   ERROR_STATUSES: new Set(),
 }));
@@ -213,11 +216,6 @@ describe("Agent tool schema — stealth", () => {
     expect(hasParam(agentTool()!.parameters, "agent")).toBe(true);
   });
 
-  it("includes thinking param (optional)", () => {
-    const thinkingSchema = agentTool()!.parameters?.properties?.thinking;
-    expect(thinkingSchema).toBeDefined();
-  });
-
   it("excludes max_turns from schema (config-only, not LLM-controlled)", () => {
     expect(hasParam(agentTool()!.parameters, "max_turns")).toBe(false);
   });
@@ -247,13 +245,13 @@ describe("tool registration", () => {
     await loadExtension(api.api);
   });
 
-  it("registers exactly 1 tool", () => {
-    expect(api.tools).toHaveLength(1);
+  it("registers exactly 2 tools", () => {
+    expect(api.tools).toHaveLength(2);
   });
 
-  it("registers Agent tool", () => {
+  it("registers Agent and StopAgent tools", () => {
     const names = api.tools.map((t) => t.name);
-    expect(names).toEqual(["Agent"]);
+    expect(names).toEqual(["Agent", "StopAgent"]);
   });
 });
 

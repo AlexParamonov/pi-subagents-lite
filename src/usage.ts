@@ -7,11 +7,11 @@
  * the cumulative cached prefix re-read on that one call — summing across
  * turns counts the prefix N times. See issue #38.
  */
-export type LifetimeUsage = { input: number; output: number; cacheWrite: number };
+export type LifetimeUsage = { input: number; output: number; cacheWrite: number; cost: number };
 
-/** Sum of lifetime usage components, or 0 if undefined. */
+/** Sum of lifetime usage components (including cost), or 0 if undefined. */
 export function getLifetimeTotal(u?: LifetimeUsage): number {
-  return u ? u.input + u.output + u.cacheWrite : 0;
+  return u ? u.input + u.output + u.cacheWrite + u.cost : 0;
 }
 
 /** Add a usage delta into a target accumulator (mutates target). */
@@ -19,14 +19,22 @@ export function addUsage(into: LifetimeUsage, delta: LifetimeUsage): void {
   into.input += delta.input;
   into.output += delta.output;
   into.cacheWrite += delta.cacheWrite;
+  into.cost += delta.cost;
 }
 
 /** Minimal shape we read from upstream `getSessionStats()`. */
-export type SessionStatsLike = {
+type SessionStatsLike = {
   tokens: { input: number; output: number; cacheWrite: number };
   contextUsage?: { percent: number | null };
 };
 export type SessionLike = { getSessionStats(): SessionStatsLike };
+
+/** Format a token count compactly: "12.3k", "1.2M", or raw number. */
+export function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return `${count}`;
+}
 
 /**
  * Context-window utilization (0–100), or null when unavailable

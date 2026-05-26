@@ -16,6 +16,8 @@ import {
   type MarkdownTheme,
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { type LifetimeUsage, formatTokens } from "./usage.js";
+import { formatMs } from "./ui/agent-widget.js";
 
 // Theme type from ctx.ui.custom() callback
 type Theme = any;
@@ -24,15 +26,33 @@ type Theme = any;
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export interface ResultViewerCallbacks {
+interface ResultViewerCallbacks {
   onClose: () => void;
+  /** Called on 'r' press — returns fresh markdown text, or undefined to skip refresh. */
+  onRefresh?: () => string | undefined;
+}
+
+export interface ResultViewerStats {
+  lifetimeUsage: LifetimeUsage;
+  turnCount?: number;
+  durationMs?: number;
 }
 
 /* ------------------------------------------------------------------ */
 /*  ResultViewer                                                       */
 /* ------------------------------------------------------------------ */
 
-const PAGE_SIZE = 14;
+/** Lines scrolled per PageUp/PageDown (kept at a fixed, comfortable amount). */
+const PAGE_STEP = 14;
+
+/** Fixed non-viewport lines in the component (borders, title, spacers, hints, etc.). */
+const BASE_OVERHEAD = 10;
+
+/** Extra overhead lines for the stats title line (spacer + text). */
+const STATS_OVERHEAD = 2;
+
+/** Minimum viewport content lines regardless of terminal size. */
+const MIN_VIEWPORT = 20;
 
 /**
  * Build a MarkdownTheme from the TUI theme instance.
@@ -63,47 +83,88 @@ function buildMarkdownTheme(theme: Theme): MarkdownTheme {
  *   - Top border
  *   - Title bar with agent info
  *   - Separator
- *   - Paginated markdown content
+ *   - Paginated markdown content (dynamically sized to at least 50% of terminal)
  *   - Scroll position indicator (when scrollable)
  *   - Key hints footer
  *   - Bottom border
  *
- * Key bindings: up/down/pageup/pagedown/g/G/escape
+ * Key bindings: up/down/pageup/pagedown/g/G/f(ullscreen)/escape
  */
 export class ResultViewer extends Container implements Component {
   private markdown: Markdown;
   private renderedLines: string[];
-  private viewport: Container;
+  private viewport!: Container;
+  private scrollIndicator!: Container;
   private scrollOffset: number;
   private theme: Theme;
   private callbacks: ResultViewerCallbacks;
+  private fullScreen: boolean;
+  private _viewportSize: number;
+  private terminalHeight: number;
+  private textRef: { text: string }; // mutable ref for refresh
+
+  /**
+   * Current number of content lines displayed in the viewport.
+   * Varies based on terminal height and full-screen mode.
+   */
+  get viewportSize(): number {
+    return this._viewportSize;
+  }
+
+  /** Whether the viewer is currently in full-screen mode. */
+  get isFullScreen(): boolean {
+    return this.fullScreen;
+  }
+
+  /** Whether stats line is shown. Used for viewport sizing. */
+  private hasStats: boolean;
 
   constructor(
     title: string,
     text: string,
     callbacks: ResultViewerCallbacks,
     theme: Theme,
+    terminalHeight: number = 24,
+    stats?: ResultViewerStats,
   ) {
     super();
 
     this.callbacks = callbacks;
     this.theme = theme;
     this.scrollOffset = 0;
+    this.fullScreen = true;
+    this.terminalHeight = terminalHeight;
+    this.hasStats = stats != null;
+    this._viewportSize = computeViewportSize(terminalHeight, true, this.hasStats);
+    this.textRef = { text };
 
     // Build markdown renderer (pre-render to get total lines)
     const mdTheme = buildMarkdownTheme(theme);
     this.markdown = new Markdown(text, 0, 0, mdTheme);
-    // Pre-render at a reasonable width to get line count
     this.renderedLines = this.markdown.render(78);
 
-    // Build UI
+    this.buildUI(title, stats);
+    this.updateViewport();
+  }
+
+  /** Build the full UI tree — borders, title, stats, viewport, hints. */
+  private buildUI(title: string, stats?: ResultViewerStats): void {
     this.addChild(new DynamicBorder());
     this.addChild(new Spacer(1));
 
     // Title bar
     this.addChild(
-      new Text(this.theme.fg("accent", theme.bold(` ${title}`)), 0, 0),
+      new Text(this.theme.fg("accent", this.theme.bold(` ${title}`)), 0, 0),
     );
+
+    // Stats line (below title, above separator)
+    if (stats) {
+      this.addChild(new Spacer(1));
+      this.addChild(
+        new Text(this.theme.fg("dim", this.formatStatsLine(stats)), 0, 0),
+      );
+    }
+
     this.addChild(new Spacer(1));
 
     // Separator
@@ -116,17 +177,44 @@ export class ResultViewer extends Container implements Component {
     this.viewport = new Container();
     this.addChild(this.viewport);
 
+    // Scroll position indicator (outside viewport so it doesn't mix with content)
+    this.scrollIndicator = new Container();
+    this.addChild(this.scrollIndicator);
+
     // Bottom spacer + key hints + border
     this.addChild(new Spacer(1));
+    const refreshHint = this.callbacks.onRefresh ? " · r refresh" : "";
     const hints = this.theme.fg(
       "muted",
-      "  ↑↓ navigate · PgUp/PgDn · g/G top/bottom · Esc close",
+      `  ↑↓ navigate · PgUp/PgDn · g/G top/bottom · f fullscreen · q/Esc close${refreshHint}`,
     );
     this.addChild(new Text(hints, 0, 0));
     this.addChild(new Spacer(1));
     this.addChild(new DynamicBorder());
+  }
 
-    this.updateViewport();
+  /**
+   * Build the stats line string, e.g.:
+   *   " ↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s"
+   * Fields with no data are omitted.
+   */
+  private formatStatsLine(stats: ResultViewerStats): string {
+    const parts: string[] = [];
+
+    const { lifetimeUsage } = stats;
+    parts.push(`↑${formatTokens(lifetimeUsage.input)}`);
+    parts.push(`↓${formatTokens(lifetimeUsage.output)}`);
+    parts.push(`W${formatTokens(lifetimeUsage.cacheWrite)}`);
+    parts.push(`\$${lifetimeUsage.cost.toFixed(3)}`);
+
+    if (stats.turnCount != null) {
+      parts.push(`${stats.turnCount} turns`);
+    }
+    if (stats.durationMs != null) {
+      parts.push(formatMs(stats.durationMs));
+    }
+
+    return ` ${parts.join(" · ")}`;
   }
 
   handleInput(keyData: string): void {
@@ -134,55 +222,66 @@ export class ResultViewer extends Container implements Component {
 
     // Up
     if (kb.matches(keyData, "tui.select.up")) {
-      if (this.scrollOffset > 0) {
-        this.scrollOffset--;
-        this.updateViewport();
-      }
+      this.scrollTo(this.scrollOffset - 1);
       return;
     }
 
     // Down
     if (kb.matches(keyData, "tui.select.down")) {
-      if (this.scrollOffset < this.renderedLines.length - 1) {
-        this.scrollOffset++;
-        this.updateViewport();
-      }
+      this.scrollTo(this.scrollOffset + 1);
+      return;
+    }
+
+    // 'f' — toggle full-screen mode
+    if (keyData === "f") {
+      this.fullScreen = !this.fullScreen;
+      this._viewportSize = computeViewportSize(this.terminalHeight, this.fullScreen, this.hasStats);
+      this.updateViewport();
       return;
     }
 
     // PageUp
     if (kb.matches(keyData, "tui.select.pageUp")) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - PAGE_SIZE);
-      this.updateViewport();
+      this.scrollTo(this.scrollOffset - PAGE_STEP);
       return;
     }
 
     // PageDown
     if (kb.matches(keyData, "tui.select.pageDown")) {
-      this.scrollOffset = Math.min(
-        this.renderedLines.length - 1,
-        this.scrollOffset + PAGE_SIZE,
-      );
-      this.updateViewport();
+      this.scrollTo(this.scrollOffset + PAGE_STEP);
       return;
     }
 
     // 'g' — jump to top
     if (keyData === "g") {
-      this.scrollOffset = 0;
-      this.updateViewport();
+      this.scrollTo(0);
       return;
     }
 
     // 'G' — jump to bottom
     if (keyData === "G") {
-      this.scrollOffset = this.renderedLines.length - 1;
-      this.updateViewport();
+      this.scrollTo(this.renderedLines.length - 1);
       return;
     }
 
-    // Escape / Ctrl+C — close
-    if (kb.matches(keyData, "tui.select.cancel")) {
+    // 'r' — refresh content (only if onRefresh callback provided)
+    if (keyData === "r" && this.callbacks.onRefresh) {
+      const newText = this.callbacks.onRefresh();
+      if (newText !== undefined && newText !== this.textRef.text) {
+        const oldOffset = this.scrollOffset;
+        this.textRef.text = newText;
+        const mdTheme = buildMarkdownTheme(this.theme);
+        this.markdown = new Markdown(newText, 0, 0, mdTheme);
+        this.renderedLines = this.markdown.render(78);
+        // Preserve scroll position, clamped to new content bounds
+        this.scrollOffset = Math.min(oldOffset, this.renderedLines.length - 1);
+        this.updateViewport();
+      }
+      return;
+    }
+
+    // 'q' or Escape / Ctrl+C — close
+    if (keyData === "q" || kb.matches(keyData, "tui.select.cancel")) {
       this.callbacks.onClose();
       return;
     }
@@ -190,29 +289,59 @@ export class ResultViewer extends Container implements Component {
 
   invalidate(): void {}
 
+  private scrollTo(offset: number): void {
+    this.scrollOffset = Math.max(0, Math.min(this.renderedLines.length - 1, offset));
+    this.updateViewport();
+  }
+
   private updateViewport(): void {
     this.viewport.clear();
 
     const visibleLines = Math.min(
-      PAGE_SIZE,
+      this._viewportSize,
       this.renderedLines.length - this.scrollOffset,
     );
+
     for (let i = 0; i < visibleLines; i++) {
       const lineIdx = this.scrollOffset + i;
       const line = this.renderedLines[lineIdx] ?? "";
       this.viewport.addChild(new Text(line, 0, 0));
     }
 
-    // Scroll position indicator
-    if (this.renderedLines.length > PAGE_SIZE) {
+    // Pad AFTER content to keep viewport at fixed height so the footer
+    // stays at a consistent screen row. Spacer renders real empty lines
+    // (Text("") short-circuits to zero lines).
+    const padding = this._viewportSize - visibleLines;
+    if (padding > 0) {
+      this.viewport.addChild(new Spacer(padding));
+    }
+
+    // Scroll position indicator (outside viewport)
+    this.scrollIndicator.clear();
+    if (this.renderedLines.length > this._viewportSize) {
       const pct = Math.round(
         (this.scrollOffset / this.renderedLines.length) * 100,
       );
-      const indicator = this.theme.fg(
+      this.scrollIndicator.addChild(new Text(this.theme.fg(
         "muted",
         `  (${this.scrollOffset + 1}/${this.renderedLines.length} · ${pct}%)`,
-      );
-      this.viewport.addChild(new Text(indicator, 0, 0));
+      ), 0, 0));
     }
   }
+}
+
+/**
+ * Compute the viewport content line count based on terminal height and full-screen mode.
+ * Uses at least 50% of terminal height for the total component; falls back to MIN_VIEWPORT.
+ * When hasStats is true, extra lines are reserved for the stats title line.
+ */
+function computeViewportSize(terminalHeight: number, fullScreen: boolean, hasStats: boolean = false): number {
+  const overhead = BASE_OVERHEAD + (hasStats ? STATS_OVERHEAD : 0);
+  if (fullScreen) {
+    // Nearly full screen: leave a small margin
+    return Math.max(MIN_VIEWPORT, terminalHeight - overhead - 2);
+  }
+  // At least 50% of terminal height
+  const raw = Math.floor(terminalHeight / 2) - overhead;
+  return Math.max(MIN_VIEWPORT, raw);
 }

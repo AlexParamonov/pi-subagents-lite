@@ -25,10 +25,12 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getConfig, getToolNamesForType } from "./agent-types.js";
 import { extractText } from "./context.js";
+import type { LifetimeUsage } from "./usage.js";
+import { findModelInRegistry } from "./utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills } from "./skill-loader.js";
-import type { EnvInfo, SubagentType, ThinkingLevel } from "./types.js";
+import type { CompactionInfo, EnvInfo, SubagentType, ThinkingLevel } from "./types.js";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 export const EXCLUDED_TOOL_NAMES = ["Agent"];
@@ -36,32 +38,13 @@ export const EXCLUDED_TOOL_NAMES = ["Agent"];
 /** Additional turns allowed after the soft limit steer message. */
 const GRACE_TURNS = 5;
 
+/** Timeout for quick git commands (branch detection, repo check). */
+const GIT_EXEC_TIMEOUT_MS = 5000;
+
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
 function normalizeMaxTurns(n: number | undefined): number | undefined {
   if (n == null || n === 0) return undefined;
   return Math.max(1, n);
-}
-
-/**
- * Try to find the right model for an agent type.
- * Priority: explicit option > config.model > parent model.
- */
-function resolveDefaultModel(
-  parentModel: Model<any> | undefined,
-  registry: { find(provider: string, modelId: string): Model<any> | undefined },
-  configModel?: string,
-): Model<any> | undefined {
-  if (configModel) {
-    const slashIdx = configModel.indexOf("/");
-    if (slashIdx !== -1) {
-      const provider = configModel.slice(0, slashIdx);
-      const modelId = configModel.slice(slashIdx + 1);
-      const found = registry.find(provider, modelId);
-      if (found) return found;
-    }
-  }
-
-  return parentModel;
 }
 
 /** Info about a tool event in the subagent. */
@@ -95,12 +78,12 @@ interface RunOptions {
    * Lets callers maintain a lifetime accumulator that survives compaction
    * (which replaces session.state.messages and resets stats-derived sums).
    */
-  onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
+  onAssistantUsage?: (usage: LifetimeUsage) => void;
   /**
    * Called when the session successfully compacts. `tokensBefore` is upstream's
    * pre-compaction context size estimate. Aborted compactions don't fire.
    */
-  onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
+  onCompaction?: (info: CompactionInfo) => void;
 }
 
 interface RunResult {
@@ -156,10 +139,27 @@ function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => 
 }
 
 /**
+ * Extract a LifetimeUsage from a runtime assistant message_end event.
+ * pi-ai attaches `usage: { input, output, cacheWrite, cost: { total } }` to
+ * assistant messages at runtime, but this shape isn't reflected in the
+ * AgentSessionEvent public types.
+ */
+function usageFromAssistantMessage(msg: Record<string, unknown>): LifetimeUsage | undefined {
+  const usage = msg.usage as Record<string, unknown> | undefined;
+  if (!usage) return undefined;
+  return {
+    input: (usage.input as number) ?? 0,
+    output: (usage.output as number) ?? 0,
+    cacheWrite: (usage.cacheWrite as number) ?? 0,
+    cost: ((usage.cost as Record<string, unknown>)?.total as number) ?? 0,
+  };
+}
+
+/**
  * Subscribe to shared session events (tool activity, usage, compaction)
  * used by both runAgent and resumeAgent. Returns an unsubscribe function.
  */
-function subscribeToSessionEvents(
+export function subscribeToSessionEvents(
   session: AgentSession,
   options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
 ): () => void {
@@ -174,13 +174,10 @@ function subscribeToSessionEvents(
       options.onToolActivity?.({ type: "end", toolName: event.toolName });
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
-      const u = (event.message as any).usage;
-      if (u) {
-        options.onAssistantUsage?.({
-          input: u.input ?? 0,
-          output: u.output ?? 0,
-          cacheWrite: u.cacheWrite ?? 0,
-        });
+      const msg = event.message as unknown as Record<string, unknown>;
+      const usage = usageFromAssistantMessage(msg);
+      if (usage) {
+        options.onAssistantUsage?.(usage);
       }
     }
     if (event.type === "compaction_end" && !event.aborted && event.result) {
@@ -210,7 +207,7 @@ function filterActiveTools(
   }
 
   const builtinToolNameSet = new Set(builtinToolNames);
-  return activeTools.filter((t) => {
+  const filtered = activeTools.filter((t) => {
     if (EXCLUDED_TOOL_NAMES.includes(t)) return false;
     if (disallowedSet?.has(t)) return false;
     if (builtinToolNameSet.has(t)) return true;
@@ -219,12 +216,13 @@ function filterActiveTools(
     }
     return true;
   });
+  return filtered.length !== activeTools.length ? filtered : null;
 }
 
 /** Run a git command via pi.exec, returning stdout on success or null on failure. */
 async function execGit(pi: ExtensionAPI, args: string[], cwd: string): Promise<string | null> {
   try {
-    const result = await pi.exec("git", args, { cwd, timeout: 5000 });
+    const result = await pi.exec("git", args, { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
     return result.code === 0 ? result.stdout.trim() : null;
   } catch {
     return null;
@@ -262,8 +260,10 @@ export async function runAgent(
   const env = await detectEnv(options.pi, effectiveCwd);
 
   // Resolve extensions/skills: isolated overrides to false
-  const extensions = options.isolated ? false : config.extensions;
-  const skills = options.isolated ? false : config.skills;
+  // Falls back to agent config (frontmatter) when not set via options (tool injection)
+  const effectiveIsolated = options.isolated ?? agentConfig?.isolated;
+  const extensions = effectiveIsolated ? false : config.extensions;
+  const skills = effectiveIsolated ? false : config.skills;
 
   // Build prompt extras (no memoryBlock — skills only).
   // When skills is string[], preload their content into the prompt.
@@ -305,8 +305,8 @@ export async function runAgent(
   await loader.reload();
 
   // Resolve model: explicit option > config.model > parent model
-  const model = options.model ?? resolveDefaultModel(
-    ctx.model, ctx.modelRegistry, agentConfig?.model,
+  const model = options.model ?? findModelInRegistry(
+    agentConfig?.model, ctx.modelRegistry, ctx.model,
   );
 
   // Resolve thinking level: explicit option > agent config > undefined (inherit)
@@ -419,16 +419,7 @@ export async function resumeAgent(
   return collector.getText().trim() || getLastAssistantText(session);
 }
 
-/**
- * Send a steering message to a running subagent.
- * The message will interrupt the agent after its current tool execution.
- */
-export async function steerAgent(
-  session: AgentSession,
-  message: string,
-): Promise<void> {
-  await session.steer(message);
-}
+
 
 
 

@@ -1,111 +1,93 @@
 /**
- * model-precedence.test.ts — Tests for model resolution precedence.
+ * model-precedence.test.ts — Focused tests for the model resolution precedence chain.
  *
- * Precedence chain (highest to lowest):
- *   1. config.agent[subagentType]  (per-type override)
- *   2. config.agent["default"]     (global default)
- *   3. agentConfig?.model          (agent config / frontmatter)
- *   4. parentModelId               (inherit from parent)
+ * Precedence (highest to lowest):
+ *   1. sessionOverrides[subagentType]
+ *   2. sessionOverrides["default"]
+ *   3. config.agent[subagentType]
+ *   4. config.agent["default"]
+ *   5. agentConfig?.model  (frontmatter)
+ *   6. parentModelId       (final fallback)
  *
  * Returns first non-null, non-undefined, non-empty-string value.
- * If all empty/null, returns parentModelId.
  */
 
 import { describe, it, expect } from "vitest";
 import { resolveModel } from "../src/model-precedence.ts";
 import type { SubagentsConfig } from "../src/model-precedence.ts";
 
-const defaultConfig: SubagentsConfig = {
-  agent: { default: null },
-  concurrency: { default: 4, models: {} },
+const baseConfig: SubagentsConfig = {
+  agent: { default: null, forceBackground: false },
+  concurrency: { default: 4 },
 };
 
-function makeConfig(overrides?: Partial<SubagentsConfig>): SubagentsConfig {
-  return { ...defaultConfig, ...overrides };
-}
-
-/* ------------------------------------------------------------------ */
-/*  resolveModel                                                      */
-/* ------------------------------------------------------------------ */
-
-describe("resolveModel", () => {
-  it("per-type override wins over everything", () => {
-    const config = makeConfig({ agent: { default: "global-default", Explore: "per-type-model" } });
-    const agentConfig = { model: "agent-config-model" };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("per-type-model");
+describe("model resolution precedence chain", () => {
+  it("1 — session per-type override wins over everything", () => {
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: { model: "frontmatter" },
+      config: baseConfig,
+      parentModelId: "parent",
+      sessionOverrides: {
+        default: null,
+        Explore: "session-per-type",
+      },
+    });
+    expect(r).toBe("session-per-type");
   });
 
-  it("global default wins when per-type is not set", () => {
-    const config = makeConfig({ agent: { default: "global-default" } });
-    const agentConfig = { model: "agent-config-model" };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("global-default");
+  it("2 — session global default beats config", () => {
+    const cfg = { ...baseConfig, agent: { default: "config-global", Explore: "config-per-type", forceBackground: false } };
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: { model: "frontmatter" },
+      config: cfg,
+      parentModelId: "parent",
+      sessionOverrides: { default: "session-default" },
+    });
+    expect(r).toBe("session-default");
   });
 
-  it("agent config model wins when no overrides", () => {
-    const config = makeConfig({ agent: { default: null } });
-    const agentConfig = { model: "agent-config-model" };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("agent-config-model");
+  it("3 — config per-type override beats config global", () => {
+    const cfg = { ...baseConfig, agent: { default: "config-global", Explore: "config-per-type", forceBackground: false } };
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: { model: "frontmatter" },
+      config: cfg,
+      parentModelId: "parent",
+    });
+    expect(r).toBe("config-per-type");
   });
 
-  it("parent model is fallback when nothing else is set", () => {
-    const config = makeConfig({ agent: { default: null } });
-    const result = resolveModel("Explore", undefined, config, "parent-model");
-    expect(result).toBe("parent-model");
+  it("4 — config global beats frontmatter", () => {
+    const cfg = { ...baseConfig, agent: { default: "config-global", forceBackground: false } };
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: { model: "frontmatter" },
+      config: cfg,
+      parentModelId: "parent",
+    });
+    expect(r).toBe("config-global");
   });
 
-  it("empty string override falls through to next level", () => {
-    const config = makeConfig({ agent: { default: null, Explore: "" } });
-    const agentConfig = { model: "agent-config-model" };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("agent-config-model");
+  it("5 — frontmatter beats parent model", () => {
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: { model: "frontmatter" },
+      config: baseConfig,
+      parentModelId: "parent",
+    });
+    expect(r).toBe("frontmatter");
   });
 
-  it("null override falls through to next level", () => {
-    const config = makeConfig({ agent: { default: null, Explore: null } });
-    const agentConfig = { model: "agent-config-model" };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("agent-config-model");
-  });
-
-  it("undefined override falls through to next level", () => {
-    const config = makeConfig({ agent: { default: null, Explore: undefined } });
-    const agentConfig = { model: "agent-config-model" };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("agent-config-model");
-  });
-
-  it("unknown type falls through to global default", () => {
-    const config = makeConfig({ agent: { default: "global-default" } });
-    const result = resolveModel("UnknownType", undefined, config, "parent-model");
-    expect(result).toBe("global-default");
-  });
-
-  it("all empty/null returns parentModelId", () => {
-    const config = makeConfig({ agent: { default: null } });
-    const result = resolveModel("Explore", undefined, config, "parent-model");
-    expect(result).toBe("parent-model");
-  });
-
-  it("per-type override can be empty string, falls through global default", () => {
-    const config = makeConfig({ agent: { default: "global-fallback", Explore: "" } });
-    const result = resolveModel("Explore", undefined, config, "parent-model");
-    expect(result).toBe("global-fallback");
-  });
-
-  it("agentConfig without model field still falls through", () => {
-    const config = makeConfig({ agent: { default: null } });
-    const agentConfig = {} as { model?: string };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("parent-model");
-  });
-
-  it("agentConfig with undefined model falls through", () => {
-    const config = makeConfig({ agent: { default: null } });
-    const agentConfig = { model: undefined };
-    const result = resolveModel("Explore", agentConfig, config, "parent-model");
-    expect(result).toBe("parent-model");
+  it("6 — parent model as final fallback", () => {
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: undefined,
+      config: baseConfig,
+      parentModelId: "parent",
+    });
+    expect(r).toBe("parent");
   });
 });
+

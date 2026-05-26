@@ -45,13 +45,20 @@ export interface ListenerRegistration {
   handler: (...args: any[]) => any;
 }
 
+export interface RegisteredMessageRenderer {
+  customType: string;
+  renderer: (...args: any[]) => any;
+}
+
 export interface MockExtensionAPI {
   tools: RegisteredTool[];
   commands: RegisteredCommand[];
   listeners: ListenerRegistration[];
+  messageRenderers: RegisteredMessageRenderer[];
   api: {
     registerTool: ReturnType<typeof vi.fn>;
     registerCommand: ReturnType<typeof vi.fn>;
+    registerMessageRenderer: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     sendUserMessage: ReturnType<typeof vi.fn>;
     sendMessage: ReturnType<typeof vi.fn>;
@@ -66,17 +73,22 @@ export function createMockExtensionAPI(): MockExtensionAPI {
   const tools: RegisteredTool[] = [];
   const commands: RegisteredCommand[] = [];
   const listeners: ListenerRegistration[] = [];
+  const messageRenderers: RegisteredMessageRenderer[] = [];
 
   return {
     tools,
     commands,
     listeners,
+    messageRenderers,
     api: {
       registerTool: vi.fn((tool: any) => {
         tools.push(tool);
       }),
       registerCommand: vi.fn((name: string, opts: any) => {
         commands.push({ name, ...opts });
+      }),
+      registerMessageRenderer: vi.fn((customType: string, renderer: any) => {
+        messageRenderers.push({ customType, renderer });
       }),
       on: vi.fn((event: string, handler: any) => {
         listeners.push({ event, handler });
@@ -250,18 +262,6 @@ export function tempDirWithFiles(
 
 /* ------------------------------------------------------------------ */
 /*  Output file cleanup                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * Clean up the /tmp/pi-agent-outputs directory.
- */
-export function cleanupOutputFiles(): void {
-  const dir = "/tmp/pi-agent-outputs";
-  if (existsSync(dir)) {
-    try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /*  Fake context / pi                                                 */
 /* ------------------------------------------------------------------ */

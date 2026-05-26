@@ -13,32 +13,29 @@ import { fakeCtx, fakePi as makeFakePi } from "./fixtures";
 const fakePi = makeFakePi();
 
 // --- Mock module-level dependencies ---
-// Use vi.hoisted() because vi.mock factories are hoisted to top of file
 
-const mockModules = vi.hoisted(() => {
-  const loaderOpts: any[] = [];
+const _loaderOpts: any[] = [];
 
-  // DefaultResourceLoader must be a regular function (not arrow) to support `new`
-  function MockDefaultResourceLoader(this: any, opts: any) {
-    this._opts = opts;
-    this.reload = vi.fn().mockResolvedValue(undefined);
-    loaderOpts.push(opts);
-  }
+// DefaultResourceLoader must be a regular function (not arrow) to support `new`
+function MockDefaultResourceLoader(this: any, opts: any) {
+  this._opts = opts;
+  this.reload = vi.fn().mockResolvedValue(undefined);
+  _loaderOpts.push(opts);
+}
 
-  return {
-    mockGetConfig: vi.fn(),
-    mockGetAgentConfig: vi.fn(),
-    mockGetToolNamesForType: vi.fn(),
-    mockBuildAgentPrompt: vi.fn(),
-    mockExtractText: vi.fn(),
-    mockPreloadSkills: vi.fn().mockReturnValue([]),
-    mockCreateAgentSession: vi.fn(),
-    mockDefaultResourceLoader: MockDefaultResourceLoader,
-    mockGetAgentDir: vi.fn(),
-    getLoaderOpts: () => loaderOpts[loaderOpts.length - 1] ?? null,
-    clearLoaderOpts: () => { loaderOpts.length = 0; },
-  };
-});
+const mockModules = vi.hoisted(() => ({
+  mockGetConfig: vi.fn(),
+  mockGetAgentConfig: vi.fn(),
+  mockGetToolNamesForType: vi.fn(),
+  mockBuildAgentPrompt: vi.fn(),
+  mockExtractText: vi.fn(),
+  mockPreloadSkills: vi.fn().mockReturnValue([]),
+  mockCreateAgentSession: vi.fn(),
+  mockDefaultResourceLoader: MockDefaultResourceLoader,
+  mockGetAgentDir: vi.fn(),
+  getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
+  clearLoaderOpts: () => { _loaderOpts.length = 0; },
+}));
 
 vi.mock("../src/agent-types.js", () => ({
   getConfig: mockModules.mockGetConfig,
@@ -68,7 +65,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, EXCLUDED_TOOL_NAMES } from "../src/agent-runner.js";
+import { runAgent, subscribeToSessionEvents, EXCLUDED_TOOL_NAMES } from "../src/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",
@@ -106,16 +103,24 @@ function resetMocks() {
  * Create a mock session with default stubs.
  */
 function createMockSession() {
+  const listeners: Array<(event: any) => void> = [];
   return {
     setSessionName: vi.fn(),
     getActiveToolNames: vi.fn(),
     setActiveToolsByName: vi.fn(),
     bindExtensions: vi.fn(),
-    subscribe: vi.fn(() => vi.fn()),
+    subscribe: vi.fn((listener: (event: any) => void) => {
+      listeners.push(listener);
+      return () => {
+        const idx = listeners.indexOf(listener);
+        if (idx >= 0) listeners.splice(idx, 1);
+      };
+    }),
     prompt: vi.fn(),
     steer: vi.fn(),
     abort: vi.fn(),
     messages: [],
+    _getListeners: () => listeners,
   };
 }
 
@@ -301,5 +306,162 @@ describe("runAgent — tool filtering", () => {
 
     // With isolated=true/extensions=false, both filtering branches are skipped
     expect(session.setActiveToolsByName).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  subscribeToSessionEvents — cost extraction                         */
+/* ------------------------------------------------------------------ */
+
+describe("subscribeToSessionEvents — cost extraction", () => {
+  it("extracts u.cost?.total from assistant message_end events", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
+
+    // Fire assistant message_end with cost data on event.message.usage
+    listeners[0]({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: "Hello",
+        usage: { input: 100, output: 50, cacheWrite: 10, cost: { total: 2.5 } },
+      },
+    });
+
+    expect(onAssistantUsage).toHaveBeenCalledWith({
+      input: 100,
+      output: 50,
+      cacheWrite: 10,
+      cost: 2.5,
+    });
+
+    unsub();
+  });
+
+  it("defaults cost to 0 when message.usage has no cost field", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+
+    // Fire message_end with message.usage but no cost
+    listeners[0]({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: "Hello",
+        usage: { input: 100, output: 50, cacheWrite: 10 },
+      },
+    });
+
+    expect(onAssistantUsage).toHaveBeenCalledWith({
+      input: 100,
+      output: 50,
+      cacheWrite: 10,
+      cost: 0,
+    });
+
+    unsub();
+  });
+
+  it("defaults cost to 0 when cost.total is null", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+
+    listeners[0]({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: "Hello",
+        usage: { input: 100, output: 50, cacheWrite: 10, cost: { total: null } },
+      },
+    });
+
+    expect(onAssistantUsage).toHaveBeenCalledWith({
+      input: 100,
+      output: 50,
+      cacheWrite: 10,
+      cost: 0,
+    });
+
+    unsub();
+  });
+
+  it("does not fire onAssistantUsage for user message_end events", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+
+    // Fire user message_end (should be ignored)
+    listeners[0]({
+      type: "message_end",
+      message: {
+        role: "user",
+        content: "Hello",
+        usage: { input: 0, output: 0, cacheWrite: 0, cost: { total: 100 } },
+      },
+    });
+
+    expect(onAssistantUsage).not.toHaveBeenCalled();
+
+    unsub();
+  });
+
+  it("does not fire onAssistantUsage for other event types", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+
+    // Fire non-message_end event
+    listeners[0]({
+      type: "turn_end",
+    });
+
+    expect(onAssistantUsage).not.toHaveBeenCalled();
+
+    unsub();
+  });
+
+  it("does not fire onAssistantUsage when usage is missing", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+
+    // Fire message_end without usage at all
+    listeners[0]({
+      type: "message_end",
+      message: { role: "assistant", content: "Hello" },
+      // no usage field
+    });
+
+    expect(onAssistantUsage).not.toHaveBeenCalled();
+
+    unsub();
+  });
+
+  it("returns a noop unsubscribe when no callbacks are provided", () => {
+    const session = createMockSession();
+    const unsub = subscribeToSessionEvents(session, {});
+    expect(typeof unsub).toBe("function");
   });
 });

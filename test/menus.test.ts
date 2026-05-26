@@ -1,0 +1,738 @@
+/**
+ * menus.test.ts — Tests for /agents menu system (concurrency settings).
+ *
+ * Tests focus on:
+ *   - Remove limit for per-provider entries
+ *   - Remove limit for per-model entries
+ *   - Reset all to defaults
+ *   - Edit limit still works after refactor
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// --- Mock modules ---
+
+const mockModules = vi.hoisted(() => ({
+  mockConfig: {
+    agent: { default: null, forceBackground: false },
+    concurrency: { default: 4 },
+  },
+  mockSessionOverrides: { default: null },
+  resultViewerCalls: [] as any[][],
+}));
+
+vi.mock("../src/agent-types.js", () => ({
+  getAgentConfig: vi.fn(),
+  getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
+  getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
+}));
+
+vi.mock("../src/agent-runner.js", () => ({
+  steerAgent: vi.fn(),
+}));
+
+vi.mock("../src/model-selector.js", () => ({
+  ModelSelectorDialog: class {},
+}));
+
+vi.mock("../src/result-viewer.js", () => ({
+  ResultViewer: class {
+    constructor(...args: any[]) {
+      mockModules.resultViewerCalls.push(args);
+    }
+  },
+}));
+
+vi.mock("../src/ui/agent-widget.js", () => ({
+  getDisplayName: vi.fn((t: string) => t),
+}));
+
+vi.mock("../src/context.js", () => ({
+  buildSnapshotMarkdown: vi.fn(),
+}));
+
+vi.mock("../src/config-io.js", () => ({
+  saveConfigAtomic: vi.fn(),
+}));
+
+// Mock index.ts state with a mutable config object
+vi.mock("../src/index.js", () => {
+  return {
+    __config: mockModules.mockConfig,
+    sessionOverrides: mockModules.mockSessionOverrides,
+    manager: {
+      setConcurrency: vi.fn(),
+      listAgents: vi.fn(() => []),
+      getRecord: vi.fn(),
+      abort: vi.fn(),
+    },
+    piInstance: { sendUserMessage: vi.fn() },
+  };
+});
+
+// --- Import module under test ---
+import { showConcurrencySettingsMenu, showModelSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
+import { getAgentConfig } from "../src/agent-types.js";
+
+function resetAgentState(): void {
+  mockModules.mockConfig.agent = { default: null, forceBackground: false };
+  mockModules.mockSessionOverrides.default = null;
+}
+
+/**
+ * Create a mock extension command context with controllable UI.
+ *
+ * @param selections Array of values that ctx.ui.select returns sequentially.
+ * @param inputs Array of values that ctx.ui.input returns sequentially.
+ * @param customValues Array of values that ctx.ui.custom returns sequentially.
+ */
+const noopTheme: any = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+  italic: (text: string) => text,
+};
+
+function createMockCtx(
+  selections: (string | undefined)[] = [],
+  inputs: (string | undefined)[] = [],
+  customValues: (string | null)[] = [],
+): any {
+  let selectIdx = 0;
+  let inputIdx = 0;
+  let customIdx = 0;
+
+  return {
+    ui: {
+      select: vi.fn(async (_title: string, _items: string[]) => {
+        return selections[selectIdx++] ?? undefined;
+      }),
+      input: vi.fn(async (_label: string, _initialValue?: string) => {
+        return inputs[inputIdx++] ?? undefined;
+      }),
+      custom: vi.fn(async (_factory: any) => {
+        // If customValues have explicit entries, return those
+        if (customIdx < customValues.length) {
+          return customValues[customIdx++];
+        }
+        // Otherwise, invoke the factory to trigger side effects (e.g. ResultViewer construction)
+        // Provide a mock tui with terminal.rows, a noop theme, and a done callback
+        _factory(
+          { terminal: { rows: 40 } },
+          {
+            fg: (_color: string, text: string) => text,
+            bold: (text: string) => text,
+            italic: (text: string) => text,
+          },
+          null,
+          () => {},
+        );
+        return undefined;
+      }),
+      notify: vi.fn(),
+    },
+    modelRegistry: {
+      getAvailable: vi.fn(() => [
+        { provider: "anthropic", id: "claude-sonnet-4-20250514" },
+        { provider: "openai", id: "gpt-4o" },
+      ]),
+    },
+  };
+}
+
+function resetConfig(): void {
+  mockModules.mockConfig.concurrency = { default: 4 };
+}
+
+describe("showConcurrencySettingsMenu — remove limit", () => {
+  beforeEach(() => {
+    resetConfig();
+    vi.clearAllMocks();
+  });
+
+  describe("per-provider remove limit", () => {
+    it("removes a per-provider limit when 'Remove limit' is selected", async () => {
+      // Arrange: set up a provider limit
+      mockModules.mockConfig.concurrency.providers = { llamacpp: 2 };
+      const selections = [
+        "llamacpp  ·  2 slots",  // click the provider entry
+        "Remove limit",          // click remove
+        undefined,               // Escape to exit the loop (runMenuLoop returns)
+      ];
+
+      const ctx = createMockCtx(selections);
+      const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o", "llamacpp/4b"];
+
+      // Act
+      await showConcurrencySettingsMenu(ctx, modelOptions);
+
+      // Assert
+      expect(mockModules.mockConfig.concurrency.providers).toEqual({});
+      expect(mockModules.mockConfig.concurrency.providers!.llamacpp).toBeUndefined();
+
+      // Verify notification was shown
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Removed per-provider limit for llamacpp",
+        "info",
+      );
+    });
+
+    it("preserves other providers when one is removed", async () => {
+      // Arrange: set up multiple provider limits
+      mockModules.mockConfig.concurrency.providers = { llamacpp: 2, openai: 5 };
+
+      const selections = [
+        "openai  ·  5 slots",    // click openai entry
+        "Remove limit",          // click remove
+        undefined,               // Escape to exit
+      ];
+
+      const ctx = createMockCtx(selections);
+      const modelOptions = ["llamacpp/4b", "openai/gpt-4o"];
+
+      // Act
+      await showConcurrencySettingsMenu(ctx, modelOptions);
+
+      // Assert
+      expect(mockModules.mockConfig.concurrency.providers!.llamacpp).toBe(2);
+      expect(mockModules.mockConfig.concurrency.providers!.openai).toBeUndefined();
+    });
+  });
+
+  describe("per-model remove limit", () => {
+    it("removes a per-model limit when 'Remove limit' is selected", async () => {
+      // Arrange: set up a model limit
+      mockModules.mockConfig.concurrency.models = { "llamacpp/4b": 3 };
+
+      const selections = [
+        "llamacpp/4b  ·  3 slots",  // click the model entry
+        "Remove limit",             // click remove
+        undefined,                  // Escape to exit
+      ];
+
+      const ctx = createMockCtx(selections);
+      const modelOptions = ["llamacpp/4b"];
+
+      // Act
+      await showConcurrencySettingsMenu(ctx, modelOptions);
+
+      // Assert
+      expect(mockModules.mockConfig.concurrency.models!["llamacpp/4b"]).toBeUndefined();
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Removed per-model limit for llamacpp/4b",
+        "info",
+      );
+    });
+  });
+
+  describe("reset all to defaults", () => {
+    it("clears all per-provider and per-model limits when 'Reset all to defaults' is selected", async () => {
+      // Arrange: set up various limits
+      mockModules.mockConfig.concurrency = {
+        default: 4,
+        providers: { llamacpp: 2, openai: 5 },
+        models: { "llamacpp/4b": 3, "openai/gpt-4o": 1 },
+      };
+
+      const selections = [
+        "Reset all to defaults",  // click reset
+        undefined,                // Escape to exit
+      ];
+
+      const ctx = createMockCtx(selections);
+      const modelOptions = ["llamacpp/4b", "openai/gpt-4o"];
+
+      // Act
+      await showConcurrencySettingsMenu(ctx, modelOptions);
+
+      // Assert
+      expect(mockModules.mockConfig.concurrency).toEqual({ default: 4 });
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Concurrency reset to defaults",
+        "info",
+      );
+    });
+  });
+
+  describe("edit limit still works", () => {
+    it("edits a per-provider limit when 'Edit limit' is selected", async () => {
+      // Arrange: set up a provider limit
+      mockModules.mockConfig.concurrency.providers = { llamacpp: 2 };
+
+      const selections = [
+        "llamacpp  ·  2 slots",  // click the provider entry
+        "Edit limit",            // click edit
+        undefined,               // Escape to exit (after menu loop back)
+      ];
+
+      const inputs = [
+        "5",  // new value
+      ];
+
+      const ctx = createMockCtx(selections, inputs);
+      const modelOptions = ["llamacpp/4b"];
+
+      // Act
+      await showConcurrencySettingsMenu(ctx, modelOptions);
+
+      // Assert
+      expect(mockModules.mockConfig.concurrency.providers!.llamacpp).toBe(5);
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "llamacpp concurrency set to 5",
+        "info",
+      );
+    });
+
+    it("edits a per-model limit when 'Edit limit' is selected", async () => {
+      // Arrange: set up a model limit
+      mockModules.mockConfig.concurrency.models = { "llamacpp/4b": 1 };
+
+      const selections = [
+        "llamacpp/4b  ·  1 slots",  // click the model entry
+        "Edit limit",                // click edit
+        undefined,                   // Escape to exit
+      ];
+
+      const inputs = [
+        "8",  // new value
+      ];
+
+      const ctx = createMockCtx(selections, inputs);
+      const modelOptions = ["llamacpp/4b"];
+
+      // Act
+      await showConcurrencySettingsMenu(ctx, modelOptions);
+
+      // Assert
+      expect(mockModules.mockConfig.concurrency.models!["llamacpp/4b"]).toBe(8);
+    });
+  });
+});
+
+describe("showModelSettingsMenu — clear per-type override", () => {
+  beforeEach(() => {
+    // Reset config state
+    mockModules.mockConfig.agent = { default: null, forceBackground: false };
+    mockModules.mockSessionOverrides.default = null;
+    for (const key of Object.keys(mockModules.mockSessionOverrides)) {
+      if (key !== "default") delete mockModules.mockSessionOverrides[key];
+    }
+    vi.clearAllMocks();
+
+    // Set up agent config mock to return a default model for each type
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "Explore") {
+        return { name: "Explore", description: "", model: "openai/gpt-4o", extensions: false, skills: false, systemPrompt: "" };
+      }
+      if (name === "general-purpose") {
+        return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: false, skills: false, systemPrompt: "" };
+      }
+      return undefined;
+    });
+  });
+
+  it("shows 'Clear' option when type has a permanent override", async () => {
+    // Arrange: Set a permanent override for Explore
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+
+    const selections = [
+      "Explore          ·  anthropic/claude-sonnet-4-20250514 → openai/gpt-4o",  // click Explore entry
+      "Clear",                                          // choose clear
+      undefined,                                          // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert: the "Save mode" select includes "Clear"
+    const selectCalls = ctx.ui.select.mock.calls;
+    const saveModeCall = selectCalls.find((call: any) =>
+      call[0] === "Save mode"
+    );
+    expect(saveModeCall).toBeDefined();
+    expect(saveModeCall[1]).toContain("Clear");
+  });
+
+  it("does NOT show 'Clear' option when type has no permanent override", async () => {
+    // Arrange: Session override exists (so type appears in overrides section), but no permanent override
+    mockModules.mockSessionOverrides["Explore"] = "openai/gpt-4o";
+    mockModules.mockConfig.agent["Explore"] = undefined;
+
+    const selections = [
+      "Explore          ·  openai/gpt-4o [session]",  // click Explore entry
+      "Set for this session (not saved)", // choose session
+      "anthropic/claude-sonnet-4-20250514", // pick model
+      undefined,  // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections, [], ["anthropic/claude-sonnet-4-20250514"]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert: the "Save mode" select excludes "Clear"
+    const selectCalls = ctx.ui.select.mock.calls;
+    const saveModeCall = selectCalls.find((call: any) =>
+      call[0] === "Save mode"
+    );
+    expect(saveModeCall).toBeDefined();
+    expect(saveModeCall[1]).not.toContain("Clear");
+  });
+
+  it("removes permanent override and saves config when 'Clear' is selected", async () => {
+    // Arrange
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Explore          ·  anthropic/claude-sonnet-4-20250514 → openai/gpt-4o",  // click Explore entry
+      "Clear",                                          // choose clear
+      undefined,                                          // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert
+    expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
+    expect(saveConfigAtomic).toHaveBeenCalledWith(mockModules.mockConfig);
+  });
+
+  it("clears both session and permanent override", async () => {
+    // Arrange: Both session and permanent override for Explore
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+    mockModules.mockSessionOverrides["Explore"] = "openai/gpt-4o";
+
+    const selections = [
+      "Explore          ·  openai/gpt-4o [session]",  // click Explore entry (shows session value)
+      "Clear",                                // choose clear
+      undefined,                                // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert: both cleared
+    expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
+    expect(mockModules.mockSessionOverrides["Explore"]).toBeUndefined();
+  });
+
+  it("shows notification after clearing overrides", async () => {
+    // Arrange
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+
+    const selections = [
+      "Explore          ·  anthropic/claude-sonnet-4-20250514 → openai/gpt-4o",  // click Explore entry
+      "Clear",                                          // choose clear
+      undefined,                                          // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Explore overrides cleared",
+      "info",
+    );
+  });
+
+  it("does not show clear option for global default entry", async () => {
+    // Arrange: Global default can't be "cleared" — only set to null
+    const selections = [
+      "Global default model · (inherits parent)",  // click global default
+      undefined,  // Escape instead of choosing
+      undefined,  // Escape to exit submenu
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert: the "Save mode" select (from promptOverrideMode) must not include "Clear"
+    const selectCalls = ctx.ui.select.mock.calls;
+    const saveModeCall = selectCalls.find((call: any) =>
+      call[0] === "Save mode"
+    );
+    expect(saveModeCall).toBeDefined();
+    expect(saveModeCall[1]).not.toContain("Clear");
+  });
+
+  it("shows 'Clear' for type with override even when session also active", async () => {
+    // Arrange: Both session and permanent override for Explore
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+    mockModules.mockSessionOverrides["Explore"] = "openai/gpt-4o";
+
+    const selections = [
+      "Explore          ·  openai/gpt-4o [session]",  // click Explore entry
+      "Clear",                                // choose clear
+      undefined,                                // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    // Assert: select menu included clear option
+    const selectCalls = ctx.ui.select.mock.calls;
+    const clearCall = selectCalls.find((call: any) =>
+      call[1]?.includes("Clear")
+    );
+    expect(clearCall).toBeDefined();
+  });
+});
+
+describe("showAgentsMainMenu — clear all overrides", () => {
+  beforeEach(() => {
+    resetAgentState();
+    vi.clearAllMocks();
+  });
+
+  it("shows 'No overrides to clear' when only forceBackground:false exists (no model overrides)", async () => {
+    // Arrange:
+    // __config.agent = { default: null, forceBackground: false }
+    // This is the bug scenario: forceBackground:false should NOT count as an override.
+    resetAgentState();
+
+    const selections = [
+      "1. Model settings — Set global default and per-type model overrides",
+      "Clear all overrides",
+      undefined,  // Exit model settings loop
+      undefined,  // Exit main menu loop
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    // Act
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    // Assert
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "No overrides to clear",
+      "info",
+    );
+    // Config should remain unchanged
+    expect(mockModules.mockConfig.agent).toEqual({
+      default: null,
+      forceBackground: false,
+    });
+  });
+
+  it("clears per-type overrides when they exist", async () => {
+    // Arrange: set a per-type model override
+    mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
+
+    const selections = [
+      "1. Model settings — Set global default and per-type model overrides",
+      "Clear all overrides",
+      undefined,  // Exit model settings loop
+      undefined,  // Exit main menu loop
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    // Assert
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "All model overrides cleared",
+      "info",
+    );
+    // Per-type overrides should be gone, default and forceBackground preserved
+    expect(mockModules.mockConfig.agent).toEqual({
+      default: null,
+      forceBackground: false,
+    });
+    expect(
+      Object.keys(mockModules.mockConfig.agent).filter(
+        (k) => k !== "default" && k !== "forceBackground",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("preserves default and forceBackground when clearing", async () => {
+    // Arrange: set a default model and per-type override
+    mockModules.mockConfig.agent.default = "openai/gpt-4o";
+    mockModules.mockConfig.agent["general-purpose"] = "anthropic/claude-sonnet-4-20250514";
+    mockModules.mockConfig.agent.forceBackground = true;
+
+    const selections = [
+      "1. Model settings — Set global default and per-type model overrides",
+      "Clear all overrides",
+      undefined,  // Exit model settings loop
+      undefined,  // Exit main menu loop
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    // Assert
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "All model overrides cleared",
+      "info",
+    );
+    // default and forceBackground should be preserved, per-type overrides removed
+    expect(mockModules.mockConfig.agent).toEqual({
+      default: "openai/gpt-4o",
+      forceBackground: true,
+    });
+    expect(
+      Object.keys(mockModules.mockConfig.agent).filter(
+        (k) => k !== "default" && k !== "forceBackground",
+      ),
+    ).toHaveLength(0);
+  });
+});
+
+describe("showResultViewer — stats passing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockModules.resultViewerCalls.length = 0;
+  });
+
+  it("passes stats from AgentRecord when viewing result", async () => {
+    const record = {
+      id: "test-id-123",
+      type: "general-purpose",
+      description: "Test agent",
+      status: "completed",
+      result: "some result text",
+      toolUses: 10,
+      startedAt: Date.now() - 50000,
+      completedAt: Date.now() - 10000,
+      lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 },
+      turnCount: 15,
+      session: { messages: [] },
+    } as any;
+
+    const ctx = createMockCtx([
+      "View result",
+      undefined,
+    ]);
+
+    const { showAgentActions } = await import("../src/menus.js");
+    await showAgentActions(ctx, record);
+
+    const lastCall = mockModules.resultViewerCalls[mockModules.resultViewerCalls.length - 1];
+    expect(lastCall).toBeDefined();
+    const stats = lastCall[5];
+    expect(stats).toBeDefined();
+    expect(stats.lifetimeUsage).toEqual({ input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 });
+    expect(stats.turnCount).toBe(15);
+    expect(stats.durationMs).toBe(40000); // completedAt - startedAt
+  });
+
+  it("passes stats when viewing error", async () => {
+    const record = {
+      id: "test-id-456",
+      type: "general-purpose",
+      description: "Error agent",
+      status: "error",
+      error: "something went wrong",
+      toolUses: 5,
+      startedAt: Date.now() - 30000,
+      completedAt: Date.now() - 5000,
+      lifetimeUsage: { input: 500, output: 200, cacheWrite: 50, cost: 0.005 },
+      turnCount: 3,
+    } as any;
+
+    const ctx = createMockCtx([
+      "View error",
+      undefined,
+    ]);
+
+    const { showAgentActions } = await import("../src/menus.js");
+    await showAgentActions(ctx, record);
+
+    const lastCall = mockModules.resultViewerCalls[mockModules.resultViewerCalls.length - 1];
+    expect(lastCall).toBeDefined();
+    const stats = lastCall[5];
+    expect(stats).toBeDefined();
+    expect(stats.lifetimeUsage.input).toBe(500);
+    expect(stats.turnCount).toBe(3);
+  });
+
+  it("passes stats when viewing snapshot", async () => {
+    const record = {
+      id: "test-id-789",
+      type: "general-purpose",
+      description: "Snapshot agent",
+      status: "running",
+      result: "",
+      error: "",
+      toolUses: 8,
+      startedAt: Date.now() - 60000,
+      lifetimeUsage: { input: 8000, output: 4000, cacheWrite: 1000, cost: 0.012 },
+      turnCount: 7,
+      session: { messages: [{ role: "user", content: "hello" }] },
+    } as any;
+
+    const ctx = createMockCtx([
+      "View snapshot",
+      undefined,
+    ]);
+
+    const { showAgentActions } = await import("../src/menus.js");
+    await showAgentActions(ctx, record);
+
+    const lastCall = mockModules.resultViewerCalls[mockModules.resultViewerCalls.length - 1];
+    expect(lastCall).toBeDefined();
+    const stats = lastCall[5];
+    expect(stats).toBeDefined();
+    expect(stats.lifetimeUsage.input).toBe(8000);
+    expect(stats.turnCount).toBe(7);
+  });
+
+  it("handles missing turnCount gracefully", async () => {
+    const record = {
+      id: "test-id-no-turns",
+      type: "general-purpose",
+      description: "Running agent",
+      status: "running",
+      result: "",
+      error: "",
+      toolUses: 3,
+      startedAt: Date.now() - 20000,
+      lifetimeUsage: { input: 100, output: 50, cacheWrite: 10, cost: 0.001 },
+      // turnCount is undefined for running agents
+      session: { messages: [{ role: "user", content: "hi" }] },
+    } as any;
+
+    const ctx = createMockCtx([
+      "View snapshot",
+      undefined,
+    ]);
+
+    const { showAgentActions } = await import("../src/menus.js");
+    await showAgentActions(ctx, record);
+
+    const lastCall = mockModules.resultViewerCalls[mockModules.resultViewerCalls.length - 1];
+    expect(lastCall).toBeDefined();
+    const stats = lastCall[5];
+    expect(stats).toBeDefined();
+    expect(stats.turnCount).toBeUndefined();
+    expect(stats.durationMs).toBeGreaterThan(0);
+  });
+});

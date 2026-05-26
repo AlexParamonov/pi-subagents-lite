@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentManager } from "../src/agent-manager.js";
 import type { AgentActivity } from "../src/ui/agent-widget.js";
-import { AgentWidget } from "../src/ui/agent-widget.js";
+import { AgentWidget, formatMs } from "../src/ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -269,5 +269,56 @@ describe("widget connectors", () => {
       expect(lines[1]).toContain("├─");
       expect(lines[2]).toContain("└─");
     });
+  });
+});
+
+describe("formatMs", () => {
+  it("formats hours, minutes, and seconds", () => {
+    expect(formatMs(3661000)).toBe("1h 1m 1s");
+  });
+
+  it("formats minutes and seconds only", () => {
+    expect(formatMs(337500)).toBe("5m 37s");
+  });
+
+  it("formats seconds only", () => {
+    expect(formatMs(10000)).toBe("10s");
+  });
+
+  it("formats exactly zero seconds as <1s", () => {
+    expect(formatMs(0)).toBe("<1s");
+  });
+
+  it("formats values under 1 second as <1s", () => {
+    expect(formatMs(999)).toBe("<1s");
+  });
+
+  it("rounds down seconds (no decimals)", () => {
+    expect(formatMs(1999)).toBe("1s");
+  });
+
+  it("handles exactly 1 hour", () => {
+    expect(formatMs(3600000)).toBe("1h");
+  });
+
+  it("handles hours and seconds, zero minutes", () => {
+    expect(formatMs(3601000)).toBe("1h 1s");
+  });
+
+  it("handles non-finite values as <1s", () => {
+    expect(formatMs(Infinity)).toBe("<1s");
+    expect(formatMs(NaN)).toBe("<1s");
+  });
+
+  it("handles negative values as <1s", () => {
+    expect(formatMs(-1000)).toBe("<1s");
+  });
+
+  it("formats large durations", () => {
+    expect(formatMs(90061000)).toBe("25h 1m 1s");
+  });
+
+  it("formatMs(1000) is exactly 1s, not <1s", () => {
+    expect(formatMs(1000)).toBe("1s");
   });
 });

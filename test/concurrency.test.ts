@@ -11,27 +11,33 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdirSync } from "node:fs";
 import { fakeCtx, fakePi, makeResolvablePromise } from "./fixtures";
 
 // --- Mock modules ---
 
-const mockModules = vi.hoisted(() => {
-  let uuidCounter = 0;
+let uuidCounter = 0;
 
-  return {
-    mockRunAgent: vi.fn(),
-    mockRandomUUID: vi.fn(() => {
-      uuidCounter++;
-      return `agent-${String(uuidCounter).padStart(8, "0")}`;
-    }),
-    resetUuidCounter: () => { uuidCounter = 0; },
-  };
-});
+const mockModules = vi.hoisted(() => ({
+  mockRunAgent: vi.fn(),
+  mockRandomUUID: vi.fn(() => {
+    uuidCounter++;
+    return `agent-${String(uuidCounter).padStart(8, "0")}`;
+  }),
+  resetUuidCounter: () => { uuidCounter = 0; },
+  fsMock: {
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    appendFileSync: vi.fn(),
+    existsSync: vi.fn(),
+  },
+}));
 
 vi.mock("node:crypto", () => ({
   randomUUID: mockModules.mockRandomUUID,
 }));
+
+vi.mock("node:fs", () => mockModules.fsMock);
 
 vi.mock("../src/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
@@ -64,7 +70,6 @@ describe("AgentManager concurrency", () => {
   beforeEach(() => {
     mockModules.resetUuidCounter();
     mockModules.mockRunAgent.mockReset();
-    mkdirSync("/tmp/pi-agent-outputs", { recursive: true });
 
     onComplete = vi.fn();
   });
