@@ -11,7 +11,7 @@
  *   - Model parameter removed from schema — injected via tool_call listener
  *
  * Config:
- *   - Loaded from ~/.pi/agent/subagents.json at session_start
+ *   - Loaded from ~/.pi/agent/subagents-lite.json at session_start
  *   - Module-level __config cache; tool_call reads from cache
  *   - Config mutations update cache + atomic write to disk
  *   - Migrates subagent-model-defaults.json on first load
@@ -54,7 +54,7 @@ import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.js
 // ============================================================================
 
 const CONFIG_DIR = path.join(process.env.HOME || "", ".pi", "agent");
-const CONFIG_PATH = path.join(CONFIG_DIR, "subagents.json");
+const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
 // ============================================================================
 // Module-level state
 // ============================================================================

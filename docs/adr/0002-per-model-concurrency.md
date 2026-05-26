@@ -3,7 +3,7 @@
 The AgentManager uses per-model concurrency limits instead of a single global
 `maxConcurrent` pool. Each `"provider/modelId"` key can have its own slot count,
 with a `"default"` fallback. Configured via `/agents` > Concurrency settings,
-persisted in `~/.pi/agent/subagents.json`.
+persisted in `~/.pi/agent/subagents-lite.json`.
 
 ## Why
 

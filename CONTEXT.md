@@ -20,7 +20,7 @@ _Avoid_: Agent documentation, tool description
 
 **Model override**:
 A user-configured model preference (per-type or global) that wins over any built-in
-or frontmatter default. Set via `/agents` > Model settings, persisted in `~/.pi/agent/subagents.json`.
+or frontmatter default. Set via `/agents` > Model settings, persisted in `~/.pi/agent/subagents-lite.json`.
 _Avoid_: Model injection, model preference
 
 **Stealth tool**:

@@ -10,7 +10,7 @@
  *   4. parentModelId               (inherit from parent)
  */
 
-/** Shape of the subagents.json config file. */
+/** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {
   agent: {
     default: string | null;
@@ -30,7 +30,7 @@ export interface SubagentsConfig {
  *
  * @param subagentType - The type of subagent being spawned
  * @param agentConfig - The agent's config (from .md frontmatter or defaults)
- * @param config - The global subagents.json config (model overrides)
+ * @param config - The global subagents-lite.json config (model overrides)
  * @param parentModelId - The parent agent's model ID (final fallback)
  * @returns The resolved model ID string
  */
