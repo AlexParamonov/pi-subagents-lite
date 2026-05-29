@@ -32,8 +32,29 @@ interface PreloadedSkill {
   content: string;
 }
 
+export interface SkillMeta {
+  name: string;
+  description: string;
+  location: string;
+}
+
 export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill[] {
   return skillNames.map((name) => ({ name, content: loadSkillContent(name, cwd) }));
+}
+
+/**
+ * Load skill metadata only (name, description, location) without full content.
+ * Used for the skills whitelist — agent can read full content on-demand.
+ */
+export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
+  return skillNames.map((name) => {
+    const location = findSkillLocation(name, cwd);
+    if (!location) {
+      return { name, description: `(Skill "${name}" not found)`, location: "" };
+    }
+    const description = extractDescription(location);
+    return { name, description, location };
+  });
 }
 
 function loadSkillContent(name: string, cwd: string): string {
@@ -101,4 +122,97 @@ function findSkillDirectory(root: string, name: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Find skill file location without reading content.
+ * Returns the full path to the SKILL.md or .md file, or undefined if not found.
+ */
+function findSkillLocation(name: string, cwd: string): string | undefined {
+  if (isUnsafeName(name)) return undefined;
+  const roots = [
+    join(cwd, ".pi", "skills"),
+    join(cwd, ".agents", "skills"),
+    join(getAgentDir(), "skills"),
+    join(homedir(), ".agents", "skills"),
+    join(homedir(), ".pi", "skills"),
+  ];
+  for (const root of roots) {
+    const location = findLocationInRoot(root, name);
+    if (location !== undefined) return location;
+  }
+  return undefined;
+}
+
+/** Find skill file path in a root directory. */
+function findLocationInRoot(root: string, name: string): string | undefined {
+  if (isSymlink(root)) return undefined;
+  const flatPath = join(root, `${name}.md`);
+  if (existsSync(flatPath)) return flatPath;
+  return findSkillDirectoryLocation(root, name);
+}
+
+/** BFS for skill directory, returns path to SKILL.md. */
+function findSkillDirectoryLocation(root: string, name: string): string | undefined {
+  if (!existsSync(root)) return undefined;
+  const queue: string[] = [root];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined) continue;
+
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+
+      const path = join(current, entry.name);
+      const skillMd = join(path, "SKILL.md");
+      const isSkillDir = existsSync(skillMd);
+
+      if (isSkillDir) {
+        if (entry.name === name) {
+          return skillMd;
+        }
+        continue;
+      }
+
+      queue.push(path);
+    }
+  }
+  return undefined;
+}
+
+/** Extract description from SKILL.md frontmatter. */
+function extractDescription(filePath: string): string {
+  try {
+    const content = safeReadFile(filePath);
+    if (!content) return "(no description)";
+
+    // Simple frontmatter extraction
+    const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (!normalized.startsWith("---\n")) return "(no description)";
+    const endIndex = normalized.indexOf("\n---\n", 4);
+    if (endIndex === -1) return "(no description)";
+
+    const yamlString = normalized.slice(4, endIndex);
+    // Simple extraction of description field
+    const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
+    if (descMatch && descMatch[1]) {
+      // Truncate long descriptions
+      const desc = descMatch[1].trim();
+      return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
+    }
+    return "(no description)";
+  } catch {
+    return "(error reading description)";
+  }
 }

@@ -28,8 +28,8 @@ import { extractText } from "./context.js";
 import type { LifetimeUsage } from "./usage.js";
 import { findModelInRegistry } from "./utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
-import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
-import { preloadSkills } from "./skill-loader.js";
+import { buildAgentPrompt, type PromptExtras, type SkillMeta } from "./prompts.js";
+import { preloadSkills, loadSkillMeta } from "./skill-loader.js";
 import type { CompactionInfo, EnvInfo, SubagentType, ThinkingLevel } from "./types.js";
 import { SHORT_ID_LENGTH } from "./agent-manager.js";
 
@@ -265,12 +265,18 @@ export async function runAgent(
   const effectiveIsolated = options.isolated ?? agentConfig?.isolated;
   const extensions = effectiveIsolated ? false : config.extensions;
   const skills = effectiveIsolated ? false : config.skills;
+  const preloadSkillsList = effectiveIsolated ? false : agentConfig?.preloadSkills;
 
   // Build prompt extras (no memoryBlock — skills only).
-  // When skills is string[], preload their content into the prompt.
-  const extras: PromptExtras = Array.isArray(skills)
-    ? { skillBlocks: preloadSkills(skills, effectiveCwd) }
-    : {};
+  // - preloadSkills: force full content into system prompt
+  // - skills: metadata only (whitelist), agent reads on-demand
+  const extras: PromptExtras = {};
+  if (Array.isArray(preloadSkillsList)) {
+    extras.skillBlocks = preloadSkills(preloadSkillsList, effectiveCwd);
+  }
+  if (Array.isArray(skills)) {
+    extras.skillMetas = loadSkillMeta(skills, effectiveCwd);
+  }
 
   const toolNames = getToolNamesForType(type);
 
@@ -285,9 +291,11 @@ export async function runAgent(
     systemPrompt = buildAgentPrompt({ ...fallback, name: type }, effectiveCwd, env, extras);
   }
 
-  // When skills is string[], they're already preloaded into the prompt.
-  // Pass noSkills: true to prevent the skill loader from loading them again.
-  const skipSkillLoader = skills === false || Array.isArray(skills);
+  // Skip the built-in skill loader when:
+  // - skills is false (no skills)
+  // - preloadSkills is string[] (we handle preloading ourselves)
+  // - skills is string[] (we handle metadata ourselves)
+  const skipSkillLoader = skills === false || Array.isArray(skills) || Array.isArray(preloadSkillsList);
 
   const agentDir = getAgentDir();
 

@@ -7,10 +7,19 @@
 
 import type { AgentConfig, EnvInfo } from "./types.js";
 
+/** Skill metadata for whitelist display (no full content). */
+export interface SkillMeta {
+  name: string;
+  description: string;
+  location: string;
+}
+
 /** Extra sections to inject into the system prompt (skills only — no memoryBlock). */
 export interface PromptExtras {
-  /** Preloaded skill contents to inject. */
+  /** Preloaded skill contents to inject (full content). */
   skillBlocks?: { name: string; content: string }[];
+  /** Skill metadata for whitelist display (name, description, location only). */
+  skillMetas?: SkillMeta[];
 }
 
 /**
@@ -43,11 +52,34 @@ export function buildAgentPrompt(
 
   // Build optional extras suffix (skills only — no memoryBlock)
   const extraSections: string[] = [];
+
+  // Skill metadata whitelist (like Pi's available_skills format)
+  if (extras?.skillMetas?.length) {
+    const lines = [
+      "The following skills provide specialized instructions for specific tasks.",
+      "Use the read tool to load a skill's file when the task matches its description.",
+      "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+      "",
+      "<available_skills>",
+    ];
+    for (const skill of extras.skillMetas) {
+      lines.push("  <skill>");
+      lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+      lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+      lines.push(`    <location>${escapeXml(skill.location)}</location>`);
+      lines.push("  </skill>");
+    }
+    lines.push("</available_skills>");
+    extraSections.push(lines.join("\n"));
+  }
+
+  // Preloaded skill contents (full dump into system prompt)
   if (extras?.skillBlocks?.length) {
     for (const skill of extras.skillBlocks) {
       extraSections.push(`\n# Preloaded Skill: ${skill.name}\n${skill.content}`);
     }
   }
+
   const extrasSuffix = extraSections.length > 0 ? `\n\n${extraSections.join("\n")}` : "";
 
   const header = `You are a pi coding agent sub-agent.
@@ -56,6 +88,15 @@ You have been invoked to handle a specific task autonomously.
 ${envBlock}`;
 
   return `${activeAgentTag}${header}\n\n${config.systemPrompt}${extrasSuffix}`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 

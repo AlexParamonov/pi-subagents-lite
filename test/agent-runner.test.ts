@@ -30,6 +30,7 @@ const mockModules = vi.hoisted(() => ({
   mockBuildAgentPrompt: vi.fn(),
   mockExtractText: vi.fn(),
   mockPreloadSkills: vi.fn().mockReturnValue([]),
+  mockLoadSkillMeta: vi.fn().mockReturnValue([]),
   mockCreateAgentSession: vi.fn(),
   mockDefaultResourceLoader: MockDefaultResourceLoader,
   mockGetAgentDir: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("../src/context.js", () => ({
 
 vi.mock("../src/skill-loader.js", () => ({
   preloadSkills: mockModules.mockPreloadSkills,
+  loadSkillMeta: mockModules.mockLoadSkillMeta,
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({

@@ -295,3 +295,27 @@ export function makeResolvablePromise() {
   });
   return { promise, resolve };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Skill file helpers                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Create a skill directory with SKILL.md in <tmpDir>/.pi/skills/<name>/.
+ */
+export function createSkillDir(tmpDir: string, name: string, description: string, body: string) {
+  const skillDir = join(tmpDir, ".pi", "skills", name);
+  mkdirSync(skillDir, { recursive: true });
+  const content = `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}`;
+  writeFileSync(join(skillDir, "SKILL.md"), content);
+}
+
+/**
+ * Create a flat skill file in <tmpDir>/.pi/skills/<name>.md.
+ */
+export function createFlatSkill(tmpDir: string, name: string, description: string, body: string) {
+  const skillsDir = join(tmpDir, ".pi", "skills");
+  mkdirSync(skillsDir, { recursive: true });
+  const content = `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}`;
+  writeFileSync(join(skillsDir, `${name}.md`), content);
+}

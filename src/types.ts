@@ -27,8 +27,10 @@ export interface AgentConfig {
   disallowedTools?: string[];
   /** true = inherit all, string[] = only listed, false = none */
   extensions: true | string[] | false;
-  /** true = inherit all, string[] = only listed, false = none */
+  /** Whitelist of allowed skills (metadata only in system prompt). true = all, string[] = listed, false = none */
   skills: true | string[] | false;
+  /** Skills to preload with full content into system prompt. string[] = listed, false/undefined = none */
+  preloadSkills?: string[] | false;
   model?: string;
   thinking?: ThinkingLevel;
   maxTurns?: number;
