@@ -173,9 +173,9 @@ describe("Agent tool schema — stealth", () => {
 
   const agentTool = () => findTool(api, "Agent");
 
-  it("has description: '.'", () => {
+  it("has no description (stealth)", () => {
     expect(agentTool()).toBeDefined();
-    expect(agentTool()!.description).toBe(".");
+    expect(agentTool()!.description).toBeUndefined();
   });
 
   it("has no promptSnippet", () => {

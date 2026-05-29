@@ -162,13 +162,15 @@ function buildStatsLine(d: Record<string, unknown>, theme: any): string {
  */
 function registerAgentTool(pi: ExtensionAPI): void {
   const types = getAvailableTypes();
+  // Use plain string to avoid verbose anyOf in prompt.
+  // Available types are listed in description for discoverability.
   const agentParam = types.length > 0
-    ? Type.Optional(Type.Union(types.map(t => Type.Literal(t))))
+    ? Type.Optional(Type.String({ description: `Agent type: ${types.join(", ")}` }))
     : Type.Optional(Type.String());
+  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool({
     name: "Agent",
     label: "Agent",
-    description: ".",
     parameters: Type.Object({
       prompt: Type.String(),
       description: Type.String(),
@@ -241,10 +243,10 @@ export default function (pi: ExtensionAPI) {
   registerAgentTool(pi);
 
   // StopAgent tool — stealth schema, stop a running agent by ID
+  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool({
     name: "StopAgent",
     label: "StopAgent",
-    description: ".",
     parameters: Type.Object({
       agent_id: Type.String(),
     }),
