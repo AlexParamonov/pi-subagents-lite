@@ -12,6 +12,12 @@ import type { SubagentsConfig } from "./model-precedence.js";
 const CONFIG_DIR = path.join(process.env.HOME || "", ".pi", "agent");
 const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
 
+/** Default configuration — used when config file doesn't exist or is invalid. */
+export const DEFAULT_CONFIG: SubagentsConfig = {
+  agent: { default: null, forceBackground: false },
+  concurrency: { default: 4 },
+};
+
 /** Read config from disk. Returns defaults if file doesn't exist or is invalid. */
 export function loadConfig(): SubagentsConfig {
   try {
@@ -21,10 +27,7 @@ export function loadConfig(): SubagentsConfig {
     // File doesn't exist or is invalid — return defaults
   }
 
-  return {
-    agent: { default: null, forceBackground: false },
-    concurrency: { default: 4 },
-  };
+  return { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
 }
 
 /** Write config to disk with atomic rename. */

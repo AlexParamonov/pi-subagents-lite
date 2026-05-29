@@ -39,7 +39,7 @@ import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, buildStatsParts, formatMs, getDisplayName, type AgentActivity, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
-import { loadConfig } from "./config-io.js";
+import { loadConfig, DEFAULT_CONFIG } from "./config-io.js";
 import { executeAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
 import { executeStopAgentTool } from "./stop-agent-tool.js";
 
@@ -51,10 +51,7 @@ import { executeStopAgentTool } from "./stop-agent-tool.js";
 export let sessionOverrides: SessionModelOverrides = { default: null };
 
 /** Config cache — loaded at session_start, updated by /agents menu mutations. */
-export let __config: SubagentsConfig = {
-  agent: { default: null, forceBackground: false },
-  concurrency: { default: 4 },
-};
+export let __config: SubagentsConfig = { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
 
 /** Agent manager singleton — module-level, no globalThis access. */
 export let manager: AgentManager;

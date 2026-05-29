@@ -53,6 +53,10 @@ vi.mock("../src/context.js", () => ({
 
 vi.mock("../src/config-io.js", () => ({
   saveConfigAtomic: vi.fn(),
+  DEFAULT_CONFIG: {
+    agent: { default: null, forceBackground: false },
+    concurrency: { default: 4 },
+  },
 }));
 
 // Mock index.ts state with a mutable config object

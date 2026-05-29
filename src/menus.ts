@@ -21,7 +21,7 @@ import {
   piInstance,
 } from "./index.js";
 import { resolveModel } from "./model-precedence.js";
-import { saveConfigAtomic } from "./config-io.js";
+import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
 
 // ============================================================================
 // Helpers
@@ -540,7 +540,7 @@ export async function showConcurrencySettingsMenu(
     // Reset all to defaults
     items.push("Reset all to defaults");
     actions.push(async () => {
-      __config.concurrency = { default: 4 };
+      __config.concurrency = { ...DEFAULT_CONFIG.concurrency };
       applyConcurrencyConfig();
       ctx.ui.notify("Concurrency reset to defaults", "info");
     });
