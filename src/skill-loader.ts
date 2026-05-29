@@ -38,6 +38,20 @@ export interface SkillMeta {
   location: string;
 }
 
+/**
+ * Skill search roots in precedence order (project → user → legacy).
+ * Shared by preloadSkills and loadSkillMeta.
+ */
+function getSkillRoots(cwd: string): string[] {
+  return [
+    join(cwd, ".pi", "skills"),           // project — Pi standard
+    join(cwd, ".agents", "skills"),       // project — Agent Skills spec
+    join(getAgentDir(), "skills"),         // user — Pi standard
+    join(homedir(), ".agents", "skills"),  // user — Agent Skills spec
+    join(homedir(), ".pi", "skills"),      // legacy global, pre-Pi
+  ];
+}
+
 export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill[] {
   return skillNames.map((name) => ({ name, content: loadSkillContent(name, cwd) }));
 }
@@ -61,14 +75,7 @@ function loadSkillContent(name: string, cwd: string): string {
   if (isUnsafeName(name)) {
     return `(Skill "${name}" skipped: name contains path traversal characters)`;
   }
-  const roots = [
-    join(cwd, ".pi", "skills"), // project — Pi standard
-    join(cwd, ".agents", "skills"), // project — Agent Skills spec
-    join(getAgentDir(), "skills"), // user — Pi standard
-    join(homedir(), ".agents", "skills"), // user — Agent Skills spec
-    join(homedir(), ".pi", "skills"), // legacy global, pre-Pi
-  ];
-  for (const root of roots) {
+  for (const root of getSkillRoots(cwd)) {
     const content = findInRoot(root, name);
     if (content !== undefined) return content;
   }
@@ -142,14 +149,7 @@ function findSkillDirectory(root: string, name: string, mode: "content" | "locat
  */
 function findSkillLocation(name: string, cwd: string): string | undefined {
   if (isUnsafeName(name)) return undefined;
-  const roots = [
-    join(cwd, ".pi", "skills"),
-    join(cwd, ".agents", "skills"),
-    join(getAgentDir(), "skills"),
-    join(homedir(), ".agents", "skills"),
-    join(homedir(), ".pi", "skills"),
-  ];
-  for (const root of roots) {
+  for (const root of getSkillRoots(cwd)) {
     const location = findLocationInRoot(root, name);
     if (location !== undefined) return location;
   }
