@@ -9,6 +9,11 @@
 - STATS_OVERHEAD constant was 1 instead of 2 (spacer + text needs 2 cols) — caught in code review
 - Worktrees left behind after merge (cleanup needed reminder)
 
+**What failed:**
+- Pre-read files before delegating to subagent — violates AGENTS.md rule "delegate immediately, agent can explore itself"
+
 **Next time:**
 - Auto-cleanup worktrees after merge
 - Consider adding a post-merge checklist to build_log.md
+- When asked to delegate, delegate immediately without pre-reading
+- Consider moving the delegation rule from Tool Usage to Rules (mandatory - checkable) for more prominence
