@@ -5,8 +5,7 @@
  *
  * Stealth tool registration:
  *   - All tools register at extension init (not runtime)
- *   - description: "." (single character — tells LLM nothing)
- *   - No promptSnippet, no promptGuidelines
+ *   - No description, no promptSnippet, no promptGuidelines
  *   - Parameters without .description()
  *   - Model parameter removed from schema — injected via tool_call listener
  *

@@ -13,14 +13,14 @@ Every tool the LLM sees costs tokens — in the system prompt, and in every turn
 
 | Standard | Schema-first |
 |---|---|
-| `description: "Spawn a sub-agent"` | `description: "."` |
+| `description: "Spawn a sub-agent"` | _(removed)_ |
 | `promptSnippet` with usage examples | _(none)_ |
 | `promptGuidelines` with rules | _(none)_ |
 | Parameters with `.description()` | Bare `Type.String()` |
 
 Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `description`, `run_in_background` are self-documenting. The LLM infers usage from the schema — no verbose descriptions needed. Tool results reinforce correct usage with clear success/error messages.
 
-**Result:** foreground and background agents, custom agent types, per-model concurrency, cost tracking, steering, resume, model overrides — all with minimal token overhead.
+**Result:** foreground and background agents, custom agent types, per-model concurrency, cost tracking, steering, model overrides — all with minimal token overhead.
 
 ## Features
 
@@ -32,7 +32,7 @@ Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `des
 - **Cost tracking** — input/output/cache tokens and dollar cost per agent
 - **Live widget** — persistent status bar above the editor showing running/completed agents
 - **Result viewer** — fullscreen markdown viewer with stats
-- **Steer & resume** — inject mid-execution guidance or continue a previous conversation
+- **Steer** — inject mid-execution guidance into running agents
 - **Output logs** — human-readable, `tail -f` friendly
 
 ## Install
@@ -95,7 +95,6 @@ Stop a running agent at any time via /agents command
 | `description` | ✅ | Brief description for the LLM caller |
 | `agent` | | Type name — `general-purpose`, `Explore`, or any custom type you define (see [Custom Agent Types](#custom-agent-types)). The available values are **auto-populated** from `.md` files in your agent directories — drop a file, it appears in the enum. Set `enabled: false` in frontmatter to remove a type from this list. |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
-| `resume` | | Agent ID to continue a previous conversation |
 
 > `model`, `max_turns`, `isolated`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`/`isolated`/`thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
 
@@ -134,7 +133,8 @@ focusing on injection flaws, auth bypasses, and insecure defaults.
 | `tools` | string[] | Built-in tool allowlist: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. If omitted, inherits all. |
 | `disallowed_tools` | string[] | Tool denylist — removes these from the agent's toolset even if allowlisted by `tools` or extensions. |
 | `extensions` | bool \| string[] | `false` = no extension tools; `true` = inherit all; `["ext-a"]` = allowlist. |
-| `skills` | bool \| string[] | `false` = no skill prompts; `true` = inherit all; `["skill-a"]` = only these. |
+| `skills` | bool \| string[] | `false` = no skills; `true` = inherit all; `["skill-a"]` = metadata-only injection (agent reads full content on-demand). |
+| `preload_skills` | string[] \| false | `["skill-a"]` = dump full SKILL.md content into system prompt (old `skills` behavior). `false`/omitted = none. |
 | `model` | string | Default model as `"provider/model-id"`. Override via `/agents` or `subagents-lite.json`. |
 | `thinking` | string | Default thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `max_turns` | number | Turn limit (soft stop with steer). |
@@ -150,8 +150,9 @@ Every tool schema and every skill snippet you inject costs tokens — in every t
 | `tools: [a, b, c]` | Which built-in tools the LLM sees | High — each tool has a schema (name, params, description) injected every turn. Fewer tools = fewer tokens. |
 | `extensions: false` | Disables all extension-provided tools | Medium — extensions can register many tools (linters, browsers, etc.). Each adds schema tokens. |
 | `extensions: ["my-ext"]` | Allowlist only specific extensions | Medium — pick only what the agent needs. |
-| `skills: false` | Prevents skill content from being injected into the system prompt | **Highest** — skill prompts are prose, not schemas. A verbose skill can be 10-50x the token cost of a tool schema. |
-| `skills: ["skill-a"]` | Inject only listed skills (preloaded inline) | Medium — you control exactly which skills appear. |
+| `skills: ["skill-a"]` | Whitelist skills — injects metadata only (name, description, location) | Low — agent reads full content on-demand via `read` tool. No prose in system prompt. |
+| `skills: false` | Disables all skills | Zero skill tokens. |
+| `preload_skills: ["skill-a"]` | Dump full SKILL.md content into system prompt | **Highest** — skill prompts are prose, not schemas. A verbose skill can be 10-50x the token cost of a tool schema. |
 | `isolated: true` | Shorthand for `extensions: false` + `skills: false` | High — zero extension tools, zero skill prompts. Useful for fast, focused agents. |
 
 **Practical example:** An `Explore` agent that only reads files doesn't need write tools, browser extensions, or git skills. Setting `tools: [read, bash, grep, find, ls]` + `extensions: false` + `skills: false` saves thousands of tokens per turn compared to inheriting everything.
