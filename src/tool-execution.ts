@@ -151,7 +151,7 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   piInstance.sendMessage(
     {
       customType: "subagent-result",
-      content: record.result ?? "",
+      content: `[Subagent "${record.type}" completed]\n\n${record.result ?? ""}`,
       details,
       display: true,
     },
@@ -221,17 +221,17 @@ async function executeSpawnBackground(
   ctx: ExtensionContext,
   spawnOptions: AgentManagerSpawnOptions,
 ): Promise<any> {
-  const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(
+  const { state, callbacks } = createActivityTracker(
     spawnOptions.maxTurns,
   );
 
   const agentId = manager.spawn(piInstance, ctx, resolvedType, prompt, {
     ...spawnOptions,
     isBackground: true,
-    ...bgCallbacks,
+    ...callbacks,
   });
   backgroundAgentIds.add(agentId);
-  agentActivity.set(agentId, bgState);
+  agentActivity.set(agentId, state);
   widget?.ensureTimer();
   widget?.update();
 
@@ -239,16 +239,11 @@ async function executeSpawnBackground(
   if (!record) {
     return errorResult("Failed to create agent");
   }
-  const bgDetails: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
-  if (record.status === "queued") {
-    return successResult(`[Agent queued] Concurrency limit reached. It will start automatically when a slot frees up. A notification will arrive when done — User asks you not to poll, but wait for nudge.
+  const details: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
+  const suffix = `A notification will arrive when done - User asks you not to poll or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
+  const label = record.status === "queued" ? "Agent queued" : "Agent running";
 
-Agent ID: ${agentId}`, bgDetails);
-  }
-  return successResult(
-    `Agent running in background. A notification will arrive when done — User asks you not to poll, but wait for nudge.\n\nAgent ID: ${agentId}`,
-    bgDetails,
-  );
+  return successResult(`[${label}] ${suffix}`, details);
 }
 
 async function executeSpawnForeground(
