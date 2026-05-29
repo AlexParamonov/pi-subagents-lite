@@ -36,7 +36,6 @@ export interface SessionModelOverrides {
   [agentType: string]: string | null | undefined;
 }
 
-/**
 /** Options for resolveModel. */
 export interface ResolveModelOptions {
   /** The type of subagent being spawned. */
