@@ -334,9 +334,9 @@ export async function showModelSettingsMenu(
       overridden.sort((a, b) => a.effectiveModel.localeCompare(b.effectiveModel));
       const padLen = Math.max(...types.map(t => t.length));
       for (const { typeName, cfg, sessionOverride, configOverride, hasSession, effectiveModel } of overridden) {
+        const frontmatterHint = !hasSession && configOverride && cfg?.model ? `${cfg.model} → ` : "";
         const displayModel = hasSession ? `${sessionOverride} [session]` : effectiveModel;
-        const frontmatterHint = !hasSession && configOverride && cfg?.model ? ` → ${cfg.model}` : "";
-        items.push(`${typeName.padEnd(padLen)}  ·  ${displayModel}${frontmatterHint}`);
+        items.push(`${typeName.padEnd(padLen)}  ·  ${frontmatterHint}${displayModel}`);
 
         const currentValue = hasSession ? sessionOverride! : effectiveModel;
         actions.push(buildOverrideAction(typeName, typeName, currentValue, !!configOverride));

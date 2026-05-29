@@ -335,7 +335,7 @@ describe("showModelSettingsMenu — clear per-type override", () => {
     mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
 
     const selections = [
-      "Explore          ·  anthropic/claude-sonnet-4-20250514 → openai/gpt-4o",  // click Explore entry
+      "Explore          ·  openai/gpt-4o → anthropic/claude-sonnet-4-20250514",  // click Explore entry (frontmatter → override)
       "Clear",                                          // choose clear
       undefined,                                          // Escape to exit
     ];
@@ -388,7 +388,7 @@ describe("showModelSettingsMenu — clear per-type override", () => {
     const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
-      "Explore          ·  anthropic/claude-sonnet-4-20250514 → openai/gpt-4o",  // click Explore entry
+      "Explore          ·  openai/gpt-4o → anthropic/claude-sonnet-4-20250514",  // click Explore entry (frontmatter → override)
       "Clear",                                          // choose clear
       undefined,                                          // Escape to exit
     ];
@@ -431,7 +431,7 @@ describe("showModelSettingsMenu — clear per-type override", () => {
     mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
 
     const selections = [
-      "Explore          ·  anthropic/claude-sonnet-4-20250514 → openai/gpt-4o",  // click Explore entry
+      "Explore          ·  openai/gpt-4o → anthropic/claude-sonnet-4-20250514",  // click Explore entry (frontmatter → override)
       "Clear",                                          // choose clear
       undefined,                                          // Escape to exit
     ];
