@@ -76,25 +76,22 @@ function loadSkillContent(name: string, cwd: string): string {
     return `(Skill "${name}" skipped: name contains path traversal characters)`;
   }
   for (const root of getSkillRoots(cwd)) {
-    const content = findInRoot(root, name);
+    const content = findInRoot(root, name, "content");
     if (content !== undefined) return content;
   }
   return `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`;
 }
 
-function findInRoot(root: string, name: string): string | undefined {
-  if (isSymlink(root)) return undefined; // reject symlinked roots entirely
-  const flat = safeReadFile(join(root, `${name}.md`))?.trim();
-  if (flat !== undefined) return flat;
-  return findSkillDirectory(root, name, "content");
-}
-
-/** Find skill file path in a root directory (for metadata loading). */
-function findLocationInRoot(root: string, name: string): string | undefined {
+function findInRoot(root: string, name: string, mode: "content" | "location"): string | undefined {
   if (isSymlink(root)) return undefined;
   const flatPath = join(root, `${name}.md`);
-  if (existsSync(flatPath)) return flatPath;
-  return findSkillDirectory(root, name, "location");
+  if (mode === "location") {
+    if (existsSync(flatPath)) return flatPath;
+  } else {
+    const content = safeReadFile(flatPath)?.trim();
+    if (content !== undefined) return content;
+  }
+  return findSkillDirectory(root, name, mode);
 }
 
 /**
@@ -150,7 +147,7 @@ function findSkillDirectory(root: string, name: string, mode: "content" | "locat
 function findSkillLocation(name: string, cwd: string): string | undefined {
   if (isUnsafeName(name)) return undefined;
   for (const root of getSkillRoots(cwd)) {
-    const location = findLocationInRoot(root, name);
+    const location = findInRoot(root, name, "location");
     if (location !== undefined) return location;
   }
   return undefined;
