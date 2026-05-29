@@ -27,10 +27,6 @@ vi.mock("../src/agent-types.js", () => ({
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
 }));
 
-vi.mock("../src/agent-runner.js", () => ({
-  steerAgent: vi.fn(),
-}));
-
 vi.mock("../src/model-selector.js", () => ({
   ModelSelectorDialog: class {},
 }));
