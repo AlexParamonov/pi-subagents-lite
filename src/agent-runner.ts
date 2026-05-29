@@ -395,11 +395,3 @@ export async function runAgent(
   const responseText = collector.getText().trim() || getLastAssistantText(session);
   return { responseText, session, aborted, steered: softLimitReached };
 }
-
-
-
-
-
-
-
-
