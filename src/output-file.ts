@@ -12,6 +12,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { formatTokens } from "./usage.js";
 
 /** Max length for a truncated command in tool arg summaries. */
 const MAX_COMMAND_DISPLAY_LENGTH = 100;
@@ -254,9 +255,7 @@ export function streamToOutputFile(
 
     // Write DONE line
     const { turnCount = 0, toolUseCount = 0, totalTokens = 0, cost = 0 } = stats ?? {};
-    const tokensStr = totalTokens >= 1000
-      ? `${(totalTokens / 1000).toFixed(1)}k tokens`
-      : `${totalTokens} tokens`;
+    const tokensStr = `${formatTokens(totalTokens)} tokens`;
     const costStr = `$${cost.toFixed(3)}`;
     safeAppend(path, `${timestamp()} [DONE] ${turnCount} turns, ${toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`);
 
