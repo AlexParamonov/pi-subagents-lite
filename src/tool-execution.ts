@@ -6,7 +6,6 @@
  */
 
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
-import type { Model } from "@earendil-works/pi-ai";
 
 import type { AgentRecord } from "./types.js";
 import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
