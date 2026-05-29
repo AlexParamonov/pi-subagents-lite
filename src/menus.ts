@@ -13,7 +13,7 @@ import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
 import { getDisplayName } from "./ui/agent-widget.js";
 import { buildSnapshotMarkdown } from "./context.js";
 
-import { parseModelKey, errorMessage } from "./utils.js";
+import { parseModelKey } from "./utils.js";
 import {
   __config,
   sessionOverrides,
@@ -751,19 +751,11 @@ async function steerAgentById(
   const message = await ctx.ui.input(`Steer ${record.type}`);
   if (!message?.trim()) return;
 
-  try {
-    if (!record.session) {
-      if (!record.pendingSteers) {
-        record.pendingSteers = [];
-      }
-      record.pendingSteers.push(message.trim());
-      ctx.ui.notify(`Steer message queued for ${record.id.slice(0, 8)}…`, "info");
-    } else {
-      await record.session.steer(message.trim());
-      ctx.ui.notify(`Steer sent to ${record.id.slice(0, 8)}…`, "info");
-    }
-  } catch (err) {
-    ctx.ui.notify(`Steer failed: ${errorMessage(err)}`, "error");
+  const sent = await manager.steer(agentId, message.trim());
+  if (sent) {
+    ctx.ui.notify(`Steer sent to ${record.id.slice(0, 8)}…`, "info");
+  } else {
+    ctx.ui.notify(`Steer failed for ${record.id.slice(0, 8)}`, "error");
   }
 }
 
