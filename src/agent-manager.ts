@@ -34,8 +34,8 @@ const CLEANUP_INTERVAL_MS = 60_000;
 /** Age after which a completed agent record is evicted (milliseconds). */
 const CLEANUP_AGE_CUTOFF_MS = 10 * 60_000;
 
-/** Length of short agent ID (UUID prefix). */
-const AGENT_ID_LENGTH = 17;
+/** UUID prefix length for agent IDs stored in the agents map (uniqueness). */
+const AGENT_ID_PREFIX_LENGTH = 17;
 
 
 
@@ -236,7 +236,7 @@ export class AgentManager {
     prompt: string,
     options: SpawnOptions,
   ): string {
-    const id = randomUUID().slice(0, AGENT_ID_LENGTH);
+    const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
     const abortController = new AbortController();
     const args: SpawnArgs = { pi, ctx, type, prompt, options };
 
