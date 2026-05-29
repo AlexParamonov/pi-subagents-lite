@@ -77,7 +77,7 @@ describe("buildAgentPrompt", () => {
     expect(result).toContain("Full TDD content here");
   });
 
-  it("escapes XML special characters in skill metadata", () => {
+  it("escapes < and > in skill metadata", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
         { name: "test", description: "Use <code> & \"quotes\"", location: "/path/to/skill" },
@@ -85,8 +85,9 @@ describe("buildAgentPrompt", () => {
     });
 
     expect(result).toContain("&lt;code&gt;");
-    expect(result).toContain("&amp;");
-    expect(result).toContain("&quot;quotes&quot;");
+    // & and quotes are NOT escaped (readable for LLMs)
+    expect(result).toContain("&");
+    expect(result).toContain("\"quotes\"");
   });
 
   it("returns no skill sections when no extras provided", () => {

@@ -97,6 +97,9 @@ export interface EnvInfo {
   platform: string;
 }
 
+/** How many characters of agent ID to show in display. */
+export const SHORT_ID_LENGTH = 8;
+
 /** Reason for a context compaction event. */
 export type CompactionReason = "manual" | "threshold" | "overflow";
 

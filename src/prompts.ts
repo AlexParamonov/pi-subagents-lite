@@ -6,13 +6,8 @@
  */
 
 import type { AgentConfig, EnvInfo } from "./types.js";
-
-/** Skill metadata for whitelist display (no full content). */
-export interface SkillMeta {
-  name: string;
-  description: string;
-  location: string;
-}
+import type { SkillMeta } from "./skill-loader.js";
+export type { SkillMeta };
 
 /** Extra sections to inject into the system prompt (skills only — no memoryBlock). */
 export interface PromptExtras {
@@ -91,12 +86,10 @@ ${envBlock}`;
 }
 
 function escapeXml(value: string): string {
+  // Only escape < and > — enough for XML-like tags, keeps text readable for LLMs
   return value
-    .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/>/g, "&gt;");
 }
 
 

@@ -79,11 +79,22 @@ function findInRoot(root: string, name: string): string | undefined {
   if (isSymlink(root)) return undefined; // reject symlinked roots entirely
   const flat = safeReadFile(join(root, `${name}.md`))?.trim();
   if (flat !== undefined) return flat;
-  return findSkillDirectory(root, name);
+  return findSkillDirectory(root, name, "content");
 }
 
-/** BFS under `root` for a directory named `name` containing `SKILL.md`. Pi-conforming filters. */
-function findSkillDirectory(root: string, name: string): string | undefined {
+/** Find skill file path in a root directory (for metadata loading). */
+function findLocationInRoot(root: string, name: string): string | undefined {
+  if (isSymlink(root)) return undefined;
+  const flatPath = join(root, `${name}.md`);
+  if (existsSync(flatPath)) return flatPath;
+  return findSkillDirectory(root, name, "location");
+}
+
+/**
+ * BFS under `root` for a directory named `name` containing `SKILL.md`.
+ * Pi-conforming filters. Returns either the file content or the file path.
+ */
+function findSkillDirectory(root: string, name: string, mode: "content" | "location"): string | undefined {
   if (!existsSync(root)) return undefined;
   const queue: string[] = [root];
 
@@ -112,6 +123,7 @@ function findSkillDirectory(root: string, name: string): string | undefined {
 
       if (isSkillDir) {
         if (entry.name === name) {
+          if (mode === "location") return skillMd;
           const content = safeReadFile(skillMd)?.trim();
           if (content !== undefined) return content;
         }
@@ -140,53 +152,6 @@ function findSkillLocation(name: string, cwd: string): string | undefined {
   for (const root of roots) {
     const location = findLocationInRoot(root, name);
     if (location !== undefined) return location;
-  }
-  return undefined;
-}
-
-/** Find skill file path in a root directory. */
-function findLocationInRoot(root: string, name: string): string | undefined {
-  if (isSymlink(root)) return undefined;
-  const flatPath = join(root, `${name}.md`);
-  if (existsSync(flatPath)) return flatPath;
-  return findSkillDirectoryLocation(root, name);
-}
-
-/** BFS for skill directory, returns path to SKILL.md. */
-function findSkillDirectoryLocation(root: string, name: string): string | undefined {
-  if (!existsSync(root)) return undefined;
-  const queue: string[] = [root];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined) continue;
-
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-
-      const path = join(current, entry.name);
-      const skillMd = join(path, "SKILL.md");
-      const isSkillDir = existsSync(skillMd);
-
-      if (isSkillDir) {
-        if (entry.name === name) {
-          return skillMd;
-        }
-        continue;
-      }
-
-      queue.push(path);
-    }
   }
   return undefined;
 }

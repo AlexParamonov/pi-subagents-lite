@@ -13,7 +13,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { successResult, errorResult } from "./tool-execution.js";
 import { manager } from "./index.js";
-import { SHORT_ID_LENGTH } from "./agent-manager.js";
+import { SHORT_ID_LENGTH } from "./types.js";
 
 // ============================================================================
 // Running agents list helper

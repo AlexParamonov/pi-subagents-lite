@@ -17,12 +17,13 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent, type ToolActivity } from "./agent-runner.js";
 import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./output-file.js";
-import type {
-  AgentInvocation,
-  AgentRecord,
-  CompactionInfo,
-  SubagentType,
-  ThinkingLevel,
+import {
+  type AgentInvocation,
+  type AgentRecord,
+  type CompactionInfo,
+  SHORT_ID_LENGTH,
+  type SubagentType,
+  type ThinkingLevel,
 } from "./types.js";
 import { addUsage, getLifetimeTotal, type LifetimeUsage } from "./usage.js";
 import { errorMessage } from "./utils.js";
@@ -36,8 +37,7 @@ const CLEANUP_AGE_CUTOFF_MS = 10 * 60_000;
 /** Length of short agent ID (UUID prefix). */
 const AGENT_ID_LENGTH = 17;
 
-/** Length of short agent ID for display purposes. */
-export const SHORT_ID_LENGTH = 8;
+
 
 /** Default per-model concurrency limit when not specified in config. */
 const DEFAULT_CONCURRENCY_LIMIT = 4;

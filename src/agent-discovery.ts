@@ -164,6 +164,26 @@ export function parseExtensions(
   return undefined;
 }
 
+/**
+ * Parse the preload_skills field from frontmatter.
+ * Unlike parseExtensions, does NOT accept true/"true"/"all" —
+ * preload requires an explicit list of skill names.
+ */
+export function parsePreloadSkills(
+  raw: unknown,
+): string[] | false | undefined {
+  if (raw === false || raw === "false" || raw === "none") {
+    return false;
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    return splitCommaList(raw);
+  }
+  if (Array.isArray(raw)) {
+    return raw.map(String);
+  }
+  return undefined; // true/"true"/"all" not supported
+}
+
 /* ------------------------------------------------------------------ */
 /*  Frontmatter value helpers                                          */
 /* ------------------------------------------------------------------ */
@@ -254,7 +274,7 @@ export function parseAgentFile(
     tools: parseStringArray(frontmatter, "tools"),
     extensions: parseExtensions(frontmatter.extensions),
     skills: parseExtensions(frontmatter.skills),
-    preload_skills: parseExtensions(frontmatter.preload_skills) as string[] | false | undefined,
+    preload_skills: parsePreloadSkills(frontmatter.preload_skills),
     model: parseString(frontmatter, "model"),
     thinking: parseThinkingLevel(parseString(frontmatter, "thinking")),
     max_turns: parseNumber(frontmatter, "max_turns"),
