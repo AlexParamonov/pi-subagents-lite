@@ -165,7 +165,7 @@ function registerAgentTool(pi: ExtensionAPI): void {
   // Use plain string to avoid verbose anyOf in prompt.
   // Available types are listed in description for discoverability.
   const agentParam = types.length > 0
-    ? Type.Optional(Type.String({ description: types.join(", ") }))
+    ? Type.Optional(Type.String({ description: types.join(",") }))
     : Type.Optional(Type.String());
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool({
