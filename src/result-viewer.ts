@@ -45,6 +45,9 @@ export interface ResultViewerStats {
 /** Lines scrolled per PageUp/PageDown (kept at a fixed, comfortable amount). */
 const PAGE_STEP = 14;
 
+/** Render width for markdown content and separator line. */
+const RENDER_WIDTH = 78;
+
 /** Fixed non-viewport lines in the component (borders, title, spacers, hints, etc.). */
 const BASE_OVERHEAD = 10;
 
@@ -141,7 +144,7 @@ export class ResultViewer extends Container implements Component {
     // Build markdown renderer (pre-render to get total lines)
     const mdTheme = buildMarkdownTheme(theme);
     this.markdown = new Markdown(text, 0, 0, mdTheme);
-    this.renderedLines = this.markdown.render(78);
+    this.renderedLines = this.markdown.render(RENDER_WIDTH);
 
     this.buildUI(title, stats);
     this.updateViewport();
@@ -169,7 +172,7 @@ export class ResultViewer extends Container implements Component {
 
     // Separator
     this.addChild(
-      new Text(this.theme.fg("muted", "─".repeat(78)), 0, 0),
+      new Text(this.theme.fg("muted", "─".repeat(RENDER_WIDTH)), 0, 0),
     );
     this.addChild(new Spacer(1));
 
@@ -272,7 +275,7 @@ export class ResultViewer extends Container implements Component {
         this.textRef.text = newText;
         const mdTheme = buildMarkdownTheme(this.theme);
         this.markdown = new Markdown(newText, 0, 0, mdTheme);
-        this.renderedLines = this.markdown.render(78);
+        this.renderedLines = this.markdown.render(RENDER_WIDTH);
         // Preserve scroll position, clamped to new content bounds
         this.scrollOffset = Math.min(oldOffset, this.renderedLines.length - 1);
         this.updateViewport();
