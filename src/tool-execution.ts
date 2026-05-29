@@ -181,7 +181,6 @@ export async function executeAgentTool(
 
   const prompt = params.prompt as string;
   const description = params.description as string;
-  const resume = params.resume as string | undefined;
   const runInBackground = params.run_in_background as boolean | undefined;
   const isolated = params.isolated as boolean | undefined;
   const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
@@ -199,10 +198,6 @@ export async function executeAgentTool(
   const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
     ?? getAgentConfig(resolvedType)?.thinking;
 
-  if (resume) {
-    return executeResumeAgent(resume, prompt);
-  }
-
   const spawnOptions: AgentManagerSpawnOptions = {
     description,
     model,
@@ -218,17 +213,6 @@ export async function executeAgentTool(
   }
 
   return executeSpawnForeground(resolvedType, prompt, ctx, spawnOptions);
-}
-
-async function executeResumeAgent(
-  resume: string,
-  prompt: string,
-): Promise<any> {
-  const record = await manager.resume(resume, prompt);
-  if (!record) {
-    return errorResult(`Agent not found: ${resume}`);
-  }
-  return successResult(record.result ?? "");
 }
 
 async function executeSpawnBackground(

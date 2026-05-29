@@ -98,7 +98,7 @@ vi.mock("../src/agent-discovery.js", () => ({
 
 vi.mock("../src/agent-runner.js", () => ({
   runAgent: vi.fn(),
-  resumeAgent: vi.fn(),
+
   steerAgent: vi.fn(),
   EXCLUDED_TOOL_NAMES: ["Agent"],
 }));

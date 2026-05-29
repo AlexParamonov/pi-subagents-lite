@@ -473,7 +473,6 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
   lines.push("| `thinking` | Optional thinking mode override (e.g., `off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |");
   lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
-  lines.push("| `resume` | Agent ID to resume from; when set, `prompt` is appended to the previous conversation |");
   lines.push("");
 
   // Usage guidelines
@@ -481,7 +480,6 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("- Agents start fresh with their config — they do NOT inherit the parent conversation");
   lines.push("- For parallel tasks, spawn multiple `run_in_background: true` agents in one turn");
   lines.push("  → Results are auto-delivered — do NOT poll, the result will arrive when ready");
-  lines.push("- Use `resume` to continue an incomplete agent's conversation");
   piInstance.sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }

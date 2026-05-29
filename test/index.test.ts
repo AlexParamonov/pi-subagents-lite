@@ -119,7 +119,7 @@ vi.mock("../src/agent-discovery.js", () => ({
 
 vi.mock("../src/agent-runner.js", () => ({
   runAgent: vi.fn(),
-  resumeAgent: vi.fn(),
+
   steerAgent: vi.fn(),
   EXCLUDED_TOOL_NAMES: [
     "Agent",
@@ -224,9 +224,6 @@ describe("Agent tool schema — stealth", () => {
     expect(hasParam(agentTool()!.parameters, "run_in_background")).toBe(true);
   });
 
-  it("includes resume param (optional)", () => {
-    expect(hasParam(agentTool()!.parameters, "resume")).toBe(true);
-  });
 
   it("excludes isolated from schema (config-only, not LLM-controlled)", () => {
     expect(hasParam(agentTool()!.parameters, "isolated")).toBe(false);

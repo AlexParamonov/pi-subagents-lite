@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
+import { runAgent, type ToolActivity } from "./agent-runner.js";
 import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./output-file.js";
 import type {
   AgentInvocation,
@@ -381,7 +381,7 @@ export class AgentManager {
   }
 
   /**
-   * Build common record-tracking callbacks shared by startAgent and resume.
+   * Build common record-tracking callbacks shared by startAgent.
    * Updates the record's toolUses, lifetimeUsage, and compactionCount.
    * When options are provided, also forwards events to the caller.
    */
@@ -434,39 +434,6 @@ export class AgentManager {
     this.queue = this.queue.filter(e => !started.has(e.id));
   }
 
-  /**
-   * Resume an existing agent session with a new prompt.
-   */
-  async resume(
-    id: string,
-    prompt: string,
-    signal?: AbortSignal,
-  ): Promise<AgentRecord | undefined> {
-    const record = this.agents.get(id);
-    if (!record?.session) return undefined;
-
-    record.status = "running";
-    record.startedAt = Date.now();
-    record.completedAt = undefined;
-    record.result = undefined;
-    record.error = undefined;
-
-    try {
-      const responseText = await resumeAgent(record.session, prompt, {
-        ...this.createRecordCallbacks(record),
-        signal,
-      });
-      record.status = "completed";
-      record.result = responseText;
-      record.completedAt = Date.now();
-    } catch (err) {
-      record.status = "error";
-      record.error = errorMessage(err);
-      record.completedAt = Date.now();
-    }
-
-    return record;
-  }
 
   /**
    * Send a steering message to a running agent.

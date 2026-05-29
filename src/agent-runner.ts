@@ -157,7 +157,7 @@ function usageFromAssistantMessage(msg: Record<string, unknown>): LifetimeUsage 
 
 /**
  * Subscribe to shared session events (tool activity, usage, compaction)
- * used by both runAgent and resumeAgent. Returns an unsubscribe function.
+ * used by runAgent. Returns an unsubscribe function.
  */
 export function subscribeToSessionEvents(
   session: AgentSession,
@@ -396,28 +396,7 @@ export async function runAgent(
   return { responseText, session, aborted, steered: softLimitReached };
 }
 
-/**
- * Send a new prompt to an existing session (resume).
- */
-export async function resumeAgent(
-  session: AgentSession,
-  prompt: string,
-  options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction"> & { signal?: AbortSignal } = {},
-): Promise<string> {
-  const collector = collectResponseText(session);
-  const cleanupAbort = forwardAbortSignal(session, options.signal);
-  const unsubEvents = subscribeToSessionEvents(session, options);
 
-  try {
-    await session.prompt(prompt);
-  } finally {
-    collector.unsubscribe();
-    unsubEvents();
-    cleanupAbort();
-  }
-
-  return collector.getText().trim() || getLastAssistantText(session);
-}
 
 
 

@@ -176,7 +176,7 @@ function registerAgentTool(pi: ExtensionAPI): void {
       description: Type.String(),
       agent: agentParam,
       run_in_background: Type.Optional(Type.Boolean()),
-      resume: Type.Optional(Type.String()),
+
     }),
     execute: executeAgentTool,
 
