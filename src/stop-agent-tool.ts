@@ -13,6 +13,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { successResult, errorResult } from "./tool-execution.js";
 import { manager } from "./index.js";
+import { SHORT_ID_LENGTH } from "./agent-manager.js";
 
 // ============================================================================
 // Running agents list helper
@@ -30,7 +31,7 @@ function formatRunningAgents(): string {
   if (agents.length === 0) return "none";
 
   return agents
-    .map((a) => `${a.type}·${a.id.slice(0, 5)}`)
+    .map((a) => `${a.type}·${a.id.slice(0, SHORT_ID_LENGTH)}`)
     .join(", ");
 }
 
@@ -69,7 +70,7 @@ export async function executeStopAgentTool(
 
   // Attempt to stop the running/queued agent
   if (manager.abort(agentId)) {
-    return successResult(`Stopped agent ${agentId.slice(0, 5)}`);
+    return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
   }
 
   return errorResult(`Failed to stop agent ${agentId}`);

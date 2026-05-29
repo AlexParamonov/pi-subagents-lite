@@ -36,6 +36,9 @@ const CLEANUP_AGE_CUTOFF_MS = 10 * 60_000;
 /** Length of short agent ID (UUID prefix). */
 const AGENT_ID_LENGTH = 17;
 
+/** Length of short agent ID for display purposes. */
+export const SHORT_ID_LENGTH = 8;
+
 /** Default per-model concurrency limit when not specified in config. */
 const DEFAULT_CONCURRENCY_LIMIT = 4;
 

@@ -8,6 +8,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
 import type { AgentRecord } from "./types.js";
+import { SHORT_ID_LENGTH } from "./agent-manager.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
 import { getDisplayName } from "./ui/agent-widget.js";
@@ -670,7 +671,7 @@ async function showRunningAgentsMenu(
         record.status === "queued" ? "⏳" :
         record.status === "error" ? "✗" : "•";
       items.push(
-        `${statusIcon} ${record.id.slice(0, 8)}  ${record.type}  ${record.status}  ${elapsed}s`,
+        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.type}  ${record.status}  ${elapsed}s`,
       );
 
       actions.push(async () => {
@@ -708,9 +709,9 @@ async function showResultViewer(
   text: string,
 ): Promise<void> {
   const titleSuffix = kind === "result"
-    ? record.id.slice(0, 8)
+    ? record.id.slice(0, SHORT_ID_LENGTH)
     : kind === "snapshot"
-    ? `snapshot \u00b7 ${record.id.slice(0, 8)}`
+    ? `snapshot \u00b7 ${record.id.slice(0, SHORT_ID_LENGTH)}`
     : "Error";
   const stats: ResultViewerStats = {
     lifetimeUsage: record.lifetimeUsage,
@@ -753,9 +754,9 @@ async function steerAgentById(
 
   const sent = await manager.steer(agentId, message.trim());
   if (sent) {
-    ctx.ui.notify(`Steer sent to ${record.id.slice(0, 8)}…`, "info");
+    ctx.ui.notify(`Steer sent to ${record.id.slice(0, SHORT_ID_LENGTH)}…`, "info");
   } else {
-    ctx.ui.notify(`Steer failed for ${record.id.slice(0, 8)}`, "error");
+    ctx.ui.notify(`Steer failed for ${record.id.slice(0, SHORT_ID_LENGTH)}`, "error");
   }
 }
 
@@ -809,12 +810,12 @@ export async function showAgentActions(
     items.push("Stop");
     actions.push(async () => {
       manager?.abort(record.id);
-      ctx.ui.notify(`Stopped ${record.id.slice(0, 8)}`, "info");
+      ctx.ui.notify(`Stopped ${record.id.slice(0, SHORT_ID_LENGTH)}`, "info");
     });
   }
 
   if (items.length === 0) {
-    ctx.ui.notify(`Agent ${record.id.slice(0, 8)} — no actions available`, "info");
+    ctx.ui.notify(`Agent ${record.id.slice(0, SHORT_ID_LENGTH)} — no actions available`, "info");
     return;
   }
 
@@ -824,7 +825,7 @@ export async function showAgentActions(
   items.push("Back");
   actions.push(async () => {});
 
-  await runMenu(ctx, `Agent ${record.id.slice(0, 8)}`, items, actions);
+  await runMenu(ctx, `Agent ${record.id.slice(0, SHORT_ID_LENGTH)}`, items, actions);
 }
 
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {

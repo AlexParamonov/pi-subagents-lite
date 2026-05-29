@@ -173,7 +173,7 @@ describe("StopAgent tool execute behavior", () => {
 
     expect(mockGetRecord).toHaveBeenCalledWith("abc123def456ghi");
     expect(mockAbort).toHaveBeenCalledWith("abc123def456ghi");
-    expect(result.content[0].text).toBe("Stopped agent abc12");
+    expect(result.content[0].text).toBe("Stopped agent abc123de");
     expect(result.isError).toBeFalsy();
   });
 
@@ -192,7 +192,7 @@ describe("StopAgent tool execute behavior", () => {
       {} as any,
     );
 
-    expect(result.content[0].text).toBe("Stopped agent xyz78");
+    expect(result.content[0].text).toBe("Stopped agent xyz789xy");
     expect(result.isError).toBeFalsy();
   });
 
@@ -220,8 +220,8 @@ describe("StopAgent tool execute behavior", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("nonexistent-id not found");
     expect(result.content[0].text).toContain("Running agents:");
-    expect(result.content[0].text).toContain("builder·aaa11");
-    expect(result.content[0].text).toContain("reviewer·ddd33");
+    expect(result.content[0].text).toContain("builder·aaa111bb");
+    expect(result.content[0].text).toContain("reviewer·ddd333ee");
   });
 
   it("returns info (not error) when agent already completed, with running agents list", async () => {
@@ -247,7 +247,7 @@ describe("StopAgent tool execute behavior", () => {
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("already completed");
     expect(result.content[0].text).toContain("Running agents:");
-    expect(result.content[0].text).toContain("explorer·aaa11");
+    expect(result.content[0].text).toContain("explorer·aaa111bb");
   });
 
   it("returns info (not error) when agent already stopped", async () => {
