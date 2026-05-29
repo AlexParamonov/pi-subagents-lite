@@ -31,6 +31,7 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills } from "./skill-loader.js";
 import type { CompactionInfo, EnvInfo, SubagentType, ThinkingLevel } from "./types.js";
+import { SHORT_ID_LENGTH } from "./agent-manager.js";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 export const EXCLUDED_TOOL_NAMES = ["Agent"];
@@ -330,7 +331,7 @@ export async function runAgent(
 
   const baseSessionName = agentConfig?.name ?? type;
   session.setSessionName(
-    options.agentId ? `${baseSessionName}#${options.agentId.slice(0, 8)}` : baseSessionName,
+    options.agentId ? `${baseSessionName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseSessionName,
   );
 
   // Filter active tools: remove our own tools to prevent nesting,
