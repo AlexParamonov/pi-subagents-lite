@@ -329,7 +329,9 @@ export async function runAgent(
   const agentDir = getAgentDir();
 
   // Load extensions/skills: true or string[] → load; false → don't.
-  const loader = new DefaultResourceLoader({
+  // When extensions is an array, use extensionsOverride to selectively load
+  // only the listed extensions (hooks/commands of excluded ones never fire).
+  const loaderOpts: ConstructorParameters<typeof DefaultResourceLoader>[0] = {
     cwd: effectiveCwd,
     agentDir,
     noExtensions: extensions === false,
@@ -339,7 +341,20 @@ export async function runAgent(
     noContextFiles: true,
     systemPromptOverride: () => systemPrompt,
     appendSystemPromptOverride: () => [],
-  });
+  };
+  if (Array.isArray(extensions)) {
+    const allowedNames = new Set(extensions.map(ext => {
+      const slashIdx = ext.indexOf("/");
+      return slashIdx !== -1 ? ext.slice(0, slashIdx) : ext;
+    }));
+    loaderOpts.extensionsOverride = (result) => ({
+      ...result,
+      extensions: result.extensions.filter(ext =>
+        allowedNames.has(extractExtensionName(ext.path)),
+      ),
+    });
+  }
+  const loader = new DefaultResourceLoader(loaderOpts);
   await loader.reload();
 
   // Build extension name → tool names map from loaded extensions.

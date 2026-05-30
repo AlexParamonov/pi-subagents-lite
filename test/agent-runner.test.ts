@@ -518,6 +518,129 @@ describe("runAgent — extension name-based filtering", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
+  it("passes extensionsOverride that filters to listed extensions", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "glob",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily"],
+    });
+    // Don't pre-set loader extensions — the override should filter them
+    mockModules.clearLoaderExtensions();
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const loaderCall = mockModules.getLoaderOpts();
+    expect(loaderCall.noExtensions).toBe(false);
+    expect(typeof loaderCall.extensionsOverride).toBe("function");
+
+    // Verify the override filters correctly
+    const override = loaderCall.extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+        { path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts", tools: new Map([["glob", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toContain("tavily");
+  });
+
+  it("extensionsOverride extracts extension name from ext/tool syntax", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily/web_search"],
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const loaderCall = mockModules.getLoaderOpts();
+    expect(typeof loaderCall.extensionsOverride).toBe("function");
+
+    // The override should resolve "tavily/web_search" → "tavily" for extension loading
+    const override = loaderCall.extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+        { path: "/home/test/.pi/agent/extensions/other/index.ts", tools: new Map([["other_tool", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toContain("tavily");
+  });
+
+  it("extensionsOverride filters hook-only extensions not in the list", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily"],
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const loaderCall = mockModules.getLoaderOpts();
+    const override = loaderCall.extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts", tools: new Map() },
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    // confirm-edits not in list → filtered out by override
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toContain("tavily");
+  });
+
+  it("no extensionsOverride when extensions=true", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: true,
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const loaderCall = mockModules.getLoaderOpts();
+    expect(loaderCall.noExtensions).toBe(false);
+    expect(loaderCall.extensionsOverride).toBeUndefined();
+  });
+
+  it("no extensionsOverride when extensions=false", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: false,
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const loaderCall = mockModules.getLoaderOpts();
+    expect(loaderCall.noExtensions).toBe(true);
+    expect(loaderCall.extensionsOverride).toBeUndefined();
+  });
+
   it("allows all tools from a named extension", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
@@ -687,21 +810,18 @@ describe("runAgent — extension name-based filtering", () => {
       ...defaultConfig,
       extensions: ["confirm-edits"],
     });
+    // After extensionsOverride: only confirm-edits loaded (no tools)
     mockModules.setLoaderExtensions([
       {
         path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts",
         tools: new Map(), // hook-only: no tools
-      },
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([["web_search", {}]]),
       },
     ]);
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     // confirm-edits has no tools → extension name not in map → no tools from it
-    // web_search belongs to tavily, which is not in extensions list → rejected
+    // web_search belongs to tavily which was filtered out by extensionsOverride
     const activeTools = session.setActiveToolsByName.mock.calls[0][0];
     expect(activeTools).not.toContain("web_search");
   });
