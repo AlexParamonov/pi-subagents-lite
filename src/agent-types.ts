@@ -12,7 +12,7 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
 /** All known built-in tool names. */
-const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();

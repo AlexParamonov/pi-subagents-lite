@@ -42,6 +42,7 @@ vi.mock("../src/agent-types.js", () => ({
   getConfig: mockModules.mockGetConfig,
   getAgentConfig: mockModules.mockGetAgentConfig,
   getToolNamesForType: mockModules.mockGetToolNamesForType,
+  BUILTIN_TOOL_NAMES: ["read", "bash", "edit", "write", "grep", "find", "ls"],
 }));
 
 vi.mock("../src/prompts.js", () => ({
@@ -280,11 +281,45 @@ describe("runAgent — tool filtering", () => {
     );
 
     // Verify the remaining tools are correct
+    // grep is a known built-in not in the whitelist [read, bash, edit] → should be filtered out
     const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
     expect(activeToolsCall).toContain("read");
     expect(activeToolsCall).toContain("bash");
     expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).toContain("grep");
+    expect(activeToolsCall).not.toContain("grep");
+  });
+
+  it("rejects known built-in tools not in whitelist when extensions=true", async () => {
+    const session = createMockSession();
+    // Simulate: agent wants [read, bash, edit], but session also has write and grep active
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "write", "grep", "Agent",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    // getConfig returns builtinToolNames = [read, bash, edit]
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      builtinToolNames: ["read", "bash", "edit"],
+      extensions: true,
+    });
+    mockModules.mockGetToolNamesForType.mockReturnValue(["read", "bash", "edit"]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+    });
+
+    // write and grep are built-in but not in whitelist → should be rejected
+    expect(session.setActiveToolsByName).toHaveBeenCalled();
+    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeToolsCall).toContain("read");
+    expect(activeToolsCall).toContain("bash");
+    expect(activeToolsCall).toContain("edit");
+    expect(activeToolsCall).not.toContain("write");
+    expect(activeToolsCall).not.toContain("grep");
+    expect(activeToolsCall).not.toContain("Agent");
   });
 
   it("isolated=true skips tool filtering block (extensions=false)", async () => {

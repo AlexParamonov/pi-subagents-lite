@@ -23,7 +23,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getConfig, getToolNamesForType } from "./agent-types.js";
+import { getAgentConfig, getConfig, getToolNamesForType, BUILTIN_TOOL_NAMES } from "./agent-types.js";
 import { extractText } from "./context.js";
 import type { LifetimeUsage } from "./usage.js";
 import { findModelInRegistry } from "./utils.js";
@@ -207,10 +207,12 @@ function filterActiveTools(
   }
 
   const builtinToolNameSet = new Set(builtinToolNames);
+  const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
   const filtered = activeTools.filter((t) => {
     if (EXCLUDED_TOOL_NAMES.includes(t)) return false;
     if (disallowedSet?.has(t)) return false;
     if (builtinToolNameSet.has(t)) return true;
+    if (allBuiltinSet.has(t)) return false;
     if (Array.isArray(extensions)) {
       return extensions.some(ext => t.startsWith(ext) || t.includes(ext));
     }
