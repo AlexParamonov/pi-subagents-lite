@@ -15,11 +15,13 @@ const fakePi = makeFakePi();
 // --- Mock module-level dependencies ---
 
 const _loaderOpts: any[] = [];
+const _loaderGetExtensionsResult: any = { extensions: [], errors: [], runtime: {} };
 
 // DefaultResourceLoader must be a regular function (not arrow) to support `new`
 function MockDefaultResourceLoader(this: any, opts: any) {
   this._opts = opts;
   this.reload = vi.fn().mockResolvedValue(undefined);
+  this.getExtensions = vi.fn().mockReturnValue(_loaderGetExtensionsResult);
   _loaderOpts.push(opts);
 }
 
@@ -36,6 +38,8 @@ const mockModules = vi.hoisted(() => ({
   mockGetAgentDir: vi.fn(),
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
   clearLoaderOpts: () => { _loaderOpts.length = 0; },
+  setLoaderExtensions: (exts: any) => { _loaderGetExtensionsResult.extensions = exts; },
+  clearLoaderExtensions: () => { _loaderGetExtensionsResult.extensions = []; },
 }));
 
 vi.mock("../src/agent-types.js", () => ({
@@ -92,6 +96,7 @@ const defaultAgentConfig = {
 function resetMocks() {
   vi.clearAllMocks();
   mockModules.clearLoaderOpts();
+  mockModules.clearLoaderExtensions();
 
   mockModules.mockGetConfig.mockReturnValue({ ...defaultConfig });
   mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig });
@@ -500,5 +505,293 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const session = createMockSession();
     const unsub = subscribeToSessionEvents(session, {});
     expect(typeof unsub).toBe("function");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — extension name-based filtering                          */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — extension name-based filtering", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("allows all tools from a named extension", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "glob",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily"],
+    });
+    // Simulate loader.getExtensions() returning tavily with 3 tools and extra-tools with 1
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+          ["web_crawl", {}],
+        ]),
+      },
+      {
+        path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts",
+        tools: new Map([["glob", {}]]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).toContain("web_search");
+    expect(activeTools).toContain("web_extract");
+    expect(activeTools).toContain("web_crawl");
+    // glob is from extra-tools which is not in extensions list → filtered out
+    expect(activeTools).not.toContain("glob");
+  });
+
+  it("allows only specified tool when extension/tool syntax used", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily/web_search"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+          ["web_crawl", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).toContain("web_search");
+    expect(activeTools).not.toContain("web_extract");
+    expect(activeTools).not.toContain("web_crawl");
+  });
+
+  it("rejects unknown extension names (no substring fallback)", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["nonexistent"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).not.toContain("web_search");
+    expect(activeTools).not.toContain("web_extract");
+  });
+
+  it("allows tools from multiple named extensions", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "glob", "unknown_tool",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily", "extra-tools"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([["web_search", {}]]),
+      },
+      {
+        path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts",
+        tools: new Map([["glob", {}]]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).toContain("web_search");
+    expect(activeTools).toContain("glob");
+    // unknown_tool belongs to no extension → filtered out
+    expect(activeTools).not.toContain("unknown_tool");
+  });
+
+  it("does not use old substring matching (no startsWith/includes)", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["web"], // old substring would match web_search
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // "web" is not a real extension name → all extension tools should be rejected
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).not.toContain("web_search");
+    expect(activeTools).not.toContain("web_extract");
+  });
+
+  it("skips hook-only extensions (empty tools map) in the extension map", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["confirm-edits"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts",
+        tools: new Map(), // hook-only: no tools
+      },
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([["web_search", {}]]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // confirm-edits has no tools → extension name not in map → no tools from it
+    // web_search belongs to tavily, which is not in extensions list → rejected
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).not.toContain("web_search");
+  });
+
+  it("extracts extension name from direct file in extensions dir", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "my_tool", "other_tool",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["direct-ext"],
+    });
+    // Direct file: extensions/direct-ext.ts (dirname is 'extensions')
+    // other-ext has other_tool but is not in extensions list
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/direct-ext.ts",
+        tools: new Map([["my_tool", {}]]),
+      },
+      {
+        path: "/home/test/.pi/agent/extensions/other-ext/index.ts",
+        tools: new Map([["other_tool", {}]]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).toContain("my_tool");
+    expect(activeTools).not.toContain("other_tool");
+  });
+
+  it("extension filtering combined with disallowedTools denylist", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily"],
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      extensions: ["tavily"],
+      disallowedTools: ["web_crawl"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+          ["web_crawl", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeTools).toContain("web_search");
+    expect(activeTools).toContain("web_extract");
+    // web_crawl is allowed by extension but denied by disallowedTools
+    expect(activeTools).not.toContain("web_crawl");
+  });
+
+  it("extensions=true allows all extension tools (no map filtering)", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "glob",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: true,
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([["web_search", {}]]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // extensions=true → all extension tools allowed, no filtering applied
+    // filterActiveTools returns null → setActiveToolsByName not called
+    expect(session.setActiveToolsByName).not.toHaveBeenCalled();
   });
 });

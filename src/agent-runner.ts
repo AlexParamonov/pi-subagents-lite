@@ -11,6 +11,7 @@
  *   - EXCLUDED_TOOL_NAMES prevents sub-subagent spawning
  */
 
+import path from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
@@ -187,6 +188,20 @@ export function subscribeToSessionEvents(
 }
 
 /**
+ * Extract the extension name from an extension's file path.
+ *  - Direct file in an `extensions/` dir (e.g. `extensions/tavily.ts`) → file stem: "tavily"
+ *  - Subdirectory (e.g. `extensions/tavily/index.ts`) → parent dir name: "tavily"
+ *  - npm package (e.g. `node_modules/pi-ext-tavily/dist/index.js`) → parent dir name
+ */
+export function extractExtensionName(extPath: string): string {
+  const dir = path.dirname(extPath);
+  if (path.basename(dir) === "extensions") {
+    return path.basename(extPath, path.extname(extPath));
+  }
+  return path.basename(dir);
+}
+
+/**
  * Filter active tools: remove extension tools to prevent nesting,
  * apply extension allowlist if specified, and apply disallowedTools denylist.
  * Returns null when no filtering is needed (isolated mode with no denylist).
@@ -196,6 +211,7 @@ function filterActiveTools(
   builtinToolNames: string[],
   extensions: true | string[] | false,
   disallowedTools?: string[],
+  extToolMap?: Map<string, string[]>,
 ): string[] | null {
   const disallowedSet = disallowedTools ? new Set(disallowedTools) : undefined;
 
@@ -214,7 +230,19 @@ function filterActiveTools(
     if (builtinToolNameSet.has(t)) return true;
     if (allBuiltinSet.has(t)) return false;
     if (Array.isArray(extensions)) {
-      return extensions.some(ext => t.startsWith(ext) || t.includes(ext));
+      if (!extToolMap) return false;
+      return extensions.some(ext => {
+        const slashIdx = ext.indexOf("/");
+        if (slashIdx !== -1) {
+          // Extension/tool syntax: e.g. "tavily/web_search"
+          const extName = ext.slice(0, slashIdx);
+          const toolName = ext.slice(slashIdx + 1);
+          if (t !== toolName) return false;
+          return extToolMap.get(extName)?.includes(t) ?? false;
+        }
+        // Extension-only syntax: e.g. "tavily" — allow all its tools
+        return extToolMap.get(ext)?.includes(t) ?? false;
+      });
     }
     return true;
   });
@@ -314,6 +342,16 @@ export async function runAgent(
   });
   await loader.reload();
 
+  // Build extension name → tool names map from loaded extensions.
+  // Used by filterActiveTools to resolve extension names in the extensions frontmatter field.
+  const extResult = loader.getExtensions();
+  const extToolMap = new Map<string, string[]>();
+  for (const ext of extResult.extensions) {
+    const name = extractExtensionName(ext.path);
+    const tools = [...ext.tools.keys()];
+    if (tools.length > 0) extToolMap.set(name, tools);
+  }
+
   // Resolve model: explicit option > config.model > parent model
   const model = options.model ?? findModelInRegistry(
     agentConfig?.model, ctx.modelRegistry, ctx.model,
@@ -350,6 +388,7 @@ export async function runAgent(
     toolNames,
     extensions,
     agentConfig?.disallowedTools,
+    extToolMap,
   );
   if (filteredTools) {
     session.setActiveToolsByName(filteredTools);
