@@ -318,9 +318,7 @@ function filterActiveTools(
     for (const t of activeTools) {
       if (EXCLUDED_TOOL_NAMES.includes(t)) continue;
       if (disallowedSet?.has(t)) continue;
-      if (allowedBuiltins.has(t)) {
-        visibleSet.add(t);
-      } else if (allowedExtTools.has(t)) {
+      if (allowedBuiltins.has(t) || allowedExtTools.has(t)) {
         visibleSet.add(t);
       }
     }
