@@ -83,7 +83,7 @@ name: explorer
 display_name: Explorer Agent
 description: A fast exploration agent
 model: anthropic/claude-haiku-4-5-20251001
-tools: read, bash, grep, find, ls
+tools: read, bash, grep
 extensions: none
 skills: all
 thinking: high
@@ -99,7 +99,7 @@ This is the system prompt body.
     expect(result.display_name).toBe("Explorer Agent");
     expect(result.description).toBe("A fast exploration agent");
     expect(result.model).toBe("anthropic/claude-haiku-4-5-20251001");
-    expect(result.tools).toEqual(["read", "bash", "grep", "find", "ls"]);
+    expect(result.tools).toEqual(["read", "bash", "grep"]);
     expect(result.extensions).toBe(false); // "none" → false
     expect(result.skills).toBe(true); // "all" → true
     expect(result.thinking).toBe("high");

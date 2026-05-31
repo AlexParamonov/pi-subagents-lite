@@ -13,11 +13,11 @@ import type { AgentConfig } from "./types.js";
  * All tool names that Pi can provide to a session.
  *
  * Note: only `read`, `bash`, `edit`, `write` are active by default.
- * `grep`, `find`, `ls` are registered in Pi's tool registry but must be
- * explicitly activated via setActiveToolsByName() — which pi-subagents-lite
- * does when an agent config lists them in its `tools` or `builtinToolNames`.
+ * `grep` must be explicitly activated via setActiveToolsByName().
+ * `find` and `ls` were removed — they're thin wrappers over bash commands
+ * that add ~180 tokens/turn with no real benefit.
  */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();

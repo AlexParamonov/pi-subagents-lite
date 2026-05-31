@@ -7,7 +7,7 @@
 
 import type { AgentConfig } from "./types.js";
 
-const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls"];
+const READ_ONLY_TOOLS = ["read", "bash", "grep"];
 
 export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
   [

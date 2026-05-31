@@ -46,7 +46,7 @@ vi.mock("../src/agent-types.js", () => ({
   getConfig: mockModules.mockGetConfig,
   getAgentConfig: mockModules.mockGetAgentConfig,
   getToolNamesForType: mockModules.mockGetToolNamesForType,
-  BUILTIN_TOOL_NAMES: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+  BUILTIN_TOOL_NAMES: ["read", "bash", "edit", "write", "grep"],
 }));
 
 vi.mock("../src/prompts.js", () => ({
