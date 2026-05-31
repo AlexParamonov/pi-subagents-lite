@@ -15,7 +15,7 @@
  *   - Config mutations update cache + atomic write to disk
  *
  * Commands:
- *   - /agents: Management menu with 5 sub-menus
+ *   - /agents: Management menu (model settings, concurrency, running agents, debug)
  *
  * Events:
  *   - tool_call: Inject model into Agent tool calls
