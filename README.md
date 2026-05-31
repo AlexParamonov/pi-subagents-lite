@@ -24,7 +24,7 @@ Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `des
 
 ## Features
 
-- **Two tools** — `Agent` (spawn) and `StopAgent` (kill)
+- **Two tools** — `Agent` (spawn) and `StopAgent` (stop)
 - **Foreground & background** — block or fire-and-forget with auto-delivered results
 - **Custom agent types** — define via `.md` files with YAML frontmatter (tools, model, thinking, turn limits)
 - **Smart model resolution** — 6-level precedence: session → config → frontmatter → parent. Set once, forget
@@ -104,7 +104,7 @@ Drop a `.md` file into `.pi/agents/` (project) or `~/.pi/agent/agents/` (global)
 
 The file's `name` frontmatter field (or the filename without extension) becomes the agent type name and **automatically populates the `agent` parameter's enum** in the tool schema. No registration step needed — the extension scans these directories at session start and makes every discovered agent available to the LLM. Files added during a session are discovered on the next call that references them — no restart required.
 
-Built-in types (`general-purpose`, `Explore`) are always present. User agents override built-ins with the same name; project agents override user agents (see [Merge precedence](#merge-precedence)).
+Built-in types (`general-purpose`, `Explore`) are always available. User agents override built-ins with the same name; project agents override user agents (see [Merge precedence](#merge-precedence)).
 
 ```markdown
 ---
@@ -259,7 +259,7 @@ exclude_extensions: [quality-monitor]
 
 ### Merge precedence
 
-Project agents override user agents, which override built-ins (`general-purpose`, `Explore`). Agent types discovered from `.md` files automatically appear in the `agent` parameter's dropdown — no registration required.
+Project agents override user agents, which override built-ins (`general-purpose`, `Explore`). Agent types discovered from `.md` files automatically appear in the `agent` parameter's enum — no registration required. Files added during a session are discovered on the next call that references them.
 
 ## Model Resolution
 
@@ -272,7 +272,7 @@ The extension picks the right model automatically. Precedence (highest first):
 5. **Agent frontmatter** — `model` in `.md` file
 6. **Parent model** — inherit from the calling agent
 
-The LLM never passes `model` — it's injected at call time. Set it once in config or frontmatter and forget about it.
+The LLM never passes `model` — it's injected at call time via the `tool_call` listener. Set it once in config or frontmatter and forget about it.
 
 ## Commands
 
