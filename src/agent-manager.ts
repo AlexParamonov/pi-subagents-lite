@@ -498,13 +498,9 @@ export class AgentManager {
     return true;
   }
 
-  private disposeSession(session: AgentSession | undefined): void {
-    session?.dispose();
-  }
-
   /** Dispose a record's session and remove it from the map. */
   private removeRecord(id: string, record: AgentRecord): void {
-    this.disposeSession(record.session);
+    record.session?.dispose();
     record.session = undefined;
     this.agents.delete(id);
   }
@@ -522,7 +518,7 @@ export class AgentManager {
     clearInterval(this.cleanupInterval);
     this.queue = [];
     for (const record of this.agents.values()) {
-      this.disposeSession(record.session);
+      record.session?.dispose();
     }
     this.agents.clear();
   }
