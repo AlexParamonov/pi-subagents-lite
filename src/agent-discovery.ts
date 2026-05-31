@@ -1,8 +1,6 @@
 /**
  * agent-discovery.ts — Agent file discovery, parsing, and config merging.
  *
- * Extended from subagent-lazy/agent-discovery.ts with full frontmatter support.
- *
  * Scans:
  *   ~/.pi/agent/agents/*.md   (user agents)
  *   <project>/.pi/agents/*.md (project agents)
@@ -254,11 +252,6 @@ function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
 
 /**
  * Parse a single agent .md file into AgentConfigFromMd.
- *
- * @param content - Raw file content
- * @param filename - Filename (for context, currently unused)
- * @param source - Source designation ("user" or "project")
- * @returns Parsed agent config with frontmatter and body
  */
 export function parseAgentFile(
   content: string,

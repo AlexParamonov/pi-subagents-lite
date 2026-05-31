@@ -3,16 +3,20 @@
  *
  * Merges embedded default agents with user-defined agents from .pi/agents/*.md.
  * User agents override defaults with the same name. Disabled agents are kept but excluded from spawning.
- *
- * Trimmed from upstream: removed getMemoryToolNames(), getReadOnlyMemoryToolNames(),
- * MEMORY_TOOL_NAMES, READONLY_MEMORY_TOOL_NAMES (memory feature cut).
  */
 
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
-/** All known built-in tool names. */
+/**
+ * All tool names that Pi can provide to a session.
+ *
+ * Note: only `read`, `bash`, `edit`, `write` are active by default.
+ * `grep`, `find`, `ls` are registered in Pi's tool registry but must be
+ * explicitly activated via setActiveToolsByName() — which pi-subagents-lite
+ * does when an agent config lists them in its `tools` or `builtinToolNames`.
+ */
 export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */

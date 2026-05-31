@@ -1,12 +1,9 @@
 /**
  * output-file.ts — Human-readable output logging for agent transcripts.
  *
- * Forked from upstream pi-subagents. Key modifications:
- *   - Rewrote from JSONL to human-readable format
- *   - Path changed to /tmp/pi-agent-outputs/<agentId>.log (no CID-encoded nesting)
- *   - Directory created with 0o700 permissions
- *   - Append-only, human-readable, supports `tail -f`
- *   - Lines: [USER], [TOOL], [ASSISTANT], [DONE] with ISO timestamps
+ * Path: /tmp/pi-agent-outputs/<agentId>.log
+ * Append-only, human-readable, supports `tail -f`.
+ * Lines: [USER], [TOOL], [ASSISTANT], [DONE] with ISO timestamps.
  */
 
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";

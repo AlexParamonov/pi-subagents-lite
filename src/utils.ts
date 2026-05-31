@@ -1,9 +1,8 @@
 /**
- * utils.ts — Security helpers: safe file access, name validation + general utilities.
+ * utils.ts — Security helpers and general utilities.
  *
- * Security helpers extracted from upstream memory.ts — pure implementations copied verbatim.
- * General utilities (parseModelKey, findModelInRegistry) moved here so both agent-runner
- * and tool-execution can use them without circular dependencies.
+ * Security helpers (isUnsafeName, isSymlink, safeReadFile) protect against
+ * path traversal and symlink attacks in agent/skill name resolution.
  */
 
 import { lstatSync, readFileSync } from "node:fs";

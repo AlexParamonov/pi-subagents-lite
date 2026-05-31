@@ -16,8 +16,6 @@
  * SKILL.md is a skill — we don't descend into it (Pi: skills don't nest).
  *
  * Symlinks are rejected for security (deviation from Pi, which follows them).
- *
- * Changed from upstream: imports from ./utils.js instead of ./memory.js.
  */
 
 import type { Dirent } from "node:fs";

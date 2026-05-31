@@ -1,9 +1,5 @@
 /**
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
- *
- * Ported from upstream pi-subagents.
- * Import paths use relative imports within our extension.
- * addUsage/getLifetimeTotal/getSessionContextPercent imported from ../usage.js.
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";

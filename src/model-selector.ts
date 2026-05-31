@@ -1,9 +1,6 @@
 /**
  * model-selector.ts — TUI model selection dialog.
  *
- * Ported from subagent-lazy/model-selector.ts verbatim.
- * Used by the /agents menu for model selection.
- *
  * Reuses the same building blocks as pi's ModelSelectorComponent but without
  * the SettingsManager dependency — no side effects, just callbacks.
  */

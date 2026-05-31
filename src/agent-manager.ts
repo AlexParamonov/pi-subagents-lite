@@ -1,15 +1,7 @@
 /**
  * agent-manager.ts — Tracks agents, per-model concurrency, background execution.
  *
- * Forked from upstream pi-subagents. Key modifications:
- *   - Per-model concurrency (Map<string, { limit, running }>) replaces
- *     single maxConcurrent counter
- *   - No worktree isolation (all worktree imports and code paths removed)
- *   - Exposes steer(id, message) for /steer command
- *   - SpawnOptions.modelKey for concurrency pool lookup
- *   - ConcurrencyConfig with default + models map
- *   - No IsolationMode references
- *   - AgentRecord: removed worktree, worktreeResult, groupId, joinMode
+ * Supports per-model and per-provider concurrency limits with queuing.
  */
 
 import { randomUUID } from "node:crypto";

@@ -1,11 +1,5 @@
 /**
- * types.ts — Type definitions for the subagent system.
- *
- * Trimmed from upstream: removed ScheduledSubagent, ScheduleStoreData,
- * IsolationMode, MemoryScope, JoinMode.
- * From AgentConfig: removed memory, isolation, inheritContext, runInBackground.
- * From AgentRecord: removed groupId, joinMode, worktree, worktreeResult.
- * From AgentInvocation: removed inheritContext, isolation.
+ * Type definitions for the subagent system.
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
