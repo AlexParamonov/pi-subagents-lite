@@ -1,14 +1,7 @@
 /**
- * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
+ * Core execution engine: creates sessions, runs agents, collects results.
  *
- * Forked from upstream pi-subagents. Key modifications:
- *   - Removed buildParentContext import and inheritContext code path
- *   - Removed buildMemoryBlock/buildReadOnlyMemoryBlock imports and memory code paths
- *   - Replaced import { detectEnv } from env.ts with inline git detection via pi.exec()
- *   - Handles `isolated` parameter internally (sets extensions=false, skills=false)
- *   - RunOptions: keeps pi: ExtensionAPI, isolated?: boolean. Removes inheritContext, isolation
- *   - PromptExtras: removed memoryBlock — keeps skillBlocks[] only
- *   - EXCLUDED_TOOL_NAMES prevents sub-subagent spawning
+ * EXCLUDED_TOOL_NAMES prevents sub-subagent spawning.
  */
 
 import path from "node:path";
@@ -323,7 +316,7 @@ function filterActiveTools(
       }
     }
 
-    // Warning 3: loaded extension has none of its tools in `tools`
+    // Warn if a loaded extension has none of its tools in `tools`
     if (extToolMap) {
       for (const [extName, extTools] of extToolMap) {
         const hasAny = extTools.some(t => allowedExtTools.has(t));
@@ -348,7 +341,7 @@ function filterActiveTools(
     return [];
   }
 
-  // tools not set — fall back to extensions-based filtering (original behavior)
+  // tools not set — fall back to extensions-based filtering
   const builtinToolNameSet = new Set(builtinToolNames);
   const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
   const filtered = activeTools.filter((t) => {
@@ -423,9 +416,7 @@ export async function runAgent(
   const skills = effectiveIsolated ? false : config.skills;
   const preloadSkillsList = effectiveIsolated ? false : agentConfig?.preloadSkills;
 
-  // Build prompt extras (no memoryBlock — skills only).
-  // - preloadSkills: force full content into system prompt
-  // - skills: metadata only (whitelist), agent reads on-demand
+  // Build prompt extras (skills only).
   const extras: PromptExtras = {};
   if (Array.isArray(preloadSkillsList)) {
     extras.skillBlocks = preloadSkills(preloadSkillsList, effectiveCwd);
