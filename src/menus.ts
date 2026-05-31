@@ -533,7 +533,7 @@ export async function showConcurrencySettingsMenu(
     items.push(`Default concurrency limit · ${__config.concurrency.default}`);
     actions.push(async () => {
       await promptConcurrencyInput(
-        ctx, "Default concurrency limit", __config.concurrency.default,
+        ctx, "Default limit", __config.concurrency.default,
         (value) => { __config.concurrency.default = value; },
       );
     });
