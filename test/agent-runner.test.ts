@@ -3,7 +3,7 @@
  *
  * Tests focus on:
  *   - isolated parameter handling (overrides extensions/skills)
- *   - EXCLUDED_TOOL_NAMES constant and tool filtering
+ *   - tool filtering (excluded tools, whitelist, blacklist)
  *   - No inheritContext or memory code paths
  */
 
@@ -72,7 +72,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, subscribeToSessionEvents, EXCLUDED_TOOL_NAMES } from "../src/agent-runner.js";
+import { runAgent, subscribeToSessionEvents } from "../src/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",
@@ -132,20 +132,6 @@ function createMockSession() {
     _getListeners: () => listeners,
   };
 }
-
-/* ------------------------------------------------------------------ */
-/*  EXCLUDED_TOOL_NAMES                                                */
-/* ------------------------------------------------------------------ */
-
-describe("EXCLUDED_TOOL_NAMES", () => {
-  it("contains Agent", () => {
-    expect(EXCLUDED_TOOL_NAMES).toContain("Agent");
-  });
-
-  it("contains exactly 1 entry", () => {
-    expect(EXCLUDED_TOOL_NAMES).toHaveLength(1);
-  });
-});
 
 /* ------------------------------------------------------------------ */
 /*  runAgent — tool filtering (excluded tools)                         */

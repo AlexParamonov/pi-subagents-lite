@@ -27,7 +27,7 @@ import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js"
 import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
-export const EXCLUDED_TOOL_NAMES = ["Agent"];
+const EXCLUDED_TOOL_NAMES = ["Agent"];
 
 /** Additional turns allowed after the soft limit steer message. */
 const GRACE_TURNS = 5;
