@@ -239,10 +239,7 @@ async function executeSpawnBackground(
   widget?.ensureTimer();
   widget?.update();
 
-  const record = manager.getRecord(agentId);
-  if (!record) {
-    return errorResult("Failed to create agent");
-  }
+  const record = manager.getRecord(agentId)!;
   const details: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
   const suffix = `A notification will arrive when done - User asks you not to poll or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.status === "queued" ? "Agent queued" : "Agent running";
