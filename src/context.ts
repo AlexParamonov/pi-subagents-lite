@@ -1,9 +1,8 @@
 /**
- * context.ts — Extract parent conversation context for subagent inheritance.
+ * context.ts — Message content extraction and conversation snapshot formatting.
  *
- * Contains extractText (for message content) and buildSnapshotMarkdown
- * (for agent session snapshot viewer). buildParentContext was removed
- * when inherit_context was cut.
+ * extractText: pull text from message content blocks.
+ * buildSnapshotMarkdown: format agent conversation as markdown for snapshot viewer.
  */
 
 import { summarizeToolArgs } from "./output-file.js";
