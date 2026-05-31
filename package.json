@@ -5,9 +5,12 @@
   "keywords": [
     "pi-package",
     "pi",
+    "pi-agent",
+    "pi-coding-agent",
     "pi-extension",
-    "subagent",
-    "agent"
+    "subagents",
+    "ai",
+    "agents"
   ],
   "author": "AlexParamonov",
   "license": "MIT",
