@@ -42,8 +42,8 @@ export interface AgentConfig {
 
   /** true = this is an embedded default agent (informational) */
   isDefault?: boolean;
-  /** false = agent is hidden from the registry */
-  enabled?: boolean;
+  /** true = agent is hidden from the schema enum but can still be called by name. */
+  hidden?: boolean;
   /** Where this agent was loaded from */
   source?: "project" | "global";
 }

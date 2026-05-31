@@ -93,7 +93,7 @@ Stop a running agent at any time via /agents command
 |---|---|---|
 | `prompt` | ✅ | The task for the sub-agent |
 | `description` | ✅ | Brief description for the LLM caller |
-| `agent` | | Type name — `general-purpose`, `Explore`, or any custom type you define (see [Custom Agent Types](#custom-agent-types)). The available values are **auto-populated** from `.md` files in your agent directories — drop a file, it appears in the enum. Set `enabled: false` in frontmatter to remove a type from this list. |
+| `agent` | | Type name — `general-purpose`, `Explore`, or any custom type you define (see [Custom Agent Types](#custom-agent-types)). The available values are **auto-populated** from `.md` files in your agent directories — drop a file, it appears in the enum. Set `hidden: true` in frontmatter to hide a type from this list (still callable by name). |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
 
 > `model`, `max_turns`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`/`thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
@@ -152,7 +152,7 @@ This agent gets everything: all tools, all extensions, all skills. Same as `gene
 | `model` | string | inherit parent | Default model as `"provider/model-id"`. Override via `/agents` or `subagents-lite.json`. See [Model Resolution](#model-resolution). |
 | `thinking` | string | inherit parent | Default thinking level. One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer message at the limit, then `max_turns + 5` grace turns before hard abort. |
-| `enabled` | `true` \| `false` | `true` | `false` removes the agent type from the tool schema's enum (LLM can't see or invoke it). Running agents unaffected. |
+| `hidden` | `true` \| `false` | `false` | `true` hides the agent type from the tool schema's enum (LLM can't see or invoke it). Agent is still callable by name. Running agents unaffected. |
 
 #### `tools` field values
 

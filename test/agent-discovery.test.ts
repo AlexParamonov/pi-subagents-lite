@@ -88,7 +88,7 @@ extensions: none
 skills: all
 thinking: high
 max_turns: "50"
-enabled: "false"
+hidden: "false"
 ---
 
 This is the system prompt body.
@@ -103,7 +103,7 @@ This is the system prompt body.
     expect(result.skills).toBe(true); // "all" → true
     expect(result.thinking).toBe("high");
     expect(result.max_turns).toBe(50);
-    expect(result.enabled).toBe(false);
+    expect(result.hidden).toBe(false);
     expect(result.systemPrompt).toBe("This is the system prompt body.");
     expect(result.source).toBe("user");
   });
@@ -124,7 +124,7 @@ Just a body.
     expect(result.skills).toBeUndefined();
     expect(result.thinking).toBeUndefined();
     expect(result.max_turns).toBeUndefined();
-    expect(result.enabled).toBeUndefined();
+    expect(result.hidden).toBeUndefined();
     expect(result.systemPrompt).toBe("Just a body.");
     expect(result.source).toBe("project");
   });
@@ -175,10 +175,10 @@ body
     expect(result.extensions).toEqual(["read", "bash", "write"]);
   });
 
-  it("parses enabled as boolean false from 'false' string", () => {
-    const content = makeAgentMd({ enabled: "false" });
+  it("parses hidden as boolean false from 'false' string", () => {
+    const content = makeAgentMd({ hidden: "false" });
     const result = parseAgentFile(content, "test.md", "user");
-    expect(result.enabled).toBe(false);
+    expect(result.hidden).toBe(false);
   });
 
   it("parses max_turns as number", () => {

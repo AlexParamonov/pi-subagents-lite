@@ -32,7 +32,7 @@ let projectAgentDir = "";
 /**
  * Register agents into the unified registry.
  * Starts with DEFAULT_AGENTS, then overlays user agents (overrides defaults with same name).
- * Disabled agents (enabled === false) are kept in the registry but excluded from spawning.
+ * Hidden agents (hidden === true) are kept in the registry but excluded from spawning.
  */
 export function registerAgents(userAgents: Map<string, AgentConfig>): void {
   agents.clear();
@@ -97,14 +97,14 @@ export function getAgentConfig(name: string): AgentConfig | undefined {
   return key ? agents.get(key) : undefined;
 }
 
-/** Get all enabled type names (for spawning and tool descriptions). */
+/** Get all visible type names (for spawning and tool descriptions). */
 export function getAvailableTypes(): string[] {
   return [...agents.entries()]
-    .filter(([_, config]) => config.enabled !== false)
+    .filter(([_, config]) => config.hidden !== true)
     .map(([name]) => name);
 }
 
-/** Get all type names including disabled (for UI listing). */
+/** Get all type names including hidden (for UI listing). */
 export function getAllTypes(): string[] {
   return [...agents.keys()];
 }
@@ -144,16 +144,16 @@ export function getConfig(type: string): ResolvedAgentConfig {
   const resolvedKey = resolveType(type);
   const config = resolvedKey ? agents.get(resolvedKey) : undefined;
 
-  // If config exists and is enabled, use it; otherwise fall back to general-purpose
-  const activeConfig = config?.enabled !== false
+  // If config exists and is not hidden, use it; otherwise fall back to general-purpose
+  const activeConfig = config?.hidden !== true
     ? config
     : agents.get("general-purpose");
 
-  if (activeConfig && activeConfig.enabled !== false) {
+  if (activeConfig && activeConfig.hidden !== true) {
     return toResolved(activeConfig);
   }
 
-  // Absolute fallback — general-purpose was disabled or missing
+  // Absolute fallback — general-purpose was hidden or missing
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",

@@ -839,13 +839,13 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   for (const name of types) {
     const cfg = getAgentConfig(name);
     if (!cfg) continue;
-    const disabled = cfg.enabled === false ? " [DISABLED]" : "";
+    const hidden = cfg.hidden === true ? " [HIDDEN]" : "";
     const model = cfg.model ? `  Model: ${cfg.model}` : "";
     const tools = cfg.registeredTools
       ? `  Tools: ${cfg.registeredTools.join(", ")}`
       : "  Tools: all built-in tools";
     const source = cfg.source ? `  Source: ${cfg.source}` : "";
-    lines.push(`  ${name}${disabled}`);
+    lines.push(`  ${name}${hidden}`);
     lines.push(`    ${cfg.description}`);
     if (model) lines.push(model);
     lines.push(tools);

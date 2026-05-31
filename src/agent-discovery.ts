@@ -32,7 +32,7 @@ export interface AgentConfigFromMd {
   model?: string;
   thinking?: ThinkingLevel;
   max_turns?: number;
-  enabled?: boolean;
+  hidden?: boolean;
   systemPrompt: string;
   source: "user" | "project";
 }
@@ -273,7 +273,7 @@ export function parseAgentFile(
     model: parseString(frontmatter, "model"),
     thinking: parseThinkingLevel(parseString(frontmatter, "thinking")),
     max_turns: parseNumber(frontmatter, "max_turns"),
-    enabled: parseBoolean(frontmatter, "enabled"),
+    hidden: parseBoolean(frontmatter, "hidden"),
     systemPrompt: body,
     source: source,
   };
@@ -399,7 +399,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     model: md.model,
     thinking: md.thinking,
     maxTurns: md.max_turns,
-    enabled: md.enabled,
+    hidden: md.hidden,
     systemPrompt: md.systemPrompt,
     source: md.source === "project" ? "project" : "global",
   };
