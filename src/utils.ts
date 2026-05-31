@@ -34,7 +34,7 @@ export function isSymlink(filePath: string): boolean {
  */
 export function safeReadFile(filePath: string): string | undefined {
   try {
-    if (lstatSync(filePath).isSymbolicLink()) return undefined;
+    if (isSymlink(filePath)) return undefined;
     return readFileSync(filePath, "utf-8");
   } catch {
     return undefined;

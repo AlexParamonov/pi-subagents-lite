@@ -36,7 +36,7 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agent-types.js";
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { AgentManager } from "./agent-manager.js";
-import { AgentWidget, buildStatsParts, formatMs, getDisplayName, type AgentActivity, type UICtx } from "./ui/agent-widget.js";
+import { AgentWidget, buildStatsParts, formatMs, getDisplayName, type AgentActivity, type Theme, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
 import { loadConfig, DEFAULT_CONFIG } from "./config-io.js";
 import { executeAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
@@ -137,7 +137,7 @@ async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void>
 // ============================================================================
 
 /** Build the stats line for an agent result card. Used by both renderers. */
-function buildStatsLine(d: Record<string, unknown>, theme: any): string {
+function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
   const parts = buildStatsParts({
     toolUses: (d.toolUses as number) ?? 0,
     turnCount: d.turnCount as number | undefined,
