@@ -148,112 +148,6 @@ describe("EXCLUDED_TOOL_NAMES", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  runAgent — isolated parameter                                      */
-/* ------------------------------------------------------------------ */
-
-describe("runAgent — isolated parameter", () => {
-  const session = createMockSession();
-
-  beforeEach(() => {
-    resetMocks();
-    mockModules.mockCreateAgentSession.mockResolvedValue({
-      session,
-      extensionsResult: {},
-    });
-    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
-    session.subscribe.mockReturnValue(vi.fn());
-    session.prompt.mockResolvedValue(undefined);
-    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
-  });
-
-  it("isolated=true: sets extensions=false and skills=false", async () => {
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: true,
-      skills: true,
-    });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      isolated: true,
-    });
-
-    const loaderCall = mockModules.getLoaderOpts();
-    expect(loaderCall.noExtensions).toBe(true);
-    expect(loaderCall.noSkills).toBe(true);
-  });
-
-  it("isolated=false: uses config values for extensions/skills", async () => {
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: true,
-      skills: true,
-    });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      isolated: false,
-    });
-
-    const loaderCall = mockModules.getLoaderOpts();
-    expect(loaderCall.noExtensions).toBe(false);
-    expect(loaderCall.noSkills).toBe(false);
-  });
-
-  it("isolated=true with false config: stays false", async () => {
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: false,
-      skills: false,
-    });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      isolated: true,
-    });
-
-    const loaderCall = mockModules.getLoaderOpts();
-    expect(loaderCall.noExtensions).toBe(true);
-    expect(loaderCall.noSkills).toBe(true);
-  });
-
-  it("isolated=false with false config: stays false", async () => {
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: false,
-      skills: false,
-    });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      isolated: false,
-    });
-
-    const loaderCall = mockModules.getLoaderOpts();
-    expect(loaderCall.noExtensions).toBe(true);
-    expect(loaderCall.noSkills).toBe(true);
-  });
-
-  it("isolated undefined (not set): uses config values", async () => {
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: true,
-      skills: ["skill1"],
-    });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      // isolated not set
-    });
-
-    const loaderCall = mockModules.getLoaderOpts();
-    expect(loaderCall.noExtensions).toBe(false);
-    // skills is string[] -> noSkills should be true (already preloaded into prompt)
-    expect(loaderCall.noSkills).toBe(true);
-  });
-});
-
-/* ------------------------------------------------------------------ */
 /*  runAgent — tool filtering (excluded tools)                         */
 /* ------------------------------------------------------------------ */
 
@@ -287,15 +181,15 @@ describe("runAgent — tool filtering", () => {
     );
 
     // Verify the remaining tools are correct
-    // grep is a known built-in not in the whitelist [read, bash, edit] → should be filtered out
+    // tools: undefined → defaults to true → all tools visible (except Agent)
     const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
     expect(activeToolsCall).toContain("read");
     expect(activeToolsCall).toContain("bash");
     expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).not.toContain("grep");
+    expect(activeToolsCall).toContain("grep");
   });
 
-  it("rejects known built-in tools not in whitelist when extensions=true", async () => {
+  it("tools: [read, bash, edit] — whitelist filters out other tools", async () => {
     const session = createMockSession();
     // Simulate: agent wants [read, bash, edit], but session also has write and grep active
     session.getActiveToolNames.mockReturnValue([
@@ -305,19 +199,83 @@ describe("runAgent — tool filtering", () => {
       session,
       extensionsResult: {},
     });
-    // getConfig returns builtinToolNames = [read, bash, edit]
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      tools: ["read", "bash", "edit"],
+    });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
-      builtinToolNames: ["read", "bash", "edit"],
-      extensions: true,
+      tools: ["read", "bash", "edit"],
     });
-    mockModules.mockGetToolNamesForType.mockReturnValue(["read", "bash", "edit"]);
 
     await runAgent(fakeCtx(), "test-agent", "do something", {
       pi: fakePi,
     });
 
-    // write and grep are built-in but not in whitelist → should be rejected
+    // write and grep not in tools whitelist → should be rejected
+    expect(session.setActiveToolsByName).toHaveBeenCalled();
+    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeToolsCall).toContain("read");
+    expect(activeToolsCall).toContain("bash");
+    expect(activeToolsCall).toContain("edit");
+    expect(activeToolsCall).not.toContain("write");
+    expect(activeToolsCall).not.toContain("grep");
+    expect(activeToolsCall).not.toContain("Agent");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — excludeTools (blacklist mode)                           */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — excludeTools (blacklist mode)", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("excludeTools: [write] — all tools except write", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "write", "grep", "Agent",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      excludeTools: ["write"],
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(session.setActiveToolsByName).toHaveBeenCalled();
+    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeToolsCall).toContain("read");
+    expect(activeToolsCall).toContain("bash");
+    expect(activeToolsCall).toContain("edit");
+    expect(activeToolsCall).toContain("grep");
+    expect(activeToolsCall).not.toContain("write");
+    expect(activeToolsCall).not.toContain("Agent");
+  });
+
+  it("excludeTools: [write, grep] — excludes multiple tools", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "write", "grep", "Agent",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      excludeTools: ["write", "grep"],
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
     expect(session.setActiveToolsByName).toHaveBeenCalled();
     const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
     expect(activeToolsCall).toContain("read");
@@ -328,27 +286,119 @@ describe("runAgent — tool filtering", () => {
     expect(activeToolsCall).not.toContain("Agent");
   });
 
-  it("isolated=true skips tool filtering block (extensions=false)", async () => {
+  it("excludeTools with no matching tools — no filtering needed", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "Agent",
+      "read", "bash", "edit",
     ]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
     });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      isolated: true,
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      excludeTools: ["write"],
     });
 
-    // Verify the loader options reflect isolation
-    const loaderCall = mockModules.getLoaderOpts();
-    expect(loaderCall.noExtensions).toBe(true);
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // With isolated=true/extensions=false, both filtering branches are skipped
+    // No filtering needed — write not in active tools
     expect(session.setActiveToolsByName).not.toHaveBeenCalled();
+  });
+
+  it("excludeTools is ignored when tools whitelist is set", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "write", "grep",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      tools: ["read", "bash"],
+      excludeTools: ["write"], // ignored because tools is set
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // tools whitelist wins — only read and bash visible
+    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeToolsCall).toEqual(["read", "bash"]);
+  });
+
+  it("excludeTools with ext/* syntax — excludes all tools from extension", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      excludeTools: ["tavily/*"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+          ["web_crawl", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(session.setActiveToolsByName).toHaveBeenCalled();
+    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeToolsCall).toContain("read");
+    expect(activeToolsCall).toContain("bash");
+    expect(activeToolsCall).toContain("edit");
+    expect(activeToolsCall).not.toContain("web_search");
+    expect(activeToolsCall).not.toContain("web_extract");
+    expect(activeToolsCall).not.toContain("web_crawl");
+    expect(activeToolsCall).not.toContain("Agent");
+  });
+
+  it("excludeTools with mixed syntax — ext/* and bare names", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "write", "web_search", "web_extract",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      excludeTools: ["write", "tavily/*"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(session.setActiveToolsByName).toHaveBeenCalled();
+    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
+    expect(activeToolsCall).toContain("read");
+    expect(activeToolsCall).toContain("bash");
+    expect(activeToolsCall).toContain("edit");
+    expect(activeToolsCall).not.toContain("write");
+    expect(activeToolsCall).not.toContain("web_search");
+    expect(activeToolsCall).not.toContain("web_extract");
+    expect(activeToolsCall).not.toContain("Agent");
   });
 });
 
@@ -641,227 +691,86 @@ describe("runAgent — extension name-based filtering", () => {
     expect(loaderCall.noExtensions).toBe(true);
     expect(loaderCall.extensionsOverride).toBeUndefined();
   });
+});
 
-  it("allows all tools from a named extension", async () => {
+/* ------------------------------------------------------------------ */
+/*  runAgent — excludeExtensions (blacklist mode)                      */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — excludeExtensions (blacklist mode)", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("excludeExtensions filters out listed extensions", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "glob",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
-      extensions: ["tavily"],
+      extensions: true,
     });
-    // Simulate loader.getExtensions() returning tavily with 3 tools and extra-tools with 1
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([
-          ["web_search", {}],
-          ["web_extract", {}],
-          ["web_crawl", {}],
-        ]),
-      },
-      {
-        path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts",
-        tools: new Map([["glob", {}]]),
-      },
-    ]);
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      extensions: true,
+      excludeExtensions: ["quality-monitor"],
+    });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toContain("read");
-    expect(activeTools).toContain("bash");
-    expect(activeTools).toContain("edit");
-    expect(activeTools).toContain("web_search");
-    expect(activeTools).toContain("web_extract");
-    expect(activeTools).toContain("web_crawl");
-    // glob is from extra-tools which is not in extensions list → filtered out
-    expect(activeTools).not.toContain("glob");
+    const loaderCall = mockModules.getLoaderOpts();
+    expect(loaderCall.noExtensions).toBe(false);
+    expect(typeof loaderCall.extensionsOverride).toBe("function");
+
+    // Verify the override filters correctly
+    const override = loaderCall.extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toContain("tavily");
   });
 
-  it("allows only specified tool when extension/tool syntax used", async () => {
+  it("excludeExtensions filters multiple extensions", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
-      extensions: ["tavily/web_search"],
+      extensions: true,
     });
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([
-          ["web_search", {}],
-          ["web_extract", {}],
-          ["web_crawl", {}],
-        ]),
-      },
-    ]);
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      extensions: true,
+      excludeExtensions: ["quality-monitor", "confirm-edits"],
+    });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toContain("read");
-    expect(activeTools).toContain("bash");
-    expect(activeTools).toContain("edit");
-    expect(activeTools).toContain("web_search");
-    expect(activeTools).not.toContain("web_extract");
-    expect(activeTools).not.toContain("web_crawl");
-  });
-
-  it("rejects unknown extension names (no substring fallback)", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract",
-    ]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: ["nonexistent"],
+    const loaderCall = mockModules.getLoaderOpts();
+    const override = loaderCall.extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
+        { path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts", tools: new Map() },
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
     });
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([
-          ["web_search", {}],
-          ["web_extract", {}],
-        ]),
-      },
-    ]);
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toContain("read");
-    expect(activeTools).toContain("bash");
-    expect(activeTools).toContain("edit");
-    expect(activeTools).not.toContain("web_search");
-    expect(activeTools).not.toContain("web_extract");
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toContain("tavily");
   });
 
-  it("allows tools from multiple named extensions", async () => {
+  it("excludeExtensions ignored when extensions whitelist is set", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "glob", "unknown_tool",
-    ]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: ["tavily", "extra-tools"],
-    });
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([["web_search", {}]]),
-      },
-      {
-        path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts",
-        tools: new Map([["glob", {}]]),
-      },
-    ]);
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toContain("web_search");
-    expect(activeTools).toContain("glob");
-    // unknown_tool belongs to no extension → filtered out
-    expect(activeTools).not.toContain("unknown_tool");
-  });
-
-  it("does not use old substring matching (no startsWith/includes)", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract",
-    ]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: ["web"], // old substring would match web_search
-    });
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([
-          ["web_search", {}],
-          ["web_extract", {}],
-        ]),
-      },
-    ]);
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    // "web" is not a real extension name → all extension tools should be rejected
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).not.toContain("web_search");
-    expect(activeTools).not.toContain("web_extract");
-  });
-
-  it("skips hook-only extensions (empty tools map) in the extension map", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search",
-    ]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: ["confirm-edits"],
-    });
-    // After extensionsOverride: only confirm-edits loaded (no tools)
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts",
-        tools: new Map(), // hook-only: no tools
-      },
-    ]);
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    // confirm-edits has no tools → extension name not in map → no tools from it
-    // web_search belongs to tavily which was filtered out by extensionsOverride
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).not.toContain("web_search");
-  });
-
-  it("extracts extension name from direct file in extensions dir", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "my_tool", "other_tool",
-    ]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: ["direct-ext"],
-    });
-    // Direct file: extensions/direct-ext.ts (dirname is 'extensions')
-    // other-ext has other_tool but is not in extensions list
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/direct-ext.ts",
-        tools: new Map([["my_tool", {}]]),
-      },
-      {
-        path: "/home/test/.pi/agent/extensions/other-ext/index.ts",
-        tools: new Map([["other_tool", {}]]),
-      },
-    ]);
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toContain("my_tool");
-    expect(activeTools).not.toContain("other_tool");
-  });
-
-  it("extension filtering combined with disallowedTools denylist", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
@@ -870,50 +779,24 @@ describe("runAgent — extension name-based filtering", () => {
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       extensions: ["tavily"],
-      disallowedTools: ["web_crawl"],
+      excludeExtensions: ["quality-monitor"], // ignored
     });
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([
-          ["web_search", {}],
-          ["web_extract", {}],
-          ["web_crawl", {}],
-        ]),
-      },
-    ]);
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toContain("web_search");
-    expect(activeTools).toContain("web_extract");
-    // web_crawl is allowed by extension but denied by disallowedTools
-    expect(activeTools).not.toContain("web_crawl");
-  });
-
-  it("extensions=true allows all extension tools (no map filtering)", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "glob",
-    ]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockGetConfig.mockReturnValue({
-      ...defaultConfig,
-      extensions: true,
+    const loaderCall = mockModules.getLoaderOpts();
+    // extensions whitelist wins — override should filter to only tavily
+    const override = loaderCall.extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
     });
-    mockModules.setLoaderExtensions([
-      {
-        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
-        tools: new Map([["web_search", {}]]),
-      },
-    ]);
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    // extensions=true -> all extension tools allowed, no filtering applied
-    // filterActiveTools returns null -> setActiveToolsByName not called
-    expect(session.setActiveToolsByName).not.toHaveBeenCalled();
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toContain("tavily");
   });
 });
 
@@ -972,7 +855,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     expect(activeTools).not.toContain("Agent");
   });
 
-  it("ext/all syntax: tavily/all expands to all tavily tools", async () => {
+  it("ext/all syntax: tavily/* expands to all tavily tools", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
       "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
@@ -981,12 +864,12 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       extensions: ["tavily"],
-      tools: ["read", "tavily/all"],
+      tools: ["read", "tavily/*"],
     });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
       extensions: ["tavily"],
-      tools: ["read", "tavily/all"],
+      tools: ["read", "tavily/*"],
     });
     mockModules.setLoaderExtensions([
       {
@@ -1092,12 +975,12 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       extensions: ["exa"],
-      tools: ["read", "tavily/all"],
+      tools: ["read", "tavily/*"],
     });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
       extensions: ["exa"],
-      tools: ["read", "tavily/all"],
+      tools: ["read", "tavily/*"],
     });
     mockModules.setLoaderExtensions([
       {
@@ -1109,7 +992,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('extension "tavily" is not loaded, "tavily/all" will have no effect'),
+      expect.stringContaining('extension "tavily" is not loaded, "tavily/*" will have no effect'),
     );
 
     const activeTools = session.setActiveToolsByName.mock.calls[0][0];
@@ -1178,12 +1061,12 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       extensions: ["tavily", "exa"],
-      tools: ["read", "tavily/all", "exa_search"],
+      tools: ["read", "tavily/*", "exa_search"],
     });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
       extensions: ["tavily", "exa"],
-      tools: ["read", "tavily/all", "exa_search"],
+      tools: ["read", "tavily/*", "exa_search"],
     });
     mockModules.setLoaderExtensions([
       {

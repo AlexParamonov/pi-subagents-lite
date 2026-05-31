@@ -24,15 +24,15 @@ export interface AgentConfigFromMd {
   display_name?: string;
   description?: string;
   tools?: string[];
+  exclude_tools?: string[];
   extensions?: boolean | string[];
+  exclude_extensions?: string[];
   skills?: boolean | string[];
   preload_skills?: string[] | false;
   model?: string;
   thinking?: ThinkingLevel;
   max_turns?: number;
-  disallowed_tools?: string[];
   enabled?: boolean;
-  isolated?: boolean;
   systemPrompt: string;
   source: "user" | "project";
 }
@@ -265,15 +265,15 @@ export function parseAgentFile(
     display_name: parseString(frontmatter, "display_name"),
     description: parseString(frontmatter, "description"),
     tools: parseStringArray(frontmatter, "tools"),
+    exclude_tools: parseStringArray(frontmatter, "exclude_tools"),
     extensions: parseExtensions(frontmatter.extensions),
+    exclude_extensions: parseStringArray(frontmatter, "exclude_extensions"),
     skills: parseExtensions(frontmatter.skills),
     preload_skills: parsePreloadSkills(frontmatter.preload_skills),
     model: parseString(frontmatter, "model"),
     thinking: parseThinkingLevel(parseString(frontmatter, "thinking")),
     max_turns: parseNumber(frontmatter, "max_turns"),
-    disallowed_tools: parseStringArray(frontmatter, "disallowed_tools"),
     enabled: parseBoolean(frontmatter, "enabled"),
-    isolated: parseBoolean(frontmatter, "isolated"),
     systemPrompt: body,
     source: source,
   };
@@ -391,15 +391,15 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     description: md.description,
     builtinToolNames: md.tools,
     tools: md.tools,
+    excludeTools: md.exclude_tools,
     extensions: md.extensions,
+    excludeExtensions: md.exclude_extensions,
     skills: md.skills,
     preloadSkills: md.preload_skills,
     model: md.model,
     thinking: md.thinking,
     maxTurns: md.max_turns,
-    disallowedTools: md.disallowed_tools,
     enabled: md.enabled,
-    isolated: md.isolated,
     systemPrompt: md.systemPrompt,
     source: md.source === "project" ? "project" : "global",
   };

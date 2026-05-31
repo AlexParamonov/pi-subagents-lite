@@ -55,8 +55,6 @@ interface RunOptions {
   model?: Model<any>;
   maxTurns?: number;
   signal?: AbortSignal;
-  /** When true, agent gets only built-in tools (no extensions, no skills). */
-  isolated?: boolean;
   thinkingLevel?: ThinkingLevel;
   /** Override working directory. */
   cwd?: string;
@@ -230,78 +228,83 @@ function extractExtensionName(extPath: string): string {
 }
 
 /**
- * Filter active tools: remove extension tools to prevent nesting,
- * apply tools/extension allowlists, and apply disallowedTools denylist.
+ * Resolve tool entries (with ext/* syntax) into concrete tool names.
+ * Returns a set of resolved tool names.
+ */
+function resolveToolEntries(
+  entries: string[],
+  extToolMap: Map<string, string[]> | undefined,
+  notify?: (msg: string) => void,
+): Set<string> {
+  const resolved = new Set<string>();
+
+  for (const entry of entries) {
+    const slashIdx = entry.indexOf("/");
+    if (slashIdx !== -1) {
+      // ext/* or ext/tool syntax
+      const extName = entry.slice(0, slashIdx);
+      const toolPart = entry.slice(slashIdx + 1);
+      if (toolPart === "*") {
+        const extTools = extToolMap?.get(extName);
+        if (extTools && extTools.length > 0) {
+          for (const t of extTools) resolved.add(t);
+        } else {
+          notify?.(`extension "${extName}" is not loaded, "${entry}" will have no effect`);
+        }
+      } else {
+        // ext/tool syntax: e.g. "tavily/web_search"
+        resolved.add(toolPart);
+      }
+    } else {
+      // Bare tool name
+      resolved.add(entry);
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * Filter active tools: apply tools allowlist/denylist and EXCLUDED_TOOL_NAMES.
  *
  * The `tools` config controls which tool schemas the LLM sees (built-in + extension).
  * The `extensions` config controls which extensions are loaded (hooks + commands).
- * When `tools` is set, it takes precedence over `extensions` for tool visibility.
+ * `extensions` does NOT affect tool visibility — that's `tools`'s job.
+ *
+ * Supports ext/* syntax for both whitelist and blacklist modes.
+ *
+ * `tools` and `excludeTools` are mutually exclusive. If both set, `tools` wins.
  *
  * Returns null when no filtering is needed, otherwise the filtered tool list.
  */
 function filterActiveTools(
   activeTools: string[],
-  builtinToolNames: string[],
-  extensions: true | string[] | false,
-  disallowedTools: string[] | undefined,
   extToolMap: Map<string, string[]> | undefined,
   tools: true | string[] | false | undefined,
+  excludeTools: string[] | undefined,
   notify?: (msg: string) => void,
 ): string[] | null {
-  const disallowedSet = disallowedTools ? new Set(disallowedTools) : undefined;
-
-  if (extensions === false) {
-    // Isolated mode — only apply denylist to built-in tools
-    if (!disallowedSet) return null;
-    const filtered = activeTools.filter(t => !disallowedSet.has(t));
+  // Blacklist mode: excludeTools set and tools not set as whitelist
+  if (excludeTools && !Array.isArray(tools)) {
+    const excludeSet = resolveToolEntries(excludeTools, extToolMap, notify);
+    const filtered = activeTools.filter(t =>
+      !EXCLUDED_TOOL_NAMES.includes(t) && !excludeSet.has(t)
+    );
     return filtered.length !== activeTools.length ? filtered : null;
   }
 
-  // Build a reverse lookup: tool name → extension name(s)
-  const toolExtReverseMap = new Map<string, string[]>();
-  if (extToolMap) {
-    for (const [extName, toolNames] of extToolMap) {
-      for (const tn of toolNames) {
-        const existing = toolExtReverseMap.get(tn);
-        if (existing) existing.push(extName);
-        else toolExtReverseMap.set(tn, [extName]);
-      }
-    }
-  }
-
   if (Array.isArray(tools)) {
-    // `tools` field is set — it controls visibility for both built-in and extension tools.
-    // Supports `ext/all` syntax to allow all tools from a loaded extension.
+    // Whitelist mode: resolve entries with ext/* expansion
     const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
-    const allowedExtTools = new Set<string>();
-    const allowedBuiltins = new Set<string>();
+    const allowedTools = resolveToolEntries(tools, extToolMap, notify);
 
+    // Warn about unknown entries
     for (const entry of tools) {
       const slashIdx = entry.indexOf("/");
-      if (slashIdx !== -1) {
-        // ext/all syntax: e.g. "tavily/all" — expand to all tools from that extension
-        const extName = entry.slice(0, slashIdx);
-        const toolPart = entry.slice(slashIdx + 1);
-        if (toolPart === "all") {
-          const extTools = extToolMap?.get(extName);
-          if (extTools && extTools.length > 0) {
-            for (const t of extTools) allowedExtTools.add(t);
-          } else {
-            notify?.(`extension "${extName}" is not loaded, "${entry}" will have no effect`);
-          }
-        } else {
-          // ext/tool syntax: e.g. "tavily/web_search"
-          allowedExtTools.add(toolPart);
-        }
-      } else if (allBuiltinSet.has(entry)) {
-        // Known built-in tool name — explicitly allowed
-        allowedBuiltins.add(entry);
-      } else {
-        // Check if this is a tool from a loaded extension
-        const toolExts = toolExtReverseMap.get(entry);
-        if (toolExts) {
-          allowedExtTools.add(entry);
-        } else {
+      if (slashIdx === -1 && !allBuiltinSet.has(entry)) {
+        // Bare name, not a known built-in — check if it's an extension tool
+        const toolExts = extToolMap ? [...extToolMap.entries()].filter(([, tools]) => tools.includes(entry)) : [];
+        if (toolExts.length === 0) {
           notify?.(`tool "${entry}" not found in any loaded extension`);
         }
       }
@@ -310,8 +313,7 @@ function filterActiveTools(
     const visibleSet = new Set<string>();
     for (const t of activeTools) {
       if (EXCLUDED_TOOL_NAMES.includes(t)) continue;
-      if (disallowedSet?.has(t)) continue;
-      if (allowedBuiltins.has(t) || allowedExtTools.has(t)) {
+      if (allowedTools.has(t)) {
         visibleSet.add(t);
       }
     }
@@ -319,7 +321,7 @@ function filterActiveTools(
     // Warn if a loaded extension has none of its tools in `tools`
     if (extToolMap) {
       for (const [extName, extTools] of extToolMap) {
-        const hasAny = extTools.some(t => allowedExtTools.has(t));
+        const hasAny = extTools.some(t => allowedTools.has(t));
         if (!hasAny) {
           notify?.(`extension "${extName}" is loaded but none of its tools are in tools: [${tools.join(", ")}]`);
         }
@@ -329,44 +331,14 @@ function filterActiveTools(
     return [...visibleSet];
   }
 
-  if (tools === true) {
-    // tools: true means all tools visible — no filtering needed (except excluded/denied)
-    if (!disallowedSet) return null;
-    const filtered = activeTools.filter(t => !disallowedSet.has(t));
-    return filtered.length !== activeTools.length ? filtered : null;
-  }
-
   if (tools === false) {
-    // tools: false means no tools visible
     return [];
   }
 
-  // tools not set — fall back to extensions-based filtering
-  const builtinToolNameSet = new Set(builtinToolNames);
-  const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
-  const filtered = activeTools.filter((t) => {
-    if (EXCLUDED_TOOL_NAMES.includes(t)) return false;
-    if (disallowedSet?.has(t)) return false;
-    if (builtinToolNameSet.has(t)) return true;
-    if (allBuiltinSet.has(t)) return false;
-    if (Array.isArray(extensions)) {
-      if (!extToolMap) return false;
-      return extensions.some(ext => {
-        const slashIdx = ext.indexOf("/");
-        if (slashIdx !== -1) {
-          // Extension/tool syntax: e.g. "tavily/web_search"
-          const extName = ext.slice(0, slashIdx);
-          const toolName = ext.slice(slashIdx + 1);
-          if (t !== toolName) return false;
-          return extToolMap.get(extName)?.includes(t) ?? false;
-        }
-        // Extension-only syntax: e.g. "tavily" — allow all its tools
-        return extToolMap.get(ext)?.includes(t) ?? false;
-      });
-    }
-    return true;
-  });
-  return filtered.length !== activeTools.length ? filtered : null;
+  // tools: true or undefined — all tools visible (except excluded)
+  const hasExcluded = activeTools.some(t => EXCLUDED_TOOL_NAMES.includes(t));
+  if (!hasExcluded) return null;
+  return activeTools.filter(t => !EXCLUDED_TOOL_NAMES.includes(t));
 }
 
 /** Run a git command via pi.exec, returning stdout on success or null on failure. */
@@ -409,12 +381,10 @@ export async function runAgent(
 
   const env = await detectEnv(options.pi, effectiveCwd);
 
-  // Resolve extensions/skills: isolated overrides to false
-  // Falls back to agent config (frontmatter) when not set via options (tool injection)
-  const effectiveIsolated = options.isolated ?? agentConfig?.isolated;
-  const extensions = effectiveIsolated ? false : config.extensions;
-  const skills = effectiveIsolated ? false : config.skills;
-  const preloadSkillsList = effectiveIsolated ? false : agentConfig?.preloadSkills;
+  // Resolve extensions/skills from agent config (frontmatter)
+  const extensions = config.extensions;
+  const skills = config.skills;
+  const preloadSkillsList = agentConfig?.preloadSkills;
 
   // Build prompt extras (skills only).
   const extras: PromptExtras = {};
@@ -449,6 +419,7 @@ export async function runAgent(
   // Load extensions/skills: true or string[] → load; false → don't.
   // When extensions is an array, use extensionsOverride to selectively load
   // only the listed extensions (hooks/commands of excluded ones never fire).
+  // When excludeExtensions is set (and extensions is not string[]), filter out those extensions.
   const loaderOpts: ConstructorParameters<typeof DefaultResourceLoader>[0] = {
     cwd: effectiveCwd,
     agentDir,
@@ -460,7 +431,11 @@ export async function runAgent(
     systemPromptOverride: () => systemPrompt,
     appendSystemPromptOverride: () => [],
   };
+  const excludeExtSet = agentConfig?.excludeExtensions
+    ? new Set(agentConfig.excludeExtensions)
+    : undefined;
   if (Array.isArray(extensions)) {
+    // Whitelist mode: only load listed extensions
     const allowedNames = new Set(extensions.map(ext => {
       const slashIdx = ext.indexOf("/");
       return slashIdx !== -1 ? ext.slice(0, slashIdx) : ext;
@@ -469,6 +444,14 @@ export async function runAgent(
       ...result,
       extensions: result.extensions.filter(ext =>
         allowedNames.has(extractExtensionName(ext.path)),
+      ),
+    });
+  } else if (excludeExtSet) {
+    // Blacklist mode: load all except excluded extensions
+    loaderOpts.extensionsOverride = (result) => ({
+      ...result,
+      extensions: result.extensions.filter(ext =>
+        !excludeExtSet.has(extractExtensionName(ext.path)),
       ),
     });
   }
@@ -514,15 +497,12 @@ export async function runAgent(
     options.agentId ? `${baseSessionName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseSessionName,
   );
 
-  // Filter active tools: remove our own tools to prevent nesting,
-  // apply extension allowlist if specified, and apply disallowedTools denylist
+  // Filter active tools: apply tools allowlist/denylist and EXCLUDED_TOOL_NAMES
   const filteredTools = filterActiveTools(
     session.getActiveToolNames(),
-    toolNames,
-    extensions,
-    agentConfig?.disallowedTools,
     extToolMap,
     agentConfig?.tools,
+    agentConfig?.excludeTools,
     (msg) => {
       if (ctx.ui?.notify) {
         ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");

@@ -88,7 +88,6 @@ extensions: none
 skills: all
 thinking: high
 max_turns: "50"
-disallowed_tools: edit, write
 enabled: "false"
 ---
 
@@ -104,7 +103,6 @@ This is the system prompt body.
     expect(result.skills).toBe(true); // "all" → true
     expect(result.thinking).toBe("high");
     expect(result.max_turns).toBe(50);
-    expect(result.disallowed_tools).toEqual(["edit", "write"]);
     expect(result.enabled).toBe(false);
     expect(result.systemPrompt).toBe("This is the system prompt body.");
     expect(result.source).toBe("user");
@@ -126,7 +124,6 @@ Just a body.
     expect(result.skills).toBeUndefined();
     expect(result.thinking).toBeUndefined();
     expect(result.max_turns).toBeUndefined();
-    expect(result.disallowed_tools).toBeUndefined();
     expect(result.enabled).toBeUndefined();
     expect(result.systemPrompt).toBe("Just a body.");
     expect(result.source).toBe("project");

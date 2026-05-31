@@ -96,7 +96,7 @@ Stop a running agent at any time via /agents command
 | `agent` | | Type name — `general-purpose`, `Explore`, or any custom type you define (see [Custom Agent Types](#custom-agent-types)). The available values are **auto-populated** from `.md` files in your agent directories — drop a file, it appears in the enum. Set `enabled: false` in frontmatter to remove a type from this list. |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
 
-> `model`, `max_turns`, `isolated`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`/`isolated`/`thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
+> `model`, `max_turns`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`/`thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
 
 ## Custom Agent Types
 
@@ -111,7 +111,7 @@ Built-in types (`general-purpose`, `Explore`) are always present. User agents ov
 name: security-review
 display_name: Security Review
 description: Review code for security issues
-tools: [read, bash, grep, find, ls]
+tools: [read, bash, grep]
 extensions: false
 skills: false
 model: anthropic/claude-sonnet-4-5-20250514
@@ -123,23 +123,107 @@ You are a security review specialist. Analyze code for vulnerabilities,
 focusing on injection flaws, auth bypasses, and insecure defaults.
 ```
 
-**Frontmatter quick reference:**
+**Minimal agent — just name and description:**
 
-| Field | Type | Description |
+```markdown
+---
+name: my-agent
+description: Does something
+---
+
+System prompt here.
+```
+
+This agent gets everything: all tools, all extensions, all skills. Same as `general-purpose`. No boilerplate needed — set restrictions only when you want them.
+
+**Frontmatter reference:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | filename | Agent type name. Used as the enum value in the `agent` parameter. Must be unique across all agent types. |
+| `display_name` | string | `name` | Human-readable label shown in the UI widget, `/agents` menu, and result viewer. |
+| `description` | string | `""` | Short description displayed in the `/agents` type list and tool rendering. Keep it one sentence. |
+| `tools` | `true` \| `string[]` \| `false` | `true` | **Tool whitelist.** Controls which tool schemas the LLM sees. Accepts built-in names and extension tool references (see below). `true` = all tools visible; `false` = no tools; `string[]` = only listed tools visible. Mutually exclusive with `exclude_tools`. |
+| `exclude_tools` | `string[]` | none | **Tool blacklist.** All tools except these are visible. Mutually exclusive with `tools` (when `tools` is `string[]`). |
+| `extensions` | `true` \| `string[]` \| `false` | `true` | **Extension loader.** Controls which extensions load (hooks + commands fire). Does NOT control tool visibility. `true` = load all; `false` = load none; `string[]` = load only listed extensions. Mutually exclusive with `exclude_extensions`. |
+| `exclude_extensions` | `string[]` | none | **Extension blacklist.** All extensions except these load. Mutually exclusive with `extensions` (when `extensions` is `string[]`). |
+| `skills` | `true` \| `string[]` \| `false` | `true` | **Skill whitelist.** Controls which skills are available (metadata injected into system prompt). `true` = all skills; `false` = no skills; `string[]` = only listed skills. |
+| `preload_skills` | `string[]` \| `false` | `false` | **Full skill injection.** Dumps complete SKILL.md content into system prompt instead of metadata-only. `string[]` = list of skills to preload; `false` = none. |
+| `model` | string | inherit parent | Default model as `"provider/model-id"`. Override via `/agents` or `subagents-lite.json`. See [Model Resolution](#model-resolution). |
+| `thinking` | string | inherit parent | Default thinking level. One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
+| `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer message at the limit, then `max_turns + 5` grace turns before hard abort. |
+| `enabled` | `true` \| `false` | `true` | `false` removes the agent type from the tool schema's enum (LLM can't see or invoke it). Running agents unaffected. |
+
+#### `tools` field values
+
+The `tools` field accepts built-in tool names and extension tool references:
+
+| Value | Meaning | Example |
 |---|---|---|
-| `name` | string | Agent type name. Used as the enum value in the `agent` parameter (defaults to filename). |
-| `display_name` | string | Human-readable label shown in the UI. |
-| `description` | string | Short description — displayed in the `/agents` type list and tool rendering. |
-| `tools` | string[] | Tool allowlist. Accepts built-in names (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) and extension tool references (`ext-name/tool-name` or `ext-name/all`). If omitted, tool visibility falls back to `extensions` field. |
-| `disallowed_tools` | string[] | Tool denylist — removes these from the agent's toolset even if allowlisted by `tools` or extensions. |
-| `extensions` | bool \| string[] | Controls which extensions load and which extension tools are visible. `false` = none; `true` = all; `["ext-a"]` = load extension + all its tools. Overridden by `tools` when both are set. |
-| `skills` | bool \| string[] | `false` = no skills; `true` = inherit all; `["skill-a"]` = metadata-only injection (agent reads full content on-demand). |
-| `preload_skills` | string[] \| false | `["skill-a"]` = dump full SKILL.md content into system prompt (old `skills` behavior). `false`/omitted = none. |
-| `model` | string | Default model as `"provider/model-id"`. Override via `/agents` or `subagents-lite.json`. |
-| `thinking` | string | Default thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
-| `max_turns` | number | Turn limit (soft stop with steer). |
-| `enabled` | bool | `false` removes the agent type from the tool schema's enum (LLM can't see or invoke it). Running agents unaffected. Default: `true`. |
-| `isolated` | bool | Shorthand for `extensions: false` + `skills: false`. Reduces token footprint per turn. |
+| `true` | All tools visible (default) | `tools: true` or omit the field |
+| `false` | No tools visible | `tools: false` |
+| `[read, bash, grep]` | Only listed built-in tools | `tools: [read, bash]` |
+| `[web_search]` | Extension tool by name | `tools: [read, web_search]` |
+| `[tavily/*]` | All tools from an extension | `tools: [read, tavily/*]` |
+| `[tavily/web_search]` | Specific tool from extension | `tools: [read, tavily/web_search]` |
+| Mixed | Combine the above | `tools: [read, bash, tavily/*, exa_search]` |
+
+Built-in tool names: `read`, `bash`, `edit`, `write`, `grep`.
+
+#### Blacklist mode (`exclude_tools` and `exclude_extensions`)
+
+When you have many tools or extensions and want to disable a few, use the blacklist fields:
+
+```yaml
+---
+name: restricted-agent
+description: Agent with write disabled
+exclude_tools: [write]              # all tools except write
+exclude_extensions: [quality-monitor]  # all extensions except quality-monitor
+---
+```
+
+`exclude_tools` supports the same `ext/*` syntax as `tools`:
+
+```yaml
+exclude_tools: [tavily/*]           # hide all tavily tools (extension still loads)
+exclude_tools: [write, tavily/*]    # hide write + all tavily tools
+exclude_tools: [tavily/web_search]  # hide only web_search from tavily
+```
+
+| Field | Mutually exclusive with | Behavior |
+|---|---|---|
+| `exclude_tools` | `tools` (when `tools` is `string[]`) | All tools except listed ones visible. Supports `ext/*` syntax. |
+| `exclude_extensions` | `extensions` (when `extensions` is `string[]`) | All extensions except listed ones load. |
+
+**Constraint:** You can use EITHER `tools` OR `exclude_tools`, not both. Same for `extensions`/`exclude_extensions`. If both are set, the whitelist (`tools`/`extensions`) wins.
+
+**Note:** `exclude_tools: [tavily/*]` hides tavily's tools but the extension still loads (hooks fire). Use `exclude_extensions: [tavily]` to prevent the extension from loading entirely.
+
+#### `extensions` field values
+
+The `extensions` field controls which extensions load. It does NOT affect tool visibility.
+
+| Value | Meaning | Example |
+|---|---|---|
+| `true` | Load all extensions (default) | `extensions: true` or omit the field |
+| `false` | Load no extensions | `extensions: false` |
+| `[tavily]` | Load only listed extensions | `extensions: [tavily, pi-tokf]` |
+| `[tavily/web_search]` | Load extension (tool part ignored) | `extensions: [tavily/web_search]` loads all of tavily |
+
+#### `skills` and `preload_skills` field values
+
+Skills have two injection modes:
+
+| Field | Value | Effect |
+|---|---|---|
+| `skills` | `true` | All skills available (metadata-only in system prompt) |
+| `skills` | `false` | No skills |
+| `skills` | `[debug, tdd]` | Only listed skills (metadata-only) |
+| `preload_skills` | `[debug]` | Dump full SKILL.md content into system prompt |
+| `preload_skills` | `false` | No preloading (default) |
+
+Metadata-only means the agent sees skill name, description, and file path. It reads the full content on-demand via the `read` tool. Preloading injects the full content upfront — higher token cost but no read latency.
 
 ### Token-Saving Frontmatter Settings
 
@@ -147,15 +231,31 @@ Every tool schema and every skill snippet you inject costs tokens — in every t
 
 | Setting | What it controls | Token impact |
 |---|---|---|
-| `tools: [a, b, c]` | Which built-in tools the LLM sees | High — each tool has a schema (name, params, description) injected every turn. Fewer tools = fewer tokens. |
-| `extensions: false` | Disables all extension-provided tools | Medium — extensions can register many tools (linters, browsers, etc.). Each adds schema tokens. |
-| `extensions: ["my-ext"]` | Allowlist only specific extensions | Medium — pick only what the agent needs. |
+| `tools: [a, b, c]` | Which tool schemas the LLM sees (built-in + extension tools) | High — each tool has a schema (name, params, description) injected every turn. Fewer tools = fewer tokens. |
+| `tools: [ext-name/*]` | All tools from a specific extension | Medium — lazy shorthand for listing each tool individually. |
+| `extensions: false` | Disables all extensions (no hooks, no commands) | Medium — extensions can register hooks that fire every turn. |
+| `extensions: ["my-ext"]` | Load only specific extensions | Medium — pick only what the agent needs. |
 | `skills: ["skill-a"]` | Whitelist skills — injects metadata only (name, description, location) | Low — agent reads full content on-demand via `read` tool. No prose in system prompt. |
 | `skills: false` | Disables all skills | Zero skill tokens. |
 | `preload_skills: ["skill-a"]` | Dump full SKILL.md content into system prompt | **Highest** — skill prompts are prose, not schemas. A verbose skill can be 10-50x the token cost of a tool schema. |
-| `isolated: true` | Shorthand for `extensions: false` + `skills: false` | High — zero extension tools, zero skill prompts. Useful for fast, focused agents. |
+| `exclude_tools: [write]` | Disable specific tools (blacklist mode) | High — same as whitelist but without listing everything. |
+| `exclude_extensions: [ext]` | Disable specific extensions (blacklist mode) | Medium — same as whitelist but without listing everything. |
 
-**Practical example:** An `Explore` agent that only reads files doesn't need write tools, browser extensions, or git skills. Setting `tools: [read, bash, grep, find, ls]` + `extensions: false` + `skills: false` saves thousands of tokens per turn compared to inheriting everything.
+**Practical examples:**
+
+```yaml
+# Read-only agent: whitelist approach
+tools: [read, bash, grep]
+extensions: false
+skills: false
+
+# Read-only agent: blacklist approach (same result, easier to maintain)
+exclude_tools: [edit, write]
+
+# Agent that uses all tools except write, and all extensions except quality-monitor
+exclude_tools: [write]
+exclude_extensions: [quality-monitor]
+```
 
 ### Merge precedence
 

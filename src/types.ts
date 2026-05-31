@@ -20,13 +20,16 @@ export interface AgentConfig {
   /**
    * Controls which tool schemas the LLM sees. Can reference built-in tools
    * and extension tools. true = all, string[] = listed, false = none.
-   * When set, takes precedence over extensions for tool visibility filtering.
+   * Supports ext/* syntax to include all tools from an extension.
+   * Mutually exclusive with excludeTools.
    */
   tools?: true | string[] | false;
-  /** Tool denylist — these tools are removed even if `builtinToolNames` or extensions include them. */
-  disallowedTools?: string[];
-  /** true = inherit all, string[] = only listed, false = none */
+  /** Tool blacklist — all tools except these are visible. Mutually exclusive with tools (when tools is string[]). */
+  excludeTools?: string[];
+  /** true = inherit all, string[] = only listed, false = none. Mutually exclusive with excludeExtensions. */
   extensions: true | string[] | false;
+  /** Extension blacklist — all extensions except these load. Mutually exclusive with extensions (when extensions is string[]). */
+  excludeExtensions?: string[];
   /** Whitelist of allowed skills (metadata only in system prompt). true = all, string[] = listed, false = none */
   skills: true | string[] | false;
   /** Skills to preload with full content into system prompt. string[] = listed, false/undefined = none */
@@ -35,8 +38,7 @@ export interface AgentConfig {
   thinking?: ThinkingLevel;
   maxTurns?: number;
   systemPrompt: string;
-  /** Default for spawn: no extension tools. undefined = caller decides. */
-  isolated?: boolean;
+
   /** true = this is an embedded default agent (informational) */
   isDefault?: boolean;
   /** false = agent is hidden from the registry */
@@ -87,7 +89,6 @@ export interface AgentInvocation {
   modelName?: string;
   thinking?: ThinkingLevel;
   maxTurns?: number;
-  isolated?: boolean;
   runInBackground?: boolean;
 }
 

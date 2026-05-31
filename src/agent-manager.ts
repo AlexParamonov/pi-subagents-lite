@@ -91,7 +91,6 @@ export interface SpawnOptions {
   description: string;
   model?: Model<any>;
   maxTurns?: number;
-  isolated?: boolean;
   thinkingLevel?: ThinkingLevel;
   isBackground?: boolean;
   /**
@@ -304,7 +303,6 @@ export class AgentManager {
       agentId: id,
       model: options.model,
       maxTurns: options.maxTurns,
-      isolated: options.isolated,
       thinkingLevel: options.thinkingLevel,
       signal: record.abortController!.signal,
       ...this.createRecordCallbacks(record, options),

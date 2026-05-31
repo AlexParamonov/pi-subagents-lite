@@ -186,7 +186,6 @@ export async function executeAgentTool(
   const prompt = params.prompt as string;
   const description = params.description as string;
   const runInBackground = params.run_in_background as boolean | undefined;
-  const isolated = params.isolated as boolean | undefined;
   const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
@@ -206,7 +205,6 @@ export async function executeAgentTool(
     description,
     model,
     maxTurns,
-    isolated,
     thinkingLevel,
     modelKey,
     invocation: modelName ? { modelName } : undefined,
@@ -327,11 +325,6 @@ export async function toolCallListener(
         input._modelOverride = parsed.modelId;
       }
     }
-  }
-
-  // Inject isolated from agent config if not explicitly passed
-  if (input.isolated === undefined && agentConfig?.isolated !== undefined) {
-    input.isolated = agentConfig.isolated;
   }
 
   // Inject thinking from agent config if not explicitly passed
