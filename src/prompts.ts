@@ -9,7 +9,7 @@ import type { AgentConfig, EnvInfo } from "./types.js";
 import type { SkillMeta } from "./skill-loader.js";
 export type { SkillMeta };
 
-/** Extra sections to inject into the system prompt (skills only — no memoryBlock). */
+/** Extra sections to inject into the system prompt (skills). */
 export interface PromptExtras {
   /** Preloaded skill contents to inject (full content). */
   skillBlocks?: { name: string; content: string }[];
@@ -45,7 +45,7 @@ export function buildAgentPrompt(
   envLines.push(`Platform: ${env.platform}`);
   const envBlock = envLines.join("\n");
 
-  // Build optional extras suffix (skills only — no memoryBlock)
+  // Build optional extras suffix (skills)
   const extraSections: string[] = [];
 
   // Skill metadata whitelist (like Pi's available_skills format)
