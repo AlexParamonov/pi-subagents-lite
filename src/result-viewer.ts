@@ -17,10 +17,7 @@ import {
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { type LifetimeUsage, formatTokens } from "./usage.js";
-import { formatMs } from "./ui/agent-widget.js";
-
-// Theme type from ctx.ui.custom() callback
-type Theme = any;
+import { formatMs, type Theme } from "./ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

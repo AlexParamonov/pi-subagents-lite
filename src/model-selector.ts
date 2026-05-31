@@ -15,10 +15,7 @@ import {
   Text,
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-
-// Theme type from ctx.ui.custom() callback — avoid deep import that may not resolve
-// in jiti extension loader. The constructor receives the theme instance directly.
-type Theme = any;
+import type { Theme } from "./ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
