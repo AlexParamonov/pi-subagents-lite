@@ -7,7 +7,6 @@
 
 import type { AgentConfig, EnvInfo } from "./types.js";
 import type { SkillMeta } from "./skill-loader.js";
-export type { SkillMeta };
 
 /** Extra sections to inject into the system prompt (skills). */
 export interface PromptExtras {

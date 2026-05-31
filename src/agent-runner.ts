@@ -22,8 +22,8 @@ import { extractText } from "./context.js";
 import type { LifetimeUsage } from "./usage.js";
 import { findModelInRegistry } from "./utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
-import { buildAgentPrompt, type PromptExtras, type SkillMeta } from "./prompts.js";
-import { preloadSkills, loadSkillMeta } from "./skill-loader.js";
+import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
+import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
 import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
