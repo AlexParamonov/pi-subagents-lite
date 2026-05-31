@@ -10,7 +10,7 @@ import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-
 import type { AgentRecord } from "./types.js";
 import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
 import type { AgentActivity } from "./ui/agent-widget.js";
-import { resolveType, getAgentConfig } from "./agent-types.js";
+import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
 import { resolveModel } from "./model-precedence.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
 
@@ -173,7 +173,12 @@ export async function executeAgentTool(
   ctx: ExtensionContext,
 ): Promise<any> {
   const type = (params.agent as string) || "general-purpose";
-  const resolvedType = resolveType(type);
+  let resolvedType = resolveType(type);
+  if (!resolvedType) {
+    // Not found in registry — try scanning filesystem for agents added during the session
+    await discoverNewAgents();
+    resolvedType = resolveType(type);
+  }
   if (!resolvedType) {
     return errorResult(`Unknown agent type: ${type}`);
   }

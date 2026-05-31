@@ -33,7 +33,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { SessionModelOverrides, SubagentsConfig } from "./model-precedence.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
-import { registerAgents, getAvailableTypes } from "./agent-types.js";
+import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agent-types.js";
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, buildStatsParts, formatMs, getDisplayName, type AgentActivity, type UICtx } from "./ui/agent-widget.js";
@@ -110,6 +110,9 @@ async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   const homeDir = process.env.HOME || "";
   const userAgentDir = path.join(homeDir, ".pi", "agent", "agents");
   const projectAgentDir = path.join(ctx.cwd, ".pi", "agents");
+
+  // Store scan dirs for on-demand discovery (agents added during the session)
+  setAgentScanDirs(userAgentDir, projectAgentDir);
 
   const [userAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),

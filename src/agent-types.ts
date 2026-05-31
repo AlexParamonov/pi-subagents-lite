@@ -8,6 +8,7 @@
  * MEMORY_TOOL_NAMES, READONLY_MEMORY_TOOL_NAMES (memory feature cut).
  */
 
+import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
@@ -16,6 +17,13 @@ export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "g
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
+
+/**
+ * Directories to scan for agent .md files at startup and on-demand.
+ * Set by setAgentScanDirs() during session_start.
+ */
+let userAgentDir = "";
+let projectAgentDir = "";
 
 /**
  * Register agents into the unified registry.
@@ -34,6 +42,37 @@ export function registerAgents(userAgents: Map<string, AgentConfig>): void {
   for (const [name, config] of userAgents) {
     agents.set(name, config);
   }
+}
+
+/**
+ * Set the agent scan directories for on-demand discovery.
+ * Called during session_start alongside scanAndRegisterAgents.
+ */
+export function setAgentScanDirs(userDir: string, projectDir: string): void {
+  userAgentDir = userDir;
+  projectAgentDir = projectDir;
+}
+
+/**
+ * Scan the known agent directories and register any newly discovered agents
+ * that aren't already in the registry. Returns the number of new agents added.
+ */
+export async function discoverNewAgents(): Promise<number> {
+  const [userAgents, projectAgents] = await Promise.all([
+    scanAgentFilesInDir(userAgentDir, "user"),
+    scanAgentFilesInDir(projectAgentDir, "project"),
+  ]);
+
+  const merged = mergeAgents(DEFAULT_AGENTS, userAgents, projectAgents);
+
+  let count = 0;
+  for (const [name, config] of merged) {
+    if (!agents.has(name)) {
+      agents.set(name, config);
+      count++;
+    }
+  }
+  return count;
 }
 
 /** Resolve a type name case-insensitively. Also matches displayName. Returns the canonical key or undefined. */

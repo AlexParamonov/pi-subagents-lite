@@ -102,7 +102,7 @@ Stop a running agent at any time via /agents command
 
 Drop a `.md` file into `.pi/agents/` (project) or `~/.pi/agent/agents/` (global). The frontmatter configures the agent; the body is its system prompt.
 
-The file's `name` frontmatter field (or the filename without extension) becomes the agent type name and **automatically populates the `agent` parameter's enum** in the tool schema. No registration step needed — the extension scans these directories at session start and makes every discovered agent available to the LLM.
+The file's `name` frontmatter field (or the filename without extension) becomes the agent type name and **automatically populates the `agent` parameter's enum** in the tool schema. No registration step needed — the extension scans these directories at session start and makes every discovered agent available to the LLM. Files added during a session are discovered on the next call that references them — no restart required.
 
 Built-in types (`general-purpose`, `Explore`) are always present. User agents override built-ins with the same name; project agents override user agents (see [Merge precedence](#merge-precedence)).
 
@@ -130,9 +130,9 @@ focusing on injection flaws, auth bypasses, and insecure defaults.
 | `name` | string | Agent type name. Used as the enum value in the `agent` parameter (defaults to filename). |
 | `display_name` | string | Human-readable label shown in the UI. |
 | `description` | string | Short description — displayed in the `/agents` type list and tool rendering. |
-| `tools` | string[] | Built-in tool allowlist: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. If omitted, inherits all. |
+| `tools` | string[] | Tool allowlist. Accepts built-in names (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) and extension tool references (`ext-name/tool-name` or `ext-name/all`). If omitted, tool visibility falls back to `extensions` field. |
 | `disallowed_tools` | string[] | Tool denylist — removes these from the agent's toolset even if allowlisted by `tools` or extensions. |
-| `extensions` | bool \| string[] | `false` = no extension tools; `true` = inherit all; `["ext-a"]` = allowlist. |
+| `extensions` | bool \| string[] | Controls which extensions load and which extension tools are visible. `false` = none; `true` = all; `["ext-a"]` = load extension + all its tools. Overridden by `tools` when both are set. |
 | `skills` | bool \| string[] | `false` = no skills; `true` = inherit all; `["skill-a"]` = metadata-only injection (agent reads full content on-demand). |
 | `preload_skills` | string[] \| false | `["skill-a"]` = dump full SKILL.md content into system prompt (old `skills` behavior). `false`/omitted = none. |
 | `model` | string | Default model as `"provider/model-id"`. Override via `/agents` or `subagents-lite.json`. |

@@ -115,8 +115,4 @@ export interface CompactionInfo {
   tokensBefore: number;
 }
 
-/** Parsed "provider/model-id" key. */
-export interface ModelKey {
-  provider: string;
-  modelId: string;
-}
+
