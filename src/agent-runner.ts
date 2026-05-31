@@ -512,10 +512,31 @@ export async function runAgent(
     options.agentId ? `${baseSessionName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseSessionName,
   );
 
+  // Bind extensions so that session_start fires and extensions can initialize
+  // This must happen BEFORE tool filtering — extensions like pi-mcp-adapter
+  // register tools lazily during session_start, not at extension load time.
+  await session.bindExtensions({
+    onError: (err) => {
+      options.onToolActivity?.({
+        type: "end",
+        toolName: `extension-error:${err.extensionPath}`,
+      });
+    },
+  });
+
+  // Rebuild extToolMap after session_start — extensions may have registered
+  // new tools (e.g., pi-mcp-adapter registers 'mcp' tool at session_start).
+  const postBindExtToolMap = new Map<string, string[]>();
+  for (const ext of extResult.extensions) {
+    const name = extractExtensionName(ext.path);
+    const tools = [...ext.tools.keys()];
+    if (tools.length > 0) postBindExtToolMap.set(name, tools);
+  }
+
   // Filter active tools: apply tools allowlist/denylist and EXCLUDED_TOOL_NAMES
   const filteredTools = filterActiveTools(
     session.getActiveToolNames(),
-    extToolMap,
+    postBindExtToolMap,
     agentConfig?.tools,
     agentConfig?.excludeTools,
     (msg) => {
@@ -529,16 +550,6 @@ export async function runAgent(
   if (filteredTools) {
     session.setActiveToolsByName(filteredTools);
   }
-
-  // Bind extensions so that session_start fires and extensions can initialize
-  await session.bindExtensions({
-    onError: (err) => {
-      options.onToolActivity?.({
-        type: "end",
-        toolName: `extension-error:${err.extensionPath}`,
-      });
-    },
-  });
 
   options.onSessionCreated?.(session);
 
