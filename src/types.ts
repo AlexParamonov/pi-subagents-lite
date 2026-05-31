@@ -48,7 +48,7 @@ export interface AgentConfig {
   /** false = agent is hidden from the registry */
   enabled?: boolean;
   /** Where this agent was loaded from */
-  source?: "default" | "project" | "global";
+  source?: "project" | "global";
 }
 
 export interface AgentRecord {
