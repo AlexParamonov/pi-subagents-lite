@@ -389,7 +389,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     name: md.name,
     displayName: md.display_name,
     description: md.description,
-    builtinToolNames: md.tools,
+    registeredTools: md.tools,
     tools: md.tools,
     excludeTools: md.exclude_tools,
     extensions: md.extensions,

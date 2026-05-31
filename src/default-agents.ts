@@ -16,7 +16,7 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       name: "general-purpose",
       displayName: "Agent",
       description: "General-purpose agent for complex, multi-step tasks",
-      // builtinToolNames omitted — means "all available tools" (resolved at lookup time)
+      // registeredTools omitted — means "all available tools" (resolved at lookup time)
       extensions: true,
       skills: true,
       systemPrompt: "",
@@ -29,7 +29,7 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       name: "Explore",
       displayName: "Explore",
       description: "Fast codebase exploration agent (read-only)",
-      builtinToolNames: READ_ONLY_TOOLS,
+      registeredTools: READ_ONLY_TOOLS,
       extensions: true,
       skills: true,
       model: "anthropic/claude-haiku-4-5-20251001",

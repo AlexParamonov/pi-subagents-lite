@@ -453,8 +453,8 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
     lines.push(config.description);
     lines.push("");
 
-    if (config.builtinToolNames) {
-      lines.push(`**Tools:** ${config.builtinToolNames.join(", ")}`);
+    if (config.registeredTools) {
+      lines.push(`**Tools:** ${config.registeredTools.join(", ")}`);
     }
     if (config.model) {
       lines.push(`**Default model:** ${config.model}`);
@@ -841,8 +841,8 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
     if (!cfg) continue;
     const disabled = cfg.enabled === false ? " [DISABLED]" : "";
     const model = cfg.model ? `  Model: ${cfg.model}` : "";
-    const tools = cfg.builtinToolNames
-      ? `  Tools: ${cfg.builtinToolNames.join(", ")}`
+    const tools = cfg.registeredTools
+      ? `  Tools: ${cfg.registeredTools.join(", ")}`
       : "  Tools: all built-in tools";
     const source = cfg.source ? `  Source: ${cfg.source}` : "";
     lines.push(`  ${name}${disabled}`);

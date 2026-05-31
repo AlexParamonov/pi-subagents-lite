@@ -112,8 +112,8 @@ export function getAllTypes(): string[] {
 /** Get built-in tool names for a type (case-insensitive). */
 export function getToolNamesForType(type: string): string[] {
   const config = getAgentConfig(type);
-  return config?.builtinToolNames?.length
-    ? config.builtinToolNames
+  return config?.registeredTools?.length
+    ? config.registeredTools
     : [...BUILTIN_TOOL_NAMES];
 }
 
@@ -121,7 +121,7 @@ export function getToolNamesForType(type: string): string[] {
 export interface ResolvedAgentConfig {
   displayName: string;
   description: string;
-  builtinToolNames: string[];
+  registeredTools: string[];
   /** Controls tool schema visibility. true = all, string[] = listed, false = none. */
   tools?: true | string[] | false;
   extensions: true | string[] | false;
@@ -132,7 +132,7 @@ function toResolved(config: AgentConfig): ResolvedAgentConfig {
   return {
     displayName: config.displayName ?? config.name,
     description: config.description,
-    builtinToolNames: config.builtinToolNames ?? BUILTIN_TOOL_NAMES,
+    registeredTools: config.registeredTools ?? BUILTIN_TOOL_NAMES,
     tools: config.tools,
     extensions: config.extensions,
     skills: config.skills,
@@ -157,7 +157,7 @@ export function getConfig(type: string): ResolvedAgentConfig {
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    builtinToolNames: BUILTIN_TOOL_NAMES,
+    registeredTools: BUILTIN_TOOL_NAMES,
     extensions: true,
     skills: true,
   };

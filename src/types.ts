@@ -16,7 +16,8 @@ export interface AgentConfig {
   name: string;
   displayName?: string;
   description: string;
-  builtinToolNames?: string[];
+  /** Tools to register with the session (controls availability, not LLM visibility). */
+  registeredTools?: string[];
   /**
    * Controls which tool schemas the LLM sees. Can reference built-in tools
    * and extension tools. true = all, string[] = listed, false = none.

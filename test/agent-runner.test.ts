@@ -77,7 +77,7 @@ import { runAgent, subscribeToSessionEvents, EXCLUDED_TOOL_NAMES } from "../src/
 const defaultConfig = {
   displayName: "Agent",
   description: "Test agent",
-  builtinToolNames: ["read", "bash", "edit"],
+  registeredTools: ["read", "bash", "edit"],
   extensions: true,
   skills: true,
 };
