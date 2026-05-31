@@ -192,7 +192,7 @@ export function subscribeToSessionEvents(
  * Does NOT depend on internal directory structure (dist/, lib/, src/, etc).
  * Only cares about the package root, which is determined by distribution method.
  */
-export function extractExtensionName(extPath: string): string {
+function extractExtensionName(extPath: string): string {
   const parts = extPath.split(path.sep);
 
   // 1. Git package: .../git/github.com/<user>/<pkg>/...
