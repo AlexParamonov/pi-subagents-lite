@@ -75,10 +75,12 @@ export function getToolNamesForType(type: string): string[] {
 }
 
 /** Resolved config shape returned by getConfig. */
-interface ResolvedAgentConfig {
+export interface ResolvedAgentConfig {
   displayName: string;
   description: string;
   builtinToolNames: string[];
+  /** Controls tool schema visibility. true = all, string[] = listed, false = none. */
+  tools?: true | string[] | false;
   extensions: true | string[] | false;
   skills: true | string[] | false;
 }
@@ -88,6 +90,7 @@ function toResolved(config: AgentConfig): ResolvedAgentConfig {
     displayName: config.displayName ?? config.name,
     description: config.description,
     builtinToolNames: config.builtinToolNames ?? BUILTIN_TOOL_NAMES,
+    tools: config.tools,
     extensions: config.extensions,
     skills: config.skills,
   };

@@ -189,29 +189,71 @@ export function subscribeToSessionEvents(
 
 /**
  * Extract the extension name from an extension's file path.
- *  - Direct file in an `extensions/` dir (e.g. `extensions/tavily.ts`) → file stem: "tavily"
- *  - Subdirectory (e.g. `extensions/tavily/index.ts`) → parent dir name: "tavily"
- *  - npm package (e.g. `node_modules/pi-ext-tavily/dist/index.js`) → parent dir name
+ *
+ * Handles all distribution methods:
+ *  - git packages: `.../git/github.com/<user>/<pkg>/...` → "<pkg>"
+ *  - npm packages: `.../node_modules/[...]pkg/...` → "pkg"
+ *  - local extensions: `~/.pi/agent/extensions/<name>/...` → "<name>"
+ *  - direct files: `extensions/<name>.ts` → "<name>"
+ *
+ * Does NOT depend on internal directory structure (dist/, lib/, src/, etc).
+ * Only cares about the package root, which is determined by distribution method.
  */
 export function extractExtensionName(extPath: string): string {
-  const dir = path.dirname(extPath);
-  if (path.basename(dir) === "extensions") {
-    return path.basename(extPath, path.extname(extPath));
+  const parts = extPath.split(path.sep);
+
+  // 1. Git package: .../git/github.com/<user>/<pkg>/...
+  //    Package name is 3 dirs after 'git' (github.com/user/pkg)
+  const gitIdx = parts.indexOf("git");
+  if (gitIdx !== -1 && gitIdx + 3 < parts.length) {
+    return parts[gitIdx + 3];
   }
-  return path.basename(dir);
+
+  // 2. npm package: .../node_modules/[...]pkg/...
+  const nmIdx = parts.lastIndexOf("node_modules");
+  if (nmIdx !== -1 && nmIdx + 1 < parts.length) {
+    const next = parts[nmIdx + 1];
+    if (next.startsWith("@") && nmIdx + 2 < parts.length) {
+      return parts[nmIdx + 2]; // @scope/pkg → pkg
+    }
+    return next;
+  }
+
+  // 3. Local extension: .../extensions/<name>/... or .../extensions/<name>.ts
+  const extIdx = parts.lastIndexOf("extensions");
+  if (extIdx !== -1 && extIdx + 1 < parts.length) {
+    const afterExt = parts[extIdx + 1];
+    // Subdirectory: extensions/tavily/index.ts → tavily
+    if (afterExt && !afterExt.includes(".")) {
+      return afterExt;
+    }
+    // Direct file: extensions/review.ts → review
+    const file = parts[parts.length - 1];
+    return path.basename(file, path.extname(file));
+  }
+
+  // Fallback: parent dir name
+  return path.basename(path.dirname(extPath));
 }
 
 /**
  * Filter active tools: remove extension tools to prevent nesting,
- * apply extension allowlist if specified, and apply disallowedTools denylist.
- * Returns null when no filtering is needed (isolated mode with no denylist).
+ * apply tools/extension allowlists, and apply disallowedTools denylist.
+ *
+ * The `tools` config controls which tool schemas the LLM sees (built-in + extension).
+ * The `extensions` config controls which extensions are loaded (hooks + commands).
+ * When `tools` is set, it takes precedence over `extensions` for tool visibility.
+ *
+ * Returns null when no filtering is needed, otherwise the filtered tool list.
  */
 function filterActiveTools(
   activeTools: string[],
   builtinToolNames: string[],
   extensions: true | string[] | false,
-  disallowedTools?: string[],
-  extToolMap?: Map<string, string[]>,
+  disallowedTools: string[] | undefined,
+  extToolMap: Map<string, string[]> | undefined,
+  tools: true | string[] | false | undefined,
+  notify?: (msg: string) => void,
 ): string[] | null {
   const disallowedSet = disallowedTools ? new Set(disallowedTools) : undefined;
 
@@ -222,6 +264,93 @@ function filterActiveTools(
     return filtered.length !== activeTools.length ? filtered : null;
   }
 
+  // Build a reverse lookup: tool name → extension name(s)
+  const toolExtReverseMap = new Map<string, string[]>();
+  if (extToolMap) {
+    for (const [extName, toolNames] of extToolMap) {
+      for (const tn of toolNames) {
+        const existing = toolExtReverseMap.get(tn);
+        if (existing) existing.push(extName);
+        else toolExtReverseMap.set(tn, [extName]);
+      }
+    }
+  }
+
+  if (Array.isArray(tools)) {
+    // `tools` field is set — it controls visibility for both built-in and extension tools.
+    // Supports `ext/all` syntax to allow all tools from a loaded extension.
+    const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
+    const allowedExtTools = new Set<string>();
+    const allowedBuiltins = new Set<string>();
+
+    for (const entry of tools) {
+      const slashIdx = entry.indexOf("/");
+      if (slashIdx !== -1) {
+        // ext/all syntax: e.g. "tavily/all" — expand to all tools from that extension
+        const extName = entry.slice(0, slashIdx);
+        const toolPart = entry.slice(slashIdx + 1);
+        if (toolPart === "all") {
+          const extTools = extToolMap?.get(extName);
+          if (extTools && extTools.length > 0) {
+            for (const t of extTools) allowedExtTools.add(t);
+          } else {
+            notify?.(`extension "${extName}" is not loaded, "${entry}" will have no effect`);
+          }
+        } else {
+          // ext/tool syntax: e.g. "tavily/web_search"
+          allowedExtTools.add(toolPart);
+        }
+      } else if (allBuiltinSet.has(entry)) {
+        // Known built-in tool name — explicitly allowed
+        allowedBuiltins.add(entry);
+      } else {
+        // Check if this is a tool from a loaded extension
+        const toolExts = toolExtReverseMap.get(entry);
+        if (toolExts) {
+          allowedExtTools.add(entry);
+        } else {
+          notify?.(`tool "${entry}" not found in any loaded extension`);
+        }
+      }
+    }
+
+    const visibleSet = new Set<string>();
+    for (const t of activeTools) {
+      if (EXCLUDED_TOOL_NAMES.includes(t)) continue;
+      if (disallowedSet?.has(t)) continue;
+      if (allowedBuiltins.has(t)) {
+        visibleSet.add(t);
+      } else if (allowedExtTools.has(t)) {
+        visibleSet.add(t);
+      }
+    }
+
+    // Warning 3: loaded extension has none of its tools in `tools`
+    if (extToolMap) {
+      for (const [extName, extTools] of extToolMap) {
+        const hasAny = extTools.some(t => allowedExtTools.has(t));
+        if (!hasAny) {
+          notify?.(`extension "${extName}" is loaded but none of its tools are in tools: [${tools.join(", ")}]`);
+        }
+      }
+    }
+
+    return [...visibleSet];
+  }
+
+  if (tools === true) {
+    // tools: true means all tools visible — no filtering needed (except excluded/denied)
+    if (!disallowedSet) return null;
+    const filtered = activeTools.filter(t => !disallowedSet.has(t));
+    return filtered.length !== activeTools.length ? filtered : null;
+  }
+
+  if (tools === false) {
+    // tools: false means no tools visible
+    return [];
+  }
+
+  // tools not set — fall back to extensions-based filtering (original behavior)
   const builtinToolNameSet = new Set(builtinToolNames);
   const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
   const filtered = activeTools.filter((t) => {
@@ -404,6 +533,14 @@ export async function runAgent(
     extensions,
     agentConfig?.disallowedTools,
     extToolMap,
+    agentConfig?.tools,
+    (msg) => {
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");
+      } else {
+        console.warn(`[pi-subagents] ${msg}`);
+      }
+    },
   );
   if (filteredTools) {
     session.setActiveToolsByName(filteredTools);

@@ -23,6 +23,12 @@ export interface AgentConfig {
   displayName?: string;
   description: string;
   builtinToolNames?: string[];
+  /**
+   * Controls which tool schemas the LLM sees. Can reference built-in tools
+   * and extension tools. true = all, string[] = listed, false = none.
+   * When set, takes precedence over extensions for tool visibility filtering.
+   */
+  tools?: true | string[] | false;
   /** Tool denylist — these tools are removed even if `builtinToolNames` or extensions include them. */
   disallowedTools?: string[];
   /** true = inherit all, string[] = only listed, false = none */

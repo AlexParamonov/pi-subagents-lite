@@ -397,6 +397,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     displayName: md.display_name,
     description: md.description,
     builtinToolNames: md.tools,
+    tools: md.tools,
     extensions: md.extensions,
     skills: md.skills,
     preloadSkills: md.preload_skills,
