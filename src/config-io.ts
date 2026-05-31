@@ -24,10 +24,8 @@ export function loadConfig(): SubagentsConfig {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     return JSON.parse(raw) as SubagentsConfig;
   } catch {
-    // File doesn't exist or is invalid — return defaults
+    return { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
   }
-
-  return { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
 }
 
 /** Write config to disk with atomic rename. */
