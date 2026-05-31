@@ -376,6 +376,21 @@ export async function runAgent(
   const config = getConfig(type);
   const agentConfig = getAgentConfig(type);
 
+  // Warn on mutual exclusion violations
+  const notify = (msg: string) => {
+    if (ctx.ui?.notify) {
+      ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");
+    } else {
+      console.warn(`[pi-subagents] ${msg}`);
+    }
+  };
+  if (agentConfig?.excludeTools && Array.isArray(agentConfig.tools)) {
+    notify(`agent "${type}": both tools and exclude_tools set — tools (whitelist) wins`);
+  }
+  if (agentConfig?.excludeExtensions && Array.isArray(agentConfig.extensions)) {
+    notify(`agent "${type}": both extensions and exclude_extensions set — extensions (whitelist) wins`);
+  }
+
   // Resolve working directory
   const effectiveCwd = options.cwd ?? ctx.cwd;
 
