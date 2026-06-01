@@ -301,6 +301,26 @@ export async function showModelSettingsMenu(
       );
     });
 
+    // Grace turns setting
+    const graceTurns = __config.agent.graceTurns ?? 6;
+    items.push(`Grace turns · ${graceTurns}`);
+    actions.push(async () => {
+      const input = await ctx.ui.input("Grace turns (≥ 0)", String(graceTurns));
+      if (input === undefined) return;
+      const parsed = parseInt(input.trim(), 10);
+      if (isNaN(parsed)) {
+        ctx.ui.notify("Invalid value — must be a number", "error");
+        return;
+      }
+      if (parsed < 0) {
+        ctx.ui.notify("Invalid value — must be ≥ 0", "error");
+        return;
+      }
+      __config.agent.graceTurns = parsed;
+      saveConfigAtomic(__config);
+      ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
+    });
+
     items.push("");
     actions.push(async () => {});
     items.push("─── per-type overrides ───");
@@ -375,13 +395,20 @@ export async function showModelSettingsMenu(
     items.push("Clear all overrides");
     actions.push(async () => {
       const hasOverrides = Object.entries(__config.agent).some(
-        ([k, v]) => k !== "default" && k !== "forceBackground" && v != null,
+        ([k, v]) => k !== "default" && k !== "forceBackground" && k !== "graceTurns" && v != null,
       );
       if (!hasOverrides && __config.agent.default === null) {
         ctx.ui.notify("No overrides to clear", "info");
         return;
       }
-      __config.agent = { default: __config.agent.default, forceBackground: __config.agent.forceBackground };
+      const preserved: Record<string, unknown> = {
+        default: __config.agent.default,
+        forceBackground: __config.agent.forceBackground,
+      };
+      if (__config.agent.graceTurns != null) {
+        preserved.graceTurns = __config.agent.graceTurns;
+      }
+      __config.agent = preserved as typeof __config.agent;
       saveConfigAtomic(__config);
       ctx.ui.notify("All model overrides cleared", "info");
     });
