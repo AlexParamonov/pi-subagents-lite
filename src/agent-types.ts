@@ -17,7 +17,7 @@ import type { AgentConfig } from "./types.js";
  * `find` and `ls` were removed — they're thin wrappers over bash commands
  * that add ~180 tokens/turn with no real benefit.
  */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep"];
+export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
