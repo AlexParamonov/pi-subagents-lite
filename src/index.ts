@@ -136,6 +136,13 @@ async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void>
 // UI helpers — stats card rendering (shared by renderResult and message renderer)
 // ============================================================================
 
+/** Format agent display name with optional model: "Agent (mimo-v2.5-pro)" or "Agent". */
+function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
+  const typeName = getDisplayName((d.type as string) || "");
+  const modelName = d.modelName as string | undefined;
+  return modelName ? `${theme.bold(typeName)} (${modelName})` : theme.bold(typeName);
+}
+
 /** Build the stats line for an agent result card. Used by both renderers. */
 function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
   const parts = buildStatsParts({
@@ -205,8 +212,9 @@ function registerAgentTool(pi: ExtensionAPI): void {
       const desc = (d?.description as string) || "";
 
       if (d && d.turnCount != null) {
+        const namePart = agentNameLabel(d, theme);
         const statsLine = buildStatsLine(d, theme);
-        let lines = `${icon} ${statsLine}\n  ${theme.fg("text", desc)}`;
+        let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
         if (expanded && text) {
           lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
         }
@@ -265,11 +273,9 @@ export default function (pi: ExtensionAPI) {
     if (d && d.turnCount != null) {
       const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
       const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-      const typeName = getDisplayName((d.type as string) || "");
-      const modelName = d.modelName as string | undefined;
       const desc = (d.description as string) || "";
 
-      const namePart = modelName ? `${theme.bold(typeName)} (${modelName})` : theme.bold(typeName);
+      const namePart = agentNameLabel(d, theme);
       const statsLine = buildStatsLine(d, theme);
       let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
       if ((d.outputFile as string)) {
@@ -283,13 +289,10 @@ export default function (pi: ExtensionAPI) {
         inner.addChild(new Text(resultLines, 0, 0));
       }
     } else {
-      const typeName = getDisplayName((d?.type as string) || "");
-      const modelName = d?.modelName as string | undefined;
       const desc = (d?.description as string) || "";
       let line = `${theme.fg("success", "✓")}`;
-      if (typeName) {
-        const namePart = modelName ? `${theme.bold(typeName)} (${modelName})` : theme.bold(typeName);
-        line += ` ${namePart}`;
+      if (d?.type) {
+        line += ` ${agentNameLabel(d, theme)}`;
       }
       if (desc) line += `\n  ${theme.fg("text", desc)}`;
       if (d?.outputFile) {

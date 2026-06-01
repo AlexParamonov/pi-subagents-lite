@@ -191,11 +191,8 @@ export async function executeAgentTool(
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
 
-  // Determine modelName for invocation (only when different from parent)
-  const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
-  const modelName = (modelKey && modelKey !== parentModelId)
-    ? parseModelKey(modelKey)?.modelId
-    : undefined;
+  // Determine modelName for invocation (always capture for display)
+  const modelName = model?.id;
 
   // Resolve thinking: explicit param > agent config (frontmatter) > undefined (inherit)
   const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
@@ -207,7 +204,7 @@ export async function executeAgentTool(
     maxTurns,
     thinkingLevel,
     modelKey,
-    invocation: modelName ? { modelName } : undefined,
+    invocation: { modelName },
     graceTurns: __config.agent.graceTurns,
   };
 
@@ -319,12 +316,10 @@ export async function toolCallListener(
 
   if (effectiveModel) {
     input.model = effectiveModel;
-    // Inject _modelOverride for renderCall when model differs from parent
-    if (effectiveModel !== parentModelId) {
-      const parsed = parseModelKey(effectiveModel);
-      if (parsed) {
-        input._modelOverride = parsed.modelId;
-      }
+    // Always inject _modelOverride for renderCall
+    const parsed = parseModelKey(effectiveModel);
+    if (parsed) {
+      input._modelOverride = parsed.modelId;
     }
   }
 
