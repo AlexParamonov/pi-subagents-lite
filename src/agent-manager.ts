@@ -115,6 +115,8 @@ export interface SpawnOptions {
   onAssistantUsage?: (usage: LifetimeUsage) => void;
   /** Called when the session successfully compacts. */
   onCompaction?: (info: CompactionInfo) => void;
+  /** Grace turns: extra turns allowed after hitting maxTurns. */
+  graceTurns?: number;
 }
 
 export class AgentManager {
@@ -304,6 +306,7 @@ export class AgentManager {
       model: options.model,
       maxTurns: options.maxTurns,
       thinkingLevel: options.thinkingLevel,
+      graceTurns: options.graceTurns,
       signal: record.abortController!.signal,
       ...this.createRecordCallbacks(record, options),
       onTurnEnd: (turnCount) => {

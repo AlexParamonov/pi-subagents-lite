@@ -29,8 +29,8 @@ import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, 
 /** Names of tools registered by this extension that subagents must NOT inherit. */
 const EXCLUDED_TOOL_NAMES = ["Agent"];
 
-/** Additional turns allowed after the soft limit steer message. */
-const GRACE_TURNS = 5;
+/** Default grace turns when not specified in config. */
+const DEFAULT_GRACE_TURNS = 6;
 
 /** Timeout for quick git commands (branch detection, repo check). */
 const GIT_EXEC_TIMEOUT_MS = 5000;
@@ -76,6 +76,8 @@ interface RunOptions {
    * pre-compaction context size estimate. Aborted compactions don't fire.
    */
   onCompaction?: (info: CompactionInfo) => void;
+  /** Grace turns: extra turns allowed after hitting maxTurns. Defaults to 6. */
+  graceTurns?: number;
 }
 
 interface RunResult {
@@ -558,6 +560,7 @@ export async function runAgent(
   const maxTurns = normalizeMaxTurns(options.maxTurns ?? agentConfig?.maxTurns);
   let softLimitReached = false;
   let aborted = false;
+  const graceTurns = options.graceTurns ?? DEFAULT_GRACE_TURNS;
 
   const unsubEvents = subscribeToSessionEvents(session, options);
 
@@ -569,7 +572,7 @@ export async function runAgent(
       if (!softLimitReached && turnCount >= maxTurns) {
         softLimitReached = true;
         session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
-      } else if (softLimitReached && turnCount >= maxTurns + GRACE_TURNS) {
+      } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
         aborted = true;
         session.abort();
       }

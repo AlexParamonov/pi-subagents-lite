@@ -308,6 +308,145 @@ describe("showConcurrencySettingsMenu — remove limit", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Grace turns tests
+// ---------------------------------------------------------------------------
+
+describe("showModelSettingsMenu — grace turns", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false };
+    mockModules.mockSessionOverrides.default = null;
+    for (const key of Object.keys(mockModules.mockSessionOverrides)) {
+      if (key !== "default") delete mockModules.mockSessionOverrides[key];
+    }
+    vi.clearAllMocks();
+
+    // Set up agent config mock to return a default model for each type
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "Explore") {
+        return { name: "Explore", description: "", model: "openai/gpt-4o", extensions: false, skills: false, systemPrompt: "" };
+      }
+      if (name === "general-purpose") {
+        return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: false, skills: false, systemPrompt: "" };
+      }
+      return undefined;
+    });
+  });
+
+  it("displays 'Grace turns · 6' with default value", async () => {
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const graceTurnsItem = items.find((i: string) => i.startsWith("Grace turns"));
+    expect(graceTurnsItem).toBe("Grace turns · 6");
+  });
+
+  it("displays 'Grace turns · 6' when config value is undefined", async () => {
+    // graceTurns not set in mock — defaults to 6
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const graceTurnsItem = items.find((i: string) => i.startsWith("Grace turns"));
+    expect(graceTurnsItem).toBe("Grace turns · 6");
+  });
+
+  it("displays configured grace turns value", async () => {
+    mockModules.mockConfig.agent.graceTurns = 10;
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const graceTurnsItem = items.find((i: string) => i.startsWith("Grace turns"));
+    expect(graceTurnsItem).toBe("Grace turns · 10");
+  });
+
+  it("prompts for number input with current value pre-filled", async () => {
+    mockModules.mockConfig.agent.graceTurns = 8;
+    // Selection sequence: click Grace turns, then Escape to exit
+    const ctx = createMockCtx(["Grace turns · 8", undefined], ["12"]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.input).toHaveBeenCalledWith("Grace turns (≥ 0)", "8");
+  });
+
+  it("persists setting to 0", async () => {
+    mockModules.mockConfig.agent.graceTurns = 5;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const ctx = createMockCtx(["Grace turns · 5", undefined], ["0"]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    expect(mockModules.mockConfig.agent.graceTurns).toBe(0);
+    expect(saveConfigAtomic).toHaveBeenCalledWith(mockModules.mockConfig);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Grace turns set to 0", "info");
+  });
+
+  it("rejects negative numbers with error notification", async () => {
+    mockModules.mockConfig.agent.graceTurns = 3;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const ctx = createMockCtx(["Grace turns · 3", undefined], ["-1"]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be ≥ 0", "error");
+    // Value should not change
+    expect(mockModules.mockConfig.agent.graceTurns).toBe(3);
+    // Config should not be saved (no saveConfigAtomic call for grace turns action)
+    const graceTurnsSaveCalls = saveConfigAtomic.mock.calls.filter(
+      (call: any[]) => call[0] === mockModules.mockConfig,
+    );
+    // Only the initial menu build calls save, not the rejected action
+    expect(graceTurnsSaveCalls.length).toBe(0);
+  });
+
+  it("rejects non-numeric input with error notification", async () => {
+    mockModules.mockConfig.agent.graceTurns = 5;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const ctx = createMockCtx(["Grace turns · 5", undefined], ["abc"]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number", "error");
+    expect(mockModules.mockConfig.agent.graceTurns).toBe(5);
+    const graceTurnsSaveCalls = saveConfigAtomic.mock.calls.filter(
+      (call: any[]) => call[0] === mockModules.mockConfig,
+    );
+    expect(graceTurnsSaveCalls.length).toBe(0);
+  });
+
+  it("shows 'Grace turns' after 'Force background' and before separator", async () => {
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showModelSettingsMenu(ctx, modelOptions);
+
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const forceBgIdx = items.findIndex((i: string) => i.startsWith("Force background"));
+    const graceTurnsIdx = items.findIndex((i: string) => i.startsWith("Grace turns"));
+    const separatorIdx = items.findIndex((i: string) => i === "─── per-type overrides ───");
+
+    expect(forceBgIdx).toBeGreaterThanOrEqual(0);
+    expect(graceTurnsIdx).toBeGreaterThan(forceBgIdx);
+    expect(separatorIdx).toBeGreaterThan(graceTurnsIdx);
+  });
+});
+
 describe("showModelSettingsMenu — clear per-type override", () => {
   beforeEach(() => {
     // Reset config state
@@ -603,6 +742,35 @@ describe("showAgentsMainMenu — clear all overrides", () => {
         (k) => k !== "default" && k !== "forceBackground",
       ),
     ).toHaveLength(0);
+  });
+
+  it("preserves graceTurns when clearing all overrides", async () => {
+    // Arrange: set a per-type override and graceTurns
+    mockModules.mockConfig.agent.default = null;
+    mockModules.mockConfig.agent.forceBackground = false;
+    mockModules.mockConfig.agent.graceTurns = 10;
+    mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
+
+    const selections = [
+      "1. Model settings — Set global default and per-type model overrides",
+      "Clear all overrides",
+      undefined,  // Exit model settings loop
+      undefined,  // Exit main menu loop
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    // Assert: graceTurns is preserved, per-type override is removed
+    expect(mockModules.mockConfig.agent.graceTurns).toBe(10);
+    expect(mockModules.mockConfig.agent["general-purpose"]).toBeUndefined();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "All model overrides cleared",
+      "info",
+    );
   });
 });
 

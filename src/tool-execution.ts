@@ -208,6 +208,7 @@ export async function executeAgentTool(
     thinkingLevel,
     modelKey,
     invocation: modelName ? { modelName } : undefined,
+    graceTurns: __config.agent.graceTurns,
   };
 
   if (runInBackground || __config.agent.forceBackground) {

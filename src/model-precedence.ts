@@ -17,7 +17,8 @@ export interface SubagentsConfig {
   agent: {
     default: string | null;
     forceBackground: boolean;
-    [agentType: string]: string | null | undefined | boolean;
+    graceTurns?: number;
+    [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {
     default: number;
@@ -60,10 +61,11 @@ export function resolveModel(options: ResolveModelOptions): string {
   const { subagentType, agentConfig, config, parentModelId, sessionOverrides } = options;
 
   // Precedence chain: session > config > frontmatter > parent
+  // Cast agent values: index signature includes number (graceTurns), but models are always strings
   const candidates: Array<string | boolean | null | undefined> = [
     sessionOverrides?.[subagentType],
     sessionOverrides?.["default"],
-    config.agent[subagentType],
+    config.agent[subagentType] as string | null | undefined,
     config.agent["default"],
     agentConfig?.model,
     parentModelId, // final fallback (always a valid string)

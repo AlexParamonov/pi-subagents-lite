@@ -1159,3 +1159,163 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     expect(activeTools).not.toContain("Agent");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — grace turns                                            */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — grace turns", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  /**
+   * Helper: create a mock session with a pending prompt (doesn't resolve
+   * until resolvePrompt() is called). This allows firing turn_end events
+   * while the agent is still running.
+   */
+  function createPendingPromptSession() {
+    const session = createMockSession();
+    let resolvePrompt!: () => void;
+    session.prompt = vi.fn(
+      () => new Promise<void>((r) => {
+        resolvePrompt = r;
+      }),
+    );
+    return { session, resolvePrompt: () => resolvePrompt() };
+  }
+
+  it("uses default grace turns (6) when not specified in options", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // maxTurns=1, no graceTurns → default 6 → steer at turn 1, abort at turn 1+6=7
+    const promise = runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      maxTurns: 1,
+    });
+
+    // Wait for the session to be created and prompt to be called
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+
+    // Fire 6 turns (within default grace period) — should not abort
+    for (let i = 0; i < 6; i++) {
+      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    }
+
+    // The steer should have been called at turn 1
+    expect(session.steer).toHaveBeenCalled();
+    // Should not abort within grace period
+    expect(session.abort).not.toHaveBeenCalled();
+
+    // Now fire the 7th turn — should abort (maxTurns=1 + graceTurns=6 = 7)
+    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    expect(session.abort).toHaveBeenCalled();
+
+    resolvePrompt();
+    const result = await promise;
+    expect(result.aborted).toBe(true);
+  });
+
+  it("uses custom grace turns from options", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // maxTurns=2, graceTurns=3 → steer at turn 2, abort at turn 2+3=5
+    const promise = runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      maxTurns: 2,
+      graceTurns: 3,
+    });
+
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+
+    // Fire 4 turns (within custom grace period) — should not abort
+    for (let i = 0; i < 4; i++) {
+      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    }
+
+    // The steer should have been called at turn 2
+    expect(session.steer).toHaveBeenCalled();
+    expect(session.abort).not.toHaveBeenCalled();
+
+    // Now fire the 5th turn — should abort (maxTurns=2 + graceTurns=3 = 5)
+    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    expect(session.abort).toHaveBeenCalled();
+
+    resolvePrompt();
+    const result = await promise;
+    expect(result.aborted).toBe(true);
+  });
+
+  it("graceTurns=0 allows one turn after steer then aborts", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // maxTurns=2, graceTurns=0 → steer at turn 2, abort at turn 3
+    // (steer and abort can't fire on same turn due to if/else-if structure)
+    const promise = runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      maxTurns: 2,
+      graceTurns: 0,
+    });
+
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+
+    // Fire 2 turns — steer fires at turn 2, no abort yet
+    for (let i = 0; i < 2; i++) {
+      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    }
+
+    expect(session.steer).toHaveBeenCalled();
+    expect(session.abort).not.toHaveBeenCalled();
+
+    // Fire 1 more turn — abort fires at turn 3 (maxTurns + graceTurns = 2)
+    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    expect(session.abort).toHaveBeenCalled();
+
+    resolvePrompt();
+    const result = await promise;
+    expect(result.aborted).toBe(true);
+  });
+
+  it("agent completes gracefully within grace period", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // maxTurns=1, graceTurns=5 → steer at turn 1, abort at turn 6
+    const promise = runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      maxTurns: 1,
+      graceTurns: 5,
+    });
+
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+
+    // Fire 3 turns (within grace period) — should steer but not abort
+    for (let i = 0; i < 3; i++) {
+      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    }
+
+    expect(session.steer).toHaveBeenCalled();
+    expect(session.abort).not.toHaveBeenCalled();
+
+    resolvePrompt();
+    const result = await promise;
+    expect(result.aborted).toBe(false);
+    expect(result.steered).toBe(true);
+  });
+});
