@@ -240,7 +240,7 @@ async function executeSpawnBackground(
 
   const record = manager.getRecord(agentId)!;
   const details: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
-  const suffix = `A notification will arrive when done - User asks you not to poll or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
+  const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.status === "queued" ? "Agent queued" : "Agent running";
 
   return successResult(`[${label}] ${suffix}`, details);
