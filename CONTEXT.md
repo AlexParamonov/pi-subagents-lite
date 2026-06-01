@@ -38,6 +38,10 @@ A completion notification delivered to the parent session after a background age
 Batched with a 200ms hold to coalesce rapid completions.
 _Avoid_: Callback, notification
 
+**Grace turns**:
+Additional turns allowed after the soft turn limit steer message before hard abort. Default 6, configurable via `/agents` > Model settings.
+_Avoid_: Grace period, extra turns
+
 ## Relationships
 
 - An **Agent type** has an optional **Model override**
@@ -46,6 +50,7 @@ _Avoid_: Callback, notification
 - A **Stealth tool** requires an **Agent briefing** before the LLM can use it
 - An **Activity tracker** is created per spawn and cleaned up on completion
 - A **Nudge** is emitted when a background agent completes or errors
+- **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
 
 ## Example dialogue
 
