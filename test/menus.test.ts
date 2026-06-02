@@ -75,7 +75,7 @@ vi.mock("../src/index.js", () => {
 });
 
 // --- Import module under test ---
-import { showConcurrencySettingsMenu, showModelSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
+import { showConcurrencySettingsMenu, showModelSettingsMenu, showAgentsMainMenu, showWidgetSettingsMenu } from "../src/menus.js";
 import { getAgentConfig } from "../src/agent-types.js";
 
 function resetAgentState(): void {
@@ -979,7 +979,7 @@ describe("showResultViewer — stats passing", () => {
 // Widget settings tests
 // ---------------------------------------------------------------------------
 
-describe("showModelSettingsMenu — widget settings", () => {
+describe("showWidgetSettingsMenu", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = {
       default: null,
@@ -993,19 +993,10 @@ describe("showModelSettingsMenu — widget settings", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("shows widget settings section with separator", async () => {
-    const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
-
-    const items = ctx.ui.select.mock.calls[0][1];
-    const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
-    expect(separatorIdx).toBeGreaterThan(-1);
-  });
-
   it("shows 'Compact mode · OFF' when widgetCompact is false", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
@@ -1015,7 +1006,7 @@ describe("showModelSettingsMenu — widget settings", () => {
   it("shows 'Compact mode · ON' when widgetCompact is true", async () => {
     mockModules.mockConfig.agent.widgetCompact = true;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
@@ -1032,7 +1023,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     ];
 
     const ctx = createMockCtx(selections);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1041,7 +1032,7 @@ describe("showModelSettingsMenu — widget settings", () => {
 
   it("shows 'Max lines (full) · 12' with default value", async () => {
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const maxLinesItem = items.find((i: string) => i.startsWith("Max lines (full)"));
@@ -1051,7 +1042,7 @@ describe("showModelSettingsMenu — widget settings", () => {
   it("shows configured max lines value", async () => {
     mockModules.mockConfig.agent.widgetMaxLines = 8;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const maxLinesItem = items.find((i: string) => i.startsWith("Max lines (full)"));
@@ -1069,7 +1060,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["10"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1086,7 +1077,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["1"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 2", "error");
@@ -1095,7 +1086,7 @@ describe("showModelSettingsMenu — widget settings", () => {
   it("shows 'Max lines (compact) · 6' with default value", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactMaxItem = items.find((i: string) => i.startsWith("Max lines (compact)"));
@@ -1113,7 +1104,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["4"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(4);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1130,26 +1121,10 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["0"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 1", "error");
-  });
-
-  it("widget settings section appears after cost display and before grace turns", async () => {
-    const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
-
-    const items: string[] = ctx.ui.select.mock.calls[0][1];
-    const costIdx = items.findIndex((i: string) => i.startsWith("Cost display"));
-    const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
-    const compactIdx = items.findIndex((i: string) => i.startsWith("Compact mode"));
-    const graceTurnsIdx = items.findIndex((i: string) => i.startsWith("Grace turns"));
-
-    expect(costIdx).toBeGreaterThanOrEqual(0);
-    expect(separatorIdx).toBeGreaterThan(costIdx);
-    expect(compactIdx).toBeGreaterThan(separatorIdx);
-    expect(graceTurnsIdx).toBeGreaterThan(compactIdx);
   });
 });
 

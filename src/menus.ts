@@ -358,49 +358,6 @@ export async function showModelSettingsMenu(
       ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
-    // ── Widget settings section ──
-    items.push("");
-    actions.push(async () => {});
-    items.push("─── widget settings ───");
-    actions.push(async () => {});
-
-    // Compact mode toggle
-    const isCompact = __config.agent.widgetCompact === true;
-    items.push(`Compact mode · ${isCompact ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      __config.agent.widgetCompact = !isCompact;
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
-      ctx.ui.notify(`Compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
-    });
-
-    // Max lines (full mode)
-    const maxLines = __config.agent.widgetMaxLines ?? 12;
-    items.push(`Max lines (full) · ${maxLines}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
-      if (parsed === undefined) return;
-      __config.agent.widgetMaxLines = parsed;
-      // Update compact max lines default if not explicitly set
-      if (__config.agent.widgetMaxLinesCompact === undefined) {
-        __config.agent.widgetMaxLinesCompact = Math.floor(parsed / 2);
-      }
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
-      ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
-    });
-
-    // Max lines (compact mode)
-    const maxLinesCompact = __config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2);
-    items.push(`Max lines (compact) · ${maxLinesCompact}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
-      if (parsed === undefined) return;
-      __config.agent.widgetMaxLinesCompact = parsed;
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
-      ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
-    });
 
     // Grace turns setting
     const graceTurns = __config.agent.graceTurns ?? 6;
@@ -502,6 +459,55 @@ export async function showModelSettingsMenu(
   });
 }
 
+export async function showWidgetSettingsMenu(
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  return runMenuLoop(ctx, "Widget Settings", () => {
+    const items: string[] = [];
+    const actions: Array<() => Promise<void>> = [];
+
+    // Compact mode toggle
+    const isCompact = __config.agent.widgetCompact === true;
+    items.push(`Compact mode · ${isCompact ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      __config.agent.widgetCompact = !isCompact;
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
+    });
+
+    // Max lines (full mode)
+    const maxLines = __config.agent.widgetMaxLines ?? 12;
+    items.push(`Max lines (full) · ${maxLines}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
+      if (parsed === undefined) return;
+      __config.agent.widgetMaxLines = parsed;
+      // Update compact max lines default if not explicitly set
+      if (__config.agent.widgetMaxLinesCompact === undefined) {
+        __config.agent.widgetMaxLinesCompact = Math.floor(parsed / 2);
+      }
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
+    });
+
+    // Max lines (compact mode)
+    const maxLinesCompact = __config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2);
+    items.push(`Max lines (compact) · ${maxLinesCompact}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
+      if (parsed === undefined) return;
+      __config.agent.widgetMaxLinesCompact = parsed;
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+    });
+
+    return { items, actions };
+  });
+}
+
 export async function showAgentsMainMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
@@ -511,6 +517,7 @@ export async function showAgentsMainMenu(
     "2. Concurrency settings — Set per-model slot limits",
     "3. Running agents — List running/queued agents",
     "4. Debug — Agent types, briefing, diagnostics",
+    "5. Widget settings — Configure widget display options",
     "",
     "Press Escape to close",
   ];
@@ -528,6 +535,8 @@ export async function showAgentsMainMenu(
       await showRunningAgentsMenu(ctx);
     } else if (choice.startsWith("4.")) {
       await showDebugMenu(ctx);
+    } else if (choice.startsWith("5.")) {
+      await showWidgetSettingsMenu(ctx);
     }
   }
 }
