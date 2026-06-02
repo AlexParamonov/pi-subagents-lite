@@ -734,23 +734,23 @@ async function showRunningAgentsMenu(
 
   return runMenuLoop(ctx, "Running Agents", () => {
     const records = getManager()?.listAgents() ?? [];
-    const running = records.filter((r) => r.status === "running" || r.status === "queued");
+    const running = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
 
     const items: string[] = [];
     const actions: Array<() => Promise<void>> = [];
 
     for (const record of records) {
-      const elapsed = Math.round((Date.now() - record.startedAt) / 1000);
-      const statusIcon = record.status === "running" ? "▶" :
-        record.status === "completed" ? "✓" :
-        record.status === "queued" ? "⏳" :
-        record.status === "error" ? "✗" : "•";
-      const headline = record.description
-        ? (record.description.length > 50 ? record.description.slice(0, 47) + "..." : record.description)
+      const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
+      const statusIcon = record.lifecycle.status === "running" ? "▶" :
+        record.lifecycle.status === "completed" ? "✓" :
+        record.lifecycle.status === "queued" ? "⏳" :
+        record.lifecycle.status === "error" ? "✗" : "•";
+      const headline = record.display.description
+        ? (record.display.description.length > 50 ? record.display.description.slice(0, 47) + "..." : record.display.description)
         : "";
       const suffix = headline ? ` — ${headline}` : "";
       items.push(
-        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.type}  ${record.status}  ${elapsed}s${suffix}`,
+        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
       );
 
       actions.push(async () => {
@@ -793,19 +793,19 @@ async function showResultViewer(
     ? `snapshot \u00b7 ${record.id.slice(0, SHORT_ID_LENGTH)}`
     : "Error";
   const stats: ResultViewerStats = {
-    lifetimeUsage: record.lifetimeUsage,
-    turnCount: record.turnCount,
-    durationMs: (record.completedAt ?? Date.now()) - record.startedAt,
+    lifetimeUsage: record.stats.lifetimeUsage,
+    turnCount: record.stats.turnCount,
+    durationMs: (record.lifecycle.completedAt ?? Date.now()) - record.lifecycle.startedAt,
   };
   const refreshCallback =
-    kind === "snapshot" && record.session
-      ? () => buildSnapshotMarkdown(record.session!.messages)
+    kind === "snapshot" && record.execution.session
+      ? () => buildSnapshotMarkdown(record.execution.session!.messages)
       : undefined;
 
   await ctx.ui.custom<void>(
     (tui, theme, _kb, done) =>
       new ResultViewer(
-        `${getDisplayName(record.type)} · ${titleSuffix}`,
+        `${getDisplayName(record.display.type)} · ${titleSuffix}`,
         text,
         { onClose: () => done(), onRefresh: refreshCallback },
         theme,
@@ -828,7 +828,7 @@ async function steerAgentById(
     return;
   }
 
-  const message = await ctx.ui.input(`Steer ${record.type}`);
+  const message = await ctx.ui.input(`Steer ${record.display.type}`);
   if (!message?.trim()) return;
 
   const sent = await getManager().steer(agentId, message.trim());
@@ -850,16 +850,16 @@ export async function showAgentActions(
   const items: string[] = [];
   const actions: Array<() => Promise<void>> = [];
 
-  const isRunning = record.status === "running" || record.status === "queued";
-  const hasSession = !!record.session;
+  const isRunning = record.lifecycle.status === "running" || record.lifecycle.status === "queued";
+  const hasSession = !!record.execution.session;
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
   // View actions first
-  if (record.status === "running" && hasSession) {
+  if (record.lifecycle.status === "running" && hasSession) {
     items.push("View snapshot");
     actions.push(async () => {
-      const messages = record.session!.messages;
+      const messages = record.execution.session!.messages;
       const markdown = buildSnapshotMarkdown(messages);
       await showResultViewer(ctx, record, "snapshot", markdown);
     });

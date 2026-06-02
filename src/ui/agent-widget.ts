@@ -4,7 +4,7 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
-import type { AgentRecord, SubagentType, Theme } from "../types.js";
+import type { AgentRecord, Theme } from "../types.js";
 import {
   formatCost,
   getLifetimeTotal,
@@ -267,9 +267,9 @@ export class AgentWidget {
     const queued: AgentRecord[] = [];
     const finished: AgentRecord[] = [];
     for (const a of allAgents) {
-      if (a.status === "running") running.push(a);
-      else if (a.status === "queued") queued.push(a);
-      else if (a.completedAt && this.shouldShowFinished(a.id, a.status)) finished.push(a);
+      if (a.lifecycle.status === "running") running.push(a);
+      else if (a.lifecycle.status === "queued") queued.push(a);
+      else if (a.lifecycle.completedAt && this.shouldShowFinished(a.id, a.lifecycle.status)) finished.push(a);
     }
     return { running, queued, finished };
   }
@@ -312,50 +312,44 @@ export class AgentWidget {
   }
 
   /** Render a finished agent line. */
-  private renderFinishedLine(a: {
-    id: string; type: SubagentType; status: string; description: string;
-    toolUses: number; startedAt: number; completedAt?: number; error?: string;
-    compactionCount: number; lifetimeUsage: LifetimeUsage;
-    turnCount?: number; maxTurns?: number; session?: SessionLike;
-    outputFile?: string;
-  }, theme: Theme): string {
-    const name = getDisplayName(a.type);
-    const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
-    const { icon, statusText } = this.finishedIconAndStatus(a.status, a.error, theme);
+  private renderFinishedLine(a: AgentRecord, theme: Theme): string {
+    const name = getDisplayName(a.display.type);
+    const duration = formatMs((a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt);
+    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
     const activity = this.agentActivity.get(a.id);
-    const usage = activity?.lifetimeUsage ?? a.lifetimeUsage;
+    const usage = activity?.lifetimeUsage ?? a.stats.lifetimeUsage;
     const statsParts = buildStatsParts({
-      toolUses: a.toolUses,
-      turnCount: activity?.turnCount ?? a.turnCount,
-      maxTurns: activity?.maxTurns ?? a.maxTurns,
+      toolUses: a.stats.toolUses,
+      turnCount: activity?.turnCount ?? a.stats.turnCount,
+      maxTurns: activity?.maxTurns ?? a.stats.maxTurns,
       tokens: getLifetimeTotal(usage),
-      contextPercent: getSessionContextPercent(activity?.session ?? a.session),
-      compactions: a.compactionCount,
+      contextPercent: getSessionContextPercent(activity?.session ?? a.execution.session),
+      compactions: a.stats.compactionCount,
       cost: this.showCost ? usage.cost : undefined,
     }, theme);
     statsParts.push(duration);
 
     const statsLine = statsParts.join("·");
-    return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", a.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+    return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", a.display.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
   private buildStatsLine(
-    agent: { toolUses: number; compactionCount: number; startedAt: number },
+    agent: AgentRecord,
     activity: AgentActivity | undefined,
     theme: Theme,
   ): string {
     const parts = buildStatsParts({
-      toolUses: activity?.toolUses ?? agent.toolUses,
+      toolUses: activity?.toolUses ?? agent.stats.toolUses,
       turnCount: activity?.turnCount,
       maxTurns: activity?.maxTurns,
       tokens: getLifetimeTotal(activity?.lifetimeUsage),
       contextPercent: getSessionContextPercent(activity?.session),
-      compactions: agent.compactionCount,
+      compactions: agent.stats.compactionCount,
       cost: this.showCost ? activity?.lifetimeUsage?.cost : undefined,
     }, theme);
-    parts.push(formatMs(Date.now() - agent.startedAt));
+    parts.push(formatMs(Date.now() - agent.lifecycle.startedAt));
     return parts.join("·");
   }
 
@@ -370,8 +364,8 @@ export class AgentWidget {
     for (const a of finished) {
       blocks.push({
         header: truncate(`${theme.fg("dim", BRANCH)} ${this.renderFinishedLine(a, theme)}`),
-        continuations: a.outputFile
-          ? [truncate(theme.fg("dim", `${VLINE}    tail -f ${a.outputFile}`))]
+        continuations: a.display.outputFile
+          ? [truncate(theme.fg("dim", `${VLINE}    tail -f ${a.display.outputFile}`))]
           : [],
       });
     }
@@ -388,14 +382,14 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of running) {
-      const name = getDisplayName(a.type);
+      const name = getDisplayName(a.display.type);
       const bg = this.agentActivity.get(a.id);
       const statsLine = this.buildStatsLine(a, bg, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
-        const desc = a.description.length > 30 ? a.description.slice(0, 27) + "..." : a.description;
+        const desc = a.display.description.length > 30 ? a.display.description.slice(0, 27) + "..." : a.display.description;
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
@@ -403,12 +397,12 @@ export class AgentWidget {
         });
       } else {
         // Full: header + continuation lines
-        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}`;
+        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.display.description}  ${statsLine}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [
-            ...(a.outputFile
-              ? [truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.outputFile}`))]
+            ...(a.display.outputFile
+              ? [truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.display.outputFile}`))]
               : []),
             truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)),
           ],
@@ -597,7 +591,7 @@ export class AgentWidget {
     if (this.showCost) {
       const sessionCost = this.manager.getTotalAgentCost();
       // Also include in-flight running agents (not yet completed, so not in accumulator)
-      const runningCost = running.reduce((sum, a) => sum + a.lifetimeUsage.cost, 0);
+      const runningCost = running.reduce((sum, a) => sum + a.stats.lifetimeUsage.cost, 0);
       const totalCost = sessionCost + runningCost;
       if (totalCost > 0) statusText += `: ${formatCost(totalCost)}`;
     }

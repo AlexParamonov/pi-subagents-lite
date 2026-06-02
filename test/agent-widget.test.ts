@@ -62,31 +62,45 @@ function makeMockTUI(): any {
 function makeRunningAgent(id: string, type: string = "builder"): any {
   return {
     id,
-    type,
-    status: "running",
-    description: `Test agent ${id}`,
-    toolUses: 5,
-    startedAt: Date.now() - 60000,
-    compactionCount: 0,
-    lifetimeUsage: { prompt: 1000, completion: 500, cached: 0 },
-    turnCount: 3,
-    maxTurns: 30,
+    display: {
+      type,
+      description: `Test agent ${id}`,
+    },
+    lifecycle: {
+      status: "running",
+      startedAt: Date.now() - 60000,
+    },
+    execution: {},
+    stats: {
+      toolUses: 5,
+      compactionCount: 0,
+      lifetimeUsage: { prompt: 1000, completion: 500, cached: 0 },
+      turnCount: 3,
+      maxTurns: 30,
+    },
   };
 }
 
 function makeFinishedAgent(id: string, type: string = "builder"): any {
   return {
     id,
-    type,
-    status: "completed",
-    description: `Finished agent ${id}`,
-    toolUses: 10,
-    startedAt: Date.now() - 120000,
-    completedAt: Date.now() - 60000,
-    compactionCount: 0,
-    lifetimeUsage: { prompt: 2000, completion: 1000, cached: 0 },
-    turnCount: 8,
-    maxTurns: 30,
+    display: {
+      type,
+      description: `Finished agent ${id}`,
+    },
+    lifecycle: {
+      status: "completed",
+      startedAt: Date.now() - 120000,
+      completedAt: Date.now() - 60000,
+    },
+    execution: {},
+    stats: {
+      toolUses: 10,
+      compactionCount: 0,
+      lifetimeUsage: { prompt: 2000, completion: 1000, cached: 0 },
+      turnCount: 8,
+      maxTurns: 30,
+    },
   };
 }
 
@@ -140,7 +154,7 @@ describe("widget connectors", () => {
 
     it("places outputFile line before activity line", () => {
       const agent = makeRunningAgent("a1");
-      agent.outputFile = "/tmp/pi-agent-outputs/test.log";
+      agent.display.outputFile = "/tmp/pi-agent-outputs/test.log";
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
@@ -196,9 +210,9 @@ describe("widget connectors", () => {
 
     it("places outputFile before activity for each running agent", () => {
       const a1 = makeRunningAgent("a1");
-      a1.outputFile = "/tmp/out1.log";
+      a1.display.outputFile = "/tmp/out1.log";
       const a2 = makeRunningAgent("a2");
-      a2.outputFile = "/tmp/out2.log";
+      a2.display.outputFile = "/tmp/out2.log";
       activity.set("a1", makeActivity("a1"));
       activity.set("a2", makeActivity("a2"));
       (manager as any).listAgents = () => [a1, a2];
@@ -227,7 +241,7 @@ describe("widget connectors", () => {
 
     it("uses spaces for tail-f line of last finished agent", () => {
       const a1 = makeFinishedAgent("a1");
-      a1.outputFile = "/tmp/pi-agent-outputs/test.log";
+      a1.display.outputFile = "/tmp/pi-agent-outputs/test.log";
       widget.markFinished("a1");
       (manager as any).listAgents = () => [a1];
 
@@ -241,9 +255,9 @@ describe("widget connectors", () => {
 
     it("outputFile lines use │ for non-last and spaces for last finished agent", () => {
       const a1 = makeFinishedAgent("a1");
-      a1.outputFile = "/tmp/out1.log";
+      a1.display.outputFile = "/tmp/out1.log";
       const a2 = makeFinishedAgent("a2");
-      a2.outputFile = "/tmp/out2.log";
+      a2.display.outputFile = "/tmp/out2.log";
       widget.markFinished("a1");
       widget.markFinished("a2");
       (manager as any).listAgents = () => [a1, a2];
@@ -283,9 +297,9 @@ describe("status bar format", () => {
     widget.setUICtx(uiCtx);
 
     const a1 = makeRunningAgent("a1");
-    a1.lifetimeUsage.cost = 0.05;
+    a1.stats.lifetimeUsage.cost = 0.05;
     const a2 = makeRunningAgent("a2");
-    a2.lifetimeUsage.cost = 0.03;
+    a2.stats.lifetimeUsage.cost = 0.03;
     (manager as any).listAgents = () => [a1, a2];
     widget.update();
 
@@ -318,7 +332,7 @@ describe("status bar format", () => {
     widget.setUICtx(uiCtx);
 
     const agent = makeRunningAgent("a1");
-    agent.lifetimeUsage.cost = 0;
+    agent.stats.lifetimeUsage.cost = 0;
     (manager as any).listAgents = () => [agent];
     widget.update();
 
@@ -345,7 +359,7 @@ describe("status bar cost from accumulator", () => {
 
     // Trigger an update with a running agent so the status bar is emitted
     const agent = makeRunningAgent("a1");
-    agent.lifetimeUsage.cost = 0.05;
+    agent.stats.lifetimeUsage.cost = 0.05;
     (manager as any).listAgents = () => [agent];
     widget.update();
 
@@ -366,7 +380,7 @@ describe("status bar cost from accumulator", () => {
     widget.setUICtx(uiCtx);
 
     const agent = makeRunningAgent("a1");
-    agent.lifetimeUsage.cost = 0; // Running agent has no cost yet
+    agent.stats.lifetimeUsage.cost = 0; // Running agent has no cost yet
     (manager as any).listAgents = () => [agent];
     widget.update();
 
@@ -386,7 +400,7 @@ describe("status bar cost from accumulator", () => {
     widget.setUICtx(uiCtx);
 
     const agent = makeRunningAgent("a1");
-    agent.lifetimeUsage.cost = 0.05;
+    agent.stats.lifetimeUsage.cost = 0.05;
     (manager as any).listAgents = () => [agent];
     widget.update();
 

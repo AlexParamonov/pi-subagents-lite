@@ -12,6 +12,7 @@ import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./o
 import {
   type AgentInvocation,
   type AgentRecord,
+  type AgentStatus,
   type CompactionInfo,
   SHORT_ID_LENGTH,
   type SubagentType,
@@ -47,16 +48,16 @@ function createOutputCleanup(
   const outputStats = { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
   const cleanup = streamToOutputFile(session, path, outputStats);
   return () => {
-    outputStats.turnCount = record.turnCount ?? 0;
-    outputStats.toolUseCount = record.toolUses;
-    outputStats.totalTokens = getLifetimeTotal(record.lifetimeUsage);
-    outputStats.cost = record.lifetimeUsage.cost;
+    outputStats.turnCount = record.stats.turnCount ?? 0;
+    outputStats.toolUseCount = record.stats.toolUses;
+    outputStats.totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
+    outputStats.cost = record.stats.lifetimeUsage.cost;
     cleanup();
   };
 }
 
 /** Whether the agent status is terminal (no longer running or queued). */
-function isTerminalStatus(status: AgentRecord["status"]): boolean {
+function isTerminalStatus(status: AgentStatus): boolean {
   return status !== "running" && status !== "queued";
 }
 
@@ -251,16 +252,24 @@ export class AgentManager {
 
     const record: AgentRecord = {
       id,
-      type,
-      description: options.description,
-      status: queued ? "queued" : "running",
-      toolUses: 0,
-      startedAt: Date.now(),
-      abortController,
-      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
-      compactionCount: 0,
-      invocation: options.invocation,
-      maxTurns: options.maxTurns,
+      lifecycle: {
+        status: queued ? "queued" : "running",
+        startedAt: Date.now(),
+      },
+      display: {
+        type,
+        description: options.description,
+        invocation: options.invocation,
+      },
+      execution: {
+        abortController,
+      },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+        maxTurns: options.maxTurns,
+      },
     };
     this.agents.set(id, record);
 
@@ -289,12 +298,12 @@ export class AgentManager {
   ) {
     if (concurrencySlot) concurrencySlot.running++;
 
-    record.status = "running";
-    record.startedAt = Date.now();
+    record.lifecycle.status = "running";
+    record.lifecycle.startedAt = Date.now();
 
     // Create output file for this agent
-    record.outputFile = createOutputFilePath(id);
-    writeInitialEntry(record.outputFile, prompt);
+    record.display.outputFile = createOutputFilePath(id);
+    writeInitialEntry(record.display.outputFile, prompt);
 
     this.onStart?.(record);
 
@@ -310,29 +319,29 @@ export class AgentManager {
       maxTurns: options.maxTurns,
       thinkingLevel: options.thinkingLevel,
       graceTurns: options.graceTurns,
-      signal: record.abortController!.signal,
+      signal: record.execution.abortController!.signal,
       ...this.createRecordCallbacks(record, options),
       onTurnEnd: (turnCount) => {
-        record.turnCount = turnCount;
+        record.stats.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
       },
       onTextDelta: options.onTextDelta,
       onSessionCreated: (session) => {
-        record.session = session;
+        record.execution.session = session;
         // Flush any steers that arrived before the session was ready
-        if (record.pendingSteers?.length) {
-          for (const msg of record.pendingSteers) {
+        if (record.execution.pendingSteers?.length) {
+          for (const msg of record.execution.pendingSteers) {
             session.steer(msg).catch(() => {
               // Steer is advisory — a failure here (e.g. session already aborting)
               // is fine; the user can re-send if needed.
             });
           }
-          record.pendingSteers = undefined;
+          record.execution.pendingSteers = undefined;
         }
         // Stream session events to the output file
-        if (record.outputFile) {
-          record.outputCleanup = createOutputCleanup(
-            session, record.outputFile, record,
+        if (record.display.outputFile) {
+          record.execution.outputCleanup = createOutputCleanup(
+            session, record.display.outputFile, record,
           );
         }
         options.onSessionCreated?.(session);
@@ -340,28 +349,28 @@ export class AgentManager {
     })
       .then(({ responseText, session, aborted, steered }) => {
         // Don't overwrite status if externally stopped via abort()
-        if (record.status !== "stopped") {
-          record.status = aborted ? "aborted" : steered ? "steered" : "completed";
+        if (record.lifecycle.status !== "stopped") {
+          record.lifecycle.status = aborted ? "aborted" : steered ? "steered" : "completed";
         }
         record.result = responseText;
-        record.session = session;
-        record.completedAt ??= Date.now();
+        record.execution.session = session;
+        record.lifecycle.completedAt ??= Date.now();
         return responseText;
       })
       .catch((err) => {
         // Don't overwrite status if externally stopped via abort()
-        if (record.status !== "stopped") {
-          record.status = "error";
+        if (record.lifecycle.status !== "stopped") {
+          record.lifecycle.status = "error";
         }
         record.error = errorMessage(err);
-        record.completedAt ??= Date.now();
+        record.lifecycle.completedAt ??= Date.now();
         return "";
       })
       .finally(() => {
         // Final flush of streaming output file
-        if (record.outputCleanup) {
-          try { record.outputCleanup(); } catch { /* ignore */ }
-          record.outputCleanup = undefined;
+        if (record.execution.outputCleanup) {
+          try { record.execution.outputCleanup(); } catch { /* ignore */ }
+          record.execution.outputCleanup = undefined;
         }
 
         // Decrement per-model concurrency count
@@ -371,12 +380,12 @@ export class AgentManager {
         this.drainQueue();
       });
 
-    record.promise = promise;
+    record.execution.promise = promise;
   }
 
   /** Notify completion callback, ignoring any errors. */
   private safeNotifyComplete(record: AgentRecord): void {
-    this.totalAgentCost += record.lifetimeUsage.cost;
+    this.totalAgentCost += record.stats.lifetimeUsage.cost;
     try { this.onComplete?.(record); } catch { /* ignore */ }
   }
 
@@ -400,15 +409,15 @@ export class AgentManager {
   } {
     return {
       onToolActivity: (activity) => {
-        if (activity.type === "end") record.toolUses++;
+        if (activity.type === "end") record.stats.toolUses++;
         options?.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
-        addUsage(record.lifetimeUsage, usage);
+        addUsage(record.stats.lifetimeUsage, usage);
         options?.onAssistantUsage?.(usage);
       },
       onCompaction: (info) => {
-        record.compactionCount++;
+        record.stats.compactionCount++;
         options?.onCompaction?.(info);
       },
     };
@@ -419,7 +428,7 @@ export class AgentManager {
     const started = new Set<string>();
     for (const entry of this.queue) {
       const record = this.agents.get(entry.id);
-      if (!record || record.status !== "queued") continue;
+      if (!record || record.lifecycle.status !== "queued") continue;
 
       const slot = this.getSlot(entry.modelKey);
       if (slot.running >= slot.limit) continue;
@@ -429,9 +438,9 @@ export class AgentManager {
         started.add(entry.id);
       } catch (err) {
         // Late failure — surface on the record so the user can see it
-        record.status = "error";
+        record.lifecycle.status = "error";
         record.error = errorMessage(err);
-        record.completedAt = Date.now();
+        record.lifecycle.completedAt = Date.now();
         started.add(entry.id);
         this.safeNotifyComplete(record);
       }
@@ -448,17 +457,17 @@ export class AgentManager {
     const record = this.agents.get(id);
     if (!record) return false;
 
-    if (record.status !== "running") return false;
+    if (record.lifecycle.status !== "running") return false;
 
-    if (!record.session) {
+    if (!record.execution.session) {
       // Session not yet created — queue the steer
-      if (!record.pendingSteers) record.pendingSteers = [];
-      record.pendingSteers.push(message);
+      if (!record.execution.pendingSteers) record.execution.pendingSteers = [];
+      record.execution.pendingSteers.push(message);
       return true;
     }
 
     try {
-      await record.session.steer(message);
+      await record.execution.session.steer(message);
       return true;
     } catch {
       // steer failures are surfaced to the caller via the boolean return value
@@ -472,7 +481,7 @@ export class AgentManager {
 
   listAgents(): AgentRecord[] {
     return [...this.agents.values()].sort(
-      (a, b) => b.startedAt - a.startedAt,
+      (a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt,
     );
   }
 
@@ -488,30 +497,30 @@ export class AgentManager {
    * Returns true if the agent was stopped, false if it wasn't running/queued.
    */
   private stopAgent(record: AgentRecord): boolean {
-    if (record.status === "queued") {
+    if (record.lifecycle.status === "queued") {
       this.queue = this.queue.filter(q => q.id !== record.id);
-    } else if (record.status !== "running") {
+    } else if (record.lifecycle.status !== "running") {
       return false;
     } else {
-      record.abortController?.abort();
+      record.execution.abortController?.abort();
     }
-    record.status = "stopped";
-    record.completedAt = Date.now();
+    record.lifecycle.status = "stopped";
+    record.lifecycle.completedAt = Date.now();
     return true;
   }
 
   /** Dispose a record's session and remove it from the map. */
   private removeRecord(id: string, record: AgentRecord): void {
-    record.session?.dispose();
-    record.session = undefined;
+    record.execution.session?.dispose();
+    record.execution.session = undefined;
     this.agents.delete(id);
   }
 
   private cleanup() {
     const cutoff = Date.now() - CLEANUP_AGE_CUTOFF_MS;
     for (const [id, record] of this.agents) {
-      if (!isTerminalStatus(record.status)) continue;
-      if ((record.completedAt ?? 0) >= cutoff) continue;
+      if (!isTerminalStatus(record.lifecycle.status)) continue;
+      if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
       this.removeRecord(id, record);
     }
   }
@@ -520,7 +529,7 @@ export class AgentManager {
     clearInterval(this.cleanupInterval);
     this.queue = [];
     for (const record of this.agents.values()) {
-      record.session?.dispose();
+      record.execution.session?.dispose();
     }
     this.agents.clear();
   }

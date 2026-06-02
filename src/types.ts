@@ -50,39 +50,16 @@ export interface AgentConfig {
 
 export interface AgentRecord {
   id: string;
-  type: SubagentType;
-  description: string;
-  status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
   result?: string;
   error?: string;
-  toolUses: number;
-  startedAt: number;
-  completedAt?: number;
-  session?: AgentSession;
-  abortController?: AbortController;
-  promise?: Promise<string>;
-  /** Steering messages queued before the session was ready. */
-  pendingSteers?: string[];
-  /** The tool_use_id from the original Agent tool call. */
-  toolCallId?: string;
-  /** Path to the streaming output transcript file. */
-  outputFile?: string;
-  /** Cleanup function for the output file stream subscription. */
-  outputCleanup?: () => void;
-  /**
-   * Lifetime usage breakdown, accumulated via `message_end` events. Survives
-   * compaction. Total = input + output + cacheWrite + cost (cacheRead deliberately
-   * excluded — see issue #38). Initialized to zeros at spawn.
-   */
-  lifetimeUsage: LifetimeUsage;
-  /** Final turn count (set on completion). Used by widget after activity cleanup. */
-  turnCount?: number;
-  /** Max turns limit (from invocation or default). */
-  maxTurns?: number;
-  /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
-  compactionCount: number;
-  /** Resolved spawn params, captured for UI display. Fixed at spawn time. */
-  invocation?: AgentInvocation;
+  /** Lifecycle state: status, timestamps. */
+  lifecycle: AgentLifecycle;
+  /** Display-oriented info: type, description, output file, invocation. */
+  display: AgentDisplayInfo;
+  /** Execution internals: session, abort controller, pending steers. */
+  execution: AgentExecutionState;
+  /** Accumulated statistics: usage, tool uses, turns. */
+  stats: AgentAccumulatedStats;
 }
 
 export interface AgentInvocation {
@@ -133,6 +110,72 @@ export type CompactionReason = "manual" | "threshold" | "overflow";
 export interface CompactionInfo {
   reason: CompactionReason;
   tokensBefore: number;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-object interfaces for decomposed AgentRecord
+// ---------------------------------------------------------------------------
+
+/** Possible agent lifecycle statuses. */
+export type AgentStatus = "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
+
+/**
+ * Lifecycle state: when the agent started, completed, and its current status.
+ * Used by agent-manager (lifecycle control), menus (status display), widget (linger logic).
+ */
+export interface AgentLifecycle {
+  status: AgentStatus;
+  startedAt: number;
+  completedAt?: number;
+}
+
+/**
+ * Display-oriented fields: type name, description, output file, invocation params.
+ * Used by widget (rendering), menus (listing), renderer (display).
+ */
+export interface AgentDisplayInfo {
+  type: SubagentType;
+  description: string;
+  /** Path to the streaming output transcript file. */
+  outputFile?: string;
+  /** Resolved spawn params, captured for UI display. Fixed at spawn time. */
+  invocation?: AgentInvocation;
+  /** The tool_use_id from the original Agent tool call. */
+  toolCallId?: string;
+}
+
+/**
+ * Execution internals: session handle, abort controller, pending steers.
+ * Used by agent-manager (session lifecycle), tool-execution (steering, nudge).
+ */
+export interface AgentExecutionState {
+  session?: AgentSession;
+  abortController?: AbortController;
+  promise?: Promise<string>;
+  /** Steering messages queued before the session was ready. */
+  pendingSteers?: string[];
+  /** Cleanup function for the output file stream subscription. */
+  outputCleanup?: () => void;
+}
+
+/**
+ * Accumulated statistics: usage breakdown, tool uses, turn count.
+ * Used by widget (stats display), tool-execution (details building), menus (result viewer).
+ */
+export interface AgentAccumulatedStats {
+  /**
+   * Lifetime usage breakdown, accumulated via `message_end` events. Survives
+   * compaction. Total = input + output + cacheWrite + cost (cacheRead deliberately
+   * excluded — see issue #38). Initialized to zeros at spawn.
+   */
+  lifetimeUsage: LifetimeUsage;
+  toolUses: number;
+  /** Final turn count (set on completion). Used by widget after activity cleanup. */
+  turnCount?: number;
+  /** Max turns limit (from invocation or default). */
+  maxTurns?: number;
+  /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
+  compactionCount: number;
 }
 
 
