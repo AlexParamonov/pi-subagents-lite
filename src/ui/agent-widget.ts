@@ -4,16 +4,15 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
-import { getConfig } from "../agent-types.js";
 import type { AgentRecord, SubagentType } from "../types.js";
 import {
   formatCost,
-  formatTokens,
   getLifetimeTotal,
   getSessionContextPercent,
   type LifetimeUsage,
   type SessionLike,
 } from "../usage.js";
+import { formatMs, buildStatsParts, getDisplayName } from "../format.js";
 
 // ---- Constants ----
 
@@ -101,97 +100,10 @@ export interface AgentActivity {
   lifetimeUsage: LifetimeUsage;
 }
 
+// ---- Re-exports from format.ts (backward compatibility) ----
+export { formatMs, buildStatsParts, getDisplayName } from "../format.js";
 
-
-// ---- Formatting helpers ----
-
-/**
- * Token count with optional context-fill % and compaction-count annotations.
- * Thresholds for percent: <70% dim, 70–85% warning, ≥85% error.
- * Compaction count rendered as `↻ N` in dim.
- *
- *   "12.3k"                     — no annotations
- *   "12.3k(45%)"                — percent only
- *   "12.3k(↻ 2)"                 — compactions only (e.g. right after compact)
- *   "12.3k(45%·↻ 2)"             — both
- */
-function formatSessionTokens(
-  tokens: number,
-  percent: number | null,
-  theme: Theme,
-  compactions = 0,
-): string {
-  const tokenStr = formatTokens(tokens);
-  const annot: string[] = [];
-  if (percent !== null) {
-    const color = percent >= 85 ? "error" : percent >= 70 ? "warning" : "dim";
-    annot.push(theme.fg(color, `${Math.round(percent)}%`));
-  }
-  if (compactions > 0) {
-    annot.push(theme.fg("dim", `↻ ${compactions}`));
-  }
-  if (annot.length === 0) return tokenStr;
-  // Include closing paren in the last annotation's color span to prevent
-  // ANSI reset from leaving `)` in default color when wrapped in outer dim.
-  const lastIdx = annot.length - 1;
-  annot[lastIdx] += ")";
-  return `${tokenStr}(${annot.join("·")}`;
-}
-
-/** Format turn count with optional max limit: "5≤30⟳" or "5⟳". */
-function formatTurns(turnCount: number, maxTurns?: number | null): string {
-  return maxTurns != null ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
-}
-
-/** Format milliseconds as a compact human-readable duration: "1h 1m 1s", "5m 37s", "10s", "<1s". */
-export function formatMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 1000) return "<1s";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
-
-  return parts.join(" ");
-}
-
-/**
- * Build common stats parts: toolUses · turns · tokens with context % · cost.
- * Shared by AgentWidget and index.ts for consistent stats display.
- */
-export function buildStatsParts(
-  args: {
-    toolUses: number;
-    turnCount?: number;
-    maxTurns?: number;
-    tokens: number;
-    contextPercent: number | null;
-    compactions: number;
-    cost?: number;
-  },
-  theme: Theme,
-): string[] {
-  const parts: string[] = [];
-  if (args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
-  if (args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns));
-  if (args.tokens > 0) {
-    parts.push(formatSessionTokens(
-      args.tokens, args.contextPercent, theme, args.compactions,
-    ));
-  }
-  if (args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
-  return parts;
-}
-
-/** Get display name for any agent type (built-in or custom). */
-export function getDisplayName(type: SubagentType): string {
-  return getConfig(type).displayName;
-}
+// ---- Widget-internal helpers ----
 
 /**
  * Wrap a stats line in dim ANSI codes, re-applying dim after any inner

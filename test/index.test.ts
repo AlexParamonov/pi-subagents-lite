@@ -104,6 +104,7 @@ vi.mock("../src/model-precedence.js", () => ({
 
 vi.mock("../src/agent-types.js", () => ({
   resolveType: vi.fn((name: string) => name),
+  getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(() => ({})),
   registerAgents: vi.fn(),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),

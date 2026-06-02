@@ -22,6 +22,7 @@ const mockModules = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/agent-types.js", () => ({
+  getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
