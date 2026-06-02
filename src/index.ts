@@ -405,7 +405,15 @@ export default function (pi: ExtensionAPI) {
     syncCompactFromToolsExpanded(false);
   });
 
-  pi.on("session_shutdown", async (_event: unknown) => {
+  pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
+    // Warn if agents were killed
+    if (manager) {
+      const records = manager.listAgents();
+      const active = records.filter(r => r.status === "running" || r.status === "queued");
+      if (active.length > 0 && ctx.hasUI) {
+        ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
+      }
+    }
     widget?.dispose();
     widget = undefined;
     if (manager) {
