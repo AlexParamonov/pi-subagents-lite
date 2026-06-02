@@ -8,6 +8,7 @@
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "./types.js";
+import { SHORT_ID_LENGTH } from "./types.js";
 import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
 import type { AgentActivity } from "./ui/agent-widget.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
@@ -292,8 +293,69 @@ async function executeSpawnForeground(
 }
 
 // ============================================================================
-// Tool_call listener — inject model into Agent tool calls
+// Running agents list helper (used by executeStopAgentTool)
 // ============================================================================
+
+/**
+ * Build a compact list of running (or queued) agents.
+ * Format: "type·short_id, type·short_id" — one line, easy for LLM to parse.
+ */
+function formatRunningAgents(): string {
+  const agents = getManager().listAgents().filter(
+    (a) => a.status === "running" || a.status === "queued",
+  );
+
+  if (agents.length === 0) return "none";
+
+  return agents
+    .map((a) => `${a.type}·${a.id.slice(0, SHORT_ID_LENGTH)}`)
+    .join(", ");
+}
+
+// ============================================================================
+// StopAgent execute handler
+// ============================================================================
+
+export async function executeStopAgentTool(
+  _toolCallId: string,
+  params: Record<string, unknown>,
+  _signal: AbortSignal | undefined,
+  _onUpdate: ((update: any) => void) | undefined,
+  _ctx: ExtensionContext,
+): Promise<any> {
+  const agentId = params.agent_id as string | undefined;
+
+  if (!agentId) {
+    return errorResult("agent_id is required");
+  }
+
+  const record = getManager().getRecord(agentId);
+
+  if (!record) {
+    // Agent not found → return error + list of running agents
+    return errorResult(
+      `Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`,
+    );
+  }
+
+  // Check if already in a terminal state (not running or queued)
+  if (record.status !== "running" && record.status !== "queued") {
+    return successResult(
+      `Agent ${agentId} is already ${record.status}. Running agents: ${formatRunningAgents()}`,
+    );
+  }
+
+  // Attempt to stop the running/queued agent
+  if (getManager().abort(agentId)) {
+    return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
+  }
+
+  return errorResult(`Failed to stop agent ${agentId}`);
+}
+
+// ============================================================================
+// Tool_call listener — inject model into Agent tool calls
+// =============================================================================
 
 export async function toolCallListener(
   event: ToolCallEvent,

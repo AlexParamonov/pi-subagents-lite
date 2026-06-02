@@ -118,23 +118,7 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-vi.mock("../src/tool-execution.js", () => ({
-  executeAgentTool: vi.fn(),
-  toolCallListener: vi.fn(),
-  backgroundAgentIds: new Set(),
-  scheduleNudge: vi.fn(),
-  successResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    details,
-  })),
-  errorResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    isError: true as const,
-    details,
-  })),
-}));
-
-// Mock the state module so stop-agent-tool.ts gets a fake manager
+// Mock the state module so executeStopAgentTool gets a fake manager
 vi.mock("../src/state.js", () => ({
   getManager: () => ({
     abort: mockAbort,
@@ -157,7 +141,7 @@ describe("StopAgent tool execute behavior", () => {
     mockGetRecord.mockReturnValue(record);
     mockAbort.mockReturnValue(true);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_1",
@@ -178,7 +162,7 @@ describe("StopAgent tool execute behavior", () => {
     mockGetRecord.mockReturnValue(record);
     mockAbort.mockReturnValue(true);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_2",
@@ -203,7 +187,7 @@ describe("StopAgent tool execute behavior", () => {
     ];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_3",
@@ -229,7 +213,7 @@ describe("StopAgent tool execute behavior", () => {
     ];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_4",
@@ -253,7 +237,7 @@ describe("StopAgent tool execute behavior", () => {
     const runningAgents: Array<{ id: string; type: string; status: string }> = [];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_5",
@@ -275,7 +259,7 @@ describe("StopAgent tool execute behavior", () => {
     const runningAgents: Array<{ id: string; type: string; status: string }> = [];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_6",
@@ -303,7 +287,7 @@ describe("StopAgent tool execute behavior", () => {
     ];
     mockListAgents.mockReturnValue(allAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_7",
@@ -320,7 +304,7 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("returns error result when agent_id is missing", async () => {
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_8",
