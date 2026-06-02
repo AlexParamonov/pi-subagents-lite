@@ -484,8 +484,9 @@ export class AgentWidget {
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
       if (this.isCompact()) {
-        // Compact: single line with activity inline
-        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        // Compact: single line with activity inline, truncated description
+        const desc = a.description.length > 30 ? a.description.slice(0, 27) + "..." : a.description;
+        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
