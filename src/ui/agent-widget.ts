@@ -700,6 +700,12 @@ export class AgentWidget {
 
   /** Force an immediate widget update. */
   update() {
+    if (!this.manager) {
+      // Widget lost its manager reference (e.g., after session shutdown)
+      clearInterval(this.widgetInterval);
+      this.widgetInterval = undefined;
+      return;
+    }
     if (!this.uiCtx) return;
 
     // Sync compact mode with tool expansion state (ctrl+o)

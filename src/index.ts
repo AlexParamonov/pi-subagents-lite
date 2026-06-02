@@ -42,10 +42,8 @@ import { executeStopAgentTool } from "./stop-agent-tool.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
   __config,
-  manager,
   sessionOverrides,
   agentActivity,
-  widget,
   piInstance,
   setConfig,
   setManager,
@@ -56,15 +54,15 @@ import {
   resetLastToolsExpanded,
   syncWidgetSettings,
   syncCompactFromToolsExpanded,
+  getManager,
+  getWidget,
 } from "./state.js";
 
 // Re-exports for backward compatibility
 export {
   __config,
-  manager,
   sessionOverrides,
   agentActivity,
-  widget,
   piInstance,
   setShowCostEnabled,
   syncWidgetSettings,
@@ -82,8 +80,10 @@ export {
  * Idempotent — safe to call on every session_start.
  */
 function ensureManagerAndWidget(): void {
+  const currentManager = getManager();
+  const currentWidget = getWidget();
   // Create manager if missing
-  if (!manager) {
+  if (!currentManager) {
     const newManager = new AgentManager(
       (record) => {
         // Only nudge for background (async) agents — sync agents already returned via tool result
@@ -94,8 +94,8 @@ function ensureManagerAndWidget(): void {
 
         // Mark finished and update widget BEFORE deleting activity —
         // renderFinishedLine reads activity for turn count, tokens, etc.
-        widget?.markFinished(record.id);
-        widget?.update();
+        getWidget()?.markFinished(record.id);
+        getWidget()?.update();
 
         // Remove from live activity tracking
         agentActivity.delete(record.id);
@@ -106,8 +106,8 @@ function ensureManagerAndWidget(): void {
   }
 
   // Create widget if missing (uses existing or newly created manager)
-  if (!widget) {
-    const newWidget = new AgentWidget(manager, agentActivity);
+  if (!currentWidget) {
+    const newWidget = new AgentWidget(getManager(), agentActivity);
     newWidget.setShowCost(__config.agent.showCost === true);
     setWidget(newWidget);
     syncWidgetSettings();
@@ -234,11 +234,11 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_execution_start", async (_event, ctx) => {
     // Set UI context on first tool execution
-    if (!widget) {
+    if (!getWidget()) {
       ensureManagerAndWidget();
     }
-    widget?.setUICtx(ctx.ui as unknown as UICtx);
-    widget?.onTurnStart();
+    getWidget()?.setUICtx(ctx.ui as unknown as UICtx);
+    getWidget()?.onTurnStart();
   });
 
 
@@ -265,7 +265,7 @@ export default function (pi: ExtensionAPI) {
             const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
             const expanded = ui.getToolsExpanded?.();
             if (expanded !== undefined) {
-              widget?.notifyToolsExpansionChanged(expanded);
+              getWidget()?.notifyToolsExpansionChanged(expanded);
             }
           }, 0);
         }
@@ -278,17 +278,19 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
     // Warn if agents were killed
-    if (manager) {
-      const records = manager.listAgents();
+    const currentManager = getManager();
+    if (currentManager) {
+      const records = currentManager.listAgents();
       const active = records.filter(r => r.status === "running" || r.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
         ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
       }
     }
-    widget?.dispose();
+    getWidget()?.dispose();
     setWidget(undefined);
-    if (manager) {
-      await manager.dispose();
+    const mgr = getManager();
+    if (mgr) {
+      await mgr.dispose();
       clearManager();
     }
   });

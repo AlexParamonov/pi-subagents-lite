@@ -53,18 +53,31 @@ export function resetSessionOverrides(): void {
 
 export function setManager(m: AgentManager): void {
   manager = m;
+  // Use globalThis as fallback since ESM live bindings don't propagate reassignments in PI runtime
+  (globalThis as any).__subagentsManager = m;
 }
 
 export function clearManager(): void {
   manager = undefined as unknown as AgentManager;
+  (globalThis as any).__subagentsManager = undefined;
 }
 
 export function setWidget(w: AgentWidget | undefined): void {
   widget = w;
+  (globalThis as any).__subagentsWidget = w;
 }
 
 export function setPiInstance(pi: ExtensionAPI): void {
   piInstance = pi;
+}
+
+// Getters that read from globalThis (bypasses ESM live binding issues)
+export function getManager(): AgentManager {
+  return (globalThis as any).__subagentsManager ?? manager;
+}
+
+export function getWidget(): AgentWidget | undefined {
+  return (globalThis as any).__subagentsWidget ?? widget;
 }
 
 // ============================================================================

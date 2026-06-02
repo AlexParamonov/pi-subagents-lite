@@ -19,10 +19,10 @@ import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.
 import {
   __config,
   sessionOverrides,
-  manager,
   piInstance,
   agentActivity,
-  widget,
+  getManager,
+  getWidget,
 } from "./state.js";
 
 // ============================================================================
@@ -118,7 +118,7 @@ export function scheduleNudge(agentId: string): void {
     pendingNudges.clear();
 
     for (const id of batch) {
-      emitIndividualNudge(id, manager?.getRecord(id));
+      emitIndividualNudge(id, getManager()?.getRecord(id));
     }
   }, NUDGE_DELAY_MS);
 }
@@ -225,17 +225,17 @@ async function executeSpawnBackground(
     spawnOptions.maxTurns,
   );
 
-  const agentId = manager.spawn(piInstance, ctx, resolvedType, prompt, {
+  const agentId = getManager().spawn(piInstance, ctx, resolvedType, prompt, {
     ...spawnOptions,
     isBackground: true,
     ...callbacks,
   });
   backgroundAgentIds.add(agentId);
   agentActivity.set(agentId, state);
-  widget?.ensureTimer();
-  widget?.update();
+  getWidget()?.ensureTimer();
+  getWidget()?.update();
 
-  const record = manager.getRecord(agentId)!;
+  const record = getManager().getRecord(agentId)!;
   const details: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.status === "queued" ? "Agent queued" : "Agent running";
@@ -253,20 +253,20 @@ async function executeSpawnForeground(
     spawnOptions.maxTurns,
   );
 
-  const fgId = manager.spawn(piInstance, ctx, resolvedType, prompt, {
+  const fgId = getManager().spawn(piInstance, ctx, resolvedType, prompt, {
     ...spawnOptions,
     ...fgCallbacks,
     isBackground: false,
   });
   agentActivity.set(fgId, fgState);
-  widget?.ensureTimer();
+  getWidget()?.ensureTimer();
 
-  const record = manager.getRecord(fgId)!;
+  const record = getManager().getRecord(fgId)!;
   await record.promise;
 
   agentActivity.delete(fgId);
-  widget?.markFinished(fgId);
-  widget?.update();
+  getWidget()?.markFinished(fgId);
+  getWidget()?.update();
 
   const elapsedMs = (record.completedAt ?? Date.now()) - record.startedAt;
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
