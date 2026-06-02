@@ -75,7 +75,7 @@ vi.mock("../src/index.js", () => {
 });
 
 // --- Import module under test ---
-import { showConcurrencySettingsMenu, showModelSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
+import { showConcurrencySettingsMenu, showModelSettingsMenu, showWidgetSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
 import { getAgentConfig } from "../src/agent-types.js";
 
 function resetAgentState(): void {
@@ -1002,7 +1002,7 @@ describe("showResultViewer — stats passing", () => {
 // Widget settings tests
 // ---------------------------------------------------------------------------
 
-describe("showModelSettingsMenu — widget settings", () => {
+describe("showWidgetSettingsMenu — widget settings", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = {
       default: null,
@@ -1016,19 +1016,18 @@ describe("showModelSettingsMenu — widget settings", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("shows widget settings section with separator", async () => {
+  it("shows widget settings menu items", async () => {
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
-    const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
-    expect(separatorIdx).toBeGreaterThan(-1);
+    expect(items.length).toBeGreaterThan(0);
   });
 
   it("shows 'Compact mode · OFF' when widgetCompact is false", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
@@ -1038,7 +1037,7 @@ describe("showModelSettingsMenu — widget settings", () => {
   it("shows 'Compact mode · ON' when widgetCompact is true", async () => {
     mockModules.mockConfig.agent.widgetCompact = true;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
@@ -1055,7 +1054,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     ];
 
     const ctx = createMockCtx(selections);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1064,7 +1063,7 @@ describe("showModelSettingsMenu — widget settings", () => {
 
   it("shows 'Max lines (full) · 12' with default value", async () => {
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const maxLinesItem = items.find((i: string) => i.startsWith("Max lines (full)"));
@@ -1074,7 +1073,7 @@ describe("showModelSettingsMenu — widget settings", () => {
   it("shows configured max lines value", async () => {
     mockModules.mockConfig.agent.widgetMaxLines = 8;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const maxLinesItem = items.find((i: string) => i.startsWith("Max lines (full)"));
@@ -1092,7 +1091,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["10"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1109,7 +1108,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["1"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 2", "error");
@@ -1118,7 +1117,7 @@ describe("showModelSettingsMenu — widget settings", () => {
   it("shows 'Max lines (compact) · 6' with default value", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactMaxItem = items.find((i: string) => i.startsWith("Max lines (compact)"));
@@ -1136,7 +1135,7 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["4"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(4);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1153,32 +1152,30 @@ describe("showModelSettingsMenu — widget settings", () => {
     const inputs = ["0"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 1", "error");
   });
 
-  it("widget settings section appears after cost display and before grace turns", async () => {
+  it("shows compact mode, max lines, and shortcut settings", async () => {
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items: string[] = ctx.ui.select.mock.calls[0][1];
-    const costIdx = items.findIndex((i: string) => i.startsWith("Cost display"));
-    const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
     const compactIdx = items.findIndex((i: string) => i.startsWith("Compact mode"));
+    const maxLinesIdx = items.findIndex((i: string) => i.startsWith("Max lines (full)"));
+    const maxLinesCompactIdx = items.findIndex((i: string) => i.startsWith("Max lines (compact)"));
     const shortcutIdx = items.findIndex((i: string) => i.startsWith("Ctrl+o shortcut"));
-    const graceTurnsIdx = items.findIndex((i: string) => i.startsWith("Grace turns"));
 
-    expect(costIdx).toBeGreaterThanOrEqual(0);
-    expect(separatorIdx).toBeGreaterThan(costIdx);
-    expect(compactIdx).toBeGreaterThan(separatorIdx);
-    expect(shortcutIdx).toBeGreaterThan(compactIdx);
-    expect(graceTurnsIdx).toBeGreaterThan(shortcutIdx);
+    expect(compactIdx).toBeGreaterThanOrEqual(0);
+    expect(maxLinesIdx).toBeGreaterThan(compactIdx);
+    expect(maxLinesCompactIdx).toBeGreaterThan(maxLinesIdx);
+    expect(shortcutIdx).toBeGreaterThan(maxLinesCompactIdx);
   });
 });
 
-describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
+describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = {
       default: null,
@@ -1193,7 +1190,7 @@ describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
 
   it("shows 'Ctrl+o shortcut · OFF' when widgetShortcut is false", async () => {
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
@@ -1203,7 +1200,7 @@ describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
   it("shows 'Ctrl+o shortcut · ON' when widgetShortcut is true", async () => {
     mockModules.mockConfig.agent.widgetShortcut = true;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
@@ -1213,7 +1210,7 @@ describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
   it("defaults to OFF when widgetShortcut is not set", async () => {
     delete mockModules.mockConfig.agent.widgetShortcut;
     const ctx = createMockCtx([undefined]);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
@@ -1230,7 +1227,7 @@ describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
     ];
 
     const ctx = createMockCtx(selections);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1247,7 +1244,7 @@ describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
     ];
 
     const ctx = createMockCtx(selections);
-    await showModelSettingsMenu(ctx, []);
+    await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(false);
     expect(saveConfigAtomic).toHaveBeenCalled();

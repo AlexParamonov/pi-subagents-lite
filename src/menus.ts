@@ -359,59 +359,6 @@ export async function showModelSettingsMenu(
       ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
-    // ── Widget settings section ──
-    items.push("");
-    actions.push(async () => {});
-    items.push("─── widget settings ───");
-    actions.push(async () => {});
-
-    // Compact mode toggle
-    const isCompact = __config.agent.widgetCompact === true;
-    items.push(`Compact mode · ${isCompact ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      __config.agent.widgetCompact = !isCompact;
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
-      ctx.ui.notify(`Compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
-    });
-
-    // Max lines (full mode)
-    const maxLines = __config.agent.widgetMaxLines ?? 12;
-    items.push(`Max lines (full) · ${maxLines}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
-      if (parsed === undefined) return;
-      __config.agent.widgetMaxLines = parsed;
-      // Update compact max lines default if not explicitly set
-      if (__config.agent.widgetMaxLinesCompact === undefined) {
-        __config.agent.widgetMaxLinesCompact = Math.floor(parsed / 2);
-      }
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
-      ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
-    });
-
-    // Max lines (compact mode)
-    const maxLinesCompact = __config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2);
-    items.push(`Max lines (compact) · ${maxLinesCompact}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
-      if (parsed === undefined) return;
-      __config.agent.widgetMaxLinesCompact = parsed;
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
-      ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
-    });
-
-    // Ctrl+o shortcut toggle
-    const shortcutEnabled = __config.agent.widgetShortcut === true;
-    items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      __config.agent.widgetShortcut = !shortcutEnabled;
-      saveConfigAtomic(__config);
-      ctx.ui.notify(`Ctrl+o shortcut ${__config.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
-    });
-
     // Grace turns setting
     const graceTurns = __config.agent.graceTurns ?? 6;
     items.push(`Grace turns · ${graceTurns}`);
@@ -512,6 +459,19 @@ export async function showModelSettingsMenu(
   });
 }
 
+/** Map menu choice to handler. Matches by number prefix or first word. */
+function matchMenuChoice(
+  choice: string,
+  handlers: Record<string, () => Promise<void>>,
+): (() => Promise<void>) | undefined {
+  // Try number prefix first (e.g., "1." from "1. Running agents")
+  const numMatch = choice.match(/^(\d+)/);
+  if (numMatch) return handlers[numMatch[1]];
+  // Fall back to first word
+  const key = choice.split(" ")[0].toLowerCase();
+  return handlers[key];
+}
+
 export async function showAgentsMainMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
@@ -526,22 +486,21 @@ export async function showAgentsMainMenu(
     "Press Escape to close",
   ];
 
+  const handlers: Record<string, () => Promise<void>> = {
+    "1": () => showRunningAgentsMenu(ctx),
+    "2": () => showModelSettingsMenu(ctx, modelOptions),
+    "3": () => showConcurrencySettingsMenu(ctx, modelOptions),
+    "4": () => showWidgetSettingsMenu(ctx),
+    "5": () => showDebugMenu(ctx),
+  };
+
   // Loop so sub-menus navigate back to root; only Escape at root closes
   while (true) {
     const choice = await ctx.ui.select("Subagents Management", menuItems);
     if (choice === undefined || choice === "Press Escape to close") return;
 
-    if (choice.startsWith("1.")) {
-      await showRunningAgentsMenu(ctx);
-    } else if (choice.startsWith("2.")) {
-      await showModelSettingsMenu(ctx, modelOptions);
-    } else if (choice.startsWith("3.")) {
-      await showConcurrencySettingsMenu(ctx, modelOptions);
-    } else if (choice.startsWith("4.")) {
-      await showWidgetSettingsMenu(ctx);
-    } else if (choice.startsWith("5.")) {
-      await showDebugMenu(ctx);
-    }
+    const action = matchMenuChoice(choice, handlers);
+    if (action) await action();
   }
 }
 
@@ -551,16 +510,74 @@ async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void> {
     "2. Agent briefing — Send agent types/capabilities info to LLM (Optional, if having issues)",
   ];
 
+  const handlers: Record<string, () => Promise<void>> = {
+    "1": () => showAgentTypes(ctx),
+    "2": () => handleAgentBriefing(ctx),
+  };
+
   while (true) {
     const choice = await ctx.ui.select("Debug", menuItems);
     if (choice === undefined) return;
 
-    if (choice.startsWith("1.")) {
-      await showAgentTypes(ctx);
-    } else if (choice.startsWith("2.")) {
-      await handleAgentBriefing(ctx);
-    }
+    const action = matchMenuChoice(choice, handlers);
+    if (action) await action();
   }
+}
+
+export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Promise<void> {
+  return runMenuLoop(ctx, "Widget Settings", () => {
+    const items: string[] = [];
+    const actions: Array<() => Promise<void>> = [];
+
+    // Compact mode toggle
+    const isCompact = __config.agent.widgetCompact === true;
+    items.push(`Compact mode · ${isCompact ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      __config.agent.widgetCompact = !isCompact;
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
+    });
+
+    // Max lines (full mode)
+    const maxLines = __config.agent.widgetMaxLines ?? 12;
+    items.push(`Max lines (full) · ${maxLines}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
+      if (parsed === undefined) return;
+      __config.agent.widgetMaxLines = parsed;
+      // Update compact max lines default if not explicitly set
+      if (__config.agent.widgetMaxLinesCompact === undefined) {
+        __config.agent.widgetMaxLinesCompact = Math.floor(parsed / 2);
+      }
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
+    });
+
+    // Max lines (compact mode)
+    const maxLinesCompact = __config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2);
+    items.push(`Max lines (compact) · ${maxLinesCompact}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
+      if (parsed === undefined) return;
+      __config.agent.widgetMaxLinesCompact = parsed;
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+    });
+
+    // Ctrl+o shortcut toggle
+    const shortcutEnabled = __config.agent.widgetShortcut === true;
+    items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      __config.agent.widgetShortcut = !shortcutEnabled;
+      saveConfigAtomic(__config);
+      ctx.ui.notify(`Ctrl+o shortcut ${__config.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
+    });
+
+    return { items, actions };
+  });
 }
 
 async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> {
