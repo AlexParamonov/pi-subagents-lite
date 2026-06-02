@@ -331,6 +331,11 @@ export class AgentWidget {
     }
   }
 
+  /** Get the current UI context. */
+  getUICtx(): UICtx | undefined {
+    return this.uiCtx;
+  }
+
   /**
    * Called on each new turn (tool_execution_start).
    * Ages finished agents and clears those that have lingered long enough.
