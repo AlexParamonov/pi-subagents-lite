@@ -96,8 +96,27 @@ const noopTheme: any = {
   italic: (text: string) => text,
 };
 
+/**
+ * Select menu item by partial name match.
+ * Maps short names to menu items: 'model', 'concurrency', 'running', 'widget', 'debug'
+ */
+function selectByName(name: string): (title: string, items: string[]) => string | undefined {
+  const nameMap: Record<string, string> = {
+    model: "Model settings",
+    concurrency: "Concurrency settings",
+    running: "Running agents",
+    widget: "Widget settings",
+    debug: "Debug",
+  };
+  const search = nameMap[name.toLowerCase()] ?? name;
+  return (_title: string, items: string[]) => {
+    const match = items.find(item => item.toLowerCase().includes(search.toLowerCase()));
+    return match ?? undefined;
+  };
+}
+
 function createMockCtx(
-  selections: (string | undefined)[] = [],
+  selections: (string | ((title: string, items: string[]) => string | undefined) | undefined)[] = [],
   inputs: (string | undefined)[] = [],
   customValues: (string | null)[] = [],
 ): any {
@@ -107,8 +126,10 @@ function createMockCtx(
 
   return {
     ui: {
-      select: vi.fn(async (_title: string, _items: string[]) => {
-        return selections[selectIdx++] ?? undefined;
+      select: vi.fn(async (title: string, items: string[]) => {
+        const sel = selections[selectIdx++];
+        if (typeof sel === "function") return sel(title, items);
+        return sel ?? undefined;
       }),
       input: vi.fn(async (_label: string, _initialValue?: string) => {
         return inputs[inputIdx++] ?? undefined;
@@ -654,7 +675,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     resetAgentState();
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -683,7 +704,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -719,7 +740,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent.forceBackground = true;
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -756,7 +777,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -785,7 +806,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -817,7 +838,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop

@@ -517,10 +517,11 @@ export async function showAgentsMainMenu(
   modelOptions: string[],
 ): Promise<void> {
   const menuItems = [
-    "1. Model settings — Set global default and per-type model overrides",
-    "2. Concurrency settings — Set per-model slot limits",
-    "3. Running agents — List running/queued agents",
-    "4. Debug — Agent types, briefing, diagnostics",
+    "1. Running agents — List running/queued agents",
+    "2. Model settings — Set global default and per-type model overrides",
+    "3. Concurrency settings — Set per-model slot limits",
+    "4. Widget settings — Configure widget display options",
+    "5. Debug — Agent types, briefing, diagnostics",
     "",
     "Press Escape to close",
   ];
@@ -531,12 +532,14 @@ export async function showAgentsMainMenu(
     if (choice === undefined || choice === "Press Escape to close") return;
 
     if (choice.startsWith("1.")) {
-      await showModelSettingsMenu(ctx, modelOptions);
-    } else if (choice.startsWith("2.")) {
-      await showConcurrencySettingsMenu(ctx, modelOptions);
-    } else if (choice.startsWith("3.")) {
       await showRunningAgentsMenu(ctx);
+    } else if (choice.startsWith("2.")) {
+      await showModelSettingsMenu(ctx, modelOptions);
+    } else if (choice.startsWith("3.")) {
+      await showConcurrencySettingsMenu(ctx, modelOptions);
     } else if (choice.startsWith("4.")) {
+      await showWidgetSettingsMenu(ctx);
+    } else if (choice.startsWith("5.")) {
       await showDebugMenu(ctx);
     }
   }
