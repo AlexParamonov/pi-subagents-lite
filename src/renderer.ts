@@ -6,7 +6,7 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./ui/agent-widget.js";
-import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
+import { buildStatsParts, formatMs, getDisplayName } from "./ui/agent-widget.js";
 import { __config } from "./state.js";
 
 // ============================================================================

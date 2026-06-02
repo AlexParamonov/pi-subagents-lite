@@ -5,7 +5,7 @@
  * buildSnapshotMarkdown: format agent conversation as markdown for snapshot viewer.
  */
 
-import { summarizeToolArgs } from "./format.js";
+import { summarizeToolArgs } from "./output-file.js";
 
 function isTextBlock(c: unknown): c is { type: "text"; text: string } {
   return typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text";
