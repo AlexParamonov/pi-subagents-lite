@@ -257,6 +257,10 @@ export class AgentWidget {
   private tui: TUI | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
+  /** Callback to check tool expansion state (for ctrl+o sync). */
+  private getToolsExpanded: (() => boolean) | undefined;
+  /** Last known tool expansion state. */
+  private lastToolsExpandedState: boolean | undefined;
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -298,6 +302,11 @@ export class AgentWidget {
   /** Set whether ctrl+o shortcut is enabled. */
   setWidgetShortcut(enabled: boolean) {
     this.widgetShortcut = enabled;
+  }
+
+  /** Set callback to check tool expansion state (for ctrl+o sync). */
+  setGetToolsExpanded(fn: () => boolean) {
+    this.getToolsExpanded = fn;
   }
 
   /** Set max lines for full mode. */
@@ -691,6 +700,16 @@ export class AgentWidget {
   /** Force an immediate widget update. */
   update() {
     if (!this.uiCtx) return;
+
+    // Sync compact mode with tool expansion state (ctrl+o)
+    if (this.widgetShortcut && !this.forceCompact && this.getToolsExpanded) {
+      const expanded = this.getToolsExpanded();
+      if (this.lastToolsExpandedState !== undefined && this.lastToolsExpandedState !== expanded) {
+        this.compactMode = expanded;
+      }
+      this.lastToolsExpandedState = expanded;
+    }
+
     const { running, queued, finished } = this.categorizeAgents();
 
     const hasActive = running.length > 0 || queued.length > 0;

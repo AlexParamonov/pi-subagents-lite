@@ -61,6 +61,9 @@ export const agentActivity = new Map<string, AgentActivity>();
 /** Live TUI widget showing running/completed agents above the editor. Used by tool-execution. */
 export let widget: AgentWidget | undefined;
 
+/** UI context for ctrl+o sync. */
+let uiCtx: UICtx | undefined;
+
 /** ExtensionAPI reference — stored at init for execute callbacks. */
 export let piInstance: ExtensionAPI;
 
@@ -144,6 +147,11 @@ function ensureManagerAndWidget(): void {
   if (!widget) {
     widget = new AgentWidget(manager, agentActivity);
     widget.setShowCost(__config.agent.showCost === true);
+    // Set callback for ctrl+o sync
+    widget.setGetToolsExpanded(() => {
+      if (!uiCtx) return false;
+      return (uiCtx as unknown as { getToolsExpanded?: () => boolean }).getToolsExpanded?.() ?? false;
+    });
     syncWidgetSettings();
   }
 }
@@ -378,12 +386,9 @@ export default function (pi: ExtensionAPI) {
     }
     widget?.setUICtx(ctx.ui as unknown as UICtx);
     widget?.onTurnStart();
-    // Sync compact mode with tool expansion state (ctrl+o toggle)
-    const expanded = (ctx.ui as unknown as { getToolsExpanded?: () => boolean }).getToolsExpanded?.();
-    if (expanded !== undefined) {
-      syncCompactFromToolsExpanded(expanded);
-    }
   });
+
+
 
   // session_start — load config, scan agents, register into registry,
   // then re-register Agent tool with dynamic agent type enum
@@ -391,6 +396,10 @@ export default function (pi: ExtensionAPI) {
     sessionOverrides = { default: null };
     agentActivity.clear();
     lastToolsExpanded = undefined;
+    // Store UI context for ctrl+o sync
+    if (ctx.hasUI) {
+      uiCtx = ctx.ui as unknown as UICtx;
+    }
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
