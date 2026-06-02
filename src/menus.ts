@@ -22,7 +22,6 @@ import {
   piInstance,
   setShowCostEnabled,
   syncWidgetSettings,
-  syncWidgetShortcut,
 } from "./index.js";
 import { resolveModel } from "./model-precedence.js";
 import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
@@ -45,7 +44,6 @@ const CONFIG_AGENT_NON_MODEL_KEYS = [
   "widgetMaxLines",
   "widgetMaxLinesCompact",
   "widgetCompact",
-  "widgetShortcut",
 ];
 
 /**
@@ -402,16 +400,6 @@ export async function showModelSettingsMenu(
       saveConfigAtomic(__config);
       syncWidgetSettings();
       ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
-    });
-
-    // Ctrl+o shortcut toggle
-    const shortcutEnabled = __config.agent.widgetShortcut === true;
-    items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      __config.agent.widgetShortcut = !shortcutEnabled;
-      saveConfigAtomic(__config);
-      syncWidgetShortcut();
-      ctx.ui.notify(`Ctrl+o shortcut ${__config.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
     });
 
     // Grace turns setting
