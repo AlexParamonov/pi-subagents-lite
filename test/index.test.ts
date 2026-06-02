@@ -403,4 +403,13 @@ describe("syncCompactFromToolsExpanded", () => {
     syncFn(false);  // Trigger change
     expect(config.agent.widgetCompact).toBe(false);
   });
+
+  it("does NOT sync when forceCompact is ON (widgetCompact === true)", () => {
+    config.agent.widgetShortcut = true;
+    config.agent.widgetCompact = true;  // force compact overrides ctrl+o
+    syncFn(false);  // Set initial state
+    syncFn(true);   // ctrl+o tries to expand — should be blocked
+    // widgetCompact stays true (force compact overrides ctrl+o)
+    expect(config.agent.widgetCompact).toBe(true);
+  });
 });
