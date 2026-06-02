@@ -390,6 +390,11 @@ export default function (pi: ExtensionAPI) {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    // Set UI context on widget so it can register even without tool execution
+    if (ctx.hasUI) {
+      widget?.setUICtx(ctx.ui as unknown as UICtx);
+      widget?.update();
+    }
     // Sync compact mode with initial tool expansion state
     syncCompactFromToolsExpanded(false);
   });
