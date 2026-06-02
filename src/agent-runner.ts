@@ -369,6 +369,220 @@ async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
   };
 }
 
+// ── runAgent phases ────────────────────────────────────────────────
+
+/**
+ * Phase 1: Resolve system prompt from agent config, skills, and env info.
+ */
+function buildPrompt(
+  type: SubagentType,
+  agentConfig: ReturnType<typeof getAgentConfig>,
+  config: ReturnType<typeof getConfig>,
+  cwd: string,
+  env: EnvInfo,
+): string {
+  const extras: PromptExtras = {};
+  if (Array.isArray(agentConfig?.preloadSkills)) {
+    extras.skillBlocks = preloadSkills(agentConfig.preloadSkills, cwd);
+  }
+  if (Array.isArray(config.skills)) {
+    extras.skillMetas = loadSkillMeta(config.skills, cwd);
+  }
+  if (agentConfig) {
+    return buildAgentPrompt(agentConfig, cwd, env, extras);
+  }
+  const fallback = DEFAULT_AGENTS.get("general-purpose");
+  if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
+  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras);
+}
+
+/** Build extension name → tool names map from loaded extensions. */
+function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, unknown> }>) {
+  const map = new Map<string, string[]>();
+  for (const ext of extensions) {
+    const name = extractExtensionName(ext.path);
+    const tools = [...ext.tools.keys()];
+    if (tools.length > 0) map.set(name, tools);
+  }
+  return map;
+}
+
+/** Build extension override for whitelist or blacklist filtering. */
+function buildExtOverride(
+  extensions: true | string[] | false | undefined,
+  excludeExtensions?: string[],
+) {
+  if (Array.isArray(extensions)) {
+    const allowedNames = new Set(extensions.map(ext => {
+      const slashIdx = ext.indexOf("/");
+      return slashIdx !== -1 ? ext.slice(0, slashIdx) : ext;
+    }));
+    return (result: any) => ({
+      ...result,
+      extensions: result.extensions.filter((ext: { path: string }) =>
+        allowedNames.has(extractExtensionName(ext.path)),
+      ),
+    });
+  }
+  if (excludeExtensions) {
+    const excludeSet = new Set(excludeExtensions);
+    return (result: any) => ({
+      ...result,
+      extensions: result.extensions.filter((ext: { path: string }) =>
+        !excludeSet.has(extractExtensionName(ext.path)),
+      ),
+    });
+  }
+  return undefined;
+}
+
+/**
+ * Phase 2: Build DefaultResourceLoader with extension filtering.
+ * Returns the loader and a function that reloads it and builds the ext→tool map.
+ */
+function createResourceLoader(
+  config: ReturnType<typeof getConfig>,
+  agentConfig: ReturnType<typeof getAgentConfig>,
+  cwd: string,
+  systemPrompt: string,
+) {
+  const extensions = config.extensions;
+  const noSkills = config.skills === false
+    || Array.isArray(config.skills)
+    || Array.isArray(agentConfig?.preloadSkills);
+  const agentDir = getAgentDir();
+  const loaderOpts: ConstructorParameters<typeof DefaultResourceLoader>[0] = {
+    cwd, agentDir,
+    noExtensions: extensions === false, noSkills,
+    noPromptTemplates: true, noThemes: true, noContextFiles: true,
+    systemPromptOverride: () => systemPrompt,
+    appendSystemPromptOverride: () => [],
+    extensionsOverride: buildExtOverride(extensions, agentConfig?.excludeExtensions),
+  };
+  const loader = new DefaultResourceLoader(loaderOpts);
+  return {
+    loader,
+    reloadAndMap: async () => {
+      await loader.reload();
+      const extResult = loader.getExtensions();
+      return { extResult, extToolMap: buildExtToolMap(extResult.extensions) };
+    },
+  };
+}
+
+/** Create an agent session with the resolved model and thinking level. */
+async function initSession(
+  ctx: ExtensionContext,
+  options: RunOptions,
+  agentConfig: ReturnType<typeof getAgentConfig>,
+  type: SubagentType,
+  cwd: string,
+  loader: DefaultResourceLoader,
+) {
+  const model = options.model ?? findModelInRegistry(
+    agentConfig?.model, ctx.modelRegistry, ctx.model,
+  );
+  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinking;
+  const agentDir = getAgentDir();
+  const sessionOpts: Parameters<typeof createAgentSession>[0] = {
+    cwd, agentDir,
+    sessionManager: SessionManager.inMemory(cwd),
+    settingsManager: SettingsManager.create(cwd, agentDir),
+    modelRegistry: ctx.modelRegistry, model,
+    tools: getToolNamesForType(type), resourceLoader: loader,
+  };
+  if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
+  return createAgentSession(sessionOpts);
+}
+
+/**
+ * Phase 3: Create session, bind extensions, filter tools.
+ */
+async function createAndConfigureSession(
+  ctx: ExtensionContext,
+  options: RunOptions,
+  agentConfig: ReturnType<typeof getAgentConfig>,
+  type: SubagentType,
+  cwd: string,
+  loader: DefaultResourceLoader,
+  extResult: { extensions: Array<{ path: string; tools: Map<string, unknown> }> },
+  notify: (msg: string) => void,
+): Promise<AgentSession> {
+  const { session } = await initSession(ctx, options, agentConfig, type, cwd, loader);
+  const baseName = agentConfig?.name ?? type;
+  session.setSessionName(
+    options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName,
+  );
+  await session.bindExtensions({
+    onError: (err) => options.onToolActivity?.({
+      type: "end", toolName: `extension-error:${err.extensionPath}`,
+    }),
+  });
+  const filteredTools = filterActiveTools(
+    session.getActiveToolNames(), buildExtToolMap(extResult.extensions),
+    agentConfig?.tools, agentConfig?.excludeTools, notify,
+  );
+  if (filteredTools) session.setActiveToolsByName(filteredTools);
+  options.onSessionCreated?.(session);
+  return session;
+}
+
+/**
+ * Phase 4: Subscribe to turn_end events for graceful max_turns enforcement.
+ * Returns an unsubscribe function and state getters.
+ */
+function wireTurnTracking(
+  session: AgentSession,
+  options: Pick<RunOptions, "maxTurns" | "graceTurns" | "onTurnEnd">,
+) {
+  let turnCount = 0;
+  const maxTurns = normalizeMaxTurns(options.maxTurns);
+  let softLimitReached = false;
+  let aborted = false;
+  const graceTurns = options.graceTurns ?? DEFAULT_GRACE_TURNS;
+
+  const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+    if (event.type !== "turn_end") return;
+    turnCount++;
+    options.onTurnEnd?.(turnCount);
+    if (maxTurns == null) return;
+    if (!softLimitReached && turnCount >= maxTurns) {
+      softLimitReached = true;
+      session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
+    } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
+      aborted = true;
+      session.abort();
+    }
+  });
+
+  return { unsubscribe, getAborted: () => aborted, getSteered: () => softLimitReached };
+}
+
+/**
+ * Phase 5: Execute the prompt turn loop with event wiring and cleanup.
+ */
+async function runTurnLoop(
+  session: AgentSession,
+  prompt: string,
+  options: RunOptions,
+  unsubTurns: () => void,
+) {
+  const unsubEvents = subscribeToSessionEvents(session, options);
+  const collector = collectResponseText(session, options.onTextDelta);
+  const cleanupAbort = forwardAbortSignal(session, options.signal);
+  try {
+    await session.prompt(prompt);
+  } finally {
+    unsubTurns();
+    unsubEvents();
+    collector.unsubscribe();
+    cleanupAbort();
+  }
+  return collector.getText().trim() || getLastAssistantText(session);
+}
+
+// ── main entry ─────────────────────────────────────────────────────
+
 export async function runAgent(
   ctx: ExtensionContext,
   type: SubagentType,
@@ -380,11 +594,8 @@ export async function runAgent(
 
   // Warn on mutual exclusion violations
   const notify = (msg: string) => {
-    if (ctx.ui?.notify) {
-      ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");
-    } else {
-      console.warn(`[pi-subagents] ${msg}`);
-    }
+    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");
+    else console.warn(`[pi-subagents] ${msg}`);
   };
   if (agentConfig?.excludeTools && Array.isArray(agentConfig.tools)) {
     notify(`agent "${type}": both tools and exclude_tools set — tools (whitelist) wins`);
@@ -393,204 +604,20 @@ export async function runAgent(
     notify(`agent "${type}": both extensions and exclude_extensions set — extensions (whitelist) wins`);
   }
 
-  // Resolve working directory
   const effectiveCwd = options.cwd ?? ctx.cwd;
-
   const env = await detectEnv(options.pi, effectiveCwd);
 
-  // Resolve extensions/skills from agent config (frontmatter)
-  const extensions = config.extensions;
-  const skills = config.skills;
-  const preloadSkillsList = agentConfig?.preloadSkills;
-
-  // Build prompt extras (skills only).
-  const extras: PromptExtras = {};
-  if (Array.isArray(preloadSkillsList)) {
-    extras.skillBlocks = preloadSkills(preloadSkillsList, effectiveCwd);
-  }
-  if (Array.isArray(skills)) {
-    extras.skillMetas = loadSkillMeta(skills, effectiveCwd);
-  }
-
-  const toolNames = getToolNamesForType(type);
-
-  // Build system prompt from agent config
-  let systemPrompt: string;
-  if (agentConfig) {
-    systemPrompt = buildAgentPrompt(agentConfig, effectiveCwd, env, extras);
-  } else {
-    // Unknown type fallback: spread the canonical general-purpose config
-    const fallback = DEFAULT_AGENTS.get("general-purpose");
-    if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
-    systemPrompt = buildAgentPrompt({ ...fallback, name: type }, effectiveCwd, env, extras);
-  }
-
-  // Skip the built-in skill loader when:
-  // - skills is false (no skills)
-  // - preloadSkills is string[] (we handle preloading ourselves)
-  // - skills is string[] (we handle metadata ourselves)
-  const skipSkillLoader = skills === false || Array.isArray(skills) || Array.isArray(preloadSkillsList);
-
-  const agentDir = getAgentDir();
-
-  // Load extensions/skills: true or string[] → load; false → don't.
-  // When extensions is an array, use extensionsOverride to selectively load
-  // only the listed extensions (hooks/commands of excluded ones never fire).
-  // When excludeExtensions is set (and extensions is not string[]), filter out those extensions.
-  const loaderOpts: ConstructorParameters<typeof DefaultResourceLoader>[0] = {
-    cwd: effectiveCwd,
-    agentDir,
-    noExtensions: extensions === false,
-    noSkills: skipSkillLoader,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    systemPromptOverride: () => systemPrompt,
-    appendSystemPromptOverride: () => [],
-  };
-  const excludeExtSet = agentConfig?.excludeExtensions
-    ? new Set(agentConfig.excludeExtensions)
-    : undefined;
-  if (Array.isArray(extensions)) {
-    // Whitelist mode: only load listed extensions
-    const allowedNames = new Set(extensions.map(ext => {
-      const slashIdx = ext.indexOf("/");
-      return slashIdx !== -1 ? ext.slice(0, slashIdx) : ext;
-    }));
-    loaderOpts.extensionsOverride = (result) => ({
-      ...result,
-      extensions: result.extensions.filter(ext =>
-        allowedNames.has(extractExtensionName(ext.path)),
-      ),
-    });
-  } else if (excludeExtSet) {
-    // Blacklist mode: load all except excluded extensions
-    loaderOpts.extensionsOverride = (result) => ({
-      ...result,
-      extensions: result.extensions.filter(ext =>
-        !excludeExtSet.has(extractExtensionName(ext.path)),
-      ),
-    });
-  }
-  const loader = new DefaultResourceLoader(loaderOpts);
-  await loader.reload();
-
-  // Build extension name → tool names map from loaded extensions.
-  // Used by filterActiveTools to resolve extension names in the extensions frontmatter field.
-  const extResult = loader.getExtensions();
-  const extToolMap = new Map<string, string[]>();
-  for (const ext of extResult.extensions) {
-    const name = extractExtensionName(ext.path);
-    const tools = [...ext.tools.keys()];
-    if (tools.length > 0) extToolMap.set(name, tools);
-  }
-
-  // Resolve model: explicit option > config.model > parent model
-  const model = options.model ?? findModelInRegistry(
-    agentConfig?.model, ctx.modelRegistry, ctx.model,
+  const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env);
+  const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
+  const { extResult } = await reloadAndMap();
+  const session = await createAndConfigureSession(
+    ctx, options, agentConfig, type, effectiveCwd, loader, extResult, notify,
   );
-
-  // Resolve thinking level: explicit option > agent config > undefined (inherit)
-  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinking;
-
-  const sessionOpts: Parameters<typeof createAgentSession>[0] = {
-    cwd: effectiveCwd,
-    agentDir,
-    sessionManager: SessionManager.inMemory(effectiveCwd),
-    settingsManager: SettingsManager.create(effectiveCwd, agentDir),
-    modelRegistry: ctx.modelRegistry,
-    model,
-    tools: toolNames,
-    resourceLoader: loader,
-  };
-  if (thinkingLevel) {
-    sessionOpts.thinkingLevel = thinkingLevel;
-  }
-
-  const { session } = await createAgentSession(sessionOpts);
-
-  const baseSessionName = agentConfig?.name ?? type;
-  session.setSessionName(
-    options.agentId ? `${baseSessionName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseSessionName,
-  );
-
-  // Bind extensions so that session_start fires and extensions can initialize
-  // This must happen BEFORE tool filtering — extensions like pi-mcp-adapter
-  // register tools lazily during session_start, not at extension load time.
-  await session.bindExtensions({
-    onError: (err) => {
-      options.onToolActivity?.({
-        type: "end",
-        toolName: `extension-error:${err.extensionPath}`,
-      });
-    },
+  const { unsubscribe: unsubTurns, getAborted, getSteered } = wireTurnTracking(session, {
+    ...options,
+    maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
   });
 
-  // Rebuild extToolMap after session_start — extensions may have registered
-  // new tools (e.g., pi-mcp-adapter registers 'mcp' tool at session_start).
-  const postBindExtToolMap = new Map<string, string[]>();
-  for (const ext of extResult.extensions) {
-    const name = extractExtensionName(ext.path);
-    const tools = [...ext.tools.keys()];
-    if (tools.length > 0) postBindExtToolMap.set(name, tools);
-  }
-
-  // Filter active tools: apply tools allowlist/denylist and EXCLUDED_TOOL_NAMES
-  const filteredTools = filterActiveTools(
-    session.getActiveToolNames(),
-    postBindExtToolMap,
-    agentConfig?.tools,
-    agentConfig?.excludeTools,
-    (msg) => {
-      if (ctx.ui?.notify) {
-        ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");
-      } else {
-        console.warn(`[pi-subagents] ${msg}`);
-      }
-    },
-  );
-  if (filteredTools) {
-    session.setActiveToolsByName(filteredTools);
-  }
-
-  options.onSessionCreated?.(session);
-
-  // Track turns for graceful max_turns enforcement
-  let turnCount = 0;
-  const maxTurns = normalizeMaxTurns(options.maxTurns ?? agentConfig?.maxTurns);
-  let softLimitReached = false;
-  let aborted = false;
-  const graceTurns = options.graceTurns ?? DEFAULT_GRACE_TURNS;
-
-  const unsubEvents = subscribeToSessionEvents(session, options);
-
-  const unsubTurns = session.subscribe((event: AgentSessionEvent) => {
-    if (event.type === "turn_end") {
-      turnCount++;
-      options.onTurnEnd?.(turnCount);
-      if (maxTurns == null) return;
-      if (!softLimitReached && turnCount >= maxTurns) {
-        softLimitReached = true;
-        session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
-      } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
-        aborted = true;
-        session.abort();
-      }
-    }
-  });
-
-  const collector = collectResponseText(session, options.onTextDelta);
-  const cleanupAbort = forwardAbortSignal(session, options.signal);
-
-  try {
-    await session.prompt(prompt);
-  } finally {
-    unsubTurns();
-    unsubEvents();
-    collector.unsubscribe();
-    cleanupAbort();
-  }
-
-  const responseText = collector.getText().trim() || getLastAssistantText(session);
-  return { responseText, session, aborted, steered: softLimitReached };
+  const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
+  return { responseText, session, aborted: getAborted(), steered: getSteered() };
 }
