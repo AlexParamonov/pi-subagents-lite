@@ -86,19 +86,34 @@ describe("buildAgentDetails", () => {
 
   /** Helper to build a minimal AgentRecord for testing. */
   function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
-    return {
+    const base: AgentRecord = {
       id: "test-id-123",
-      type: "builder",
-      description: "Build something",
-      status: "completed",
-      toolUses: 5,
-      startedAt: 1000,
-      completedAt: 5000,
-      lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 },
-      compactionCount: 1,
-      turnCount: 10,
-      maxTurns: 25,
+      lifecycle: {
+        status: "completed",
+        startedAt: 1000,
+        completedAt: 5000,
+      },
+      display: {
+        type: "builder",
+        description: "Build something",
+      },
+      execution: {},
+      stats: {
+        lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 },
+        toolUses: 5,
+        turnCount: 10,
+        maxTurns: 25,
+        compactionCount: 1,
+      },
+    };
+    // Deep merge overrides into the base record
+    return {
+      ...base,
       ...overrides,
+      lifecycle: { ...base.lifecycle, ...overrides.lifecycle },
+      display: { ...base.display, ...overrides.display },
+      execution: { ...base.execution, ...overrides.execution },
+      stats: { ...base.stats, ...overrides.stats },
     } as AgentRecord;
   }
 
@@ -143,7 +158,7 @@ describe("buildAgentDetails", () => {
 
   it("computes totalTokens from lifetimeUsage", () => {
     const record = makeRecord({
-      lifetimeUsage: { input: 1000, output: 2000, cacheWrite: 500, cost: 0.05 },
+      stats: { lifetimeUsage: { input: 1000, output: 2000, cacheWrite: 500, cost: 0.05 }, toolUses: 5, compactionCount: 1, turnCount: 10, maxTurns: 25 },
     });
     const details = buildAgentDetails(record, { includeStats: true });
 
@@ -152,21 +167,21 @@ describe("buildAgentDetails", () => {
   });
 
   it("computes durationMs as completedAt - startedAt", () => {
-    const record = makeRecord({ startedAt: 1000, completedAt: 5000 });
+    const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 } });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.durationMs).toBe(4000);
   });
 
   it("sets durationMs to 0 when completedAt is undefined", () => {
-    const record = makeRecord({ completedAt: undefined });
+    const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: undefined } });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.durationMs).toBe(0);
   });
 
   it("includes modelName from invocation", () => {
-    const record = makeRecord({ invocation: { modelName: "haiku" } });
+    const record = makeRecord({ display: { type: "builder", description: "Build something", invocation: { modelName: "haiku" } } });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.modelName).toBe("haiku");
@@ -175,7 +190,7 @@ describe("buildAgentDetails", () => {
   // --- includeStatus ---
 
   it("includes status and outputFile when includeStatus is true", () => {
-    const record = makeRecord({ status: "completed", outputFile: "/tmp/out.log" });
+    const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 }, display: { type: "builder", description: "Build something", outputFile: "/tmp/out.log" } });
     const details = buildAgentDetails(record, { includeStatus: true });
 
     expect(details.status).toBe("completed");
@@ -188,7 +203,7 @@ describe("buildAgentDetails", () => {
   // --- Both options ---
 
   it("includes both stats and status when both options are true", () => {
-    const record = makeRecord({ status: "error", outputFile: "/tmp/err.log" });
+    const record = makeRecord({ lifecycle: { status: "error", startedAt: 1000, completedAt: 5000 }, display: { type: "builder", description: "Build something", outputFile: "/tmp/err.log" } });
     const details = buildAgentDetails(record, { includeStats: true, includeStatus: true });
 
     expect(details.status).toBe("error");
@@ -201,14 +216,14 @@ describe("buildAgentDetails", () => {
   // --- turnCount override ---
 
   it("uses provided turnCount override when given", () => {
-    const record = makeRecord({ turnCount: 42 });
+    const record = makeRecord({ stats: { lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 }, toolUses: 5, turnCount: 42, maxTurns: 25, compactionCount: 1 } });
     const details = buildAgentDetails(record, { includeStats: true, turnCount: 10 });
 
     expect(details.turnCount).toBe(10);
   });
 
   it("uses record.turnCount when no override provided", () => {
-    const record = makeRecord({ turnCount: 42 });
+    const record = makeRecord({ stats: { lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 }, toolUses: 5, turnCount: 42, maxTurns: 25, compactionCount: 1 } });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.turnCount).toBe(42);
@@ -217,7 +232,7 @@ describe("buildAgentDetails", () => {
   // --- Edge cases ---
 
   it("handles record with no invocation", () => {
-    const record = makeRecord({ invocation: undefined });
+    const record = makeRecord({ display: { type: "builder", description: "Build something" } });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.modelName).toBeUndefined();
@@ -225,7 +240,7 @@ describe("buildAgentDetails", () => {
 
   it("handles zero lifetimeUsage", () => {
     const record = makeRecord({
-      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+      stats: { lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 }, toolUses: 5, compactionCount: 1, turnCount: 10, maxTurns: 25 },
     });
     const details = buildAgentDetails(record, { includeStats: true });
 

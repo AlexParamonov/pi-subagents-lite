@@ -280,7 +280,7 @@ export default function (pi: ExtensionAPI) {
     const currentManager = getManager();
     if (currentManager) {
       const records = currentManager.listAgents();
-      const active = records.filter(r => r.status === "running" || r.status === "queued");
+      const active = records.filter(r => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
         ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
       }

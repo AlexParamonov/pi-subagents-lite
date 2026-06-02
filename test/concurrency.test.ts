@@ -106,9 +106,9 @@ describe("AgentManager concurrency", () => {
       });
 
       // All 3 should be running, not queued
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("running");
-      expect(manager.getRecord(id3)?.status).toBe("running");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("running");
 
       // runAgent should have been called 3 times
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(3);
@@ -139,8 +139,8 @@ describe("AgentManager concurrency", () => {
       });
 
       // First agent should be running, second should be queued
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("queued");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
       // runAgent should only have been called once
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
@@ -176,7 +176,7 @@ describe("AgentManager concurrency", () => {
         isBackground: true,
       });
 
-      expect(manager.getRecord(id2)?.status).toBe("queued");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
       // Resolve the first agent
       deferred1.resolve(mockRunResult());
@@ -185,7 +185,7 @@ describe("AgentManager concurrency", () => {
       await new Promise((r) => setTimeout(r, 10));
 
       // Second agent should now be running (deferred2 is still pending)
-      expect(manager.getRecord(id2)?.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
 
       // Clean up
@@ -237,9 +237,9 @@ describe("AgentManager concurrency", () => {
         isBackground: true,
       });
 
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("running");
-      expect(manager.getRecord(id3)?.status).toBe("queued");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("queued");
 
       // runAgent should have been called twice (model A run, model B run)
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
@@ -275,9 +275,9 @@ describe("AgentManager concurrency", () => {
       });
 
       // Default is 2, so first 2 should run, 3rd should queue
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("running");
-      expect(manager.getRecord(id3)?.status).toBe("queued");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("queued");
 
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
     });
@@ -321,9 +321,9 @@ describe("AgentManager concurrency", () => {
         isBackground: true,
       });
 
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("running");
-      expect(manager.getRecord(id3)?.status).toBe("queued");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("queued");
 
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
 
@@ -333,7 +333,7 @@ describe("AgentManager concurrency", () => {
         modelKey: "claude/sonnet",
         isBackground: true,
       });
-      expect(manager.getRecord(id4)?.status).toBe("running");
+      expect(manager.getRecord(id4)?.lifecycle.status).toBe("running");
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(3);
 
       // Clean up
@@ -368,8 +368,8 @@ describe("AgentManager concurrency", () => {
         isBackground: true,
       });
 
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("queued");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
 
@@ -400,13 +400,13 @@ describe("AgentManager concurrency", () => {
         isBackground: true,
       });
 
-      expect(manager.getRecord(id2)?.status).toBe("queued");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
       // Increase limit to 2 — this should drain the queue
       manager.setConcurrency({ default: 1, models: { "llamacpp/4b": 2 } });
 
       // Queued agent should now be running
-      expect(manager.getRecord(id2)?.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
     });
   });
@@ -440,8 +440,8 @@ describe("AgentManager concurrency", () => {
         isBackground: false,
       });
 
-      expect(manager.getRecord(id1)?.status).toBe("running");
-      expect(manager.getRecord(id2)?.status).toBe("queued");
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
 
       // Complete the first agent — foreground agent should start
@@ -449,7 +449,7 @@ describe("AgentManager concurrency", () => {
 
       // Wait for async drain
       return new Promise((r) => setTimeout(r, 10)).then(() => {
-        expect(manager.getRecord(id2)?.status).toBe("running");
+        expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
         expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
         deferred2.resolve(mockRunResult());
       });

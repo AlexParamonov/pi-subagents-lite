@@ -132,28 +132,28 @@ export function buildAgentDetails(
   options?: AgentDetailsOptions,
 ): Record<string, unknown> {
   const details: Record<string, unknown> = {
-    type: record.type,
-    description: record.description,
+    type: record.display.type,
+    description: record.display.description,
   };
 
   if (options?.includeStatus) {
-    details.status = record.status;
-    details.outputFile = record.outputFile;
+    details.status = record.lifecycle.status;
+    details.outputFile = record.display.outputFile;
   }
 
   if (options?.includeStats) {
-    const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-    const elapsedMs = record.completedAt ? record.completedAt - record.startedAt : 0;
+    const totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
+    const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
 
-    details.turnCount = options.turnCount ?? record.turnCount;
-    details.maxTurns = record.maxTurns;
-    details.toolUses = record.toolUses;
+    details.turnCount = options.turnCount ?? record.stats.turnCount;
+    details.maxTurns = record.stats.maxTurns;
+    details.toolUses = record.stats.toolUses;
     details.tokens = totalTokens;
-    details.contextPercent = getSessionContextPercent(record.session);
+    details.contextPercent = getSessionContextPercent(record.execution.session);
     details.durationMs = elapsedMs;
-    details.compactions = record.compactionCount;
-    details.modelName = record.invocation?.modelName;
-    details.cost = record.lifetimeUsage.cost;
+    details.compactions = record.stats.compactionCount;
+    details.modelName = record.display.invocation?.modelName;
+    details.cost = record.stats.lifetimeUsage.cost;
   }
 
   return details;
@@ -185,13 +185,13 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   const details = buildAgentDetails(record, {
     includeStats: true,
     includeStatus: true,
-    turnCount: record.turnCount ?? agentActivity.get(agentId)?.turnCount,
+    turnCount: record.stats.turnCount ?? agentActivity.get(agentId)?.turnCount,
   });
 
   piInstance.sendMessage(
     {
       customType: "subagent-result",
-      content: `[Subagent "${record.type}" completed]\n\n${record.result ?? ""}`,
+      content: `[Subagent "${record.display.type}" completed]\n\n${record.result ?? ""}`,
       details,
       display: true,
     },
@@ -279,7 +279,7 @@ async function executeSpawnBackground(
   const record = getManager().getRecord(agentId)!;
   const details = buildAgentDetails(record);
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
-  const label = record.status === "queued" ? "Agent queued" : "Agent running";
+  const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
 
   return successResult(`[${label}] ${suffix}`, details);
 }
@@ -303,7 +303,7 @@ async function executeSpawnForeground(
   getWidget()?.ensureTimer();
 
   const record = getManager().getRecord(fgId)!;
-  await record.promise;
+  await record.execution.promise;
 
   agentActivity.delete(fgId);
   getWidget()?.markFinished(fgId);
@@ -314,7 +314,7 @@ async function executeSpawnForeground(
     turnCount: fgState.turnCount,
   });
 
-  if (record.status === "error") {
+  if (record.lifecycle.status === "error") {
     return errorResult(`Agent failed: ${record.error || "unknown error"}`, stats);
   }
 
@@ -331,13 +331,13 @@ async function executeSpawnForeground(
  */
 function formatRunningAgents(): string {
   const agents = getManager().listAgents().filter(
-    (a) => a.status === "running" || a.status === "queued",
+    (a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued",
   );
 
   if (agents.length === 0) return "none";
 
   return agents
-    .map((a) => `${a.type}·${a.id.slice(0, SHORT_ID_LENGTH)}`)
+    .map((a) => `${a.display.type}·${a.id.slice(0, SHORT_ID_LENGTH)}`)
     .join(", ");
 }
 
@@ -368,9 +368,9 @@ export async function executeStopAgentTool(
   }
 
   // Check if already in a terminal state (not running or queued)
-  if (record.status !== "running" && record.status !== "queued") {
+  if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
     return successResult(
-      `Agent ${agentId} is already ${record.status}. Running agents: ${formatRunningAgents()}`,
+      `Agent ${agentId} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
     );
   }
 
