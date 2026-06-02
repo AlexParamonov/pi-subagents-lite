@@ -30,11 +30,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
 }));
 
-function makeMockManager(agents: any[]): AgentManager {
+function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
   return {
     listAgents: () => agents,
     getAgent: () => undefined,
     setConcurrency: () => {},
+    getTotalAgentCost: () => totalAgentCost,
     // other methods not used by widget
   } as any as AgentManager;
 }
@@ -269,6 +270,131 @@ describe("widget connectors", () => {
       expect(lines[1]).toContain("├─");
       expect(lines[2]).toContain("└─");
     });
+  });
+});
+
+describe("status bar format", () => {
+  it("shows 'N agents: $cost' format with running agents", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0);
+    const widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    a1.lifetimeUsage.cost = 0.05;
+    const a2 = makeRunningAgent("a2");
+    a2.lifetimeUsage.cost = 0.03;
+    (manager as any).listAgents = () => [a1, a2];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "2 agents: $0.08");
+  });
+
+  it("shows 'agents: $cost' format when no running/queued agents but finished exist", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.01);
+    const widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    // Only finished agents, no running/queued
+    const finished = makeFinishedAgent("f1");
+    widget.markFinished("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "agents: $0.01");
+  });
+
+  it("shows 'N agents' without cost when cost is zero", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0);
+    const widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const agent = makeRunningAgent("a1");
+    agent.lifetimeUsage.cost = 0;
+    (manager as any).listAgents = () => [agent];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agents");
+  });
+});
+
+describe("status bar cost from accumulator", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, AgentActivity>;
+
+  it("uses getTotalAgentCost for status bar when no running agents", () => {
+    const uiCtx = {
+      setStatus: vi.fn(),
+      setWidget: vi.fn(),
+    };
+    activity = new Map();
+    // No running agents, but totalAgentCost is $1.23 (from evicted agents)
+    manager = makeMockManager([], 1.23);
+    widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    // Trigger an update with a running agent so the status bar is emitted
+    const agent = makeRunningAgent("a1");
+    agent.lifetimeUsage.cost = 0.05;
+    (manager as any).listAgents = () => [agent];
+    widget.update();
+
+    // Status bar should include $1.28 ($1.23 session + $0.05 running)
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("$1.28"));
+  });
+
+  it("shows accumulated cost even when no running agents have cost", () => {
+    const uiCtx = {
+      setStatus: vi.fn(),
+      setWidget: vi.fn(),
+    };
+    activity = new Map();
+    // Running agent with $0 cost, but session accumulator has $2.50
+    manager = makeMockManager([], 2.50);
+    widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const agent = makeRunningAgent("a1");
+    agent.lifetimeUsage.cost = 0; // Running agent has no cost yet
+    (manager as any).listAgents = () => [agent];
+    widget.update();
+
+    // Should show $2.50 from accumulator
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("$2.50"));
+  });
+
+  it("hides cost when showCost is false", () => {
+    const uiCtx = {
+      setStatus: vi.fn(),
+      setWidget: vi.fn(),
+    };
+    activity = new Map();
+    manager = makeMockManager([], 1.50);
+    widget = new AgentWidget(manager, activity);
+    widget.setShowCost(false);
+    widget.setUICtx(uiCtx);
+
+    const agent = makeRunningAgent("a1");
+    agent.lifetimeUsage.cost = 0.05;
+    (manager as any).listAgents = () => [agent];
+    widget.update();
+
+    // Should NOT contain $ when cost is hidden
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).not.toContain("$");
   });
 });
 

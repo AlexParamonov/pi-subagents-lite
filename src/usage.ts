@@ -36,6 +36,11 @@ export function formatTokens(count: number): string {
   return `${count}`;
 }
 
+/** Format cost as a dollar amount: "$0.00", "$0.01", "$1.23". */
+export function formatCost(cost: number): string {
+  return `$${cost.toFixed(2)}`;
+}
+
 /**
  * Context-window utilization (0–100), or null when unavailable
  * (no model contextWindow, or post-compaction before the next response).

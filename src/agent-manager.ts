@@ -125,6 +125,9 @@ export class AgentManager {
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
 
+  /** Session-level cumulative agent cost. Survives agent eviction. */
+  private totalAgentCost = 0;
+
   /** Per-model concurrency slots keyed by "provider/modelId". */
   private concurrencySlots = new Map<string, ConcurrencySlot>();
 
@@ -373,7 +376,13 @@ export class AgentManager {
 
   /** Notify completion callback, ignoring any errors. */
   private safeNotifyComplete(record: AgentRecord): void {
+    this.totalAgentCost += record.lifetimeUsage.cost;
     try { this.onComplete?.(record); } catch { /* ignore */ }
+  }
+
+  /** Get the session-level cumulative agent cost. Survives agent eviction. */
+  getTotalAgentCost(): number {
+    return this.totalAgentCost;
   }
 
   /**

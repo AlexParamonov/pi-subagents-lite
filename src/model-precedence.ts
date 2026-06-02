@@ -18,6 +18,7 @@ export interface SubagentsConfig {
     default: string | null;
     forceBackground: boolean;
     graceTurns?: number;
+    showCost?: boolean;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

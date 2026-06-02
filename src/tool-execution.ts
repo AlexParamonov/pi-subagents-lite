@@ -281,6 +281,7 @@ async function executeSpawnForeground(
     description: spawnOptions.description,
     compactions: record.compactionCount,
     modelName: record.invocation?.modelName,
+    cost: record.lifetimeUsage.cost,
   };
 
   if (record.status === "error") {

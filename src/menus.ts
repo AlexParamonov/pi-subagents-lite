@@ -20,6 +20,7 @@ import {
   sessionOverrides,
   manager,
   piInstance,
+  setShowCostEnabled,
 } from "./index.js";
 import { resolveModel } from "./model-precedence.js";
 import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
@@ -321,6 +322,15 @@ export async function showModelSettingsMenu(
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
 
+    // Cost display toggle
+    const showCost = __config.agent.showCost !== false; // default true
+    items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      setShowCostEnabled(!showCost);
+      saveConfigAtomic(__config);
+      ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
+    });
+
     items.push("");
     actions.push(async () => {});
     items.push("─── per-type overrides ───");
@@ -395,7 +405,7 @@ export async function showModelSettingsMenu(
     items.push("Clear all overrides");
     actions.push(async () => {
       const hasOverrides = Object.entries(__config.agent).some(
-        ([k, v]) => k !== "default" && k !== "forceBackground" && k !== "graceTurns" && v != null,
+        ([k, v]) => k !== "default" && k !== "forceBackground" && k !== "graceTurns" && k !== "showCost" && v != null,
       );
       if (!hasOverrides && __config.agent.default === null) {
         ctx.ui.notify("No overrides to clear", "info");
@@ -407,6 +417,9 @@ export async function showModelSettingsMenu(
       };
       if (__config.agent.graceTurns != null) {
         preserved.graceTurns = __config.agent.graceTurns;
+      }
+      if (__config.agent.showCost != null) {
+        preserved.showCost = __config.agent.showCost;
       }
       __config.agent = preserved as typeof __config.agent;
       saveConfigAtomic(__config);
