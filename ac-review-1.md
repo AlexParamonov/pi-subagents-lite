@@ -1,156 +1,90 @@
-# Acceptance Criteria Review — Agent Cost Display Feature
+Status: APPROVED
 
-**Status: APPROVED**
+# Review Summary
 
-**Date:** 2026-06-02
-**Branch:** main (merged `issue/agent-cost-display`)
+Files reviewed:
+- `src/config-io.ts`
+- `src/index.ts`
+- `src/menus.ts`
+- `src/model-precedence.ts`
+- `src/ui/agent-widget.ts`
+- `test/agent-widget.test.ts`
+- `test/menus.test.ts`
 
----
+Issues found: 0 critical, 0 important, 1 suggestion
 
-## Summary
+## Acceptance Criteria Verification
 
-All 8 acceptance criteria are **met**. The implementation adds cost display across nudge notifications, foreground results, and the status bar, with a toggle in `/agents > Model settings` that persists to disk. Tests cover formatting, stats generation, menu toggling, cost accumulation, and status bar behavior.
+### ✅ `/agents` menu has a new "Widget settings" section
+**Verified in:** `src/menus.ts:360-410`
 
-**Files reviewed:**
-- `src/usage.ts` — `formatCost` implementation
-- `src/ui/agent-widget.ts` — `buildStatsParts`, `AgentWidget` (status bar + widget rendering)
-- `src/index.ts` — `buildStatsLine`, `setShowCostEnabled`, renderers
-- `src/tool-execution.ts` — nudge + foreground result cost propagation
-- `src/agent-manager.ts` — `totalAgentCost` accumulator
-- `src/menus.ts` — cost display toggle in Model Settings menu
-- `src/config-io.ts` — persistence
-- `src/model-precedence.ts` — `SubagentsConfig` type with `showCost`
-- `test/cost-display.test.ts` — formatCost + buildStatsParts tests
-- `test/agent-widget.test.ts` — status bar + cost hiding tests
-- `test/total-cost-accumulator.test.ts` — cost accumulator tests
-- `test/menus.test.ts` — toggle + persistence tests
-- `test/usage.test.ts` — LifetimeUsage + addUsage tests
-- `test/result-viewer.test.ts` — stats line rendering tests
+A `"─── widget settings ───"` separator is inserted between cost display and grace turns, with four items: Compact mode toggle, Max lines (full), Max lines (compact), and Ctrl+o shortcut. Menu ordering test at `test/menus.test.ts:1108-1122` confirms correct placement.
 
----
+### ✅ Compact mode toggle switches between 1-line and multi-line agent display
+**Verified in:** `src/ui/agent-widget.ts:468-496`
 
-## AC-by-AC Verification
+`buildRunningBlocks()` conditionally renders agents. In compact mode, the activity text is appended inline to the header line with `continuations: []` (single line). In full mode, the agent gets a header + continuation lines for output file and activity. Tests at `test/agent-widget.test.ts:410-427` verify both modes produce the expected line counts.
 
-### ✅ AC1: Nudge notification shows cost in stats line
+### ✅ Max lines setting controls widget height (default 12 for full, 6 for compact)
+**Verified in:** `src/ui/agent-widget.ts:20`, `src/ui/agent-widget.ts:265-266`
 
-**Example:** `✓ Builder·2🛠 ·5⟳ ·12.3k·$0.008·10s`
+`DEFAULT_MAX_WIDGET_LINES = 12`. Widget class defaults: `maxLines = 12`, `maxLinesCompact = Math.floor(12 / 2) = 6`. Overflow logic at `src/ui/agent-widget.ts:546` selects `this.compactMode ? this.maxLinesCompact : this.maxLines`. Tests at `test/agent-widget.test.ts:448-483` verify both modes respect their respective limits.
 
-**Implementation chain:**
-1. `emitIndividualNudge` (`tool-execution.ts:125`) includes `cost: record.lifetimeUsage.cost` in the nudge details
-2. `registerMessageRenderer("subagent-result", ...)` (`index.ts:199`) renders via `buildStatsLine(d, theme)`
-3. `buildStatsLine` (`index.ts:150`) calls `buildStatsParts` with cost gated by `__config.agent.showCost !== false`
-4. `buildStatsParts` (`agent-widget.ts:184`) appends `formatCost(args.cost)` when `cost > 0`
-5. `formatCost` (`usage.ts:40`) returns `$X.XX` (2 decimal places)
+### ✅ Compact max lines defaults to half of full max lines but can be overridden
+**Verified in:** `src/index.ts:78-79`, `src/ui/agent-widget.ts:266`, `src/menus.ts:393-394`
 
-### ✅ AC2: Foreground result shows cost in stats line
+Three layers of defaulting:
+1. Widget class: `maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2)`
+2. `syncWidgetSettings()`: `__config.agent.widgetMaxLinesCompact ?? Math.floor((__config.agent.widgetMaxLines ?? 12) / 2)`
+3. Menu display: `__config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2)`
 
-**Implementation chain:**
-1. `executeSpawnForeground` (`tool-execution.ts:209`) includes `cost: record.lifetimeUsage.cost` in stats
-2. `renderResult` (`index.ts:134`) calls `buildStatsLine(d, theme)` — same path as AC1
+The dedicated "Max lines (compact)" menu item allows explicit override. The "Max lines (full)" handler cascades to compact only when compact hasn't been explicitly set (`if (__config.agent.widgetMaxLinesCompact === undefined)`).
 
-Confirmed: both nudge and foreground share `buildStatsLine` for consistent formatting.
+### ✅ Ctrl+o shortcut toggles compact mode when enabled in config
+**Verified in:** `src/index.ts:84-96`
 
-### ✅ AC3: Status bar appends agent cost when > $0
+`syncWidgetShortcut()` calls `piInstance.registerShortcut(Key.ctrl("o"), { handler: () => { widget?.toggleCompactMode(); ... } })`. The handler also syncs the new state back to `__config.agent.widgetCompact` for persistence. Called from `session_start` handler and from the menu toggle action.
 
-**Example:** `2 agents: $0.008`
+### ✅ Ctrl+o shortcut does nothing when disabled in config (default)
+**Verified in:** `src/config-io.ts:21`, `src/index.ts:97-102`
 
-**Implementation:** `updateStatusBar` (`agent-widget.ts:615–630`):
-```typescript
-if (this.showCost) {
-  const sessionCost = this.manager.getTotalAgentCost();
-  const runningCost = running.reduce((sum, a) => sum + a.lifetimeUsage.cost, 0);
-  const totalCost = sessionCost + runningCost;
-  if (totalCost > 0) statusText += `: ${formatCost(totalCost)}`;
-}
-```
+`DEFAULT_CONFIG` sets `widgetShortcut: false`. When disabled, `syncWidgetShortcut()` registers a no-op handler: `handler: () => {}`. This is a pragmatic approach since the `registerShortcut` API doesn't expose an `unregisterShortcut` method. The key is still consumed by the extension, preventing conflicts.
 
-**Evidence:** Uses `getTotalAgentCost()` (session-level accumulator from `agent-manager.ts:219`) which survives agent eviction. Also adds in-flight running agent cost.
+### ✅ Widget updates immediately when settings change via menu
+**Verified in:** `src/menus.ts:374-377`, `src/menus.ts:387-389`, `src/menus.ts:399-401`, `src/menus.ts:410-412`
 
-**Test:** `agent-widget.test.ts` — "status bar format" and "status bar cost from accumulator" describe blocks.
+Every menu action calls `syncWidgetSettings()` (or `syncWidgetShortcut()`) after `saveConfigAtomic()`. `syncWidgetSettings()` directly mutates the widget's internal properties (`compactMode`, `maxLines`, `maxLinesCompact`). The widget's 80ms render timer picks up the changes on the next tick — imperceptible to the user.
 
-### ✅ AC4: Status bar shows only count when cost hidden or cost is $0
+### ✅ Settings persist across sessions in `~/.pi/agent/subagents-lite.json`
+**Verified in:** `src/config-io.ts:17-25`, `src/model-precedence.ts:22-25`
 
-**Implementation:**
-- Cost hidden (`showCost === false`): `updateStatusBar` skips the `if (this.showCost)` block entirely
-- Cost is $0: `if (totalCost > 0)` prevents appending `$0.00`
+All four widget config keys (`widgetMaxLines`, `widgetMaxLinesCompact`, `widgetCompact`, `widgetShortcut`) are:
+- Declared in the `SubagentsConfig` interface with proper types
+- Included in `DEFAULT_CONFIG` (with `widgetMaxLinesCompact` intentionally omitted to derive from `widgetMaxLines`)
+- Written to disk via `saveConfigAtomic(__config)` in every menu action
+- Preserved during "Clear all overrides" via `CONFIG_AGENT_NON_MODEL_KEYS` and `buildPreservedAgentConfig()`
 
-**Evidence:** Status text defaults to `"N agents"` (or `"agents"` when none running/queued) without cost suffix.
+### ✅ Widget respects max lines limit and shows overflow indicator when exceeded
+**Verified in:** `src/ui/agent-widget.ts:546-562`, `src/ui/agent-widget.ts:590-629`
 
-**Tests:**
-- `agent-widget.test.ts:449` — "shows 'N agents' without cost when cost is zero"
-- `agent-widget.test.ts:488` — "hides cost when showCost is false"
-
-### ✅ AC5: `/agents` menu has "Cost display" option showing current state (ON/OFF)
-
-**Implementation:** `showModelSettingsMenu` (`menus.ts:325–333`):
-```typescript
-const showCost = __config.agent.showCost !== false; // default true
-items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
-```
-
-**Tests:** `menus.test.ts` — "showModelSettingsMenu — cost display toggle" describe block covers ON, OFF, default true, and toggle behavior.
-
-### ✅ AC6: Toggling cost display updates immediately (no restart)
-
-**Implementation:** `setShowCostEnabled` (`index.ts:68`):
-```typescript
-export function setShowCostEnabled(enabled: boolean): void {
-  __config.agent.showCost = enabled;
-  widget?.setShowCost(enabled);
-}
-```
-The widget's `setShowCost` (`agent-widget.ts:267`) updates the internal flag immediately. Next `update()` call (80ms timer or agent activity) uses the new value.
-
-**Test:** `menus.test.ts:339` — "toggles showCost from true to false and saves" verifies config mutation on toggle.
-
-### ✅ AC7: Setting persists as session override or permanent (user chooses)
-
-**Implementation:** `saveConfigAtomic` (`config-io.ts:28`) writes config to `~/.pi/agent/subagents-lite.json`. The toggle action (`menus.ts:329`) calls `saveConfigAtomic(__config)` after `setShowCostEnabled`.
-
-**Type:** `showCost?: boolean` in `SubagentsConfig.agent` (`model-precedence.ts:21`).
-
-**Test:** `menus.test.ts:341` — verifies `saveConfigAtomic` is called after toggle. `menus.test.ts:467` — "preserves showCost when clearing all overrides" verifies the setting survives "Clear all overrides".
-
-### ✅ AC8: Cost hidden when setting is OFF (nudge, result, and status bar)
-
-**Implementation:**
-- **Nudge/Result:** `buildStatsLine` (`index.ts:155`) passes `cost: showCost ? (d.cost as number | undefined) : undefined` — undefined cost means `buildStatsParts` skips it
-- **Widget finished/running lines:** `renderFinishedLine` and `buildStatsLine` in `agent-widget.ts` pass `cost: this.showCost ? ... : undefined`
-- **Status bar:** `updateStatusBar` (`agent-widget.ts:620`) gates on `if (this.showCost)`
-
-**Tests:**
-- `cost-display.test.ts:52` — "does not include cost when not provided" (undefined path)
-- `cost-display.test.ts:62` — "does not include cost when cost is 0"
-- `agent-widget.test.ts:488` — "hides cost when showCost is false"
+The `applyOverflow()` method reserves 1 line for the overflow indicator, prioritizes running > queued > finished blocks, and renders `"+N more (X running, Y finished)"` when blocks are hidden. Tests at `test/agent-widget.test.ts:473-483` verify overflow indicator presence.
 
 ---
 
-## Test Coverage Assessment
+## Strengths
 
-| Acceptance Criterion | Direct Tests |
-|---|---|
-| AC1: Nudge cost | Indirect (buildStatsParts + cost propagation in tool-execution) |
-| AC2: Foreground cost | Indirect (buildStatsParts + cost propagation in tool-execution) |
-| AC3: Status bar cost > $0 | `agent-widget.test.ts` — "status bar format" + "status bar cost from accumulator" |
-| AC4: Status bar count-only | `agent-widget.test.ts` — zero cost + showCost=false tests |
-| AC5: Menu ON/OFF | `menus.test.ts` — 5 tests in "cost display toggle" describe |
-| AC6: Immediate toggle | `menus.test.ts` — toggle tests + `setShowCostEnabled` in index.ts |
-| AC7: Persistence | `menus.test.ts` — saveConfigAtomic verification + clear-all-preserve test |
-| AC8: Cost hidden when OFF | `cost-display.test.ts` + `agent-widget.test.ts` showCost=false test |
-
-**Note:** AC1 and AC2 lack direct end-to-end tests (nudge renderer output string, foreground result output string). The code paths are covered indirectly through `buildStatsParts` tests and the data flow in `tool-execution.ts`, which passes cost through to the details object. This is acceptable since the rendering is a simple composition of well-tested parts.
+1. **Clean separation of concerns** — Widget state is managed via setter methods; menu actions are the only mutation path; config I/O is atomic.
+2. **Comprehensive test coverage** — 17 new widget settings tests in `test/menus.test.ts` covering display, toggle, input validation, and ordering. 4 new behavior tests in `test/agent-widget.test.ts` for compact mode rendering and max lines. Existing "clear all overrides" test extended to verify widget settings preservation.
+3. **Refactored `parseNumericInput`** — Extracted reusable validation from the old `parseConcurrencyInput`, reducing duplication and making the grace turns validation consistent (also fixing its error message format).
+4. **`CONFIG_AGENT_NON_MODEL_KEYS` centralization** — The list of preserved keys is defined once and used for both the `hasOverrides` check and the preserved-config construction, eliminating a class of bugs where new settings would be forgotten.
+5. **Proper type declarations** — All widget config keys are typed in the `SubagentsConfig` interface with appropriate optionality markers.
 
 ---
 
-## Code Quality Notes
+## [SUGGESTION] `isCompactMode()` is dead code in production
 
-- **Shared `buildStatsParts`:** Both `index.ts` (nudge/foreground renderers) and `agent-widget.ts` (widget) use the same `buildStatsParts` function for consistent formatting — good DRY.
-- **Cost accumulator:** `totalAgentCost` in `AgentManager` survives agent eviction, ensuring the status bar never drops to $0 after agents complete and are cleaned up.
-- **Config preservation:** `showCost` is preserved during "Clear all overrides" (`menus.ts:421`), preventing accidental cost display reset.
-- **`formatCost` simplicity:** Clean `$${cost.toFixed(2)}` — handles zero, small, and large values correctly.
-
----
-
-## Conclusion
-
-All 8 acceptance criteria are met. The implementation is clean, well-structured, and adequately tested. No blocking or important issues found.
+Confidence: 90/100
+Location: `src/ui/agent-widget.ts:302-304`
+Problem: `isCompactMode()` is defined as a public method but never called anywhere in production or test code.
+Why it matters: Minor code hygiene. A public API method that goes unused can confuse maintainers about whether external consumers depend on it.
+Fix: Either add a test that uses it (e.g., verify state after `toggleCompactMode()`) or remove it if no external consumer needs it. Low priority.

@@ -73,7 +73,8 @@ export function setShowCostEnabled(enabled: boolean): void {
 /** Sync widget display settings from config to the widget instance. */
 export function syncWidgetSettings(): void {
   if (!widget) return;
-  widget.setCompactMode(__config.agent.widgetCompact === true);
+  widget.setForceCompact(__config.agent.widgetCompact === true);
+  widget.setWidgetShortcut(__config.agent.widgetShortcut === true);
   widget.setMaxLines(__config.agent.widgetMaxLines ?? 12);
   widget.setMaxLinesCompact(
     __config.agent.widgetMaxLinesCompact ?? Math.floor((__config.agent.widgetMaxLines ?? 12) / 2),
@@ -86,16 +87,23 @@ let lastToolsExpanded: boolean | undefined;
 /** Sync compact mode with the tool expansion state (ctrl+o toggle).
  *  Only syncs when widgetShortcut is enabled in config (opt-in behavior).
  *  Only triggers on state change (not every tool_execution_start).
+ *  When forceCompact (widgetCompact) is ON, ignores ctrl+o state changes.
  */
 export function syncCompactFromToolsExpanded(expanded: boolean): void {
   if (__config.agent.widgetShortcut !== true) {
     lastToolsExpanded = expanded;
     return;
   }
+  // When forceCompact is ON, ignore ctrl+o state changes
+  if (__config.agent.widgetCompact === true) {
+    lastToolsExpanded = expanded;
+    return;
+  }
   // Only sync when state actually changes (ctrl+o pressed)
   if (lastToolsExpanded !== undefined && lastToolsExpanded !== expanded) {
     widget?.setCompactMode(expanded);
-    __config.agent.widgetCompact = expanded;
+    // Don't update widgetCompact config — that's the force compact setting, managed by menu only.
+    // compactMode on the widget instance tracks the ctrl+o ephemeral state.
   }
   lastToolsExpanded = expanded;
 }

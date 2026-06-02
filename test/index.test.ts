@@ -387,17 +387,19 @@ describe("syncCompactFromToolsExpanded", () => {
     expect(config.agent.widgetCompact).toBe(false);
   });
 
-  it("syncs compact mode when widgetShortcut is true", () => {
+  it("syncs compact mode when widgetShortcut is true (compactMode on widget, not config)", () => {
     config.agent.widgetShortcut = true;
     syncFn(false);  // Set initial state
     syncFn(true);   // Trigger change
-    expect(config.agent.widgetCompact).toBe(true);
+    // widgetCompact (forceCompact) is NOT changed by ctrl+o sync
+    // Only widget.setCompactMode() is called (tracked internally on widget)
+    expect(config.agent.widgetCompact).toBe(false);
   });
 
   it("syncs compact mode to false when widgetShortcut is true", () => {
     config.agent.widgetShortcut = true;
-    config.agent.widgetCompact = true;
-    syncFn(true);   // Set initial state
+    config.agent.widgetCompact = false;
+    syncFn(true);   // Set initial state (widgetCompact stays false — no change detected)
     syncFn(false);  // Trigger change
     expect(config.agent.widgetCompact).toBe(false);
   });

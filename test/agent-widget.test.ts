@@ -425,6 +425,7 @@ describe("compact mode", () => {
 
   it("compact mode renders running agent as single line (no continuations)", () => {
     widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
     const agent = makeRunningAgent("a1");
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
@@ -473,6 +474,7 @@ describe("max lines configuration", () => {
 
   it("setMaxLinesCompact updates compact mode max lines", () => {
     widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
     widget.setMaxLinesCompact(3);
     // Create 5 running agents
     const agents = Array.from({ length: 5 }, (_, i) => makeRunningAgent(`a${i}`));

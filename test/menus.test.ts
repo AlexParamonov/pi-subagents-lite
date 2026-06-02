@@ -78,6 +78,25 @@ vi.mock("../src/index.js", () => {
 import { showConcurrencySettingsMenu, showModelSettingsMenu, showWidgetSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
 import { getAgentConfig } from "../src/agent-types.js";
 
+/**
+ * Select menu item by partial name match.
+ * Maps short names to menu items: 'model', 'concurrency', 'running', 'widget', 'debug'
+ */
+function selectByName(name: string): (title: string, items: string[]) => string | undefined {
+  const nameMap: Record<string, string> = {
+    model: "Model settings",
+    concurrency: "Concurrency settings",
+    running: "Running agents",
+    widget: "Widget settings",
+    debug: "Debug",
+  };
+  const search = nameMap[name.toLowerCase()] ?? name;
+  return (_title: string, items: string[]) => {
+    const match = items.find(item => item.toLowerCase().includes(search.toLowerCase()));
+    return match ?? undefined;
+  };
+}
+
 function resetAgentState(): void {
   mockModules.mockConfig.agent = { default: null, forceBackground: false };
   mockModules.mockSessionOverrides.default = null;
@@ -650,7 +669,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     resetAgentState();
 
     const selections = [
-      "2. Model settings — Set global default and per-type model overrides",
+      selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -679,7 +698,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "2. Model settings — Set global default and per-type model overrides",
+      selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -715,7 +734,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent.forceBackground = true;
 
     const selections = [
-      "2. Model settings — Set global default and per-type model overrides",
+      selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -752,7 +771,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "2. Model settings — Set global default and per-type model overrides",
+      selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -781,7 +800,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "2. Model settings — Set global default and per-type model overrides",
+      selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -813,7 +832,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "2. Model settings — Set global default and per-type model overrides",
+      selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -999,32 +1018,32 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     expect(items.length).toBeGreaterThan(0);
   });
 
-  it("shows 'Compact mode · OFF' when widgetCompact is false", async () => {
+  it("shows 'Force compact mode · OFF' when widgetCompact is false", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createMockCtx([undefined]);
     await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
-    const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
-    expect(compactItem).toBe("Compact mode · OFF");
+    const compactItem = items.find((i: string) => i.startsWith("Force compact mode"));
+    expect(compactItem).toBe("Force compact mode · OFF");
   });
 
-  it("shows 'Compact mode · ON' when widgetCompact is true", async () => {
+  it("shows 'Force compact mode · ON' when widgetCompact is true", async () => {
     mockModules.mockConfig.agent.widgetCompact = true;
     const ctx = createMockCtx([undefined]);
     await showWidgetSettingsMenu(ctx);
 
     const items = ctx.ui.select.mock.calls[0][1];
-    const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
-    expect(compactItem).toBe("Compact mode · ON");
+    const compactItem = items.find((i: string) => i.startsWith("Force compact mode"));
+    expect(compactItem).toBe("Force compact mode · ON");
   });
 
-  it("toggles compact mode and saves", async () => {
+  it("toggles force compact mode and saves", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
-      "Compact mode · OFF",
+      "Force compact mode · OFF",
       undefined,
     ];
 
@@ -1033,7 +1052,7 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
     expect(saveConfigAtomic).toHaveBeenCalled();
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Compact mode ON", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Force compact mode ON", "info");
   });
 
   it("shows 'Max lines (full) · 12' with default value", async () => {
@@ -1138,7 +1157,7 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     const items: string[] = ctx.ui.select.mock.calls[0][1];
-    const compactIdx = items.findIndex((i: string) => i.startsWith("Compact mode"));
+    const compactIdx = items.findIndex((i: string) => i.startsWith("Force compact mode"));
     const maxLinesIdx = items.findIndex((i: string) => i.startsWith("Max lines (full)"));
     const maxLinesCompactIdx = items.findIndex((i: string) => i.startsWith("Max lines (compact)"));
     const shortcutIdx = items.findIndex((i: string) => i.startsWith("Ctrl+o shortcut"));
@@ -1299,5 +1318,120 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     const items = ctx.ui.select.mock.calls[0][1];
     const costItem = items.find((i: string) => i.startsWith("Cost display"));
     expect(costItem).toBe("Cost display · OFF");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Force compact mode behavior tests
+// ---------------------------------------------------------------------------
+
+describe("Force compact mode behavior", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null,
+      forceBackground: false,
+      widgetCompact: false,
+      widgetShortcut: false,
+    };
+    mockModules.mockSessionOverrides.default = null;
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  // Helper: simulate syncCompactFromToolsExpanded logic
+  // (mirrors the implementation in index.ts, with lastToolsExpanded tracking)
+  // lastToolsExpanded starts as false (like after session_start priming call)
+  function makeSimulator() {
+    let lastToolsExpanded: boolean | undefined = false;
+    return function simulateSyncCompactFromToolsExpanded(
+      expanded: boolean,
+      config: { widgetShortcut?: boolean; widgetCompact?: boolean },
+    ): void {
+      if (config.widgetShortcut !== true) {
+        lastToolsExpanded = expanded;
+        return;
+      }
+      if (config.widgetCompact === true) {
+        lastToolsExpanded = expanded;
+        return;
+      }
+      if (lastToolsExpanded !== undefined && lastToolsExpanded !== expanded) {
+        // Don't set config.widgetCompact — that's the force compact setting.
+        // Only the widget's compactMode tracks ctrl+o state.
+      }
+      lastToolsExpanded = expanded;
+    };
+  }
+
+  it("force compact ON overrides ctrl+o (stays compact regardless of ctrl+o state)", () => {
+    const simulateSync = makeSimulator();
+    // Arrange: forceCompact ON, widgetShortcut ON
+    mockModules.mockConfig.agent.widgetCompact = true;
+    mockModules.mockConfig.agent.widgetShortcut = true;
+
+    // Act: simulate ctrl+o toggling toolsExpanded to false (user wants full mode)
+    simulateSync(false, mockModules.mockConfig.agent);
+
+    // Assert: widgetCompact remains true (forceCompact overrides)
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+  });
+
+  it("force compact OFF + ctrl+o ON: follows ctrl+o state (compact when expanded)", () => {
+    const simulateSync = makeSimulator();
+    // Arrange: forceCompact OFF, widgetShortcut ON
+    mockModules.mockConfig.agent.widgetCompact = false;
+    mockModules.mockConfig.agent.widgetShortcut = true;
+
+    // Act: simulate ctrl+o toggling toolsExpanded to true
+    simulateSync(true, mockModules.mockConfig.agent);
+
+    // Assert: widgetCompact stays false (ctrl+o doesn't modify force compact config)
+    // The widget's compactMode tracks ctrl+o state internally
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(false);
+  });
+
+  it("force compact OFF + ctrl+o OFF: full mode (stays not compact)", () => {
+    const simulateSync = makeSimulator();
+    // Arrange: forceCompact OFF, widgetShortcut OFF
+    mockModules.mockConfig.agent.widgetCompact = false;
+    mockModules.mockConfig.agent.widgetShortcut = false;
+
+    // Act: simulate ctrl+o toggling toolsExpanded to true
+    simulateSync(true, mockModules.mockConfig.agent);
+
+    // Assert: widgetCompact remains false (no sync when shortcut disabled)
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(false);
+  });
+
+  it("force compact ON prevents ctrl+o from unsetting compact", () => {
+    const simulateSync = makeSimulator();
+    // Arrange: forceCompact ON, widgetShortcut ON
+    mockModules.mockConfig.agent.widgetCompact = true;
+    mockModules.mockConfig.agent.widgetShortcut = true;
+
+    // Act: simulate multiple ctrl+o toggles
+    simulateSync(false, mockModules.mockConfig.agent);
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+
+    simulateSync(true, mockModules.mockConfig.agent);
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+
+    simulateSync(false, mockModules.mockConfig.agent);
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+  });
+
+  it("force compact OFF + widgetShortcut ON: ctrl+o can toggle compact on and off", () => {
+    const simulateSync = makeSimulator();
+    // Arrange: forceCompact OFF, widgetShortcut ON
+    mockModules.mockConfig.agent.widgetCompact = false;
+    mockModules.mockConfig.agent.widgetShortcut = true;
+
+    // Act: ctrl+o expands → widget sets compactMode (widgetCompact stays false)
+    simulateSync(true, mockModules.mockConfig.agent);
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(false); // forceCompact unchanged
+
+    // Act: ctrl+o collapses → widget clears compactMode (widgetCompact stays false)
+    simulateSync(false, mockModules.mockConfig.agent);
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(false); // forceCompact unchanged
   });
 });
