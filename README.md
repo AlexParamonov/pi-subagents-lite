@@ -32,9 +32,12 @@ Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `des
 - **Cost tracking** — input/output/cache tokens and dollar cost per agent
 - **Cost display** — toggle agent cost in stats and status bar (OFF by default)
 - **Live widget** — persistent status bar above the editor showing running/completed agents
+- **Widget settings** — force compact mode, max lines, opt-in ctrl+o sync
 - **Result viewer** — fullscreen markdown viewer with stats
 - **Steer** — inject mid-execution guidance into running agents
 - **Output logs** — human-readable, `tail -f` friendly
+- **Grace turns** — configurable grace turns after `max_turns` before hard abort
+- **Reload safety** — warns when active agents are killed by session reload
 
 ## Install
 
@@ -279,11 +282,12 @@ The LLM never passes `model` — it's injected at call time via the `tool_call` 
 
 ### `/agents`
 
-Management menu with four sections:
+Management menu with five sections:
 
-- **Model settings** — global default, per-type overrides, force background mode, cost display toggle
-- **Concurrency** — default limit, per-provider and per-model slots
-- **Running agents** — list, steer, stop, view snapshot, view result
+- **Model settings** — global default, per-type overrides, force background mode, cost display toggle, grace turns
+- **Concurrency** — default limit, per-provider and per-model slots, reset to defaults
+- **Running agents** — list with status and description; per-agent actions: view snapshot, view result, view error, steer, stop; bulk stop all running
+- **Widget settings** — force compact mode, max lines (full/compact), ctrl+o shortcut
 - **Debug** — agent types, agent briefing (sends capabilities to the LLM)
 
 ## Interface
@@ -295,14 +299,27 @@ Persistent bar above the editor showing running and completed agents. Updates li
 - Running agents show a spinner, current tool activity, turn count, token usage (with optional context-fill percent), and elapsed time
 - Completed agents show a check mark with final stats
 - Click `tail -f` path to follow output logs in real time
+- Two display modes: **full** (header + `tail -f` path + activity) and **compact** (single line, description truncated to 30 chars, activity inline)
 
-Format (tree structure with branch connectors):
+**Full mode** (tree structure with branch connectors):
 ```
 ├─ ⠙ Explore  description  3🛠 ·5≤30⟳ ·12.0k(45%)·1h 2m 3s
+│  │ tail -f /tmp/pi-agent-outputs/...
 │  └ thinking…
 ```
 
+**Compact mode** (single line, description truncated):
+```
+├─ ⠙ Explore  description trunc…  3🛠 ·5≤30⟳ ·12.0k(45%)·1h 2m 3s  thinking…
+```
+
 Turn format uses `≤` and `⟳` glyphs (`5≤30⟳` = 5 of 30 turns). Token count uses compact notation (`12.0k`) with optional context-fill percent in parentheses. No "tokens" label — the glyphs are self-explanatory.
+
+**Compact mode is active when:**
+- **Force compact mode** is ON (in `/agents > Widget settings`), OR
+- **Ctrl+o shortcut** is ON and the user has pressed ctrl+o to collapse tool expansion
+
+Force compact always wins. When force compact is ON, ctrl+o state changes are ignored.
 
 ### Result Viewer
 
@@ -324,6 +341,11 @@ When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builde
     "default": null,
     "forceBackground": false,
     "showCost": true,
+    "graceTurns": 6,
+    "widgetMaxLines": 12,
+    "widgetMaxLinesCompact": 6,
+    "widgetCompact": false,
+    "widgetShortcut": false,
     "Explore": "anthropic/claude-haiku-4-5-20251001"
   },
   "concurrency": {
@@ -336,7 +358,18 @@ When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builde
 }
 ```
 
-> **Note:** `agent.default` (global fallback), `agent.forceBackground` (flag), `agent.showCost` (toggle cost display), and per-type overrides like `"Explore"` are peers in the same object. Agent type names become dynamic keys alongside the special fields.
+> **Note:** `agent.default` (global fallback), `agent.forceBackground` (flag), `agent.showCost` (toggle cost display), `agent.graceTurns` (grace turns after `max_turns` before hard abort), widget settings (`widgetMaxLines`, `widgetMaxLinesCompact`, `widgetCompact`, `widgetShortcut`), and per-type overrides like `"Explore"` are peers in the same object. Agent type names become dynamic keys alongside the special fields.
+
+### Widget settings
+
+| Field | Default | Description |
+|---|---|---|
+| `widgetMaxLines` | `12` | Maximum body lines in full mode (excluding the heading). |
+| `widgetMaxLinesCompact` | half of `widgetMaxLines` | Maximum body lines in compact mode. |
+| `widgetCompact` | `false` | Force compact mode regardless of ctrl+o state. |
+| `widgetShortcut` | `false` | Opt-in: when ON, ctrl+o (tool expansion toggle) syncs with widget compact mode. When OFF, compact mode is manual-only via `widgetCompact`. |
+
+> **Reload safety:** if a session reload (e.g. `/reload` or extension reload) kills running agents, the UI notifies you with the count of lost agents. Output logs and completed results are preserved on disk.
 
 ## StopAgent Tool
 
