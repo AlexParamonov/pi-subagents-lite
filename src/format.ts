@@ -9,8 +9,7 @@
  */
 
 import { getConfig } from "./agent-types.js";
-import type { Theme } from "./ui/agent-widget.js";
-import type { SubagentType } from "./types.js";
+import type { SubagentType, Theme } from "./types.js";
 import { formatTokens, formatCost } from "./usage.js";
 
 /** Max length for a truncated command in tool arg summaries. */

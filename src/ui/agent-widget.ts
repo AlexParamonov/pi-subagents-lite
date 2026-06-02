@@ -4,7 +4,7 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agent-manager.js";
-import type { AgentRecord, SubagentType } from "../types.js";
+import type { AgentRecord, SubagentType, Theme } from "../types.js";
 import {
   formatCost,
   getLifetimeTotal,
@@ -13,6 +13,9 @@ import {
   type SessionLike,
 } from "../usage.js";
 import { formatMs, buildStatsParts, getDisplayName } from "../format.js";
+
+// Re-export Theme so existing consumers (model-selector, result-viewer) don't break
+export type { Theme } from "../types.js";
 
 // ---- Constants ----
 
@@ -58,12 +61,6 @@ const TOOL_DISPLAY: Record<string, string> = {
 
 // ---- Types ----
 
-export type Theme = {
-  fg(color: string, text: string): string;
-  bg(color: string, text: string): string;
-  bold(text: string): string;
-  italic?: (text: string) => string;
-};
 
 export type UICtx = {
   setStatus(key: string, text: string | undefined): void;

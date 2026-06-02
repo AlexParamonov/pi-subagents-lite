@@ -19,22 +19,11 @@ import {
   syncWidgetSettings,
 } from "./state.js";
 import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 
 // ============================================================================
 // Local helpers
 // ============================================================================
-
-/** Non-model keys in config.agent — preserved when clearing all overrides. */
-const CONFIG_AGENT_NON_MODEL_KEYS = [
-  "default",
-  "forceBackground",
-  "graceTurns",
-  "showCost",
-  "widgetMaxLines",
-  "widgetMaxLinesCompact",
-  "widgetCompact",
-  "widgetShortcut",
-];
 
 /**
  * Persist concurrency config to disk and apply to the running manager.

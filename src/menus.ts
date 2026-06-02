@@ -8,7 +8,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
 import type { AgentRecord } from "./types.js";
-import { SHORT_ID_LENGTH } from "./types.js";
+import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
 import { getDisplayName } from "./format.js";
@@ -46,22 +46,6 @@ import {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Keys in config.agent that are NOT model overrides.
- * Used by "clear all overrides" to detect whether any overrides exist.
- * When adding a new non-model config key, add it here.
- */
-const CONFIG_AGENT_NON_MODEL_KEYS = [
-  "default",        // global default model (kept as-is, not cleared)
-  "forceBackground",
-  "graceTurns",
-  "showCost",
-  "widgetMaxLines",
-  "widgetMaxLinesCompact",
-  "widgetCompact",
-  "widgetShortcut",
-];
 
 /**
  * Build ModelOption[] from raw "provider/model-id" strings.

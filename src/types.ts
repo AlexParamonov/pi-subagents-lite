@@ -102,6 +102,30 @@ export interface EnvInfo {
 /** How many characters of agent ID to show in display. */
 export const SHORT_ID_LENGTH = 8;
 
+/**
+ * Theme for terminal rendering — used by format.ts, renderer.ts, and UI widgets.
+ * Defined here (not in ui/agent-widget.ts) so non-UI modules can import it
+ * without depending on the UI layer.
+ */
+export type Theme = {
+  fg(color: string, text: string): string;
+  bg(color: string, text: string): string;
+  bold(text: string): string;
+  italic?: (text: string) => string;
+};
+
+/** Non-model keys in config.agent — preserved when clearing all overrides. */
+export const CONFIG_AGENT_NON_MODEL_KEYS = [
+  "default",
+  "forceBackground",
+  "graceTurns",
+  "showCost",
+  "widgetMaxLines",
+  "widgetMaxLinesCompact",
+  "widgetCompact",
+  "widgetShortcut",
+];
+
 /** Reason for a context compaction event. */
 export type CompactionReason = "manual" | "threshold" | "overflow";
 
