@@ -39,8 +39,11 @@ vi.mock("../src/result-viewer.js", () => ({
   },
 }));
 
-vi.mock("../src/ui/agent-widget.js", () => ({
+vi.mock("../src/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
+  formatMs: vi.fn((ms: number) => `${ms}ms`),
+  buildStatsParts: vi.fn(() => []),
+  summarizeToolArgs: vi.fn(() => ""),
 }));
 
 vi.mock("../src/context.js", () => ({

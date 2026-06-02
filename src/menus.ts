@@ -11,7 +11,7 @@ import type { AgentRecord } from "./types.js";
 import { SHORT_ID_LENGTH } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
-import { getDisplayName } from "./ui/agent-widget.js";
+import { getDisplayName } from "./format.js";
 import { buildSnapshotMarkdown } from "./context.js";
 
 import { parseModelKey } from "./utils.js";
