@@ -8,10 +8,10 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
 import type { AgentRecord } from "./types.js";
-import { SHORT_ID_LENGTH } from "./types.js";
+import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
-import { getDisplayName } from "./ui/agent-widget.js";
+import { getDisplayName } from "./format.js";
 import { buildSnapshotMarkdown } from "./context.js";
 
 import { parseModelKey } from "./utils.js";
@@ -20,48 +20,32 @@ import {
   sessionOverrides,
   piInstance,
   getManager,
-  setShowCostEnabled,
-  syncWidgetSettings,
 } from "./state.js";
 import { resolveModel } from "./model-precedence.js";
-import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
+import {
+  setModelOverride,
+  setDefaultModel,
+  clearModelOverride,
+  clearAllModelOverrides,
+  setForceBackground,
+  setShowCost,
+  setGraceTurns,
+  setWidgetCompact,
+  setWidgetMaxLines,
+  setWidgetMaxLinesCompact,
+  setWidgetShortcut,
+  setAgent,
+  setConcurrencyDefault,
+  setConcurrencyProvider,
+  setConcurrencyModel,
+  removeConcurrencyProvider,
+  removeConcurrencyModel,
+  resetConcurrency,
+} from "./config-mutator.js";
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Keys in config.agent that are NOT model overrides.
- * Used by "clear all overrides" to preserve settings while clearing model overrides.
- * When adding a new non-model config key, add it here — both the hasOverrides check
- * and the preserved-object construction derive from this list.
- */
-const CONFIG_AGENT_NON_MODEL_KEYS = [
-  "default",        // global default model (kept as-is, not cleared)
-  "forceBackground",
-  "graceTurns",
-  "showCost",
-  "widgetMaxLines",
-  "widgetMaxLinesCompact",
-  "widgetCompact",
-  "widgetShortcut",
-];
-
-/**
- * Build a preserved config.agent object that retains only non-model keys from the source.
- * Model overrides (per-type keys) are excluded.
- */
-function buildPreservedAgentConfig(agent: Record<string, unknown>): Record<string, unknown> {
-  const preserved: Record<string, unknown> = {};
-  for (const key of CONFIG_AGENT_NON_MODEL_KEYS) {
-    const val = agent[key];
-    if (val != null || key === "default" || key === "forceBackground") {
-      // default and forceBackground are always preserved (even if null/false)
-      preserved[key] = val;
-    }
-  }
-  return preserved;
-}
 
 /**
  * Build ModelOption[] from raw "provider/model-id" strings.
@@ -148,14 +132,6 @@ async function applyModelOverride(
 }
 
 /**
- * Persist concurrency config to disk and apply to the running manager.
- */
-function applyConcurrencyConfig(): void {
-  saveConfigAtomic(__config);
-  getManager()?.setConcurrency(__config.concurrency);
-}
-
-/**
  * Prompt for numeric input, validate (integer ≥ min), return parsed value or undefined.
  * Returns undefined if the user cancels or the value is invalid.
  */
@@ -188,19 +164,18 @@ async function parseConcurrencyInput(
 }
 
 /**
- * Prompt for a concurrency value, validate, save and apply.
- * Used for editing an existing concurrency limit.
+ * Prompt for a concurrency value, validate, and apply via setter.
+ * The setter handles save + sync internally.
  */
 async function promptConcurrencyInput(
   ctx: ExtensionCommandContext,
   label: string,
   currentValue: number,
-  apply: (value: number) => void,
+  setter: (value: number) => void,
 ): Promise<void> {
   const parsed = await parseConcurrencyInput(ctx, label, String(currentValue));
   if (parsed === undefined) return;
-  apply(parsed);
-  applyConcurrencyConfig();
+  setter(parsed);
   ctx.ui.notify(
     `${label.replace("Concurrency slots for ", "")} concurrency set to ${parsed}`,
     "info",
@@ -209,16 +184,16 @@ async function promptConcurrencyInput(
 
 /**
  * Prompt to add a new concurrency limit for a named entity.
+ * Calls the setter which handles save + sync internally.
  */
 async function promptAddConcurrencyLimit(
   ctx: ExtensionCommandContext,
   label: string,
-  apply: (key: string, value: number) => void,
+  setter: (key: string, value: number) => void,
 ): Promise<void> {
   const parsed = await parseConcurrencyInput(ctx, "Concurrency slots", "1");
   if (parsed === undefined) return;
-  apply(label, parsed);
-  applyConcurrencyConfig();
+  setter(label, parsed);
   ctx.ui.notify(`${label} concurrency set to ${parsed}`, "info");
 }
 
@@ -295,13 +270,12 @@ export async function showModelSettingsMenu(
 
       // Handle "clear" — remove all overrides (session + config) and save
       if (mode === "clear") {
-        delete __config.agent[targetKey];
+        clearModelOverride(targetKey);
         if (targetKey !== "default") {
           delete sessionOverrides[targetKey];
         } else {
           sessionOverrides.default = null;
         }
-        saveConfigAtomic(__config);
         ctx.ui.notify(`${label} overrides cleared`, "info");
         return;
       }
@@ -313,12 +287,9 @@ export async function showModelSettingsMenu(
         isSession
           ? (chosen) => { sessionOverrides[targetKey] = chosen; }
           : (chosen) => {
-              __config.agent[targetKey] = chosen;
+              setModelOverride(targetKey, chosen);
             },
       );
-      if (!isSession) {
-        saveConfigAtomic(__config);
-      }
     };
 
     // Global default — show session value if present
@@ -342,8 +313,7 @@ export async function showModelSettingsMenu(
       : "Force background · OFF";
     items.push(forceBgLabel);
     actions.push(async () => {
-      __config.agent.forceBackground = !__config.agent.forceBackground;
-      saveConfigAtomic(__config);
+      setForceBackground(!__config.agent.forceBackground);
       ctx.ui.notify(
         `Force background ${__config.agent.forceBackground ? "ON" : "OFF"}`,
         "info",
@@ -354,8 +324,7 @@ export async function showModelSettingsMenu(
     const showCost = __config.agent.showCost === true; // default false
     items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setShowCostEnabled(!showCost);
-      saveConfigAtomic(__config);
+      setShowCost(!showCost);
       ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
@@ -365,8 +334,7 @@ export async function showModelSettingsMenu(
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
       if (parsed === undefined) return;
-      __config.agent.graceTurns = parsed;
-      saveConfigAtomic(__config);
+      setGraceTurns(parsed);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
 
@@ -450,8 +418,7 @@ export async function showModelSettingsMenu(
         ctx.ui.notify("No overrides to clear", "info");
         return;
       }
-      __config.agent = buildPreservedAgentConfig(__config.agent) as typeof __config.agent;
-      saveConfigAtomic(__config);
+      clearAllModelOverrides();
       ctx.ui.notify("All model overrides cleared", "info");
     });
 
@@ -533,9 +500,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const isForceCompact = __config.agent.widgetCompact === true;
     items.push(`Force compact mode · ${isForceCompact ? "ON" : "OFF"}`);
     actions.push(async () => {
-      __config.agent.widgetCompact = !isForceCompact;
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
+      setWidgetCompact(!isForceCompact);
       ctx.ui.notify(`Force compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
     });
 
@@ -545,13 +510,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
       if (parsed === undefined) return;
-      __config.agent.widgetMaxLines = parsed;
-      // Update compact max lines default if not explicitly set
-      if (__config.agent.widgetMaxLinesCompact === undefined) {
-        __config.agent.widgetMaxLinesCompact = Math.floor(parsed / 2);
-      }
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
+      setWidgetMaxLines(parsed);
       ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
     });
 
@@ -561,9 +520,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
       if (parsed === undefined) return;
-      __config.agent.widgetMaxLinesCompact = parsed;
-      saveConfigAtomic(__config);
-      syncWidgetSettings();
+      setWidgetMaxLinesCompact(parsed);
       ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
     });
 
@@ -571,8 +528,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const shortcutEnabled = __config.agent.widgetShortcut === true;
     items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
     actions.push(async () => {
-      __config.agent.widgetShortcut = !shortcutEnabled;
-      saveConfigAtomic(__config);
+      setWidgetShortcut(!shortcutEnabled);
       ctx.ui.notify(`Ctrl+o shortcut ${__config.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
     });
 
@@ -630,6 +586,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
 /**
  * Build a sub-menu for a single per-provider or per-model entry:
  * "Edit limit" to change the value, or "Remove limit" to delete it.
+ * Callers pass setter callbacks that handle save + sync internally.
  */
 async function editOrRemoveConcurrencyEntry(
   ctx: ExtensionCommandContext,
@@ -637,8 +594,8 @@ async function editOrRemoveConcurrencyEntry(
   entityType: "provider" | "model",
   entityKey: string,
   currentValue: number,
-  applyUpdate: (value: number) => void,
-  applyRemove: () => void,
+  setEntry: (key: string, value: number) => void,
+  removeEntry: () => void,
 ): Promise<void> {
   await runMenu(ctx, `${entityKey} concurrency`, [
     "Edit limit",
@@ -646,13 +603,12 @@ async function editOrRemoveConcurrencyEntry(
   ], [
     async () => {
       await promptConcurrencyInput(
-        ctx, label, currentValue,
-        applyUpdate,
+        ctx, entityKey, currentValue,
+        (value) => setEntry(entityKey, value),
       );
     },
     async () => {
-      applyRemove();
-      applyConcurrencyConfig();
+      removeEntry();
       ctx.ui.notify(
         `Removed per-${entityType} limit for ${entityKey}`,
         "info",
@@ -676,15 +632,14 @@ export async function showConcurrencySettingsMenu(
     actions.push(async () => {
       await promptConcurrencyInput(
         ctx, "Default limit", __config.concurrency.default,
-        (value) => { __config.concurrency.default = value; },
+        (value) => setConcurrencyDefault(value),
       );
     });
 
     // Reset all to defaults
     items.push("Reset all to defaults");
     actions.push(async () => {
-      __config.concurrency = { ...DEFAULT_CONFIG.concurrency };
-      applyConcurrencyConfig();
+      resetConcurrency();
       ctx.ui.notify("Concurrency reset to defaults", "info");
     });
 
@@ -707,16 +662,8 @@ export async function showConcurrencySettingsMenu(
             "provider",
             provider,
             limit,
-            (value) => {
-              const current = __config.concurrency.providers ?? {};
-              __config.concurrency.providers = { ...current, [provider]: value };
-            },
-            () => {
-              const providers = __config.concurrency.providers;
-              if (providers) {
-                delete providers[provider];
-              }
-            },
+            (key, value) => setConcurrencyProvider(key, value),
+            () => removeConcurrencyProvider(provider),
           );
         });
       }
@@ -729,10 +676,7 @@ export async function showConcurrencySettingsMenu(
       if (provider === undefined) return;
       await promptAddConcurrencyLimit(
         ctx, provider,
-        (key, value) => {
-          const current = __config.concurrency.providers ?? {};
-          __config.concurrency.providers = { ...current, [key]: value };
-        },
+        (key, value) => setConcurrencyProvider(key, value),
       );
     });
 
@@ -755,16 +699,8 @@ export async function showConcurrencySettingsMenu(
             "model",
             modelKey,
             limit,
-            (value) => {
-              const current = __config.concurrency.models ?? {};
-              __config.concurrency.models = { ...current, [modelKey]: value };
-            },
-            () => {
-              const models = __config.concurrency.models;
-              if (models) {
-                delete models[modelKey];
-              }
-            },
+            (key, value) => setConcurrencyModel(key, value),
+            () => removeConcurrencyModel(modelKey),
           );
         });
       }
@@ -779,10 +715,7 @@ export async function showConcurrencySettingsMenu(
       if (modelKey === null) return;
       await promptAddConcurrencyLimit(
         ctx, modelKey.trim(),
-        (key, value) => {
-          const current = __config.concurrency.models ?? {};
-          __config.concurrency.models = { ...current, [key]: value };
-        },
+        (key, value) => setConcurrencyModel(key, value),
       );
     });
 
@@ -801,23 +734,23 @@ async function showRunningAgentsMenu(
 
   return runMenuLoop(ctx, "Running Agents", () => {
     const records = getManager()?.listAgents() ?? [];
-    const running = records.filter((r) => r.status === "running" || r.status === "queued");
+    const running = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
 
     const items: string[] = [];
     const actions: Array<() => Promise<void>> = [];
 
     for (const record of records) {
-      const elapsed = Math.round((Date.now() - record.startedAt) / 1000);
-      const statusIcon = record.status === "running" ? "▶" :
-        record.status === "completed" ? "✓" :
-        record.status === "queued" ? "⏳" :
-        record.status === "error" ? "✗" : "•";
-      const headline = record.description
-        ? (record.description.length > 50 ? record.description.slice(0, 47) + "..." : record.description)
+      const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
+      const statusIcon = record.lifecycle.status === "running" ? "▶" :
+        record.lifecycle.status === "completed" ? "✓" :
+        record.lifecycle.status === "queued" ? "⏳" :
+        record.lifecycle.status === "error" ? "✗" : "•";
+      const headline = record.display.description
+        ? (record.display.description.length > 50 ? record.display.description.slice(0, 47) + "..." : record.display.description)
         : "";
       const suffix = headline ? ` — ${headline}` : "";
       items.push(
-        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.type}  ${record.status}  ${elapsed}s${suffix}`,
+        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
       );
 
       actions.push(async () => {
@@ -860,19 +793,19 @@ async function showResultViewer(
     ? `snapshot \u00b7 ${record.id.slice(0, SHORT_ID_LENGTH)}`
     : "Error";
   const stats: ResultViewerStats = {
-    lifetimeUsage: record.lifetimeUsage,
-    turnCount: record.turnCount,
-    durationMs: (record.completedAt ?? Date.now()) - record.startedAt,
+    lifetimeUsage: record.stats.lifetimeUsage,
+    turnCount: record.stats.turnCount,
+    durationMs: (record.lifecycle.completedAt ?? Date.now()) - record.lifecycle.startedAt,
   };
   const refreshCallback =
-    kind === "snapshot" && record.session
-      ? () => buildSnapshotMarkdown(record.session!.messages)
+    kind === "snapshot" && record.execution.session
+      ? () => buildSnapshotMarkdown(record.execution.session!.messages)
       : undefined;
 
   await ctx.ui.custom<void>(
     (tui, theme, _kb, done) =>
       new ResultViewer(
-        `${getDisplayName(record.type)} · ${titleSuffix}`,
+        `${getDisplayName(record.display.type)} · ${titleSuffix}`,
         text,
         { onClose: () => done(), onRefresh: refreshCallback },
         theme,
@@ -895,7 +828,7 @@ async function steerAgentById(
     return;
   }
 
-  const message = await ctx.ui.input(`Steer ${record.type}`);
+  const message = await ctx.ui.input(`Steer ${record.display.type}`);
   if (!message?.trim()) return;
 
   const sent = await getManager().steer(agentId, message.trim());
@@ -917,16 +850,16 @@ export async function showAgentActions(
   const items: string[] = [];
   const actions: Array<() => Promise<void>> = [];
 
-  const isRunning = record.status === "running" || record.status === "queued";
-  const hasSession = !!record.session;
+  const isRunning = record.lifecycle.status === "running" || record.lifecycle.status === "queued";
+  const hasSession = !!record.execution.session;
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
   // View actions first
-  if (record.status === "running" && hasSession) {
+  if (record.lifecycle.status === "running" && hasSession) {
     items.push("View snapshot");
     actions.push(async () => {
-      const messages = record.session!.messages;
+      const messages = record.execution.session!.messages;
       const markdown = buildSnapshotMarkdown(messages);
       await showResultViewer(ctx, record, "snapshot", markdown);
     });

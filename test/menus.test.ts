@@ -22,6 +22,7 @@ const mockModules = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/agent-types.js", () => ({
+  getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
@@ -868,16 +869,16 @@ describe("showResultViewer — stats passing", () => {
   it("passes stats from AgentRecord when viewing result", async () => {
     const record = {
       id: "test-id-123",
-      type: "general-purpose",
-      description: "Test agent",
-      status: "completed",
+      display: { type: "general-purpose", description: "Test agent" },
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: { messages: [] } },
       result: "some result text",
-      toolUses: 10,
-      startedAt: Date.now() - 50000,
-      completedAt: Date.now() - 10000,
-      lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 },
-      turnCount: 15,
-      session: { messages: [] },
+      stats: {
+        lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 },
+        toolUses: 10,
+        turnCount: 15,
+        compactionCount: 0,
+      },
     } as any;
 
     const ctx = createMockCtx([
@@ -900,15 +901,16 @@ describe("showResultViewer — stats passing", () => {
   it("passes stats when viewing error", async () => {
     const record = {
       id: "test-id-456",
-      type: "general-purpose",
-      description: "Error agent",
-      status: "error",
+      display: { type: "general-purpose", description: "Error agent" },
+      lifecycle: { status: "error", startedAt: Date.now() - 30000, completedAt: Date.now() - 5000 },
+      execution: {},
       error: "something went wrong",
-      toolUses: 5,
-      startedAt: Date.now() - 30000,
-      completedAt: Date.now() - 5000,
-      lifetimeUsage: { input: 500, output: 200, cacheWrite: 50, cost: 0.005 },
-      turnCount: 3,
+      stats: {
+        lifetimeUsage: { input: 500, output: 200, cacheWrite: 50, cost: 0.005 },
+        toolUses: 5,
+        turnCount: 3,
+        compactionCount: 0,
+      },
     } as any;
 
     const ctx = createMockCtx([
@@ -930,16 +932,17 @@ describe("showResultViewer — stats passing", () => {
   it("passes stats when viewing snapshot", async () => {
     const record = {
       id: "test-id-789",
-      type: "general-purpose",
-      description: "Snapshot agent",
-      status: "running",
+      display: { type: "general-purpose", description: "Snapshot agent" },
+      lifecycle: { status: "running", startedAt: Date.now() - 60000 },
+      execution: { session: { messages: [{ role: "user", content: "hello" }] } },
       result: "",
       error: "",
-      toolUses: 8,
-      startedAt: Date.now() - 60000,
-      lifetimeUsage: { input: 8000, output: 4000, cacheWrite: 1000, cost: 0.012 },
-      turnCount: 7,
-      session: { messages: [{ role: "user", content: "hello" }] },
+      stats: {
+        lifetimeUsage: { input: 8000, output: 4000, cacheWrite: 1000, cost: 0.012 },
+        toolUses: 8,
+        turnCount: 7,
+        compactionCount: 0,
+      },
     } as any;
 
     const ctx = createMockCtx([
@@ -961,16 +964,17 @@ describe("showResultViewer — stats passing", () => {
   it("handles missing turnCount gracefully", async () => {
     const record = {
       id: "test-id-no-turns",
-      type: "general-purpose",
-      description: "Running agent",
-      status: "running",
+      display: { type: "general-purpose", description: "Running agent" },
+      lifecycle: { status: "running", startedAt: Date.now() - 20000 },
+      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "",
       error: "",
-      toolUses: 3,
-      startedAt: Date.now() - 20000,
-      lifetimeUsage: { input: 100, output: 50, cacheWrite: 10, cost: 0.001 },
-      // turnCount is undefined for running agents
-      session: { messages: [{ role: "user", content: "hi" }] },
+      stats: {
+        lifetimeUsage: { input: 100, output: 50, cacheWrite: 10, cost: 0.001 },
+        toolUses: 3,
+        // turnCount is undefined for running agents
+        compactionCount: 0,
+      },
     } as any;
 
     const ctx = createMockCtx([

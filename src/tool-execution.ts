@@ -8,6 +8,7 @@
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "./types.js";
+import { SHORT_ID_LENGTH } from "./types.js";
 import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
 import type { AgentActivity } from "./ui/agent-widget.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
@@ -104,6 +105,61 @@ function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
 }
 
 // ============================================================================
+// buildAgentDetails — consolidated stats/details construction
+// ============================================================================
+
+interface AgentDetailsOptions {
+  /** Include full stats (turns, tokens, context%, compactions, cost). Default: false. */
+  includeStats?: boolean;
+  /** Include status and outputFile. Default: false. */
+  includeStatus?: boolean;
+  /** Override the turnCount (e.g. from activity tracker). Default: record.turnCount. */
+  turnCount?: number;
+}
+
+/**
+ * Build a details Record from an AgentRecord, controlled by options.
+ *
+ * Always includes `type` and `description`. Optional groups:
+ * - `includeStatus`: adds `status`, `outputFile`
+ * - `includeStats`: adds turn/token/cost/context/compaction/model fields
+ *
+ * Consolidates the identical field-selection logic previously duplicated
+ * across emitIndividualNudge, executeSpawnForeground, and executeSpawnBackground.
+ */
+export function buildAgentDetails(
+  record: AgentRecord,
+  options?: AgentDetailsOptions,
+): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    type: record.display.type,
+    description: record.display.description,
+  };
+
+  if (options?.includeStatus) {
+    details.status = record.lifecycle.status;
+    details.outputFile = record.display.outputFile;
+  }
+
+  if (options?.includeStats) {
+    const totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
+    const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
+
+    details.turnCount = options.turnCount ?? record.stats.turnCount;
+    details.maxTurns = record.stats.maxTurns;
+    details.toolUses = record.stats.toolUses;
+    details.tokens = totalTokens;
+    details.contextPercent = getSessionContextPercent(record.execution.session);
+    details.durationMs = elapsedMs;
+    details.compactions = record.stats.compactionCount;
+    details.modelName = record.display.invocation?.modelName;
+    details.cost = record.stats.lifetimeUsage.cost;
+  }
+
+  return details;
+}
+
+// ============================================================================
 // Nudge scheduling — batch completion notifications within the hold window
 // ============================================================================
 
@@ -126,31 +182,16 @@ export function scheduleNudge(agentId: string): void {
 function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   if (!record) return;
 
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const elapsedMs = record.completedAt
-    ? record.completedAt - record.startedAt
-    : 0;
-
-  const details: Record<string, unknown> = {
-    type: record.type,
-    description: record.description,
-    status: record.status,
-    outputFile: record.outputFile,
-    turnCount: record.turnCount ?? agentActivity.get(agentId)?.turnCount,
-    maxTurns: record.maxTurns,
-    toolUses: record.toolUses,
-    tokens: totalTokens,
-    cost: record.lifetimeUsage.cost,
-    contextPercent: getSessionContextPercent(record.session),
-    durationMs: elapsedMs,
-    compactions: record.compactionCount,
-    modelName: record.invocation?.modelName,
-  };
+  const details = buildAgentDetails(record, {
+    includeStats: true,
+    includeStatus: true,
+    turnCount: record.stats.turnCount ?? agentActivity.get(agentId)?.turnCount,
+  });
 
   piInstance.sendMessage(
     {
       customType: "subagent-result",
-      content: `[Subagent "${record.type}" completed]\n\n${record.result ?? ""}`,
+      content: `[Subagent "${record.display.type}" completed]\n\n${record.result ?? ""}`,
       details,
       display: true,
     },
@@ -236,9 +277,9 @@ async function executeSpawnBackground(
   getWidget()?.update();
 
   const record = getManager().getRecord(agentId)!;
-  const details: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
+  const details = buildAgentDetails(record);
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
-  const label = record.status === "queued" ? "Agent queued" : "Agent running";
+  const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
 
   return successResult(`[${label}] ${suffix}`, details);
 }
@@ -262,29 +303,18 @@ async function executeSpawnForeground(
   getWidget()?.ensureTimer();
 
   const record = getManager().getRecord(fgId)!;
-  await record.promise;
+  await record.execution.promise;
 
   agentActivity.delete(fgId);
   getWidget()?.markFinished(fgId);
   getWidget()?.update();
 
-  const elapsedMs = (record.completedAt ?? Date.now()) - record.startedAt;
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const stats: Record<string, unknown> = {
-    type: resolvedType,
+  const stats = buildAgentDetails(record, {
+    includeStats: true,
     turnCount: fgState.turnCount,
-    maxTurns: fgState.maxTurns,
-    toolUses: record.toolUses,
-    tokens: totalTokens,
-    contextPercent: getSessionContextPercent(fgState.session),
-    durationMs: elapsedMs,
-    description: spawnOptions.description,
-    compactions: record.compactionCount,
-    modelName: record.invocation?.modelName,
-    cost: record.lifetimeUsage.cost,
-  };
+  });
 
-  if (record.status === "error") {
+  if (record.lifecycle.status === "error") {
     return errorResult(`Agent failed: ${record.error || "unknown error"}`, stats);
   }
 
@@ -292,8 +322,69 @@ async function executeSpawnForeground(
 }
 
 // ============================================================================
-// Tool_call listener — inject model into Agent tool calls
+// Running agents list helper (used by executeStopAgentTool)
 // ============================================================================
+
+/**
+ * Build a compact list of running (or queued) agents.
+ * Format: "type·short_id, type·short_id" — one line, easy for LLM to parse.
+ */
+function formatRunningAgents(): string {
+  const agents = getManager().listAgents().filter(
+    (a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued",
+  );
+
+  if (agents.length === 0) return "none";
+
+  return agents
+    .map((a) => `${a.display.type}·${a.id.slice(0, SHORT_ID_LENGTH)}`)
+    .join(", ");
+}
+
+// ============================================================================
+// StopAgent execute handler
+// ============================================================================
+
+export async function executeStopAgentTool(
+  _toolCallId: string,
+  params: Record<string, unknown>,
+  _signal: AbortSignal | undefined,
+  _onUpdate: ((update: any) => void) | undefined,
+  _ctx: ExtensionContext,
+): Promise<any> {
+  const agentId = params.agent_id as string | undefined;
+
+  if (!agentId) {
+    return errorResult("agent_id is required");
+  }
+
+  const record = getManager().getRecord(agentId);
+
+  if (!record) {
+    // Agent not found → return error + list of running agents
+    return errorResult(
+      `Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`,
+    );
+  }
+
+  // Check if already in a terminal state (not running or queued)
+  if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
+    return successResult(
+      `Agent ${agentId} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
+    );
+  }
+
+  // Attempt to stop the running/queued agent
+  if (getManager().abort(agentId)) {
+    return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
+  }
+
+  return errorResult(`Failed to stop agent ${agentId}`);
+}
+
+// ============================================================================
+// Tool_call listener — inject model into Agent tool calls
+// =============================================================================
 
 export async function toolCallListener(
   event: ToolCallEvent,

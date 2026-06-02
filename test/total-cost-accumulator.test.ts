@@ -91,10 +91,10 @@ describe("totalAgentCost accumulator", () => {
     // Set cost on the record before the agent finishes.
     // In real usage, cost accumulates via onAssistantUsage during the run.
     const record = manager.getRecord(id)!;
-    record.lifetimeUsage.cost = 0.05;
+    record.stats.lifetimeUsage.cost = 0.05;
 
     // Wait for the agent to finish — finally() calls safeNotifyComplete
-    await record.promise;
+    await record.execution.promise;
 
     expect(manager.getTotalAgentCost()).toBe(0.05);
   });
@@ -115,10 +115,10 @@ describe("totalAgentCost accumulator", () => {
 
     const record = manager.getRecord(id)!;
     // Set cost before the run completes — safeNotifyComplete reads it at completion time
-    record.lifetimeUsage.cost = 0.03;
+    record.stats.lifetimeUsage.cost = 0.03;
 
     // Wait for completion
-    await record.promise;
+    await record.execution.promise;
 
     // Cost should be accumulated
     const costAfterCompletion = manager.getTotalAgentCost();
@@ -127,7 +127,7 @@ describe("totalAgentCost accumulator", () => {
     // Now manually trigger eviction (simulate cleanup aging out the record)
     // We can access cleanup via the private method — but since it's private,
     // let's manipulate the completedAt to force eviction
-    record.completedAt = Date.now() - 20 * 60_000; // 20 minutes ago
+    record.lifecycle.completedAt = Date.now() - 20 * 60_000; // 20 minutes ago
     (manager as any).cleanup();
 
     // Record should be evicted
@@ -150,8 +150,8 @@ describe("totalAgentCost accumulator", () => {
       modelKey: "test/model",
     });
     const r1 = manager.getRecord(id1)!;
-    r1.lifetimeUsage.cost = 0.02;
-    await r1.promise;
+    r1.stats.lifetimeUsage.cost = 0.02;
+    await r1.execution.promise;
     expect(manager.getTotalAgentCost()).toBe(0.02);
 
     // Second agent
@@ -161,8 +161,8 @@ describe("totalAgentCost accumulator", () => {
       modelKey: "test/model",
     });
     const r2 = manager.getRecord(id2)!;
-    r2.lifetimeUsage.cost = 0.05;
-    await r2.promise;
+    r2.stats.lifetimeUsage.cost = 0.05;
+    await r2.execution.promise;
     expect(manager.getTotalAgentCost()).toBe(0.07);
   });
 
@@ -179,8 +179,8 @@ describe("totalAgentCost accumulator", () => {
       modelKey: "test/model",
     });
     const record = manager.getRecord(id)!;
-    record.lifetimeUsage.cost = 0.01;
-    await record.promise;
+    record.stats.lifetimeUsage.cost = 0.01;
+    await record.execution.promise;
 
     expect(manager.getTotalAgentCost()).toBe(0.01);
   });
@@ -199,7 +199,7 @@ describe("totalAgentCost accumulator", () => {
       modelKey: "test/model",
     });
     const record = manager.getRecord(id)!;
-    record.lifetimeUsage.cost = 0.04;
+    record.stats.lifetimeUsage.cost = 0.04;
 
     // Stop the agent
     manager.abort(id);

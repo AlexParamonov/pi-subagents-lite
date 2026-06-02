@@ -118,23 +118,7 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-vi.mock("../src/tool-execution.js", () => ({
-  executeAgentTool: vi.fn(),
-  toolCallListener: vi.fn(),
-  backgroundAgentIds: new Set(),
-  scheduleNudge: vi.fn(),
-  successResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    details,
-  })),
-  errorResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    isError: true as const,
-    details,
-  })),
-}));
-
-// Mock the state module so stop-agent-tool.ts gets a fake manager
+// Mock the state module so executeStopAgentTool gets a fake manager
 vi.mock("../src/state.js", () => ({
   getManager: () => ({
     abort: mockAbort,
@@ -153,11 +137,11 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("stops a running agent and returns truncated ID", async () => {
-    const record = { id: "abc123def456ghi", type: "builder", status: "running" };
+    const record = { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running" }, execution: {}, stats: {} };
     mockGetRecord.mockReturnValue(record);
     mockAbort.mockReturnValue(true);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_1",
@@ -174,11 +158,11 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("stops a queued agent and returns truncated ID", async () => {
-    const record = { id: "xyz789xyz789abc", type: "reviewer", status: "queued" };
+    const record = { id: "xyz789xyz789abc", display: { type: "reviewer" }, lifecycle: { status: "queued" }, execution: {}, stats: {} };
     mockGetRecord.mockReturnValue(record);
     mockAbort.mockReturnValue(true);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_2",
@@ -198,12 +182,12 @@ describe("StopAgent tool execute behavior", () => {
 
     // Running agents list for the error
     const runningAgents = [
-      { id: "aaa111bbb222ccc", type: "builder", status: "running" },
-      { id: "ddd333eee444fff", type: "reviewer", status: "running" },
+      { id: "aaa111bbb222ccc", display: { type: "builder" }, lifecycle: { status: "running" } },
+      { id: "ddd333eee444fff", display: { type: "reviewer" }, lifecycle: { status: "running" } },
     ];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_3",
@@ -221,15 +205,15 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("returns info (not error) when agent already completed, with running agents list", async () => {
-    const record = { id: "abc123def456ghi", type: "builder", status: "completed" };
+    const record = { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "completed" }, execution: {}, stats: {} };
     mockGetRecord.mockReturnValue(record);
 
     const runningAgents = [
-      { id: "aaa111bbb222ccc", type: "explorer", status: "running" },
+      { id: "aaa111bbb222ccc", display: { type: "explorer" }, lifecycle: { status: "running" } },
     ];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_4",
@@ -247,13 +231,13 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("returns info (not error) when agent already stopped", async () => {
-    const record = { id: "abc123def456ghi", type: "builder", status: "stopped" };
+    const record = { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "stopped" }, execution: {}, stats: {} };
     mockGetRecord.mockReturnValue(record);
 
-    const runningAgents: Array<{ id: string; type: string; status: string }> = [];
+    const runningAgents: Array<{ id: string; display: { type: string }; lifecycle: { status: string } }> = [];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_5",
@@ -269,13 +253,13 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("returns info when agent already aborted", async () => {
-    const record = { id: "abc123def456ghi", type: "builder", status: "aborted" };
+    const record = { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "aborted" }, execution: {}, stats: {} };
     mockGetRecord.mockReturnValue(record);
 
-    const runningAgents: Array<{ id: string; type: string; status: string }> = [];
+    const runningAgents: Array<{ id: string; display: { type: string }; lifecycle: { status: string } }> = [];
     mockListAgents.mockReturnValue(runningAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_6",
@@ -291,19 +275,19 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("running agents list shows only running/queued agents", async () => {
-    const record = { id: "abc123def456ghi", type: "builder", status: "completed" };
+    const record = { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "completed" }, execution: {}, stats: {} };
     mockGetRecord.mockReturnValue(record);
 
     // Mix of statuses — only running/queued should appear in the list
     const allAgents = [
-      { id: "r1", type: "builder", status: "running" },
-      { id: "r2", type: "reviewer", status: "queued" },
-      { id: "r3", type: "explore", status: "completed" },
-      { id: "r4", type: "code", status: "stopped" },
+      { id: "r1", display: { type: "builder" }, lifecycle: { status: "running" } },
+      { id: "r2", display: { type: "reviewer" }, lifecycle: { status: "queued" } },
+      { id: "r3", display: { type: "explore" }, lifecycle: { status: "completed" } },
+      { id: "r4", display: { type: "code" }, lifecycle: { status: "stopped" } },
     ];
     mockListAgents.mockReturnValue(allAgents);
 
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_7",
@@ -320,7 +304,7 @@ describe("StopAgent tool execute behavior", () => {
   });
 
   it("returns error result when agent_id is missing", async () => {
-    const { executeStopAgentTool } = await import("../src/stop-agent-tool.js");
+    const { executeStopAgentTool } = await import("../src/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_8",

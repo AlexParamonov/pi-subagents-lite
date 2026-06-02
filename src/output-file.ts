@@ -10,12 +10,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { formatTokens } from "./usage.js";
-
-/** Max length for a truncated command in tool arg summaries. */
-const MAX_COMMAND_DISPLAY_LENGTH = 100;
-
-/** Max length for a truncated string value in default tool arg summaries. */
-const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 200;
+import { summarizeToolArgs } from "./format.js";
 
 /** Max content length for full tool result display — longer results get a summary line. */
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 500;
@@ -66,68 +61,6 @@ function splitAndPrefix(text: string, role: string): string {
     .filter(Boolean)
     .map((l) => `${timestamp()} [${role}] ${l}\n`)
     .join("");
-}
-
-/**
- * Summarize tool arguments for log-friendly display.
- *
- * Heavy tools (read, write, edit, bash, grep, rg) get compact summaries.
- * Other tools fall back to the default JSON formatting.
- */
-export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown> | undefined): string {
-  if (!rawArgs || typeof rawArgs !== "object" || Object.keys(rawArgs).length === 0) return "";
-
-  switch (name) {
-    case "read": {
-      // read("/path/to/file") — just the path
-      const path = typeof rawArgs.path === "string" ? rawArgs.path : "";
-      return `(${JSON.stringify(path)})`;
-    }
-    case "write": {
-      // write("/path/to/file", <N> chars) — path + content size
-      const path = typeof rawArgs.file_path === "string" ? rawArgs.file_path : "";
-      const content = rawArgs.content;
-      const size = typeof content === "string" ? content.length : 0;
-      return `(${JSON.stringify(path)}, ${size} chars)`;
-    }
-    case "edit": {
-      // edit("/path/to/file", <N> edits) — path + edit count
-      const path = typeof rawArgs.path === "string" ? rawArgs.path : "";
-      const edits = rawArgs.edits;
-      const editCount = Array.isArray(edits) ? edits.length : 0;
-      return `(${JSON.stringify(path)}, ${editCount} edits)`;
-    }
-    case "bash": {
-      // bash("command") — just the command, strip heredoc, truncate long
-      const cmd = typeof rawArgs.command === "string" ? rawArgs.command : "";
-      // Strip heredoc: truncate at << followed by delimiter
-      const heredocIdx = cmd.search(/<<\s*['"]?\w+['"]?/);
-      const cleanCmd = heredocIdx >= 0 ? cmd.slice(0, heredocIdx).trim() : cmd.trim();
-      // Truncate long commands
-      const display = cleanCmd.length > MAX_COMMAND_DISPLAY_LENGTH
-        ? cleanCmd.slice(0, MAX_COMMAND_DISPLAY_LENGTH) + "…" : cleanCmd;
-      return `(${JSON.stringify(display)})`;
-    }
-    case "grep":
-    case "rg": {
-      // grep("pattern", "/path") — pattern + path
-      const pattern = typeof rawArgs.pattern === "string" ? rawArgs.pattern : "";
-      const path = typeof rawArgs.path === "string" ? rawArgs.path : "";
-      return `(${JSON.stringify(pattern)}, ${JSON.stringify(path)})`;
-    }
-    default: {
-      // Default behavior for other tools: single-arg shorthand or JSON dump
-      const keys = Object.keys(rawArgs);
-      if (keys.length === 1) {
-        const val = rawArgs[keys[0]];
-        const display = typeof val === "string" && val.length > MAX_DEFAULT_STRING_DISPLAY_LENGTH
-          ? JSON.stringify(val.slice(0, MAX_DEFAULT_STRING_DISPLAY_LENGTH) + "...")
-          : JSON.stringify(val);
-        return `(${display})`;
-      }
-      return ` ${JSON.stringify(rawArgs)}`;
-    }
-  }
 }
 
 /** Format a toolUse/toolCall content item as a single log line. */
