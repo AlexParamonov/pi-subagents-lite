@@ -23,7 +23,6 @@
  *   - session_shutdown: Abort all, dispose manager
  */
 
-import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import * as path from "node:path";
 import type {
@@ -36,11 +35,12 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agent-types.js";
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { AgentManager } from "./agent-manager.js";
-import { AgentWidget, buildStatsParts, formatMs, getDisplayName, type AgentActivity, type Theme, type UICtx } from "./ui/agent-widget.js";
+import { AgentWidget, type AgentActivity, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
 import { loadConfig, DEFAULT_CONFIG } from "./config-io.js";
 import { executeAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
 import { executeStopAgentTool } from "./stop-agent-tool.js";
+import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 
 // ============================================================================
 // Module-level state
@@ -176,32 +176,7 @@ async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void>
   await scanAndRegisterAgents(ctx);
 }
 
-// ============================================================================
-// UI helpers — stats card rendering (shared by renderResult and message renderer)
-// ============================================================================
 
-/** Format agent display name with optional model: "Agent (mimo-v2.5-pro)" or "Agent". */
-function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
-  const typeName = getDisplayName((d.type as string) || "");
-  const modelName = d.modelName as string | undefined;
-  return modelName ? `${theme.bold(typeName)} (${modelName})` : theme.bold(typeName);
-}
-
-/** Build the stats line for an agent result card. Used by both renderers. */
-function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
-  const showCost = __config.agent.showCost === true;
-  const parts = buildStatsParts({
-    toolUses: (d.toolUses as number) ?? 0,
-    turnCount: d.turnCount as number | undefined,
-    maxTurns: d.maxTurns as number | undefined,
-    tokens: (d.tokens as number) ?? 0,
-    contextPercent: d.contextPercent as number | null,
-    compactions: (d.compactions as number) ?? 0,
-    cost: showCost ? (d.cost as number | undefined) : undefined,
-  }, theme);
-  parts.push(formatMs(d.durationMs as number));
-  return parts.join("·");
-}
 
 // ============================================================================
 // Agent tool registration helper — dynamic enum for agent types
@@ -232,51 +207,13 @@ function registerAgentTool(pi: ExtensionAPI): void {
     }),
     execute: executeAgentTool,
 
-    renderCall(args, theme) {
-      const typeName = getDisplayName((args.agent as string) || "");
-      const label = typeName || "Agent";
-      let text = `▸ ${theme.fg("accent", theme.bold(label))}`;
+    renderCall: (args, theme) => renderAgentToolCall(args as Record<string, unknown>, theme),
 
-      // Show model in parens when it differs from the parent model
-      // _modelOverride is injected by toolCallListener when the resolved
-      // model differs from the session's parent model
-      const a = args as Record<string, unknown>;
-      const modelOverride = a._modelOverride as string | undefined;
-      if (modelOverride) {
-        text += ` (${modelOverride})`;
-      }
-
-      return new Text(text, 0, 0);
-    },
-
-    renderResult(result, options, theme) {
-      const { expanded } = options as { expanded?: boolean };
-      const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-      const d = result.details as Record<string, unknown> | undefined;
-      const isError = !!(result as any).isError;
-      const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-      const desc = (d?.description as string) || "";
-
-      if (d && d.turnCount != null) {
-        const namePart = agentNameLabel(d, theme);
-        const statsLine = buildStatsLine(d, theme);
-        let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
-        if (expanded && text) {
-          lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
-        }
-        return new Text(lines, 0, 0);
-      }
-
-      // Minimal card — type name already shown by renderCall
-      // For background spawns (no stats), use space placeholder — agent isn't done yet
-      const isBackground = text.includes("running in background") || text.includes("queued");
-      const prefix = isBackground ? "  " : `${icon} `;
-      if (desc) {
-        return new Text(`${prefix}${theme.fg("text", desc)}`, 0, 0);
-      }
-
-      return new Text(`${prefix}${theme.fg("dim", text)}`, 0, 0);
-    },
+    renderResult: (result, options, theme) => renderAgentToolResult(
+      result as { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
+      options as { expanded?: boolean },
+      theme,
+    ),
   });
 }
 
@@ -307,55 +244,13 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Message renderer — subagent-result (background agent completion)
-  pi.registerMessageRenderer("subagent-result", (message, options, theme) => {
-    const { expanded } = options as { expanded?: boolean };
-    const d = message.details as Record<string, unknown> | undefined;
-    const text = (message.content as string)?.trim() || "";
-
-    const inner = new Container();
-    inner.addChild(new Text(theme.fg("customMessageLabel", "Subagent Result"), 0, 0));
-    inner.addChild(new Spacer(1));
-
-    if (d && d.turnCount != null) {
-      const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
-      const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-      const desc = (d.description as string) || "";
-
-      const namePart = agentNameLabel(d, theme);
-      const statsLine = buildStatsLine(d, theme);
-      let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
-      if ((d.outputFile as string)) {
-        headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-      }
-      inner.addChild(new Text(headerLine, 0, 0));
-
-      if (expanded && text) {
-        inner.addChild(new Spacer(1));
-        const resultLines = text.split("\n").map(l => `  ${l}`).join("\n");
-        inner.addChild(new Text(resultLines, 0, 0));
-      }
-    } else {
-      const desc = (d?.description as string) || "";
-      let line = `${theme.fg("success", "✓")}`;
-      if (d?.type) {
-        line += ` ${agentNameLabel(d, theme)}`;
-      }
-      if (desc) line += `\n  ${theme.fg("text", desc)}`;
-      if (d?.outputFile) {
-        line += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-      }
-      inner.addChild(new Text(line, 0, 0));
-    }
-
-    const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
-    box.addChild(inner);
-
-    const outer = new Container();
-    outer.addChild(new Spacer(1));
-    outer.addChild(box);
-    outer.addChild(new Spacer(1));
-    return outer;
-  });
+  pi.registerMessageRenderer("subagent-result", (message, options, theme) =>
+    renderSubagentResult(
+      message as { content?: string; details?: Record<string, unknown> },
+      options as { expanded?: boolean },
+      theme,
+    ),
+  );
 
   // Command registration
   pi.registerCommand("agents", {

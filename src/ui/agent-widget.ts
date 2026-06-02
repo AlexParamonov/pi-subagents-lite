@@ -61,6 +61,7 @@ const TOOL_DISPLAY: Record<string, string> = {
 
 export type Theme = {
   fg(color: string, text: string): string;
+  bg(color: string, text: string): string;
   bold(text: string): string;
   italic?: (text: string) => string;
 };
