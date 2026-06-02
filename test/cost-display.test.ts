@@ -8,7 +8,7 @@
  *   - Cost display toggle in /agents menu
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // --- formatCost tests ---
 describe("formatCost", () => {

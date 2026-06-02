@@ -620,8 +620,11 @@ export class AgentWidget {
     if (queuedCount > 0) statusParts.push(`${queuedCount} queued`);
     const total = runningCount + queuedCount;
     let suffix = ` agent${total === 1 ? "" : "s"}`;
-    if (this.showCost && running.length > 0) {
-      const totalCost = running.reduce((sum, a) => sum + a.lifetimeUsage.cost, 0);
+    if (this.showCost) {
+      const sessionCost = this.manager.getTotalAgentCost();
+      // Also include in-flight running agents (not yet completed, so not in accumulator)
+      const runningCost = running.reduce((sum, a) => sum + a.lifetimeUsage.cost, 0);
+      const totalCost = sessionCost + runningCost;
       if (totalCost > 0) suffix += ` · ${formatCost(totalCost)}`;
     }
     const newStatusText = `${statusParts.join(", ")}${suffix}`;
