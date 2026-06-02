@@ -64,6 +64,12 @@ export let widget: AgentWidget | undefined;
 /** ExtensionAPI reference — stored at init for execute callbacks. */
 export let piInstance: ExtensionAPI;
 
+/** Update the cost display toggle in config and sync to widget. */
+export function setShowCostEnabled(enabled: boolean): void {
+  __config.agent.showCost = enabled;
+  widget?.setShowCost(enabled);
+}
+
 
 
 // ============================================================================
@@ -99,6 +105,7 @@ function ensureManagerAndWidget(): void {
   // Create/replace widget tied to this manager instance
   if (!widget) {
     widget = new AgentWidget(manager, agentActivity);
+    widget.setShowCost(__config.agent.showCost !== false);
   }
 }
 
@@ -145,6 +152,7 @@ function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
 
 /** Build the stats line for an agent result card. Used by both renderers. */
 function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
+  const showCost = __config.agent.showCost !== false;
   const parts = buildStatsParts({
     toolUses: (d.toolUses as number) ?? 0,
     turnCount: d.turnCount as number | undefined,
@@ -152,6 +160,7 @@ function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
     tokens: (d.tokens as number) ?? 0,
     contextPercent: d.contextPercent as number | null,
     compactions: (d.compactions as number) ?? 0,
+    cost: showCost ? (d.cost as number | undefined) : undefined,
   }, theme);
   parts.push(formatMs(d.durationMs as number));
   return parts.join("·");

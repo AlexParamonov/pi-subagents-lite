@@ -67,6 +67,9 @@ vi.mock("../src/index.js", () => {
       abort: vi.fn(),
     },
     piInstance: { sendUserMessage: vi.fn() },
+    setShowCostEnabled: vi.fn((enabled: boolean) => {
+      mockModules.mockConfig.agent.showCost = enabled;
+    }),
   };
 });
 
@@ -772,6 +775,35 @@ describe("showAgentsMainMenu — clear all overrides", () => {
       "info",
     );
   });
+
+  it("preserves showCost when clearing all overrides", async () => {
+    // Arrange: set a per-type override and showCost
+    mockModules.mockConfig.agent.default = null;
+    mockModules.mockConfig.agent.forceBackground = false;
+    mockModules.mockConfig.agent.showCost = false;
+    mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
+
+    const selections = [
+      "1. Model settings — Set global default and per-type model overrides",
+      "Clear all overrides",
+      undefined,  // Exit model settings loop
+      undefined,  // Exit main menu loop
+    ];
+
+    const ctx = createMockCtx(selections);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"];
+
+    // Act
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    // Assert: showCost is preserved, per-type override is removed
+    expect(mockModules.mockConfig.agent.showCost).toBe(false);
+    expect(mockModules.mockConfig.agent["general-purpose"]).toBeUndefined();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "All model overrides cleared",
+      "info",
+    );
+  });
 });
 
 describe("showResultViewer — stats passing", () => {
@@ -902,5 +934,84 @@ describe("showResultViewer — stats passing", () => {
     expect(stats).toBeDefined();
     expect(stats.turnCount).toBeUndefined();
     expect(stats.durationMs).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cost display toggle tests
+// ---------------------------------------------------------------------------
+
+describe("showModelSettingsMenu — cost display toggle", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false, showCost: true };
+    mockModules.mockSessionOverrides.default = null;
+    vi.clearAllMocks();
+
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows 'Cost display · ON' when showCost is true", async () => {
+    const ctx = createMockCtx([undefined]); // Escape immediately
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const costItem = items.find((i: string) => i.startsWith("Cost display"));
+    expect(costItem).toBe("Cost display · ON");
+  });
+
+  it("shows 'Cost display · OFF' when showCost is false", async () => {
+    mockModules.mockConfig.agent.showCost = false;
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const costItem = items.find((i: string) => i.startsWith("Cost display"));
+    expect(costItem).toBe("Cost display · OFF");
+  });
+
+  it("toggles showCost from true to false and saves", async () => {
+    mockModules.mockConfig.agent.showCost = true;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Cost display · ON",  // click the toggle
+      undefined,             // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.showCost).toBe(false);
+    expect(saveConfigAtomic).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display OFF", "info");
+  });
+
+  it("toggles showCost from false to true and saves", async () => {
+    mockModules.mockConfig.agent.showCost = false;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Cost display · OFF",
+      undefined,
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.showCost).toBe(true);
+    expect(saveConfigAtomic).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display ON", "info");
+  });
+
+  it("defaults to true when showCost is not set", async () => {
+    delete mockModules.mockConfig.agent.showCost;
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const costItem = items.find((i: string) => i.startsWith("Cost display"));
+    expect(costItem).toBe("Cost display · ON");
   });
 });

@@ -7,6 +7,7 @@ import type { AgentManager } from "../agent-manager.js";
 import { getConfig } from "../agent-types.js";
 import type { AgentRecord, SubagentType } from "../types.js";
 import {
+  formatCost,
   formatTokens,
   getLifetimeTotal,
   getSessionContextPercent,
@@ -159,7 +160,7 @@ export function formatMs(ms: number): string {
 }
 
 /**
- * Build common stats parts: toolUses · turns · tokens with context %.
+ * Build common stats parts: toolUses · turns · tokens with context % · cost.
  * Shared by AgentWidget and index.ts for consistent stats display.
  */
 export function buildStatsParts(
@@ -170,6 +171,7 @@ export function buildStatsParts(
     tokens: number;
     contextPercent: number | null;
     compactions: number;
+    cost?: number;
   },
   theme: Theme,
 ): string[] {
@@ -181,6 +183,7 @@ export function buildStatsParts(
       args.tokens, args.contextPercent, theme, args.compactions,
     ));
   }
+  if (args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
   return parts;
 }
 
@@ -245,6 +248,8 @@ export class AgentWidget {
   /** Finished agents: agent ID → turns since finished. */
   private finishedTurnAge = new Map<string, number>();
 
+  /** Whether to show cost in stats and status bar. */
+  private showCost = true;
 
   /** Whether the widget callback is currently registered with the TUI. */
   private widgetRegistered = false;
@@ -257,6 +262,11 @@ export class AgentWidget {
     private manager: AgentManager,
     private agentActivity: Map<string, AgentActivity>,
   ) {}
+
+  /** Set whether to show cost in stats and status bar. */
+  setShowCost(enabled: boolean) {
+    this.showCost = enabled;
+  }
 
   /** Set the UI context (grabbed from first tool execution). */
   setUICtx(ctx: UICtx) {
@@ -354,13 +364,15 @@ export class AgentWidget {
     const { icon, statusText } = this.finishedIconAndStatus(a.status, a.error, theme);
 
     const activity = this.agentActivity.get(a.id);
+    const usage = activity?.lifetimeUsage ?? a.lifetimeUsage;
     const statsParts = buildStatsParts({
       toolUses: a.toolUses,
       turnCount: activity?.turnCount ?? a.turnCount,
       maxTurns: activity?.maxTurns ?? a.maxTurns,
-      tokens: getLifetimeTotal(activity?.lifetimeUsage ?? a.lifetimeUsage),
+      tokens: getLifetimeTotal(usage),
       contextPercent: getSessionContextPercent(activity?.session ?? a.session),
       compactions: a.compactionCount,
+      cost: this.showCost ? usage.cost : undefined,
     }, theme);
     statsParts.push(duration);
 
@@ -368,7 +380,7 @@ export class AgentWidget {
     return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", a.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
-  /** Build the stats line (toolUses · turns · tokens · elapsed) for a running agent. */
+  /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
   private buildStatsLine(
     agent: { toolUses: number; compactionCount: number; startedAt: number },
     activity: AgentActivity | undefined,
@@ -381,6 +393,7 @@ export class AgentWidget {
       tokens: getLifetimeTotal(activity?.lifetimeUsage),
       contextPercent: getSessionContextPercent(activity?.session),
       compactions: agent.compactionCount,
+      cost: this.showCost ? activity?.lifetimeUsage?.cost : undefined,
     }, theme);
     parts.push(formatMs(Date.now() - agent.startedAt));
     return parts.join("·");
@@ -601,12 +614,17 @@ export class AgentWidget {
   }
 
   /** Update the status bar text, only if it changed. */
-  private updateStatusBar(runningCount: number, queuedCount: number) {
+  private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
     const statusParts: string[] = [];
     if (runningCount > 0) statusParts.push(`${runningCount} running`);
     if (queuedCount > 0) statusParts.push(`${queuedCount} queued`);
     const total = runningCount + queuedCount;
-    const newStatusText = `${statusParts.join(", ")} agent${total === 1 ? "" : "s"}`;
+    let suffix = ` agent${total === 1 ? "" : "s"}`;
+    if (this.showCost && running.length > 0) {
+      const totalCost = running.reduce((sum, a) => sum + a.lifetimeUsage.cost, 0);
+      if (totalCost > 0) suffix += ` · ${formatCost(totalCost)}`;
+    }
+    const newStatusText = `${statusParts.join(", ")}${suffix}`;
     if (newStatusText !== this.lastStatusText) {
       this.uiCtx?.setStatus(STATUS_KEY, newStatusText);
       this.lastStatusText = newStatusText;
@@ -628,7 +646,7 @@ export class AgentWidget {
     }
 
     // Status bar — only call setStatus when the text actually changes
-    this.updateStatusBar(running.length, queued.length);
+    this.updateStatusBar(running.length, queued.length, running);
 
     this.widgetFrame++;
 
