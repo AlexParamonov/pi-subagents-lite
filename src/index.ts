@@ -142,12 +142,6 @@ function ensureManagerAndWidget(): void {
   if (!widget) {
     widget = new AgentWidget(manager, agentActivity);
     widget.setShowCost(__config.agent.showCost === true);
-    // Set callback for ctrl+o sync
-    widget.setGetToolsExpanded(() => {
-      const ui = widget?.getUICtx();
-      if (!ui) return false;
-      return (ui as unknown as { getToolsExpanded?: () => boolean }).getToolsExpanded?.() ?? false;
-    });
     syncWidgetSettings();
   }
 }
@@ -388,6 +382,9 @@ export default function (pi: ExtensionAPI) {
 
   // session_start — load config, scan agents, register into registry,
   // then re-register Agent tool with dynamic agent type enum
+  // Listen for ctrl+o keypress to sync compact mode (push-based, no polling)
+  let unregisterTerminalInput: (() => void) | undefined;
+
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     sessionOverrides = { default: null };
     agentActivity.clear();
@@ -395,6 +392,23 @@ export default function (pi: ExtensionAPI) {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    // Register ctrl+o listener
+    if (ctx.hasUI && !unregisterTerminalInput) {
+      unregisterTerminalInput = ctx.ui.onTerminalInput((data: string) => {
+        // ctrl+o = 0x0F (15) — toggles tool expansion
+        if (data === "\u000f") {
+          // Read state after a tick to let the built-in handler process it first
+          setTimeout(() => {
+            const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
+            const expanded = ui.getToolsExpanded?.();
+            if (expanded !== undefined) {
+              widget?.notifyToolsExpansionChanged(expanded);
+            }
+          }, 0);
+        }
+        return undefined; // Don't consume the input
+      });
+    }
     // Sync compact mode with initial tool expansion state
     syncCompactFromToolsExpanded(false);
   });

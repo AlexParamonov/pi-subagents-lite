@@ -257,10 +257,8 @@ export class AgentWidget {
   private tui: TUI | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
-  /** Callback to check tool expansion state (for ctrl+o sync). */
-  private getToolsExpanded: (() => boolean) | undefined;
-  /** Last known tool expansion state. */
-  private lastToolsExpandedState: boolean | undefined;
+  /** Pending tool expansion state from onTerminalInput (push-based, no polling). */
+  private pendingToolsExpanded: boolean | undefined;
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -304,9 +302,10 @@ export class AgentWidget {
     this.widgetShortcut = enabled;
   }
 
-  /** Set callback to check tool expansion state (for ctrl+o sync). */
-  setGetToolsExpanded(fn: () => boolean) {
-    this.getToolsExpanded = fn;
+  /** Notify widget that tool expansion state changed (push-based, no polling). */
+  notifyToolsExpansionChanged(expanded: boolean) {
+    this.pendingToolsExpanded = expanded;
+    this.update();
   }
 
   /** Set max lines for full mode. */
@@ -329,11 +328,6 @@ export class AgentWidget {
       this.tui = undefined;
       this.lastStatusText = undefined;
     }
-  }
-
-  /** Get the current UI context. */
-  getUICtx(): UICtx | undefined {
-    return this.uiCtx;
   }
 
   /**
@@ -708,12 +702,10 @@ export class AgentWidget {
 
     // Sync compact mode with tool expansion state (ctrl+o)
     // Tools expanded → widget full, tools collapsed → widget compact
-    if (this.widgetShortcut && !this.forceCompact && this.getToolsExpanded) {
-      const expanded = this.getToolsExpanded();
-      if (this.lastToolsExpandedState !== undefined && this.lastToolsExpandedState !== expanded) {
-        this.compactMode = !expanded;
-      }
-      this.lastToolsExpandedState = expanded;
+    // Note: sync is triggered by onTerminalInput detecting ctrl+o, not polling
+    if (this.widgetShortcut && !this.forceCompact && this.pendingToolsExpanded !== undefined) {
+      this.compactMode = !this.pendingToolsExpanded;
+      this.pendingToolsExpanded = undefined;
     }
 
     const { running, queued, finished } = this.categorizeAgents();
