@@ -82,31 +82,32 @@ export {
  * Idempotent — safe to call on every session_start.
  */
 function ensureManagerAndWidget(): void {
-  if (manager) return;
+  // Create manager if missing
+  if (!manager) {
+    const newManager = new AgentManager(
+      (record) => {
+        // Only nudge for background (async) agents — sync agents already returned via tool result
+        if (backgroundAgentIds.has(record.id)) {
+          scheduleNudge(record.id);
+          backgroundAgentIds.delete(record.id);
+        }
 
-  const newManager = new AgentManager(
-    (record) => {
-      // Only nudge for background (async) agents — sync agents already returned via tool result
-      if (backgroundAgentIds.has(record.id)) {
-        scheduleNudge(record.id);
-        backgroundAgentIds.delete(record.id);
-      }
+        // Mark finished and update widget BEFORE deleting activity —
+        // renderFinishedLine reads activity for turn count, tokens, etc.
+        widget?.markFinished(record.id);
+        widget?.update();
 
-      // Mark finished and update widget BEFORE deleting activity —
-      // renderFinishedLine reads activity for turn count, tokens, etc.
-      widget?.markFinished(record.id);
-      widget?.update();
+        // Remove from live activity tracking
+        agentActivity.delete(record.id);
+      },
+      __config.concurrency,
+    );
+    setManager(newManager);
+  }
 
-      // Remove from live activity tracking
-      agentActivity.delete(record.id);
-    },
-    __config.concurrency,
-  );
-  setManager(newManager);
-
-  // Create/replace widget tied to this manager instance
+  // Create widget if missing (uses existing or newly created manager)
   if (!widget) {
-    const newWidget = new AgentWidget(newManager, agentActivity);
+    const newWidget = new AgentWidget(manager, agentActivity);
     newWidget.setShowCost(__config.agent.showCost === true);
     setWidget(newWidget);
     syncWidgetSettings();
