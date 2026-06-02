@@ -23,7 +23,7 @@
  *   - session_shutdown: Abort all, dispose manager
  */
 
-import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Spacer, Text, Key } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import * as path from "node:path";
 import type {
@@ -70,6 +70,38 @@ export function setShowCostEnabled(enabled: boolean): void {
   widget?.setShowCost(enabled);
 }
 
+/** Sync widget display settings from config to the widget instance. */
+export function syncWidgetSettings(): void {
+  if (!widget) return;
+  widget.setCompactMode(__config.agent.widgetCompact === true);
+  widget.setMaxLines(__config.agent.widgetMaxLines ?? 12);
+  widget.setMaxLinesCompact(
+    __config.agent.widgetMaxLinesCompact ?? Math.floor((__config.agent.widgetMaxLines ?? 12) / 2),
+  );
+}
+
+/** Register or unregister the Ctrl+o shortcut based on config. */
+export function syncWidgetShortcut(): void {
+  if (!piInstance) return;
+  if (__config.agent.widgetShortcut) {
+    piInstance.registerShortcut(Key.ctrl("o"), {
+      description: "Toggle compact mode",
+      handler: () => {
+        const newState = widget?.toggleCompactMode();
+        if (newState !== undefined) {
+          __config.agent.widgetCompact = newState;
+        }
+      },
+    });
+  } else {
+    // Unregister by registering a no-op handler
+    piInstance.registerShortcut(Key.ctrl("o"), {
+      description: "Toggle compact mode (disabled)",
+      handler: () => {},
+    });
+  }
+}
+
 
 
 // ============================================================================
@@ -106,6 +138,7 @@ function ensureManagerAndWidget(): void {
   if (!widget) {
     widget = new AgentWidget(manager, agentActivity);
     widget.setShowCost(__config.agent.showCost === true);
+    syncWidgetSettings();
   }
 }
 
@@ -345,6 +378,8 @@ export default function (pi: ExtensionAPI) {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    // Register Ctrl+o shortcut if enabled in config
+    syncWidgetShortcut();
   });
 
   pi.on("session_shutdown", async (_event: unknown) => {

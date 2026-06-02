@@ -18,7 +18,7 @@ import {
 // ---- Constants ----
 
 /** Maximum number of rendered lines before overflow collapse kicks in. */
-const MAX_WIDGET_LINES = 12;
+const DEFAULT_MAX_WIDGET_LINES = 12;
 
 /** Braille spinner frames for animated running indicator. */
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -258,6 +258,15 @@ export class AgentWidget {
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
 
+  /** Whether to use compact mode (1-line per agent). */
+  private compactMode = false;
+
+  /** Maximum lines for full mode. */
+  private maxLines = DEFAULT_MAX_WIDGET_LINES;
+
+  /** Maximum lines for compact mode. */
+  private maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2);
+
   constructor(
     private manager: AgentManager,
     private agentActivity: Map<string, AgentActivity>,
@@ -266,6 +275,32 @@ export class AgentWidget {
   /** Set whether to show cost in stats and status bar. */
   setShowCost(enabled: boolean) {
     this.showCost = enabled;
+  }
+
+  /** Set compact mode. */
+  setCompactMode(enabled: boolean) {
+    this.compactMode = enabled;
+  }
+
+  /** Set max lines for full mode. */
+  setMaxLines(lines: number) {
+    this.maxLines = lines;
+  }
+
+  /** Set max lines for compact mode. */
+  setMaxLinesCompact(lines: number) {
+    this.maxLinesCompact = lines;
+  }
+
+  /** Toggle compact mode on/off. Returns the new state. */
+  toggleCompactMode(): boolean {
+    this.compactMode = !this.compactMode;
+    return this.compactMode;
+  }
+
+  /** Get current compact mode state. */
+  isCompactMode(): boolean {
+    return this.compactMode;
   }
 
   /** Set the UI context (grabbed from first tool execution). */
@@ -433,16 +468,26 @@ export class AgentWidget {
       const statsLine = this.buildStatsLine(a, bg, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
-      const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}`;
-      blocks.push({
-        header: truncate(headerLine),
-        continuations: [
-          ...(a.outputFile
-            ? [truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.outputFile}`))]
-            : []),
-          truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)),
-        ],
-      });
+      if (this.compactMode) {
+        // Compact: single line with activity inline
+        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        blocks.push({
+          header: truncate(headerLine),
+          continuations: [],
+        });
+      } else {
+        // Full: header + continuation lines
+        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}`;
+        blocks.push({
+          header: truncate(headerLine),
+          continuations: [
+            ...(a.outputFile
+              ? [truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.outputFile}`))]
+              : []),
+            truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)),
+          ],
+        });
+      }
     }
     return blocks;
   }
@@ -498,7 +543,8 @@ export class AgentWidget {
 
     // ---- Overflow logic (works with blocks, not lines) ----
 
-    const maxBody = MAX_WIDGET_LINES - 1; // heading takes 1 line
+    const maxBodyLines = this.compactMode ? this.maxLinesCompact : this.maxLines;
+    const maxBody = maxBodyLines - 1; // heading takes 1 line
     const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
 
     const heading = `${theme.fg(headingColor, headingIcon)} ${theme.fg(headingColor, "Agents")}`;
@@ -616,7 +662,7 @@ export class AgentWidget {
   /** Update the status bar text, only if it changed. */
   private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
     const total = runningCount + queuedCount;
-    let statusText = total > 0 ? `${total} agents` : `agents`;
+    let statusText = total > 0 ? `${total} agent${total === 1 ? "" : "s"}` : `agents`;
     if (this.showCost) {
       const sessionCost = this.manager.getTotalAgentCost();
       // Also include in-flight running agents (not yet completed, so not in accumulator)

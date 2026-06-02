@@ -21,6 +21,8 @@ import {
   manager,
   piInstance,
   setShowCostEnabled,
+  syncWidgetSettings,
+  syncWidgetShortcut,
 } from "./index.js";
 import { resolveModel } from "./model-precedence.js";
 import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
@@ -28,6 +30,39 @@ import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Keys in config.agent that are NOT model overrides.
+ * Used by "clear all overrides" to preserve settings while clearing model overrides.
+ * When adding a new non-model config key, add it here — both the hasOverrides check
+ * and the preserved-object construction derive from this list.
+ */
+const CONFIG_AGENT_NON_MODEL_KEYS = [
+  "default",        // global default model (kept as-is, not cleared)
+  "forceBackground",
+  "graceTurns",
+  "showCost",
+  "widgetMaxLines",
+  "widgetMaxLinesCompact",
+  "widgetCompact",
+  "widgetShortcut",
+];
+
+/**
+ * Build a preserved config.agent object that retains only non-model keys from the source.
+ * Model overrides (per-type keys) are excluded.
+ */
+function buildPreservedAgentConfig(agent: Record<string, unknown>): Record<string, unknown> {
+  const preserved: Record<string, unknown> = {};
+  for (const key of CONFIG_AGENT_NON_MODEL_KEYS) {
+    const val = agent[key];
+    if (val != null || key === "default" || key === "forceBackground") {
+      // default and forceBackground are always preserved (even if null/false)
+      preserved[key] = val;
+    }
+  }
+  return preserved;
+}
 
 /**
  * Build ModelOption[] from raw "provider/model-id" strings.
@@ -122,6 +157,27 @@ function applyConcurrencyConfig(): void {
 }
 
 /**
+ * Prompt for numeric input, validate (integer ≥ min), return parsed value or undefined.
+ * Returns undefined if the user cancels or the value is invalid.
+ */
+async function parseNumericInput(
+  ctx: ExtensionCommandContext,
+  label: string,
+  initialValue: string,
+  min: number,
+  minLabel: string,
+): Promise<number | undefined> {
+  const input = await ctx.ui.input(label, initialValue);
+  if (input === undefined) return undefined;
+  const parsed = parseInt(input.trim(), 10);
+  if (isNaN(parsed) || parsed < min) {
+    ctx.ui.notify(`Invalid value — must be a number ${minLabel}`, "error");
+    return undefined;
+  }
+  return parsed;
+}
+
+/**
  * Parse a concurrency input: prompt, validate (integer ≥ 1), return parsed value or undefined.
  */
 async function parseConcurrencyInput(
@@ -129,14 +185,7 @@ async function parseConcurrencyInput(
   label: string,
   initialValue: string,
 ): Promise<number | undefined> {
-  const input = await ctx.ui.input(label, initialValue);
-  if (input === undefined) return undefined;
-  const parsed = parseInt(input.trim(), 10);
-  if (isNaN(parsed) || parsed < 1) {
-    ctx.ui.notify("Invalid value — must be a number ≥ 1", "error");
-    return undefined;
-  }
-  return parsed;
+  return parseNumericInput(ctx, label, initialValue, 1, "≥ 1");
 }
 
 /**
@@ -311,21 +360,66 @@ export async function showModelSettingsMenu(
       ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
+    // ── Widget settings section ──
+    items.push("");
+    actions.push(async () => {});
+    items.push("─── widget settings ───");
+    actions.push(async () => {});
+
+    // Compact mode toggle
+    const isCompact = __config.agent.widgetCompact === true;
+    items.push(`Compact mode · ${isCompact ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      __config.agent.widgetCompact = !isCompact;
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
+    });
+
+    // Max lines (full mode)
+    const maxLines = __config.agent.widgetMaxLines ?? 12;
+    items.push(`Max lines (full) · ${maxLines}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
+      if (parsed === undefined) return;
+      __config.agent.widgetMaxLines = parsed;
+      // Update compact max lines default if not explicitly set
+      if (__config.agent.widgetMaxLinesCompact === undefined) {
+        __config.agent.widgetMaxLinesCompact = Math.floor(parsed / 2);
+      }
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
+    });
+
+    // Max lines (compact mode)
+    const maxLinesCompact = __config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2);
+    items.push(`Max lines (compact) · ${maxLinesCompact}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
+      if (parsed === undefined) return;
+      __config.agent.widgetMaxLinesCompact = parsed;
+      saveConfigAtomic(__config);
+      syncWidgetSettings();
+      ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+    });
+
+    // Ctrl+o shortcut toggle
+    const shortcutEnabled = __config.agent.widgetShortcut === true;
+    items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      __config.agent.widgetShortcut = !shortcutEnabled;
+      saveConfigAtomic(__config);
+      syncWidgetShortcut();
+      ctx.ui.notify(`Ctrl+o shortcut ${__config.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
+    });
+
     // Grace turns setting
     const graceTurns = __config.agent.graceTurns ?? 6;
     items.push(`Grace turns · ${graceTurns}`);
     actions.push(async () => {
-      const input = await ctx.ui.input("Grace turns (≥ 0)", String(graceTurns));
-      if (input === undefined) return;
-      const parsed = parseInt(input.trim(), 10);
-      if (isNaN(parsed)) {
-        ctx.ui.notify("Invalid value — must be a number", "error");
-        return;
-      }
-      if (parsed < 0) {
-        ctx.ui.notify("Invalid value — must be ≥ 0", "error");
-        return;
-      }
+      const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
+      if (parsed === undefined) return;
       __config.agent.graceTurns = parsed;
       saveConfigAtomic(__config);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
@@ -405,23 +499,13 @@ export async function showModelSettingsMenu(
     items.push("Clear all overrides");
     actions.push(async () => {
       const hasOverrides = Object.entries(__config.agent).some(
-        ([k, v]) => k !== "default" && k !== "forceBackground" && k !== "graceTurns" && k !== "showCost" && v != null,
+        ([k, v]) => !CONFIG_AGENT_NON_MODEL_KEYS.includes(k) && v != null,
       );
       if (!hasOverrides && __config.agent.default === null) {
         ctx.ui.notify("No overrides to clear", "info");
         return;
       }
-      const preserved: Record<string, unknown> = {
-        default: __config.agent.default,
-        forceBackground: __config.agent.forceBackground,
-      };
-      if (__config.agent.graceTurns != null) {
-        preserved.graceTurns = __config.agent.graceTurns;
-      }
-      if (__config.agent.showCost != null) {
-        preserved.showCost = __config.agent.showCost;
-      }
-      __config.agent = preserved as typeof __config.agent;
+      __config.agent = buildPreservedAgentConfig(__config.agent) as typeof __config.agent;
       saveConfigAtomic(__config);
       ctx.ui.notify("All model overrides cleared", "info");
     });

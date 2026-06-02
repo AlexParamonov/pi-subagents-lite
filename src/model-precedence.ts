@@ -19,6 +19,10 @@ export interface SubagentsConfig {
     forceBackground: boolean;
     graceTurns?: number;
     showCost?: boolean;
+    widgetMaxLines?: number;
+    widgetMaxLinesCompact?: number;
+    widgetCompact?: boolean;
+    widgetShortcut?: boolean;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

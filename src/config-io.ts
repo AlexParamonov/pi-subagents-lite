@@ -14,7 +14,15 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
 
 /** Default configuration — used when config file doesn't exist or is invalid. */
 export const DEFAULT_CONFIG: SubagentsConfig = {
-  agent: { default: null, forceBackground: false, graceTurns: 6 },
+  agent: {
+    default: null,
+    forceBackground: false,
+    graceTurns: 6,
+    widgetMaxLines: 12,
+    // widgetMaxLinesCompact intentionally omitted — derives from widgetMaxLines
+    widgetCompact: false,
+    widgetShortcut: false,
+  },
   concurrency: { default: 4 },
 };
 

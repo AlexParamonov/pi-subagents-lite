@@ -322,7 +322,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agents");
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agent");
   });
 });
 
@@ -395,6 +395,105 @@ describe("status bar cost from accumulator", () => {
       (c: any[]) => c[0] === "subagents",
     );
     expect(statusCall[1]).not.toContain("$");
+  });
+});
+
+// ------------------------------------------------------------------ */
+/*  Compact mode and max lines tests                                 */
+/* ------------------------------------------------------------------ */
+
+describe("compact mode", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, AgentActivity>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, activity);
+  });
+
+  it("defaults to non-compact mode and renders multi-line", () => {
+    const agent = makeRunningAgent("a1");
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Full mode: heading + 1 header + 1 activity continuation = 3 lines
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("compact mode renders running agent as single line (no continuations)", () => {
+    widget.setCompactMode(true);
+    const agent = makeRunningAgent("a1");
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Heading + 1 line for compact agent (no activity continuation line)
+    expect(lines).toHaveLength(2);
+    // The agent line should contain the activity inline
+    expect(lines[1]).toContain("reading");
+  });
+
+  it("full mode renders running agent with continuation lines", () => {
+    widget.setCompactMode(false);
+    const agent = makeRunningAgent("a1");
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Heading + 1 header + 1 activity continuation
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("max lines configuration", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, AgentActivity>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, activity);
+  });
+
+  it("setMaxLines updates the full mode max lines", () => {
+    widget.setMaxLines(8);
+    // Create 8 running agents to test overflow
+    const agents = Array.from({ length: 8 }, (_, i) => makeRunningAgent(`a${i}`));
+    for (const a of agents) activity.set(a.id, makeActivity(a.id));
+    (manager as any).listAgents = () => agents;
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Should be capped at 8 lines (1 heading + 7 body max)
+    expect(lines.length).toBeLessThanOrEqual(8);
+  });
+
+  it("setMaxLinesCompact updates compact mode max lines", () => {
+    widget.setCompactMode(true);
+    widget.setMaxLinesCompact(3);
+    // Create 5 running agents
+    const agents = Array.from({ length: 5 }, (_, i) => makeRunningAgent(`a${i}`));
+    for (const a of agents) activity.set(a.id, makeActivity(a.id));
+    (manager as any).listAgents = () => agents;
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Should be capped at 3 lines (1 heading + 2 body max)
+    expect(lines.length).toBeLessThanOrEqual(3);
+  });
+
+  it("shows overflow indicator when agents exceed max lines", () => {
+    widget.setMaxLines(5);
+    const agents = Array.from({ length: 10 }, (_, i) => makeRunningAgent(`a${i}`));
+    for (const a of agents) activity.set(a.id, makeActivity(a.id));
+    (manager as any).listAgents = () => agents;
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Should have overflow indicator
+    const hasOverflow = lines.some((l: string) => l.includes("more"));
+    expect(hasOverflow).toBe(true);
   });
 });
 
