@@ -30,6 +30,7 @@ Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `des
 - **Smart model resolution** — 6-level precedence: session → config → frontmatter → parent. Set once, forget
 - **Concurrency control** — per-model and per-provider slot limits with automatic queuing
 - **Cost tracking** — input/output/cache tokens and dollar cost per agent
+- **Cost display** — toggle agent cost in stats and status bar (OFF by default)
 - **Live widget** — persistent status bar above the editor showing running/completed agents
 - **Result viewer** — fullscreen markdown viewer with stats
 - **Steer** — inject mid-execution guidance into running agents
@@ -280,7 +281,7 @@ The LLM never passes `model` — it's injected at call time via the `tool_call` 
 
 Management menu with four sections:
 
-- **Model settings** — global default, per-type overrides, force background mode
+- **Model settings** — global default, per-type overrides, force background mode, cost display toggle
 - **Concurrency** — default limit, per-provider and per-model slots
 - **Running agents** — list, steer, stop, view snapshot, view result
 - **Debug** — agent types, agent briefing (sends capabilities to the LLM)
@@ -311,6 +312,8 @@ Key bindings: `↑↓` navigate · `PgUp/PgDn` · `g`/`G` top/bottom · `f` togg
 
 Stats line: ` ↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`
 
+When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builder·2🛠 ·5⟳ ·12.3k·$0.008·10s`. The status bar shows total agent cost: `agents: $0.008` or `2 agents: $0.008`.
+
 ## Configuration
 
 `~/.pi/agent/subagents-lite.json` — managed via `/agents` menu, or edit directly:
@@ -320,6 +323,7 @@ Stats line: ` ↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`
   "agent": {
     "default": null,
     "forceBackground": false,
+    "showCost": true,
     "Explore": "anthropic/claude-haiku-4-5-20251001"
   },
   "concurrency": {
@@ -332,7 +336,7 @@ Stats line: ` ↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`
 }
 ```
 
-> **Note:** `agent.default` (global fallback), `agent.forceBackground` (flag), and per-type overrides like `"Explore"` are peers in the same object. Agent type names become dynamic keys alongside the special fields.
+> **Note:** `agent.default` (global fallback), `agent.forceBackground` (flag), `agent.showCost` (toggle cost display), and per-type overrides like `"Explore"` are peers in the same object. Agent type names become dynamic keys alongside the special fields.
 
 ## StopAgent Tool
 
