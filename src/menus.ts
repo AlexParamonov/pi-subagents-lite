@@ -2,7 +2,7 @@
  * menus.ts — /agents command menu system.
  *
  * All menu-related functions extracted from index.ts.
- * Imports shared state (config, manager, piInstance) from index.ts.
+ * Imports shared state (config, manager, piInstance) from state.ts.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -22,7 +22,7 @@ import {
   piInstance,
   setShowCostEnabled,
   syncWidgetSettings,
-} from "./index.js";
+} from "./state.js";
 import { resolveModel } from "./model-precedence.js";
 import { saveConfigAtomic, DEFAULT_CONFIG } from "./config-io.js";
 

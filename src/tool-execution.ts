@@ -14,7 +14,7 @@ import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js
 import { resolveModel } from "./model-precedence.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
 
-// Shared state imported from index.ts
+// Shared state imported from state.ts
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.js";
 import {
   __config,
@@ -23,7 +23,7 @@ import {
   piInstance,
   agentActivity,
   widget,
-} from "./index.js";
+} from "./state.js";
 
 // ============================================================================
 // Module-level state

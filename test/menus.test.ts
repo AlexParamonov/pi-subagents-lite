@@ -55,8 +55,8 @@ vi.mock("../src/config-io.js", () => ({
   },
 }));
 
-// Mock index.ts state with a mutable config object
-vi.mock("../src/index.js", () => {
+// Mock state.ts with a mutable config object
+vi.mock("../src/state.js", () => {
   return {
     __config: mockModules.mockConfig,
     sessionOverrides: mockModules.mockSessionOverrides,

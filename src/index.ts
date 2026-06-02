@@ -30,81 +30,46 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionModelOverrides, SubagentsConfig } from "./model-precedence.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agent-types.js";
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { AgentManager } from "./agent-manager.js";
-import { AgentWidget, type AgentActivity, type UICtx } from "./ui/agent-widget.js";
+import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
-import { loadConfig, DEFAULT_CONFIG } from "./config-io.js";
+import { loadConfig } from "./config-io.js";
 import { executeAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
 import { executeStopAgentTool } from "./stop-agent-tool.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
+import {
+  __config,
+  manager,
+  sessionOverrides,
+  agentActivity,
+  widget,
+  piInstance,
+  setConfig,
+  setManager,
+  clearManager,
+  setWidget,
+  setPiInstance,
+  resetSessionOverrides,
+  resetLastToolsExpanded,
+  syncWidgetSettings,
+  syncCompactFromToolsExpanded,
+} from "./state.js";
 
-// ============================================================================
-// Module-level state
-// ============================================================================
-
-/** Session-only model overrides — not persisted, cleared on session_start. */
-export let sessionOverrides: SessionModelOverrides = { default: null };
-
-/** Config cache — loaded at session_start, updated by /agents menu mutations. */
-export let __config: SubagentsConfig = { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
-
-/** Agent manager singleton — module-level, no globalThis access. */
-export let manager: AgentManager;
-
-/** Live activity state per agent, keyed by agent ID. Read by AgentWidget and tool-execution. */
-export const agentActivity = new Map<string, AgentActivity>();
-
-/** Live TUI widget showing running/completed agents above the editor. Used by tool-execution. */
-export let widget: AgentWidget | undefined;
-
-/** ExtensionAPI reference — stored at init for execute callbacks. */
-export let piInstance: ExtensionAPI;
-
-/** Update the cost display toggle in config and sync to widget. */
-export function setShowCostEnabled(enabled: boolean): void {
-  __config.agent.showCost = enabled;
-  widget?.setShowCost(enabled);
-}
-
-/** Sync widget display settings from config to the widget instance. */
-export function syncWidgetSettings(): void {
-  if (!widget) return;
-  widget.setForceCompact(__config.agent.widgetCompact === true);
-  widget.setWidgetShortcut(__config.agent.widgetShortcut === true);
-  widget.setMaxLines(__config.agent.widgetMaxLines ?? 12);
-  widget.setMaxLinesCompact(
-    __config.agent.widgetMaxLinesCompact ?? Math.floor((__config.agent.widgetMaxLines ?? 12) / 2),
-  );
-}
-
-/** Track previous tool expansion state to detect ctrl+o toggle. */
-let lastToolsExpanded: boolean | undefined;
-
-/** Sync compact mode with the tool expansion state (ctrl+o toggle).
- *  Only syncs when widgetShortcut is enabled in config (opt-in behavior).
- *  Only triggers on state change (not every tool_execution_start).
- *  When forceCompact (widgetCompact) is ON, ignores ctrl+o state changes.
- */
-export function syncCompactFromToolsExpanded(expanded: boolean): void {
-  if (__config.agent.widgetShortcut !== true) {
-    lastToolsExpanded = expanded;
-    return;
-  }
-  // When forceCompact is ON, ignore ctrl+o state changes
-  if (__config.agent.widgetCompact === true) {
-    lastToolsExpanded = expanded;
-    return;
-  }
-  // Tools expanded → widget full, tools collapsed → widget compact
-  if (lastToolsExpanded !== undefined && lastToolsExpanded !== expanded) {
-    widget?.setCompactMode(!expanded);
-  }
-  lastToolsExpanded = expanded;
-}
+// Re-exports for backward compatibility
+export {
+  __config,
+  manager,
+  sessionOverrides,
+  agentActivity,
+  widget,
+  piInstance,
+  setShowCostEnabled,
+  syncWidgetSettings,
+  syncCompactFromToolsExpanded,
+} from "./state.js";
 
 
 
@@ -119,7 +84,7 @@ export function syncCompactFromToolsExpanded(expanded: boolean): void {
 function ensureManagerAndWidget(): void {
   if (manager) return;
 
-  manager = new AgentManager(
+  const newManager = new AgentManager(
     (record) => {
       // Only nudge for background (async) agents — sync agents already returned via tool result
       if (backgroundAgentIds.has(record.id)) {
@@ -137,11 +102,13 @@ function ensureManagerAndWidget(): void {
     },
     __config.concurrency,
   );
+  setManager(newManager);
 
   // Create/replace widget tied to this manager instance
   if (!widget) {
-    widget = new AgentWidget(manager, agentActivity);
-    widget.setShowCost(__config.agent.showCost === true);
+    const newWidget = new AgentWidget(newManager, agentActivity);
+    newWidget.setShowCost(__config.agent.showCost === true);
+    setWidget(newWidget);
     syncWidgetSettings();
   }
 }
@@ -171,7 +138,7 @@ async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
 }
 
 async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
-  __config = loadConfig();
+  setConfig(loadConfig());
   ensureManagerAndWidget();
   await scanAndRegisterAgents(ctx);
 }
@@ -223,7 +190,7 @@ function registerAgentTool(pi: ExtensionAPI): void {
 
 export default function (pi: ExtensionAPI) {
   // Store pi for execute callbacks
-  piInstance = pi;
+  setPiInstance(pi);
 
   // ========================================================================
   // Tool registration (stealth schemas — at init time)
@@ -281,9 +248,9 @@ export default function (pi: ExtensionAPI) {
   let unregisterTerminalInput: (() => void) | undefined;
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
-    sessionOverrides = { default: null };
+    resetSessionOverrides();
     agentActivity.clear();
-    lastToolsExpanded = undefined;
+    resetLastToolsExpanded();
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
@@ -318,10 +285,10 @@ export default function (pi: ExtensionAPI) {
       }
     }
     widget?.dispose();
-    widget = undefined;
+    setWidget(undefined);
     if (manager) {
       await manager.dispose();
-      manager = undefined as any;
+      clearManager();
     }
   });
 }

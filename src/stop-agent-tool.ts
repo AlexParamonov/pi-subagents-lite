@@ -12,7 +12,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { successResult, errorResult } from "./tool-execution.js";
-import { manager } from "./index.js";
+import { manager } from "./state.js";
 import { SHORT_ID_LENGTH } from "./types.js";
 
 // ============================================================================
