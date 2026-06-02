@@ -302,6 +302,15 @@ export async function showModelSettingsMenu(
       );
     });
 
+    // Cost display toggle
+    const showCost = __config.agent.showCost !== false; // default true
+    items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      setShowCostEnabled(!showCost);
+      saveConfigAtomic(__config);
+      ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
+    });
+
     // Grace turns setting
     const graceTurns = __config.agent.graceTurns ?? 6;
     items.push(`Grace turns · ${graceTurns}`);
@@ -320,15 +329,6 @@ export async function showModelSettingsMenu(
       __config.agent.graceTurns = parsed;
       saveConfigAtomic(__config);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
-    });
-
-    // Cost display toggle
-    const showCost = __config.agent.showCost !== false; // default true
-    items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      setShowCostEnabled(!showCost);
-      saveConfigAtomic(__config);
-      ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
     items.push("");
