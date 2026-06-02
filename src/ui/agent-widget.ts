@@ -702,10 +702,11 @@ export class AgentWidget {
     if (!this.uiCtx) return;
 
     // Sync compact mode with tool expansion state (ctrl+o)
+    // Tools expanded → widget full, tools collapsed → widget compact
     if (this.widgetShortcut && !this.forceCompact && this.getToolsExpanded) {
       const expanded = this.getToolsExpanded();
       if (this.lastToolsExpandedState !== undefined && this.lastToolsExpandedState !== expanded) {
-        this.compactMode = expanded;
+        this.compactMode = !expanded;
       }
       this.lastToolsExpandedState = expanded;
     }

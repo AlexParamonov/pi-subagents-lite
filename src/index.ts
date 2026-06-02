@@ -102,11 +102,9 @@ export function syncCompactFromToolsExpanded(expanded: boolean): void {
     lastToolsExpanded = expanded;
     return;
   }
-  // Only sync when state actually changes (ctrl+o pressed)
+  // Tools expanded → widget full, tools collapsed → widget compact
   if (lastToolsExpanded !== undefined && lastToolsExpanded !== expanded) {
-    widget?.setCompactMode(expanded);
-    // Don't update widgetCompact config — that's the force compact setting, managed by menu only.
-    // compactMode on the widget instance tracks the ctrl+o ephemeral state.
+    widget?.setCompactMode(!expanded);
   }
   lastToolsExpanded = expanded;
 }
