@@ -176,6 +176,8 @@ export interface AgentAccumulatedStats {
   maxTurns?: number;
   /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
   compactionCount: number;
+  /** Last-known context usage percentage (0–100), captured at completion. */
+  contextPercent?: number | null;
 }
 
 

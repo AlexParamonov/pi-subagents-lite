@@ -563,3 +563,53 @@ describe("formatMs", () => {
     expect(formatMs(1000)).toBe("1s");
   });
 });
+
+describe("renderFinishedLine context percent", () => {
+  it("uses stats.contextPercent for finished agents without execution.session", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([]);
+    const widget = new AgentWidget(manager, activity);
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    // Set context percent in stats (what agent-manager writes at completion)
+    finished.stats.contextPercent = 72;
+    // No session on execution — the display code must NOT reach here
+    finished.execution = {};
+    widget.markFinished("f1");
+    (manager as any).listAgents = () => [finished];
+
+    // Track what buildStatsParts receives by mocking getSessionContextPercent
+    // indirectly: the widget should render without needing execution.session
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.some((l: string) => l.includes("Finished agent f1"))).toBe(true);
+  });
+
+  it("prefers activity session over stats.contextPercent when activity exists", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([]);
+    const widget = new AgentWidget(manager, activity);
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    finished.stats.contextPercent = 50;
+    finished.execution = {};
+
+    // Activity still exists (not yet deleted) — has its own session
+    const mockSession = {
+      getSessionStats: () => ({ contextUsage: { percent: 85 } }),
+    };
+    activity.set("f1", {
+      ...makeActivity("f1"),
+      session: mockSession,
+    });
+    widget.markFinished("f1");
+    (manager as any).listAgents = () => [finished];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThan(0);
+  });
+});

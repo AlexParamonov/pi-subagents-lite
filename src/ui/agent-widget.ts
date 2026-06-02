@@ -324,7 +324,7 @@ export class AgentWidget {
       turnCount: activity?.turnCount ?? a.stats.turnCount,
       maxTurns: activity?.maxTurns ?? a.stats.maxTurns,
       tokens: getLifetimeTotal(usage),
-      contextPercent: getSessionContextPercent(activity?.session ?? a.execution.session),
+      contextPercent: activity?.session ? getSessionContextPercent(activity.session) : a.stats.contextPercent ?? null,
       compactions: a.stats.compactionCount,
       cost: this.showCost ? usage.cost : undefined,
     }, theme);

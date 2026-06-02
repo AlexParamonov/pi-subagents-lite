@@ -18,7 +18,7 @@ import {
   type SubagentType,
   type ThinkingLevel,
 } from "./types.js";
-import { addUsage, getLifetimeTotal, type LifetimeUsage } from "./usage.js";
+import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
 import { errorMessage } from "./utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
@@ -354,6 +354,7 @@ export class AgentManager {
         }
         record.result = responseText;
         record.execution.session = session;
+        record.stats.contextPercent = getSessionContextPercent(session);
         record.lifecycle.completedAt ??= Date.now();
         return responseText;
       })
