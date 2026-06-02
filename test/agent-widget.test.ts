@@ -273,6 +273,59 @@ describe("widget connectors", () => {
   });
 });
 
+describe("status bar format", () => {
+  it("shows 'N agents: $cost' format with running agents", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0);
+    const widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    a1.lifetimeUsage.cost = 0.05;
+    const a2 = makeRunningAgent("a2");
+    a2.lifetimeUsage.cost = 0.03;
+    (manager as any).listAgents = () => [a1, a2];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "2 agents: $0.08");
+  });
+
+  it("shows 'agents: $cost' format when no running/queued agents but finished exist", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.01);
+    const widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    // Only finished agents, no running/queued
+    const finished = makeFinishedAgent("f1");
+    widget.markFinished("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "agents: $0.01");
+  });
+
+  it("shows 'N agents' without cost when cost is zero", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0);
+    const widget = new AgentWidget(manager, activity);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const agent = makeRunningAgent("a1");
+    agent.lifetimeUsage.cost = 0;
+    (manager as any).listAgents = () => [agent];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agents");
+  });
+});
+
 describe("status bar cost from accumulator", () => {
   let widget: AgentWidget;
   let manager: AgentManager;

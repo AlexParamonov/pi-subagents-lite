@@ -615,22 +615,18 @@ export class AgentWidget {
 
   /** Update the status bar text, only if it changed. */
   private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
-    const statusParts: string[] = [];
-    if (runningCount > 0) statusParts.push(`${runningCount} running`);
-    if (queuedCount > 0) statusParts.push(`${queuedCount} queued`);
     const total = runningCount + queuedCount;
-    let suffix = ` agent${total === 1 ? "" : "s"}`;
+    let statusText = total > 0 ? `${total} agents` : `agents`;
     if (this.showCost) {
       const sessionCost = this.manager.getTotalAgentCost();
       // Also include in-flight running agents (not yet completed, so not in accumulator)
       const runningCost = running.reduce((sum, a) => sum + a.lifetimeUsage.cost, 0);
       const totalCost = sessionCost + runningCost;
-      if (totalCost > 0) suffix += ` · ${formatCost(totalCost)}`;
+      if (totalCost > 0) statusText += `: ${formatCost(totalCost)}`;
     }
-    const newStatusText = `${statusParts.join(", ")}${suffix}`;
-    if (newStatusText !== this.lastStatusText) {
-      this.uiCtx?.setStatus(STATUS_KEY, newStatusText);
-      this.lastStatusText = newStatusText;
+    if (statusText !== this.lastStatusText) {
+      this.uiCtx?.setStatus(STATUS_KEY, statusText);
+      this.lastStatusText = statusText;
     }
   }
 
