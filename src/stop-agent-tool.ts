@@ -12,7 +12,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { successResult, errorResult } from "./tool-execution.js";
-import { manager } from "./state.js";
+import { getManager } from "./state.js";
 import { SHORT_ID_LENGTH } from "./types.js";
 
 // ============================================================================
@@ -24,7 +24,7 @@ import { SHORT_ID_LENGTH } from "./types.js";
  * Format: "type·short_id, type·short_id" — one line, easy for LLM to parse.
  */
 function formatRunningAgents(): string {
-  const agents = manager.listAgents().filter(
+  const agents = getManager().listAgents().filter(
     (a) => a.status === "running" || a.status === "queued",
   );
 
@@ -52,7 +52,7 @@ export async function executeStopAgentTool(
     return errorResult("agent_id is required");
   }
 
-  const record = manager.getRecord(agentId);
+  const record = getManager().getRecord(agentId);
 
   if (!record) {
     // Agent not found → return error + list of running agents
@@ -69,7 +69,7 @@ export async function executeStopAgentTool(
   }
 
   // Attempt to stop the running/queued agent
-  if (manager.abort(agentId)) {
+  if (getManager().abort(agentId)) {
     return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
   }
 

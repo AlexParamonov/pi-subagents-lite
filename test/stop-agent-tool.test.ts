@@ -136,11 +136,11 @@ vi.mock("../src/tool-execution.js", () => ({
 
 // Mock the state module so stop-agent-tool.ts gets a fake manager
 vi.mock("../src/state.js", () => ({
-  manager: {
+  getManager: () => ({
     abort: mockAbort,
     getRecord: mockGetRecord,
     listAgents: mockListAgents,
-  },
+  }),
 }));
 
 /* ------------------------------------------------------------------ */

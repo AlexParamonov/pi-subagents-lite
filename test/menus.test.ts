@@ -60,12 +60,14 @@ vi.mock("../src/state.js", () => {
   return {
     __config: mockModules.mockConfig,
     sessionOverrides: mockModules.mockSessionOverrides,
-    manager: {
+    getManager: () => ({
       setConcurrency: vi.fn(),
       listAgents: vi.fn(() => []),
       getRecord: vi.fn(),
       abort: vi.fn(),
-    },
+      steer: vi.fn(),
+    }),
+    getWidget: vi.fn(() => undefined),
     piInstance: { sendUserMessage: vi.fn() },
     setShowCostEnabled: vi.fn((enabled: boolean) => {
       mockModules.mockConfig.agent.showCost = enabled;

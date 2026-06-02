@@ -18,8 +18,8 @@ import { parseModelKey } from "./utils.js";
 import {
   __config,
   sessionOverrides,
-  manager,
   piInstance,
+  getManager,
   setShowCostEnabled,
   syncWidgetSettings,
 } from "./state.js";
@@ -152,7 +152,7 @@ async function applyModelOverride(
  */
 function applyConcurrencyConfig(): void {
   saveConfigAtomic(__config);
-  manager?.setConcurrency(__config.concurrency);
+  getManager()?.setConcurrency(__config.concurrency);
 }
 
 /**
@@ -793,14 +793,14 @@ export async function showConcurrencySettingsMenu(
 async function showRunningAgentsMenu(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
-  const records = manager?.listAgents() ?? [];
+  const records = getManager()?.listAgents() ?? [];
   if (records.length === 0) {
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
 
   return runMenuLoop(ctx, "Running Agents", () => {
-    const records = manager?.listAgents() ?? [];
+    const records = getManager()?.listAgents() ?? [];
     const running = records.filter((r) => r.status === "running" || r.status === "queued");
 
     const items: string[] = [];
@@ -834,7 +834,7 @@ async function showRunningAgentsMenu(
       items.push(`Stop ${running.length} running agent(s)`);
       actions.push(async () => {
         for (const record of running) {
-          manager?.abort(record.id);
+          getManager()?.abort(record.id);
         }
         ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
       });
@@ -889,7 +889,7 @@ async function steerAgentById(
   agentId: string,
   ctx: ExtensionCommandContext,
 ): Promise<void> {
-  const record = manager?.getRecord(agentId);
+  const record = getManager()?.getRecord(agentId);
   if (!record) {
     ctx.ui.notify("Agent not found", "error");
     return;
@@ -898,7 +898,7 @@ async function steerAgentById(
   const message = await ctx.ui.input(`Steer ${record.type}`);
   if (!message?.trim()) return;
 
-  const sent = await manager.steer(agentId, message.trim());
+  const sent = await getManager().steer(agentId, message.trim());
   if (sent) {
     ctx.ui.notify(`Steer sent to ${record.id.slice(0, SHORT_ID_LENGTH)}…`, "info");
   } else {
@@ -955,7 +955,7 @@ export async function showAgentActions(
 
     items.push("Stop");
     actions.push(async () => {
-      manager?.abort(record.id);
+      getManager()?.abort(record.id);
       ctx.ui.notify(`Stopped ${record.id.slice(0, SHORT_ID_LENGTH)}`, "info");
     });
   }
