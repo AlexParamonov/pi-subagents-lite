@@ -389,14 +389,16 @@ describe("syncCompactFromToolsExpanded", () => {
 
   it("syncs compact mode when widgetShortcut is true", () => {
     config.agent.widgetShortcut = true;
-    syncFn(true);
+    syncFn(false);  // Set initial state
+    syncFn(true);   // Trigger change
     expect(config.agent.widgetCompact).toBe(true);
   });
 
   it("syncs compact mode to false when widgetShortcut is true", () => {
     config.agent.widgetShortcut = true;
     config.agent.widgetCompact = true;
-    syncFn(false);
+    syncFn(true);   // Set initial state
+    syncFn(false);  // Trigger change
     expect(config.agent.widgetCompact).toBe(false);
   });
 });

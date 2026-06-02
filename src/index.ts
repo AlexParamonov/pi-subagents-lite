@@ -80,13 +80,24 @@ export function syncWidgetSettings(): void {
   );
 }
 
+/** Track previous tool expansion state to detect ctrl+o toggle. */
+let lastToolsExpanded: boolean | undefined;
+
 /** Sync compact mode with the tool expansion state (ctrl+o toggle).
  *  Only syncs when widgetShortcut is enabled in config (opt-in behavior).
+ *  Only triggers on state change (not every tool_execution_start).
  */
 export function syncCompactFromToolsExpanded(expanded: boolean): void {
-  if (__config.agent.widgetShortcut !== true) return;
-  widget?.setCompactMode(expanded);
-  __config.agent.widgetCompact = expanded;
+  if (__config.agent.widgetShortcut !== true) {
+    lastToolsExpanded = expanded;
+    return;
+  }
+  // Only sync when state actually changes (ctrl+o pressed)
+  if (lastToolsExpanded !== undefined && lastToolsExpanded !== expanded) {
+    widget?.setCompactMode(expanded);
+    __config.agent.widgetCompact = expanded;
+  }
+  lastToolsExpanded = expanded;
 }
 
 
@@ -367,6 +378,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     sessionOverrides = { default: null };
     agentActivity.clear();
+    lastToolsExpanded = undefined;
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
