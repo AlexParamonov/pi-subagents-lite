@@ -105,6 +105,61 @@ function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
 }
 
 // ============================================================================
+// buildAgentDetails — consolidated stats/details construction
+// ============================================================================
+
+export interface AgentDetailsOptions {
+  /** Include full stats (turns, tokens, context%, compactions, cost). Default: false. */
+  includeStats?: boolean;
+  /** Include status and outputFile. Default: false. */
+  includeStatus?: boolean;
+  /** Override the turnCount (e.g. from activity tracker). Default: record.turnCount. */
+  turnCount?: number;
+}
+
+/**
+ * Build a details Record from an AgentRecord, controlled by options.
+ *
+ * Always includes `type` and `description`. Optional groups:
+ * - `includeStatus`: adds `status`, `outputFile`
+ * - `includeStats`: adds turn/token/cost/context/compaction/model fields
+ *
+ * Consolidates the identical field-selection logic previously duplicated
+ * across emitIndividualNudge, executeSpawnForeground, and executeSpawnBackground.
+ */
+export function buildAgentDetails(
+  record: AgentRecord,
+  options?: AgentDetailsOptions,
+): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    type: record.type,
+    description: record.description,
+  };
+
+  if (options?.includeStatus) {
+    details.status = record.status;
+    details.outputFile = record.outputFile;
+  }
+
+  if (options?.includeStats) {
+    const totalTokens = getLifetimeTotal(record.lifetimeUsage);
+    const elapsedMs = record.completedAt ? record.completedAt - record.startedAt : 0;
+
+    details.turnCount = options.turnCount ?? record.turnCount;
+    details.maxTurns = record.maxTurns;
+    details.toolUses = record.toolUses;
+    details.tokens = totalTokens;
+    details.contextPercent = getSessionContextPercent(record.session);
+    details.durationMs = elapsedMs;
+    details.compactions = record.compactionCount;
+    details.modelName = record.invocation?.modelName;
+    details.cost = record.lifetimeUsage.cost;
+  }
+
+  return details;
+}
+
+// ============================================================================
 // Nudge scheduling — batch completion notifications within the hold window
 // ============================================================================
 
@@ -127,26 +182,11 @@ export function scheduleNudge(agentId: string): void {
 function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   if (!record) return;
 
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const elapsedMs = record.completedAt
-    ? record.completedAt - record.startedAt
-    : 0;
-
-  const details: Record<string, unknown> = {
-    type: record.type,
-    description: record.description,
-    status: record.status,
-    outputFile: record.outputFile,
+  const details = buildAgentDetails(record, {
+    includeStats: true,
+    includeStatus: true,
     turnCount: record.turnCount ?? agentActivity.get(agentId)?.turnCount,
-    maxTurns: record.maxTurns,
-    toolUses: record.toolUses,
-    tokens: totalTokens,
-    cost: record.lifetimeUsage.cost,
-    contextPercent: getSessionContextPercent(record.session),
-    durationMs: elapsedMs,
-    compactions: record.compactionCount,
-    modelName: record.invocation?.modelName,
-  };
+  });
 
   piInstance.sendMessage(
     {
@@ -237,7 +277,7 @@ async function executeSpawnBackground(
   getWidget()?.update();
 
   const record = getManager().getRecord(agentId)!;
-  const details: Record<string, unknown> = { type: resolvedType, description: spawnOptions.description };
+  const details = buildAgentDetails(record);
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.status === "queued" ? "Agent queued" : "Agent running";
 
@@ -269,21 +309,10 @@ async function executeSpawnForeground(
   getWidget()?.markFinished(fgId);
   getWidget()?.update();
 
-  const elapsedMs = (record.completedAt ?? Date.now()) - record.startedAt;
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const stats: Record<string, unknown> = {
-    type: resolvedType,
+  const stats = buildAgentDetails(record, {
+    includeStats: true,
     turnCount: fgState.turnCount,
-    maxTurns: fgState.maxTurns,
-    toolUses: record.toolUses,
-    tokens: totalTokens,
-    contextPercent: getSessionContextPercent(fgState.session),
-    durationMs: elapsedMs,
-    description: spawnOptions.description,
-    compactions: record.compactionCount,
-    modelName: record.invocation?.modelName,
-    cost: record.lifetimeUsage.cost,
-  };
+  });
 
   if (record.status === "error") {
     return errorResult(`Agent failed: ${record.error || "unknown error"}`, stats);
