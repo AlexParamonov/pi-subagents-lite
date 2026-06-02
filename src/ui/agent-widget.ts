@@ -261,6 +261,12 @@ export class AgentWidget {
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
 
+  /** Whether "force compact" mode is ON — overrides ctrl+o shortcut. */
+  private forceCompact = false;
+
+  /** Whether ctrl+o shortcut is enabled (syncs compact with toolsExpanded). */
+  private widgetShortcut = false;
+
   /** Maximum lines for full mode. */
   private maxLines = DEFAULT_MAX_WIDGET_LINES;
 
@@ -277,9 +283,21 @@ export class AgentWidget {
     this.showCost = enabled;
   }
 
-  /** Set compact mode. */
+  /** Set compact mode (internal, for sync from ctrl+o). */
   setCompactMode(enabled: boolean) {
+    if (this.compactMode === enabled) return;
     this.compactMode = enabled;
+    this.update();
+  }
+
+  /** Set force compact mode — overrides ctrl+o shortcut. */
+  setForceCompact(enabled: boolean) {
+    this.forceCompact = enabled;
+  }
+
+  /** Set whether ctrl+o shortcut is enabled. */
+  setWidgetShortcut(enabled: boolean) {
+    this.widgetShortcut = enabled;
   }
 
   /** Set max lines for full mode. */
@@ -457,7 +475,7 @@ export class AgentWidget {
       const statsLine = this.buildStatsLine(a, bg, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
-      if (this.compactMode) {
+      if (this.isCompact()) {
         // Compact: single line with activity inline
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.description}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
@@ -502,6 +520,11 @@ export class AgentWidget {
    * connectors in a single pass. Last visible block gets CORNER + spaces, all others
    * keep BRANCH + VLINE.
    */
+  /** Whether the widget should render in compact mode. */
+  private isCompact(): boolean {
+    return this.forceCompact || (this.widgetShortcut && this.compactMode);
+  }
+
   private renderWidget(tui: TUI, theme: Theme): string[] {
     const { running, queued, finished } = this.categorizeAgents();
 
@@ -532,7 +555,7 @@ export class AgentWidget {
 
     // ---- Overflow logic (works with blocks, not lines) ----
 
-    const maxBodyLines = this.compactMode ? this.maxLinesCompact : this.maxLines;
+    const maxBodyLines = this.isCompact() ? this.maxLinesCompact : this.maxLines;
     const maxBody = maxBodyLines - 1; // heading takes 1 line
     const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
 
