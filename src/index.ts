@@ -372,6 +372,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", toolCallListener);
 
   pi.on("tool_execution_start", async (_event, ctx) => {
+    // Set UI context on first tool execution
+    if (!widget) {
+      ensureManagerAndWidget();
+    }
     widget?.setUICtx(ctx.ui as unknown as UICtx);
     widget?.onTurnStart();
     // Sync compact mode with tool expansion state (ctrl+o toggle)
@@ -390,11 +394,6 @@ export default function (pi: ExtensionAPI) {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
-    // Set UI context on widget so it can register even without tool execution
-    if (ctx.hasUI) {
-      widget?.setUICtx(ctx.ui as unknown as UICtx);
-      widget?.update();
-    }
     // Sync compact mode with initial tool expansion state
     syncCompactFromToolsExpanded(false);
   });
@@ -404,6 +403,7 @@ export default function (pi: ExtensionAPI) {
     widget = undefined;
     if (manager) {
       await manager.dispose();
+      manager = undefined as any;
     }
   });
 }
