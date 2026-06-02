@@ -292,17 +292,6 @@ export class AgentWidget {
     this.maxLinesCompact = lines;
   }
 
-  /** Toggle compact mode on/off. Returns the new state. */
-  toggleCompactMode(): boolean {
-    this.compactMode = !this.compactMode;
-    return this.compactMode;
-  }
-
-  /** Get current compact mode state. */
-  isCompactMode(): boolean {
-    return this.compactMode;
-  }
-
   /** Set the UI context (grabbed from first tool execution). */
   setUICtx(ctx: UICtx) {
     if (ctx !== this.uiCtx) {

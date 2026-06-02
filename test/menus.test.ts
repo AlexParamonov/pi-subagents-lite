@@ -90,31 +90,6 @@ function resetAgentState(): void {
  * @param inputs Array of values that ctx.ui.input returns sequentially.
  * @param customValues Array of values that ctx.ui.custom returns sequentially.
  */
-const noopTheme: any = {
-  fg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
-  italic: (text: string) => text,
-};
-
-/**
- * Select menu item by partial name match.
- * Maps short names to menu items: 'model', 'concurrency', 'running', 'widget', 'debug'
- */
-function selectByName(name: string): (title: string, items: string[]) => string | undefined {
-  const nameMap: Record<string, string> = {
-    model: "Model settings",
-    concurrency: "Concurrency settings",
-    running: "Running agents",
-    widget: "Widget settings",
-    debug: "Debug",
-  };
-  const search = nameMap[name.toLowerCase()] ?? name;
-  return (_title: string, items: string[]) => {
-    const match = items.find(item => item.toLowerCase().includes(search.toLowerCase()));
-    return match ?? undefined;
-  };
-}
-
 function createMockCtx(
   selections: (string | ((title: string, items: string[]) => string | undefined) | undefined)[] = [],
   inputs: (string | undefined)[] = [],
