@@ -529,14 +529,14 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const items: string[] = [];
     const actions: Array<() => Promise<void>> = [];
 
-    // Compact mode toggle
-    const isCompact = __config.agent.widgetCompact === true;
-    items.push(`Compact mode · ${isCompact ? "ON" : "OFF"}`);
+    // Force compact mode toggle
+    const isForceCompact = __config.agent.widgetCompact === true;
+    items.push(`Force compact mode · ${isForceCompact ? "ON" : "OFF"}`);
     actions.push(async () => {
-      __config.agent.widgetCompact = !isCompact;
+      __config.agent.widgetCompact = !isForceCompact;
       saveConfigAtomic(__config);
       syncWidgetSettings();
-      ctx.ui.notify(`Compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
+      ctx.ui.notify(`Force compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
     });
 
     // Max lines (full mode)
@@ -812,8 +812,12 @@ async function showRunningAgentsMenu(
         record.status === "completed" ? "✓" :
         record.status === "queued" ? "⏳" :
         record.status === "error" ? "✗" : "•";
+      const headline = record.description
+        ? (record.description.length > 50 ? record.description.slice(0, 47) + "..." : record.description)
+        : "";
+      const suffix = headline ? ` — ${headline}` : "";
       items.push(
-        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.type}  ${record.status}  ${elapsed}s`,
+        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.type}  ${record.status}  ${elapsed}s${suffix}`,
       );
 
       actions.push(async () => {
