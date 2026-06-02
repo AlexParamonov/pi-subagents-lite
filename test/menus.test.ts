@@ -75,7 +75,7 @@ vi.mock("../src/index.js", () => {
 });
 
 // --- Import module under test ---
-import { showConcurrencySettingsMenu, showModelSettingsMenu, showAgentsMainMenu, showWidgetSettingsMenu } from "../src/menus.js";
+import { showConcurrencySettingsMenu, showModelSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
 import { getAgentConfig } from "../src/agent-types.js";
 
 function resetAgentState(): void {
@@ -96,8 +96,27 @@ const noopTheme: any = {
   italic: (text: string) => text,
 };
 
+/**
+ * Select menu item by partial name match.
+ * Maps short names to menu items: 'model', 'concurrency', 'running', 'widget', 'debug'
+ */
+function selectByName(name: string): (title: string, items: string[]) => string | undefined {
+  const nameMap: Record<string, string> = {
+    model: "Model settings",
+    concurrency: "Concurrency settings",
+    running: "Running agents",
+    widget: "Widget settings",
+    debug: "Debug",
+  };
+  const search = nameMap[name.toLowerCase()] ?? name;
+  return (_title: string, items: string[]) => {
+    const match = items.find(item => item.toLowerCase().includes(search.toLowerCase()));
+    return match ?? undefined;
+  };
+}
+
 function createMockCtx(
-  selections: (string | undefined)[] = [],
+  selections: (string | ((title: string, items: string[]) => string | undefined) | undefined)[] = [],
   inputs: (string | undefined)[] = [],
   customValues: (string | null)[] = [],
 ): any {
@@ -107,8 +126,10 @@ function createMockCtx(
 
   return {
     ui: {
-      select: vi.fn(async (_title: string, _items: string[]) => {
-        return selections[selectIdx++] ?? undefined;
+      select: vi.fn(async (title: string, items: string[]) => {
+        const sel = selections[selectIdx++];
+        if (typeof sel === "function") return sel(title, items);
+        return sel ?? undefined;
       }),
       input: vi.fn(async (_label: string, _initialValue?: string) => {
         return inputs[inputIdx++] ?? undefined;
@@ -654,7 +675,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     resetAgentState();
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -683,7 +704,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -719,7 +740,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent.forceBackground = true;
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -756,7 +777,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -785,7 +806,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -813,10 +834,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent.widgetMaxLines = 10;
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 5;
     mockModules.mockConfig.agent.widgetCompact = true;
+    mockModules.mockConfig.agent.widgetShortcut = true;
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
-      "1. Model settings — Set global default and per-type model overrides",
+      "2. Model settings — Set global default and per-type model overrides",
       "Clear all overrides",
       undefined,  // Exit model settings loop
       undefined,  // Exit main menu loop
@@ -832,6 +854,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(5);
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+    expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
     expect(mockModules.mockConfig.agent["general-purpose"]).toBeUndefined();
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       "All model overrides cleared",
@@ -979,7 +1002,7 @@ describe("showResultViewer — stats passing", () => {
 // Widget settings tests
 // ---------------------------------------------------------------------------
 
-describe("showWidgetSettingsMenu", () => {
+describe("showModelSettingsMenu — widget settings", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = {
       default: null,
@@ -993,10 +1016,19 @@ describe("showWidgetSettingsMenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
+  it("shows widget settings section with separator", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
+    expect(separatorIdx).toBeGreaterThan(-1);
+  });
+
   it("shows 'Compact mode · OFF' when widgetCompact is false", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createMockCtx([undefined]);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
@@ -1006,7 +1038,7 @@ describe("showWidgetSettingsMenu", () => {
   it("shows 'Compact mode · ON' when widgetCompact is true", async () => {
     mockModules.mockConfig.agent.widgetCompact = true;
     const ctx = createMockCtx([undefined]);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactItem = items.find((i: string) => i.startsWith("Compact mode"));
@@ -1023,7 +1055,7 @@ describe("showWidgetSettingsMenu", () => {
     ];
 
     const ctx = createMockCtx(selections);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1032,7 +1064,7 @@ describe("showWidgetSettingsMenu", () => {
 
   it("shows 'Max lines (full) · 12' with default value", async () => {
     const ctx = createMockCtx([undefined]);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const maxLinesItem = items.find((i: string) => i.startsWith("Max lines (full)"));
@@ -1042,7 +1074,7 @@ describe("showWidgetSettingsMenu", () => {
   it("shows configured max lines value", async () => {
     mockModules.mockConfig.agent.widgetMaxLines = 8;
     const ctx = createMockCtx([undefined]);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const maxLinesItem = items.find((i: string) => i.startsWith("Max lines (full)"));
@@ -1060,7 +1092,7 @@ describe("showWidgetSettingsMenu", () => {
     const inputs = ["10"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1077,7 +1109,7 @@ describe("showWidgetSettingsMenu", () => {
     const inputs = ["1"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 2", "error");
@@ -1086,7 +1118,7 @@ describe("showWidgetSettingsMenu", () => {
   it("shows 'Max lines (compact) · 6' with default value", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx([undefined]);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     const items = ctx.ui.select.mock.calls[0][1];
     const compactMaxItem = items.find((i: string) => i.startsWith("Max lines (compact)"));
@@ -1104,7 +1136,7 @@ describe("showWidgetSettingsMenu", () => {
     const inputs = ["4"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(4);
     expect(saveConfigAtomic).toHaveBeenCalled();
@@ -1121,10 +1153,105 @@ describe("showWidgetSettingsMenu", () => {
     const inputs = ["0"];
 
     const ctx = createMockCtx(selections, inputs);
-    await showWidgetSettingsMenu(ctx);
+    await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 1", "error");
+  });
+
+  it("widget settings section appears after cost display and before grace turns", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const costIdx = items.findIndex((i: string) => i.startsWith("Cost display"));
+    const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
+    const compactIdx = items.findIndex((i: string) => i.startsWith("Compact mode"));
+    const shortcutIdx = items.findIndex((i: string) => i.startsWith("Ctrl+o shortcut"));
+    const graceTurnsIdx = items.findIndex((i: string) => i.startsWith("Grace turns"));
+
+    expect(costIdx).toBeGreaterThanOrEqual(0);
+    expect(separatorIdx).toBeGreaterThan(costIdx);
+    expect(compactIdx).toBeGreaterThan(separatorIdx);
+    expect(shortcutIdx).toBeGreaterThan(compactIdx);
+    expect(graceTurnsIdx).toBeGreaterThan(shortcutIdx);
+  });
+});
+
+describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null,
+      forceBackground: false,
+      widgetCompact: false,
+      widgetShortcut: false,
+    };
+    mockModules.mockSessionOverrides.default = null;
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows 'Ctrl+o shortcut · OFF' when widgetShortcut is false", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
+    expect(shortcutItem).toBe("Ctrl+o shortcut · OFF");
+  });
+
+  it("shows 'Ctrl+o shortcut · ON' when widgetShortcut is true", async () => {
+    mockModules.mockConfig.agent.widgetShortcut = true;
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
+    expect(shortcutItem).toBe("Ctrl+o shortcut · ON");
+  });
+
+  it("defaults to OFF when widgetShortcut is not set", async () => {
+    delete mockModules.mockConfig.agent.widgetShortcut;
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
+    expect(shortcutItem).toBe("Ctrl+o shortcut · OFF");
+  });
+
+  it("toggles shortcut from OFF to ON and saves", async () => {
+    mockModules.mockConfig.agent.widgetShortcut = false;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Ctrl+o shortcut · OFF",
+      undefined,
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
+    expect(saveConfigAtomic).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut ON", "info");
+  });
+
+  it("toggles shortcut from ON to OFF and saves", async () => {
+    mockModules.mockConfig.agent.widgetShortcut = true;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Ctrl+o shortcut · ON",
+      undefined,
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.widgetShortcut).toBe(false);
+    expect(saveConfigAtomic).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut OFF", "info");
   });
 });
 

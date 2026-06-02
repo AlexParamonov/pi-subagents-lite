@@ -22,6 +22,7 @@ export interface SubagentsConfig {
     widgetMaxLines?: number;
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
+    widgetShortcut?: boolean;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {
