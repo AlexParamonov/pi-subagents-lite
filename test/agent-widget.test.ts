@@ -74,7 +74,7 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
     stats: {
       toolUses: 5,
       compactionCount: 0,
-      lifetimeUsage: { prompt: 1000, completion: 500, cached: 0 },
+      lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
       turnCount: 3,
       maxTurns: 30,
     },
@@ -97,7 +97,7 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
     stats: {
       toolUses: 10,
       compactionCount: 0,
-      lifetimeUsage: { prompt: 2000, completion: 1000, cached: 0 },
+      lifetimeUsage: { input: 2000, output: 1000, cacheWrite: 0, cost: 0 },
       turnCount: 8,
       maxTurns: 30,
     },
@@ -111,7 +111,7 @@ function makeActivity(agentId: string): AgentActivity {
     responseText: "",
     turnCount: 3,
     maxTurns: 30,
-    lifetimeUsage: { prompt: 1000, completion: 500, cached: 0 },
+    lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
   };
 }
 

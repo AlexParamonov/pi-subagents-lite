@@ -108,7 +108,7 @@ function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
 // buildAgentDetails — consolidated stats/details construction
 // ============================================================================
 
-export interface AgentDetailsOptions {
+interface AgentDetailsOptions {
   /** Include full stats (turns, tokens, context%, compactions, cost). Default: false. */
   includeStats?: boolean;
   /** Include status and outputFile. Default: false. */
