@@ -80,8 +80,11 @@ export function syncWidgetSettings(): void {
   );
 }
 
-/** Sync compact mode with the tool expansion state (ctrl+o toggle). */
+/** Sync compact mode with the tool expansion state (ctrl+o toggle).
+ *  Only syncs when widgetShortcut is enabled in config (opt-in behavior).
+ */
 export function syncCompactFromToolsExpanded(expanded: boolean): void {
+  if (__config.agent.widgetShortcut !== true) return;
   widget?.setCompactMode(expanded);
   __config.agent.widgetCompact = expanded;
 }

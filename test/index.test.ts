@@ -10,7 +10,7 @@
  * Full integration testing is manual via pi TUI.
  */
 
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import {
   createMockExtensionAPI,
   hasParam,
@@ -350,5 +350,53 @@ describe("event listener registration", () => {
     expect(api.listeners.some((l) => l.event === "session_shutdown")).toBe(
       true,
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  syncCompactFromToolsExpanded — opt-in behavior                    */
+/* ------------------------------------------------------------------ */
+
+describe("syncCompactFromToolsExpanded", () => {
+  // These tests import the real syncCompactFromToolsExpanded and __config
+  // from index.ts. The widget is module-level state that we can reassign.
+  let syncFn: typeof import("../src/index.js").syncCompactFromToolsExpanded;
+  let config: typeof import("../src/index.js").__config;
+  let widgetRef: typeof import("../src/index.js").widget;
+
+  beforeEach(async () => {
+    const mod = await import("../src/index.js");
+    syncFn = mod.syncCompactFromToolsExpanded;
+    config = mod.__config;
+    // Reset config.agent.widgetShortcut
+    config.agent.widgetShortcut = false;
+    config.agent.widgetCompact = false;
+    // Access widget via module (it's undefined by default, which is fine)
+    widgetRef = mod.widget;
+  });
+
+  it("does NOT sync compact mode when widgetShortcut is false (default)", () => {
+    config.agent.widgetShortcut = false;
+    syncFn(true);
+    expect(config.agent.widgetCompact).toBe(false);
+  });
+
+  it("does NOT sync when widgetShortcut is undefined", () => {
+    delete config.agent.widgetShortcut;
+    syncFn(true);
+    expect(config.agent.widgetCompact).toBe(false);
+  });
+
+  it("syncs compact mode when widgetShortcut is true", () => {
+    config.agent.widgetShortcut = true;
+    syncFn(true);
+    expect(config.agent.widgetCompact).toBe(true);
+  });
+
+  it("syncs compact mode to false when widgetShortcut is true", () => {
+    config.agent.widgetShortcut = true;
+    config.agent.widgetCompact = true;
+    syncFn(false);
+    expect(config.agent.widgetCompact).toBe(false);
   });
 });

@@ -813,6 +813,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent.widgetMaxLines = 10;
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 5;
     mockModules.mockConfig.agent.widgetCompact = true;
+    mockModules.mockConfig.agent.widgetShortcut = true;
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
@@ -832,6 +833,7 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(5);
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+    expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
     expect(mockModules.mockConfig.agent["general-purpose"]).toBeUndefined();
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       "All model overrides cleared",
@@ -1144,12 +1146,91 @@ describe("showModelSettingsMenu — widget settings", () => {
     const costIdx = items.findIndex((i: string) => i.startsWith("Cost display"));
     const separatorIdx = items.findIndex((i: string) => i === "─── widget settings ───");
     const compactIdx = items.findIndex((i: string) => i.startsWith("Compact mode"));
+    const shortcutIdx = items.findIndex((i: string) => i.startsWith("Ctrl+o shortcut"));
     const graceTurnsIdx = items.findIndex((i: string) => i.startsWith("Grace turns"));
 
     expect(costIdx).toBeGreaterThanOrEqual(0);
     expect(separatorIdx).toBeGreaterThan(costIdx);
     expect(compactIdx).toBeGreaterThan(separatorIdx);
-    expect(graceTurnsIdx).toBeGreaterThan(compactIdx);
+    expect(shortcutIdx).toBeGreaterThan(compactIdx);
+    expect(graceTurnsIdx).toBeGreaterThan(shortcutIdx);
+  });
+});
+
+describe("showModelSettingsMenu — Ctrl+o shortcut toggle", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null,
+      forceBackground: false,
+      widgetCompact: false,
+      widgetShortcut: false,
+    };
+    mockModules.mockSessionOverrides.default = null;
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows 'Ctrl+o shortcut · OFF' when widgetShortcut is false", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
+    expect(shortcutItem).toBe("Ctrl+o shortcut · OFF");
+  });
+
+  it("shows 'Ctrl+o shortcut · ON' when widgetShortcut is true", async () => {
+    mockModules.mockConfig.agent.widgetShortcut = true;
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
+    expect(shortcutItem).toBe("Ctrl+o shortcut · ON");
+  });
+
+  it("defaults to OFF when widgetShortcut is not set", async () => {
+    delete mockModules.mockConfig.agent.widgetShortcut;
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const shortcutItem = items.find((i: string) => i.startsWith("Ctrl+o shortcut"));
+    expect(shortcutItem).toBe("Ctrl+o shortcut · OFF");
+  });
+
+  it("toggles shortcut from OFF to ON and saves", async () => {
+    mockModules.mockConfig.agent.widgetShortcut = false;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Ctrl+o shortcut · OFF",
+      undefined,
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
+    expect(saveConfigAtomic).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut ON", "info");
+  });
+
+  it("toggles shortcut from ON to OFF and saves", async () => {
+    mockModules.mockConfig.agent.widgetShortcut = true;
+    const { saveConfigAtomic } = await import("../src/config-io.js");
+
+    const selections = [
+      "Ctrl+o shortcut · ON",
+      undefined,
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.widgetShortcut).toBe(false);
+    expect(saveConfigAtomic).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut OFF", "info");
   });
 });
 
