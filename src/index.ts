@@ -37,8 +37,7 @@ import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
 import { loadConfig } from "./config-io.js";
-import { executeAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
-import { executeStopAgentTool } from "./stop-agent-tool.js";
+import { executeAgentTool, executeStopAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
   __config,
