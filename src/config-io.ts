@@ -21,7 +21,6 @@ export const DEFAULT_CONFIG: SubagentsConfig = {
     widgetMaxLines: 12,
     // widgetMaxLinesCompact intentionally omitted — derives from widgetMaxLines
     widgetCompact: false,
-    widgetShortcut: false,
   },
   concurrency: { default: 4 },
 };

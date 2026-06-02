@@ -23,7 +23,7 @@
  *   - session_shutdown: Abort all, dispose manager
  */
 
-import { Box, Container, Spacer, Text, Key } from "@earendil-works/pi-tui";
+import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import * as path from "node:path";
 import type {
@@ -80,26 +80,10 @@ export function syncWidgetSettings(): void {
   );
 }
 
-/** Register or unregister the Ctrl+o shortcut based on config. */
-export function syncWidgetShortcut(): void {
-  if (!piInstance) return;
-  if (__config.agent.widgetShortcut) {
-    piInstance.registerShortcut(Key.ctrl("o"), {
-      description: "Toggle compact mode",
-      handler: () => {
-        const newState = widget?.toggleCompactMode();
-        if (newState !== undefined) {
-          __config.agent.widgetCompact = newState;
-        }
-      },
-    });
-  } else {
-    // Unregister by registering a no-op handler
-    piInstance.registerShortcut(Key.ctrl("o"), {
-      description: "Toggle compact mode (disabled)",
-      handler: () => {},
-    });
-  }
+/** Sync compact mode with the tool expansion state (ctrl+o toggle). */
+export function syncCompactFromToolsExpanded(expanded: boolean): void {
+  widget?.setCompactMode(expanded);
+  __config.agent.widgetCompact = expanded;
 }
 
 
@@ -368,6 +352,11 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_execution_start", async (_event, ctx) => {
     widget?.setUICtx(ctx.ui as unknown as UICtx);
     widget?.onTurnStart();
+    // Sync compact mode with tool expansion state (ctrl+o toggle)
+    const expanded = (ctx.ui as unknown as { getToolsExpanded?: () => boolean }).getToolsExpanded?.();
+    if (expanded !== undefined) {
+      syncCompactFromToolsExpanded(expanded);
+    }
   });
 
   // session_start — load config, scan agents, register into registry,
@@ -378,8 +367,8 @@ export default function (pi: ExtensionAPI) {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
-    // Register Ctrl+o shortcut if enabled in config
-    syncWidgetShortcut();
+    // Sync compact mode with initial tool expansion state
+    syncCompactFromToolsExpanded(false);
   });
 
   pi.on("session_shutdown", async (_event: unknown) => {
