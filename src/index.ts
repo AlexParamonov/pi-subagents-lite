@@ -105,7 +105,7 @@ function ensureManagerAndWidget(): void {
   // Create/replace widget tied to this manager instance
   if (!widget) {
     widget = new AgentWidget(manager, agentActivity);
-    widget.setShowCost(__config.agent.showCost !== false);
+    widget.setShowCost(__config.agent.showCost === true);
   }
 }
 
@@ -152,7 +152,7 @@ function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
 
 /** Build the stats line for an agent result card. Used by both renderers. */
 function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
-  const showCost = __config.agent.showCost !== false;
+  const showCost = __config.agent.showCost === true;
   const parts = buildStatsParts({
     toolUses: (d.toolUses as number) ?? 0,
     turnCount: d.turnCount as number | undefined,

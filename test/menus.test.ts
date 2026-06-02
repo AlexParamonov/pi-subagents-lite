@@ -1004,7 +1004,7 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display ON", "info");
   });
 
-  it("defaults to true when showCost is not set", async () => {
+  it("defaults to false when showCost is not set", async () => {
     delete mockModules.mockConfig.agent.showCost;
 
     const ctx = createMockCtx([undefined]);
@@ -1012,6 +1012,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
 
     const items = ctx.ui.select.mock.calls[0][1];
     const costItem = items.find((i: string) => i.startsWith("Cost display"));
-    expect(costItem).toBe("Cost display · ON");
+    expect(costItem).toBe("Cost display · OFF");
   });
 });

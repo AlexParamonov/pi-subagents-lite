@@ -303,7 +303,7 @@ export async function showModelSettingsMenu(
     });
 
     // Cost display toggle
-    const showCost = __config.agent.showCost !== false; // default true
+    const showCost = __config.agent.showCost === true; // default false
     items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
     actions.push(async () => {
       setShowCostEnabled(!showCost);

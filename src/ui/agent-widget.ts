@@ -249,7 +249,7 @@ export class AgentWidget {
   private finishedTurnAge = new Map<string, number>();
 
   /** Whether to show cost in stats and status bar. */
-  private showCost = true;
+  private showCost = false;
 
   /** Whether the widget callback is currently registered with the TUI. */
   private widgetRegistered = false;
