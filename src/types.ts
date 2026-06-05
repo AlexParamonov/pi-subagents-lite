@@ -142,6 +142,10 @@ export interface AgentDisplayInfo {
   invocation?: AgentInvocation;
   /** The tool_use_id from the original Agent tool call. */
   toolCallId?: string;
+  /** Resolved absolute path of the worktree this agent is running in. */
+  worktreePath?: string;
+  /** Short display label for the worktree (e.g., "feature" or "feature/packages/web"). */
+  worktreeLabel?: string;
 }
 
 /**

@@ -2198,4 +2198,79 @@ describe("showSpawnAgentMenu — spawn action", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Briefing content tests (worktree_path)
+// ---------------------------------------------------------------------------
+
+describe("handleAgentBriefing — worktree_path content", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "Explore") {
+        return { name: "Explore", description: "Explore agent", extensions: false, skills: false, systemPrompt: "" };
+      }
+      if (name === "general-purpose") {
+        return { name: "general-purpose", description: "General-purpose agent", extensions: false, skills: false, systemPrompt: "" };
+      }
+      return undefined;
+    });
+  });
+
+  it("includes worktree_path in the parameters table", async () => {
+    // Navigate: Main Menu → Debug → Agent briefing → Escape
+    const mockSendUserMessage = vi.fn();
+    const { piInstance } = await import("../src/state.js");
+    (piInstance as any).sendUserMessage = mockSendUserMessage;
+
+    const ctx = createMockCtx([
+      selectByName("debug"),
+      "2", // select Agent briefing (matchMenuChoice matches by number prefix)
+      undefined, // Exit debug menu
+      undefined, // Exit main menu
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    expect(mockSendUserMessage).toHaveBeenCalled();
+    const sentMessage = mockSendUserMessage.mock.calls[0]?.[0];
+    expect(sentMessage).toBeDefined();
+    expect(sentMessage).toContain("worktree_path");
+    expect(sentMessage).toContain("Optional path to a git worktree");
+  });
+
+  it("covers all five required briefing points", async () => {
+    const mockSendUserMessage = vi.fn();
+    const { piInstance } = await import("../src/state.js");
+    (piInstance as any).sendUserMessage = mockSendUserMessage;
+
+    const ctx = createMockCtx([
+      selectByName("debug"),
+      "2", // select Agent briefing
+      undefined,
+      undefined,
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    expect(mockSendUserMessage).toHaveBeenCalled();
+    const sentMessage = mockSendUserMessage.mock.calls[0]?.[0];
+    expect(sentMessage).toBeDefined();
+
+    // (1) param exists and is optional
+    expect(sentMessage).toContain("Optional");
+    // (2) must be a path inside a git worktree of the parent's repo
+    expect(sentMessage).toContain("git worktree of the parent");
+    // (3) relative paths resolve against parent's cwd
+    expect(sentMessage).toContain("Relative paths");
+    expect(sentMessage).toContain("resolved against the parent");
+    // (4) on failure, validator returns a specific reason
+    expect(sentMessage).toContain("specific reason");
+    // (5) worktree's .pi/agents/ is scanned for agent types
+    expect(sentMessage).toContain(".pi/agents/");
+    expect(sentMessage).toContain("agent types");
+  });
+});
+
 
