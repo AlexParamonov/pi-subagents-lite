@@ -220,23 +220,7 @@ export async function executeAgentTool(
   _onUpdate: ((update: any) => void) | undefined,
   ctx: ExtensionContext,
 ): Promise<any> {
-  const type = (params.agent as string) || "general-purpose";
-  let resolvedType = resolveType(type);
-  if (!resolvedType) {
-    // Not found in registry — try scanning filesystem for agents added during the session
-    await discoverNewAgents();
-    resolvedType = resolveType(type);
-  }
-  if (!resolvedType) {
-    return errorResult(`Unknown agent type: ${type}`);
-  }
-
-  const prompt = params.prompt as string;
-  const description = params.description as string;
-  const runInBackground = params.run_in_background as boolean | undefined;
-  const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
-
-  // Validate worktree_path before any spawn work begins
+  // Validate worktree_path early — needed for on-demand agent discovery
   const rawWorktreePath = params.worktree_path as string | undefined;
   let validatedWorktreePath: string | undefined;
   let worktreeLabel: string | undefined;
@@ -249,10 +233,30 @@ export async function executeAgentTool(
       }
       validatedWorktreePath = validation.resolvedPath;
       worktreeLabel = validation.label;
-    } catch (err: any) {
-      return errorResult(`worktree_path validation failed: ${err?.message ?? String(err)}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return errorResult(`worktree_path validation failed: ${msg}`);
     }
   }
+
+  const type = (params.agent as string) || "general-purpose";
+  let resolvedType = resolveType(type);
+  if (!resolvedType) {
+    // Not found in registry — try scanning filesystem for agents added during the session.
+    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
+    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
+    await discoverNewAgents(worktreeDir);
+    resolvedType = resolveType(type);
+  }
+  if (!resolvedType) {
+    return errorResult(`Unknown agent type: ${type}`);
+  }
+
+  const prompt = params.prompt as string;
+  const description = params.description as string;
+  const runInBackground = params.run_in_background as boolean | undefined;
+  const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
+
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;

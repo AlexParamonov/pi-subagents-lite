@@ -20,13 +20,13 @@ import { fakeCtx } from "./fixtures";
 /*  Mock setup                                                        */
 /* ------------------------------------------------------------------ */
 
-// Track calls to the validator
-const { mockValidateWorktreePath } = vi.hoisted(() => ({
+// Use vi.hoisted so mock factories can reference these at hoisting time
+const { mockValidateWorktreePath, mockSpawn, mockGetRecord, mockDiscoverNewAgents } = vi.hoisted(() => ({
   mockValidateWorktreePath: vi.fn(),
+  mockSpawn: vi.fn().mockReturnValue("agent-id-123"),
+  mockGetRecord: vi.fn(),
+  mockDiscoverNewAgents: vi.fn(),
 }));
-// Track spawn calls to verify cwd
-const mockSpawn = vi.fn().mockReturnValue("agent-id-123");
-const mockGetRecord = vi.fn();
 
 vi.mock("../src/worktree-validator.js", () => ({
   validateWorktreePath: mockValidateWorktreePath,
@@ -40,7 +40,7 @@ vi.mock("../src/worktree-validator.js", () => ({
 vi.mock("../src/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => type),
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinking: undefined })),
-  discoverNewAgents: vi.fn(),
+  discoverNewAgents: mockDiscoverNewAgents,
 }));
 
 vi.mock("../src/model-precedence.js", () => ({
@@ -81,6 +81,7 @@ vi.mock("../src/usage.js", () => ({
 
 // Import after mocks are in place
 import { executeAgentTool } from "../src/tool-execution.js";
+import * as agentTypes from "../src/agent-types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */
@@ -313,5 +314,72 @@ describe("executeAgentTool — worktree_path with background spawn", () => {
 
     expect(result.isError).toBe(true);
     expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeAgentTool — worktree_path discovery integration", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = fakeCtx();
+    mockGetRecord.mockReturnValue({
+      id: "agent-id-disc",
+      result: "Agent completed successfully",
+      display: { type: "feature-reviewer", description: "Reviews feature" },
+      lifecycle: { status: "completed", startedAt: Date.now() - 1000, completedAt: Date.now() },
+      execution: { promise: Promise.resolve("Agent completed successfully") },
+      stats: {
+        lifetimeUsage: { input: 100, output: 50, cacheWrite: 0, cost: 0.01 },
+        toolUses: 3,
+        turnCount: 2,
+        compactionCount: 0,
+      },
+    });
+  });
+
+  it("calls discoverNewAgents with worktree dir when type is not initially known", async () => {
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/wt/feature",
+      worktreeRoot: "/wt/feature",
+      label: "feature",
+    });
+
+    // First resolveType call returns undefined (type not known)
+    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
+    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
+    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+
+    await executeAgentTool(
+      "tc-disc",
+      makeParams({ agent: "feature-reviewer", worktree_path: "/wt/feature" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    // Should have called discoverNewAgents with the worktree's .pi/agents dir
+    expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/wt/feature/.pi/agents");
+  });
+
+  it("calls discoverNewAgents without worktree dir when type is not known and worktree_path omitted", async () => {
+    // First resolveType call returns undefined (type not known)
+    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
+    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
+    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+
+    await executeAgentTool(
+      "tc-disc-no-wt",
+      makeParams({ agent: "feature-reviewer" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    // Should have called discoverNewAgents WITHOUT a worktree dir
+    expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
   });
 });
