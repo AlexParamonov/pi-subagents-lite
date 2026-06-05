@@ -78,7 +78,7 @@ vi.mock("../src/state.js", () => {
 });
 
 // --- Import module under test ---
-import { showConcurrencySettingsMenu, showModelSettingsMenu, showWidgetSettingsMenu, showAgentsMainMenu } from "../src/menus.js";
+import { showConcurrencySettingsMenu, showModelSettingsMenu, showWidgetSettingsMenu, showAgentsMainMenu, showSettingsMenu } from "../src/menus.js";
 import { getAgentConfig } from "../src/agent-types.js";
 
 /**
@@ -92,6 +92,7 @@ function selectByName(name: string): (title: string, items: string[]) => string 
     running: "Running agents",
     widget: "Widget settings",
     debug: "Debug",
+    settings: "Settings",
   };
   const search = nameMap[name.toLowerCase()] ?? name;
   return (_title: string, items: string[]) => {
@@ -672,9 +673,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     resetAgentState();
 
     const selections = [
+      selectByName("settings"),
       selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
+      undefined,  // Exit settings sub-menu loop
       undefined,  // Exit main menu loop
     ];
 
@@ -701,9 +704,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
+      selectByName("settings"),
       selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
+      undefined,  // Exit settings sub-menu loop
       undefined,  // Exit main menu loop
     ];
 
@@ -737,9 +742,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent.forceBackground = true;
 
     const selections = [
+      selectByName("settings"),
       selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
+      undefined,  // Exit settings sub-menu loop
       undefined,  // Exit main menu loop
     ];
 
@@ -774,9 +781,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
+      selectByName("settings"),
       selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
+      undefined,  // Exit settings sub-menu loop
       undefined,  // Exit main menu loop
     ];
 
@@ -803,9 +812,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
+      selectByName("settings"),
       selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
+      undefined,  // Exit settings sub-menu loop
       undefined,  // Exit main menu loop
     ];
 
@@ -835,9 +846,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
     mockModules.mockConfig.agent["general-purpose"] = "openai/gpt-4o";
 
     const selections = [
+      selectByName("settings"),
       selectByName("model"),
       "Clear all overrides",
       undefined,  // Exit model settings loop
+      undefined,  // Exit settings sub-menu loop
       undefined,  // Exit main menu loop
     ];
 
@@ -857,6 +870,199 @@ describe("showAgentsMainMenu — clear all overrides", () => {
       "All model overrides cleared",
       "info",
     );
+  });
+});
+
+describe("showSettingsMenu", () => {
+  beforeEach(() => {
+    resetAgentState();
+    vi.clearAllMocks();
+  });
+
+  it("shows Model settings, Concurrency settings, and Widget settings in sub-menu", async () => {
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showSettingsMenu(ctx, modelOptions);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const modelItem = items.find((i: string) => i.includes("Model settings"));
+    const concurrencyItem = items.find((i: string) => i.includes("Concurrency settings"));
+    const widgetItem = items.find((i: string) => i.includes("Widget settings"));
+    expect(modelItem).toBeDefined();
+    expect(concurrencyItem).toBeDefined();
+    expect(widgetItem).toBeDefined();
+  });
+
+  it("returns to main menu on Escape", async () => {
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    // Should return without error
+    await showSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns to main menu when 'Back' is selected", async () => {
+    const ctx = createMockCtx(["Back"]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Model settings when selected", async () => {
+    const ctx = createMockCtx([
+      selectByName("model"),
+      undefined,  // Exit model settings
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showSettingsMenu(ctx, modelOptions);
+
+    // First call is settings menu, second is model settings menu, third is settings menu again (exit)
+    expect(ctx.ui.select).toHaveBeenCalledTimes(3);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Model Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Settings");
+  });
+
+  it("opens Concurrency settings when selected", async () => {
+    const ctx = createMockCtx([
+      selectByName("concurrency"),
+      undefined,  // Exit concurrency settings
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(3);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Concurrency Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Settings");
+  });
+
+  it("opens Widget settings when selected", async () => {
+    const ctx = createMockCtx([
+      selectByName("widget"),
+      undefined,  // Exit widget settings
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showSettingsMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(3);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Widget Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Settings");
+  });
+});
+
+describe("showAgentsMainMenu — settings sub-menu integration", () => {
+  beforeEach(() => {
+    resetAgentState();
+    vi.clearAllMocks();
+  });
+
+  it("shows 3 items: Running agents, Settings, Debug", async () => {
+    const ctx = createMockCtx([undefined]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const runningItem = items.find((i: string) => i.includes("Running agents"));
+    const settingsItem = items.find((i: string) => i.includes("Settings"));
+    const debugItem = items.find((i: string) => i.includes("Debug"));
+    expect(runningItem).toBeDefined();
+    expect(settingsItem).toBeDefined();
+    expect(debugItem).toBeDefined();
+
+    // Should not have Model settings, Concurrency settings, or Widget settings directly
+    const modelDirect = items.find((i: string) => i.includes("Model settings") && !i.includes("Settings —"));
+    const concurrencyDirect = items.find((i: string) => i.includes("Concurrency settings"));
+    const widgetDirect = items.find((i: string) => i.includes("Widget settings"));
+    expect(modelDirect).toBeUndefined();
+    expect(concurrencyDirect).toBeUndefined();
+    expect(widgetDirect).toBeUndefined();
+  });
+
+  it("opens Settings sub-menu when selected", async () => {
+    const ctx = createMockCtx([
+      selectByName("settings"),
+      undefined,  // Exit settings sub-menu
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    // First call is main menu, second is settings sub-menu, third is main menu again (exit)
+    expect(ctx.ui.select).toHaveBeenCalledTimes(3);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Subagents Management");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Subagents Management");
+  });
+
+  it("navigates through Settings to Model settings", async () => {
+    const ctx = createMockCtx([
+      selectByName("settings"),
+      selectByName("model"),
+      undefined,  // Exit model settings
+      undefined,  // Exit settings sub-menu
+      undefined,  // Exit main menu
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(5);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Subagents Management");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Model Settings");
+    expect(ctx.ui.select.mock.calls[3][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[4][0]).toBe("Subagents Management");
+  });
+
+  it("navigates through Settings to Concurrency settings", async () => {
+    const ctx = createMockCtx([
+      selectByName("settings"),
+      selectByName("concurrency"),
+      undefined,  // Exit concurrency settings
+      undefined,  // Exit settings sub-menu
+      undefined,  // Exit main menu
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(5);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Subagents Management");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Concurrency Settings");
+    expect(ctx.ui.select.mock.calls[3][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[4][0]).toBe("Subagents Management");
+  });
+
+  it("navigates through Settings to Widget settings", async () => {
+    const ctx = createMockCtx([
+      selectByName("settings"),
+      selectByName("widget"),
+      undefined,  // Exit widget settings
+      undefined,  // Exit settings sub-menu
+      undefined,  // Exit main menu
+    ]);
+    const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
+
+    await showAgentsMainMenu(ctx, modelOptions);
+
+    expect(ctx.ui.select).toHaveBeenCalledTimes(5);
+    expect(ctx.ui.select.mock.calls[0][0]).toBe("Subagents Management");
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Widget Settings");
+    expect(ctx.ui.select.mock.calls[3][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[4][0]).toBe("Subagents Management");
   });
 });
 

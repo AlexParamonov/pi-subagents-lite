@@ -439,26 +439,49 @@ function matchMenuChoice(
   return handlers[key];
 }
 
+export async function showSettingsMenu(
+  ctx: ExtensionCommandContext,
+  modelOptions: string[],
+): Promise<void> {
+  const menuItems = [
+    "1. Model settings — Set global default and per-type model overrides",
+    "2. Concurrency settings — Set per-model slot limits",
+    "3. Widget settings — Configure widget display options",
+    "",
+    "Back",
+  ];
+
+  const handlers: Record<string, () => Promise<void>> = {
+    "1": () => showModelSettingsMenu(ctx, modelOptions),
+    "2": () => showConcurrencySettingsMenu(ctx, modelOptions),
+    "3": () => showWidgetSettingsMenu(ctx),
+  };
+
+  while (true) {
+    const choice = await ctx.ui.select("Settings", menuItems);
+    if (choice === undefined || choice === "Back") return;
+
+    const action = matchMenuChoice(choice, handlers);
+    if (action) await action();
+  }
+}
+
 export async function showAgentsMainMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
   const menuItems = [
     "1. Running agents — List running/queued agents",
-    "2. Model settings — Set global default and per-type model overrides",
-    "3. Concurrency settings — Set per-model slot limits",
-    "4. Widget settings — Configure widget display options",
-    "5. Debug — Agent types, briefing, diagnostics",
+    "2. Settings — Model, concurrency, and widget settings",
+    "3. Debug — Agent types, briefing, diagnostics",
     "",
     "Press Escape to close",
   ];
 
   const handlers: Record<string, () => Promise<void>> = {
     "1": () => showRunningAgentsMenu(ctx),
-    "2": () => showModelSettingsMenu(ctx, modelOptions),
-    "3": () => showConcurrencySettingsMenu(ctx, modelOptions),
-    "4": () => showWidgetSettingsMenu(ctx),
-    "5": () => showDebugMenu(ctx),
+    "2": () => showSettingsMenu(ctx, modelOptions),
+    "3": () => showDebugMenu(ctx),
   };
 
   // Loop so sub-menus navigate back to root; only Escape at root closes
