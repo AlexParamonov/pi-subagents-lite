@@ -642,15 +642,8 @@ export async function showSpawnAgentMenu(
         }
       }
     } else if (choice.startsWith("Grace turns")) {
-      const input = await ctx.ui.input("Grace turns (≥ 0)", String(currentGraceTurns ?? 6));
-      if (input !== undefined) {
-        const parsed = parseInt(input.trim(), 10);
-        if (isNaN(parsed) || parsed < 0) {
-          ctx.ui.notify("Invalid value — must be a number ≥ 0", "error");
-        } else {
-          currentGraceTurns = parsed;
-        }
-      }
+      const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(currentGraceTurns ?? 6), 0, "≥ 0");
+      if (parsed !== undefined) currentGraceTurns = parsed;
     } else if (choice.startsWith("Background")) {
       currentBackground = !currentBackground;
     }
