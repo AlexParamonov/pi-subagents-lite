@@ -523,14 +523,14 @@ export async function showSpawnAgentMenu(
     const displayBackground = currentBackground ? "ON" : "OFF";
 
     const items = [
+      "Spawn",
+      "",
       `Description · ${description}`,
       `Model · ${displayModel}`,
       `Thinking · ${displayThinking}`,
       `Max turns · ${displayMaxTurns}`,
       `Grace turns · ${displayGraceTurns}`,
       `Background · ${displayBackground}`,
-      "",
-      "Spawn",
     ];
 
     const choice = await ctx.ui.select("Spawn Options", items);
