@@ -39,6 +39,7 @@ Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `des
 - **Output logs** — human-readable, `tail -f` friendly
 - **Grace turns** — configurable grace turns after `max_turns` before hard abort
 - **Reload safety** — warns when active agents are killed by session reload
+- **Worktree support** — `worktree_path` parameter runs agents in a git worktree with validated path, worktree agent discovery, and UI label
 
 ## Install
 
@@ -100,6 +101,7 @@ Stop a running agent at any time via /agents command
 | `description` | ✅ | Brief description for the LLM caller |
 | `agent` | | Type name — `general-purpose`, `Explore`, or any custom type you define (see [Custom Agent Types](#custom-agent-types)). The available values are **auto-populated** from `.md` files in your agent directories — drop a file, it appears in the enum. Set `hidden: true` in frontmatter to hide a type from this list (still callable by name). |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
+| `worktree_path` | | Absolute path to a git worktree. Agent runs in that worktree's context, discovers agents from its `.pi/agents/` directory, and displays a worktree label in the widget and menus. Path is validated against the parent repo's git common dir. |
 
 > `model`, `max_turns`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`/`thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
 
