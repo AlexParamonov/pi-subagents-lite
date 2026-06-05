@@ -7,21 +7,26 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
-import type { AgentRecord } from "./types.js";
+import type { AgentRecord, ThinkingLevel } from "./types.js";
 import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import type { SpawnOptions } from "./agent-manager.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
 import { getDisplayName } from "./format.js";
 import { buildSnapshotMarkdown } from "./context.js";
 
-import { parseModelKey } from "./utils.js";
+import { parseModelKey, findModelInRegistry } from "./utils.js";
 import {
   __config,
   sessionOverrides,
   piInstance,
+  sessionCtx,
+  agentActivity,
   getManager,
+  getWidget,
 } from "./state.js";
 import { resolveModel } from "./model-precedence.js";
+import { createActivityTracker, backgroundAgentIds } from "./tool-execution.js";
 import {
   setModelOverride,
   setDefaultModel,
@@ -439,6 +444,212 @@ function matchMenuChoice(
   return handlers[key];
 }
 
+// ============================================================================
+// Spawn agent menu
+// ============================================================================
+
+const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+/**
+ * Show the spawn agent flow: type selection → prompt → options sub-menu → spawn.
+ * Escape at any step aborts the flow and returns to the main menu.
+ */
+export async function showSpawnAgentMenu(
+  ctx: ExtensionCommandContext,
+  modelOptions: string[],
+): Promise<void> {
+  // Step 1: Type selection loop (unknown type → error → retry)
+  let selectedType: string;
+  while (true) {
+    const types = getAvailableTypes();
+    if (types.length === 0) {
+      ctx.ui.notify("No agent types available", "error");
+      return;
+    }
+    const type = await ctx.ui.select("Select agent type", types);
+    if (type === undefined) return; // Escape → main menu
+
+    const config = getAgentConfig(type);
+    if (!config) {
+      ctx.ui.notify(`Unknown agent type: ${type}`, "error");
+      continue; // Loop back to type selection
+    }
+    selectedType = type;
+    break;
+  }
+
+  const agentConfig = getAgentConfig(selectedType)!;
+
+  // Step 2: Prompt entry loop (empty prompt → error → retry)
+  let prompt: string;
+  while (true) {
+    const input = await ctx.ui.input("Agent prompt");
+    if (input === undefined) return; // Escape → main menu
+
+    if (!input.trim()) {
+      ctx.ui.notify("Prompt cannot be empty", "error");
+      continue; // Loop back to prompt input
+    }
+    prompt = input.trim();
+    break;
+  }
+
+  // Step 3: Options sub-menu with spawn action
+  const autoDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
+  let description = autoDescription;
+
+  // Pre-fill model from precedence chain
+  const parentModelId = sessionCtx?.model
+    ? `${sessionCtx.model.provider}/${sessionCtx.model.id}`
+    : "";
+  const effectiveModelStr = resolveModel({
+    subagentType: selectedType,
+    agentConfig,
+    config: __config,
+    parentModelId,
+    sessionOverrides,
+  });
+  let currentModelStr = effectiveModelStr || ""; // "" means inherit parent
+  let currentThinking: ThinkingLevel | undefined = agentConfig.thinking;
+  let currentMaxTurns: number | undefined = agentConfig.maxTurns;
+  let currentGraceTurns: number | undefined = __config.agent.graceTurns ?? 6;
+  let currentBackground: boolean = __config.agent.forceBackground ?? false;
+
+  while (true) {
+    const displayModel = currentModelStr || "(inherits parent)";
+    const displayThinking = currentThinking ?? "inherit";
+    const displayMaxTurns = currentMaxTurns != null ? String(currentMaxTurns) : "unlimited";
+    const displayGraceTurns = String(currentGraceTurns ?? 6);
+    const displayBackground = currentBackground ? "ON" : "OFF";
+
+    const items = [
+      `Description · ${description}`,
+      `Model · ${displayModel}`,
+      `Thinking · ${displayThinking}`,
+      `Max turns · ${displayMaxTurns}`,
+      `Grace turns · ${displayGraceTurns}`,
+      `Background · ${displayBackground}`,
+      "",
+      "Spawn",
+    ];
+
+    const choice = await ctx.ui.select("Spawn Options", items);
+    if (choice === undefined) return; // Escape → main menu
+
+    if (choice === "Spawn") {
+      // Resolve model string to Model object
+      let model: ReturnType<typeof findModelInRegistry> = undefined;
+      let modelKey: string | undefined;
+
+      if (currentModelStr) {
+        const registry = sessionCtx?.modelRegistry ?? ctx.modelRegistry;
+        model = findModelInRegistry(currentModelStr, registry, undefined);
+        if (!model) {
+          ctx.ui.notify(`Model not found: ${currentModelStr}`, "error");
+          continue; // Return to options sub-menu
+        }
+        modelKey = `${model.provider}/${model.id}`;
+      }
+
+      const spawnOptions: SpawnOptions = {
+        description,
+        model,
+        maxTurns: currentMaxTurns,
+        thinkingLevel: currentThinking,
+        isBackground: currentBackground,
+        modelKey,
+        invocation: {
+          modelName: model?.id,
+          thinking: currentThinking,
+          maxTurns: currentMaxTurns,
+          runInBackground: currentBackground,
+        },
+        graceTurns: currentGraceTurns,
+      };
+
+      const { state: activityState, callbacks } = createActivityTracker(currentMaxTurns);
+
+      let agentId: string;
+      try {
+        agentId = getManager().spawn(piInstance, sessionCtx, selectedType, prompt, {
+          ...spawnOptions,
+          ...callbacks,
+        });
+      } catch (err) {
+        ctx.ui.notify(
+          `Spawn failed: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+        return; // Return to main menu
+      }
+
+      // Wire activity tracking for widget
+      agentActivity.set(agentId, activityState);
+      getWidget()?.ensureTimer();
+      getWidget()?.update();
+
+      if (currentBackground) {
+        backgroundAgentIds.add(agentId);
+        return; // Background: return to main menu immediately
+      }
+
+      // Foreground: block until completion
+      const record = getManager().getRecord(agentId);
+      if (record?.execution.promise) {
+        await record.execution.promise;
+      }
+
+      agentActivity.delete(agentId);
+      getWidget()?.markFinished(agentId);
+      getWidget()?.update();
+
+      return; // Return to main menu
+    }
+
+    // Handle option changes
+    if (choice.startsWith("Description")) {
+      const input = await ctx.ui.input("Description", description);
+      if (input !== undefined && input.trim()) {
+        description = input.trim();
+      }
+    } else if (choice.startsWith("Model")) {
+      const chosen = await promptModelSelection(
+        ctx, modelOptions, currentModelStr || "(inherits parent)",
+      );
+      if (chosen !== null) {
+        currentModelStr = chosen === "(inherits parent)" ? "" : chosen;
+      }
+    } else if (choice.startsWith("Thinking")) {
+      const allLevels = [...THINKING_LEVELS, "inherit"];
+      const chosen = await ctx.ui.select("Thinking level", allLevels);
+      if (chosen !== undefined) {
+        currentThinking = chosen === "inherit" ? undefined : (chosen as ThinkingLevel);
+      }
+    } else if (choice.startsWith("Max turns")) {
+      const initial = currentMaxTurns != null ? String(currentMaxTurns) : "unlimited";
+      const input = await ctx.ui.input("Max turns (number or 'unlimited')", initial);
+      if (input !== undefined) {
+        const trimmed = input.trim().toLowerCase();
+        if (trimmed === "unlimited" || trimmed === "") {
+          currentMaxTurns = undefined;
+        } else {
+          const parsed = parseInt(trimmed, 10);
+          if (isNaN(parsed) || parsed < 1) {
+            ctx.ui.notify("Invalid value — must be a number ≥ 1 or 'unlimited'", "error");
+          } else {
+            currentMaxTurns = parsed;
+          }
+        }
+      }
+    } else if (choice.startsWith("Grace turns")) {
+      const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(currentGraceTurns ?? 6), 0, "≥ 0");
+      if (parsed !== undefined) currentGraceTurns = parsed;
+    } else if (choice.startsWith("Background")) {
+      currentBackground = !currentBackground;
+    }
+  }
+}
+
 export async function showSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
@@ -472,16 +683,18 @@ export async function showAgentsMainMenu(
 ): Promise<void> {
   const menuItems = [
     "1. Running agents — List running/queued agents",
-    "2. Settings — Model, concurrency, and widget settings",
-    "3. Debug — Agent types, briefing, diagnostics",
+    "2. Spawn agent — Manually spawn a new agent",
+    "3. Settings — Model, concurrency, and widget settings",
+    "4. Debug — Agent types, briefing, diagnostics",
     "",
     "Press Escape to close",
   ];
 
   const handlers: Record<string, () => Promise<void>> = {
     "1": () => showRunningAgentsMenu(ctx),
-    "2": () => showSettingsMenu(ctx, modelOptions),
-    "3": () => showDebugMenu(ctx),
+    "2": () => showSpawnAgentMenu(ctx, modelOptions),
+    "3": () => showSettingsMenu(ctx, modelOptions),
+    "4": () => showDebugMenu(ctx),
   };
 
   // Loop so sub-menus navigate back to root; only Escape at root closes

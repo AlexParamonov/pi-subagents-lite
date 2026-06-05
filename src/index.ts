@@ -49,6 +49,7 @@ import {
   clearManager,
   setWidget,
   setPiInstance,
+  setSessionCtx,
   resetSessionOverrides,
   resetLastToolsExpanded,
   syncWidgetSettings,
@@ -248,6 +249,7 @@ export default function (pi: ExtensionAPI) {
   let unregisterTerminalInput: (() => void) | undefined;
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
+    setSessionCtx(ctx);
     resetSessionOverrides();
     agentActivity.clear();
     resetLastToolsExpanded();
