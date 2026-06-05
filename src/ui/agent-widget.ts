@@ -362,11 +362,18 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of finished) {
+      const continuations: string[] = [];
+      if (!this.isCompact()) {
+        if (a.display.outputFile) {
+          continuations.push(truncate(theme.fg("dim", `${VLINE}    tail -f ${a.display.outputFile}`)));
+        }
+        if (a.display.worktreeLabel) {
+          continuations.push(truncate(theme.fg("dim", `${VLINE}    @ ${a.display.worktreeLabel}`)));
+        }
+      }
       blocks.push({
         header: truncate(`${theme.fg("dim", BRANCH)} ${this.renderFinishedLine(a, theme)}`),
-        continuations: a.display.outputFile
-          ? [truncate(theme.fg("dim", `${VLINE}    tail -f ${a.display.outputFile}`))]
-          : [],
+        continuations,
       });
     }
     return blocks;
@@ -398,14 +405,17 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.display.description}  ${statsLine}`;
+        const continuations: string[] = [];
+        if (a.display.outputFile) {
+          continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.display.outputFile}`)));
+        }
+        if (a.display.worktreeLabel) {
+          continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} @ ${a.display.worktreeLabel}`)));
+        }
+        continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)));
         blocks.push({
           header: truncate(headerLine),
-          continuations: [
-            ...(a.display.outputFile
-              ? [truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} tail -f ${a.display.outputFile}`))]
-              : []),
-            truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)),
-          ],
+          continuations,
         });
       }
     }

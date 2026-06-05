@@ -206,7 +206,7 @@ describe("widget worktree label — compact mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    const hasLabel = lines.some((l: string) => l === "feature" || l.includes("feature/"));
+    const hasLabel = lines.some((l: string) => l.includes("feature"));
     expect(hasLabel).toBe(false);
   });
 

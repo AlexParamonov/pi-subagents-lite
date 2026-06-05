@@ -21,14 +21,16 @@ import { fakeCtx } from "./fixtures";
 /* ------------------------------------------------------------------ */
 
 // Track calls to the validator
-const mockValidateWorktreePath = vi.fn();
+const { mockValidateWorktreePath } = vi.hoisted(() => ({
+  mockValidateWorktreePath: vi.fn(),
+}));
 // Track spawn calls to verify cwd
 const mockSpawn = vi.fn().mockReturnValue("agent-id-123");
 const mockGetRecord = vi.fn();
 
 vi.mock("../src/worktree-validator.js", () => ({
   validateWorktreePath: mockValidateWorktreePath,
-  computeWorktreeLabel: vi.fn((resolved: string, root: string) => {
+  computeLabel: vi.fn((resolved: string, root: string) => {
     if (resolved === root) return root.split("/").pop() || root;
     const rel = resolved.slice(root.length + 1);
     return `${root.split("/").pop()}/${rel}`;
@@ -54,7 +56,8 @@ vi.mock("../src/utils.js", () => ({
 vi.mock("../src/state.js", () => ({
   __config: { agent: { graceTurns: 5, forceBackground: false } },
   sessionOverrides: {},
-  piInstance: { sendMessage: vi.fn() },
+  piInstance: { sendMessage: vi.fn(), exec: vi.fn() },
+  sessionCtx: { cwd: "/home/test/project" },
   agentActivity: new Map(),
   getManager: vi.fn(() => ({
     spawn: mockSpawn,
@@ -170,10 +173,12 @@ describe("executeAgentTool — worktree_path validation", () => {
 
     await executeAgentTool("tc-4", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx);
 
-    // Verify spawn was called with the worktree path in options
+    // Verify spawn was called and worktree path was set on the record
     expect(mockSpawn).toHaveBeenCalledTimes(1);
+    // worktreePath is set on the record's display AFTER spawn, not in spawn options
+    // Verify spawn received the worktree path via options
     const spawnCall = mockSpawn.mock.calls[0];
-    const spawnOptions = spawnCall[3]; // options is 4th arg (pi, ctx, type, prompt, options)
+    const spawnOptions = spawnCall[4]; // options is 5th arg (pi, ctx, type, prompt, options)
     expect(spawnOptions.worktreePath).toBe("/wt/feature");
   });
 
@@ -183,7 +188,7 @@ describe("executeAgentTool — worktree_path validation", () => {
       { error: "Path is not a directory", match: "not a directory" },
       { error: "Path is not inside a git repository", match: "not inside a git" },
       { error: "Path is inside a git repository that is not the parent's", match: "not the parent" },
-      { error: "Parent itself is not in a git repository", match: "parent" },
+      { error: "Parent itself is not in a git repository", match: "Parent" },
     ];
 
     for (const { error, match } of rejectionReasons) {

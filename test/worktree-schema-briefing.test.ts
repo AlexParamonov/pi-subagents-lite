@@ -27,7 +27,7 @@ import {
  * Load the extension and find the Agent tool registration.
  */
 async function getAgentToolReg(api: MockExtensionAPI) {
-  await loadExtension(api);
+  await loadExtension(api.api);
   const agentTool = api.tools.find((t) => t.name === "Agent");
   expect(agentTool).toBeDefined();
   return agentTool!;
@@ -85,7 +85,7 @@ describe("Agent briefing — worktree_path information", () => {
   });
 
   it("briefing mentions worktree_path parameter", async () => {
-    await loadExtension(api);
+    await loadExtension(api.api);
 
     // The briefing is sent via sendUserMessage
     // We need to trigger the briefing handler
@@ -112,7 +112,7 @@ describe("Agent briefing — worktree_path information", () => {
     // 4. on failure the validator returns a specific reason
     // 5. worktree's .pi/agents/ directory is scanned for agent types
 
-    await loadExtension(api);
+    await loadExtension(api.api);
 
     // Find all sendUserMessage calls
     const briefingCalls = api.api.sendUserMessage.mock.calls;
