@@ -216,11 +216,32 @@ export async function executeAgentTool(
   _onUpdate: ((update: any) => void) | undefined,
   ctx: ExtensionContext,
 ): Promise<any> {
+  // Validate worktree_path early — needed for on-demand agent discovery
+  const rawWorktreePath = params.worktree_path as string | undefined;
+  let validatedWorktreePath: string | undefined;
+  let worktreeLabel: string | undefined;
+  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
+    try {
+      const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
+      const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
+      if (!validation.ok) {
+        return errorResult(validation.error);
+      }
+      validatedWorktreePath = validation.resolvedPath;
+      worktreeLabel = validation.label;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return errorResult(`worktree_path validation failed: ${msg}`);
+    }
+  }
+
   const type = (params.agent as string) || "general-purpose";
   let resolvedType = resolveType(type);
   if (!resolvedType) {
-    // Not found in registry — try scanning filesystem for agents added during the session
-    await discoverNewAgents();
+    // Not found in registry — try scanning filesystem for agents added during the session.
+    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
+    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
+    await discoverNewAgents(worktreeDir);
     resolvedType = resolveType(type);
   }
   if (!resolvedType) {
@@ -231,20 +252,6 @@ export async function executeAgentTool(
   const description = params.description as string;
   const runInBackground = params.run_in_background as boolean | undefined;
   const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
-
-  // Validate worktree_path before any spawn work begins
-  const rawWorktreePath = params.worktree_path as string | undefined;
-  let validatedWorktreePath: string | undefined;
-  let worktreeLabel: string | undefined;
-  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
-    const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
-    const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
-    if (!validation.ok) {
-      return errorResult(validation.error);
-    }
-    validatedWorktreePath = validation.resolvedPath;
-    worktreeLabel = validation.label;
-  }
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
