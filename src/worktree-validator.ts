@@ -84,9 +84,9 @@ async function getGitCommonDir(
  * 2. Resolve relative against parent cwd
  * 3. Resolve symlinks (realpath)
  * 4. Check exists + is directory
- * 5. Get parent's git-common-dir
- * 6. Get target's git-common-dir
- * 7. Compare common dirs
+ * 5. Get and compare git-common-dir for parent and target
+ * 6. Get worktree root via --show-toplevel
+ * 7. Normalize and compute display label
  *
  * @param pi - Minimal exec interface (pi.exec)
  * @param worktreePath - The raw worktree_path value from the LLM
@@ -127,7 +127,7 @@ export async function validateWorktreePath(
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
   }
 
-  // Step 5 & 6: Get git-common-dir for parent and target, compare
+  // Step 5: Get and compare git-common-dir for parent and target
   const parentResult = await getGitCommonDir(pi, parentCwd, WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO);
   if (!parentResult.ok) return parentResult;
 
@@ -146,7 +146,7 @@ export async function validateWorktreePath(
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };
   }
 
-  // Step 8: Get the worktree root via git rev-parse --show-toplevel
+  // Step 6: Get the worktree root via git rev-parse --show-toplevel
   let worktreeRoot: string;
   try {
     const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd: realPath, timeout: GIT_EXEC_TIMEOUT_MS });
@@ -160,7 +160,7 @@ export async function validateWorktreePath(
     worktreeRoot = realPath;
   }
 
-  // Success — normalize to forward slashes and compute label
+  // Step 7: Normalize and compute display label
   const normalizedRealPath = realPath.replace(/\\/g, "/");
   const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
   const label = computeLabel(normalizedRealPath, normalizedRoot);
