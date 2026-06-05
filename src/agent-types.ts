@@ -60,8 +60,13 @@ export function setAgentScanDirs(userDir: string, projectDir: string): void {
 /**
  * Scan the known agent directories and register any newly discovered agents
  * that aren't already in the registry. Returns the number of new agents added.
+ *
+ * @param worktreeDir - Optional absolute path to a worktree's `.pi/agents/` directory.
+ *   When set, agents from this directory are also scanned and added to the registry.
+ *   Worktree-local types use "project" source attribution and follow the same
+ *   parsing and name-uniqueness rules as the parent's project scan.
  */
-export async function discoverNewAgents(): Promise<number> {
+export async function discoverNewAgents(worktreeDir?: string): Promise<number> {
   const [userAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),
     scanAgentFilesInDir(projectAgentDir, "project"),
@@ -76,6 +81,21 @@ export async function discoverNewAgents(): Promise<number> {
       count++;
     }
   }
+
+  // Scan worktree-local agents (only when worktreeDir is provided)
+  if (worktreeDir) {
+    const worktreeAgents = await scanAgentFilesInDir(worktreeDir, "project");
+    // Use mergeAgents to convert AgentConfigFromMd to AgentConfig (applies fromMd
+    // and BASE_DEFAULTS), then add only names not already in the registry.
+    const wtMerged = mergeAgents(new Map(), [], worktreeAgents);
+    for (const [name, config] of wtMerged) {
+      if (!agents.has(name)) {
+        agents.set(name, config);
+        count++;
+      }
+    }
+  }
+
   return count;
 }
 

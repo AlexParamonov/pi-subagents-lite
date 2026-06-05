@@ -9,7 +9,7 @@
  */
 
 import * as path from "node:path";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, realpathSync } from "node:fs";
 
 /** Timeout for git commands (ms). */
 const GIT_EXEC_TIMEOUT_MS = 5000;
@@ -53,30 +53,27 @@ interface PiExec {
 }
 
 /**
- * Run `git rev-parse --git-common-dir` and return the result, or null on failure.
+ * Run `git rev-parse --git-common-dir` and return the trimmed result.
+ * Returns a failure result if the command fails or git is unavailable.
  */
-async function getGitCommonDir(pi: PiExec, cwd: string): Promise<string | null> {
+async function getGitCommonDir(
+  pi: PiExec,
+  cwd: string,
+  notInRepoError: string,
+): Promise<{ ok: true; commonDir: string } | { ok: false; error: string }> {
   try {
     const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) return null;
-    return result.stdout.trim();
-  } catch {
-    return null;
+    if (result.code !== 0) return { ok: false, error: notInRepoError };
+    const commonDir = result.stdout.trim();
+    if (!commonDir) return { ok: false, error: notInRepoError };
+    return { ok: true, commonDir };
+  } catch (err: unknown) {
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes("ENOENT") || msg.includes("not found")) {
+      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
+    }
+    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
   }
-}
-
-/**
- * Check if a git failure is caused by git not being installed.
- * Git returns exit code 127 or 128 with ENOENT-style errors when not found.
- */
-function isGitNotFoundError(pi: PiExec, cwd: string): boolean {
-  // We can't easily distinguish "not found" from "not a git repo" without
-  // trying a command that always runs. Instead, we check if `git --version`
-  // also fails.
-  // But for simplicity, we'll do it differently: if rev-parse fails AND
-  // the exec throws with ENOENT, it's a git-not-found issue.
-  // For the test mock, we'll rely on the throw path.
-  return false;
 }
 
 /**
@@ -87,9 +84,9 @@ function isGitNotFoundError(pi: PiExec, cwd: string): boolean {
  * 2. Resolve relative against parent cwd
  * 3. Resolve symlinks (realpath)
  * 4. Check exists + is directory
- * 5. Get parent's git-common-dir
- * 6. Get target's git-common-dir
- * 7. Compare common dirs
+ * 5. Get and compare git-common-dir for parent and target
+ * 6. Get worktree root via --show-toplevel
+ * 7. Normalize and compute display label
  *
  * @param pi - Minimal exec interface (pi.exec)
  * @param worktreePath - The raw worktree_path value from the LLM
@@ -111,93 +108,67 @@ export async function validateWorktreePath(
     ? worktreePath
     : path.resolve(parentCwd, worktreePath);
 
-  // Normalize to forward slashes for consistency
-  const normalizedResolved = resolved.replace(/\\/g, "/");
-
   // Step 3: Check existence
-  if (!existsSync(normalizedResolved)) {
+  if (!existsSync(resolved)) {
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
   }
 
   // Step 4: Check is directory (resolve symlinks first via stat)
   let realPath: string;
   try {
-    const stat = statSync(normalizedResolved);
+    const stat = statSync(resolved);
     if (!stat.isDirectory()) {
       return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_A_DIRECTORY };
     }
     // Resolve symlinks — use realpathSync to get the canonical path
-    const { realpathSync } = await import("node:fs");
-    realPath = realpathSync(normalizedResolved);
+    realPath = realpathSync(resolved);
   } catch {
     // stat failed — likely a broken symlink or permission issue
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
   }
 
-  // Step 5: Get parent's git-common-dir
-  let parentCommonDir: string;
-  try {
-    const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd: parentCwd, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO };
-    }
-    parentCommonDir = result.stdout.trim();
-    if (!parentCommonDir) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO };
-    }
-  } catch (err: any) {
-    const msg = String(err?.message ?? err);
-    if (msg.includes("ENOENT") || msg.includes("not found")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
-    }
-    if (msg.includes("timed out") || msg.includes("timeout")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-    }
-    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-  }
+  // Step 5: Get and compare git-common-dir for parent and target
+  const parentResult = await getGitCommonDir(pi, parentCwd, WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO);
+  if (!parentResult.ok) return parentResult;
 
-  // Step 6: Get target's git-common-dir
-  let targetCommonDir: string;
-  try {
-    const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd: realPath, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO };
-    }
-    targetCommonDir = result.stdout.trim();
-    if (!targetCommonDir) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO };
-    }
-  } catch (err: any) {
-    const msg = String(err?.message ?? err);
-    if (msg.includes("ENOENT") || msg.includes("not found")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
-    }
-    if (msg.includes("timed out") || msg.includes("timeout")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-    }
-    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-  }
+  const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO);
+  if (!targetResult.ok) return targetResult;
 
-  // Step 7: Compare common dirs — must share the same repo
-  // Resolve common dirs to absolute paths for comparison
-  const parentCommonAbs = path.isAbsolute(parentCommonDir)
-    ? parentCommonDir
-    : path.resolve(parentCwd, parentCommonDir);
-  const targetCommonAbs = path.isAbsolute(targetCommonDir)
-    ? targetCommonDir
-    : path.resolve(realPath, targetCommonDir);
+  // Compare common dirs — must share the same repo
+  const parentCommonAbs = path.isAbsolute(parentResult.commonDir)
+    ? parentResult.commonDir
+    : path.resolve(parentCwd, parentResult.commonDir);
+  const targetCommonAbs = path.isAbsolute(targetResult.commonDir)
+    ? targetResult.commonDir
+    : path.resolve(realPath, targetResult.commonDir);
 
   if (parentCommonAbs !== targetCommonAbs) {
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };
   }
 
-  // Success — compute label
-  const label = computeLabel(realPath);
+  // Step 6: Get the worktree root via git rev-parse --show-toplevel
+  let worktreeRoot: string;
+  try {
+    const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd: realPath, timeout: GIT_EXEC_TIMEOUT_MS });
+    if (result.code !== 0) {
+      worktreeRoot = realPath;
+    } else {
+      const raw = result.stdout.trim();
+      worktreeRoot = raw ? (path.isAbsolute(raw) ? raw : path.resolve(realPath, raw)) : realPath;
+    }
+  } catch {
+    worktreeRoot = realPath;
+  }
+
+  // Step 7: Normalize and compute display label
+  const normalizedRealPath = realPath.replace(/\\/g, "/");
+  const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
+  const label = computeLabel(normalizedRealPath, normalizedRoot);
 
   return {
     ok: true,
-    resolvedPath: realPath,
-    worktreeRoot: realPath, // For now, the path IS the worktree root
+    resolvedPath: normalizedRealPath,
+    worktreeRoot: normalizedRoot,
     label,
   };
 }
@@ -210,7 +181,19 @@ export async function validateWorktreePath(
  * - Subdirectory → basename/relative (e.g., "/wt/feature/packages/web" → "feature/packages/web")
  * - Always forward slashes regardless of host OS
  */
-function computeLabel(resolvedPath: string): string {
-  const basename = path.basename(resolvedPath);
-  return basename;
+export function computeLabel(resolvedPath: string, worktreeRoot: string): string {
+  // Normalize both paths to forward slashes for cross-platform comparison
+  const normalizedResolved = resolvedPath.replace(/\\/g, "/");
+  const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
+
+  const rootBasename = normalizedRoot.split("/").filter(Boolean).pop() ?? "";
+
+  if (normalizedResolved === normalizedRoot) {
+    return rootBasename;
+  }
+
+  // Compute relative path using posix separator
+  const relative = path.posix.relative(normalizedRoot, normalizedResolved);
+
+  return `${rootBasename}/${relative}`;
 }

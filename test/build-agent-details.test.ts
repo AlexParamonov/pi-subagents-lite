@@ -247,4 +247,22 @@ describe("buildAgentDetails", () => {
     expect(details.tokens).toBe(0);
     expect(details.cost).toBe(0);
   });
+
+  // --- worktreePath in details ---
+
+  it("includes worktreePath when record has it set", () => {
+    const record = makeRecord({
+      display: { type: "builder", description: "Build something", worktreePath: "/wt/feature" },
+    });
+    const details = buildAgentDetails(record);
+
+    expect(details.worktreePath).toBe("/wt/feature");
+  });
+
+  it("does not include worktreePath when record has none", () => {
+    const record = makeRecord();
+    const details = buildAgentDetails(record);
+
+    expect(details.worktreePath).toBeUndefined();
+  });
 });

@@ -139,6 +139,10 @@ export function buildAgentDetails(
     description: record.display.description,
   };
 
+  if (record.display.worktreePath) {
+    details.worktreePath = record.display.worktreePath;
+  }
+
   if (options?.includeStatus) {
     details.status = record.lifecycle.status;
     details.outputFile = record.display.outputFile;
@@ -216,11 +220,32 @@ export async function executeAgentTool(
   _onUpdate: ((update: any) => void) | undefined,
   ctx: ExtensionContext,
 ): Promise<any> {
+  // Validate worktree_path early — needed for on-demand agent discovery
+  const rawWorktreePath = params.worktree_path as string | undefined;
+  let validatedWorktreePath: string | undefined;
+  let worktreeLabel: string | undefined;
+  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
+    try {
+      const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
+      const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
+      if (!validation.ok) {
+        return errorResult(validation.error);
+      }
+      validatedWorktreePath = validation.resolvedPath;
+      worktreeLabel = validation.label;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return errorResult(`worktree_path validation failed: ${msg}`);
+    }
+  }
+
   const type = (params.agent as string) || "general-purpose";
   let resolvedType = resolveType(type);
   if (!resolvedType) {
-    // Not found in registry — try scanning filesystem for agents added during the session
-    await discoverNewAgents();
+    // Not found in registry — try scanning filesystem for agents added during the session.
+    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
+    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
+    await discoverNewAgents(worktreeDir);
     resolvedType = resolveType(type);
   }
   if (!resolvedType) {
@@ -232,19 +257,6 @@ export async function executeAgentTool(
   const runInBackground = params.run_in_background as boolean | undefined;
   const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
 
-  // Validate worktree_path before any spawn work begins
-  const rawWorktreePath = params.worktree_path as string | undefined;
-  let validatedWorktreePath: string | undefined;
-  let worktreeLabel: string | undefined;
-  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
-    const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
-    const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
-    if (!validation.ok) {
-      return errorResult(validation.error);
-    }
-    validatedWorktreePath = validation.resolvedPath;
-    worktreeLabel = validation.label;
-  }
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
@@ -296,10 +308,6 @@ async function executeSpawnBackground(
   getWidget()?.update();
 
   const record = getManager().getRecord(agentId)!;
-  if (spawnOptions.worktreePath) {
-    record.display.worktreePath = spawnOptions.worktreePath;
-    record.display.worktreeLabel = spawnOptions.worktreeLabel;
-  }
   const details = buildAgentDetails(record);
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
@@ -326,10 +334,6 @@ async function executeSpawnForeground(
   getWidget()?.ensureTimer();
 
   const record = getManager().getRecord(fgId)!;
-  if (spawnOptions.worktreePath) {
-    record.display.worktreePath = spawnOptions.worktreePath;
-    record.display.worktreeLabel = spawnOptions.worktreeLabel;
-  }
   await record.execution.promise;
 
   agentActivity.delete(fgId);

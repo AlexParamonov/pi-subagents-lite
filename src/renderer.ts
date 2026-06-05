@@ -117,6 +117,9 @@ export function renderSubagentResult(
     if (d.outputFile as string) {
       headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
     }
+    if (d.worktreePath as string) {
+      headerLine += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
+    }
     inner.addChild(new Text(headerLine, 0, 0));
 
     if (expanded && text) {
@@ -152,6 +155,9 @@ function buildFallbackResultLine(
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
   if (d?.outputFile) {
     line += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+  }
+  if (d?.worktreePath) {
+    line += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
   }
   return line;
 }
