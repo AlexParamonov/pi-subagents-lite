@@ -25,6 +25,7 @@ Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `des
 ## Features
 
 - **Two tools** — `Agent` (spawn) and `StopAgent` (stop)
+- **Manual spawn** — spawn agents from the `/agents` menu without asking the LLM. Full control over model, thinking, turns, and background mode.
 - **Foreground & background** — block or fire-and-forget with auto-delivered results
 - **Custom agent types** — define via `.md` files with YAML frontmatter (tools, model, thinking, turn limits)
 - **Smart model resolution** — 6-level precedence: session → config → frontmatter → parent. Set once, forget
@@ -282,12 +283,14 @@ The LLM never passes `model` — it's injected at call time via the `tool_call` 
 
 ### `/agents`
 
-Management menu with five sections:
+Management menu with four sections:
 
-- **Model settings** — global default, per-type overrides, force background mode, cost display toggle, grace turns
-- **Concurrency** — default limit, per-provider and per-model slots, reset to defaults
 - **Running agents** — list with status and description; per-agent actions: view snapshot, view result, view error, steer, stop; bulk stop all running
-- **Widget settings** — force compact mode, max lines (full/compact), ctrl+o shortcut
+- **Spawn agent** — manually spawn an agent without asking the LLM. Pick a type, enter a prompt, configure options (model, thinking, max turns, grace turns, background), and spawn. Options are pre-filled from agent config and current settings. Spawn immediately or customize first.
+- **Settings** — model, concurrency, and widget settings grouped together
+  - **Model settings** — global default, per-type overrides, force background mode, cost display toggle, grace turns
+  - **Concurrency** — default limit, per-provider and per-model slots, reset to defaults
+  - **Widget settings** — force compact mode, max lines (full/compact), ctrl+o shortcut
 - **Debug** — agent types, agent briefing (sends capabilities to the LLM)
 
 ## Interface
