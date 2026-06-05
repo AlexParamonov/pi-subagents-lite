@@ -585,8 +585,13 @@ export async function showSpawnAgentMenu(
 
       // Wire activity tracking for widget
       agentActivity.set(agentId, activityState);
-      getWidget()?.ensureTimer();
-      getWidget()?.update();
+      // Set UI context so widget can render (same as tool_execution_start handler)
+      const widget = getWidget();
+      if (widget) {
+        widget.setUICtx(ctx.ui as unknown as import("./ui/agent-widget.js").UICtx);
+        widget.ensureTimer();
+        widget.update();
+      }
 
       if (currentBackground) {
         backgroundAgentIds.add(agentId);
