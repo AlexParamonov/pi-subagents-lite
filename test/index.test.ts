@@ -244,13 +244,13 @@ describe("tool registration", () => {
     await loadExtension(api.api);
   });
 
-  it("registers exactly 2 tools", () => {
-    expect(api.tools).toHaveLength(2);
+  it("registers exactly 3 tools", () => {
+    expect(api.tools).toHaveLength(3);
   });
 
-  it("registers Agent and StopAgent tools", () => {
+  it("registers Agent, StopAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
-    expect(names).toEqual(["Agent", "StopAgent"]);
+    expect(names).toEqual(["Agent", "StopAgent", "AgentStatus"]);
   });
 });
 
