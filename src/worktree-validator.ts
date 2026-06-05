@@ -53,6 +53,30 @@ interface PiExec {
 }
 
 /**
+ * Run `git rev-parse --git-common-dir` and return the trimmed result.
+ * Returns a failure result if the command fails or git is unavailable.
+ */
+async function getGitCommonDir(
+  pi: PiExec,
+  cwd: string,
+  notInRepoError: string,
+): Promise<{ ok: true; commonDir: string } | { ok: false; error: string }> {
+  try {
+    const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
+    if (result.code !== 0) return { ok: false, error: notInRepoError };
+    const commonDir = result.stdout.trim();
+    if (!commonDir) return { ok: false, error: notInRepoError };
+    return { ok: true, commonDir };
+  } catch (err: unknown) {
+    const msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes("ENOENT") || msg.includes("not found")) {
+      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
+    }
+    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
+  }
+}
+
+/**
  * Validate a worktree path against the parent's git repository.
  *
  * Resolution order:
@@ -103,58 +127,20 @@ export async function validateWorktreePath(
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
   }
 
-  // Step 5: Get parent's git-common-dir
-  let parentCommonDir: string;
-  try {
-    const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd: parentCwd, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO };
-    }
-    parentCommonDir = result.stdout.trim();
-    if (!parentCommonDir) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO };
-    }
-  } catch (err: any) {
-    const msg = String(err?.message ?? err);
-    if (msg.includes("ENOENT") || msg.includes("not found")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
-    }
-    if (msg.includes("timed out") || msg.includes("timeout")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-    }
-    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-  }
+  // Step 5 & 6: Get git-common-dir for parent and target, compare
+  const parentResult = await getGitCommonDir(pi, parentCwd, WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO);
+  if (!parentResult.ok) return parentResult;
 
-  // Step 6: Get target's git-common-dir
-  let targetCommonDir: string;
-  try {
-    const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd: realPath, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO };
-    }
-    targetCommonDir = result.stdout.trim();
-    if (!targetCommonDir) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO };
-    }
-  } catch (err: any) {
-    const msg = String(err?.message ?? err);
-    if (msg.includes("ENOENT") || msg.includes("not found")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
-    }
-    if (msg.includes("timed out") || msg.includes("timeout")) {
-      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-    }
-    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
-  }
+  const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO);
+  if (!targetResult.ok) return targetResult;
 
-  // Step 7: Compare common dirs — must share the same repo
-  // Resolve common dirs to absolute paths for comparison
-  const parentCommonAbs = path.isAbsolute(parentCommonDir)
-    ? parentCommonDir
-    : path.resolve(parentCwd, parentCommonDir);
-  const targetCommonAbs = path.isAbsolute(targetCommonDir)
-    ? targetCommonDir
-    : path.resolve(realPath, targetCommonDir);
+  // Compare common dirs — must share the same repo
+  const parentCommonAbs = path.isAbsolute(parentResult.commonDir)
+    ? parentResult.commonDir
+    : path.resolve(parentCwd, parentResult.commonDir);
+  const targetCommonAbs = path.isAbsolute(targetResult.commonDir)
+    ? targetResult.commonDir
+    : path.resolve(realPath, targetResult.commonDir);
 
   if (parentCommonAbs !== targetCommonAbs) {
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };
