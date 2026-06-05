@@ -139,6 +139,10 @@ export function buildAgentDetails(
     description: record.display.description,
   };
 
+  if (record.display.worktreePath) {
+    details.worktreePath = record.display.worktreePath;
+  }
+
   if (options?.includeStatus) {
     details.status = record.lifecycle.status;
     details.outputFile = record.display.outputFile;
@@ -237,13 +241,17 @@ export async function executeAgentTool(
   let validatedWorktreePath: string | undefined;
   let worktreeLabel: string | undefined;
   if (rawWorktreePath && rawWorktreePath.trim() !== "") {
-    const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
-    const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
-    if (!validation.ok) {
-      return errorResult(validation.error);
+    try {
+      const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
+      const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
+      if (!validation.ok) {
+        return errorResult(validation.error);
+      }
+      validatedWorktreePath = validation.resolvedPath;
+      worktreeLabel = validation.label;
+    } catch (err: any) {
+      return errorResult(`worktree_path validation failed: ${err?.message ?? String(err)}`);
     }
-    validatedWorktreePath = validation.resolvedPath;
-    worktreeLabel = validation.label;
   }
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);

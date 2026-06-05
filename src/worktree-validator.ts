@@ -160,14 +160,29 @@ export async function validateWorktreePath(
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };
   }
 
+  // Step 8: Get the worktree root via git rev-parse --show-toplevel
+  let worktreeRoot: string;
+  try {
+    const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd: realPath, timeout: GIT_EXEC_TIMEOUT_MS });
+    if (result.code !== 0) {
+      worktreeRoot = realPath;
+    } else {
+      const raw = result.stdout.trim();
+      worktreeRoot = raw ? (path.isAbsolute(raw) ? raw : path.resolve(realPath, raw)) : realPath;
+    }
+  } catch {
+    worktreeRoot = realPath;
+  }
+
   // Success — normalize to forward slashes and compute label
   const normalizedRealPath = realPath.replace(/\\/g, "/");
-  const label = computeLabel(normalizedRealPath);
+  const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
+  const label = computeLabel(normalizedRealPath, normalizedRoot);
 
   return {
     ok: true,
     resolvedPath: normalizedRealPath,
-    worktreeRoot: realPath, // For now, the path IS the worktree root
+    worktreeRoot: normalizedRoot,
     label,
   };
 }
@@ -180,7 +195,19 @@ export async function validateWorktreePath(
  * - Subdirectory → basename/relative (e.g., "/wt/feature/packages/web" → "feature/packages/web")
  * - Always forward slashes regardless of host OS
  */
-function computeLabel(resolvedPath: string): string {
-  const basename = path.basename(resolvedPath);
-  return basename;
+export function computeLabel(resolvedPath: string, worktreeRoot: string): string {
+  // Normalize both paths to forward slashes for cross-platform comparison
+  const normalizedResolved = resolvedPath.replace(/\\/g, "/");
+  const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
+
+  const rootBasename = normalizedRoot.split("/").filter(Boolean).pop() ?? "";
+
+  if (normalizedResolved === normalizedRoot) {
+    return rootBasename;
+  }
+
+  // Compute relative path using posix separator
+  const relative = path.posix.relative(normalizedRoot, normalizedResolved);
+
+  return `${rootBasename}/${relative}`;
 }
