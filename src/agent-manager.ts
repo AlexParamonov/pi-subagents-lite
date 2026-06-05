@@ -94,6 +94,10 @@ export interface SpawnOptions {
   maxTurns?: number;
   thinkingLevel?: ThinkingLevel;
   isBackground?: boolean;
+  /** Resolved worktree path — forwarded as cwd to runAgent. */
+  worktreePath?: string;
+  /** Short display label for the worktree (set on record display after spawn). */
+  worktreeLabel?: string;
   /**
    * Model key for concurrency pool lookup (e.g. "llamacpp/4b_small").
    * When set, the agent is counted against that model's concurrency limit.
@@ -318,6 +322,7 @@ export class AgentManager {
       model: options.model,
       maxTurns: options.maxTurns,
       thinkingLevel: options.thinkingLevel,
+      cwd: options.worktreePath,
       graceTurns: options.graceTurns,
       signal: record.execution.abortController!.signal,
       ...this.createRecordCallbacks(record, options),
