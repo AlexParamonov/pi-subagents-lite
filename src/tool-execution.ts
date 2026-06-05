@@ -60,8 +60,9 @@ export function errorResult(text: string, details?: Record<string, unknown>) {
 /**
  * Create an AgentActivity state and spawn callbacks for tracking tool usage.
  * Used by both foreground and background paths to avoid duplication.
+ * Exported for use by the menu spawn flow.
  */
-function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
+export function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
   const state: AgentActivity = {
     activeTools: new Map(),
     toolUses: 0,
