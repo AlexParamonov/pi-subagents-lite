@@ -366,7 +366,7 @@ export class AgentWidget {
       if (!this.isCompact()) {
         if (a.display.outputFile || a.display.worktreeLabel) {
           const parts: string[] = [];
-          if (a.display.worktreeLabel) parts.push(`@ ${a.display.worktreeLabel}`);
+          if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
           if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
           continuations.push(truncate(theme.fg("dim", `${VLINE}    ${parts.join("  ")}`)));
         }
@@ -408,7 +408,7 @@ export class AgentWidget {
         const continuations: string[] = [];
         if (a.display.outputFile || a.display.worktreeLabel) {
           const parts: string[] = [];
-          if (a.display.worktreeLabel) parts.push(`@ ${a.display.worktreeLabel}`);
+          if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
           if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
           continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} ${parts.join("  ")}`)));
         }
