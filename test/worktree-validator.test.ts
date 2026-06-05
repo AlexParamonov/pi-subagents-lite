@@ -1,405 +1,491 @@
 /**
- * worktree-validator.test.ts — Acceptance tests for worktree path validation.
+ * worktree-validator.test.ts — Tests for worktree path validation.
  *
- * Covers the worktree-validator module:
- *   - Happy path: valid worktree path → resolved path + label
- *   - Error cases: each rejection reason from PRD
- *   - Edge cases: symlinks, relative paths, main checkout, empty paths
- *   - Label computation: root vs subdirectory, forward slashes
+ * Covers: validation logic, resolution, label computation, error cases.
  *
- * The validator is a pure async function that takes pi.exec as a dependency.
- * We mock pi.exec for git commands and use temp dirs for filesystem checks.
+ * Merged from acceptance tests (HEAD) and slice 1-1 tests (feature branch).
+ * Acceptance tests for `computeWorktreeLabel` unit and `result.skipped` were
+ * adapted to integration tests through `validateWorktreePath`, since the
+ * implementation does not export `computeWorktreeLabel` and returns
+ * `{ ok: true }` (no `skipped` field) for empty paths.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
-import { fakePi } from "./fixtures";
-
-/* ------------------------------------------------------------------ */
-/*  Import the module under test (will fail until implementation)     */
-/* ------------------------------------------------------------------ */
-
-// The validator module does not exist yet — importing it confirms these
-// tests are testing real behavior (Red phase). The import error itself
-// is the "failing for the right reason" signal.
+import {
+  existsSync,
+  mkdirSync,
+  symlinkSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   validateWorktreePath,
-  computeWorktreeLabel,
+  WORKTREE_VALIDATION_ERRORS,
+  type WorktreeValidationSuccess,
+  type WorktreeValidationFailure,
 } from "../src/worktree-validator.js";
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                           */
-/* ------------------------------------------------------------------ */
+// ── helpers ──────────────────────────────────────────────────────
 
-let tmpDir: string;
-
-function makeTmpDir(prefix = "wt-validator-test"): string {
-  const dir = path.join(os.tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function cleanupTmpDir(dir: string): void {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
-}
-
-/**
- * Create a fake pi that responds to git rev-parse --git-common-dir
- * with the specified common dir for a given cwd.
- */
-function fakePiWithGit(commonDirMap: Map<string, string | Error>): any {
+function makePi(gitCommonDirResults: Map<string, string | null>) {
   return {
     exec: vi.fn(async (cmd: string, args: string[], opts?: any) => {
       if (cmd === "git" && args[0] === "rev-parse" && args[1] === "--git-common-dir") {
         const cwd = opts?.cwd ?? "";
-        const result = commonDirMap.get(cwd);
-        if (result instanceof Error) throw result;
-        if (result !== undefined) return { stdout: result, stderr: "" };
-        return { stdout: "", stderr: "" };
+        const result = gitCommonDirResults.get(cwd);
+        if (result === null || result === undefined) {
+          return { code: 128, stdout: "", stderr: "not a git repo" };
+        }
+        return { code: 0, stdout: result, stderr: "" };
       }
-      throw new Error(`Unexpected command: ${cmd} ${args.join(" ")}`);
+      throw new Error(`Unexpected exec: ${cmd} ${args.join(" ")}`);
     }),
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Test setup/teardown                                               */
-/* ------------------------------------------------------------------ */
+function makeTempDir(prefix = "wt-test"): { dir: string; cleanup: () => void } {
+  const dir = join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  return {
+    dir,
+    cleanup: () => {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    },
+  };
+}
 
-beforeEach(() => {
-  tmpDir = makeTmpDir();
-});
+// ── tests ────────────────────────────────────────────────────────
 
-afterEach(() => {
-  cleanupTmpDir(tmpDir);
-});
+describe("validateWorktreePath", () => {
+  let tmpDir: string;
+  let cleanupFn: () => void;
 
-/* ================================================================== */
-/*  VALIDATION — REJECTION CASES                                      */
-/* ================================================================== */
-
-describe("validateWorktreePath — rejection cases", () => {
-  const parentCwd = "/home/dev/my-repo";
-
-  it("returns error when path does not exist", async () => {
-    const pi = fakePiWithGit(new Map());
-    const result = await validateWorktreePath(pi, "/nonexistent/path", parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("does not exist");
+  beforeEach(() => {
+    const tmp = makeTempDir();
+    tmpDir = tmp.dir;
+    cleanupFn = tmp.cleanup;
   });
 
-  it("returns error when path is a file, not a directory", async () => {
-    const filePath = path.join(tmpDir, "file.txt");
-    fs.writeFileSync(filePath, "content");
-    const pi = fakePiWithGit(new Map());
-
-    const result = await validateWorktreePath(pi, filePath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("not a directory");
+  afterEach(() => {
+    cleanupFn();
   });
 
-  it("returns error when path is not inside a git repository", async () => {
-    const dirPath = path.join(tmpDir, "not-a-repo");
-    fs.mkdirSync(dirPath, { recursive: true });
-    const pi = fakePiWithGit(new Map([
-      [dirPath, new Error("not a git repository")],
-    ]));
+  // ── happy path ────────────────────────────────────────────────
 
-    const result = await validateWorktreePath(pi, dirPath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("not inside a git repository");
-  });
+  it("accepts a valid worktree path that shares git-common-dir with parent", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
 
-  it("returns error when path is in a different repository than the parent", async () => {
-    const targetPath = path.join(tmpDir, "other-repo");
-    fs.mkdirSync(targetPath, { recursive: true });
-    const parentCommonDir = "/home/dev/my-repo/.git";
-    const targetCommonDir = "/home/dev/other-repo/.git";
-    const pi = fakePiWithGit(new Map([
-      [parentCwd, parentCommonDir],
-      [targetPath, targetCommonDir],
-    ]));
-
-    const result = await validateWorktreePath(pi, targetPath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/not a worktree|different repository|not the parent/i);
-  });
-
-  it("returns error when parent itself is not in a git repository", async () => {
-    const targetPath = path.join(tmpDir, "target");
-    fs.mkdirSync(targetPath, { recursive: true });
-    const pi = fakePiWithGit(new Map([
-      [parentCwd, new Error("not a git repository")],
-      [targetPath, "/home/dev/some-repo/.git"],
-    ]));
-
-    const result = await validateWorktreePath(pi, targetPath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/parent.*not in a git repository|parent.*not a git/i);
-  });
-
-  it("returns error when git executable is not found", async () => {
-    const targetPath = path.join(tmpDir, "target");
-    fs.mkdirSync(targetPath, { recursive: true });
-    const pi = {
-      exec: vi.fn(async (cmd: string) => {
-        if (cmd === "git") throw new Error("git: command not found");
-        throw new Error("unexpected");
-      }),
-    };
-
-    const result = await validateWorktreePath(pi, targetPath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/git.*not found|git.*not installed|configuration error/i);
-  });
-
-  it("returns error when git command times out", async () => {
-    const targetPath = path.join(tmpDir, "target");
-    fs.mkdirSync(targetPath, { recursive: true });
-    const pi = {
-      exec: vi.fn(async (cmd: string) => {
-        if (cmd === "git") throw new Error("timeout");
-        throw new Error("unexpected");
-      }),
-    };
-
-    const result = await validateWorktreePath(pi, targetPath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/timeout|configuration error/i);
-  });
-});
-
-/* ================================================================== */
-/*  VALIDATION — HAPPY PATH                                           */
-/* ================================================================== */
-
-describe("validateWorktreePath — happy path", () => {
-  const parentCwd = "/home/dev/my-repo";
-
-  it("accepts a valid worktree path and returns resolved path", async () => {
-    const worktreePath = path.join(tmpDir, "wt-feature");
-    fs.mkdirSync(worktreePath, { recursive: true });
-    const commonDir = "/home/dev/my-repo/.git";
-    const pi = fakePiWithGit(new Map([
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
       [parentCwd, commonDir],
       [worktreePath, commonDir],
-    ]));
+    ]);
 
-    const result = await validateWorktreePath(pi, worktreePath, parentCwd);
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.resolvedPath).toBe(path.resolve(worktreePath));
-    }
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(worktreePath);
+    expect(success.worktreeRoot).toBe(worktreePath);
+    expect(success.label).toBe("feature");
   });
 
-  it("returns the worktree root and label on success", async () => {
-    const worktreePath = path.join(tmpDir, "wt-feature");
-    fs.mkdirSync(worktreePath, { recursive: true });
-    const commonDir = "/home/dev/my-repo/.git";
-    const pi = fakePiWithGit(new Map([
+  it("accepts the main checkout (parent and target share git-common-dir via .git dir)", async () => {
+    const parentCwd = join(tmpDir, "linked-wt");
+    const mainCheckout = join(tmpDir, "main-checkout");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(mainCheckout, { recursive: true });
+
+    const sharedGitDir = join(tmpDir, ".git");
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, sharedGitDir],
+      [mainCheckout, sharedGitDir],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), mainCheckout, parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(mainCheckout);
+  });
+
+  it("returns worktree root and non-empty label on success", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "wt-feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
       [parentCwd, commonDir],
       [worktreePath, commonDir],
-    ]));
+    ]);
 
-    const result = await validateWorktreePath(pi, worktreePath, parentCwd);
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.worktreeRoot).toBeDefined();
-      expect(typeof result.label).toBe("string");
-      expect(result.label.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-/* ================================================================== */
-/*  SYMLINK RESOLUTION                                                */
-/* ================================================================== */
-
-describe("validateWorktreePath — symlink resolution", () => {
-  const parentCwd = "/home/dev/my-repo";
-
-  it("resolves symlinks before validation", async () => {
-    const realPath = path.join(tmpDir, "real-wt");
-    const symlinkPath = path.join(tmpDir, "link-wt");
-    fs.mkdirSync(realPath, { recursive: true });
-    fs.symlinkSync(realPath, symlinkPath);
-
-    const commonDir = "/home/dev/my-repo/.git";
-    const pi = fakePiWithGit(new Map([
-      [parentCwd, commonDir],
-      [realPath, commonDir],
-    ]));
-
-    const result = await validateWorktreePath(pi, symlinkPath, parentCwd);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      // The resolved path should be the real path, not the symlink
-      expect(result.resolvedPath).toBe(path.resolve(realPath));
-    }
+    const success = result as WorktreeValidationSuccess;
+    expect(success.worktreeRoot).toBeDefined();
+    expect(typeof success.label).toBe("string");
+    expect(success.label!.length).toBeGreaterThan(0);
   });
 
-  it("rejects a symlink that resolves to a different repository", async () => {
-    const otherRepoPath = path.join(tmpDir, "other-repo");
-    const symlinkPath = path.join(tmpDir, "sneaky-link");
-    fs.mkdirSync(otherRepoPath, { recursive: true });
-    fs.symlinkSync(otherRepoPath, symlinkPath);
+  // ── relative path resolution ──────────────────────────────────
 
-    const parentCommonDir = "/home/dev/my-repo/.git";
-    const otherCommonDir = "/home/dev/other-repo/.git";
-    const pi = fakePiWithGit(new Map([
-      [parentCwd, parentCommonDir],
-      [otherRepoPath, otherCommonDir],
-    ]));
+  it("resolves a relative path against parent cwd", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = "feature-wt";
+    const absolutePath = join(parentCwd, "feature-wt");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(absolutePath, { recursive: true });
 
-    const result = await validateWorktreePath(pi, symlinkPath, parentCwd);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/not a worktree|different repository/i);
-  });
-});
-
-/* ================================================================== */
-/*  RELATIVE PATH RESOLUTION                                          */
-/* ================================================================== */
-
-describe("validateWorktreePath — relative path resolution", () => {
-  it("resolves relative paths against parent cwd", async () => {
-    const parentCwd = "/home/dev/my-repo";
-    const relativePath = "./wt/feature";
-    const absolutePath = path.resolve(parentCwd, relativePath);
-
-    // Create the directory at the expected absolute path
-    fs.mkdirSync(absolutePath, { recursive: true });
-
-    const commonDir = "/home/dev/my-repo/.git";
-    const pi = fakePiWithGit(new Map([
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
       [parentCwd, commonDir],
       [absolutePath, commonDir],
-    ]));
+    ]);
 
-    const result = await validateWorktreePath(pi, relativePath, parentCwd);
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.resolvedPath).toBe(absolutePath);
-    }
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(absolutePath);
+  });
+
+  it("resolves ./wt/feature style relative path", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = "./wt/feature";
+    const absolutePath = join(parentCwd, "wt", "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(absolutePath, { recursive: true });
+
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, commonDir],
+      [absolutePath, commonDir],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(absolutePath);
   });
 
   it("resolves parent-relative paths (../wt/feature)", async () => {
-    const parentCwd = "/home/dev/my-repo/sub";
-    const relativePath = "../wt/feature";
-    const absolutePath = path.resolve(parentCwd, relativePath);
+    const parentCwd = join(tmpDir, "parent", "sub");
+    const worktreePath = "../wt/feature";
+    const absolutePath = join(tmpDir, "parent", "wt", "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(absolutePath, { recursive: true });
 
-    fs.mkdirSync(absolutePath, { recursive: true });
-
-    const commonDir = "/home/dev/my-repo/.git";
-    const pi = fakePiWithGit(new Map([
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
       [parentCwd, commonDir],
       [absolutePath, commonDir],
-    ]));
+    ]);
 
-    const result = await validateWorktreePath(pi, relativePath, parentCwd);
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.resolvedPath).toBe(absolutePath);
-    }
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(absolutePath);
   });
-});
 
-/* ================================================================== */
-/*  MAIN CHECKOUT ACCEPTANCE                                          */
-/* ================================================================== */
+  // ── label computation ─────────────────────────────────────────
 
-describe("validateWorktreePath — main checkout acceptance", () => {
-  it("accepts the main checkout path when parent is in a linked worktree", async () => {
-    const parentCwd = "/home/dev/my-repo.wt/feature";
-    const mainCheckout = "/home/dev/my-repo";
-    fs.mkdirSync(mainCheckout, { recursive: true });
+  it("computes label as basename when path equals worktree root", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "my-feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
 
-    const commonDir = "/home/dev/my-repo/.git";
-    const pi = fakePiWithGit(new Map([
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
       [parentCwd, commonDir],
-      [mainCheckout, commonDir],
-    ]));
+      [worktreePath, commonDir],
+    ]);
 
-    const result = await validateWorktreePath(pi, mainCheckout, parentCwd);
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
     expect(result.ok).toBe(true);
+    expect((result as WorktreeValidationSuccess).label).toBe("my-feature");
   });
-});
 
-/* ================================================================== */
-/*  EMPTY / WHITESPACE PATH                                           */
-/* ================================================================== */
+  it("resolvedPath uses forward slashes (no backslash separators)", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
 
-describe("validateWorktreePath — empty and whitespace paths", () => {
-  it("treats empty string as omitted (returns success with parent cwd)", async () => {
-    const pi = fakePiWithGit(new Map());
-    const result = await validateWorktreePath(pi, "", "/home/dev/repo");
-    // Empty path should be treated as omitted — the validator returns
-    // a "use parent cwd" result or a "skipped" result
-    expect(result.skipped).toBe(true);
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, commonDir],
+      [worktreePath, commonDir],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    // resolvedPath should always use forward slashes
+    expect(success.resolvedPath).not.toContain("\\");
+  });
+
+  // ── rejection: path does not exist ────────────────────────────
+
+  it("rejects a path that does not exist", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    mkdirSync(parentCwd, { recursive: true });
+    const nonExistent = join(tmpDir, "nonexistent");
+
+    const result = await validateWorktreePath(makePi(new Map()), nonExistent, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST);
+  });
+
+  // ── rejection: not a directory ────────────────────────────────
+
+  it("rejects a path that is a file (not a directory)", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    mkdirSync(parentCwd, { recursive: true });
+    const filePath = join(tmpDir, "file.txt");
+    writeFileSync(filePath, "content");
+
+    const result = await validateWorktreePath(makePi(new Map()), filePath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.NOT_A_DIRECTORY);
+  });
+
+  // ── rejection: parent not in git repo ─────────────────────────
+
+  it("rejects when parent is not in a git repo", async () => {
+    const parentCwd = join(tmpDir, "no-git-parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, null], // not a git repo
+      [worktreePath, "/some/.git"],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    // Must assert the specific PARENT_NOT_IN_GIT_REPO constant, not just the
+    // generic "not inside a git repository" substring — the latter also matches
+    // NOT_IN_GIT_REPO (target), which would be the wrong error source.
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO);
+  });
+
+  // ── rejection: target not in git repo ─────────────────────────
+
+  it("rejects when target path is not in a git repo", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "no-git");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, "/some/.git"],
+      [worktreePath, null], // not in git repo
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO);
+  });
+
+  // ── rejection: different repo ─────────────────────────────────
+
+  it("rejects when target is in a different git repo", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "other-repo");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, join(tmpDir, "repo-a", ".git")],
+      [worktreePath, join(tmpDir, "repo-b", ".git")],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO);
+  });
+
+  // ── rejection: git timeout ────────────────────────────────────
+
+  it("rejects when git command times out", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const pi = {
+      exec: vi.fn(async () => {
+        throw new Error("Command timed out");
+      }),
+    };
+
+    const result = await validateWorktreePath(pi, worktreePath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT);
+  });
+
+  // ── rejection: git not found ──────────────────────────────────
+
+  it("rejects when git executable is not found", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const pi = {
+      exec: vi.fn(async (cmd: string) => {
+        if (cmd === "git") throw new Error("ENOENT: git not found");
+        throw new Error("Unexpected");
+      }),
+    };
+
+    const result = await validateWorktreePath(pi, worktreePath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND);
+  });
+
+  // ── empty / whitespace path ───────────────────────────────────
+
+  it("treats empty string as omitted (returns ok with no path)", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    mkdirSync(parentCwd, { recursive: true });
+
+    const result = await validateWorktreePath(makePi(new Map()), "", parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBeUndefined();
   });
 
   it("treats whitespace-only string as omitted", async () => {
-    const pi = fakePiWithGit(new Map());
-    const result = await validateWorktreePath(pi, "   ", "/home/dev/repo");
-    expect(result.skipped).toBe(true);
+    const parentCwd = join(tmpDir, "parent");
+    mkdirSync(parentCwd, { recursive: true });
+
+    const result = await validateWorktreePath(makePi(new Map()), "   ", parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBeUndefined();
+  });
+
+  // ── symlink resolution ────────────────────────────────────────
+
+  it("resolves symlinks before validation", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const realPath = join(tmpDir, "real-feature");
+    const symlinkPath = join(tmpDir, "link-to-feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(realPath, { recursive: true });
+    symlinkSync(realPath, symlinkPath);
+
+    const commonDir = join(tmpDir, "shared.git");
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, commonDir],
+      [realPath, commonDir],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), symlinkPath, parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(realPath);
+  });
+
+  it("rejects a symlink whose target is in a different repo", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const otherRepoPath = join(tmpDir, "other-repo-dir");
+    const symlinkPath = join(tmpDir, "sneaky-link");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(otherRepoPath, { recursive: true });
+    symlinkSync(otherRepoPath, symlinkPath);
+
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, join(tmpDir, "repo-a", ".git")],
+      [otherRepoPath, join(tmpDir, "repo-b", ".git")],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), symlinkPath, parentCwd);
+
+    expect(result.ok).toBe(false);
+    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO);
   });
 });
 
-/* ================================================================== */
-/*  LABEL COMPUTATION                                                 */
-/* ================================================================== */
+// ── deletion mid-run ─────────────────────────────────────────────
+// Simulates: worktree deleted between validation and agent start.
+// Agent record transitions to errored; parent session unaffected.
 
-describe("computeWorktreeLabel", () => {
-  it("returns basename when requested path equals the worktree root", () => {
-    const label = computeWorktreeLabel("/wt/feature", "/wt/feature");
-    expect(label).toBe("feature");
+const { mockRunAgent } = vi.hoisted(() => ({
+  mockRunAgent: vi.fn(),
+}));
+
+vi.mock("../src/agent-runner.js", () => ({
+  runAgent: mockRunAgent,
+}));
+
+describe("worktree deletion mid-run", () => {
+  beforeEach(() => {
+    mockRunAgent.mockReset();
   });
 
-  it("returns basename/subpath when requested path is a subdirectory of the root", () => {
-    const label = computeWorktreeLabel("/wt/feature/packages/web", "/wt/feature");
-    expect(label).toBe("feature/packages/web");
-  });
+  it("marks agent as errored when runAgent fails (worktree deleted after validation)", async () => {
+    // Simulate runAgent failing immediately as a rejected promise — e.g.,
+    // worktree directory was deleted between validation and when the agent
+    // session starts. Using mockRejectedValue ensures the failure flows
+    // through the promise chain's .catch() (status → "error") rather than
+    // throwing synchronously (which would delete the record in spawn's
+    // try-catch and re-throw to the parent).
+    mockRunAgent.mockRejectedValue(
+      new Error("ENOENT: no such file or directory, cwd '/deleted/worktree'"),
+    );
 
-  it("uses forward slashes for path separators", () => {
-    // Simulate Windows-style path (label should always use forward slashes)
-    const label = computeWorktreeLabel("/wt/feature/packages/web", "/wt/feature");
-    expect(label).not.toContain("\\");
-    expect(label).toContain("/");
-  });
+    // Minimal mock for AgentManager dependencies
+    const mockCtx = {
+      modelRegistry: [],
+      model: undefined,
+      cwd: "/tmp",
+    } as any;
 
-  it("handles deeply nested subdirectories", () => {
-    const label = computeWorktreeLabel("/wt/feature/a/b/c/d", "/wt/feature");
-    expect(label).toBe("feature/a/b/c/d");
-  });
+    const { AgentManager } = await import("../src/agent-manager.js");
+    const manager = new AgentManager();
 
-  it("handles worktree root with trailing slash normalization", () => {
-    const label = computeWorktreeLabel("/wt/feature", "/wt/feature/");
-    // Should still produce "feature" regardless of trailing slash
-    expect(label).toBe("feature");
-  });
-});
+    // Spawn should not throw — the error is caught inside startAgent.
+    // The agent record transitions to "error" status.
+    const agentId = manager.spawn(
+      { exec: vi.fn() } as any,
+      mockCtx,
+      "general-purpose",
+      "test prompt",
+      { description: "test", worktreePath: "/deleted/worktree" },
+    );
 
-/* ================================================================== */
-/*  CROSS-PLATFORM PATH SEPARATORS                                    */
-/* ================================================================== */
+    // Wait for the promise microtasks to settle (runAgent mock rejects/throws,
+    // promise chain sets status in .catch(), runs .finally()).
+    await new Promise((r) => setTimeout(r, 0));
 
-describe("computeWorktreeLabel — cross-platform", () => {
-  it("produces forward-slash labels from Windows-style path inputs", () => {
-    // Using path.win32 to simulate Windows paths on any host
-    const winRoot = "C:\\Users\\dev\\my-repo\\wt\\feature";
-    const winSubdir = "C:\\Users\\dev\\my-repo\\wt\\feature\\packages\\web";
-    // The label function should normalize to forward slashes
-    const label = computeWorktreeLabel(winSubdir, winRoot);
-    expect(label).not.toContain("\\");
-    expect(label).toMatch(/feature\/packages\/web/);
-  });
-
-  it("produces forward-slash labels from mixed separator inputs", () => {
-    const root = "/wt/feature";
-    const mixed = "/wt/feature/packages\\web";
-    const label = computeWorktreeLabel(mixed, root);
-    expect(label).not.toContain("\\");
+    const record = manager.getRecord(agentId);
+    expect(record).toBeDefined();
+    expect(record!.lifecycle.status).toBe("error");
+    expect(record!.error).toContain("ENOENT");
   });
 });

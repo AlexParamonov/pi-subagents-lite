@@ -14,6 +14,7 @@ import type { AgentActivity } from "./ui/agent-widget.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
 import { resolveModel } from "./model-precedence.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
+import { validateWorktreePath } from "./worktree-validator.js";
 
 // Shared state imported from state.ts
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.js";
@@ -24,6 +25,7 @@ import {
   agentActivity,
   getManager,
   getWidget,
+  sessionCtx,
 } from "./state.js";
 
 // ============================================================================
@@ -229,6 +231,20 @@ export async function executeAgentTool(
   const description = params.description as string;
   const runInBackground = params.run_in_background as boolean | undefined;
   const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
+
+  // Validate worktree_path before any spawn work begins
+  const rawWorktreePath = params.worktree_path as string | undefined;
+  let validatedWorktreePath: string | undefined;
+  let worktreeLabel: string | undefined;
+  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
+    const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
+    const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
+    if (!validation.ok) {
+      return errorResult(validation.error);
+    }
+    validatedWorktreePath = validation.resolvedPath;
+    worktreeLabel = validation.label;
+  }
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
@@ -248,6 +264,8 @@ export async function executeAgentTool(
     modelKey,
     invocation: { modelName },
     graceTurns: __config.agent.graceTurns,
+    worktreePath: validatedWorktreePath,
+    worktreeLabel,
   };
 
   if (runInBackground || __config.agent.forceBackground) {
@@ -278,6 +296,10 @@ async function executeSpawnBackground(
   getWidget()?.update();
 
   const record = getManager().getRecord(agentId)!;
+  if (spawnOptions.worktreePath) {
+    record.display.worktreePath = spawnOptions.worktreePath;
+    record.display.worktreeLabel = spawnOptions.worktreeLabel;
+  }
   const details = buildAgentDetails(record);
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
@@ -304,6 +326,10 @@ async function executeSpawnForeground(
   getWidget()?.ensureTimer();
 
   const record = getManager().getRecord(fgId)!;
+  if (spawnOptions.worktreePath) {
+    record.display.worktreePath = spawnOptions.worktreePath;
+    record.display.worktreeLabel = spawnOptions.worktreeLabel;
+  }
   await record.execution.promise;
 
   agentActivity.delete(fgId);

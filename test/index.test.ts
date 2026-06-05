@@ -220,6 +220,12 @@ describe("Agent tool schema — stealth", () => {
     expect(hasParam(agentTool()!.parameters, "run_in_background")).toBe(true);
   });
 
+  it("includes worktree_path param (optional, no .description())", () => {
+    expect(hasParam(agentTool()!.parameters, "worktree_path")).toBe(true);
+    const wtSchema = agentTool()!.parameters?.properties?.worktree_path;
+    expect(wtSchema?.description).toBeUndefined();
+  });
+
 
   it("excludes isolated from schema (config-only, not LLM-controlled)", () => {
     expect(hasParam(agentTool()!.parameters, "isolated")).toBe(false);
