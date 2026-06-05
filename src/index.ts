@@ -38,6 +38,7 @@ import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
 import { loadConfig } from "./config-io.js";
 import { executeAgentTool, executeStopAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
+import { executeAgentStatusTool } from "./agent-status.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
   __config,
@@ -209,6 +210,15 @@ export default function (pi: ExtensionAPI) {
       agent_id: Type.String(),
     }),
     execute: executeStopAgentTool,
+  });
+
+  // AgentStatus tool — stealth schema, list all agents and their statuses
+  // @ts-expect-error — description removed to save prompt tokens
+  pi.registerTool({
+    name: "AgentStatus",
+    label: "AgentStatus",
+    parameters: Type.Object({}),
+    execute: executeAgentStatusTool,
   });
 
   // Message renderer — subagent-result (background agent completion)
