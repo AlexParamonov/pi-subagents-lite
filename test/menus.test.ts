@@ -2306,7 +2306,7 @@ describe("showSpawnAgentMenu — worktree picker", () => {
       if (wt.branch) {
         block += `\nbranch refs/heads/${wt.branch}`;
       } else if (wt.detached) {
-        block += "\n(detached)";
+        block += "\ndetached";
       }
       return block;
     }).join("\n\n");

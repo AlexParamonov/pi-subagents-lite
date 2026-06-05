@@ -285,7 +285,7 @@ function parseWorktreeList(output: string): WorktreeEntry[] {
         path = line.slice("worktree ".length);
       } else if (line.startsWith("branch refs/heads/")) {
         branch = line.slice("branch refs/heads/".length);
-      } else if (line === "(detached)") {
+      } else if (line === "detached") {
         isDetached = true;
       }
     }
