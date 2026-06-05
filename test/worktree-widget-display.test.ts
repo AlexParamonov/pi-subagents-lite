@@ -140,6 +140,7 @@ describe("widget worktree label — full mode", () => {
     // The continuation line (after header) should contain the worktree label
     const continuationLine = lines.find((l: string) => l.includes("feature/packages/web"));
     expect(continuationLine).toBeDefined();
+    expect(continuationLine).toContain("@");
   });
 
   it("shows worktreeLabel for a finished agent", () => {
@@ -160,6 +161,31 @@ describe("widget worktree label — full mode", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     // Should not crash — just no worktree-specific content
     expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it("shows worktreeLabel and tail -f on the same continuation line", () => {
+    const agent = makeRunningAgent("a1", "builder", "feature");
+    agent.display.outputFile = "/tmp/pi-agent-outputs/test.log";
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // Both @ feature and tail -f should be on the same continuation line
+    const combinedLine = lines.find(
+      (l: string) => l.includes("@ feature") && l.includes("tail -f"),
+    );
+    expect(combinedLine).toBeDefined();
+  });
+
+  it("shows worktreeLabel on its own line when no outputFile", () => {
+    const agent = makeRunningAgent("a1", "builder", "feature");
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const labelLine = lines.find((l: string) => l.includes("@ feature"));
+    expect(labelLine).toBeDefined();
+    expect(labelLine).not.toContain("tail -f");
   });
 
   it("shows distinct worktree labels for parallel agents with different worktrees", () => {
