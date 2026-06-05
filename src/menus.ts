@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
+import { getAgentConfig, getAvailableTypes, getAllTypes, resolveType, discoverNewAgents } from "./agent-types.js";
 import type { AgentRecord, ThinkingLevel } from "./types.js";
 import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import type { SpawnOptions } from "./agent-manager.js";
@@ -244,6 +244,96 @@ async function runMenuLoop(
     if (idx >= 0 && idx < actions.length) {
       await actions[idx]();
     }
+  }
+}
+
+// ============================================================================
+// Worktree picker helpers
+// ============================================================================
+
+/** Timeout for git worktree list command (ms). */
+const WORKTREE_LIST_TIMEOUT_MS = 5000;
+
+/** Max display length for a worktree path before truncation. */
+const WORKTREE_PATH_TRUNCATE_LEN = 60;
+
+interface WorktreeEntry {
+  path: string;
+  branch: string | null;
+  isDetached: boolean;
+}
+
+/**
+ * Parse `git worktree list --porcelain` output into structured entries.
+ *
+ * Format (one block per worktree, separated by blank lines):
+ *   worktree /path/to/worktree
+ *   HEAD <sha>
+ *   branch refs/heads/<name>   (or: (detached))
+ */
+function parseWorktreeList(output: string): WorktreeEntry[] {
+  const entries: WorktreeEntry[] = [];
+  const blocks = output.split(/\n\n+/);
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    const lines = block.split("\n");
+    let path = "";
+    let branch: string | null = null;
+    let isDetached = false;
+    for (const line of lines) {
+      if (line.startsWith("worktree ")) {
+        path = line.slice("worktree ".length);
+      } else if (line.startsWith("branch refs/heads/")) {
+        branch = line.slice("branch refs/heads/".length);
+      } else if (line === "detached") {
+        isDetached = true;
+      }
+    }
+    if (path) {
+      entries.push({ path, branch, isDetached });
+    }
+  }
+  return entries;
+}
+
+/** Truncate a path for display, keeping the tail. */
+function truncatePath(p: string): string {
+  if (p.length <= WORKTREE_PATH_TRUNCATE_LEN) return p;
+  return "..." + p.slice(p.length - WORKTREE_PATH_TRUNCATE_LEN + 3);
+}
+
+/**
+ * Fetch worktrees via `git worktree list --porcelain`.
+ * Returns null if git is unavailable or the command fails.
+ */
+async function listWorktrees(cwd: string): Promise<WorktreeEntry[] | null> {
+  try {
+    const result = await piInstance.exec(
+      "git",
+      ["worktree", "list", "--porcelain"],
+      { cwd, timeout: WORKTREE_LIST_TIMEOUT_MS },
+    );
+    if (result.code !== 0) return null;
+    return parseWorktreeList(result.stdout);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check whether a directory is inside a git repository.
+ * Uses `git rev-parse --git-common-dir` — the same strategy as the worktree validator.
+ */
+async function isInGitRepo(cwd: string): Promise<boolean> {
+  try {
+    const result = await piInstance.exec(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      { cwd, timeout: WORKTREE_LIST_TIMEOUT_MS },
+    );
+    return result.code === 0 && result.stdout.trim() !== "";
+  } catch {
+    return false;
   }
 }
 
@@ -498,6 +588,14 @@ export async function showSpawnAgentMenu(
   const autoDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
   let description = autoDescription;
 
+  // Check if parent's cwd is inside a git repo (for worktree picker visibility)
+  const parentCwd = sessionCtx?.cwd ?? "";
+  const inGitRepo = parentCwd ? await isInGitRepo(parentCwd) : false;
+
+  // Worktree picker state
+  let currentWorktreePath: string | undefined;
+  let currentWorktreeLabel = "Inherits parent cwd";
+
   // Pre-fill model from precedence chain
   const parentModelId = sessionCtx?.model
     ? `${sessionCtx.model.provider}/${sessionCtx.model.id}`
@@ -533,6 +631,10 @@ export async function showSpawnAgentMenu(
       `Description · ${description}`,
     ];
 
+    if (inGitRepo) {
+      items.push(`Worktree · ${currentWorktreeLabel}`);
+    };
+
     const choice = await ctx.ui.select("Spawn Options", items);
     if (choice === undefined) return; // Escape → main menu
 
@@ -551,6 +653,13 @@ export async function showSpawnAgentMenu(
         modelKey = `${model.provider}/${model.id}`;
       }
 
+      // Discover worktree-local agent types before spawn
+      if (currentWorktreePath) {
+        await discoverNewAgents(`${currentWorktreePath}/.pi/agents`);
+      }
+      // Resolve type (may have been discovered from worktree)
+      const resolvedType = resolveType(selectedType) ?? selectedType;
+
       const spawnOptions: SpawnOptions = {
         description,
         model,
@@ -565,13 +674,15 @@ export async function showSpawnAgentMenu(
           runInBackground: currentBackground,
         },
         graceTurns: currentGraceTurns,
+        worktreePath: currentWorktreePath,
+        worktreeLabel: currentWorktreePath ? currentWorktreeLabel : undefined,
       };
 
       const { state: activityState, callbacks } = createActivityTracker(currentMaxTurns);
 
       let agentId: string;
       try {
-        agentId = getManager().spawn(piInstance, sessionCtx, selectedType, prompt, {
+        agentId = getManager().spawn(piInstance, sessionCtx, resolvedType, prompt, {
           ...spawnOptions,
           ...callbacks,
         });
@@ -581,6 +692,15 @@ export async function showSpawnAgentMenu(
           "error",
         );
         return; // Return to main menu
+      }
+
+      // Set worktree display fields on the agent record
+      if (currentWorktreePath) {
+        const record = getManager().getRecord(agentId);
+        if (record) {
+          record.display.worktreePath = currentWorktreePath;
+          record.display.worktreeLabel = currentWorktreeLabel;
+        }
       }
 
       // Wire activity tracking for widget
@@ -599,9 +719,9 @@ export async function showSpawnAgentMenu(
       }
 
       // Foreground: block until completion
-      const record = getManager().getRecord(agentId);
-      if (record?.execution.promise) {
-        await record.execution.promise;
+      const fgRecord = getManager().getRecord(agentId);
+      if (fgRecord?.execution?.promise) {
+        await fgRecord.execution.promise;
       }
 
       agentActivity.delete(agentId);
@@ -651,6 +771,41 @@ export async function showSpawnAgentMenu(
       if (parsed !== undefined) currentGraceTurns = parsed;
     } else if (choice.startsWith("Background")) {
       currentBackground = !currentBackground;
+    } else if (choice.startsWith("Worktree") && inGitRepo) {
+      // Open worktree picker
+      const worktrees = await listWorktrees(parentCwd);
+      if (!worktrees || worktrees.length === 0) {
+        ctx.ui.notify(
+          "No worktrees found or git worktree list unavailable",
+          "error",
+        );
+        continue; // Return to options sub-menu
+      }
+
+      const pickerItems = [
+        "Inherits parent cwd",
+        ...worktrees.map(wt => {
+          const branchLabel = wt.isDetached ? "detached" : (wt.branch ?? "detached");
+          const truncPath = truncatePath(wt.path);
+          return `${branchLabel}  ·  ${truncPath}`;
+        }),
+      ];
+
+      const picked = await ctx.ui.select("Select worktree", pickerItems);
+      if (picked === undefined) continue; // Escape → return to options sub-menu
+
+      if (picked === "Inherits parent cwd") {
+        currentWorktreePath = undefined;
+        currentWorktreeLabel = "Inherits parent cwd";
+      } else {
+        // Find the matching worktree by index (offset by "Inherits parent cwd")
+        const idx = pickerItems.indexOf(picked) - 1;
+        if (idx >= 0 && idx < worktrees.length) {
+          const wt = worktrees[idx];
+          currentWorktreePath = wt.path;
+          currentWorktreeLabel = wt.branch ?? "detached";
+        }
+      }
     }
   }
 }
