@@ -264,6 +264,8 @@ export class AgentManager {
         type,
         description: options.description,
         invocation: options.invocation,
+        worktreePath: options.worktreePath,
+        worktreeLabel: options.worktreeLabel,
       },
       execution: {
         abortController,

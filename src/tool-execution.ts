@@ -308,10 +308,6 @@ async function executeSpawnBackground(
   getWidget()?.update();
 
   const record = getManager().getRecord(agentId)!;
-  if (spawnOptions.worktreePath) {
-    record.display.worktreePath = spawnOptions.worktreePath;
-    record.display.worktreeLabel = spawnOptions.worktreeLabel;
-  }
   const details = buildAgentDetails(record);
   const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
   const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
@@ -338,10 +334,6 @@ async function executeSpawnForeground(
   getWidget()?.ensureTimer();
 
   const record = getManager().getRecord(fgId)!;
-  if (spawnOptions.worktreePath) {
-    record.display.worktreePath = spawnOptions.worktreePath;
-    record.display.worktreeLabel = spawnOptions.worktreeLabel;
-  }
   await record.execution.promise;
 
   agentActivity.delete(fgId);

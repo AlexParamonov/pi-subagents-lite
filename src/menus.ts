@@ -694,15 +694,6 @@ export async function showSpawnAgentMenu(
         return; // Return to main menu
       }
 
-      // Set worktree display fields on the agent record
-      if (currentWorktreePath) {
-        const record = getManager().getRecord(agentId);
-        if (record) {
-          record.display.worktreePath = currentWorktreePath;
-          record.display.worktreeLabel = currentWorktreeLabel;
-        }
-      }
-
       // Wire activity tracking for widget
       agentActivity.set(agentId, activityState);
       // Set UI context so widget can render (same as tool_execution_start handler)

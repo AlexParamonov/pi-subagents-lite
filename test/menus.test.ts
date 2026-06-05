@@ -2620,18 +2620,13 @@ describe("showSpawnAgentMenu — worktree picker", () => {
     expect(discoverNewAgents).not.toHaveBeenCalled();
   });
 
-  it("sets worktreePath and worktreeLabel on agent record after background spawn", async () => {
+  it("forwards worktreePath and worktreeLabel in spawn options after background spawn", async () => {
     setupExecMock({
       inGitRepo: true,
       worktrees: [
         { path: "/test-feature", branch: "feature" },
       ],
     });
-
-    const mockRecord = {
-      display: { type: "general-purpose", description: "Do something" },
-    };
-    mockModules.mockManager.getRecord.mockReturnValue(mockRecord);
 
     // Type → prompt → Worktree → pick feature → Spawn
     const ctx = createMockCtx(
@@ -2641,22 +2636,18 @@ describe("showSpawnAgentMenu — worktree picker", () => {
 
     await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
 
-    expect(mockRecord.display.worktreePath).toBe("/test-feature");
-    expect(mockRecord.display.worktreeLabel).toBe("feature");
+    const options = mockModules.mockManager.spawn.mock.calls[0][4];
+    expect(options.worktreePath).toBe("/test-feature");
+    expect(options.worktreeLabel).toBe("feature");
   });
 
-  it("does not set worktree display fields when 'Inherits parent cwd' is selected", async () => {
+  it("does not forward worktreePath when 'Inherits parent cwd' is selected", async () => {
     setupExecMock({
       inGitRepo: true,
       worktrees: [
         { path: "/test-feature", branch: "feature" },
       ],
     });
-
-    const mockRecord = {
-      display: { type: "general-purpose", description: "Do something" },
-    };
-    mockModules.mockManager.getRecord.mockReturnValue(mockRecord);
 
     // Type → prompt → Worktree → pick Inherits → Spawn
     const ctx = createMockCtx(
@@ -2666,8 +2657,9 @@ describe("showSpawnAgentMenu — worktree picker", () => {
 
     await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
 
-    expect(mockRecord.display.worktreePath).toBeUndefined();
-    expect(mockRecord.display.worktreeLabel).toBeUndefined();
+    const options = mockModules.mockManager.spawn.mock.calls[0][4];
+    expect(options.worktreePath).toBeUndefined();
+    expect(options.worktreeLabel).toBeUndefined();
   });
 
   it("does not show 'Worktree' row when git repo check throws", async () => {
