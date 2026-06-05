@@ -9,7 +9,7 @@
  */
 
 import * as path from "node:path";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, realpathSync } from "node:fs";
 
 /** Timeout for git commands (ms). */
 const GIT_EXEC_TIMEOUT_MS = 5000;
@@ -53,33 +53,6 @@ interface PiExec {
 }
 
 /**
- * Run `git rev-parse --git-common-dir` and return the result, or null on failure.
- */
-async function getGitCommonDir(pi: PiExec, cwd: string): Promise<string | null> {
-  try {
-    const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) return null;
-    return result.stdout.trim();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Check if a git failure is caused by git not being installed.
- * Git returns exit code 127 or 128 with ENOENT-style errors when not found.
- */
-function isGitNotFoundError(pi: PiExec, cwd: string): boolean {
-  // We can't easily distinguish "not found" from "not a git repo" without
-  // trying a command that always runs. Instead, we check if `git --version`
-  // also fails.
-  // But for simplicity, we'll do it differently: if rev-parse fails AND
-  // the exec throws with ENOENT, it's a git-not-found issue.
-  // For the test mock, we'll rely on the throw path.
-  return false;
-}
-
-/**
  * Validate a worktree path against the parent's git repository.
  *
  * Resolution order:
@@ -111,24 +84,20 @@ export async function validateWorktreePath(
     ? worktreePath
     : path.resolve(parentCwd, worktreePath);
 
-  // Normalize to forward slashes for consistency
-  const normalizedResolved = resolved.replace(/\\/g, "/");
-
   // Step 3: Check existence
-  if (!existsSync(normalizedResolved)) {
+  if (!existsSync(resolved)) {
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
   }
 
   // Step 4: Check is directory (resolve symlinks first via stat)
   let realPath: string;
   try {
-    const stat = statSync(normalizedResolved);
+    const stat = statSync(resolved);
     if (!stat.isDirectory()) {
       return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_A_DIRECTORY };
     }
     // Resolve symlinks — use realpathSync to get the canonical path
-    const { realpathSync } = await import("node:fs");
-    realPath = realpathSync(normalizedResolved);
+    realPath = realpathSync(resolved);
   } catch {
     // stat failed — likely a broken symlink or permission issue
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
@@ -191,12 +160,13 @@ export async function validateWorktreePath(
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };
   }
 
-  // Success — compute label
-  const label = computeLabel(realPath);
+  // Success — normalize to forward slashes and compute label
+  const normalizedRealPath = realPath.replace(/\\/g, "/");
+  const label = computeLabel(normalizedRealPath);
 
   return {
     ok: true,
-    resolvedPath: realPath,
+    resolvedPath: normalizedRealPath,
     worktreeRoot: realPath, // For now, the path IS the worktree root
     label,
   };
