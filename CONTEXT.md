@@ -1,6 +1,6 @@
 # pi-subagents-lite
 
-A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks. Focused fork of pi-subagents with reduced surface area — no scheduling, no worktrees, no join modes.
+A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes. Worktree-scoped subagent spawning is supported via a single tool param.
 
 ## Language
 
@@ -42,15 +42,30 @@ _Avoid_: Callback, notification
 Additional turns allowed after the soft turn limit steer message before hard abort. Default 6, configurable via `/agents` > Model settings.
 _Avoid_: Grace period, extra turns
 
+**Worktree**:
+A linked git worktree of the same repository as the parent. Distinguished from the main checkout by the location of its `.git` reference: a worktree's `--git-dir` points back to `<main>/.git/worktrees/<name>` (outside the worktree root), while the main checkout's `--git-dir` is inside the repo path. Validated by `git-common-dir` match with the parent plus a `--git-dir`-not-inside-path check. The target of the `worktree_path` Agent tool param.
+_Avoid_: Git worktree, sibling worktree (the "sibling" framing is approximate; the validator accepts any worktree of the same repo)
+
+**Worktree path**:
+The resolved absolute filesystem path passed to the `worktree_path` param, stored on `AgentInvocation.worktreePath` for UI display. Always the realpath, never the LLM's raw input string. The subagent's session, resource loader, and system prompt `Working directory` line all use this value.
+
+**Worktree label**:
+A short human-readable identifier for a worktree, stored on `AgentInvocation.worktreeLabel`. Computed as `basename(worktreeRoot)` when the requested path equals the worktree root, else `basename(worktreeRoot)/<relative subpath>`. Forward-slash normalized for cross-platform display.
+_Avoid_: Worktree name (the label is a path-derived identifier, not a git branch name)
+
 ## Relationships
 
 - An **Agent type** has an optional **Model override**
 - A **Subagent** is spawned from one **Agent type**
+- A **Subagent** may run in a **Worktree** of the parent's repo
 - An **Agent briefing** describes all available **Agent types** to the LLM
 - A **Stealth tool** requires an **Agent briefing** before the LLM can use it
 - An **Activity tracker** is created per spawn and cleaned up on completion
 - A **Nudge** is emitted when a background agent completes or errors
 - **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
+- A **Worktree path** is the absolute resolved path passed via `worktree_path`
+- A **Worktree label** is derived from a **Worktree path** for compact display
+- The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
 
 ## Example dialogue
 

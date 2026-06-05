@@ -40,3 +40,27 @@
 - Clean up old slice worktrees/branches before creating new ones
 - ALWAYS run `bun run test` immediately after merging to main — don't assume clean merge means passing tests
 - Untracked test files in worktrees must be committed or deleted before merge, not left behind
+
+## worktree-path-param - 2026-06-05
+**What worked:**
+- Single new module (`worktree-validator.ts`) with `git rev-parse --git-common-dir` comparison — clean, testable seam
+- `runAgent` already accepted `cwd` — worktree = validate + pass as `cwd`. Zero changes to `agent-runner.ts` internals
+- Acceptance tests written before implementation (Red) gave builders a clear target
+- Parallel 1-2 + 1-3 execution cut wall time in half
+- Post-merge code review caught no real issues — slices were cleanly additive
+- User did manual testing personally; trusted confirmation ("all works") saved running a 10-iteration manual tester loop
+
+**What failed:**
+- Acceptance test writer's tests used a different convention than slice builders used — slice 1-1 added their own tests instead of running the acceptance tests, so the acceptance tests stayed Red until later slices and 1-1's AC review had to catch up
+- 1-4 initial build had wrong porcelain format `"(detached)"` vs `"detached"` — caught in code review, would have been silent production bug
+- 1-2 widget worktree label leaked into compact mode for finished agents — caught in code review
+- 1-2 AC review found worktree label and `tail -f` rendered on separate lines instead of one — fixed in second AC pass
+- Orchestrator accidentally spawned the planner twice — user caught and stopped; should have waited for the first notification
+- AC review for 1-1 returned NEEDS_REVISION with stale findings (predating the result-2 fix) — needed a fresh re-review to confirm
+
+**Next time:**
+- The acceptance test writer's tests and the slice builders' tests should be the same tests; consider telling slice builders "use the Red tests in test/ as your suite, do not write a new one"
+- When AC review returns NEEDS_REVISION on a slice that has been recently fixed, spawn a fresh re-review rather than relying on the prior report
+- Single feature worktree per feature is correct, but slice worktrees should be created from the latest feature branch HEAD (post-merge), not from the original main checkout HEAD — they were here, but easy to mess up
+- The wave-level arch review is valuable: caught the fact that main has an incomplete version of this feature
+- When user says "I tested manually, all works", record the result and proceed — don't insist on running the manual tester loop
