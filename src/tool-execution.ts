@@ -198,7 +198,7 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   piInstance.sendMessage(
     {
       customType: "subagent-result",
-      content: `[Subagent "${record.display.type}" completed]\n\n${record.result ?? ""}`,
+      content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""}`,
       details,
       display: true,
     },
