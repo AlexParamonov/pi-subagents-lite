@@ -46,6 +46,7 @@ const mockModules = vi.hoisted(() => ({
   },
   mockAgentActivity: new Map(),
   mockBackgroundAgentIds: new Set(),
+  mockPiExec: vi.fn(),
 }));
 
 vi.mock("../src/agent-types.js", () => ({
@@ -53,6 +54,8 @@ vi.mock("../src/agent-types.js", () => ({
   getAgentConfig: vi.fn(),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
+  resolveType: vi.fn((name: string) => name),
+  discoverNewAgents: vi.fn(async () => 0),
 }));
 
 vi.mock("../src/model-selector.js", () => ({
@@ -112,7 +115,7 @@ vi.mock("../src/state.js", () => {
     sessionOverrides: mockModules.mockSessionOverrides,
     getManager: () => mockModules.mockManager,
     getWidget: vi.fn(() => undefined),
-    piInstance: { sendUserMessage: vi.fn() },
+    piInstance: { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec },
     sessionCtx: mockModules.mockSessionCtx,
     agentActivity: mockModules.mockAgentActivity,
     setShowCostEnabled: vi.fn((enabled: boolean) => {
@@ -2270,6 +2273,436 @@ describe("handleAgentBriefing — worktree_path content", () => {
     // (5) worktree's .pi/agents/ is scanned for agent types
     expect(sentMessage).toContain(".pi/agents/");
     expect(sentMessage).toContain("agent types");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spawn agent menu — worktree picker
+// ---------------------------------------------------------------------------
+
+describe("showSpawnAgentMenu — worktree picker", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockAgentActivity.clear();
+    mockModules.mockBackgroundAgentIds.clear();
+    mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
+    mockModules.mockManager.getRecord.mockReset();
+    mockModules.mockPiExec.mockReset();
+    vi.clearAllMocks();
+
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") {
+        return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinking: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
+      }
+      return undefined;
+    });
+  });
+
+  /** Build porcelain output from worktree entries. */
+  function buildPorcelainOutput(worktrees: { path: string; branch?: string; detached?: boolean }[]): string {
+    return worktrees.map(wt => {
+      let block = `worktree ${wt.path}`;
+      if (wt.branch) {
+        block += `\nbranch refs/heads/${wt.branch}`;
+      } else if (wt.detached) {
+        block += "\n(detached)";
+      }
+      return block;
+    }).join("\n\n");
+  }
+
+  /**
+   * Configure pi.exec mock for git repo check and worktree list.
+   */
+  function setupExecMock(options: {
+    inGitRepo?: boolean;
+    worktrees?: { path: string; branch?: string; detached?: boolean }[];
+  } = {}) {
+    const { inGitRepo = true, worktrees = [] } = options;
+
+    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
+        return inGitRepo
+          ? { code: 0, stdout: "/test/.git", stderr: "" }
+          : { code: 128, stdout: "", stderr: "fatal: not a git repository" };
+      }
+      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") {
+        if (!inGitRepo) return { code: 128, stdout: "", stderr: "fatal: not a git repository" };
+        return { code: 0, stdout: buildPorcelainOutput(worktrees), stderr: "" };
+      }
+      return { code: 1, stdout: "", stderr: "unknown command" };
+    });
+  }
+
+  // --- Row visibility ---
+
+  it("shows 'Worktree · Inherits parent cwd' in options when in a git repo", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
+
+    const ctx = createMockCtx(
+      ["general-purpose", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall).toBeDefined();
+    const items: string[] = optionsCall[1];
+    const worktreeItem = items.find((i: string) => i.startsWith("Worktree"));
+    expect(worktreeItem).toBe("Worktree · Inherits parent cwd");
+  });
+
+  it("does not show 'Worktree' row when not in a git repo", async () => {
+    setupExecMock({ inGitRepo: false });
+
+    const ctx = createMockCtx(
+      ["general-purpose", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall).toBeDefined();
+    const items: string[] = optionsCall[1];
+    const worktreeItem = items.find((i: string) => i.startsWith("Worktree"));
+    expect(worktreeItem).toBeUndefined();
+  });
+
+  // --- Picker population ---
+
+  it("opens worktree picker with 'Inherits parent cwd' first and worktrees from git", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const pickerCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Select worktree");
+    expect(pickerCall).toBeDefined();
+    const pickerItems: string[] = pickerCall[1];
+    expect(pickerItems[0]).toBe("Inherits parent cwd");
+    expect(pickerItems).toHaveLength(3); // Inherits + 2 worktrees
+  });
+
+  it("shows branch name and path in picker rows", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const pickerCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Select worktree");
+    const pickerItems: string[] = pickerCall[1];
+    expect(pickerItems[1]).toContain("main");
+    expect(pickerItems[1]).toContain("/test");
+    expect(pickerItems[2]).toContain("feature");
+    expect(pickerItems[2]).toContain("/test-feature");
+  });
+
+  it("shows 'detached' for detached HEAD worktrees", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test-detached", detached: true },
+      ],
+    });
+
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const pickerCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Select worktree");
+    const pickerItems: string[] = pickerCall[1];
+    expect(pickerItems[1]).toContain("detached");
+    expect(pickerItems[1]).toContain("/test-detached");
+  });
+
+  // --- Selection updates row ---
+
+  it("updates worktree row to selected branch after picking a worktree", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    // Type → prompt → select Worktree → pick "feature" → Escape at options
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCalls.length).toBeGreaterThanOrEqual(2);
+    const worktreeItem = optionsCalls[optionsCalls.length - 1][1].find((i: string) => i.startsWith("Worktree"));
+    expect(worktreeItem).toBe("Worktree · feature");
+  });
+
+  it("updates worktree row to 'Inherits parent cwd' when that option is picked", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+      ],
+    });
+
+    // Type → prompt → select Worktree → pick "Inherits parent cwd" → Escape at options
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "Inherits parent cwd", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCalls.length).toBeGreaterThanOrEqual(2);
+    const worktreeItem = optionsCalls[optionsCalls.length - 1][1].find((i: string) => i.startsWith("Worktree"));
+    expect(worktreeItem).toBe("Worktree · Inherits parent cwd");
+  });
+
+  // --- Escape from picker ---
+
+  it("returns to options on Escape from picker without committing change", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+      ],
+    });
+
+    // Type → prompt → select Worktree → Escape from picker → Escape at options
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", undefined, undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCalls.length).toBe(2);
+    // Worktree row should still show default
+    const worktreeItem = optionsCalls[1][1].find((i: string) => i.startsWith("Worktree"));
+    expect(worktreeItem).toBe("Worktree · Inherits parent cwd");
+  });
+
+  // --- Git worktree list failure ---
+
+  it("shows notification and returns to options when git worktree list fails", async () => {
+    // Git repo check succeeds, but worktree list fails
+    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
+        return { code: 0, stdout: "/test/.git", stderr: "" };
+      }
+      if (args[0] === "worktree" && args[1] === "list") {
+        return { code: 128, stdout: "", stderr: "fatal: git unavailable" };
+      }
+      return { code: 1, stdout: "", stderr: "unknown" };
+    });
+
+    // Type → prompt → select Worktree → (picker fails) → Escape at options
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("worktree"),
+      "error",
+    );
+  });
+
+  // --- Spawn wiring ---
+
+  it("forwards worktreePath in spawn options when a worktree is picked", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    // Type → prompt → Worktree → pick feature → Spawn
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", "Spawn"],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1);
+    const options = mockModules.mockManager.spawn.mock.calls[0][4];
+    expect(options.worktreePath).toBe("/test-feature");
+    expect(options.worktreeLabel).toBe("feature");
+  });
+
+  it("does not forward worktreePath when 'Inherits parent cwd' is selected", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    // Type → prompt → Worktree → pick Inherits → Spawn
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "Inherits parent cwd", "Spawn"],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1);
+    const options = mockModules.mockManager.spawn.mock.calls[0][4];
+    expect(options.worktreePath).toBeUndefined();
+    expect(options.worktreeLabel).toBeUndefined();
+  });
+
+  it("calls discoverNewAgents with worktree path before spawn", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", "Spawn"],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const { discoverNewAgents } = await import("../src/agent-types.js");
+    expect(discoverNewAgents).toHaveBeenCalledWith("/test-feature/.pi/agents");
+  });
+
+  it("does not call discoverNewAgents when no worktree is picked", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
+
+    const ctx = createMockCtx(
+      ["general-purpose", "Spawn"],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const { discoverNewAgents } = await import("../src/agent-types.js");
+    expect(discoverNewAgents).not.toHaveBeenCalled();
+  });
+
+  it("sets worktreePath and worktreeLabel on agent record after background spawn", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    const mockRecord = {
+      display: { type: "general-purpose", description: "Do something" },
+    };
+    mockModules.mockManager.getRecord.mockReturnValue(mockRecord);
+
+    // Type → prompt → Worktree → pick feature → Spawn
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", "Spawn"],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    expect(mockRecord.display.worktreePath).toBe("/test-feature");
+    expect(mockRecord.display.worktreeLabel).toBe("feature");
+  });
+
+  it("does not set worktree display fields when 'Inherits parent cwd' is selected", async () => {
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
+
+    const mockRecord = {
+      display: { type: "general-purpose", description: "Do something" },
+    };
+    mockModules.mockManager.getRecord.mockReturnValue(mockRecord);
+
+    // Type → prompt → Worktree → pick Inherits → Spawn
+    const ctx = createMockCtx(
+      ["general-purpose", "Worktree · Inherits parent cwd", "Inherits parent cwd", "Spawn"],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    expect(mockRecord.display.worktreePath).toBeUndefined();
+    expect(mockRecord.display.worktreeLabel).toBeUndefined();
+  });
+
+  it("does not show 'Worktree' row when git repo check throws", async () => {
+    mockModules.mockPiExec.mockRejectedValue(new Error("ENOENT"));
+
+    const ctx = createMockCtx(
+      ["general-purpose", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall).toBeDefined();
+    const items: string[] = optionsCall[1];
+    const worktreeItem = items.find((i: string) => i.startsWith("Worktree"));
+    expect(worktreeItem).toBeUndefined();
+  });
+
+  it("positions 'Worktree' row after 'Description' in the options menu", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
+
+    const ctx = createMockCtx(
+      ["general-purpose", undefined],
+      ["Do something"],
+    );
+
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    const items: string[] = optionsCall[1];
+    const descIdx = items.findIndex((i: string) => i.startsWith("Description"));
+    const worktreeIdx = items.findIndex((i: string) => i.startsWith("Worktree"));
+    expect(descIdx).toBeGreaterThanOrEqual(0);
+    expect(worktreeIdx).toBeGreaterThan(descIdx);
   });
 });
 
