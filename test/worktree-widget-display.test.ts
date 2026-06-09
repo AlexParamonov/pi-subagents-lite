@@ -172,7 +172,7 @@ describe("widget worktree label — full mode", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     // Both @ feature and tail -f should be on the same continuation line
     const combinedLine = lines.find(
-      (l: string) => l.includes("@ feature") && l.includes("tail -f"),
+      (l: string) => l.includes("@feature") && l.includes("tail -f"),
     );
     expect(combinedLine).toBeDefined();
   });
@@ -183,7 +183,7 @@ describe("widget worktree label — full mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    const labelLine = lines.find((l: string) => l.includes("@ feature"));
+    const labelLine = lines.find((l: string) => l.includes("@feature"));
     expect(labelLine).toBeDefined();
     expect(labelLine).not.toContain("tail -f");
   });
