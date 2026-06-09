@@ -64,3 +64,19 @@
 - Single feature worktree per feature is correct, but slice worktrees should be created from the latest feature branch HEAD (post-merge), not from the original main checkout HEAD — they were here, but easy to mess up
 - The wave-level arch review is valuable: caught the fact that main has an incomplete version of this feature
 - When user says "I tested manually, all works", record the result and proceed — don't insist on running the manual tester loop
+
+## agent-status — 2026-06-06
+
+**What worked:**
+- Single-module tool implementation (50 LOC) — clean, minimal
+- Existing `AgentManager.listAgents()` API meant zero new state management
+- Stealth schema pattern copied from StopAgent — consistent
+- Pre-existing test failures confirmed before merge — avoided false blame
+
+**What failed:**
+- Grill session went through 4 rounds of naming clarification — should have asked for alternatives upfront
+- Builder agent's CWD got stuck in removed worktree during merge — non-blocking but messy
+
+**Next time:**
+- For simple tools, propose 2-3 name alternatives during grill instead of waiting
+- Verify worktree path exists before spawning reviewer after merge cleanup
