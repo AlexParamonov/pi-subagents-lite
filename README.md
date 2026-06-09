@@ -18,13 +18,13 @@ Every tool the LLM sees costs tokens — in the system prompt, and in every turn
 | `promptGuidelines` with rules | _(none)_ |
 | Parameters with `.description()` | Bare `Type.String()` |
 
-Tool names like `Agent` and `StopAgent`, and parameter names like `prompt`, `description`, `run_in_background` are self-documenting. The LLM infers usage from the schema — no verbose descriptions needed. Tool results reinforce correct usage with clear success/error messages.
+Tool names like `Agent`, `StopAgent`, and `AgentStatus`, and parameter names like `prompt`, `description`, `run_in_background` are self-documenting. The LLM infers usage from the schema — no verbose descriptions needed. Tool results reinforce correct usage with clear success/error messages.
 
-**Result:** foreground and background agents, custom agent types, per-model concurrency, cost tracking, steering, model overrides — all with minimal token overhead.
+**Result:** foreground and background agents, custom agent types, per-model concurrency, cost tracking, steering, model overrides, agent status — all with minimal token overhead.
 
 ## Features
 
-- **Two tools** — `Agent` (spawn) and `StopAgent` (stop)
+- **Three tools** — `Agent` (spawn), `StopAgent` (stop), and `AgentStatus` (list agents)
 - **Manual spawn** — spawn agents from the `/agents` menu without asking the LLM. Full control over model, thinking, turns, and background mode.
 - **Foreground & background** — block or fire-and-forget with auto-delivered results
 - **Custom agent types** — define via `.md` files with YAML frontmatter (tools, model, thinking, turn limits)
@@ -98,7 +98,7 @@ Stop a running agent at any time via /agents command
 | Parameter | Required | Description |
 |---|---|---|
 | `prompt` | ✅ | The task for the sub-agent |
-| `description` | ✅ | Brief description for the LLM caller |
+| `description` | | Brief description for the LLM caller (optional — if omitted, derived from prompt) |
 | `agent` | | Type name — `general-purpose`, `Explore`, or any custom type you define (see [Custom Agent Types](#custom-agent-types)). The available values are **auto-populated** from `.md` files in your agent directories — drop a file, it appears in the enum. Set `hidden: true` in frontmatter to hide a type from this list (still callable by name). |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
 | `worktree_path` | | Absolute path to a git worktree. Agent runs in that worktree's context, discovers agents from its `.pi/agents/` directory, and displays a worktree label in the widget and menus. Path is validated against the parent repo's git common dir. |
@@ -388,6 +388,20 @@ Agent IDs can be discovered from:
 - The `Agent` tool's result (shown on spawn)
 - The `StopAgent` error message, which lists all running agent IDs
 - The `/agents` menu's **Running agents** section
+
+## AgentStatus Tool
+
+List all agents with their type, short ID, and status. Returns a formatted list of all agents (running, queued, completed, stopped, error) and a nudge message reminding the LLM not to poll.
+
+| Parameter | Required | Description |
+|---|---|---|
+| _(none)_ | — | Tool takes no parameters |
+
+**Usage:** The LLM calls `AgentStatus` to check on agents, but the extension nudges it to wait for automatic notifications instead of polling. This prevents wasteful repeated calls while still allowing the LLM to discover agents when needed.
+
+**Output format:** `type·short_id·status, type·short_id·status, ...`
+
+Example: `general-purpose·a1b2c3·running, Explore·d4e5f6·completed`
 
 ## Output Logs
 
