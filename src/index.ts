@@ -169,7 +169,7 @@ function registerAgentTool(pi: ExtensionAPI): void {
     label: "Agent",
     parameters: Type.Object({
       prompt: Type.String(),
-      description: Type.String(),
+      description: Type.Optional(Type.String()),
       agent: agentParam,
       run_in_background: Type.Optional(Type.Boolean()),
       worktree_path: Type.Optional(Type.String()),
