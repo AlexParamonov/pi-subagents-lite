@@ -393,10 +393,6 @@ Agent IDs can be discovered from:
 
 List all agents with their type, short ID, and status. Returns a formatted list of all agents (running, queued, completed, stopped, error) and a nudge message reminding the LLM not to poll.
 
-| Parameter | Required | Description |
-|---|---|---|
-| _(none)_ | — | Tool takes no parameters |
-
 **Usage:** The LLM calls `AgentStatus` to check on agents, but the extension nudges it to wait for automatic notifications instead of polling. This prevents wasteful repeated calls while still allowing the LLM to discover agents when needed.
 
 **Output format:** `type·short_id·status, type·short_id·status, ...`
