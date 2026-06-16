@@ -337,7 +337,7 @@ describe("resolveVisibleTools — tools: true/false/undefined", () => {
 /* ------------------------------------------------------------------ */
 
 describe("resolveVisibleTools — edge cases", () => {
-  it("empty activeTools returns null", () => {
+  it("empty activeTools with whitelist returns []", () => {
     const result = resolveVisibleTools({
       activeTools: [],
       tools: ["read"],

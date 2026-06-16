@@ -17,7 +17,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getConfig, getToolNamesForType, BUILTIN_TOOL_NAMES, resolveVisibleTools } from "./agent-types.js";
+import { getAgentConfig, getConfig, getToolNamesForType, resolveVisibleTools } from "./agent-types.js";
 import { extractText } from "./context.js";
 import type { LifetimeUsage } from "./usage.js";
 import { findModelInRegistry } from "./utils.js";
