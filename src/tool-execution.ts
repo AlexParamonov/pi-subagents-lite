@@ -192,7 +192,6 @@ function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
   const details = buildAgentDetails(record, {
     includeStats: true,
     includeStatus: true,
-    turnCount: record.stats.turnCount ?? agentActivity.get(agentId)?.turnCount,
   });
 
   piInstance.sendMessage(

@@ -273,6 +273,7 @@ export class AgentManager {
       stats: {
         lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
         toolUses: 0,
+        turnCount: 1,
         compactionCount: 0,
         maxTurns: options.maxTurns,
       },
