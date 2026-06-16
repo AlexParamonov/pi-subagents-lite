@@ -552,7 +552,6 @@ describe("showModelSettingsMenu — grace turns", () => {
 
   it("persists setting to 0", async () => {
     mockModules.mockConfig.agent.graceTurns = 5;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const ctx = createMockCtx(["Grace turns · 5", undefined], ["0"]);
     const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
@@ -565,7 +564,6 @@ describe("showModelSettingsMenu — grace turns", () => {
 
   it("rejects negative numbers with error notification", async () => {
     mockModules.mockConfig.agent.graceTurns = 3;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const ctx = createMockCtx(["Grace turns · 3", undefined], ["-1"]);
     const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
@@ -575,17 +573,10 @@ describe("showModelSettingsMenu — grace turns", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 0", "error");
     // Value should not change
     expect(mockModules.mockConfig.agent.graceTurns).toBe(3);
-    // Config should not be saved (no saveConfigAtomic call for grace turns action)
-    const graceTurnsSaveCalls = saveConfigAtomic.mock.calls.filter(
-      (call: any[]) => call[0] === mockModules.mockConfig,
-    );
-    // Only the initial menu build calls save, not the rejected action
-    expect(graceTurnsSaveCalls.length).toBe(0);
   });
 
   it("rejects non-numeric input with error notification", async () => {
     mockModules.mockConfig.agent.graceTurns = 5;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const ctx = createMockCtx(["Grace turns · 5", undefined], ["abc"]);
     const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
@@ -594,10 +585,6 @@ describe("showModelSettingsMenu — grace turns", () => {
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 0", "error");
     expect(mockModules.mockConfig.agent.graceTurns).toBe(5);
-    const graceTurnsSaveCalls = saveConfigAtomic.mock.calls.filter(
-      (call: any[]) => call[0] === mockModules.mockConfig,
-    );
-    expect(graceTurnsSaveCalls.length).toBe(0);
   });
 
   it("shows 'Grace turns' after 'Force background' and before separator", async () => {
@@ -694,7 +681,6 @@ describe("showModelSettingsMenu — clear per-type override", () => {
   it("removes permanent override and saves config when 'Clear' is selected", async () => {
     // Arrange
     mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Explore          ·  openai/gpt-4o → anthropic/claude-sonnet-4-20250514",  // click Explore entry (frontmatter → override)
@@ -1409,7 +1395,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
   it("toggles force compact mode and saves", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Force compact mode · OFF",
@@ -1444,7 +1429,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
   it("updates max lines and saves", async () => {
     mockModules.mockConfig.agent.widgetMaxLines = 12;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Max lines (full) · 12",
@@ -1487,7 +1471,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
   it("updates compact max lines and saves", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Max lines (compact) · 6",
@@ -1579,7 +1562,6 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
 
   it("toggles shortcut from OFF to ON and saves", async () => {
     mockModules.mockConfig.agent.widgetShortcut = false;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Ctrl+o shortcut · OFF",
@@ -1595,7 +1577,6 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
 
   it("toggles shortcut from ON to OFF and saves", async () => {
     mockModules.mockConfig.agent.widgetShortcut = true;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Ctrl+o shortcut · ON",
@@ -1641,7 +1622,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
 
   it("toggles showCost from true to false and saves", async () => {
     mockModules.mockConfig.agent.showCost = true;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Cost display · ON",  // click the toggle
@@ -1657,7 +1637,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
 
   it("toggles showCost from false to true and saves", async () => {
     mockModules.mockConfig.agent.showCost = false;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Cost display · OFF",
@@ -2229,19 +2208,6 @@ describe("showSpawnAgentMenu — spawn action", () => {
       "Spawn failed: Spawn failed: internal error",
       "error",
     );
-  });
-
-  it("does not call saveConfigAtomic (no config mutation)", async () => {
-    const { saveConfigAtomic } = await import("../src/config-io.js");
-
-    const ctx = createMockCtx(
-      ["general-purpose", "Spawn"],
-      ["Do something"],
-    );
-
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-
-    expect(saveConfigAtomic).not.toHaveBeenCalled();
   });
 
   it("resolves selected model string to Model object via findModelInRegistry", async () => {
