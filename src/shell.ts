@@ -7,7 +7,7 @@
  * globals.
  *
  * index.ts populates the shell at session_start; handler modules import
- * getShell() / getManager() / etc.
+ * getManager() / getWidget() / etc.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
