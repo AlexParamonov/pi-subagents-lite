@@ -7,7 +7,7 @@
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
 import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
-import { __config } from "./state.js";
+import { store } from "./state.js";
 
 // ============================================================================
 // Stats rendering helpers
@@ -22,7 +22,7 @@ export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string
 
 /** Build the stats line for an agent result card. */
 export function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
-  const showCost = __config.agent.showCost === true;
+  const showCost = store.agent.showCost;
   const parts = buildStatsParts({
     toolUses: (d.toolUses as number) ?? 0,
     turnCount: d.turnCount as number | undefined,

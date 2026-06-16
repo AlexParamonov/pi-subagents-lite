@@ -17,36 +17,15 @@ import { buildSnapshotMarkdown } from "./context.js";
 
 import { parseModelKey, findModelInRegistry } from "./utils.js";
 import {
-  __config,
-  sessionOverrides,
   piInstance,
   sessionCtx,
   agentActivity,
   getManager,
   getWidget,
+  store,
 } from "./state.js";
-import { resolveModel } from "./model-precedence.js";
+
 import { createActivityTracker, backgroundAgentIds } from "./tool-execution.js";
-import {
-  setModelOverride,
-  setDefaultModel,
-  clearModelOverride,
-  clearAllModelOverrides,
-  setForceBackground,
-  setShowCost,
-  setGraceTurns,
-  setWidgetCompact,
-  setWidgetMaxLines,
-  setWidgetMaxLinesCompact,
-  setWidgetShortcut,
-  setAgent,
-  setConcurrencyDefault,
-  setConcurrencyProvider,
-  setConcurrencyModel,
-  removeConcurrencyProvider,
-  removeConcurrencyModel,
-  resetConcurrency,
-} from "./config-mutator.js";
 
 // ============================================================================
 // Helpers
@@ -350,9 +329,8 @@ export async function showModelSettingsMenu(
     const actions: Array<() => Promise<void>> = [];
 
     // ── Session overrides section ──
-    const hasSessionOverrides = Object.entries(sessionOverrides).some(
-      ([, v]) => v != null,
-    );
+    const hasSessionOverrides = store.sessionDefaultModel != null ||
+      getAllTypes().some(type => store.sessionModelOverride(type) != null);
 
     const buildOverrideAction = (
       label: string,
@@ -365,11 +343,11 @@ export async function showModelSettingsMenu(
 
       // Handle "clear" — remove all overrides (session + config) and save
       if (mode === "clear") {
-        clearModelOverride(targetKey);
+        store.mutate.agent.clearModelOverride(targetKey);
         if (targetKey !== "default") {
-          delete sessionOverrides[targetKey];
+          store.mutate.session.clearOverride(targetKey);
         } else {
-          sessionOverrides.default = null;
+          store.mutate.session.clearOverride("default");
         }
         ctx.ui.notify(`${label} overrides cleared`, "info");
         return;
@@ -380,56 +358,63 @@ export async function showModelSettingsMenu(
         ctx, modelOptions, label,
         currentValue,
         isSession
-          ? (chosen) => { sessionOverrides[targetKey] = chosen; }
+          ? (chosen) => {
+              if (chosen === null) {
+                store.mutate.session.clearOverride(targetKey);
+              } else {
+                store.mutate.session.setOverride(targetKey, chosen);
+              }
+            }
           : (chosen) => {
-              setModelOverride(targetKey, chosen);
+              store.mutate.agent.setModelOverride(targetKey, chosen);
             },
       );
     };
 
     // Global default — show session value if present
-    const hasSessionGlobal = sessionOverrides.default != null;
+    const sessionDefault = store.sessionDefaultModel;
+    const hasSessionGlobal = sessionDefault != null;
     const globalLabel = hasSessionGlobal
-      ? `Global default model · ${sessionOverrides.default} [session]`
-      : __config.agent.default
-        ? `Global default model · ${__config.agent.default}`
+      ? `Global default model · ${sessionDefault} [session]`
+      : store.agent.defaultModel
+        ? `Global default model · ${store.agent.defaultModel}`
         : "Global default model · (inherits parent)";
     items.push(globalLabel);
     actions.push(buildOverrideAction(
       "Global default", "default",
       hasSessionGlobal
-        ? sessionOverrides.default!
-        : __config.agent.default ?? "(inherits parent)",
+        ? store.sessionDefaultModel!
+        : store.agent.defaultModel ?? "(inherits parent)",
     ));
 
     // Force background toggle
-    const forceBgLabel = __config.agent.forceBackground
+    const forceBgLabel = store.agent.forceBackground
       ? "Force background · ON"
       : "Force background · OFF";
     items.push(forceBgLabel);
     actions.push(async () => {
-      setForceBackground(!__config.agent.forceBackground);
+      store.mutate.agent.setForceBackground(!store.agent.forceBackground);
       ctx.ui.notify(
-        `Force background ${__config.agent.forceBackground ? "ON" : "OFF"}`,
+        `Force background ${store.agent.forceBackground ? "ON" : "OFF"}`,
         "info",
       );
     });
 
     // Cost display toggle
-    const showCost = __config.agent.showCost === true; // default false
+    const showCost = store.agent.showCost;
     items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setShowCost(!showCost);
+      store.mutate.agent.setShowCost(!showCost);
       ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
     // Grace turns setting
-    const graceTurns = __config.agent.graceTurns ?? 6;
+    const graceTurns = store.agent.graceTurns;
     items.push(`Grace turns · ${graceTurns}`);
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
       if (parsed === undefined) return;
-      setGraceTurns(parsed);
+      store.mutate.agent.setGraceTurns(parsed);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
 
@@ -443,17 +428,11 @@ export async function showModelSettingsMenu(
     const types = getAllTypes();
     const typeEntries = types.map((typeName) => {
       const cfg = getAgentConfig(typeName);
-      const sessionOverride = sessionOverrides[typeName];
-      const configOverride = __config.agent[typeName];
+      const sessionOverride = store.sessionModelOverride(typeName);
+      const configOverride = store.agentConfigSnapshot()[typeName];
       const hasSession = sessionOverride != null;
       const hasConfigOverride = configOverride != null && typeof configOverride === "string";
-      const effectiveModel = resolveModel({
-        subagentType: typeName,
-        agentConfig: cfg,
-        config: __config,
-        parentModelId: "(inherits parent)",
-        sessionOverrides,
-      });
+      const effectiveModel = store.modelFor(typeName, "(inherits parent)", cfg);
       return { typeName, cfg, sessionOverride, configOverride, hasSession, hasConfigOverride, effectiveModel };
     });
 
@@ -493,12 +472,7 @@ export async function showModelSettingsMenu(
     if (hasSessionOverrides) {
       items.push("Clear session overrides");
       actions.push(async () => {
-        sessionOverrides.default = null;
-        for (const key of Object.keys(sessionOverrides)) {
-          if (key !== "default") {
-            delete sessionOverrides[key];
-          }
-        }
+        store.mutate.session.clearAll();
         ctx.ui.notify("Session overrides cleared", "info");
       });
     }
@@ -506,14 +480,15 @@ export async function showModelSettingsMenu(
     // Clear all overrides
     items.push("Clear all overrides");
     actions.push(async () => {
-      const hasOverrides = Object.entries(__config.agent).some(
+      const agentConfig = store.agentConfigSnapshot();
+      const hasOverrides = Object.entries(agentConfig).some(
         ([k, v]) => !CONFIG_AGENT_NON_MODEL_KEYS.includes(k) && v != null,
       );
-      if (!hasOverrides && __config.agent.default === null) {
+      if (!hasOverrides && store.agent.defaultModel === null) {
         ctx.ui.notify("No overrides to clear", "info");
         return;
       }
-      clearAllModelOverrides();
+      store.mutate.agent.clearAllModelOverrides();
       ctx.ui.notify("All model overrides cleared", "info");
     });
 
@@ -600,18 +575,12 @@ export async function showSpawnAgentMenu(
   const parentModelId = sessionCtx?.model
     ? `${sessionCtx.model.provider}/${sessionCtx.model.id}`
     : "";
-  const effectiveModelStr = resolveModel({
-    subagentType: selectedType,
-    agentConfig,
-    config: __config,
-    parentModelId,
-    sessionOverrides,
-  });
+  const effectiveModelStr = store.modelFor(selectedType, parentModelId, agentConfig);
   let currentModelStr = effectiveModelStr || ""; // "" means inherit parent
   let currentThinking: ThinkingLevel | undefined = agentConfig.thinking;
   let currentMaxTurns: number | undefined = agentConfig.maxTurns;
-  let currentGraceTurns: number | undefined = __config.agent.graceTurns ?? 6;
-  let currentBackground: boolean = __config.agent.forceBackground ?? false;
+  let currentGraceTurns: number | undefined = store.agent.graceTurns;
+  let currentBackground: boolean = store.agent.forceBackground;
 
   while (true) {
     const displayModel = currentModelStr || "(inherits parent)";
@@ -884,39 +853,39 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const actions: Array<() => Promise<void>> = [];
 
     // Force compact mode toggle
-    const isForceCompact = __config.agent.widgetCompact === true;
+    const isForceCompact = store.agent.widgetCompact;
     items.push(`Force compact mode · ${isForceCompact ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setWidgetCompact(!isForceCompact);
-      ctx.ui.notify(`Force compact mode ${__config.agent.widgetCompact ? "ON" : "OFF"}`, "info");
+      store.mutate.widget.setCompact(!isForceCompact);
+      ctx.ui.notify(`Force compact mode ${store.agent.widgetCompact ? "ON" : "OFF"}`, "info");
     });
 
     // Max lines (full mode)
-    const maxLines = __config.agent.widgetMaxLines ?? 12;
+    const maxLines = store.agent.widgetMaxLines;
     items.push(`Max lines (full) · ${maxLines}`);
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
       if (parsed === undefined) return;
-      setWidgetMaxLines(parsed);
+      store.mutate.widget.setMaxLines(parsed);
       ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
     });
 
     // Max lines (compact mode)
-    const maxLinesCompact = __config.agent.widgetMaxLinesCompact ?? Math.floor(maxLines / 2);
+    const maxLinesCompact = store.agent.widgetMaxLinesCompact;
     items.push(`Max lines (compact) · ${maxLinesCompact}`);
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
       if (parsed === undefined) return;
-      setWidgetMaxLinesCompact(parsed);
+      store.mutate.widget.setMaxLinesCompact(parsed);
       ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
     });
 
     // Ctrl+o shortcut toggle
-    const shortcutEnabled = __config.agent.widgetShortcut === true;
+    const shortcutEnabled = store.agent.widgetShortcut;
     items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setWidgetShortcut(!shortcutEnabled);
-      ctx.ui.notify(`Ctrl+o shortcut ${__config.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
+      store.mutate.widget.setShortcut(!shortcutEnabled);
+      ctx.ui.notify(`Ctrl+o shortcut ${store.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
     });
 
     return { items, actions };
@@ -1025,23 +994,23 @@ export async function showConcurrencySettingsMenu(
     const actions: Array<() => Promise<void>> = [];
 
     // Global default
-    items.push(`Default concurrency limit · ${__config.concurrency.default}`);
+    items.push(`Default concurrency limit · ${store.concurrency.default}`);
     actions.push(async () => {
       await promptConcurrencyInput(
-        ctx, "Default limit", __config.concurrency.default,
-        (value) => setConcurrencyDefault(value),
+        ctx, "Default limit", store.concurrency.default,
+        (value) => store.mutate.concurrency.setDefault(value),
       );
     });
 
     // Reset all to defaults
     items.push("Reset all to defaults");
     actions.push(async () => {
-      resetConcurrency();
+      store.mutate.concurrency.reset();
       ctx.ui.notify("Concurrency reset to defaults", "info");
     });
 
     // ── Per-provider limits ──
-    const providerLimits = __config.concurrency.providers ?? {};
+    const providerLimits = store.concurrency.providers;
     const configuredProviders = Object.keys(providerLimits);
     if (configuredProviders.length > 0) {
       items.push("");
@@ -1059,8 +1028,8 @@ export async function showConcurrencySettingsMenu(
             "provider",
             provider,
             limit,
-            (key, value) => setConcurrencyProvider(key, value),
-            () => removeConcurrencyProvider(provider),
+            (key, value) => store.mutate.concurrency.setProvider(key, value),
+            () => store.mutate.concurrency.removeProvider(provider),
           );
         });
       }
@@ -1073,12 +1042,12 @@ export async function showConcurrencySettingsMenu(
       if (provider === undefined) return;
       await promptAddConcurrencyLimit(
         ctx, provider,
-        (key, value) => setConcurrencyProvider(key, value),
+        (key, value) => store.mutate.concurrency.setProvider(key, value),
       );
     });
 
     // ── Per-model limits ──
-    const models = __config.concurrency.models ?? {};
+    const models = store.concurrency.models;
     const modelKeys = Object.keys(models);
     if (modelKeys.length > 0) {
       items.push("");
@@ -1096,8 +1065,8 @@ export async function showConcurrencySettingsMenu(
             "model",
             modelKey,
             limit,
-            (key, value) => setConcurrencyModel(key, value),
-            () => removeConcurrencyModel(modelKey),
+            (key, value) => store.mutate.concurrency.setModel(key, value),
+            () => store.mutate.concurrency.removeModel(modelKey),
           );
         });
       }
@@ -1107,12 +1076,12 @@ export async function showConcurrencySettingsMenu(
     items.push("Add per-model limit...");
     actions.push(async () => {
       const modelKey = await promptModelSelection(
-        ctx, modelOptions, __config.agent.default ?? "(inherits parent)",
+        ctx, modelOptions, store.agent.defaultModel ?? "(inherits parent)",
       );
       if (modelKey === null) return;
       await promptAddConcurrencyLimit(
         ctx, modelKey.trim(),
-        (key, value) => setConcurrencyModel(key, value),
+        (key, value) => store.mutate.concurrency.setModel(key, value),
       );
     });
 

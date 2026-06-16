@@ -110,18 +110,111 @@ vi.mock("../src/tool-execution.js", () => ({
 
 // Mock state.ts with a mutable config object
 vi.mock("../src/state.js", () => {
+  // Create a mock store that delegates to the mutable mock config
+  const mockStore = {
+    get agent() {
+      const a = mockModules.mockConfig.agent;
+      const widgetMaxLines = a.widgetMaxLines ?? 12;
+      return {
+        defaultModel: a.default ?? null,
+        forceBackground: a.forceBackground === true,
+        showCost: a.showCost === true,
+        graceTurns: a.graceTurns ?? 6,
+        widgetMaxLines,
+        widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
+        widgetCompact: a.widgetCompact === true,
+        widgetShortcut: a.widgetShortcut === true,
+      };
+    },
+    get concurrency() {
+      return {
+        default: mockModules.mockConfig.concurrency.default,
+        providers: mockModules.mockConfig.concurrency.providers ?? {},
+        models: mockModules.mockConfig.concurrency.models ?? {},
+      };
+    },
+    get sessionDefaultModel() {
+      return mockModules.mockSessionOverrides.default ?? null;
+    },
+    sessionModelOverride(type: string) {
+      return mockModules.mockSessionOverrides[type] ?? null;
+    },
+    agentConfigSnapshot() {
+      return mockModules.mockConfig.agent;
+    },
+    modelFor(type: string, parentModelId: string, agentConfig?: any) {
+      // Simplified model resolution for testing
+      const sessionOverride = mockModules.mockSessionOverrides[type];
+      if (sessionOverride) return sessionOverride;
+      const sessionDefault = mockModules.mockSessionOverrides.default;
+      if (sessionDefault) return sessionDefault;
+      const configOverride = mockModules.mockConfig.agent[type];
+      if (configOverride) return configOverride;
+      const configDefault = mockModules.mockConfig.agent.default;
+      if (configDefault) return configDefault;
+      if (agentConfig?.model) return agentConfig.model;
+      return parentModelId;
+    },
+    mutate: {
+      agent: {
+        setDefaultModel(value: string | null) { mockModules.mockConfig.agent.default = value; },
+        setModelOverride(type: string, value: string | null) { mockModules.mockConfig.agent[type] = value; },
+        clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
+        clearAllModelOverrides() {
+          const preserved: Record<string, unknown> = {};
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut']) {
+            const val = mockModules.mockConfig.agent[key];
+            if (val != null || key === 'default' || key === 'forceBackground') {
+              preserved[key] = val;
+            }
+          }
+          mockModules.mockConfig.agent = preserved as any;
+        },
+        setForceBackground(enabled: boolean) { mockModules.mockConfig.agent.forceBackground = enabled; },
+        setShowCost(enabled: boolean) { mockModules.mockConfig.agent.showCost = enabled; },
+        setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
+      },
+      widget: {
+        setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
+        setMaxLines(lines: number) { mockModules.mockConfig.agent.widgetMaxLines = lines; },
+        setMaxLinesCompact(lines: number) { mockModules.mockConfig.agent.widgetMaxLinesCompact = lines; },
+        setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
+      },
+      concurrency: {
+        setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },
+        setProvider(key: string, n: number) {
+          if (!mockModules.mockConfig.concurrency.providers) mockModules.mockConfig.concurrency.providers = {};
+          mockModules.mockConfig.concurrency.providers[key] = n;
+        },
+        setModel(key: string, n: number) {
+          if (!mockModules.mockConfig.concurrency.models) mockModules.mockConfig.concurrency.models = {};
+          mockModules.mockConfig.concurrency.models[key] = n;
+        },
+        removeProvider(key: string) {
+          if (mockModules.mockConfig.concurrency.providers) delete mockModules.mockConfig.concurrency.providers[key];
+        },
+        removeModel(key: string) {
+          if (mockModules.mockConfig.concurrency.models) delete mockModules.mockConfig.concurrency.models[key];
+        },
+        reset() {
+          mockModules.mockConfig.concurrency = { default: 4 };
+        },
+      },
+      session: {
+        setOverride(type: string, model: string) { mockModules.mockSessionOverrides[type] = model; },
+        clearOverride(type: string) { delete mockModules.mockSessionOverrides[type]; },
+        clearAll() { mockModules.mockSessionOverrides = { default: null }; },
+      },
+    },
+  };
+
   return {
-    __config: mockModules.mockConfig,
-    sessionOverrides: mockModules.mockSessionOverrides,
+    store: mockStore,
     getManager: () => mockModules.mockManager,
     getWidget: vi.fn(() => undefined),
     piInstance: { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec },
     sessionCtx: mockModules.mockSessionCtx,
     agentActivity: mockModules.mockAgentActivity,
-    setShowCostEnabled: vi.fn((enabled: boolean) => {
-      mockModules.mockConfig.agent.showCost = enabled;
-    }),
-    syncWidgetSettings: vi.fn(),
   };
 });
 
@@ -453,7 +546,6 @@ describe("showModelSettingsMenu — grace turns", () => {
 
   it("persists setting to 0", async () => {
     mockModules.mockConfig.agent.graceTurns = 5;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const ctx = createMockCtx(["Grace turns · 5", undefined], ["0"]);
     const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
@@ -461,13 +553,11 @@ describe("showModelSettingsMenu — grace turns", () => {
     await showModelSettingsMenu(ctx, modelOptions);
 
     expect(mockModules.mockConfig.agent.graceTurns).toBe(0);
-    expect(saveConfigAtomic).toHaveBeenCalledWith(mockModules.mockConfig);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Grace turns set to 0", "info");
   });
 
   it("rejects negative numbers with error notification", async () => {
     mockModules.mockConfig.agent.graceTurns = 3;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const ctx = createMockCtx(["Grace turns · 3", undefined], ["-1"]);
     const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
@@ -477,17 +567,10 @@ describe("showModelSettingsMenu — grace turns", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 0", "error");
     // Value should not change
     expect(mockModules.mockConfig.agent.graceTurns).toBe(3);
-    // Config should not be saved (no saveConfigAtomic call for grace turns action)
-    const graceTurnsSaveCalls = saveConfigAtomic.mock.calls.filter(
-      (call: any[]) => call[0] === mockModules.mockConfig,
-    );
-    // Only the initial menu build calls save, not the rejected action
-    expect(graceTurnsSaveCalls.length).toBe(0);
   });
 
   it("rejects non-numeric input with error notification", async () => {
     mockModules.mockConfig.agent.graceTurns = 5;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const ctx = createMockCtx(["Grace turns · 5", undefined], ["abc"]);
     const modelOptions = ["anthropic/claude-sonnet-4-20250514"];
@@ -496,10 +579,6 @@ describe("showModelSettingsMenu — grace turns", () => {
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 0", "error");
     expect(mockModules.mockConfig.agent.graceTurns).toBe(5);
-    const graceTurnsSaveCalls = saveConfigAtomic.mock.calls.filter(
-      (call: any[]) => call[0] === mockModules.mockConfig,
-    );
-    expect(graceTurnsSaveCalls.length).toBe(0);
   });
 
   it("shows 'Grace turns' after 'Force background' and before separator", async () => {
@@ -596,7 +675,6 @@ describe("showModelSettingsMenu — clear per-type override", () => {
   it("removes permanent override and saves config when 'Clear' is selected", async () => {
     // Arrange
     mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Explore          ·  openai/gpt-4o → anthropic/claude-sonnet-4-20250514",  // click Explore entry (frontmatter → override)
@@ -612,7 +690,6 @@ describe("showModelSettingsMenu — clear per-type override", () => {
 
     // Assert
     expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
-    expect(saveConfigAtomic).toHaveBeenCalledWith(mockModules.mockConfig);
   });
 
   it("clears both session and permanent override", async () => {
@@ -1312,7 +1389,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
   it("toggles force compact mode and saves", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Force compact mode · OFF",
@@ -1323,7 +1399,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Force compact mode ON", "info");
   });
 
@@ -1348,7 +1423,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
   it("updates max lines and saves", async () => {
     mockModules.mockConfig.agent.widgetMaxLines = 12;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Max lines (full) · 12",
@@ -1360,7 +1434,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (full) set to 10", "info");
   });
 
@@ -1392,7 +1465,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
 
   it("updates compact max lines and saves", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Max lines (compact) · 6",
@@ -1404,7 +1476,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(4);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (compact) set to 4", "info");
   });
 
@@ -1485,7 +1556,6 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
 
   it("toggles shortcut from OFF to ON and saves", async () => {
     mockModules.mockConfig.agent.widgetShortcut = false;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Ctrl+o shortcut · OFF",
@@ -1496,13 +1566,11 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut ON", "info");
   });
 
   it("toggles shortcut from ON to OFF and saves", async () => {
     mockModules.mockConfig.agent.widgetShortcut = true;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Ctrl+o shortcut · ON",
@@ -1513,7 +1581,6 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(false);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut OFF", "info");
   });
 });
@@ -1549,7 +1616,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
 
   it("toggles showCost from true to false and saves", async () => {
     mockModules.mockConfig.agent.showCost = true;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Cost display · ON",  // click the toggle
@@ -1560,13 +1626,11 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.showCost).toBe(false);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display OFF", "info");
   });
 
   it("toggles showCost from false to true and saves", async () => {
     mockModules.mockConfig.agent.showCost = false;
-    const { saveConfigAtomic } = await import("../src/config-io.js");
 
     const selections = [
       "Cost display · OFF",
@@ -1577,7 +1641,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.showCost).toBe(true);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display ON", "info");
   });
 
@@ -2139,19 +2202,6 @@ describe("showSpawnAgentMenu — spawn action", () => {
       "Spawn failed: Spawn failed: internal error",
       "error",
     );
-  });
-
-  it("does not call saveConfigAtomic (no config mutation)", async () => {
-    const { saveConfigAtomic } = await import("../src/config-io.js");
-
-    const ctx = createMockCtx(
-      ["general-purpose", "Spawn"],
-      ["Do something"],
-    );
-
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-
-    expect(saveConfigAtomic).not.toHaveBeenCalled();
   });
 
   it("resolves selected model string to Model object via findModelInRegistry", async () => {
