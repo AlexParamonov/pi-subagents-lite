@@ -3,6 +3,7 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentOutputLog } from "./output-file.js";
 import type { LifetimeUsage } from "./usage.js";
 
 /** Thinking level for agent models. */
@@ -158,8 +159,8 @@ export interface AgentExecutionState {
   promise?: Promise<string>;
   /** Steering messages queued before the session was ready. */
   pendingSteers?: string[];
-  /** Cleanup function for the output file stream subscription. */
-  outputCleanup?: () => void;
+  /** Lifecycle wrapper for the output file stream. */
+  outputLog?: AgentOutputLog;
 }
 
 /**

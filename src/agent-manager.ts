@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent, type ToolActivity } from "./agent-runner.js";
-import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./output-file.js";
+import { AgentOutputLog } from "./output-file.js";
 import {
   type AgentInvocation,
   type AgentRecord,
@@ -34,27 +34,6 @@ const AGENT_ID_PREFIX_LENGTH = 17;
 
 /** Default per-model concurrency limit when not specified in config. */
 const DEFAULT_CONCURRENCY_LIMIT = 4;
-
-/**
- * Create a cleanup function for the output file stream.
- * Captures final stats from the record at cleanup time so the DONE line
- * reflects actual turn count, tool uses, and total tokens.
- */
-function createOutputCleanup(
-  session: AgentSession,
-  path: string,
-  record: AgentRecord,
-): () => void {
-  const outputStats = { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
-  const cleanup = streamToOutputFile(session, path, outputStats);
-  return () => {
-    outputStats.turnCount = record.stats.turnCount ?? 0;
-    outputStats.toolUseCount = record.stats.toolUses;
-    outputStats.totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
-    outputStats.cost = record.stats.lifetimeUsage.cost;
-    cleanup();
-  };
-}
 
 /** Whether the agent status is terminal (no longer running or queued). */
 function isTerminalStatus(status: AgentStatus): boolean {
@@ -308,9 +287,9 @@ export class AgentManager {
     record.lifecycle.status = "running";
     record.lifecycle.startedAt = Date.now();
 
-    // Create output file for this agent
-    record.display.outputFile = createOutputFilePath(id);
-    writeInitialEntry(record.display.outputFile, prompt);
+    // Create output log for this agent (creates file + writes [USER] entry)
+    record.execution.outputLog = new AgentOutputLog(id, prompt);
+    record.display.outputFile = record.execution.outputLog.path;
 
     this.onStart?.(record);
 
@@ -346,11 +325,9 @@ export class AgentManager {
           }
           record.execution.pendingSteers = undefined;
         }
-        // Stream session events to the output file
-        if (record.display.outputFile) {
-          record.execution.outputCleanup = createOutputCleanup(
-            session, record.display.outputFile, record,
-          );
+        // Attach output log stream to session
+        if (record.execution.outputLog) {
+          record.execution.outputLog.attach(session);
         }
         options.onSessionCreated?.(session);
       },
@@ -376,10 +353,17 @@ export class AgentManager {
         return "";
       })
       .finally(() => {
-        // Final flush of streaming output file
-        if (record.execution.outputCleanup) {
-          try { record.execution.outputCleanup(); } catch { /* ignore */ }
-          record.execution.outputCleanup = undefined;
+        // Finalize output log with final stats
+        if (record.execution.outputLog) {
+          try {
+            record.execution.outputLog.finalize({
+              turnCount: record.stats.turnCount ?? 0,
+              toolUseCount: record.stats.toolUses,
+              totalTokens: getLifetimeTotal(record.stats.lifetimeUsage),
+              cost: record.stats.lifetimeUsage.cost,
+            });
+          } catch { /* ignore */ }
+          record.execution.outputLog = undefined;
         }
 
         // Decrement per-model concurrency count
