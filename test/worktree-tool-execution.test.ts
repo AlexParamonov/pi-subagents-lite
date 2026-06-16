@@ -100,7 +100,7 @@ vi.mock("../src/state.js", () => ({
       if (!intent.runInBackground && record?.execution?.promise) {
         await record.execution.promise;
       }
-      return { agentId: id, record, queued: false };
+      return { agentId: id, record };
     }),
     isBackground: vi.fn(() => false),
     scheduleNudge: vi.fn(),

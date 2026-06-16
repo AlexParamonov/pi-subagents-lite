@@ -44,7 +44,6 @@ export interface SpawnIntent {
 export interface SpawnResult {
   agentId: string;
   record: AgentRecord;
-  queued: boolean;
 }
 
 // ============================================================================
@@ -131,7 +130,7 @@ export class SpawnCoordinator {
       this.liveViews.delete(agentId);
     }
 
-    return { agentId, record, queued: record.lifecycle.status === "queued" };
+    return { agentId, record };
   }
 
   /** Read the live view for an agent. Widget calls this. */

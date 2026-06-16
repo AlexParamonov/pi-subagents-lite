@@ -103,7 +103,7 @@ describe("SpawnCoordinator", () => {
     vi.useRealTimers();
   });
 
-  it("spawns a background agent and returns queued=false", async () => {
+  it("spawns a background agent and returns result", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
     const result = await coordinator.spawn(pi, ctx, {
       type: "builder",
