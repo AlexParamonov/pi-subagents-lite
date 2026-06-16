@@ -6,8 +6,6 @@
  */
 
 import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { SessionModelOverrides, SubagentsConfig } from "./model-precedence.js";
-import { DEFAULT_CONFIG } from "./config-io.js";
 import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, type AgentActivity } from "./ui/agent-widget.js";
 import { ConfigStore } from "./config-store.js";
