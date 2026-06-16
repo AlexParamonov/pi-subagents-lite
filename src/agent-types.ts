@@ -214,8 +214,11 @@ export function resolveVisibleTools(opts: {
       const slashIdx = entry.indexOf("/");
       if (slashIdx === -1 && !allBuiltinSet.has(entry)) {
         // Bare name, not a known built-in — check if it's an extension tool
-        const toolExts = extToolMap ? [...extToolMap.entries()].filter(([, tools]) => tools.includes(entry)) : [];
-        if (toolExts.length === 0) {
+        let foundInExt = false;
+        for (const [, extToolNames] of extToolMap ?? []) {
+          if (extToolNames.includes(entry)) { foundInExt = true; break; }
+        }
+        if (!foundInExt) {
           notify?.(`tool "${entry}" not found in any loaded extension`);
         }
       }
