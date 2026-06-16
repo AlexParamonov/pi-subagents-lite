@@ -35,7 +35,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
 }));
 
 vi.mock("../src/state.js", () => ({
-  __config: { agent: { showCost: false } },
   store: {
     get agent() {
       return { showCost: false };

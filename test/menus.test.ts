@@ -209,18 +209,12 @@ vi.mock("../src/state.js", () => {
   };
 
   return {
-    __config: mockModules.mockConfig,
-    sessionOverrides: mockModules.mockSessionOverrides,
     store: mockStore,
     getManager: () => mockModules.mockManager,
     getWidget: vi.fn(() => undefined),
     piInstance: { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec },
     sessionCtx: mockModules.mockSessionCtx,
     agentActivity: mockModules.mockAgentActivity,
-    setShowCostEnabled: vi.fn((enabled: boolean) => {
-      mockModules.mockConfig.agent.showCost = enabled;
-    }),
-    syncWidgetSettings: vi.fn(),
   };
 });
 

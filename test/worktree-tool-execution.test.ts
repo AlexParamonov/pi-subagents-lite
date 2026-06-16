@@ -54,8 +54,6 @@ vi.mock("../src/utils.js", () => ({
 }));
 
 vi.mock("../src/state.js", () => ({
-  __config: { agent: { graceTurns: 5, forceBackground: false } },
-  sessionOverrides: {},
   store: {
     get agent() {
       return { graceTurns: 5, forceBackground: false };

@@ -11,8 +11,8 @@
  *
  * Config:
  *   - Loaded from ~/.pi/agent/subagents-lite.json at session_start
- *   - Module-level __config cache; tool_call reads from cache
- *   - Config mutations update cache + atomic write to disk
+ *   - ConfigStore owns config + session overrides + persistence + side effects
+ *   - Tool execution and menus read/write through store
  *
  * Commands:
  *   - /agents: Management menu (model settings, concurrency, running agents, debug)
@@ -130,7 +130,7 @@ async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
 
 async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   // ConfigStore is authoritative for config + session overrides + widget/manager
-  // side effects. Legacy __config is kept in sync until Wave 1e removes it.
+  // side effects.
   store.reload();
   ensureManagerAndWidget();
   await scanAndRegisterAgents(ctx);

@@ -64,8 +64,6 @@ vi.mock("../src/ui/agent-widget.js", () => ({
 
 // Mock state — provide enough for import to succeed
 vi.mock("../src/state.js", () => ({
-  __config: { agent: { graceTurns: 2 } },
-  sessionOverrides: {},
   piInstance: { sendMessage: vi.fn() },
   agentActivity: new Map(),
   getManager: () => ({ spawn: vi.fn(), getRecord: vi.fn(), listAgents: vi.fn(), abort: vi.fn() }),
