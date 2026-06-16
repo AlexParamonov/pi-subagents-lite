@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { shellMock } from "./fixtures";
 
 /* ------------------------------------------------------------------ */
 /*  Module-level mock variables — defined before vi.mock calls so they  */
@@ -20,118 +21,12 @@ const mockListAgents = vi.fn();
 /*  Global mocks                                                      */
 /* ------------------------------------------------------------------ */
 
-vi.mock("@sinclair/typebox", () => {
-  const createType = (type: string) => (opts?: any) => ({
-    type,
-    ...(opts || {}),
-  });
-
-  return {
-    Type: {
-      Object: (properties: Record<string, any>, opts?: any) => ({
-        type: "object",
-        properties,
-        ...(opts || {}),
-      }),
-      String: createType("string"),
-      Number: createType("number"),
-      Boolean: createType("boolean"),
-      Optional: (schema: any) => ({ ...schema, optional: true }),
-      Array: (items: any) => ({ type: "array", items }),
-      Record: (keyType: any, valueType: any) => ({
-        type: "record",
-        keyType,
-        valueType,
-      }),
-      Union: (variants: any[]) => ({ type: "union", variants }),
-      Literal: (value: string | number | boolean) => ({
-        type: "literal",
-        const: value,
-      }),
-    },
-  };
-});
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  DynamicBorder: class {},
-}));
-
-vi.mock("@earendil-works/pi-tui", () => ({
-  Container: class {
-    children: any[] = [];
-    addChild(c: any) { this.children.push(c); }
-    clear() { this.children = []; }
-  },
-  Input: class {
-    onSubmit: (() => void) | null = null;
-    focused = false;
-    getValue() { return ""; }
-    handleInput(_k: string) {}
-  },
-  Spacer: class {},
-  Text: class {},
-  fuzzyFilter: (items: any[], _query: string, _fn: any) => items,
-  getKeybindings: () => ({ matches: () => false }),
-}));
-
-vi.mock("../src/model-selector.js", () => ({
-  ModelSelectorDialog: class {},
-}));
-
-vi.mock("../src/model-precedence.js", () => ({
-  resolveModel: vi.fn((_type, _config, _cfg, parentModel: string) => parentModel),
-}));
-
-vi.mock("../src/agent-types.js", () => ({
-  resolveType: vi.fn((name: string) => name),
-  getAgentConfig: vi.fn(() => ({})),
-  registerAgents: vi.fn(),
-  getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
-  getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
-}));
-
-vi.mock("../src/agent-discovery.js", () => ({
-  scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
-  mergeAgents: vi.fn().mockReturnValue(new Map()),
-  AgentConfigFromMd: {},
-}));
-
-vi.mock("../src/agent-runner.js", () => ({
-  runAgent: vi.fn(),
-}));
-
-vi.mock("../src/default-agents.js", () => ({
-  DEFAULT_AGENTS: new Map(),
-}));
-
-vi.mock("../src/ui/agent-widget.js", () => ({
-  AgentWidget: class {},
-  formatTokens: vi.fn(),
-  formatTurns: vi.fn(),
-  formatMs: vi.fn(),
-  describeActivity: vi.fn(),
-  getDisplayName: vi.fn(),
-  buildInvocationTags: vi.fn(),
-  formatSessionTokens: vi.fn(),
-  formatDuration: vi.fn(),
-  SPINNER: [],
-  ERROR_STATUSES: new Set(),
-}));
-
-// Mock the shell module so executeStopAgentTool gets a fake manager
-vi.mock("../src/shell.js", () => ({
-  getManager: () => ({
+vi.mock("../src/shell.js", () => shellMock({
+  manager: {
     abort: mockAbort,
     getRecord: mockGetRecord,
     listAgents: mockListAgents,
-  }),
-  getPiInstance: () => ({}),
-  getSessionCtx: () => ({ cwd: "/home/test" }),
-  getStore: () => ({
-    agent: { graceTurns: 6, forceBackground: false, showCost: false },
-    modelFor: () => "",
-  }),
-  getCoordinator: () => ({ spawn: vi.fn() }),
+  },
 }));
 
 /* ------------------------------------------------------------------ */

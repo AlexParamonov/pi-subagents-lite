@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AgentRecord } from "../src/types.js";
+import { shellMock, usageMock } from "./fixtures";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -19,85 +20,21 @@ const { mockSendMessage, mockGetRecord, mockGetLifetimeTotal, mockGetSessionCont
   mockGetSessionContextPercent: vi.fn(() => null),
 }));
 
-vi.mock("@sinclair/typebox", () => ({
-  Type: {
-    Object: (p: any, o?: any) => ({ type: "object", properties: p, ...(o || {}) }),
-    String: (o?: any) => ({ type: "string", ...(o || {}) }),
-    Number: (o?: any) => ({ type: "number", ...(o || {}) }),
-    Boolean: (o?: any) => ({ type: "boolean", ...(o || {}) }),
-    Optional: (s: any) => ({ ...s, optional: true }),
-    Array: (i: any) => ({ type: "array", items: i }),
-    Record: (k: any, v: any) => ({ type: "record", keyType: k, valueType: v }),
-    Union: (v: any[]) => ({ type: "union", variants: v }),
-    Literal: (v: any) => ({ type: "literal", const: v }),
-  },
-}));
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  DynamicBorder: class {},
-}));
-
-vi.mock("@earendil-works/pi-tui", () => ({
-  Container: class { children: any[] = []; addChild(c: any) { this.children.push(c); } clear() { this.children = []; } },
-  Input: class { onSubmit = null; focused = false; getValue() { return ""; } handleInput(_k: string) {} },
-  Spacer: class {},
-  Text: class {},
-  fuzzyFilter: (items: any[], _q: string, _f: any) => items,
-  getKeybindings: () => ({ matches: () => false }),
-}));
-
-vi.mock("../src/model-selector.js", () => ({ ModelSelectorDialog: class {} }));
-vi.mock("../src/model-precedence.js", () => ({ resolveModel: vi.fn() }));
-vi.mock("../src/agent-types.js", () => ({
-  resolveType: vi.fn((name: string) => name),
-  getAgentConfig: vi.fn(() => ({})),
-  registerAgents: vi.fn(),
-  getAvailableTypes: vi.fn(() => []),
-  getAllTypes: vi.fn(() => []),
-}));
-vi.mock("../src/agent-discovery.js", () => ({
-  scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
-  mergeAgents: vi.fn().mockReturnValue(new Map()),
-  AgentConfigFromMd: {},
-}));
-vi.mock("../src/agent-runner.js", () => ({ runAgent: vi.fn() }));
-vi.mock("../src/default-agents.js", () => ({ DEFAULT_AGENTS: new Map() }));
-vi.mock("../src/ui/agent-widget.js", () => ({
-  AgentWidget: class {},
-  buildStatsParts: vi.fn(),
-  formatMs: vi.fn(),
-  getDisplayName: vi.fn(),
-  SPINNER: [],
-  ERROR_STATUSES: new Set(),
-}));
-
-vi.mock("../src/usage.js", () => ({
-  addUsage: vi.fn(),
+vi.mock("../src/usage.js", () => usageMock({
   getLifetimeTotal: mockGetLifetimeTotal,
   getSessionContextPercent: mockGetSessionContextPercent,
 }));
 
-vi.mock("../src/worktree-validator.js", () => ({
-  validateWorktreePath: vi.fn(),
-}));
-
 vi.mock("../src/shell.js", () => ({
-  getPiInstance: () => ({ sendMessage: mockSendMessage, exec: vi.fn() }),
-  getSessionCtx: () => ({ cwd: "/home/test" }),
-  getManager: () => ({
-    spawn: vi.fn(),
-    getRecord: mockGetRecord,
-    listAgents: vi.fn(() => []),
-    abort: vi.fn(() => false),
-    getTotalAgentCost: vi.fn(() => 0),
-  }),
-  getWidget: () => ({
-    ensureTimer: vi.fn(),
-    update: vi.fn(),
-    markFinished: vi.fn(),
-  }),
-  getStore: () => ({
-    agent: { graceTurns: 6, forceBackground: false, showCost: false },
+  ...shellMock({
+    pi: { sendMessage: mockSendMessage, exec: vi.fn() },
+    manager: {
+      spawn: vi.fn(),
+      getRecord: mockGetRecord,
+      listAgents: vi.fn(() => []),
+      abort: vi.fn(() => false),
+      getTotalAgentCost: vi.fn(() => 0),
+    },
   }),
   getCoordinator: () => coordinator,
 }));
