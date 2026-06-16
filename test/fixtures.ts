@@ -12,19 +12,12 @@
  *
  * Shared mock factories (for vi.mock call sites):
  *   - typeBoxMock: @sinclair/typebox Type stubs
- *   - piTuiMock: @earendil-works/pi-tui stubs
  *   - piCodingAgentMock: @earendil-works/pi-coding-agent stubs
- *   - agentTypesMock: ../src/agent-types.js stubs
  *   - agentDiscoveryMock: ../src/agent-discovery.js stubs
  *   - agentRunnerMock: ../src/agent-runner.js stubs
  *   - defaultAgentsMock: ../src/default-agents.js stubs
- *   - modelSelectorMock: ../src/model-selector.js stubs
- *   - modelPrecedenceMock: ../src/model-precedence.js stubs
- *   - agentWidgetMock: ../src/ui/agent-widget.js stubs
  *   - shellMock: ../src/shell.js stubs (parameterized by hoisted fns)
  *   - usageMock: ../src/usage.js stubs (parameterized by hoisted fns)
- *   - worktreeValidatorMock: ../src/worktree-validator.js stubs
- *   - utilsMock: ../src/utils.js stubs
  */
 
 import { vi } from "vitest";
@@ -74,47 +67,11 @@ export function typeBoxMock() {
 }
 
 /**
- * @earendil-works/pi-tui mock — common stubs used across most test files.
- */
-export function piTuiMock() {
-  return {
-    Container: class {
-      children: any[] = [];
-      addChild(c: any) { this.children.push(c); }
-      clear() { this.children = []; }
-    },
-    Input: class {
-      onSubmit: (() => void) | null = null;
-      focused = false;
-      getValue() { return ""; }
-      handleInput(_k: string) {}
-    },
-    Spacer: class {},
-    Text: class {},
-    fuzzyFilter: (items: any[], _query: string, _fn: any) => items,
-    getKeybindings: () => ({ matches: () => false }),
-  };
-}
-
-/**
  * @earendil-works/pi-coding-agent mock — minimal stubs.
  */
 export function piCodingAgentMock() {
   return {
     DynamicBorder: class {},
-  };
-}
-
-/**
- * ../src/agent-types.js mock — standard stubs.
- */
-export function agentTypesMock() {
-  return {
-    resolveType: vi.fn((name: string) => name),
-    getAgentConfig: vi.fn(() => ({})),
-    registerAgents: vi.fn(),
-    getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
-    getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
   };
 }
 
@@ -144,65 +101,6 @@ export function agentRunnerMock() {
 export function defaultAgentsMock() {
   return {
     DEFAULT_AGENTS: new Map(),
-  };
-}
-
-/**
- * ../src/model-selector.js mock — standard stubs.
- */
-export function modelSelectorMock() {
-  return {
-    ModelSelectorDialog: class {},
-  };
-}
-
-/**
- * ../src/model-precedence.js mock — standard stubs.
- */
-export function modelPrecedenceMock() {
-  return {
-    resolveModel: vi.fn(
-      (_type: any, _config: any, _cfg: any, parentModel: string) => parentModel,
-    ),
-  };
-}
-
-/**
- * ../src/ui/agent-widget.js mock — standard stubs.
- */
-export function agentWidgetMock() {
-  return {
-    AgentWidget: class {},
-    formatTokens: vi.fn(),
-    formatTurns: vi.fn(),
-    formatMs: vi.fn(),
-    describeActivity: vi.fn(),
-    getDisplayName: vi.fn(),
-    buildInvocationTags: vi.fn(),
-    formatSessionTokens: vi.fn(),
-    formatDuration: vi.fn(),
-    SPINNER: [],
-    ERROR_STATUSES: new Set(),
-  };
-}
-
-/**
- * ../src/worktree-validator.js mock — standard stubs.
- */
-export function worktreeValidatorMock() {
-  return {
-    validateWorktreePath: vi.fn(),
-  };
-}
-
-/**
- * ../src/utils.js mock — standard stubs.
- */
-export function utilsMock() {
-  return {
-    parseModelKey: vi.fn(() => null),
-    findModelInRegistry: vi.fn(() => null),
-    parseThinkingLevel: vi.fn(() => undefined),
   };
 }
 
