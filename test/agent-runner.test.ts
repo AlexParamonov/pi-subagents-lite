@@ -42,12 +42,15 @@ const mockModules = vi.hoisted(() => ({
   clearLoaderExtensions: () => { _loaderGetExtensionsResult.extensions = []; },
 }));
 
-vi.mock("../src/agent-types.js", () => ({
-  getConfig: mockModules.mockGetConfig,
-  getAgentConfig: mockModules.mockGetAgentConfig,
-  getToolNamesForType: mockModules.mockGetToolNamesForType,
-  BUILTIN_TOOL_NAMES: ["read", "bash", "edit", "write", "grep"],
-}));
+vi.mock("../src/agent-types.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/agent-types.js")>();
+  return {
+    ...actual,
+    getConfig: mockModules.mockGetConfig,
+    getAgentConfig: mockModules.mockGetAgentConfig,
+    getToolNamesForType: mockModules.mockGetToolNamesForType,
+  };
+});
 
 vi.mock("../src/prompts.js", () => ({
   buildAgentPrompt: mockModules.mockBuildAgentPrompt,

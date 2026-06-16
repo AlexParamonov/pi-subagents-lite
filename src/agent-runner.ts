@@ -1,7 +1,7 @@
 /**
  * Core execution engine: creates sessions, runs agents, collects results.
  *
- * EXCLUDED_TOOL_NAMES prevents sub-subagent spawning.
+ * Tool visibility policy is owned by agent-types.ts (resolveVisibleTools).
  */
 
 import path from "node:path";
@@ -17,7 +17,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getConfig, getToolNamesForType, BUILTIN_TOOL_NAMES } from "./agent-types.js";
+import { getAgentConfig, getConfig, getToolNamesForType, resolveVisibleTools } from "./agent-types.js";
 import { extractText } from "./context.js";
 import type { LifetimeUsage } from "./usage.js";
 import { findModelInRegistry } from "./utils.js";
@@ -25,9 +25,6 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
 import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
-
-/** Names of tools registered by this extension that subagents must NOT inherit. */
-const EXCLUDED_TOOL_NAMES = ["Agent"];
 
 /** Default grace turns when not specified in config. */
 const DEFAULT_GRACE_TURNS = 6;
@@ -229,120 +226,6 @@ function extractExtensionName(extPath: string): string {
   return path.basename(path.dirname(extPath));
 }
 
-/**
- * Resolve tool entries (with ext/* syntax) into concrete tool names.
- * Returns a set of resolved tool names.
- */
-function resolveToolEntries(
-  entries: string[],
-  extToolMap: Map<string, string[]> | undefined,
-  notify?: (msg: string) => void,
-): Set<string> {
-  const resolved = new Set<string>();
-
-  for (const entry of entries) {
-    const slashIdx = entry.indexOf("/");
-    if (slashIdx !== -1) {
-      // ext/* or ext/tool syntax
-      const extName = entry.slice(0, slashIdx);
-      const toolPart = entry.slice(slashIdx + 1);
-      if (toolPart === "*") {
-        const extTools = extToolMap?.get(extName);
-        if (extTools && extTools.length > 0) {
-          for (const t of extTools) resolved.add(t);
-        } else {
-          notify?.(`extension "${extName}" is not loaded, "${entry}" will have no effect`);
-        }
-      } else {
-        // ext/tool syntax: e.g. "tavily/web_search"
-        resolved.add(toolPart);
-      }
-    } else {
-      // Bare tool name
-      resolved.add(entry);
-    }
-  }
-
-  return resolved;
-}
-
-/**
- * Filter active tools: apply tools allowlist/denylist and EXCLUDED_TOOL_NAMES.
- *
- * The `tools` config controls which tool schemas the LLM sees (built-in + extension).
- * The `extensions` config controls which extensions are loaded (hooks + commands).
- * `extensions` does NOT affect tool visibility — that's `tools`'s job.
- *
- * Supports ext/* syntax for both whitelist and blacklist modes.
- *
- * `tools` and `excludeTools` are mutually exclusive. If both set, `tools` wins.
- *
- * Returns null when no filtering is needed, otherwise the filtered tool list.
- */
-function filterActiveTools(
-  activeTools: string[],
-  extToolMap: Map<string, string[]> | undefined,
-  tools: true | string[] | false | undefined,
-  excludeTools: string[] | undefined,
-  notify?: (msg: string) => void,
-): string[] | null {
-  // Blacklist mode: excludeTools set and tools not set as whitelist
-  if (excludeTools && !Array.isArray(tools)) {
-    const excludeSet = resolveToolEntries(excludeTools, extToolMap, notify);
-    const filtered = activeTools.filter(t =>
-      !EXCLUDED_TOOL_NAMES.includes(t) && !excludeSet.has(t)
-    );
-    return filtered.length !== activeTools.length ? filtered : null;
-  }
-
-  if (Array.isArray(tools)) {
-    // Whitelist mode: resolve entries with ext/* expansion
-    const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
-    const allowedTools = resolveToolEntries(tools, extToolMap, notify);
-
-    // Warn about unknown entries
-    for (const entry of tools) {
-      const slashIdx = entry.indexOf("/");
-      if (slashIdx === -1 && !allBuiltinSet.has(entry)) {
-        // Bare name, not a known built-in — check if it's an extension tool
-        const toolExts = extToolMap ? [...extToolMap.entries()].filter(([, tools]) => tools.includes(entry)) : [];
-        if (toolExts.length === 0) {
-          notify?.(`tool "${entry}" not found in any loaded extension`);
-        }
-      }
-    }
-
-    const visibleSet = new Set<string>();
-    for (const t of activeTools) {
-      if (EXCLUDED_TOOL_NAMES.includes(t)) continue;
-      if (allowedTools.has(t)) {
-        visibleSet.add(t);
-      }
-    }
-
-    // Warn if a loaded extension has none of its tools in `tools`
-    if (extToolMap) {
-      for (const [extName, extTools] of extToolMap) {
-        const hasAny = extTools.some(t => allowedTools.has(t));
-        if (!hasAny) {
-          notify?.(`extension "${extName}" is loaded but none of its tools are in tools: [${tools.join(", ")}]`);
-        }
-      }
-    }
-
-    return [...visibleSet];
-  }
-
-  if (tools === false) {
-    return [];
-  }
-
-  // tools: true or undefined — all tools visible (except excluded)
-  const hasExcluded = activeTools.some(t => EXCLUDED_TOOL_NAMES.includes(t));
-  if (!hasExcluded) return null;
-  return activeTools.filter(t => !EXCLUDED_TOOL_NAMES.includes(t));
-}
-
 /** Run a git command via pi.exec, returning stdout on success or null on failure. */
 async function execGit(pi: ExtensionAPI, args: string[], cwd: string): Promise<string | null> {
   try {
@@ -518,10 +401,13 @@ async function createAndConfigureSession(
       type: "end", toolName: `extension-error:${err.extensionPath}`,
     }),
   });
-  const filteredTools = filterActiveTools(
-    session.getActiveToolNames(), buildExtToolMap(extResult.extensions),
-    agentConfig?.tools, agentConfig?.excludeTools, notify,
-  );
+  const filteredTools = resolveVisibleTools({
+    activeTools: session.getActiveToolNames(),
+    tools: agentConfig?.tools,
+    excludeTools: agentConfig?.excludeTools,
+    extToolMap: buildExtToolMap(extResult.extensions),
+    notify,
+  });
   if (filteredTools) session.setActiveToolsByName(filteredTools);
   options.onSessionCreated?.(session);
   return session;
