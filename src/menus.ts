@@ -400,12 +400,25 @@ export async function showModelSettingsMenu(
       );
     });
 
-    // Cost display toggle
+    // Cost display toggle — session or permanent (like model overrides)
     const showCost = store.agent.showCost;
-    items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
+    const hasSessionCost = store.hasSessionShowCost;
+    items.push(`Cost display · ${showCost ? "ON" : "OFF"}${hasSessionCost ? " [session]" : ""}`);
     actions.push(async () => {
-      store.mutate.agent.setShowCost(!showCost);
-      ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
+      const newValue = !showCost;
+      const mode = await promptOverrideMode(ctx, hasSessionCost);
+      if (mode === null) return;
+      if (mode === "clear") {
+        store.mutate.session.clearShowCost();
+        ctx.ui.notify("Cost display session override cleared", "info");
+        return;
+      }
+      if (mode === "session") {
+        store.mutate.session.setShowCost(newValue);
+      } else {
+        store.mutate.agent.setShowCost(newValue);
+      }
+      ctx.ui.notify(`Cost display ${newValue ? "ON" : "OFF"}`, "info");
     });
 
     // Grace turns setting

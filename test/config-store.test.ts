@@ -239,6 +239,89 @@ describe("ConfigStore model-override clearing", () => {
   });
 });
 
+describe("ConfigStore session showCost override", () => {
+  it("session setShowCost overrides config value", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.showCost).toBe(false);
+    store.mutate.session.setShowCost(true);
+    expect(store.agent.showCost).toBe(true);
+  });
+
+  it("session setShowCost is not persisted", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.session.setShowCost(true);
+    expect(saves).toHaveLength(0);
+    expect(store.agent.showCost).toBe(true);
+  });
+
+  it("session clearShowCost reverts to config value", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    store.mutate.session.setShowCost(true);
+    expect(store.agent.showCost).toBe(true);
+    store.mutate.session.clearShowCost();
+    expect(store.agent.showCost).toBe(false);
+  });
+
+  it("session setShowCost syncs to widget", () => {
+    const { io } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    store.mutate.session.setShowCost(true);
+    expect(calls).toContain("setShowCost:true");
+  });
+
+  it("session clearShowCost syncs config value to widget", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: true }, concurrency: { default: 4 } });
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    store.mutate.session.setShowCost(false);
+    expect(calls).toContain("setShowCost:false");
+    calls.length = 0;
+    store.mutate.session.clearShowCost();
+    // After clearing session override, widget should revert to config value (true)
+    expect(calls).toContain("setShowCost:true");
+  });
+
+  it("reload clears session showCost override", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    store.mutate.session.setShowCost(true);
+    expect(store.agent.showCost).toBe(true);
+    store.reload();
+    expect(store.agent.showCost).toBe(false);
+  });
+
+  it("permanent setShowCost clears session override", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    store.mutate.session.setShowCost(true);
+    expect(store.agent.showCost).toBe(true);
+    store.mutate.agent.setShowCost(true);
+    // Session override should be cleared; effective value comes from config now
+    store.mutate.session.clearShowCost();
+    // Config is true, so effective should still be true
+    expect(store.agent.showCost).toBe(true);
+  });
+
+  it("hasSessionShowCost reflects session state", () => {
+    const { io } = memIO();
+    const store = new ConfigStore(io);
+    expect(store.hasSessionShowCost).toBe(false);
+    store.mutate.session.setShowCost(true);
+    expect(store.hasSessionShowCost).toBe(true);
+    store.mutate.session.clearShowCost();
+    expect(store.hasSessionShowCost).toBe(false);
+  });
+});
+
 describe("ConfigStore session overrides", () => {
   it("are not persisted", () => {
     const { io, saves } = memIO();

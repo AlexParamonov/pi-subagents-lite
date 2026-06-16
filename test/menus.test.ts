@@ -18,6 +18,7 @@ const mockModules = vi.hoisted(() => ({
     concurrency: { default: 4 },
   },
   mockSessionOverrides: { default: null },
+  mockSessionShowCost: undefined as boolean | undefined,
   resultViewerCalls: [] as any[][],
   mockManager: {
     setConcurrency: vi.fn(),
@@ -118,7 +119,7 @@ vi.mock("../src/state.js", () => {
       return {
         defaultModel: a.default ?? null,
         forceBackground: a.forceBackground === true,
-        showCost: a.showCost === true,
+        showCost: mockModules.mockSessionShowCost ?? (a.showCost === true),
         graceTurns: a.graceTurns ?? 6,
         widgetMaxLines,
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
@@ -138,6 +139,9 @@ vi.mock("../src/state.js", () => {
     },
     sessionModelOverride(type: string) {
       return mockModules.mockSessionOverrides[type] ?? null;
+    },
+    get hasSessionShowCost() {
+      return mockModules.mockSessionShowCost !== undefined;
     },
     agentConfigSnapshot() {
       return mockModules.mockConfig.agent;
@@ -204,6 +208,8 @@ vi.mock("../src/state.js", () => {
         setOverride(type: string, model: string) { mockModules.mockSessionOverrides[type] = model; },
         clearOverride(type: string) { delete mockModules.mockSessionOverrides[type]; },
         clearAll() { mockModules.mockSessionOverrides = { default: null }; },
+        setShowCost(enabled: boolean) { mockModules.mockSessionShowCost = enabled; },
+        clearShowCost() { mockModules.mockSessionShowCost = undefined; },
       },
     },
   };
@@ -1589,6 +1595,7 @@ describe("showModelSettingsMenu — cost display toggle", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false, showCost: true };
     mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
     vi.clearAllMocks();
 
     (getAgentConfig as any).mockImplementation(() => undefined);
@@ -1614,12 +1621,13 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     expect(costItem).toBe("Cost display · OFF");
   });
 
-  it("toggles showCost from true to false and saves", async () => {
+  it("toggles permanently when user chooses 'Set permanently'", async () => {
     mockModules.mockConfig.agent.showCost = true;
 
     const selections = [
-      "Cost display · ON",  // click the toggle
-      undefined,             // Escape to exit
+      "Cost display · ON",       // click the toggle
+      "Set permanently",         // choose permanent
+      undefined,                  // Escape to exit
     ];
 
     const ctx = createMockCtx(selections);
@@ -1629,19 +1637,55 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display OFF", "info");
   });
 
-  it("toggles showCost from false to true and saves", async () => {
-    mockModules.mockConfig.agent.showCost = false;
+  it("toggles as session override when user chooses 'Set for this session'", async () => {
+    mockModules.mockConfig.agent.showCost = true;
 
     const selections = [
-      "Cost display · OFF",
-      undefined,
+      "Cost display · ON",       // click the toggle
+      "Set for this session",    // choose session
+      undefined,                  // Escape to exit
     ];
 
     const ctx = createMockCtx(selections);
     await showModelSettingsMenu(ctx, []);
 
+    // Config value unchanged
     expect(mockModules.mockConfig.agent.showCost).toBe(true);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display ON", "info");
+    // Session override applied
+    expect(mockModules.mockSessionShowCost).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display OFF", "info");
+  });
+
+  it("shows [session] indicator when session override is active", async () => {
+    mockModules.mockConfig.agent.showCost = false;
+    mockModules.mockSessionShowCost = true;
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const costItem = items.find((i: string) => i.startsWith("Cost display"));
+    expect(costItem).toBe("Cost display · ON [session]");
+  });
+
+  it("offers 'Clear' option when session override is active", async () => {
+    mockModules.mockConfig.agent.showCost = false;
+    mockModules.mockSessionShowCost = true;
+
+    const selections = [
+      "Cost display · ON [session]",  // click the toggle
+      "Clear",                        // clear session override
+      undefined,                       // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    // Session override cleared
+    expect(mockModules.mockSessionShowCost).toBeUndefined();
+    // Config value unchanged
+    expect(mockModules.mockConfig.agent.showCost).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display session override cleared", "info");
   });
 
   it("defaults to false when showCost is not set", async () => {

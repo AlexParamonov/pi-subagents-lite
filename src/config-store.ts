@@ -54,6 +54,7 @@ export interface ConfigStoreDeps {
 export class ConfigStore {
   private config: SubagentsConfig;
   private sessionOverrides: SessionModelOverrides = { default: null };
+  private sessionShowCost: boolean | undefined;
   private widget?: AgentWidget;
   private manager?: AgentManager;
   /** Previous tool-expansion state, for ctrl+o compact sync. */
@@ -65,13 +66,18 @@ export class ConfigStore {
 
   // ── Reads ──────────────────────────────────────────────────────
 
+  /** Whether a session-level showCost override is active. */
+  get hasSessionShowCost(): boolean {
+    return this.sessionShowCost !== undefined;
+  }
+
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
     const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_CONFIG.agent.widgetMaxLines ?? 12;
     return {
       defaultModel: a.default ?? null,
       forceBackground: a.forceBackground === true,
-      showCost: a.showCost === true,
+      showCost: this.sessionShowCost ?? (a.showCost === true),
       graceTurns: a.graceTurns ?? DEFAULT_CONFIG.agent.graceTurns ?? 6,
       widgetMaxLines,
       widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
@@ -157,6 +163,7 @@ export class ConfigStore {
       },
       setShowCost: (enabled: boolean): void => {
         this.config.agent.showCost = enabled;
+        this.sessionShowCost = undefined;
         this.persist();
         this.widget?.setShowCost(enabled);
       },
@@ -236,6 +243,16 @@ export class ConfigStore {
       clearAll: (): void => {
         this.sessionOverrides = { default: null };
       },
+      /** Set a session showCost override. Not persisted. */
+      setShowCost: (enabled: boolean): void => {
+        this.sessionShowCost = enabled;
+        this.widget?.setShowCost(enabled);
+      },
+      /** Clear session showCost override, reverting to config value. */
+      clearShowCost: (): void => {
+        this.sessionShowCost = undefined;
+        this.widget?.setShowCost(this.config.agent.showCost === true);
+      },
     },
   };
 
@@ -267,6 +284,7 @@ export class ConfigStore {
   reload(): void {
     this.config = this.io.load();
     this.sessionOverrides = { default: null };
+    this.sessionShowCost = undefined;
     this.lastToolsExpanded = undefined;
     this.syncAllDeps();
   }
