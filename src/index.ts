@@ -173,11 +173,15 @@ function registerAgentTool(pi: ExtensionAPI): void {
 
     renderCall: (args, theme) => renderAgentToolCall(args as Record<string, unknown>, theme),
 
-    renderResult: (result, options, theme) => renderAgentToolResult(
-      result as { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
-      options as { expanded?: boolean },
-      theme,
-    ),
+    renderResult: (result, options, theme) => {
+      const showCost = getStore().agent.showCost;
+      return renderAgentToolResult(
+        result as { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
+        options as { expanded?: boolean },
+        theme,
+        showCost,
+      );
+    },
   });
 }
 
@@ -217,13 +221,15 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Message renderer — subagent-result (background agent completion)
-  pi.registerMessageRenderer("subagent-result", (message, options, theme) =>
-    renderSubagentResult(
+  pi.registerMessageRenderer("subagent-result", (message, options, theme) => {
+    const showCost = getStore().agent.showCost;
+    return renderSubagentResult(
       message as { content?: string; details?: Record<string, unknown> },
       options as { expanded?: boolean },
       theme,
-    ),
-  );
+      showCost,
+    );
+  });
 
   // Command registration
   pi.registerCommand("agents", {

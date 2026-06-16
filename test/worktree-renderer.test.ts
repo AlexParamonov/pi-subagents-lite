@@ -4,6 +4,8 @@
  * Verifies:
  *   - renderSubagentResult includes worktree: path in the result card
  *   - buildFallbackResultLine (via renderSubagentResult without turnCount) includes worktree: path
+ *
+ * Note: renderer.ts no longer imports shell.ts — showCost is passed as a parameter.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -34,14 +36,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
 }));
 
-vi.mock("../src/shell.js", () => ({
-  getStore: () => ({
-    get agent() {
-      return { showCost: false };
-    },
-  }),
-}));
-
 vi.mock("../src/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
@@ -59,6 +53,9 @@ const noopTheme: any = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
 };
+
+/** Default showCost value for tests. */
+const SHOW_COST = false;
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */
@@ -81,7 +78,7 @@ describe("renderSubagentResult — worktree path display", () => {
       },
     };
 
-    renderSubagentResult(message, { expanded: false }, noopTheme);
+    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature");
@@ -97,7 +94,7 @@ describe("renderSubagentResult — worktree path display", () => {
       },
     };
 
-    renderSubagentResult(message, { expanded: false }, noopTheme);
+    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature/packages/web");
@@ -114,7 +111,7 @@ describe("renderSubagentResult — worktree path display", () => {
       },
     };
 
-    renderSubagentResult(message, { expanded: false }, noopTheme);
+    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).not.toContain("worktree:");

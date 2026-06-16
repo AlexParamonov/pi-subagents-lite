@@ -7,7 +7,6 @@
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
 import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
-import { getStore } from "./shell.js";
 
 // ============================================================================
 // Stats rendering helpers
@@ -21,8 +20,7 @@ export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string
 }
 
 /** Build the stats line for an agent result card. */
-export function buildStatsLine(d: Record<string, unknown>, theme: Theme): string {
-  const showCost = getStore().agent.showCost;
+export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCost: boolean): string {
   const parts = buildStatsParts({
     toolUses: (d.toolUses as number) ?? 0,
     turnCount: d.turnCount as number | undefined,
@@ -62,6 +60,7 @@ export function renderAgentToolResult(
   result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
   options: { expanded?: boolean },
   theme: Theme,
+  showCost: boolean,
 ): Text {
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? result.content[0].text ?? "" : "";
@@ -71,7 +70,7 @@ export function renderAgentToolResult(
 
   if (d && d.turnCount != null) {
     const namePart = agentNameLabel(d, theme);
-    const statsLine = buildStatsLine(d, theme);
+    const statsLine = buildStatsLine(d, theme, showCost);
     let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
       lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
@@ -98,6 +97,7 @@ export function renderSubagentResult(
   message: { content?: string; details?: Record<string, unknown> },
   options: { expanded?: boolean },
   theme: Theme,
+  showCost: boolean,
 ): Container {
   const { expanded } = options;
   const d = message.details;
@@ -112,7 +112,7 @@ export function renderSubagentResult(
     const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
 
     const namePart = agentNameLabel(d, theme);
-    const statsLine = buildStatsLine(d, theme);
+    const statsLine = buildStatsLine(d, theme, showCost);
     let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
     if (d.outputFile as string) {
       headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
