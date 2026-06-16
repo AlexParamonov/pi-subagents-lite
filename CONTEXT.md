@@ -29,8 +29,9 @@ The LLM schema tells it nothing — usage is taught via agent briefing.
 _Avoid_: Hidden tool, minimal tool
 
 **Activity tracker**:
-Per-agent state (turn count, tool usage, token usage, active tools) bridging spawn callbacks
-and the TUI widget renderer. Lives in a module-level `Map<string, AgentActivity>`.
+Per-agent transient display state (active tools, streaming response text) bridging spawn callbacks
+and the TUI widget renderer. Owned by the spawn coordinator. Accumulated stats (turn count, tool
+usage, token usage) live on the AgentRecord, not here.
 _Avoid_: Agent monitor, agent stats
 
 **Nudge**:

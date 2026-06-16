@@ -27,3 +27,9 @@
 ### Verification
 - When merge agent reports success, verify the actual merge commit exists
 - Don't assume — verify. Code review catches silent production bugs (e.g., porcelain format mismatches)
+
+### Delegating parallel sub-agents
+- When spawning parallel sub-agents that each write a design doc, mandate a distinct
+  output path per agent in the brief. Two agents writing to the same path silently
+  clobber each other, and gitignored task dirs leave no history to recover from.
+  Task design files under `tasks/` are gitignored, so there is no `git` safety net.
