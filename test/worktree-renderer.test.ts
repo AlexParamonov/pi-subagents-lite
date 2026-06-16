@@ -34,12 +34,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
 }));
 
-vi.mock("../src/state.js", () => ({
-  store: {
+vi.mock("../src/shell.js", () => ({
+  getStore: () => ({
     get agent() {
       return { showCost: false };
     },
-  },
+  }),
 }));
 
 vi.mock("../src/format.js", () => ({

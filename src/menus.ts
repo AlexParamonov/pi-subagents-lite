@@ -2,7 +2,7 @@
  * menus.ts — /agents command menu system.
  *
  * All menu-related functions extracted from index.ts.
- * Imports shared state (config, manager, piInstance) from state.ts.
+ * Imports shared state (config, manager) from shell.ts.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -16,13 +16,13 @@ import { buildSnapshotMarkdown } from "./context.js";
 
 import { parseModelKey, findModelInRegistry } from "./utils.js";
 import {
-  piInstance,
-  sessionCtx,
+  getPiInstance,
+  getSessionCtx,
   getManager,
   getWidget,
-  store,
+  getStore,
   getCoordinator,
-} from "./state.js";
+} from "./shell.js";
 
 // ============================================================================
 // Helpers
@@ -284,7 +284,7 @@ function truncatePath(p: string): string {
  */
 async function listWorktrees(cwd: string): Promise<WorktreeEntry[] | null> {
   try {
-    const result = await piInstance.exec(
+    const result = await getPiInstance().exec(
       "git",
       ["worktree", "list", "--porcelain"],
       { cwd, timeout: WORKTREE_LIST_TIMEOUT_MS },
@@ -302,7 +302,7 @@ async function listWorktrees(cwd: string): Promise<WorktreeEntry[] | null> {
  */
 async function isInGitRepo(cwd: string): Promise<boolean> {
   try {
-    const result = await piInstance.exec(
+    const result = await getPiInstance().exec(
       "git",
       ["rev-parse", "--git-common-dir"],
       { cwd, timeout: WORKTREE_LIST_TIMEOUT_MS },
@@ -324,6 +324,7 @@ export async function showModelSettingsMenu(
   return runMenuLoop(ctx, "Model Settings", () => {
     const items: string[] = [];
     const actions: Array<() => Promise<void>> = [];
+    const store = getStore();
 
     // ── Session overrides section ──
     const hasSessionOverrides = store.sessionDefaultModel != null ||
@@ -574,7 +575,8 @@ export async function showSpawnAgentMenu(
   let description = autoDescription;
 
   // Check if parent's cwd is inside a git repo (for worktree picker visibility)
-  const parentCwd = sessionCtx?.cwd ?? "";
+  const session = getSessionCtx();
+  const parentCwd = session?.cwd ?? "";
   const inGitRepo = parentCwd ? await isInGitRepo(parentCwd) : false;
 
   // Worktree picker state
@@ -582,8 +584,9 @@ export async function showSpawnAgentMenu(
   let currentWorktreeLabel = "Inherits parent cwd";
 
   // Pre-fill model from precedence chain
-  const parentModelId = sessionCtx?.model
-    ? `${sessionCtx.model.provider}/${sessionCtx.model.id}`
+  const store = getStore();
+  const parentModelId = session?.model
+    ? `${session.model.provider}/${session.model.id}`
     : "";
   const effectiveModelStr = store.modelFor(selectedType, parentModelId, agentConfig);
   let currentModelStr = effectiveModelStr || ""; // "" means inherit parent
@@ -623,7 +626,7 @@ export async function showSpawnAgentMenu(
       let modelKey: string | undefined;
 
       if (currentModelStr) {
-        const registry = sessionCtx?.modelRegistry ?? ctx.modelRegistry;
+        const registry = session?.modelRegistry ?? ctx.modelRegistry;
         model = findModelInRegistry(currentModelStr, registry, undefined);
         if (!model) {
           ctx.ui.notify(`Model not found: ${currentModelStr}`, "error");
@@ -649,7 +652,7 @@ export async function showSpawnAgentMenu(
       // Use SpawnCoordinator for unified spawn path
       const coordinator = getCoordinator()!;
       try {
-        const result = await coordinator.spawn(piInstance, sessionCtx, {
+        const result = await coordinator.spawn(getPiInstance(), session!, {
           type: resolvedType,
           prompt,
           description,
@@ -846,6 +849,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   return runMenuLoop(ctx, "Widget Settings", () => {
     const items: string[] = [];
     const actions: Array<() => Promise<void>> = [];
+    const store = getStore();
 
     // Force compact mode toggle
     const isForceCompact = store.agent.widgetCompact;
@@ -940,7 +944,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("- **Relative paths** are resolved against the parent's working directory.");
   lines.push("- **On failure** the validator returns a specific reason (e.g., 'not a worktree of the parent's repository', 'path does not exist') — use this to self-correct.");
   lines.push("- **Agent type discovery:** The worktree's `.pi/agents/` directory is scanned for agent types when this param is set, so worktree-local types become available to that spawn.");
-  piInstance.sendUserMessage(lines.join("\n"));
+  getPiInstance().sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }
 
@@ -987,6 +991,7 @@ export async function showConcurrencySettingsMenu(
   return runMenuLoop(ctx, "Concurrency Settings", () => {
     const items: string[] = [];
     const actions: Array<() => Promise<void>> = [];
+    const store = getStore();
 
     // Global default
     items.push(`Default concurrency limit · ${store.concurrency.default}`);
@@ -1192,7 +1197,7 @@ async function steerAgentById(
   const message = await ctx.ui.input(`Steer ${record.display.type}`);
   if (!message?.trim()) return;
 
-  const sent = await getManager().steer(agentId, message.trim());
+  const sent = await getManager()!.steer(agentId, message.trim());
   if (sent) {
     ctx.ui.notify(`Steer sent to ${record.id.slice(0, SHORT_ID_LENGTH)}…`, "info");
   } else {

@@ -88,12 +88,19 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-vi.mock("../src/state.js", () => ({
+vi.mock("../src/shell.js", () => ({
   getManager: () => ({
     abort: mockAbort,
     getRecord: mockGetRecord,
     listAgents: mockListAgents,
   }),
+  getPiInstance: () => ({}),
+  getSessionCtx: () => ({ cwd: "/home/test" }),
+  getStore: () => ({
+    agent: { graceTurns: 6, forceBackground: false, showCost: false },
+    modelFor: () => "",
+  }),
+  getCoordinator: () => ({ spawn: vi.fn() }),
 }));
 
 /* ------------------------------------------------------------------ */

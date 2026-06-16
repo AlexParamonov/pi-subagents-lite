@@ -116,8 +116,8 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-// Mock the state module so executeAgentStatusTool gets a fake manager
-vi.mock("../src/state.js", () => ({
+// Mock the shell module so executeAgentStatusTool gets a fake manager
+vi.mock("../src/shell.js", () => ({
   getManager: () => ({
     listAgents: mockListAgents,
   }),

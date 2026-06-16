@@ -118,13 +118,20 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-// Mock the state module so executeStopAgentTool gets a fake manager
-vi.mock("../src/state.js", () => ({
+// Mock the shell module so executeStopAgentTool gets a fake manager
+vi.mock("../src/shell.js", () => ({
   getManager: () => ({
     abort: mockAbort,
     getRecord: mockGetRecord,
     listAgents: mockListAgents,
   }),
+  getPiInstance: () => ({}),
+  getSessionCtx: () => ({ cwd: "/home/test" }),
+  getStore: () => ({
+    agent: { graceTurns: 6, forceBackground: false, showCost: false },
+    modelFor: () => "",
+  }),
+  getCoordinator: () => ({ spawn: vi.fn() }),
 }));
 
 /* ------------------------------------------------------------------ */
