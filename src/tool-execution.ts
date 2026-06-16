@@ -14,15 +14,14 @@ import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js
 import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "./worktree-validator.js";
 
-// Shared state imported from state.ts
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.js";
 import {
-  piInstance,
-  sessionCtx,
-  store,
+  getPiInstance,
+  getSessionCtx,
+  getStore,
   getCoordinator,
   getManager,
-} from "./state.js";
+} from "./shell.js";
 
 // ============================================================================
 // Tool result helpers
@@ -112,8 +111,8 @@ export async function executeAgentTool(
   let worktreeLabel: string | undefined;
   if (rawWorktreePath && rawWorktreePath.trim() !== "") {
     try {
-      const parentCwd = sessionCtx?.cwd ?? ctx.cwd;
-      const validation = await validateWorktreePath(piInstance, rawWorktreePath, parentCwd);
+      const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
+      const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd);
       if (!validation.ok) {
         return errorResult(validation.error);
       }
@@ -156,7 +155,7 @@ export async function executeAgentTool(
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
-  const result = await coordinator.spawn(piInstance, ctx, {
+  const result = await coordinator.spawn(getPiInstance(), ctx, {
     type: resolvedType,
     prompt,
     description,
@@ -164,16 +163,16 @@ export async function executeAgentTool(
     modelKey,
     maxTurns,
     thinkingLevel,
-    graceTurns: store.agent.graceTurns,
+    graceTurns: getStore().agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
     invocation: { modelName },
-    runInBackground: runInBackground || store.agent.forceBackground,
+    runInBackground: runInBackground || getStore().agent.forceBackground,
   });
 
   const { agentId, record } = result;
 
-  if (runInBackground || store.agent.forceBackground) {
+  if (runInBackground || getStore().agent.forceBackground) {
     // Background: return immediately
     const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
     const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
@@ -200,7 +199,7 @@ export async function executeAgentTool(
  * Format: "type·short_id, type·short_id" — one line, easy for LLM to parse.
  */
 function formatRunningAgents(): string {
-  const agents = getManager().listAgents().filter(
+  const agents = getManager()!.listAgents().filter(
     (a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued",
   );
 
@@ -228,7 +227,7 @@ export async function executeStopAgentTool(
     return errorResult("agent_id is required");
   }
 
-  const record = getManager().getRecord(agentId);
+  const record = getManager()!.getRecord(agentId);
 
   if (!record) {
     // Agent not found → return error + list of running agents
@@ -245,7 +244,7 @@ export async function executeStopAgentTool(
   }
 
   // Attempt to stop the running/queued agent
-  if (getManager().abort(agentId)) {
+  if (getManager()!.abort(agentId)) {
     return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
   }
 
@@ -268,7 +267,7 @@ export async function toolCallListener(
 
   const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
 
-  const effectiveModel = store.modelFor(
+  const effectiveModel = getStore().modelFor(
     subagentType ?? "general-purpose",
     parentModelId,
     agentConfig,

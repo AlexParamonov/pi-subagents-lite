@@ -53,8 +53,8 @@ vi.mock("../src/utils.js", () => ({
   parseThinkingLevel: vi.fn(() => undefined),
 }));
 
-vi.mock("../src/state.js", () => ({
-  store: {
+vi.mock("../src/shell.js", () => ({
+  getStore: () => ({
     get agent() {
       return { graceTurns: 5, forceBackground: false };
     },
@@ -63,22 +63,22 @@ vi.mock("../src/state.js", () => ({
       if (agentConfig?.model) return agentConfig.model;
       return parentModelId;
     },
-  },
-  piInstance: { sendMessage: vi.fn(), exec: vi.fn() },
-  sessionCtx: { cwd: "/home/test/project" },
-  getManager: vi.fn(() => ({
+  }),
+  getPiInstance: () => ({ sendMessage: vi.fn(), exec: vi.fn() }),
+  getSessionCtx: () => ({ cwd: "/home/test/project" }),
+  getManager: () => ({
     spawn: mockSpawn,
     getRecord: mockGetRecord,
     listAgents: vi.fn(() => []),
     getTotalAgentCost: vi.fn(() => 0),
     abort: vi.fn(() => false),
-  })),
-  getWidget: vi.fn(() => ({
+  }),
+  getWidget: () => ({
     ensureTimer: vi.fn(),
     update: vi.fn(),
     markFinished: vi.fn(),
-  })),
-  getCoordinator: vi.fn(() => ({
+  }),
+  getCoordinator: () => ({
     spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
       // Delegate to the mocked manager.spawn
       const manager = {
@@ -106,7 +106,7 @@ vi.mock("../src/state.js", () => ({
     scheduleNudge: vi.fn(),
     onAgentComplete: vi.fn(),
     dispose: vi.fn(),
-  })),
+  }),
 }));
 
 vi.mock("../src/usage.js", () => ({

@@ -62,11 +62,14 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-// Mock state — provide enough for import to succeed
-vi.mock("../src/state.js", () => ({
-  piInstance: { sendMessage: vi.fn() },
+// Mock shell — provide enough for import to succeed
+vi.mock("../src/shell.js", () => ({
+  getPiInstance: () => ({ sendMessage: vi.fn() }),
   getManager: () => ({ spawn: vi.fn(), getRecord: vi.fn(), listAgents: vi.fn(), abort: vi.fn() }),
   getWidget: () => undefined,
+  getStore: () => ({ agent: { showCost: false, graceTurns: 6 } }),
+  getCoordinator: () => ({ spawn: vi.fn() }),
+  getSessionCtx: () => ({ cwd: "/home/test" }),
 }));
 
 /* ------------------------------------------------------------------ */

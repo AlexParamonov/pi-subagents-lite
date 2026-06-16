@@ -41,22 +41,17 @@ import { executeAgentStatusTool } from "./agent-status.js";
 import { SpawnCoordinator } from "./spawn-coordinator.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
-  piInstance,
-  store,
-  setManager,
-  clearManager,
-  setWidget,
-  setCoordinator,
-  getCoordinator,
-  setPiInstance,
-  setSessionCtx,
+  getPiInstance,
   getManager,
   getWidget,
-} from "./state.js";
-
-// Re-export store for backward compatibility
-export { store, piInstance } from "./state.js";
-export { getCoordinator } from "./state.js";
+  getCoordinator,
+  getStore,
+  setPiInstance,
+  setSessionCtx,
+  setManager,
+  setWidget,
+  setCoordinator,
+} from "./shell.js";
 
 
 
@@ -78,14 +73,14 @@ function ensureManagerAndWidget(): void {
     // that we'll replace once coordinator is created.
     const newManager = new AgentManager(
       undefined, // onComplete wired below
-      store.concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
+      getStore().concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
     );
     setManager(newManager);
     // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
-    store.setDeps({ manager: newManager });
+    getStore().setDeps({ manager: newManager });
 
     // Now create coordinator with the real manager
-    const coordinator = new SpawnCoordinator(newManager, piInstance);
+    const coordinator = new SpawnCoordinator(newManager, getPiInstance());
     setCoordinator(coordinator);
 
     // Wire the manager's onComplete to the coordinator
@@ -102,14 +97,14 @@ function ensureManagerAndWidget(): void {
   // Create widget if missing (uses existing or newly created manager)
   if (!currentWidget) {
     const newWidget = new AgentWidget(
-      getManager(),
+      getManager()!,
       (id: string) => getCoordinator()?.liveView(id),
     );
     setWidget(newWidget);
     // Sync the widget as a config side-effect target. setDeps re-syncs showCost +
     // all widget display settings from current config (absorbs the old
     // newWidget.setShowCost(...) + syncWidgetSettings() calls).
-    store.setDeps({ widget: newWidget });
+    getStore().setDeps({ widget: newWidget });
   }
 }
 
@@ -140,7 +135,7 @@ async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
 async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   // ConfigStore is authoritative for config + session overrides + widget/manager
   // side effects.
-  store.reload();
+  getStore().reload();
   ensureManagerAndWidget();
   await scanAndRegisterAgents(ctx);
 }
@@ -275,7 +270,7 @@ export default function (pi: ExtensionAPI) {
             if (expanded !== undefined) {
               // Widget render hint (tool row state), then config-gated compact toggle.
               getWidget()?.notifyToolsExpansionChanged(expanded);
-              store.notifyToolsExpanded(expanded);
+              getStore().notifyToolsExpanded(expanded);
             }
           }, 0);
         }
@@ -283,7 +278,7 @@ export default function (pi: ExtensionAPI) {
       });
     }
     // Sync compact mode with initial tool expansion state
-    store.notifyToolsExpanded(false);
+    getStore().notifyToolsExpanded(false);
   });
 
   // session_shutdown — abort all, dispose manager
@@ -299,14 +294,14 @@ export default function (pi: ExtensionAPI) {
     }
     // Dispose coordinator, store, widget, then manager
     getCoordinator()?.dispose();
-    setCoordinator(undefined);
-    store.dispose();
+    setCoordinator(null);
+    getStore().dispose();
     getWidget()?.dispose();
-    setWidget(undefined);
+    setWidget(null);
     const mgr = getManager();
     if (mgr) {
       await mgr.dispose();
-      clearManager();
+      setManager(null);
     }
   });
 }

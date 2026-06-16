@@ -9,7 +9,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord } from "./types.js";
 import { SHORT_ID_LENGTH } from "./types.js";
-import { getManager } from "./state.js";
+import { getManager } from "./shell.js";
 
 /**
  * Format a single agent record as "type·short_id·status".
@@ -32,7 +32,7 @@ export async function executeAgentStatusTool(
   _onUpdate: ((update: any) => void) | undefined,
   _ctx: ExtensionContext,
 ): Promise<any> {
-  const manager = getManager();
+  const manager = getManager()!;
   const agents = manager.listAgents();
 
   const nudge = "Don't poll — you'll receive notifications when agents complete.";

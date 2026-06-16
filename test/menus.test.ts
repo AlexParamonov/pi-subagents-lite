@@ -46,6 +46,7 @@ const mockModules = vi.hoisted(() => ({
     cwd: "/test",
   },
   mockPiExec: vi.fn(),
+  mockPiInstance: null as any, // Set after hoisting so exec points to mockPiExec
 }));
 
 vi.mock("../src/agent-types.js", () => ({
@@ -91,8 +92,8 @@ vi.mock("../src/tool-execution.js", () => ({
   errorResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], isError: true, details })),
 }));
 
-// Mock state.ts with a mutable config object
-vi.mock("../src/state.js", () => {
+// Mock shell.ts with a mutable config object
+vi.mock("../src/shell.js", () => {
   // Create a mock store that delegates to the mutable mock config
   const mockStore = {
     get agent() {
@@ -197,11 +198,11 @@ vi.mock("../src/state.js", () => {
   };
 
   return {
-    store: mockStore,
+    getStore: () => mockStore,
     getManager: () => mockModules.mockManager,
     getWidget: vi.fn(() => undefined),
-    piInstance: { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec },
-    sessionCtx: mockModules.mockSessionCtx,
+    getPiInstance: () => mockModules.mockPiInstance,
+    getSessionCtx: () => mockModules.mockSessionCtx,
     getCoordinator: vi.fn(() => ({
       spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
         // Delegate to the mocked manager.spawn
@@ -232,6 +233,9 @@ vi.mock("../src/state.js", () => {
     })),
   };
 });
+
+// Wire mockPiInstance to use the shared mockPiExec
+mockModules.mockPiInstance = { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec };
 
 // --- Import module under test ---
 import { showConcurrencySettingsMenu, showModelSettingsMenu, showWidgetSettingsMenu, showAgentsMainMenu, showSettingsMenu, showSpawnAgentMenu } from "../src/menus.js";
@@ -2314,8 +2318,7 @@ describe("handleAgentBriefing — worktree_path content", () => {
   it("includes worktree_path in the parameters table", async () => {
     // Navigate: Main Menu → Debug → Agent briefing → Escape
     const mockSendUserMessage = vi.fn();
-    const { piInstance } = await import("../src/state.js");
-    (piInstance as any).sendUserMessage = mockSendUserMessage;
+    mockModules.mockPiInstance.sendUserMessage = mockSendUserMessage;
 
     const ctx = createMockCtx([
       selectByName("debug"),
@@ -2336,8 +2339,7 @@ describe("handleAgentBriefing — worktree_path content", () => {
 
   it("covers all five required briefing points", async () => {
     const mockSendUserMessage = vi.fn();
-    const { piInstance } = await import("../src/state.js");
-    (piInstance as any).sendUserMessage = mockSendUserMessage;
+    mockModules.mockPiInstance.sendUserMessage = mockSendUserMessage;
 
     const ctx = createMockCtx([
       selectByName("debug"),

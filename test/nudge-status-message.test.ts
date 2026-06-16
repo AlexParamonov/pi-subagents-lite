@@ -81,9 +81,9 @@ vi.mock("../src/worktree-validator.js", () => ({
   validateWorktreePath: vi.fn(),
 }));
 
-vi.mock("../src/state.js", () => ({
-  piInstance: { sendMessage: mockSendMessage, exec: vi.fn() },
-  sessionCtx: { cwd: "/home/test" },
+vi.mock("../src/shell.js", () => ({
+  getPiInstance: () => ({ sendMessage: mockSendMessage, exec: vi.fn() }),
+  getSessionCtx: () => ({ cwd: "/home/test" }),
   getManager: () => ({
     spawn: vi.fn(),
     getRecord: mockGetRecord,
@@ -95,6 +95,9 @@ vi.mock("../src/state.js", () => ({
     ensureTimer: vi.fn(),
     update: vi.fn(),
     markFinished: vi.fn(),
+  }),
+  getStore: () => ({
+    agent: { graceTurns: 6, forceBackground: false, showCost: false },
   }),
   getCoordinator: () => coordinator,
 }));

@@ -2,7 +2,7 @@
  * menus.ts — /agents command menu system.
  *
  * All menu-related functions extracted from index.ts.
- * Imports shared state (config, manager, piInstance) from state.ts.
+ * Imports shared state (config, manager) from shell.ts.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -16,13 +16,13 @@ import { buildSnapshotMarkdown } from "./context.js";
 
 import { parseModelKey, findModelInRegistry } from "./utils.js";
 import {
-  piInstance,
-  sessionCtx,
+  getPiInstance,
+  getSessionCtx,
   getManager,
   getWidget,
-  store,
+  getStore,
   getCoordinator,
-} from "./state.js";
+} from "./shell.js";
 
 // ============================================================================
 // Helpers
@@ -284,7 +284,7 @@ function truncatePath(p: string): string {
  */
 async function listWorktrees(cwd: string): Promise<WorktreeEntry[] | null> {
   try {
-    const result = await piInstance.exec(
+    const result = await getPiInstance().exec(
       "git",
       ["worktree", "list", "--porcelain"],
       { cwd, timeout: WORKTREE_LIST_TIMEOUT_MS },
@@ -302,7 +302,7 @@ async function listWorktrees(cwd: string): Promise<WorktreeEntry[] | null> {
  */
 async function isInGitRepo(cwd: string): Promise<boolean> {
   try {
-    const result = await piInstance.exec(
+    const result = await getPiInstance().exec(
       "git",
       ["rev-parse", "--git-common-dir"],
       { cwd, timeout: WORKTREE_LIST_TIMEOUT_MS },
@@ -326,8 +326,8 @@ export async function showModelSettingsMenu(
     const actions: Array<() => Promise<void>> = [];
 
     // ── Session overrides section ──
-    const hasSessionOverrides = store.sessionDefaultModel != null ||
-      getAllTypes().some(type => store.sessionModelOverride(type) != null);
+    const hasSessionOverrides = getStore().sessionDefaultModel != null ||
+      getAllTypes().some(type => getStore().sessionModelOverride(type) != null);
 
     const buildOverrideAction = (
       label: string,
@@ -340,11 +340,11 @@ export async function showModelSettingsMenu(
 
       // Handle "clear" — remove all overrides (session + config) and save
       if (mode === "clear") {
-        store.mutate.agent.clearModelOverride(targetKey);
+        getStore().mutate.agent.clearModelOverride(targetKey);
         if (targetKey !== "default") {
-          store.mutate.session.clearOverride(targetKey);
+          getStore().mutate.session.clearOverride(targetKey);
         } else {
-          store.mutate.session.clearOverride("default");
+          getStore().mutate.session.clearOverride("default");
         }
         ctx.ui.notify(`${label} overrides cleared`, "info");
         return;
@@ -357,74 +357,74 @@ export async function showModelSettingsMenu(
         isSession
           ? (chosen) => {
               if (chosen === null) {
-                store.mutate.session.clearOverride(targetKey);
+                getStore().mutate.session.clearOverride(targetKey);
               } else {
-                store.mutate.session.setOverride(targetKey, chosen);
+                getStore().mutate.session.setOverride(targetKey, chosen);
               }
             }
           : (chosen) => {
-              store.mutate.agent.setModelOverride(targetKey, chosen);
+              getStore().mutate.agent.setModelOverride(targetKey, chosen);
             },
       );
     };
 
     // Global default — show session value if present
-    const sessionDefault = store.sessionDefaultModel;
+    const sessionDefault = getStore().sessionDefaultModel;
     const hasSessionGlobal = sessionDefault != null;
     const globalLabel = hasSessionGlobal
       ? `Global default model · ${sessionDefault} [session]`
-      : store.agent.defaultModel
-        ? `Global default model · ${store.agent.defaultModel}`
+      : getStore().agent.defaultModel
+        ? `Global default model · ${getStore().agent.defaultModel}`
         : "Global default model · (inherits parent)";
     items.push(globalLabel);
     actions.push(buildOverrideAction(
       "Global default", "default",
       hasSessionGlobal
-        ? store.sessionDefaultModel!
-        : store.agent.defaultModel ?? "(inherits parent)",
+        ? getStore().sessionDefaultModel!
+        : getStore().agent.defaultModel ?? "(inherits parent)",
     ));
 
     // Force background toggle
-    const forceBgLabel = store.agent.forceBackground
+    const forceBgLabel = getStore().agent.forceBackground
       ? "Force background · ON"
       : "Force background · OFF";
     items.push(forceBgLabel);
     actions.push(async () => {
-      store.mutate.agent.setForceBackground(!store.agent.forceBackground);
+      getStore().mutate.agent.setForceBackground(!getStore().agent.forceBackground);
       ctx.ui.notify(
-        `Force background ${store.agent.forceBackground ? "ON" : "OFF"}`,
+        `Force background ${getStore().agent.forceBackground ? "ON" : "OFF"}`,
         "info",
       );
     });
 
     // Cost display toggle — session or permanent (like model overrides)
-    const showCost = store.agent.showCost;
-    const hasSessionCost = store.hasSessionShowCost;
+    const showCost = getStore().agent.showCost;
+    const hasSessionCost = getStore().hasSessionShowCost;
     items.push(`Cost display · ${showCost ? "ON" : "OFF"}${hasSessionCost ? " [session]" : ""}`);
     actions.push(async () => {
       const newValue = !showCost;
       const mode = await promptOverrideMode(ctx, hasSessionCost);
       if (mode === null) return;
       if (mode === "clear") {
-        store.mutate.session.clearShowCost();
+        getStore().mutate.session.clearShowCost();
         ctx.ui.notify("Cost display session override cleared", "info");
         return;
       }
       if (mode === "session") {
-        store.mutate.session.setShowCost(newValue);
+        getStore().mutate.session.setShowCost(newValue);
       } else {
-        store.mutate.agent.setShowCost(newValue);
+        getStore().mutate.agent.setShowCost(newValue);
       }
       ctx.ui.notify(`Cost display ${newValue ? "ON" : "OFF"}`, "info");
     });
 
     // Grace turns setting
-    const graceTurns = store.agent.graceTurns;
+    const graceTurns = getStore().agent.graceTurns;
     items.push(`Grace turns · ${graceTurns}`);
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
       if (parsed === undefined) return;
-      store.mutate.agent.setGraceTurns(parsed);
+      getStore().mutate.agent.setGraceTurns(parsed);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
 
@@ -438,11 +438,11 @@ export async function showModelSettingsMenu(
     const types = getAllTypes();
     const typeEntries = types.map((typeName) => {
       const cfg = getAgentConfig(typeName);
-      const sessionOverride = store.sessionModelOverride(typeName);
-      const configOverride = store.agentConfigSnapshot()[typeName];
+      const sessionOverride = getStore().sessionModelOverride(typeName);
+      const configOverride = getStore().agentConfigSnapshot()[typeName];
       const hasSession = sessionOverride != null;
       const hasConfigOverride = configOverride != null && typeof configOverride === "string";
-      const effectiveModel = store.modelFor(typeName, "(inherits parent)", cfg);
+      const effectiveModel = getStore().modelFor(typeName, "(inherits parent)", cfg);
       return { typeName, cfg, sessionOverride, configOverride, hasSession, hasConfigOverride, effectiveModel };
     });
 
@@ -482,7 +482,7 @@ export async function showModelSettingsMenu(
     if (hasSessionOverrides) {
       items.push("Clear session overrides");
       actions.push(async () => {
-        store.mutate.session.clearAll();
+        getStore().mutate.session.clearAll();
         ctx.ui.notify("Session overrides cleared", "info");
       });
     }
@@ -490,15 +490,15 @@ export async function showModelSettingsMenu(
     // Clear all overrides
     items.push("Clear all overrides");
     actions.push(async () => {
-      const agentConfig = store.agentConfigSnapshot();
+      const agentConfig = getStore().agentConfigSnapshot();
       const hasOverrides = Object.entries(agentConfig).some(
         ([k, v]) => !CONFIG_AGENT_NON_MODEL_KEYS.includes(k) && v != null,
       );
-      if (!hasOverrides && store.agent.defaultModel === null) {
+      if (!hasOverrides && getStore().agent.defaultModel === null) {
         ctx.ui.notify("No overrides to clear", "info");
         return;
       }
-      store.mutate.agent.clearAllModelOverrides();
+      getStore().mutate.agent.clearAllModelOverrides();
       ctx.ui.notify("All model overrides cleared", "info");
     });
 
@@ -574,7 +574,8 @@ export async function showSpawnAgentMenu(
   let description = autoDescription;
 
   // Check if parent's cwd is inside a git repo (for worktree picker visibility)
-  const parentCwd = sessionCtx?.cwd ?? "";
+  const session = getSessionCtx();
+  const parentCwd = session?.cwd ?? "";
   const inGitRepo = parentCwd ? await isInGitRepo(parentCwd) : false;
 
   // Worktree picker state
@@ -582,15 +583,15 @@ export async function showSpawnAgentMenu(
   let currentWorktreeLabel = "Inherits parent cwd";
 
   // Pre-fill model from precedence chain
-  const parentModelId = sessionCtx?.model
-    ? `${sessionCtx.model.provider}/${sessionCtx.model.id}`
+  const parentModelId = session?.model
+    ? `${session.model.provider}/${session.model.id}`
     : "";
-  const effectiveModelStr = store.modelFor(selectedType, parentModelId, agentConfig);
+  const effectiveModelStr = getStore().modelFor(selectedType, parentModelId, agentConfig);
   let currentModelStr = effectiveModelStr || ""; // "" means inherit parent
   let currentThinking: ThinkingLevel | undefined = agentConfig.thinking;
   let currentMaxTurns: number | undefined = agentConfig.maxTurns;
-  let currentGraceTurns: number | undefined = store.agent.graceTurns;
-  let currentBackground: boolean = store.agent.forceBackground;
+  let currentGraceTurns: number | undefined = getStore().agent.graceTurns;
+  let currentBackground: boolean = getStore().agent.forceBackground;
 
   while (true) {
     const displayModel = currentModelStr || "(inherits parent)";
@@ -623,7 +624,7 @@ export async function showSpawnAgentMenu(
       let modelKey: string | undefined;
 
       if (currentModelStr) {
-        const registry = sessionCtx?.modelRegistry ?? ctx.modelRegistry;
+        const registry = session?.modelRegistry ?? ctx.modelRegistry;
         model = findModelInRegistry(currentModelStr, registry, undefined);
         if (!model) {
           ctx.ui.notify(`Model not found: ${currentModelStr}`, "error");
@@ -649,7 +650,7 @@ export async function showSpawnAgentMenu(
       // Use SpawnCoordinator for unified spawn path
       const coordinator = getCoordinator()!;
       try {
-        const result = await coordinator.spawn(piInstance, sessionCtx, {
+        const result = await coordinator.spawn(getPiInstance(), session!, {
           type: resolvedType,
           prompt,
           description,
@@ -848,39 +849,39 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const actions: Array<() => Promise<void>> = [];
 
     // Force compact mode toggle
-    const isForceCompact = store.agent.widgetCompact;
+    const isForceCompact = getStore().agent.widgetCompact;
     items.push(`Force compact mode · ${isForceCompact ? "ON" : "OFF"}`);
     actions.push(async () => {
-      store.mutate.widget.setCompact(!isForceCompact);
-      ctx.ui.notify(`Force compact mode ${store.agent.widgetCompact ? "ON" : "OFF"}`, "info");
+      getStore().mutate.widget.setCompact(!isForceCompact);
+      ctx.ui.notify(`Force compact mode ${getStore().agent.widgetCompact ? "ON" : "OFF"}`, "info");
     });
 
     // Max lines (full mode)
-    const maxLines = store.agent.widgetMaxLines;
+    const maxLines = getStore().agent.widgetMaxLines;
     items.push(`Max lines (full) · ${maxLines}`);
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
       if (parsed === undefined) return;
-      store.mutate.widget.setMaxLines(parsed);
+      getStore().mutate.widget.setMaxLines(parsed);
       ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
     });
 
     // Max lines (compact mode)
-    const maxLinesCompact = store.agent.widgetMaxLinesCompact;
+    const maxLinesCompact = getStore().agent.widgetMaxLinesCompact;
     items.push(`Max lines (compact) · ${maxLinesCompact}`);
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
       if (parsed === undefined) return;
-      store.mutate.widget.setMaxLinesCompact(parsed);
+      getStore().mutate.widget.setMaxLinesCompact(parsed);
       ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
     });
 
     // Ctrl+o shortcut toggle
-    const shortcutEnabled = store.agent.widgetShortcut;
+    const shortcutEnabled = getStore().agent.widgetShortcut;
     items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
     actions.push(async () => {
-      store.mutate.widget.setShortcut(!shortcutEnabled);
-      ctx.ui.notify(`Ctrl+o shortcut ${store.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
+      getStore().mutate.widget.setShortcut(!shortcutEnabled);
+      ctx.ui.notify(`Ctrl+o shortcut ${getStore().agent.widgetShortcut ? "ON" : "OFF"}`, "info");
     });
 
     return { items, actions };
@@ -940,7 +941,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("- **Relative paths** are resolved against the parent's working directory.");
   lines.push("- **On failure** the validator returns a specific reason (e.g., 'not a worktree of the parent's repository', 'path does not exist') — use this to self-correct.");
   lines.push("- **Agent type discovery:** The worktree's `.pi/agents/` directory is scanned for agent types when this param is set, so worktree-local types become available to that spawn.");
-  piInstance.sendUserMessage(lines.join("\n"));
+  getPiInstance().sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }
 
@@ -989,23 +990,23 @@ export async function showConcurrencySettingsMenu(
     const actions: Array<() => Promise<void>> = [];
 
     // Global default
-    items.push(`Default concurrency limit · ${store.concurrency.default}`);
+    items.push(`Default concurrency limit · ${getStore().concurrency.default}`);
     actions.push(async () => {
       await promptConcurrencyInput(
-        ctx, "Default limit", store.concurrency.default,
-        (value) => store.mutate.concurrency.setDefault(value),
+        ctx, "Default limit", getStore().concurrency.default,
+        (value) => getStore().mutate.concurrency.setDefault(value),
       );
     });
 
     // Reset all to defaults
     items.push("Reset all to defaults");
     actions.push(async () => {
-      store.mutate.concurrency.reset();
+      getStore().mutate.concurrency.reset();
       ctx.ui.notify("Concurrency reset to defaults", "info");
     });
 
     // ── Per-provider limits ──
-    const providerLimits = store.concurrency.providers;
+    const providerLimits = getStore().concurrency.providers;
     const configuredProviders = Object.keys(providerLimits);
     if (configuredProviders.length > 0) {
       items.push("");
@@ -1023,8 +1024,8 @@ export async function showConcurrencySettingsMenu(
             "provider",
             provider,
             limit,
-            (key, value) => store.mutate.concurrency.setProvider(key, value),
-            () => store.mutate.concurrency.removeProvider(provider),
+            (key, value) => getStore().mutate.concurrency.setProvider(key, value),
+            () => getStore().mutate.concurrency.removeProvider(provider),
           );
         });
       }
@@ -1037,12 +1038,12 @@ export async function showConcurrencySettingsMenu(
       if (provider === undefined) return;
       await promptAddConcurrencyLimit(
         ctx, provider,
-        (key, value) => store.mutate.concurrency.setProvider(key, value),
+        (key, value) => getStore().mutate.concurrency.setProvider(key, value),
       );
     });
 
     // ── Per-model limits ──
-    const models = store.concurrency.models;
+    const models = getStore().concurrency.models;
     const modelKeys = Object.keys(models);
     if (modelKeys.length > 0) {
       items.push("");
@@ -1060,8 +1061,8 @@ export async function showConcurrencySettingsMenu(
             "model",
             modelKey,
             limit,
-            (key, value) => store.mutate.concurrency.setModel(key, value),
-            () => store.mutate.concurrency.removeModel(modelKey),
+            (key, value) => getStore().mutate.concurrency.setModel(key, value),
+            () => getStore().mutate.concurrency.removeModel(modelKey),
           );
         });
       }
@@ -1071,12 +1072,12 @@ export async function showConcurrencySettingsMenu(
     items.push("Add per-model limit...");
     actions.push(async () => {
       const modelKey = await promptModelSelection(
-        ctx, modelOptions, store.agent.defaultModel ?? "(inherits parent)",
+        ctx, modelOptions, getStore().agent.defaultModel ?? "(inherits parent)",
       );
       if (modelKey === null) return;
       await promptAddConcurrencyLimit(
         ctx, modelKey.trim(),
-        (key, value) => store.mutate.concurrency.setModel(key, value),
+        (key, value) => getStore().mutate.concurrency.setModel(key, value),
       );
     });
 
@@ -1192,7 +1193,7 @@ async function steerAgentById(
   const message = await ctx.ui.input(`Steer ${record.display.type}`);
   if (!message?.trim()) return;
 
-  const sent = await getManager().steer(agentId, message.trim());
+  const sent = await getManager()!.steer(agentId, message.trim());
   if (sent) {
     ctx.ui.notify(`Steer sent to ${record.id.slice(0, SHORT_ID_LENGTH)}…`, "info");
   } else {
