@@ -10,7 +10,12 @@ import type { SessionModelOverrides, SubagentsConfig } from "./model-precedence.
 import { DEFAULT_CONFIG } from "./config-io.js";
 import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, type AgentActivity } from "./ui/agent-widget.js";
+import { ConfigStore } from "./config-store.js";
 
+/** The single ConfigStore instance, constructed at module load time. */
+export const store = new ConfigStore();
+
+// Transitional aliases — kept in sync by index.ts until Wave 1e removes them.
 export let sessionOverrides: SessionModelOverrides = { default: null };
 export let __config: SubagentsConfig = { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
 export const agentActivity = new Map<string, AgentActivity>();

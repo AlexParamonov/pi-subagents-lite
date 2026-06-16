@@ -56,6 +56,16 @@ vi.mock("../src/utils.js", () => ({
 vi.mock("../src/state.js", () => ({
   __config: { agent: { graceTurns: 5, forceBackground: false } },
   sessionOverrides: {},
+  store: {
+    get agent() {
+      return { graceTurns: 5, forceBackground: false };
+    },
+    modelFor(type: string, parentModelId: string, agentConfig?: any) {
+      // Simplified model resolution for testing
+      if (agentConfig?.model) return agentConfig.model;
+      return parentModelId;
+    },
+  },
   piInstance: { sendMessage: vi.fn(), exec: vi.fn() },
   sessionCtx: { cwd: "/home/test/project" },
   agentActivity: new Map(),

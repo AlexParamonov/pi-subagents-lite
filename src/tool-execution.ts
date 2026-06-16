@@ -12,7 +12,6 @@ import { SHORT_ID_LENGTH } from "./types.js";
 import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
 import type { AgentActivity } from "./ui/agent-widget.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
-import { resolveModel } from "./model-precedence.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
 import { validateWorktreePath } from "./worktree-validator.js";
 
@@ -20,12 +19,12 @@ import { validateWorktreePath } from "./worktree-validator.js";
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.js";
 import {
   __config,
-  sessionOverrides,
   piInstance,
   agentActivity,
   getManager,
   getWidget,
   sessionCtx,
+  store,
 } from "./state.js";
 
 // ============================================================================
@@ -274,7 +273,7 @@ export async function executeAgentTool(
     thinkingLevel,
     modelKey,
     invocation: { modelName },
-    graceTurns: __config.agent.graceTurns,
+    graceTurns: store.agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
   };
@@ -428,13 +427,11 @@ export async function toolCallListener(
 
   const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
 
-  const effectiveModel = resolveModel({
-    subagentType: subagentType ?? "general-purpose",
-    agentConfig,
-    config: __config,
+  const effectiveModel = store.modelFor(
+    subagentType ?? "general-purpose",
     parentModelId,
-    sessionOverrides,
-  });
+    agentConfig,
+  );
 
   if (effectiveModel) {
     input.model = effectiveModel;

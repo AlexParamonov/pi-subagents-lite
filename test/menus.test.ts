@@ -110,9 +110,57 @@ vi.mock("../src/tool-execution.js", () => ({
 
 // Mock state.ts with a mutable config object
 vi.mock("../src/state.js", () => {
+  // Create a mock store that delegates to the mutable mock config
+  const mockStore = {
+    get agent() {
+      const a = mockModules.mockConfig.agent;
+      const widgetMaxLines = a.widgetMaxLines ?? 12;
+      return {
+        defaultModel: a.default ?? null,
+        forceBackground: a.forceBackground === true,
+        showCost: a.showCost === true,
+        graceTurns: a.graceTurns ?? 6,
+        widgetMaxLines,
+        widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
+        widgetCompact: a.widgetCompact === true,
+        widgetShortcut: a.widgetShortcut === true,
+      };
+    },
+    get concurrency() {
+      return {
+        default: mockModules.mockConfig.concurrency.default,
+        providers: mockModules.mockConfig.concurrency.providers ?? {},
+        models: mockModules.mockConfig.concurrency.models ?? {},
+      };
+    },
+    get sessionDefaultModel() {
+      return mockModules.mockSessionOverrides.default ?? null;
+    },
+    sessionModelOverride(type: string) {
+      return mockModules.mockSessionOverrides[type] ?? null;
+    },
+    agentConfigSnapshot() {
+      return mockModules.mockConfig.agent;
+    },
+    modelFor(type: string, parentModelId: string, agentConfig?: any) {
+      // Simplified model resolution for testing
+      const sessionOverride = mockModules.mockSessionOverrides[type];
+      if (sessionOverride) return sessionOverride;
+      const sessionDefault = mockModules.mockSessionOverrides.default;
+      if (sessionDefault) return sessionDefault;
+      const configOverride = mockModules.mockConfig.agent[type];
+      if (configOverride) return configOverride;
+      const configDefault = mockModules.mockConfig.agent.default;
+      if (configDefault) return configDefault;
+      if (agentConfig?.model) return agentConfig.model;
+      return parentModelId;
+    },
+  };
+
   return {
     __config: mockModules.mockConfig,
     sessionOverrides: mockModules.mockSessionOverrides,
+    store: mockStore,
     getManager: () => mockModules.mockManager,
     getWidget: vi.fn(() => undefined),
     piInstance: { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec },
