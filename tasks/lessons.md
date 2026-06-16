@@ -59,3 +59,13 @@
 **What worked:** Clean state.ts deletion, shell.ts introduced with getter functions. All 557 tests pass. Composition root pattern established.
 **What failed:** Mock count not reduced — shell is still module singleton requiring vi.mock(). True DI would need closure/factory pattern.
 **Next time:** For mock count reduction, pass shell into functions via closure (factory pattern) instead of module-level singleton. Or accept module singleton as sufficient — the composition root goal is achieved.
+
+## widget-regression - 2026-06-16
+**What worked:** Systematic debug process identified root cause in 5 minutes. Fix in SpawnCoordinator benefits both spawn paths.
+**What failed:** When unifying spawn paths, missed that menu path called ensureTimer() but tool path didn't. Both paths need the same widget initialization.
+**Next time:** When unifying code paths, diff the old paths to ensure all side effects are preserved. Widget lifecycle (ensureTimer, setUICtx) must happen in both paths.
+
+## test-mock-cleanup - 2026-06-16
+**What worked:** Clear evidence-based planning (ADR 0004, empirical mock count table) made the issue crisp. Builder correctly identified all cargo-culted mocks and extracted 14 factories. Refactor pruned 7 unused ones (YAGNI).
+**What failed:** Builder extracted speculative factories that had zero consumers — classic premature abstraction.
+**Next time:** Only extract mock factories that have ≥1 consumer in the current slice. Speculative extraction is waste.
