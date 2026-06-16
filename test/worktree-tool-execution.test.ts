@@ -66,7 +66,6 @@ vi.mock("../src/state.js", () => ({
   },
   piInstance: { sendMessage: vi.fn(), exec: vi.fn() },
   sessionCtx: { cwd: "/home/test/project" },
-  agentActivity: new Map(),
   getManager: vi.fn(() => ({
     spawn: mockSpawn,
     getRecord: mockGetRecord,

@@ -41,7 +41,6 @@ import { executeAgentStatusTool } from "./agent-status.js";
 import { SpawnCoordinator } from "./spawn-coordinator.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
-  agentActivity,
   piInstance,
   store,
   setManager,
@@ -56,7 +55,7 @@ import {
 } from "./state.js";
 
 // Re-export store for backward compatibility
-export { store, agentActivity, piInstance } from "./state.js";
+export { store, piInstance } from "./state.js";
 export { getCoordinator } from "./state.js";
 
 
@@ -97,9 +96,6 @@ function ensureManagerAndWidget(): void {
       // Mark finished and update widget
       getWidget()?.markFinished(record.id);
       getWidget()?.update();
-
-      // Remove from live activity tracking
-      agentActivity.delete(record.id);
     });
   }
 
@@ -107,7 +103,6 @@ function ensureManagerAndWidget(): void {
   if (!currentWidget) {
     const newWidget = new AgentWidget(
       getManager(),
-      agentActivity,
       (id: string) => getCoordinator()?.liveView(id),
     );
     setWidget(newWidget);
@@ -265,7 +260,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     setSessionCtx(ctx);
-    agentActivity.clear();
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);

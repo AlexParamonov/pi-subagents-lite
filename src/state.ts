@@ -7,14 +7,13 @@
 
 import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { AgentManager } from "./agent-manager.js";
-import { AgentWidget, type AgentActivity } from "./ui/agent-widget.js";
+import { AgentWidget } from "./ui/agent-widget.js";
 import { ConfigStore } from "./config-store.js";
 type SpawnCoordinator = import("./spawn-coordinator.js").SpawnCoordinator;
 
 /** The single ConfigStore instance, constructed at module load time. */
 export const store = new ConfigStore();
 
-export const agentActivity = new Map<string, AgentActivity>();
 export let piInstance: ExtensionAPI;
 /** Stored ExtensionContext from session_start — used by menu spawn flow. */
 export let sessionCtx: ExtensionContext;

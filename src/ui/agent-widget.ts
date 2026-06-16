@@ -11,6 +11,7 @@ import {
   getSessionContextPercent,
 } from "../usage.js";
 import { formatMs, buildStatsParts, getDisplayName } from "../format.js";
+import type { LiveView } from "../spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (model-selector, result-viewer) don't break
 export type { Theme } from "../types.js";
@@ -81,17 +82,9 @@ interface RenderBlock {
   continuations: string[];
 }
 
-/**
- * Per-agent live activity state — coordinator-owned, only transient display data.
- * Stats (turnCount, toolUses, lifetimeUsage) live on the AgentRecord, not here.
- */
-export interface AgentActivity {
-  activeTools: Map<string, string>;
-  responseText: string;
-}
-
 // ---- Re-exports from format.ts (backward compatibility) ----
 export { formatMs, buildStatsParts, getDisplayName } from "../format.js";
+export type { LiveView as AgentActivity } from "../spawn-coordinator.js";
 
 // ---- Widget-internal helpers ----
 
@@ -180,8 +173,7 @@ export class AgentWidget {
 
   constructor(
     private manager: AgentManager,
-    private agentActivity: Map<string, AgentActivity>,
-    private getLiveView?: (id: string) => AgentActivity | undefined,
+    private getLiveView: (id: string) => LiveView | undefined,
   ) {}
 
   /** Set whether to show cost in stats and status bar. */
@@ -330,7 +322,6 @@ export class AgentWidget {
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
   private buildStatsLine(
     agent: AgentRecord,
-    activity: AgentActivity | undefined,
     theme: Theme,
   ): string {
     const parts = buildStatsParts({
@@ -383,8 +374,8 @@ export class AgentWidget {
     const blocks: RenderBlock[] = [];
     for (const a of running) {
       const name = getDisplayName(a.display.type);
-      const bg = this.getLiveView?.(a.id) ?? this.agentActivity.get(a.id);
-      const statsLine = this.buildStatsLine(a, bg, theme);
+      const bg = this.getLiveView(a.id);
+      const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
       if (this.isCompact()) {

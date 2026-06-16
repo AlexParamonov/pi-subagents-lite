@@ -84,7 +84,6 @@ vi.mock("../src/worktree-validator.js", () => ({
 vi.mock("../src/state.js", () => ({
   piInstance: { sendMessage: mockSendMessage, exec: vi.fn() },
   sessionCtx: { cwd: "/home/test" },
-  agentActivity: new Map(),
   getManager: () => ({
     spawn: vi.fn(),
     getRecord: mockGetRecord,

@@ -139,11 +139,6 @@ export class SpawnCoordinator {
     return this.liveViews.get(id);
   }
 
-  /** Delete a live view. Called on completion cleanup. */
-  deleteLiveView(id: string): void {
-    this.liveViews.delete(id);
-  }
-
   /** Check if an agent was spawned as background. */
   isBackground(agentId: string): boolean {
     return this.backgroundAgentIds.has(agentId);

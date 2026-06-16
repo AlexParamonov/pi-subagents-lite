@@ -45,8 +45,6 @@ const mockModules = vi.hoisted(() => ({
     model: { provider: "test", id: "parent-model" },
     cwd: "/test",
   },
-  mockAgentActivity: new Map(),
-  mockBackgroundAgentIds: new Set(),
   mockPiExec: vi.fn(),
 }));
 
@@ -88,25 +86,9 @@ vi.mock("../src/config-io.js", () => ({
 }));
 
 vi.mock("../src/tool-execution.js", () => ({
-  createActivityTracker: vi.fn((maxTurns?: number) => ({
-    state: {
-      activeTools: new Map(),
-      toolUses: 0,
-      turnCount: 1,
-      maxTurns,
-      responseText: "",
-      session: undefined,
-      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
-    },
-    callbacks: {
-      onToolActivity: vi.fn(),
-      onTextDelta: vi.fn(),
-      onTurnEnd: vi.fn(),
-      onSessionCreated: vi.fn(),
-      onAssistantUsage: vi.fn(),
-    },
-  })),
-  backgroundAgentIds: mockModules.mockBackgroundAgentIds,
+  buildAgentDetails: vi.fn(() => ({})),
+  successResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], details })),
+  errorResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], isError: true, details })),
 }));
 
 // Mock state.ts with a mutable config object
@@ -220,7 +202,6 @@ vi.mock("../src/state.js", () => {
     getWidget: vi.fn(() => undefined),
     piInstance: { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec },
     sessionCtx: mockModules.mockSessionCtx,
-    agentActivity: mockModules.mockAgentActivity,
     getCoordinator: vi.fn(() => ({
       spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
         // Delegate to the mocked manager.spawn
@@ -1736,8 +1717,6 @@ describe("showSpawnAgentMenu — type selection", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false };
     mockModules.mockSessionOverrides.default = null;
-    mockModules.mockAgentActivity.clear();
-    mockModules.mockBackgroundAgentIds.clear();
     mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
@@ -1789,8 +1768,6 @@ describe("showSpawnAgentMenu — prompt entry", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false };
     mockModules.mockSessionOverrides.default = null;
-    mockModules.mockAgentActivity.clear();
-    mockModules.mockBackgroundAgentIds.clear();
     mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
@@ -1845,8 +1822,6 @@ describe("showSpawnAgentMenu — options sub-menu", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 8 };
     mockModules.mockSessionOverrides.default = null;
-    mockModules.mockAgentActivity.clear();
-    mockModules.mockBackgroundAgentIds.clear();
     mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
@@ -2132,8 +2107,6 @@ describe("showSpawnAgentMenu — spawn action", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 6 };
     mockModules.mockSessionOverrides.default = null;
-    mockModules.mockAgentActivity.clear();
-    mockModules.mockBackgroundAgentIds.clear();
     mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
@@ -2232,9 +2205,6 @@ describe("showSpawnAgentMenu — spawn action", () => {
     // Resolve the promise to unblock
     resolvePromise("result");
     await spawnPromise;
-
-    // Activity should be cleaned up after foreground completion
-    expect(mockModules.mockAgentActivity.has("agent-id-123")).toBe(false);
   });
 
   it("shows error when model not found in registry and returns to options", async () => {
@@ -2406,8 +2376,6 @@ describe("showSpawnAgentMenu — worktree picker", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false };
     mockModules.mockSessionOverrides.default = null;
-    mockModules.mockAgentActivity.clear();
-    mockModules.mockBackgroundAgentIds.clear();
     mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
     mockModules.mockManager.getRecord.mockReset();
     mockModules.mockPiExec.mockReset();
