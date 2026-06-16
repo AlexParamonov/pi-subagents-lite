@@ -26,23 +26,27 @@ export const DEFAULT_CONFIG: SubagentsConfig = {
   concurrency: { default: 4 },
 };
 
-/** Read config from disk. Returns defaults if file doesn't exist or is invalid. */
-export function loadConfig(): SubagentsConfig {
+/**
+ * Read config from disk. Returns defaults if file doesn't exist or is invalid.
+ * `configPath` lets ConfigStore inject a test path.
+ */
+export function loadConfig(configPath: string = CONFIG_PATH): SubagentsConfig {
   try {
-    const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
+    const raw = fs.readFileSync(configPath, "utf-8");
     return JSON.parse(raw) as SubagentsConfig;
   } catch {
     return { ...DEFAULT_CONFIG, agent: { ...DEFAULT_CONFIG.agent }, concurrency: { ...DEFAULT_CONFIG.concurrency } };
   }
 }
 
-/** Write config to disk with atomic rename. */
-export function saveConfigAtomic(config: SubagentsConfig): void {
-  const tmpPath = CONFIG_PATH + ".tmp";
+/** Write config to disk with atomic rename. `configPath` lets ConfigStore inject a test path. */
+export function saveConfigAtomic(config: SubagentsConfig, configPath: string = CONFIG_PATH): void {
+  const tmpPath = configPath + ".tmp";
+  const dir = path.dirname(configPath);
   try {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), "utf-8");
-    fs.renameSync(tmpPath, CONFIG_PATH);
+    fs.renameSync(tmpPath, configPath);
   } catch (err) {
     console.error(`[subagents] Failed to save config: ${err}`);
   }
