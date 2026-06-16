@@ -11,7 +11,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "./types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "./agent-types.js";
-import { parseModelKey, findModelInRegistry } from "./utils.js";
+import { findModelInRegistry } from "./utils.js";
 import { promptModelSelection, parseNumericInput } from "./menus.js";
 import {
   getPiInstance,
