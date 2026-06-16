@@ -193,3 +193,70 @@ export function streamToOutputFile(
     unsubscribe();
   };
 }
+
+// ---------------------------------------------------------------------------
+//  AgentOutputLog — lifecycle wrapper for per-agent output streaming
+// ---------------------------------------------------------------------------
+
+/** Final stats written to the DONE line at agent completion. */
+export interface OutputFinalStats {
+  turnCount: number;
+  toolUseCount: number;
+  totalTokens: number;
+  cost: number;
+}
+
+/**
+ * Manages a single agent's output log lifecycle: create path → write initial
+ * entry → attach session stream → finalize with stats → close.
+ *
+ * The manager holds one instance per agent. At spawn time the constructor
+ * creates the file and writes the [USER] entry. When the session is ready,
+ * `attach()` subscribes to streaming events. At completion, `finalize()`
+ * flushes remaining messages, writes the [DONE] line, and unsubscribes.
+ */
+export class AgentOutputLog {
+  readonly path: string;
+  private cleanup?: () => void;
+  private statsRef?: OutputFinalStats;
+
+  constructor(agentId: string, prompt: string, baseDir?: string) {
+    this.path = createOutputFilePath(agentId, baseDir);
+    writeInitialEntry(this.path, prompt);
+  }
+
+  /**
+   * Subscribe to session events so messages stream to the output file.
+   * Internally passes a mutable stats reference that `finalize()` populates
+   * before the DONE line is written.
+   */
+  attach(session: AgentSession): void {
+    this.statsRef = { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
+    this.cleanup = streamToOutputFile(session, this.path, this.statsRef);
+  }
+
+  /**
+   * Flush remaining messages, write the [DONE] line with final stats,
+   * and unsubscribe from session events.
+   *
+   * Safe to call without a prior `attach()` — writes the DONE line only.
+   */
+  finalize(stats: OutputFinalStats): void {
+    if (this.cleanup && this.statsRef) {
+      // Populate the mutable stats ref so streamToOutputFile's cleanup
+      // writes the actual final values to the DONE line.
+      this.statsRef.turnCount = stats.turnCount;
+      this.statsRef.toolUseCount = stats.toolUseCount;
+      this.statsRef.totalTokens = stats.totalTokens;
+      this.statsRef.cost = stats.cost;
+      this.cleanup();
+      this.cleanup = undefined;
+      this.statsRef = undefined;
+    } else {
+      // No attach was called — write DONE directly
+      const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
+      const costStr = `$${stats.cost.toFixed(3)}`;
+      safeAppend(this.path, `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`);
+    }
+  }
+}
