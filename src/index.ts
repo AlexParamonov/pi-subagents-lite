@@ -103,7 +103,7 @@ function ensureManagerAndWidget(): void {
         // Remove from live activity tracking
         agentActivity.delete(record.id);
       },
-      configStore.concurrency as unknown as Parameters<typeof AgentManager>[1],
+      configStore.concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
     );
     setManager(newManager);
     // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
