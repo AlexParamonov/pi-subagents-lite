@@ -28,26 +28,6 @@ import {
 } from "./state.js";
 
 import { createActivityTracker, backgroundAgentIds } from "./tool-execution.js";
-import {
-  setModelOverride,
-  setDefaultModel,
-  clearModelOverride,
-  clearAllModelOverrides,
-  setForceBackground,
-  setShowCost,
-  setGraceTurns,
-  setWidgetCompact,
-  setWidgetMaxLines,
-  setWidgetMaxLinesCompact,
-  setWidgetShortcut,
-  setAgent,
-  setConcurrencyDefault,
-  setConcurrencyProvider,
-  setConcurrencyModel,
-  removeConcurrencyProvider,
-  removeConcurrencyModel,
-  resetConcurrency,
-} from "./config-mutator.js";
 
 // ============================================================================
 // Helpers
@@ -366,11 +346,11 @@ export async function showModelSettingsMenu(
 
       // Handle "clear" — remove all overrides (session + config) and save
       if (mode === "clear") {
-        clearModelOverride(targetKey);
+        store.mutate.agent.clearModelOverride(targetKey);
         if (targetKey !== "default") {
-          delete sessionOverrides[targetKey];
+          store.mutate.session.clearOverride(targetKey);
         } else {
-          sessionOverrides.default = null;
+          store.mutate.session.clearOverride("default");
         }
         ctx.ui.notify(`${label} overrides cleared`, "info");
         return;
@@ -381,9 +361,15 @@ export async function showModelSettingsMenu(
         ctx, modelOptions, label,
         currentValue,
         isSession
-          ? (chosen) => { sessionOverrides[targetKey] = chosen; }
+          ? (chosen) => {
+              if (chosen === null) {
+                store.mutate.session.clearOverride(targetKey);
+              } else {
+                store.mutate.session.setOverride(targetKey, chosen);
+              }
+            }
           : (chosen) => {
-              setModelOverride(targetKey, chosen);
+              store.mutate.agent.setModelOverride(targetKey, chosen);
             },
       );
     };
@@ -410,7 +396,7 @@ export async function showModelSettingsMenu(
       : "Force background · OFF";
     items.push(forceBgLabel);
     actions.push(async () => {
-      setForceBackground(!store.agent.forceBackground);
+      store.mutate.agent.setForceBackground(!store.agent.forceBackground);
       ctx.ui.notify(
         `Force background ${store.agent.forceBackground ? "ON" : "OFF"}`,
         "info",
@@ -421,7 +407,7 @@ export async function showModelSettingsMenu(
     const showCost = store.agent.showCost;
     items.push(`Cost display · ${showCost ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setShowCost(!showCost);
+      store.mutate.agent.setShowCost(!showCost);
       ctx.ui.notify(`Cost display ${showCost ? "OFF" : "ON"}`, "info");
     });
 
@@ -431,7 +417,7 @@ export async function showModelSettingsMenu(
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
       if (parsed === undefined) return;
-      setGraceTurns(parsed);
+      store.mutate.agent.setGraceTurns(parsed);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
 
@@ -489,12 +475,8 @@ export async function showModelSettingsMenu(
     if (hasSessionOverrides) {
       items.push("Clear session overrides");
       actions.push(async () => {
-        sessionOverrides.default = null;
-        for (const key of Object.keys(sessionOverrides)) {
-          if (key !== "default") {
-            delete sessionOverrides[key];
-          }
-        }
+        store.mutate.session.clearOverride("default");
+        store.mutate.session.clearAll()
         ctx.ui.notify("Session overrides cleared", "info");
       });
     }
@@ -510,7 +492,7 @@ export async function showModelSettingsMenu(
         ctx.ui.notify("No overrides to clear", "info");
         return;
       }
-      clearAllModelOverrides();
+      store.mutate.agent.clearAllModelOverrides();
       ctx.ui.notify("All model overrides cleared", "info");
     });
 
@@ -878,7 +860,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const isForceCompact = store.agent.widgetCompact;
     items.push(`Force compact mode · ${isForceCompact ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setWidgetCompact(!isForceCompact);
+      store.mutate.widget.setCompact(!isForceCompact);
       ctx.ui.notify(`Force compact mode ${store.agent.widgetCompact ? "ON" : "OFF"}`, "info");
     });
 
@@ -888,7 +870,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
       if (parsed === undefined) return;
-      setWidgetMaxLines(parsed);
+      store.mutate.widget.setMaxLines(parsed);
       ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
     });
 
@@ -898,7 +880,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     actions.push(async () => {
       const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
       if (parsed === undefined) return;
-      setWidgetMaxLinesCompact(parsed);
+      store.mutate.widget.setMaxLinesCompact(parsed);
       ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
     });
 
@@ -906,7 +888,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     const shortcutEnabled = store.agent.widgetShortcut;
     items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
     actions.push(async () => {
-      setWidgetShortcut(!shortcutEnabled);
+      store.mutate.widget.setShortcut(!shortcutEnabled);
       ctx.ui.notify(`Ctrl+o shortcut ${store.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
     });
 
@@ -1020,14 +1002,14 @@ export async function showConcurrencySettingsMenu(
     actions.push(async () => {
       await promptConcurrencyInput(
         ctx, "Default limit", store.concurrency.default,
-        (value) => setConcurrencyDefault(value),
+        (value) => store.mutate.concurrency.setDefault(value),
       );
     });
 
     // Reset all to defaults
     items.push("Reset all to defaults");
     actions.push(async () => {
-      resetConcurrency();
+      store.mutate.concurrency.reset();
       ctx.ui.notify("Concurrency reset to defaults", "info");
     });
 
@@ -1050,8 +1032,8 @@ export async function showConcurrencySettingsMenu(
             "provider",
             provider,
             limit,
-            (key, value) => setConcurrencyProvider(key, value),
-            () => removeConcurrencyProvider(provider),
+            (key, value) => store.mutate.concurrency.setProvider(key, value),
+            () => store.mutate.concurrency.removeProvider(provider),
           );
         });
       }
@@ -1064,7 +1046,7 @@ export async function showConcurrencySettingsMenu(
       if (provider === undefined) return;
       await promptAddConcurrencyLimit(
         ctx, provider,
-        (key, value) => setConcurrencyProvider(key, value),
+        (key, value) => store.mutate.concurrency.setProvider(key, value),
       );
     });
 
@@ -1087,8 +1069,8 @@ export async function showConcurrencySettingsMenu(
             "model",
             modelKey,
             limit,
-            (key, value) => setConcurrencyModel(key, value),
-            () => removeConcurrencyModel(modelKey),
+            (key, value) => store.mutate.concurrency.setModel(key, value),
+            () => store.mutate.concurrency.removeModel(modelKey),
           );
         });
       }
@@ -1103,7 +1085,7 @@ export async function showConcurrencySettingsMenu(
       if (modelKey === null) return;
       await promptAddConcurrencyLimit(
         ctx, modelKey.trim(),
-        (key, value) => setConcurrencyModel(key, value),
+        (key, value) => store.mutate.concurrency.setModel(key, value),
       );
     });
 

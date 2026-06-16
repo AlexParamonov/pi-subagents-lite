@@ -155,6 +155,57 @@ vi.mock("../src/state.js", () => {
       if (agentConfig?.model) return agentConfig.model;
       return parentModelId;
     },
+    mutate: {
+      agent: {
+        setDefaultModel(value: string | null) { mockModules.mockConfig.agent.default = value; },
+        setModelOverride(type: string, value: string | null) { mockModules.mockConfig.agent[type] = value; },
+        clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
+        clearAllModelOverrides() {
+          const preserved: Record<string, unknown> = {};
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut']) {
+            const val = mockModules.mockConfig.agent[key];
+            if (val != null || key === 'default' || key === 'forceBackground') {
+              preserved[key] = val;
+            }
+          }
+          mockModules.mockConfig.agent = preserved as any;
+        },
+        setForceBackground(enabled: boolean) { mockModules.mockConfig.agent.forceBackground = enabled; },
+        setShowCost(enabled: boolean) { mockModules.mockConfig.agent.showCost = enabled; },
+        setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
+      },
+      widget: {
+        setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
+        setMaxLines(lines: number) { mockModules.mockConfig.agent.widgetMaxLines = lines; },
+        setMaxLinesCompact(lines: number) { mockModules.mockConfig.agent.widgetMaxLinesCompact = lines; },
+        setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
+      },
+      concurrency: {
+        setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },
+        setProvider(key: string, n: number) {
+          if (!mockModules.mockConfig.concurrency.providers) mockModules.mockConfig.concurrency.providers = {};
+          mockModules.mockConfig.concurrency.providers[key] = n;
+        },
+        setModel(key: string, n: number) {
+          if (!mockModules.mockConfig.concurrency.models) mockModules.mockConfig.concurrency.models = {};
+          mockModules.mockConfig.concurrency.models[key] = n;
+        },
+        removeProvider(key: string) {
+          if (mockModules.mockConfig.concurrency.providers) delete mockModules.mockConfig.concurrency.providers[key];
+        },
+        removeModel(key: string) {
+          if (mockModules.mockConfig.concurrency.models) delete mockModules.mockConfig.concurrency.models[key];
+        },
+        reset() {
+          mockModules.mockConfig.concurrency = { default: 4 };
+        },
+      },
+      session: {
+        setOverride(type: string, model: string) { mockModules.mockSessionOverrides[type] = model; },
+        clearOverride(type: string) { delete mockModules.mockSessionOverrides[type]; },
+        clearAll() { mockModules.mockSessionOverrides = { default: null }; },
+      },
+    },
   };
 
   return {
@@ -509,7 +560,6 @@ describe("showModelSettingsMenu — grace turns", () => {
     await showModelSettingsMenu(ctx, modelOptions);
 
     expect(mockModules.mockConfig.agent.graceTurns).toBe(0);
-    expect(saveConfigAtomic).toHaveBeenCalledWith(mockModules.mockConfig);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Grace turns set to 0", "info");
   });
 
@@ -660,7 +710,6 @@ describe("showModelSettingsMenu — clear per-type override", () => {
 
     // Assert
     expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
-    expect(saveConfigAtomic).toHaveBeenCalledWith(mockModules.mockConfig);
   });
 
   it("clears both session and permanent override", async () => {
@@ -1371,7 +1420,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Force compact mode ON", "info");
   });
 
@@ -1408,7 +1456,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (full) set to 10", "info");
   });
 
@@ -1452,7 +1499,6 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(4);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (compact) set to 4", "info");
   });
 
@@ -1544,7 +1590,6 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut ON", "info");
   });
 
@@ -1561,7 +1606,6 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
     await showWidgetSettingsMenu(ctx);
 
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(false);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut OFF", "info");
   });
 });
@@ -1608,7 +1652,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.showCost).toBe(false);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display OFF", "info");
   });
 
@@ -1625,7 +1668,6 @@ describe("showModelSettingsMenu — cost display toggle", () => {
     await showModelSettingsMenu(ctx, []);
 
     expect(mockModules.mockConfig.agent.showCost).toBe(true);
-    expect(saveConfigAtomic).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Cost display ON", "info");
   });
 
