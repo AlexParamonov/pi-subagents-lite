@@ -181,6 +181,7 @@ export class AgentWidget {
   constructor(
     private manager: AgentManager,
     private agentActivity: Map<string, AgentActivity>,
+    private getLiveView?: (id: string) => AgentActivity | undefined,
   ) {}
 
   /** Set whether to show cost in stats and status bar. */
@@ -382,7 +383,7 @@ export class AgentWidget {
     const blocks: RenderBlock[] = [];
     for (const a of running) {
       const name = getDisplayName(a.display.type);
-      const bg = this.agentActivity.get(a.id);
+      const bg = this.getLiveView?.(a.id) ?? this.agentActivity.get(a.id);
       const statsLine = this.buildStatsLine(a, bg, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 

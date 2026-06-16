@@ -560,6 +560,128 @@ describe("formatMs", () => {
   });
 });
 
+describe("getLiveView callback", () => {
+  it("uses getLiveView to show tool activity for running agents", () => {
+    const manager = makeMockManager([]);
+    const activity = new Map<string, AgentActivity>();
+    // Simulate coordinator's liveView map with real activity data
+    const coordinatorViews = new Map<string, AgentActivity>();
+    coordinatorViews.set("a1", {
+      activeTools: new Map([["read_123", "read"], ["bash_456", "bash"]]),
+      responseText: "",
+    });
+
+    const widget = new AgentWidget(
+      manager,
+      activity,
+      (id: string) => coordinatorViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // lines[0] = heading, lines[1] = header (└─), lines[2] = activity continuation
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    const continuation = lines[2];
+    expect(continuation).toContain("reading");
+    expect(continuation).toContain("running command");
+    expect(continuation).not.toContain("thinking…");
+  });
+
+  it("falls back to agentActivity when getLiveView returns undefined", () => {
+    const manager = makeMockManager([]);
+    const activity = new Map<string, AgentActivity>();
+    activity.set("a1", {
+      activeTools: new Map([["edit_789", "edit"]]),
+      responseText: "",
+    });
+    // getLiveView returns undefined (coordinator doesn't have this agent)
+    const widget = new AgentWidget(
+      manager,
+      activity,
+      () => undefined,
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines[2]).toContain("editing");
+  });
+
+  it("shows thinking when neither getLiveView nor agentActivity has data", () => {
+    const manager = makeMockManager([]);
+    const activity = new Map<string, AgentActivity>();
+    const widget = new AgentWidget(
+      manager,
+      activity,
+      () => undefined,
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines[2]).toContain("thinking…");
+  });
+
+  it("prefers getLiveView over agentActivity when both have data", () => {
+    const manager = makeMockManager([]);
+    const activity = new Map<string, AgentActivity>();
+    activity.set("a1", {
+      activeTools: new Map([["old_tool", "old"]]),
+      responseText: "old text",
+    });
+    const coordinatorViews = new Map<string, AgentActivity>();
+    coordinatorViews.set("a1", {
+      activeTools: new Map([["read_1", "read"]]),
+      responseText: "",
+    });
+
+    const widget = new AgentWidget(
+      manager,
+      activity,
+      (id: string) => coordinatorViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    // Should show coordinator's activity, not agentActivity's
+    expect(lines[2]).toContain("reading");
+    expect(lines[2]).not.toContain("old");
+  });
+
+  it("shows streaming response text from getLiveView", () => {
+    const manager = makeMockManager([]);
+    const activity = new Map<string, AgentActivity>();
+    const coordinatorViews = new Map<string, AgentActivity>();
+    coordinatorViews.set("a1", {
+      activeTools: new Map(),
+      responseText: "Here is my response to the user…",
+    });
+
+    const widget = new AgentWidget(
+      manager,
+      activity,
+      (id: string) => coordinatorViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines[2]).toContain("Here is my response");
+    expect(lines[2]).not.toContain("thinking…");
+  });
+});
+
 describe("renderFinishedLine context percent", () => {
   it("uses stats.contextPercent for finished agents without execution.session", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };

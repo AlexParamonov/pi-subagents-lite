@@ -105,7 +105,11 @@ function ensureManagerAndWidget(): void {
 
   // Create widget if missing (uses existing or newly created manager)
   if (!currentWidget) {
-    const newWidget = new AgentWidget(getManager(), agentActivity);
+    const newWidget = new AgentWidget(
+      getManager(),
+      agentActivity,
+      (id: string) => getCoordinator()?.liveView(id),
+    );
     setWidget(newWidget);
     // Sync the widget as a config side-effect target. setDeps re-syncs showCost +
     // all widget display settings from current config (absorbs the old
