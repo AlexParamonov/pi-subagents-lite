@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AgentRecord } from "../src/types.js";
-import { shellMock, usageMock } from "./fixtures";
+import { shellMock } from "./fixtures";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -20,7 +20,8 @@ const { mockSendMessage, mockGetRecord, mockGetLifetimeTotal, mockGetSessionCont
   mockGetSessionContextPercent: vi.fn(() => null),
 }));
 
-vi.mock("../src/usage.js", () => usageMock({
+vi.mock("../src/usage.js", () => ({
+  addUsage: vi.fn(),
   getLifetimeTotal: mockGetLifetimeTotal,
   getSessionContextPercent: mockGetSessionContextPercent,
 }));
