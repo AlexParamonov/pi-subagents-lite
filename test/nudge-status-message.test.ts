@@ -84,7 +84,6 @@ vi.mock("../src/worktree-validator.js", () => ({
 vi.mock("../src/state.js", () => ({
   piInstance: { sendMessage: mockSendMessage, exec: vi.fn() },
   sessionCtx: { cwd: "/home/test" },
-  agentActivity: new Map(),
   getManager: () => ({
     spawn: vi.fn(),
     getRecord: mockGetRecord,
@@ -97,10 +96,23 @@ vi.mock("../src/state.js", () => ({
     update: vi.fn(),
     markFinished: vi.fn(),
   }),
+  getCoordinator: () => coordinator,
 }));
 
 // Import after mocks
-import { scheduleNudge, backgroundAgentIds } from "../src/tool-execution.js";
+import { SpawnCoordinator } from "../src/spawn-coordinator.js";
+import type { AgentManager } from "../src/agent-manager.js";
+
+// Create a coordinator instance for tests
+const mockManager = {
+  getRecord: mockGetRecord,
+  listAgents: vi.fn(() => []),
+  spawn: vi.fn(),
+  abort: vi.fn(() => false),
+  getTotalAgentCost: vi.fn(() => 0),
+  setOnComplete: vi.fn(),
+} as unknown as AgentManager;
+const coordinator = new SpawnCoordinator(mockManager, { sendMessage: mockSendMessage, exec: vi.fn() } as any);
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -146,7 +158,6 @@ describe("emitIndividualNudge — status in message", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    backgroundAgentIds.clear();
   });
 
   afterEach(() => {
@@ -157,7 +168,7 @@ describe("emitIndividualNudge — status in message", () => {
     const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 } });
     mockGetRecord.mockReturnValue(record);
 
-    scheduleNudge("test-agent-id");
+    coordinator.scheduleNudge("test-agent-id");
     await vi.advanceTimersByTimeAsync(300);
 
     expect(mockSendMessage).toHaveBeenCalledTimes(1);
@@ -172,7 +183,7 @@ describe("emitIndividualNudge — status in message", () => {
     });
     mockGetRecord.mockReturnValue(record);
 
-    scheduleNudge("test-agent-id");
+    coordinator.scheduleNudge("test-agent-id");
     await vi.advanceTimersByTimeAsync(300);
 
     expect(mockSendMessage).toHaveBeenCalledTimes(1);
@@ -188,7 +199,7 @@ describe("emitIndividualNudge — status in message", () => {
     });
     mockGetRecord.mockReturnValue(record);
 
-    scheduleNudge("test-agent-id");
+    coordinator.scheduleNudge("test-agent-id");
     await vi.advanceTimersByTimeAsync(300);
 
     expect(mockSendMessage).toHaveBeenCalledTimes(1);
@@ -204,7 +215,7 @@ describe("emitIndividualNudge — status in message", () => {
     });
     mockGetRecord.mockReturnValue(record);
 
-    scheduleNudge("test-agent-id");
+    coordinator.scheduleNudge("test-agent-id");
     await vi.advanceTimersByTimeAsync(300);
 
     expect(mockSendMessage).toHaveBeenCalledTimes(1);
@@ -220,7 +231,7 @@ describe("emitIndividualNudge — status in message", () => {
     });
     mockGetRecord.mockReturnValue(record);
 
-    scheduleNudge("test-agent-id");
+    coordinator.scheduleNudge("test-agent-id");
     await vi.advanceTimersByTimeAsync(300);
 
     expect(mockSendMessage).toHaveBeenCalledTimes(1);
@@ -236,7 +247,7 @@ describe("emitIndividualNudge — status in message", () => {
     });
     mockGetRecord.mockReturnValue(record);
 
-    scheduleNudge("test-agent-id");
+    coordinator.scheduleNudge("test-agent-id");
     await vi.advanceTimersByTimeAsync(300);
 
     const content = mockSendMessage.mock.calls[0][0].content;

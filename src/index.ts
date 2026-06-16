@@ -36,16 +36,18 @@ import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
-import { executeAgentTool, executeStopAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
+import { executeAgentTool, executeStopAgentTool, toolCallListener } from "./tool-execution.js";
 import { executeAgentStatusTool } from "./agent-status.js";
+import { SpawnCoordinator } from "./spawn-coordinator.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
-  agentActivity,
   piInstance,
   store,
   setManager,
   clearManager,
   setWidget,
+  setCoordinator,
+  getCoordinator,
   setPiInstance,
   setSessionCtx,
   getManager,
@@ -53,7 +55,8 @@ import {
 } from "./state.js";
 
 // Re-export store for backward compatibility
-export { store, agentActivity, piInstance } from "./state.js";
+export { store, piInstance } from "./state.js";
+export { getCoordinator } from "./state.js";
 
 
 
@@ -68,34 +71,40 @@ export { store, agentActivity, piInstance } from "./state.js";
 function ensureManagerAndWidget(): void {
   const currentManager = getManager();
   const currentWidget = getWidget();
+
   // Create manager if missing
   if (!currentManager) {
+    // Coordinator will be created after manager, so use a placeholder onComplete
+    // that we'll replace once coordinator is created.
     const newManager = new AgentManager(
-      (record) => {
-        // Only nudge for background (async) agents — sync agents already returned via tool result
-        if (backgroundAgentIds.has(record.id)) {
-          scheduleNudge(record.id);
-          backgroundAgentIds.delete(record.id);
-        }
-
-        // Mark finished and update widget BEFORE deleting activity —
-        // renderFinishedLine reads activity for turn count, tokens, etc.
-        getWidget()?.markFinished(record.id);
-        getWidget()?.update();
-
-        // Remove from live activity tracking
-        agentActivity.delete(record.id);
-      },
+      undefined, // onComplete wired below
       store.concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
     );
     setManager(newManager);
     // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
     store.setDeps({ manager: newManager });
+
+    // Now create coordinator with the real manager
+    const coordinator = new SpawnCoordinator(newManager, piInstance);
+    setCoordinator(coordinator);
+
+    // Wire the manager's onComplete to the coordinator
+    newManager.setOnComplete((record) => {
+      // Delegate completion side-effects to coordinator
+      coordinator.onAgentComplete(record);
+
+      // Mark finished and update widget
+      getWidget()?.markFinished(record.id);
+      getWidget()?.update();
+    });
   }
 
   // Create widget if missing (uses existing or newly created manager)
   if (!currentWidget) {
-    const newWidget = new AgentWidget(getManager(), agentActivity);
+    const newWidget = new AgentWidget(
+      getManager(),
+      (id: string) => getCoordinator()?.liveView(id),
+    );
     setWidget(newWidget);
     // Sync the widget as a config side-effect target. setDeps re-syncs showCost +
     // all widget display settings from current config (absorbs the old
@@ -251,7 +260,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     setSessionCtx(ctx);
-    agentActivity.clear();
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
@@ -278,6 +286,7 @@ export default function (pi: ExtensionAPI) {
     store.notifyToolsExpanded(false);
   });
 
+  // session_shutdown — abort all, dispose manager
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
     // Warn if agents were killed
     const currentManager = getManager();
@@ -288,7 +297,9 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
       }
     }
-    // Drop the store's widget/manager references before disposing them.
+    // Dispose coordinator, store, widget, then manager
+    getCoordinator()?.dispose();
+    setCoordinator(undefined);
     store.dispose();
     getWidget()?.dispose();
     setWidget(undefined);

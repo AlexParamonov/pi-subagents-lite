@@ -1,43 +1,28 @@
 /**
  * tool-execution.ts — Agent tool execution handlers.
  *
- * Contains the execute callbacks registered for the Agent tool,
- * plus nudge scheduling and activity tracking helpers.
+ * Contains the execute callbacks registered for the Agent tool.
+ * Spawn coordination, nudge scheduling, and live-view tracking have moved
+ * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
  */
 
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "./types.js";
 import { SHORT_ID_LENGTH } from "./types.js";
-import type { SpawnOptions as AgentManagerSpawnOptions } from "./agent-manager.js";
-import type { AgentActivity } from "./ui/agent-widget.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
+import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "./worktree-validator.js";
 
 // Shared state imported from state.ts
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.js";
 import {
   piInstance,
-  agentActivity,
-  getManager,
-  getWidget,
   sessionCtx,
   store,
+  getCoordinator,
+  getManager,
 } from "./state.js";
-
-// ============================================================================
-// Module-level state
-// ============================================================================
-
-/** Agent IDs that were spawned as background — only these trigger a nudge on completion. */
-export const backgroundAgentIds = new Set<string>();
-
-const pendingNudges = new Set<string>();
-let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Batch delay for nudges — only emit one update per batch window (ms). */
-const NUDGE_DELAY_MS = 200;
 
 // ============================================================================
 // Tool result helpers
@@ -58,67 +43,6 @@ export function errorResult(text: string, details?: Record<string, unknown>) {
 // ============================================================================
 
 /**
- * Create an AgentActivity state and spawn callbacks for tracking tool usage.
- * Used by both foreground and background paths to avoid duplication.
- * Exported for use by the menu spawn flow.
- */
-export function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
-  const state: AgentActivity = {
-    activeTools: new Map(),
-    toolUses: 0,
-    turnCount: 1,
-    maxTurns,
-    responseText: "",
-    session: undefined,
-    lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
-  };
-
-  const callbacks = {
-    onToolActivity: (activity: { type: "start" | "end"; toolName: string }) => {
-      if (activity.type === "start") {
-        state.activeTools.set(`${activity.toolName}_${Date.now()}`, activity.toolName);
-      } else {
-        for (const [key, name] of state.activeTools) {
-          if (name === activity.toolName) { state.activeTools.delete(key); break; }
-        }
-        state.toolUses++;
-      }
-      onStreamUpdate?.();
-    },
-    onTextDelta: (_delta: string, fullText: string) => {
-      state.responseText = fullText;
-      onStreamUpdate?.();
-    },
-    onTurnEnd: (turnCount: number) => {
-      state.turnCount = turnCount;
-      onStreamUpdate?.();
-    },
-    onSessionCreated: (session: unknown) => {
-      state.session = session as Parameters<typeof getSessionContextPercent>[0];
-    },
-    onAssistantUsage: (usage: LifetimeUsage) => {
-      addUsage(state.lifetimeUsage, usage);
-      onStreamUpdate?.();
-    },
-  };
-
-  return { state, callbacks };
-}
-
-// ============================================================================
-// buildAgentDetails — consolidated stats/details construction
-// ============================================================================
-
-interface AgentDetailsOptions {
-  /** Include full stats (turns, tokens, context%, compactions, cost). Default: false. */
-  includeStats?: boolean;
-  /** Include status and outputFile. Default: false. */
-  includeStatus?: boolean;
-  /** Override the turnCount (e.g. from activity tracker). Default: record.turnCount. */
-  turnCount?: number;
-}
-
-/**
  * Build a details Record from an AgentRecord, controlled by options.
  *
  * Always includes `type` and `description`. Optional groups:
@@ -128,6 +52,13 @@ interface AgentDetailsOptions {
  * Consolidates the identical field-selection logic previously duplicated
  * across emitIndividualNudge, executeSpawnForeground, and executeSpawnBackground.
  */
+interface AgentDetailsOptions {
+  /** Include full stats (turns, tokens, context%, compactions, cost). Default: false. */
+  includeStats?: boolean;
+  /** Include status and outputFile. Default: false. */
+  includeStatus?: boolean;
+}
+
 export function buildAgentDetails(
   record: AgentRecord,
   options?: AgentDetailsOptions,
@@ -150,7 +81,7 @@ export function buildAgentDetails(
     const totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
     const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
 
-    details.turnCount = options.turnCount ?? record.stats.turnCount;
+    details.turnCount = record.stats.turnCount;
     details.maxTurns = record.stats.maxTurns;
     details.toolUses = record.stats.toolUses;
     details.tokens = totalTokens;
@@ -162,48 +93,6 @@ export function buildAgentDetails(
   }
 
   return details;
-}
-
-// ============================================================================
-// Nudge scheduling — batch completion notifications within the hold window
-// ============================================================================
-
-export function scheduleNudge(agentId: string): void {
-  pendingNudges.add(agentId);
-
-  if (nudgeTimer) return;
-
-  nudgeTimer = setTimeout(() => {
-    nudgeTimer = null;
-    const batch = [...pendingNudges];
-    pendingNudges.clear();
-
-    for (const id of batch) {
-      emitIndividualNudge(id, getManager()?.getRecord(id));
-    }
-  }, NUDGE_DELAY_MS);
-}
-
-function emitIndividualNudge(agentId: string, record?: AgentRecord): void {
-  if (!record) return;
-
-  const details = buildAgentDetails(record, {
-    includeStats: true,
-    includeStatus: true,
-  });
-
-  piInstance.sendMessage(
-    {
-      customType: "subagent-result",
-      content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""}`,
-      details,
-      display: true,
-    },
-    {
-      deliverAs: "steer",
-      triggerTurn: true,
-    },
-  );
 }
 
 // ============================================================================
@@ -265,88 +154,41 @@ export async function executeAgentTool(
   const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
     ?? getAgentConfig(resolvedType)?.thinking;
 
-  const spawnOptions: AgentManagerSpawnOptions = {
+  // Use SpawnCoordinator for unified spawn path
+  const coordinator = getCoordinator()!;
+  const result = await coordinator.spawn(piInstance, ctx, {
+    type: resolvedType,
+    prompt,
     description,
     model,
+    modelKey,
     maxTurns,
     thinkingLevel,
-    modelKey,
-    invocation: { modelName },
     graceTurns: store.agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
-  };
+    invocation: { modelName },
+    runInBackground: runInBackground || store.agent.forceBackground,
+  });
+
+  const { agentId, record } = result;
 
   if (runInBackground || store.agent.forceBackground) {
-    return executeSpawnBackground(resolvedType, prompt, ctx, spawnOptions);
+    // Background: return immediately
+    const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
+    const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
+    const details = buildAgentDetails(record);
+    return successResult(`[${label}] ${suffix}`, details);
   }
 
-  return executeSpawnForeground(resolvedType, prompt, ctx, spawnOptions);
-}
-
-async function executeSpawnBackground(
-  resolvedType: string,
-  prompt: string,
-  ctx: ExtensionContext,
-  spawnOptions: AgentManagerSpawnOptions,
-): Promise<any> {
-  const { state, callbacks } = createActivityTracker(
-    spawnOptions.maxTurns,
-  );
-
-  const agentId = getManager().spawn(piInstance, ctx, resolvedType, prompt, {
-    ...spawnOptions,
-    isBackground: true,
-    ...callbacks,
-  });
-  backgroundAgentIds.add(agentId);
-  agentActivity.set(agentId, state);
-  getWidget()?.ensureTimer();
-  getWidget()?.update();
-
-  const record = getManager().getRecord(agentId)!;
-  const details = buildAgentDetails(record);
-  const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
-  const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
-
-  return successResult(`[${label}] ${suffix}`, details);
-}
-
-async function executeSpawnForeground(
-  resolvedType: string,
-  prompt: string,
-  ctx: ExtensionContext,
-  spawnOptions: AgentManagerSpawnOptions,
-): Promise<any> {
-  const { state: fgState, callbacks: fgCallbacks } = createActivityTracker(
-    spawnOptions.maxTurns,
-  );
-
-  const fgId = getManager().spawn(piInstance, ctx, resolvedType, prompt, {
-    ...spawnOptions,
-    ...fgCallbacks,
-    isBackground: false,
-  });
-  agentActivity.set(fgId, fgState);
-  getWidget()?.ensureTimer();
-
-  const record = getManager().getRecord(fgId)!;
-  await record.execution.promise;
-
-  agentActivity.delete(fgId);
-  getWidget()?.markFinished(fgId);
-  getWidget()?.update();
-
-  const stats = buildAgentDetails(record, {
-    includeStats: true,
-    turnCount: fgState.turnCount,
-  });
+  // Foreground: record.execution.promise is already awaited by coordinator.spawn()
+  const details = buildAgentDetails(record, { includeStats: true });
 
   if (record.lifecycle.status === "error") {
-    return errorResult(`Agent failed: ${record.error || "unknown error"}`, stats);
+    return errorResult(`Agent failed: ${record.error || "unknown error"}`, details);
   }
 
-  return successResult(record.result ?? "", stats);
+  return successResult(record.result ?? "", details);
 }
 
 // ============================================================================

@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentManager } from "../src/agent-manager.js";
-import type { AgentActivity } from "../src/ui/agent-widget.js";
+import type { LiveView } from "../src/spawn-coordinator.js";
 import { AgentWidget } from "../src/ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
@@ -104,14 +104,10 @@ function makeFinishedAgent(id: string, type: string = "builder", worktreeLabel?:
   };
 }
 
-function makeActivity(agentId: string): AgentActivity {
+function makeActivity(_agentId: string): LiveView {
   return {
     activeTools: new Map([["read", "reading"]]),
-    toolUses: 5,
     responseText: "",
-    turnCount: 3,
-    maxTurns: 30,
-    lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
   };
 }
 
@@ -122,12 +118,12 @@ function makeActivity(agentId: string): AgentActivity {
 describe("widget worktree label — full mode", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let activity: Map<string, AgentActivity>;
+  let activity: Map<string, LiveView>;
 
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setCompactMode(false);
   });
 
@@ -206,12 +202,12 @@ describe("widget worktree label — full mode", () => {
 describe("widget worktree label — compact mode", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let activity: Map<string, AgentActivity>;
+  let activity: Map<string, LiveView>;
 
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
   });

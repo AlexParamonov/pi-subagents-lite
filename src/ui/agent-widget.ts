@@ -9,10 +9,9 @@ import {
   formatCost,
   getLifetimeTotal,
   getSessionContextPercent,
-  type LifetimeUsage,
-  type SessionLike,
 } from "../usage.js";
 import { formatMs, buildStatsParts, getDisplayName } from "../format.js";
+import type { LiveView } from "../spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (model-selector, result-viewer) don't break
 export type { Theme } from "../types.js";
@@ -83,22 +82,9 @@ interface RenderBlock {
   continuations: string[];
 }
 
-/** Per-agent live activity state. */
-export interface AgentActivity {
-  activeTools: Map<string, string>;
-  toolUses: number;
-  responseText: string;
-  session?: SessionLike;
-  /** Current turn count. */
-  turnCount: number;
-  /** Effective max turns for this agent (undefined = unlimited). */
-  maxTurns?: number;
-  /** Lifetime usage breakdown — see LifetimeUsage docs. */
-  lifetimeUsage: LifetimeUsage;
-}
-
 // ---- Re-exports from format.ts (backward compatibility) ----
 export { formatMs, buildStatsParts, getDisplayName } from "../format.js";
+export type { LiveView as AgentActivity } from "../spawn-coordinator.js";
 
 // ---- Widget-internal helpers ----
 
@@ -187,7 +173,7 @@ export class AgentWidget {
 
   constructor(
     private manager: AgentManager,
-    private agentActivity: Map<string, AgentActivity>,
+    private getLiveView: (id: string) => LiveView | undefined,
   ) {}
 
   /** Set whether to show cost in stats and status bar. */
@@ -317,16 +303,15 @@ export class AgentWidget {
     const duration = formatMs((a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
-    const activity = this.agentActivity.get(a.id);
-    const usage = activity?.lifetimeUsage ?? a.stats.lifetimeUsage;
+    // Read all stats from the record (activity only has activeTools + responseText)
     const statsParts = buildStatsParts({
       toolUses: a.stats.toolUses,
-      turnCount: activity?.turnCount ?? a.stats.turnCount,
-      maxTurns: activity?.maxTurns ?? a.stats.maxTurns,
-      tokens: getLifetimeTotal(usage),
-      contextPercent: activity?.session ? getSessionContextPercent(activity.session) : a.stats.contextPercent ?? null,
+      turnCount: a.stats.turnCount,
+      maxTurns: a.stats.maxTurns,
+      tokens: getLifetimeTotal(a.stats.lifetimeUsage),
+      contextPercent: a.stats.contextPercent ?? null,
       compactions: a.stats.compactionCount,
-      cost: this.showCost ? usage.cost : undefined,
+      cost: this.showCost ? a.stats.lifetimeUsage.cost : undefined,
     }, theme);
     statsParts.push(duration);
 
@@ -337,17 +322,16 @@ export class AgentWidget {
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
   private buildStatsLine(
     agent: AgentRecord,
-    activity: AgentActivity | undefined,
     theme: Theme,
   ): string {
     const parts = buildStatsParts({
-      toolUses: activity?.toolUses ?? agent.stats.toolUses,
-      turnCount: activity?.turnCount,
-      maxTurns: activity?.maxTurns,
-      tokens: getLifetimeTotal(activity?.lifetimeUsage),
-      contextPercent: getSessionContextPercent(activity?.session),
+      toolUses: agent.stats.toolUses,
+      turnCount: agent.stats.turnCount,
+      maxTurns: agent.stats.maxTurns,
+      tokens: getLifetimeTotal(agent.stats.lifetimeUsage),
+      contextPercent: agent.execution.session ? getSessionContextPercent(agent.execution.session) : agent.stats.contextPercent ?? null,
       compactions: agent.stats.compactionCount,
-      cost: this.showCost ? activity?.lifetimeUsage?.cost : undefined,
+      cost: this.showCost ? agent.stats.lifetimeUsage.cost : undefined,
     }, theme);
     parts.push(formatMs(Date.now() - agent.lifecycle.startedAt));
     return parts.join("·");
@@ -390,8 +374,8 @@ export class AgentWidget {
     const blocks: RenderBlock[] = [];
     for (const a of running) {
       const name = getDisplayName(a.display.type);
-      const bg = this.agentActivity.get(a.id);
-      const statsLine = this.buildStatsLine(a, bg, theme);
+      const bg = this.getLiveView(a.id);
+      const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
 
       if (this.isCompact()) {

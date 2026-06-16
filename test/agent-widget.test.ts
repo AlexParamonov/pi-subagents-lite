@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentManager } from "../src/agent-manager.js";
-import type { AgentActivity } from "../src/ui/agent-widget.js";
+import type { LiveView } from "../src/spawn-coordinator.js";
 import { AgentWidget, formatMs } from "../src/ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
@@ -104,14 +104,10 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeActivity(agentId: string): AgentActivity {
+function makeActivity(agentId: string): LiveView {
   return {
     activeTools: new Map([["read", "reading"]]),
-    toolUses: 5,
     responseText: "",
-    turnCount: 3,
-    maxTurns: 30,
-    lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
   };
 }
 
@@ -122,12 +118,12 @@ function makeActivity(agentId: string): AgentActivity {
 describe("widget connectors", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let activity: Map<string, AgentActivity>;
+  let activity: Map<string, LiveView>;
 
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
   describe("last running agent", () => {
@@ -292,7 +288,7 @@ describe("status bar format", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([], 0);
-    const widget = new AgentWidget(manager, activity);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
@@ -310,7 +306,7 @@ describe("status bar format", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([], 0.01);
-    const widget = new AgentWidget(manager, activity);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
@@ -327,7 +323,7 @@ describe("status bar format", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([], 0);
-    const widget = new AgentWidget(manager, activity);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
@@ -343,7 +339,7 @@ describe("status bar format", () => {
 describe("status bar cost from accumulator", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let activity: Map<string, AgentActivity>;
+  let activity: Map<string, LiveView>;
 
   it("uses getTotalAgentCost for status bar when no running agents", () => {
     const uiCtx = {
@@ -353,7 +349,7 @@ describe("status bar cost from accumulator", () => {
     activity = new Map();
     // No running agents, but totalAgentCost is $1.23 (from evicted agents)
     manager = makeMockManager([], 1.23);
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
@@ -375,7 +371,7 @@ describe("status bar cost from accumulator", () => {
     activity = new Map();
     // Running agent with $0 cost, but session accumulator has $2.50
     manager = makeMockManager([], 2.50);
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
@@ -395,7 +391,7 @@ describe("status bar cost from accumulator", () => {
     };
     activity = new Map();
     manager = makeMockManager([], 1.50);
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(false);
     widget.setUICtx(uiCtx);
 
@@ -419,12 +415,12 @@ describe("status bar cost from accumulator", () => {
 describe("compact mode", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let activity: Map<string, AgentActivity>;
+  let activity: Map<string, LiveView>;
 
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
   it("defaults to non-compact mode and renders multi-line", () => {
@@ -466,12 +462,12 @@ describe("compact mode", () => {
 describe("max lines configuration", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let activity: Map<string, AgentActivity>;
+  let activity: Map<string, LiveView>;
 
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
-    widget = new AgentWidget(manager, activity);
+    widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
   it("setMaxLines updates the full mode max lines", () => {
@@ -564,12 +560,102 @@ describe("formatMs", () => {
   });
 });
 
+describe("getLiveView callback", () => {
+  it("uses getLiveView to show tool activity for running agents", () => {
+    const manager = makeMockManager([]);
+    // Simulate coordinator's liveView map with real activity data
+    const coordinatorViews = new Map<string, LiveView>();
+    coordinatorViews.set("a1", {
+      activeTools: new Map([["read_123", "read"], ["bash_456", "bash"]]),
+      responseText: "",
+    });
+
+    const widget = new AgentWidget(
+      manager,
+      (id: string) => coordinatorViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    // lines[0] = heading, lines[1] = header (└─), lines[2] = activity continuation
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    const continuation = lines[2];
+    expect(continuation).toContain("reading");
+    expect(continuation).toContain("running command");
+    expect(continuation).not.toContain("thinking…");
+  });
+
+  it("returns undefined for unknown agent", () => {
+    const manager = makeMockManager([]);
+    const liveViews = new Map<string, LiveView>();
+    // liveViews has no entry for a1
+    const widget = new AgentWidget(
+      manager,
+      (id: string) => liveViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    // No activity data → shows thinking
+    expect(lines[2]).toContain("thinking…");
+  });
+
+  it("shows getLiveView data for running agents", () => {
+    const manager = makeMockManager([]);
+    const liveViews = new Map<string, LiveView>();
+    liveViews.set("a1", {
+      activeTools: new Map([["read_1", "read"]]),
+      responseText: "",
+    });
+
+    const widget = new AgentWidget(
+      manager,
+      (id: string) => liveViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    // Should show the liveView data
+    expect(lines[2]).toContain("reading");
+  });
+
+  it("shows streaming response text from getLiveView", () => {
+    const manager = makeMockManager([]);
+    const liveViews = new Map<string, LiveView>();
+    liveViews.set("a1", {
+      activeTools: new Map(),
+      responseText: "Here is my response to the user…",
+    });
+
+    const widget = new AgentWidget(
+      manager,
+      (id: string) => liveViews.get(id),
+    );
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines[2]).toContain("Here is my response");
+    expect(lines[2]).not.toContain("thinking…");
+  });
+});
+
 describe("renderFinishedLine context percent", () => {
   it("uses stats.contextPercent for finished agents without execution.session", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([]);
-    const widget = new AgentWidget(manager, activity);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1");
@@ -587,29 +673,27 @@ describe("renderFinishedLine context percent", () => {
     expect(lines.some((l: string) => l.includes("Finished agent f1"))).toBe(true);
   });
 
-  it("prefers activity session over stats.contextPercent when activity exists", () => {
+  it("prefers record execution.session for running agents context percent", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([]);
-    const widget = new AgentWidget(manager, activity);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setUICtx(uiCtx);
 
-    const finished = makeFinishedAgent("f1");
-    finished.stats.contextPercent = 50;
-    finished.execution = {};
-
-    // Activity still exists (not yet deleted) — has its own session
-    const mockSession = {
-      getSessionStats: () => ({ contextUsage: { percent: 85 } }),
+    const running = makeRunningAgent("a1");
+    running.stats.contextPercent = 50;
+    running.execution = {
+      session: {
+        getSessionStats: () => ({ contextUsage: { percent: 85 } }),
+      },
     };
-    activity.set("f1", {
-      ...makeActivity("f1"),
-      session: mockSession,
-    });
-    widget.markFinished("f1");
-    (manager as any).listAgents = () => [finished];
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [running];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines.length).toBeGreaterThan(0);
+
+    const hasActivity = activity.has("a1");
+    expect(hasActivity).toBe(true);
   });
 });

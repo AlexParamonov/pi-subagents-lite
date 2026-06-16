@@ -66,7 +66,6 @@ vi.mock("../src/state.js", () => ({
   },
   piInstance: { sendMessage: vi.fn(), exec: vi.fn() },
   sessionCtx: { cwd: "/home/test/project" },
-  agentActivity: new Map(),
   getManager: vi.fn(() => ({
     spawn: mockSpawn,
     getRecord: mockGetRecord,
@@ -78,6 +77,35 @@ vi.mock("../src/state.js", () => ({
     ensureTimer: vi.fn(),
     update: vi.fn(),
     markFinished: vi.fn(),
+  })),
+  getCoordinator: vi.fn(() => ({
+    spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
+      // Delegate to the mocked manager.spawn
+      const manager = {
+        spawn: mockSpawn,
+        getRecord: mockGetRecord,
+      };
+      const id = mockSpawn(_pi, _ctx, intent.type, intent.prompt, {
+        description: intent.description,
+        model: intent.model,
+        maxTurns: intent.maxTurns,
+        thinkingLevel: intent.thinkingLevel,
+        modelKey: intent.modelKey,
+        graceTurns: intent.graceTurns,
+        worktreePath: intent.worktreePath,
+        worktreeLabel: intent.worktreeLabel,
+        isBackground: intent.runInBackground,
+      });
+      const record = mockGetRecord(id);
+      if (!intent.runInBackground && record?.execution?.promise) {
+        await record.execution.promise;
+      }
+      return { agentId: id, record };
+    }),
+    isBackground: vi.fn(() => false),
+    scheduleNudge: vi.fn(),
+    onAgentComplete: vi.fn(),
+    dispose: vi.fn(),
   })),
 }));
 
