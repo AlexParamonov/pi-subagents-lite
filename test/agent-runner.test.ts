@@ -42,71 +42,15 @@ const mockModules = vi.hoisted(() => ({
   clearLoaderExtensions: () => { _loaderGetExtensionsResult.extensions = []; },
 }));
 
-vi.mock("../src/agent-types.js", () => ({
-  getConfig: mockModules.mockGetConfig,
-  getAgentConfig: mockModules.mockGetAgentConfig,
-  getToolNamesForType: mockModules.mockGetToolNamesForType,
-  BUILTIN_TOOL_NAMES: ["read", "bash", "edit", "write", "grep"],
-  resolveVisibleTools: (opts: any) => {
-    const { activeTools, tools, excludeTools, extToolMap, notify } = opts;
-    const EXCLUDED = ["Agent"];
-    function resolveEntries(entries: string[]) {
-      const resolved = new Set<string>();
-      for (const entry of entries) {
-        const slashIdx = entry.indexOf("/");
-        if (slashIdx !== -1) {
-          const extName = entry.slice(0, slashIdx);
-          const toolPart = entry.slice(slashIdx + 1);
-          if (toolPart === "*") {
-            const extTools = extToolMap?.get(extName);
-            if (extTools && extTools.length > 0) {
-              for (const t of extTools) resolved.add(t);
-            } else {
-              notify?.(`extension "${extName}" is not loaded, "${entry}" will have no effect`);
-            }
-          } else {
-            resolved.add(toolPart);
-          }
-        } else {
-          resolved.add(entry);
-        }
-      }
-      return resolved;
-    }
-    if (excludeTools && !Array.isArray(tools)) {
-      const excludeSet = resolveEntries(excludeTools);
-      const filtered = activeTools.filter((t: string) => !EXCLUDED.includes(t) && !excludeSet.has(t));
-      return filtered.length !== activeTools.length ? filtered : null;
-    }
-    if (Array.isArray(tools)) {
-      const allBuiltinSet = new Set(["read", "bash", "edit", "write", "grep"]);
-      const allowedTools = resolveEntries(tools);
-      for (const entry of tools) {
-        const slashIdx = entry.indexOf("/");
-        if (slashIdx === -1 && !allBuiltinSet.has(entry)) {
-          const toolExts = extToolMap ? [...extToolMap.entries()].filter(([, t]: any) => t.includes(entry)) : [];
-          if (toolExts.length === 0) notify?.(`tool "${entry}" not found in any loaded extension`);
-        }
-      }
-      const visibleSet = new Set<string>();
-      for (const t of activeTools) {
-        if (EXCLUDED.includes(t)) continue;
-        if (allowedTools.has(t)) visibleSet.add(t);
-      }
-      if (extToolMap) {
-        for (const [extName, extTools] of extToolMap) {
-          const hasAny = extTools.some((t: string) => allowedTools.has(t));
-          if (!hasAny) notify?.(`extension "${extName}" is loaded but none of its tools are in tools: [${tools.join(", ")}]`);
-        }
-      }
-      return [...visibleSet];
-    }
-    if (tools === false) return [];
-    const hasExcluded = activeTools.some((t: string) => EXCLUDED.includes(t));
-    if (!hasExcluded) return null;
-    return activeTools.filter((t: string) => !EXCLUDED.includes(t));
-  },
-}));
+vi.mock("../src/agent-types.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/agent-types.js")>();
+  return {
+    ...actual,
+    getConfig: mockModules.mockGetConfig,
+    getAgentConfig: mockModules.mockGetAgentConfig,
+    getToolNamesForType: mockModules.mockGetToolNamesForType,
+  };
+});
 
 vi.mock("../src/prompts.js", () => ({
   buildAgentPrompt: mockModules.mockBuildAgentPrompt,

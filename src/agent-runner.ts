@@ -226,8 +226,6 @@ function extractExtensionName(extPath: string): string {
   return path.basename(path.dirname(extPath));
 }
 
-
-
 /** Run a git command via pi.exec, returning stdout on success or null on failure. */
 async function execGit(pi: ExtensionAPI, args: string[], cwd: string): Promise<string | null> {
   try {
