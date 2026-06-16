@@ -57,8 +57,6 @@ interface AgentDetailsOptions {
   includeStats?: boolean;
   /** Include status and outputFile. Default: false. */
   includeStatus?: boolean;
-  /** Override the turnCount (e.g. from activity tracker). Default: record.turnCount. */
-  turnCount?: number;
 }
 
 export function buildAgentDetails(
@@ -83,7 +81,7 @@ export function buildAgentDetails(
     const totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
     const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
 
-    details.turnCount = options.turnCount ?? record.stats.turnCount;
+    details.turnCount = record.stats.turnCount;
     details.maxTurns = record.stats.maxTurns;
     details.toolUses = record.stats.toolUses;
     details.tokens = totalTokens;

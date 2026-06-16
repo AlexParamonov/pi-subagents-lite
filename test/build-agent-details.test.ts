@@ -210,16 +210,9 @@ describe("buildAgentDetails", () => {
     expect(details.toolUses).toBe(5);
   });
 
-  // --- turnCount override ---
+  // --- turnCount from record ---
 
-  it("uses provided turnCount override when given", () => {
-    const record = makeRecord({ stats: { lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 }, toolUses: 5, turnCount: 42, maxTurns: 25, compactionCount: 1 } });
-    const details = buildAgentDetails(record, { includeStats: true, turnCount: 10 });
-
-    expect(details.turnCount).toBe(10);
-  });
-
-  it("uses record.turnCount when no override provided", () => {
+  it("uses record.turnCount for details", () => {
     const record = makeRecord({ stats: { lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 }, toolUses: 5, turnCount: 42, maxTurns: 25, compactionCount: 1 } });
     const details = buildAgentDetails(record, { includeStats: true });
 
