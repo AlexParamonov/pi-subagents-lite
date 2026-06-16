@@ -472,8 +472,7 @@ export async function showModelSettingsMenu(
     if (hasSessionOverrides) {
       items.push("Clear session overrides");
       actions.push(async () => {
-        store.mutate.session.clearOverride("default");
-        store.mutate.session.clearAll()
+        store.mutate.session.clearAll();
         ctx.ui.notify("Session overrides cleared", "info");
       });
     }
