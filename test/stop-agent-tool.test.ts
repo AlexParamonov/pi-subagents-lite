@@ -120,13 +120,6 @@ vi.mock("../src/ui/agent-widget.js", () => ({
 
 // Mock the shell module so executeStopAgentTool gets a fake manager
 vi.mock("../src/shell.js", () => ({
-  getShell: () => ({
-    manager: {
-      abort: mockAbort,
-      getRecord: mockGetRecord,
-      listAgents: mockListAgents,
-    },
-  }),
   getManager: () => ({
     abort: mockAbort,
     getRecord: mockGetRecord,
