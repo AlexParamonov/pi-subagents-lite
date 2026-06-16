@@ -33,3 +33,29 @@
   output path per agent in the brief. Two agents writing to the same path silently
   clobber each other, and gitignored task dirs leave no history to recover from.
   Task design files under `tasks/` are gitignored, so there is no `git` safety net.
+
+## composition-root-plan - 2026-06-16
+**What worked:** Existing implementation was already complete; typecheck fix was the only change needed. ConfigStore unit tests with in-memory IO provide excellent behavioral coverage.
+**What failed:** Initial agent spawn used wrong agent type (general-purpose instead of builder).
+**Next time:** Always verify agent type matches workflow specification before spawning.
+
+### Agent Type Enforcement
+- NEVER use `general-purpose` when workflow specifies specialized agent type
+- Check workflow documentation for exact `agent` field values before spawning
+- build_issue workflow requires: builder, code-reviewer, refactor, manual-tester
+- Violation causes user correction and workflow restart
+
+## config-store-migration - 2026-06-16
+**What worked:** Clean 3-commit structure (1c readers, 1d writers, 1e deletions). Refactor caught 6 dead code items across 6 focused commits. Test count dropped from 610 to 529 after deleting config-mutator.test.ts.
+**What failed:** Merge had stash conflicts from pre-merge uncommitted changes. Had to discard stashed work.
+**Next time:** Ensure worktree is clean before merge. Stash conflicts indicate work-in-progress that should be committed or discarded first.
+
+## spawn-coordinator - 2026-06-16
+**What worked:** Clean architecture with coordinator owning liveView and nudge. Widget integration via getLiveView callback preserved backward compatibility. Refactor removed 102 lines of dead code.
+**What failed:** Initial builder misunderstood task, implemented session override instead of SpawnCoordinator. Review caught missing widget integration (reading from empty agentActivity map).
+**Next time:** Verify builder reads issue.md and plan spec before implementing. Integration gaps between coordinator and widget are high-risk — test data flow end-to-end.
+
+## shell-composition-root - 2026-06-16
+**What worked:** Clean state.ts deletion, shell.ts introduced with getter functions. All 557 tests pass. Composition root pattern established.
+**What failed:** Mock count not reduced — shell is still module singleton requiring vi.mock(). True DI would need closure/factory pattern.
+**Next time:** For mock count reduction, pass shell into functions via closure (factory pattern) instead of module-level singleton. Or accept module singleton as sufficient — the composition root goal is achieved.

@@ -14,6 +14,7 @@ import type { AgentRecord, ThinkingLevel, AgentInvocation } from "./types.js";
 import type { AgentManager, SpawnOptions } from "./agent-manager.js";
 import type { Model } from "@earendil-works/pi-ai";
 import { buildAgentDetails } from "./tool-execution.js";
+import { getWidget } from "./shell.js";
 
 // ============================================================================
 // Types
@@ -114,6 +115,13 @@ export class SpawnCoordinator {
 
     // Register live view
     this.liveViews.set(agentId, liveView);
+
+    // Ensure widget timer is running so it displays the new agent
+    // (menu path calls this explicitly, but tool path doesn't)
+    const widget = getWidget();
+    if (widget) {
+      widget.ensureTimer();
+    }
 
     // Track background agents
     if (intent.runInBackground) {
