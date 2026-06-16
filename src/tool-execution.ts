@@ -18,7 +18,6 @@ import { validateWorktreePath } from "./worktree-validator.js";
 // Shared state imported from state.ts
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "./utils.js";
 import {
-  __config,
   piInstance,
   agentActivity,
   getManager,
@@ -278,7 +277,7 @@ export async function executeAgentTool(
     worktreeLabel,
   };
 
-  if (runInBackground || __config.agent.forceBackground) {
+  if (runInBackground || store.agent.forceBackground) {
     return executeSpawnBackground(resolvedType, prompt, ctx, spawnOptions);
   }
 

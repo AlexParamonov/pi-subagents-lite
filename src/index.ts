@@ -41,11 +41,9 @@ import { executeAgentTool, executeStopAgentTool, toolCallListener, backgroundAge
 import { executeAgentStatusTool } from "./agent-status.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
-  __config,
   agentActivity,
   piInstance,
   store,
-  setConfig,
   setManager,
   clearManager,
   setWidget,
@@ -55,16 +53,8 @@ import {
   getWidget,
 } from "./state.js";
 
-// Re-exports for backward compatibility
-export {
-  __config,
-  sessionOverrides,
-  agentActivity,
-  piInstance,
-  setShowCostEnabled,
-  syncWidgetSettings,
-  syncCompactFromToolsExpanded,
-} from "./state.js";
+// Re-export store for backward compatibility
+export { store, agentActivity, piInstance } from "./state.js";
 
 
 
@@ -143,7 +133,6 @@ async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void>
   // ConfigStore is authoritative for config + session overrides + widget/manager
   // side effects. Legacy __config is kept in sync until Wave 1e removes it.
   store.reload();
-  setConfig(loadConfig());
   ensureManagerAndWidget();
   await scanAndRegisterAgents(ctx);
 }

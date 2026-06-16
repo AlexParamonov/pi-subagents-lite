@@ -17,8 +17,6 @@ import { buildSnapshotMarkdown } from "./context.js";
 
 import { parseModelKey, findModelInRegistry } from "./utils.js";
 import {
-  __config,
-  sessionOverrides,
   piInstance,
   sessionCtx,
   agentActivity,
@@ -331,9 +329,8 @@ export async function showModelSettingsMenu(
     const actions: Array<() => Promise<void>> = [];
 
     // ── Session overrides section ──
-    const hasSessionOverrides = Object.entries(sessionOverrides).some(
-      ([, v]) => v != null,
-    );
+    const hasSessionOverrides = store.sessionDefaultModel != null ||
+      getAllTypes().some(type => store.sessionModelOverride(type) != null);
 
     const buildOverrideAction = (
       label: string,
@@ -431,7 +428,7 @@ export async function showModelSettingsMenu(
     const types = getAllTypes();
     const typeEntries = types.map((typeName) => {
       const cfg = getAgentConfig(typeName);
-      const sessionOverride = sessionOverrides[typeName];
+      const sessionOverride = store.sessionModelOverride(typeName);
       const configOverride = store.agentConfigSnapshot()[typeName];
       const hasSession = sessionOverride != null;
       const hasConfigOverride = configOverride != null && typeof configOverride === "string";
