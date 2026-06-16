@@ -37,12 +37,12 @@ import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./menus.js";
 import { loadConfig } from "./config-io.js";
+import { ConfigStore } from "./config-store.js";
 import { executeAgentTool, executeStopAgentTool, toolCallListener, backgroundAgentIds, scheduleNudge } from "./tool-execution.js";
 import { executeAgentStatusTool } from "./agent-status.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
 import {
   __config,
-  sessionOverrides,
   agentActivity,
   piInstance,
   setConfig,
@@ -51,13 +51,15 @@ import {
   setWidget,
   setPiInstance,
   setSessionCtx,
-  resetSessionOverrides,
-  resetLastToolsExpanded,
-  syncWidgetSettings,
-  syncCompactFromToolsExpanded,
   getManager,
   getWidget,
 } from "./state.js";
+
+// ConfigStore owns persisted config + session overrides + side effects (ADR 0004).
+// Constructed once at factory time; reload() at each session_start re-reads disk
+// and resets per-session state. Callers migrate onto it across Waves 1b-1e;
+// until then, legacy __config in state.ts is kept in sync by loadConfigAndRegisterAgents.
+const configStore = new ConfigStore();
 
 // Re-exports for backward compatibility
 export {
@@ -101,17 +103,21 @@ function ensureManagerAndWidget(): void {
         // Remove from live activity tracking
         agentActivity.delete(record.id);
       },
-      __config.concurrency,
+      configStore.concurrency as unknown as Parameters<typeof AgentManager>[1],
     );
     setManager(newManager);
+    // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
+    configStore.setDeps({ manager: newManager });
   }
 
   // Create widget if missing (uses existing or newly created manager)
   if (!currentWidget) {
     const newWidget = new AgentWidget(getManager(), agentActivity);
-    newWidget.setShowCost(__config.agent.showCost === true);
     setWidget(newWidget);
-    syncWidgetSettings();
+    // Sync the widget as a config side-effect target. setDeps re-syncs showCost +
+    // all widget display settings from current config (absorbs the old
+    // newWidget.setShowCost(...) + syncWidgetSettings() calls).
+    configStore.setDeps({ widget: newWidget });
   }
 }
 
@@ -140,6 +146,9 @@ async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
 }
 
 async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
+  // ConfigStore is authoritative for config + session overrides + widget/manager
+  // side effects. Legacy __config is kept in sync until Wave 1e removes it.
+  configStore.reload();
   setConfig(loadConfig());
   ensureManagerAndWidget();
   await scanAndRegisterAgents(ctx);
@@ -260,9 +269,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     setSessionCtx(ctx);
-    resetSessionOverrides();
     agentActivity.clear();
-    resetLastToolsExpanded();
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
@@ -276,7 +283,9 @@ export default function (pi: ExtensionAPI) {
             const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
             const expanded = ui.getToolsExpanded?.();
             if (expanded !== undefined) {
+              // Widget render hint (tool row state), then config-gated compact toggle.
               getWidget()?.notifyToolsExpansionChanged(expanded);
+              configStore.notifyToolsExpanded(expanded);
             }
           }, 0);
         }
@@ -284,7 +293,7 @@ export default function (pi: ExtensionAPI) {
       });
     }
     // Sync compact mode with initial tool expansion state
-    syncCompactFromToolsExpanded(false);
+    configStore.notifyToolsExpanded(false);
   });
 
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
@@ -297,6 +306,8 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
       }
     }
+    // Drop the store's widget/manager references before disposing them.
+    configStore.dispose();
     getWidget()?.dispose();
     setWidget(undefined);
     const mgr = getManager();
