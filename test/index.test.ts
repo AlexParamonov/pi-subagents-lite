@@ -16,44 +16,16 @@ import {
   hasParam,
   loadExtension,
   type MockExtensionAPI,
+  typeBoxMock,
+  piCodingAgentMock,
+  agentDiscoveryMock,
+  agentRunnerMock,
+  defaultAgentsMock,
 } from "./fixtures";
 
 // Mock external dependencies before any imports
-vi.mock("@sinclair/typebox", () => {
-  const createType = (type: string) => (opts?: any) => ({
-    type,
-    ...(opts || {}),
-  });
-
-  return {
-    Type: {
-      Object: (properties: Record<string, any>, opts?: any) => ({
-        type: "object",
-        properties,
-        ...(opts || {}),
-      }),
-      String: createType("string"),
-      Number: createType("number"),
-      Boolean: createType("boolean"),
-      Optional: (schema: any) => ({ ...schema, optional: true }),
-      Array: (items: any) => ({ type: "array", items }),
-      Record: (keyType: any, valueType: any) => ({
-        type: "record",
-        keyType,
-        valueType,
-      }),
-      Union: (variants: any[]) => ({ type: "union", variants }),
-      Literal: (value: string | number | boolean) => ({
-        type: "literal",
-        const: value,
-      }),
-    },
-  };
-});
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  DynamicBorder: class {},
-}));
+vi.mock("@sinclair/typebox", () => typeBoxMock());
+vi.mock("@earendil-works/pi-coding-agent", () => piCodingAgentMock());
 
 vi.mock("@earendil-works/pi-tui", () => ({
   Box: class {},
@@ -111,20 +83,11 @@ vi.mock("../src/agent-types.js", () => ({
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
 }));
 
-vi.mock("../src/agent-discovery.js", () => ({
-  scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
-  mergeAgents: vi.fn().mockReturnValue(new Map()),
-  AgentConfigFromMd: {},
-}));
+vi.mock("../src/agent-discovery.js", () => agentDiscoveryMock());
 
+vi.mock("../src/agent-runner.js", () => agentRunnerMock());
 
-vi.mock("../src/agent-runner.js", () => ({
-  runAgent: vi.fn(),
-}));
-
-vi.mock("../src/default-agents.js", () => ({
-  DEFAULT_AGENTS: new Map(),
-}));
+vi.mock("../src/default-agents.js", () => defaultAgentsMock());
 
 vi.mock("../src/ui/agent-widget.js", () => ({
   AgentWidget: class {},

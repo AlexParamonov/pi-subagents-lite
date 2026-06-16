@@ -9,68 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentRecord } from "../src/types.js";
 
-// Mock heavy dependencies that buildAgentDetails doesn't use
-vi.mock("@sinclair/typebox", () => ({
-  Type: {
-    Object: (p: any, o?: any) => ({ type: "object", properties: p, ...(o || {}) }),
-    String: (o?: any) => ({ type: "string", ...(o || {}) }),
-    Number: (o?: any) => ({ type: "number", ...(o || {}) }),
-    Boolean: (o?: any) => ({ type: "boolean", ...(o || {}) }),
-    Optional: (s: any) => ({ ...s, optional: true }),
-    Array: (i: any) => ({ type: "array", items: i }),
-    Record: (k: any, v: any) => ({ type: "record", keyType: k, valueType: v }),
-    Union: (v: any[]) => ({ type: "union", variants: v }),
-    Literal: (v: any) => ({ type: "literal", const: v }),
-  },
-}));
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  DynamicBorder: class {},
-}));
-
-vi.mock("@earendil-works/pi-tui", () => ({
-  Container: class { children: any[] = []; addChild(c: any) { this.children.push(c); } clear() { this.children = []; } },
-  Input: class { onSubmit = null; focused = false; getValue() { return ""; } handleInput(_k: string) {} },
-  Spacer: class {},
-  Text: class {},
-  fuzzyFilter: (items: any[], _q: string, _f: any) => items,
-  getKeybindings: () => ({ matches: () => false }),
-}));
-
-vi.mock("../src/model-selector.js", () => ({ ModelSelectorDialog: class {} }));
-vi.mock("../src/model-precedence.js", () => ({ resolveModel: vi.fn() }));
-vi.mock("../src/agent-types.js", () => ({
-  resolveType: vi.fn((name: string) => name),
-  getAgentConfig: vi.fn(() => ({})),
-  registerAgents: vi.fn(),
-  getAvailableTypes: vi.fn(() => []),
-  getAllTypes: vi.fn(() => []),
-}));
-vi.mock("../src/agent-discovery.js", () => ({
-  scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
-  mergeAgents: vi.fn().mockReturnValue(new Map()),
-  AgentConfigFromMd: {},
-}));
-vi.mock("../src/agent-runner.js", () => ({ runAgent: vi.fn() }));
-vi.mock("../src/default-agents.js", () => ({ DEFAULT_AGENTS: new Map() }));
-vi.mock("../src/ui/agent-widget.js", () => ({
-  AgentWidget: class {},
-  buildStatsParts: vi.fn(),
-  formatMs: vi.fn(),
-  getDisplayName: vi.fn(),
-  SPINNER: [],
-  ERROR_STATUSES: new Set(),
-}));
-
-// Mock shell — provide enough for import to succeed
-vi.mock("../src/shell.js", () => ({
-  getPiInstance: () => ({ sendMessage: vi.fn() }),
-  getManager: () => ({ spawn: vi.fn(), getRecord: vi.fn(), listAgents: vi.fn(), abort: vi.fn() }),
-  getWidget: () => undefined,
-  getStore: () => ({ agent: { showCost: false, graceTurns: 6 } }),
-  getCoordinator: () => ({ spawn: vi.fn() }),
-  getSessionCtx: () => ({ cwd: "/home/test" }),
-}));
+// buildAgentDetails is a pure function. tool-execution.ts's runtime import
+// chain (types, agent-types, usage, worktree-validator, utils, shell ->
+// config-store) never reaches npm packages at runtime — no mocks needed.
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */

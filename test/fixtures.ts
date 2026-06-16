@@ -9,9 +9,278 @@
  *   - tempDirFixture: temp directory setup/teardown for filesystem tests
  *   - makeAgentMd: build agent .md content from frontmatter fields
  *   - tempDirWithFiles: create a temp dir with files for scanAgentFilesInDir tests
+ *
+ * Shared mock factories (for vi.mock call sites):
+ *   - typeBoxMock: @sinclair/typebox Type stubs
+ *   - piTuiMock: @earendil-works/pi-tui stubs
+ *   - piCodingAgentMock: @earendil-works/pi-coding-agent stubs
+ *   - agentTypesMock: ../src/agent-types.js stubs
+ *   - agentDiscoveryMock: ../src/agent-discovery.js stubs
+ *   - agentRunnerMock: ../src/agent-runner.js stubs
+ *   - defaultAgentsMock: ../src/default-agents.js stubs
+ *   - modelSelectorMock: ../src/model-selector.js stubs
+ *   - modelPrecedenceMock: ../src/model-precedence.js stubs
+ *   - agentWidgetMock: ../src/ui/agent-widget.js stubs
+ *   - shellMock: ../src/shell.js stubs (parameterized by hoisted fns)
+ *   - usageMock: ../src/usage.js stubs (parameterized by hoisted fns)
+ *   - worktreeValidatorMock: ../src/worktree-validator.js stubs
+ *   - utilsMock: ../src/utils.js stubs
  */
 
 import { vi } from "vitest";
+
+/* ================================================================== */
+/*  Shared mock factories                                             */
+/*  These return factory bodies for vi.mock() calls.                  */
+/*  Each test file keeps its own vi.mock("path", factory) line;       */
+/*  only the factory BODY is deduplicated here.                       */
+/* ================================================================== */
+
+/**
+ * Canonical @sinclair/typebox mock.
+ * One canonical form — uses a createType helper so the factory works
+ * whether the caller invokes the type function or references it directly.
+ */
+export function typeBoxMock() {
+  const createType = (type: string) => (opts?: any) => ({
+    type,
+    ...(opts || {}),
+  });
+
+  return {
+    Type: {
+      Object: (properties: Record<string, any>, opts?: any) => ({
+        type: "object",
+        properties,
+        ...(opts || {}),
+      }),
+      String: createType("string"),
+      Number: createType("number"),
+      Boolean: createType("boolean"),
+      Optional: (schema: any) => ({ ...schema, optional: true }),
+      Array: (items: any) => ({ type: "array", items }),
+      Record: (keyType: any, valueType: any) => ({
+        type: "record",
+        keyType,
+        valueType,
+      }),
+      Union: (variants: any[]) => ({ type: "union", variants }),
+      Literal: (value: string | number | boolean) => ({
+        type: "literal",
+        const: value,
+      }),
+    },
+  };
+}
+
+/**
+ * @earendil-works/pi-tui mock — common stubs used across most test files.
+ */
+export function piTuiMock() {
+  return {
+    Container: class {
+      children: any[] = [];
+      addChild(c: any) { this.children.push(c); }
+      clear() { this.children = []; }
+    },
+    Input: class {
+      onSubmit: (() => void) | null = null;
+      focused = false;
+      getValue() { return ""; }
+      handleInput(_k: string) {}
+    },
+    Spacer: class {},
+    Text: class {},
+    fuzzyFilter: (items: any[], _query: string, _fn: any) => items,
+    getKeybindings: () => ({ matches: () => false }),
+  };
+}
+
+/**
+ * @earendil-works/pi-coding-agent mock — minimal stubs.
+ */
+export function piCodingAgentMock() {
+  return {
+    DynamicBorder: class {},
+  };
+}
+
+/**
+ * ../src/agent-types.js mock — standard stubs.
+ */
+export function agentTypesMock() {
+  return {
+    resolveType: vi.fn((name: string) => name),
+    getAgentConfig: vi.fn(() => ({})),
+    registerAgents: vi.fn(),
+    getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
+    getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
+  };
+}
+
+/**
+ * ../src/agent-discovery.js mock — standard stubs.
+ */
+export function agentDiscoveryMock() {
+  return {
+    scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
+    mergeAgents: vi.fn().mockReturnValue(new Map()),
+    AgentConfigFromMd: {},
+  };
+}
+
+/**
+ * ../src/agent-runner.js mock — standard stubs.
+ */
+export function agentRunnerMock() {
+  return {
+    runAgent: vi.fn(),
+  };
+}
+
+/**
+ * ../src/default-agents.js mock — standard stubs.
+ */
+export function defaultAgentsMock() {
+  return {
+    DEFAULT_AGENTS: new Map(),
+  };
+}
+
+/**
+ * ../src/model-selector.js mock — standard stubs.
+ */
+export function modelSelectorMock() {
+  return {
+    ModelSelectorDialog: class {},
+  };
+}
+
+/**
+ * ../src/model-precedence.js mock — standard stubs.
+ */
+export function modelPrecedenceMock() {
+  return {
+    resolveModel: vi.fn(
+      (_type: any, _config: any, _cfg: any, parentModel: string) => parentModel,
+    ),
+  };
+}
+
+/**
+ * ../src/ui/agent-widget.js mock — standard stubs.
+ */
+export function agentWidgetMock() {
+  return {
+    AgentWidget: class {},
+    formatTokens: vi.fn(),
+    formatTurns: vi.fn(),
+    formatMs: vi.fn(),
+    describeActivity: vi.fn(),
+    getDisplayName: vi.fn(),
+    buildInvocationTags: vi.fn(),
+    formatSessionTokens: vi.fn(),
+    formatDuration: vi.fn(),
+    SPINNER: [],
+    ERROR_STATUSES: new Set(),
+  };
+}
+
+/**
+ * ../src/worktree-validator.js mock — standard stubs.
+ */
+export function worktreeValidatorMock() {
+  return {
+    validateWorktreePath: vi.fn(),
+  };
+}
+
+/**
+ * ../src/utils.js mock — standard stubs.
+ */
+export function utilsMock() {
+  return {
+    parseModelKey: vi.fn(() => null),
+    findModelInRegistry: vi.fn(() => null),
+    parseThinkingLevel: vi.fn(() => undefined),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Per-test-overridable mock builders                                */
+/*  These accept hoisted fns from the test file so behavior can be    */
+/*  controlled per-test. The test file keeps its own vi.hoisted().    */
+/* ------------------------------------------------------------------ */
+
+export interface ShellMockFns {
+  manager?: any;
+  pi?: any;
+  sessionCtx?: any;
+  store?: any;
+  coordinator?: any;
+  widget?: any;
+}
+
+/**
+ * ../src/shell.js mock builder.
+ * Accepts partial overrides; defaults to no-op stubs.
+ * Pass hoisted fns for per-test behavioral control.
+ *
+ * Usage:
+ *   const { mockAbort } = vi.hoisted(() => ({ mockAbort: vi.fn() }));
+ *   vi.mock("../src/shell.js", () => shellMock({
+ *     manager: { abort: mockAbort, getRecord: vi.fn(), listAgents: vi.fn() },
+ *   }));
+ */
+export function shellMock(fns: ShellMockFns = {}) {
+  const manager = fns.manager ?? {
+    abort: vi.fn(),
+    getRecord: vi.fn(),
+    listAgents: vi.fn(() => []),
+    spawn: vi.fn(),
+    getTotalAgentCost: vi.fn(() => 0),
+  };
+  const pi = fns.pi ?? { sendMessage: vi.fn(), exec: vi.fn() };
+  const sessionCtx = fns.sessionCtx ?? { cwd: "/home/test" };
+  const store = fns.store ?? {
+    agent: { graceTurns: 6, forceBackground: false, showCost: false },
+    modelFor: () => "",
+  };
+  const coordinator = fns.coordinator ?? { spawn: vi.fn() };
+  const widget = fns.widget ?? undefined;
+
+  return {
+    getManager: () => manager,
+    getPiInstance: () => pi,
+    getSessionCtx: () => sessionCtx,
+    getStore: () => store,
+    getCoordinator: () => coordinator,
+    getWidget: () => widget,
+  };
+}
+
+export interface UsageMockFns {
+  getLifetimeTotal?: any;
+  getSessionContextPercent?: any;
+}
+
+/**
+ * ../src/usage.js mock builder.
+ * Accepts hoisted fns for per-test behavioral control.
+ *
+ * Usage:
+ *   const { mockGetLifetimeTotal } = vi.hoisted(() => ...);
+ *   vi.mock("../src/usage.js", () => usageMock({
+ *     getLifetimeTotal: mockGetLifetimeTotal,
+ *   }));
+ */
+export function usageMock(fns: UsageMockFns = {}) {
+  return {
+    addUsage: vi.fn(),
+    getLifetimeTotal: fns.getLifetimeTotal ?? vi.fn(() => 0),
+    getSessionContextPercent: fns.getSessionContextPercent ?? vi.fn(() => null),
+  };
+}
 import {
   existsSync,
   mkdirSync,
