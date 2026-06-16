@@ -398,6 +398,10 @@ export class AgentManager {
     try { this.onComplete?.(record); } catch { /* ignore */ }
   }
 
+  setOnComplete(cb: OnAgentComplete): void {
+    this.onComplete = cb;
+  }
+
   /** Get the session-level cumulative agent cost. Survives agent eviction. */
   getTotalAgentCost(): number {
     return this.totalAgentCost;

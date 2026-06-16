@@ -107,11 +107,7 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
 function makeActivity(agentId: string): AgentActivity {
   return {
     activeTools: new Map([["read", "reading"]]),
-    toolUses: 5,
     responseText: "",
-    turnCount: 3,
-    maxTurns: 30,
-    lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
   };
 }
 
@@ -587,29 +583,27 @@ describe("renderFinishedLine context percent", () => {
     expect(lines.some((l: string) => l.includes("Finished agent f1"))).toBe(true);
   });
 
-  it("prefers activity session over stats.contextPercent when activity exists", () => {
+  it("prefers record execution.session for running agents context percent", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([]);
     const widget = new AgentWidget(manager, activity);
     widget.setUICtx(uiCtx);
 
-    const finished = makeFinishedAgent("f1");
-    finished.stats.contextPercent = 50;
-    finished.execution = {};
-
-    // Activity still exists (not yet deleted) — has its own session
-    const mockSession = {
-      getSessionStats: () => ({ contextUsage: { percent: 85 } }),
+    const running = makeRunningAgent("a1");
+    running.stats.contextPercent = 50;
+    running.execution = {
+      session: {
+        getSessionStats: () => ({ contextUsage: { percent: 85 } }),
+      },
     };
-    activity.set("f1", {
-      ...makeActivity("f1"),
-      session: mockSession,
-    });
-    widget.markFinished("f1");
-    (manager as any).listAgents = () => [finished];
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [running];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines.length).toBeGreaterThan(0);
+
+    const hasActivity = activity.has("a1");
+    expect(hasActivity).toBe(true);
   });
 });

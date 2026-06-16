@@ -9,6 +9,7 @@ import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-a
 import { AgentManager } from "./agent-manager.js";
 import { AgentWidget, type AgentActivity } from "./ui/agent-widget.js";
 import { ConfigStore } from "./config-store.js";
+type SpawnCoordinator = import("./spawn-coordinator.js").SpawnCoordinator;
 
 /** The single ConfigStore instance, constructed at module load time. */
 export const store = new ConfigStore();
@@ -21,6 +22,7 @@ export let sessionCtx: ExtensionContext;
 // Holder objects — PI runtime doesn't propagate ESM live binding reassignments
 const managerHolder: { current?: AgentManager } = {};
 const widgetHolder: { current?: AgentWidget } = {};
+const coordinatorHolder: { current?: SpawnCoordinator } = {};
 
 export function setManager(m: AgentManager): void { managerHolder.current = m; }
 export function clearManager(): void { managerHolder.current = undefined; }
@@ -29,3 +31,5 @@ export function setPiInstance(pi: ExtensionAPI): void { piInstance = pi; }
 export function setSessionCtx(ctx: ExtensionContext): void { sessionCtx = ctx; }
 export function getManager(): AgentManager { return managerHolder.current!; }
 export function getWidget(): AgentWidget | undefined { return widgetHolder.current; }
+export function setCoordinator(c: SpawnCoordinator | undefined): void { coordinatorHolder.current = c; }
+export function getCoordinator(): SpawnCoordinator | undefined { return coordinatorHolder.current; }

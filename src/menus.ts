@@ -9,7 +9,6 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes, resolveType, discoverNewAgents } from "./agent-types.js";
 import type { AgentRecord, ThinkingLevel } from "./types.js";
 import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
-import type { SpawnOptions } from "./agent-manager.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
 import { getDisplayName } from "./format.js";
@@ -19,13 +18,11 @@ import { parseModelKey, findModelInRegistry } from "./utils.js";
 import {
   piInstance,
   sessionCtx,
-  agentActivity,
   getManager,
   getWidget,
   store,
+  getCoordinator,
 } from "./state.js";
-
-import { createActivityTracker, backgroundAgentIds } from "./tool-execution.js";
 
 // ============================================================================
 // Helpers
@@ -642,32 +639,44 @@ export async function showSpawnAgentMenu(
       // Resolve type (may have been discovered from worktree)
       const resolvedType = resolveType(selectedType) ?? selectedType;
 
-      const spawnOptions: SpawnOptions = {
-        description,
-        model,
-        maxTurns: currentMaxTurns,
-        thinkingLevel: currentThinking,
-        isBackground: currentBackground,
-        modelKey,
-        invocation: {
-          modelName: model?.id,
-          thinking: currentThinking,
-          maxTurns: currentMaxTurns,
-          runInBackground: currentBackground,
-        },
-        graceTurns: currentGraceTurns,
-        worktreePath: currentWorktreePath,
-        worktreeLabel: currentWorktreePath ? currentWorktreeLabel : undefined,
-      };
+      // Set UI context so widget can render (same as tool_execution_start handler)
+      const widget = getWidget();
+      if (widget) {
+        widget.setUICtx(ctx.ui as unknown as import("./ui/agent-widget.js").UICtx);
+        widget.ensureTimer();
+      }
 
-      const { state: activityState, callbacks } = createActivityTracker(currentMaxTurns);
-
-      let agentId: string;
+      // Use SpawnCoordinator for unified spawn path
+      const coordinator = getCoordinator()!;
       try {
-        agentId = getManager().spawn(piInstance, sessionCtx, resolvedType, prompt, {
-          ...spawnOptions,
-          ...callbacks,
+        const result = await coordinator.spawn(piInstance, sessionCtx, {
+          type: resolvedType,
+          prompt,
+          description,
+          model,
+          modelKey,
+          maxTurns: currentMaxTurns,
+          thinkingLevel: currentThinking,
+          graceTurns: currentGraceTurns,
+          worktreePath: currentWorktreePath,
+          worktreeLabel: currentWorktreePath ? currentWorktreeLabel : undefined,
+          invocation: {
+            modelName: model?.id,
+            thinking: currentThinking,
+            maxTurns: currentMaxTurns,
+            runInBackground: currentBackground,
+          },
+          runInBackground: currentBackground,
         });
+
+        if (currentBackground) {
+          return; // Background: return to main menu immediately
+        }
+
+        // Foreground: coordinator.spawn() already awaited completion
+        getWidget()?.markFinished(result.agentId);
+        getWidget()?.update();
+        return; // Return to main menu
       } catch (err) {
         ctx.ui.notify(
           `Spawn failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -675,33 +684,6 @@ export async function showSpawnAgentMenu(
         );
         return; // Return to main menu
       }
-
-      // Wire activity tracking for widget
-      agentActivity.set(agentId, activityState);
-      // Set UI context so widget can render (same as tool_execution_start handler)
-      const widget = getWidget();
-      if (widget) {
-        widget.setUICtx(ctx.ui as unknown as import("./ui/agent-widget.js").UICtx);
-        widget.ensureTimer();
-        widget.update();
-      }
-
-      if (currentBackground) {
-        backgroundAgentIds.add(agentId);
-        return; // Background: return to main menu immediately
-      }
-
-      // Foreground: block until completion
-      const fgRecord = getManager().getRecord(agentId);
-      if (fgRecord?.execution?.promise) {
-        await fgRecord.execution.promise;
-      }
-
-      agentActivity.delete(agentId);
-      getWidget()?.markFinished(agentId);
-      getWidget()?.update();
-
-      return; // Return to main menu
     }
 
     // Handle option changes
