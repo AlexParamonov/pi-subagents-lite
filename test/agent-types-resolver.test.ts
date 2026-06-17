@@ -381,10 +381,15 @@ describe("getConfig — global implicit defaults", () => {
       skills: true,
       systemPrompt: "test",
     });
+    agents.set("implicit-agent", {
+      name: "implicit-agent",
+      description: "Agent with no skills/extensions set",
+      systemPrompt: "test",
+    });
     agents.set("explicit-skills", {
       name: "explicit-skills",
       description: "Agent with explicit skills list",
-      extensions: true,
+      // extensions intentionally omitted — uses global default
       skills: ["tdd"],
       systemPrompt: "test",
     });
@@ -398,14 +403,26 @@ describe("getConfig — global implicit defaults", () => {
     registerAgents(agents);
   });
 
-  it("agent with skills: true gets global loadSkillsImplicitly=none → false", () => {
+  it("agent with explicit skills: true ignores global loadSkillsImplicitly=none", () => {
     const result = getConfig("test-agent", "none", "load-all");
-    expect(result.skills).toBe(false);
+    expect(result.skills).toBe(true);
   });
 
-  it("agent with extensions: true gets global loadExtensionsImplicitly=none → false", () => {
+  it("agent with explicit extensions: true ignores global loadExtensionsImplicitly=none", () => {
     const result = getConfig("test-agent", "load-all", "none");
+    expect(result.extensions).toBe(true);
+  });
+
+  it("agent with no skills/extensions uses global default (none)", () => {
+    const result = getConfig("implicit-agent", "none", "none");
+    expect(result.skills).toBe(false);
     expect(result.extensions).toBe(false);
+  });
+
+  it("agent with no skills/extensions uses global default (load-all)", () => {
+    const result = getConfig("implicit-agent", "load-all", "load-all");
+    expect(result.skills).toBe(true);
+    expect(result.extensions).toBe(true);
   });
 
   it("agent with skills: true gets global loadSkillsImplicitly=load-all → true", () => {
@@ -416,6 +433,7 @@ describe("getConfig — global implicit defaults", () => {
   it("agent with explicit skills list ignores global default", () => {
     const result = getConfig("explicit-skills", "none", "none");
     expect(result.skills).toEqual(["tdd"]);
+    // extensions not explicitly set, so global default "none" applies
     expect(result.extensions).toBe(false);
   });
 

@@ -3,143 +3,92 @@ Status: NEEDS_REVISION
 # Review Summary
 
 Files reviewed:
-- `src/skill-loader.ts`
-- `src/prompts.ts`
-- `test/skill-loader.test.ts`
-- `test/prompts.test.ts`
+- `src/agents/agent-types.ts`
+- `src/agents/agent-runner.ts`
+- `src/config/config-store.ts`
+- `src/models/model-precedence.ts`
+- `src/types.ts`
+- `src/ui/menu/menu-system-prompt.ts`
+- `test/agent-types-resolver.test.ts`
+- `test/config-store.test.ts`
+- `test/menu-mock-setup.ts`
+- `test/menu-system-prompt.test.ts`
 
 Issues found:
-- 1 critical, 1 important, 1 suggestion
+- 1 critical, 0 important, 0 suggestions
 
-## [CRITICAL] `disableModelInvocation` hardcoded to `false` defeats the filtering
-
-Confidence: 95/100
-Location: `src/prompts.ts:106-114`
-Problem: When constructing `Skill[]` for `formatSkillsForPrompt`, the code hardcodes `disableModelInvocation: false` for every skill:
-
-```ts
-const piSkills: Skill[] = extras.skillMetas.map((m) => ({
-  name: m.name,
-  description: m.description,
-  filePath: m.location,
-  baseDir: "",
-  sourceInfo: {} as any,
-  disableModelInvocation: false,  // ← always false
-}));
-```
-
-This means `formatSkillsForPrompt` will never filter out a skill marked `disable-model-invocation: true` in its frontmatter. The comment on line 102 even says "disable-model-invocation filtering" is the intended purpose, but the flag is never passed through.
-
-Why it matters: Acceptance criterion: "Skills with `disable-model-invocation: true` in frontmatter are excluded from the `<available_skills>` prompt block (handled by `formatSkillsForPrompt`)". This criterion is not met.
-
-Fix: Add `disableModelInvocation` to the `SkillMeta` interface and thread it from `loadAllSkills` results. `Pi's Skill` type already carries the correct value from frontmatter parsing.
-
-In `src/skill-loader.ts`, update `SkillMeta` and `loadSkillMeta`:
-
-```ts
-export interface SkillMeta {
-  name: string;
-  description: string;
-  location: string;
-  disableModelInvocation: boolean;
-  content?: string;
-}
-
-// In loadSkillMeta:
-export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
-  const skills = loadAllSkills(cwd);  // single call
-  return skillNames.map((name) => {
-    const match = skills.find((s) => s.name === name);
-    if (!match) {
-      return {
-        name,
-        description: `(Skill "${name}" not found)`,
-        location: "",
-        disableModelInvocation: false,
-      };
-    }
-    return {
-      name,
-      description: match.description ?? "(no description)",
-      location: match.filePath,
-      disableModelInvocation: match.disableModelInvocation ?? false,
-    };
-  });
-}
-```
-
-In `src/prompts.ts`, use the real value:
-
-```ts
-const piSkills: Skill[] = extras.skillMetas.map((m) => ({
-  name: m.name,
-  description: m.description,
-  filePath: m.location,
-  baseDir: "",
-  sourceInfo: {} as any,
-  disableModelInvocation: m.disableModelInvocation ?? false,
-}));
-```
-
-Note: This also fixes the double `loadAllSkills` call in `loadSkillMeta` (see suggestion below).
-
-## [IMPORTANT] Test for `extractDescriptionFromContent` doesn't test description extraction
+## [CRITICAL] `applyGlobalDefaults` cannot distinguish explicit `skills: true` from defaulted `true`
 
 Confidence: 85/100
-Location: `test/skill-loader.test.ts:379-383`
-Problem: The test named `extractDescriptionFromContent` only tests the "not found" path:
+Location: `src/agents/agent-types.ts:289-299`
 
-```ts
-describe("extractDescriptionFromContent", () => {
-  it("returns empty string when no description in content", () => {
-    const result = preloadSkills(["nonexistent"], tmpDir);
-    expect(result[0].description).toBe("");
-  });
+Problem:
+The `applyGlobalDefaults` function overrides `skills: true` to `false` when `loadSkillsImplicitly === "none"`, but it cannot distinguish between:
+1. Agent explicitly set `skills: true` in .md frontmatter (should ignore global default)
+2. Agent didn't set skills, inherited `true` from `BASE_DEFAULTS` (should use global default)
+
+Both cases produce `skills === true` by the time `applyGlobalDefaults` runs. The function treats all `true` values as "not explicitly set" and overrides them.
+
+Trace for case 1 (explicit `skills: true` in .md):
+- `parseExtensions(true)` → `true`
+- `fromMd()` includes `skills: true` (not stripped by `compactDefined`)
+- `mergeAgentOverrides()` → agent config has `skills: true`
+- `applyGlobalDefaults(true, ..., "none", ...)` → `skills: false` ← **wrong**
+
+Trace for case 2 (no skills in .md):
+- `parseExtensions(undefined)` → `undefined`
+- `compactDefined` strips it
+- `mergeAgentOverrides()` → inherits `skills: true` from `BASE_DEFAULTS`
+- `applyGlobalDefaults(true, ..., "none", ...)` → `skills: false` ← **correct**
+
+Why it matters:
+Violates the acceptance criteria: "Agent with explicit `skills: true`/`skills: false`/`skills: [...]` ignores the global default." The test at `test/agent-types-resolver.test.ts:396` codifies the incorrect behavior:
+```typescript
+it("agent with skills: true gets global loadSkillsImplicitly=none → false", () => {
+    const result = getConfig("test-agent", "none", "load-all");
+    expect(result.skills).toBe(false); // should be true per AC
 });
 ```
 
-The old `parseFrontmatterDescription` tests (valid frontmatter, no frontmatter, unclosed frontmatter, empty description, CRLF, quote stripping, truncation) were all removed. The replacement test doesn't exercise the regex extraction at all. If the `extractDescriptionFromContent` regex broke, no test would catch it.
+Same issue applies to `extensions: true`.
 
-Why it matters: The regex-based frontmatter parsing in `extractDescriptionFromContent` has edge cases (CRLF, unclosed frontmatter, quote stripping, truncation) that were previously tested. This is a regression in test coverage.
+Fix:
+The `AgentConfig` type needs to distinguish "not set" from "explicitly true". Two options:
 
-Fix: Add tests for `extractDescriptionFromContent` covering the key behaviors. Since it's now internal, test through `preloadSkills` with mocked `loadSkills` returning skills whose file content exercises the parser:
-
-```ts
-describe("extractDescriptionFromContent", () => {
-  it("extracts description from frontmatter in skill content", () => {
-    createSkillDir(tmpDir, "test-skill", "My skill description", "Body");
-    const skillPath = join(tmpDir, ".pi", "skills", "test-skill", "SKILL.md");
-    mockLoadSkills.mockReturnValue({
-      skills: [makeSkill("test-skill", "My skill description", skillPath)],
-      diagnostics: [],
-    });
-    const result = preloadSkills(["test-skill"], tmpDir);
-    expect(result[0].description).toBe("My skill description");
-  });
-
-  it("returns empty description when content has no frontmatter", () => {
-    const skillPath = join(tmpDir, ".pi", "skills", "plain", "SKILL.md");
-    mockLoadSkills.mockReturnValue({
-      skills: [makeSkill("plain", "", skillPath)],
-      diagnostics: [],
-    });
-    // Write plain content without frontmatter
-    mkdirSync(join(tmpDir, ".pi", "skills", "plain"), { recursive: true });
-    writeFileSync(skillPath, "Just body text, no frontmatter.");
-    const result = preloadSkills(["plain"], tmpDir);
-    expect(result[0].description).toBe("");
-  });
-});
+**Option A** (recommended): Make `skills` and `extensions` optional in `AgentConfig`:
+```typescript
+// types.ts
+skills?: true | string[] | false;   // undefined = not set, use global default
+extensions?: true | string[] | false;
 ```
 
-## [SUGGESTION] Unused `writeFileSync` import in test file
-
-Confidence: 80/100
-Location: `test/skill-loader.test.ts:5`
-Problem: `writeFileSync` is imported but never used in the test file. The old code used it; the refactored tests use the fixture helpers instead.
-
-Fix: Remove `writeFileSync` from the import:
-
-```ts
-import { mkdirSync, rmSync } from "node:fs";
+Then change `BASE_DEFAULTS` in `agent-discovery.ts` to not set skills/extensions:
+```typescript
+const BASE_DEFAULTS: AgentConfig = {
+  name: "unknown",
+  description: "",
+  // extensions and skills intentionally omitted — resolved by global default
+  systemPrompt: "",
+};
 ```
+
+And update `applyGlobalDefaults`:
+```typescript
+function applyGlobalDefaults(
+  skills: true | string[] | false | undefined,
+  extensions: true | string[] | false | undefined,
+  loadSkillsImplicitly: "load-all" | "none",
+  loadExtensionsImplicitly: "load-all" | "none",
+): { skills: true | string[] | false; extensions: true | string[] | false } {
+  return {
+    skills: skills === undefined ? (loadSkillsImplicitly === "none" ? false : true) : skills,
+    extensions: extensions === undefined ? (loadExtensionsImplicitly === "none" ? false : true) : extensions,
+  };
+}
+```
+
+This requires updating downstream consumers of `config.skills` and `config.extensions` to handle `undefined` (which flows through to `false`/`true` via `applyGlobalDefaults`).
+
+**Option B**: Track explicitness in a parallel field (e.g., `skillsExplicit?: true | string[] | false`). More invasive, less clean.
+
+→ architecture-reviewer for the structural change to `AgentConfig.skills/extensions` optionality.

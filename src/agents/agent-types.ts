@@ -274,7 +274,7 @@ export interface ResolvedAgentConfig {
   skills: true | string[] | false;
 }
 
-function toResolved(config: AgentConfig): ResolvedAgentConfig {
+function toResolved(config: AgentConfig): Omit<ResolvedAgentConfig, "skills" | "extensions"> & { skills?: true | string[] | false; extensions?: true | string[] | false } {
   return {
     displayName: config.displayName ?? config.name,
     description: config.description,
@@ -285,16 +285,20 @@ function toResolved(config: AgentConfig): ResolvedAgentConfig {
   };
 }
 
-/** Apply global implicit defaults to skills/extensions when agent uses the default value. */
+/**
+ * Apply global implicit defaults to skills/extensions.
+ * undefined means "not explicitly set" → resolve from global default.
+ * Concrete values (true, false, string[]) pass through unchanged.
+ */
 function applyGlobalDefaults(
-  skills: true | string[] | false,
-  extensions: true | string[] | false,
+  skills: true | string[] | false | undefined,
+  extensions: true | string[] | false | undefined,
   loadSkillsImplicitly: "load-all" | "none",
   loadExtensionsImplicitly: "load-all" | "none",
 ): { skills: true | string[] | false; extensions: true | string[] | false } {
   return {
-    skills: skills === true && loadSkillsImplicitly === "none" ? false : skills,
-    extensions: extensions === true && loadExtensionsImplicitly === "none" ? false : extensions,
+    skills: skills === undefined ? (loadSkillsImplicitly === "none" ? false : true) : skills,
+    extensions: extensions === undefined ? (loadExtensionsImplicitly === "none" ? false : true) : extensions,
   };
 }
 
@@ -319,7 +323,8 @@ export function getConfig(
   }
 
   // Absolute fallback — general-purpose was hidden or missing
-  const fallbackDefaults = applyGlobalDefaults(true, true, loadSkillsImplicitly, loadExtensionsImplicitly);
+  // Use undefined so global default applies (not "explicitly true")
+  const fallbackDefaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
