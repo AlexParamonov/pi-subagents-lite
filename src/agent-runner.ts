@@ -378,23 +378,14 @@ async function initSession(
   const result = await createAgentSession(sessionOpts);
 
   // Inject max_tokens into provider request payloads when defined in agent config.
-  // Uses onPayload hook to mutate the request body before it hits the provider.
   const maxTokens = agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
     const field = (model.compat as any)?.maxTokensField ?? "max_tokens";
     const origOnPayload = result.session.agent.onPayload;
     result.session.agent.onPayload = async (payload, m) => {
-      let modified = payload;
-      if (origOnPayload) {
-        const intermediate = await origOnPayload(payload, m);
-        if (intermediate !== undefined) {
-          modified = intermediate;
-        }
-      }
-      if (typeof modified === "object" && modified !== null && !Array.isArray(modified)) {
-        return { ...modified, [field]: maxTokens };
-      }
-      return modified;
+      const applied = origOnPayload ? (await origOnPayload(payload, m)) ?? payload : payload;
+      const obj = typeof applied === "object" && applied && !Array.isArray(applied) ? applied : {};
+      return { ...obj, [field]: maxTokens };
     };
   }
 
