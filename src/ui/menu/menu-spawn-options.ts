@@ -1,77 +1,105 @@
 /**
  * menu-spawn-options.ts — Spawn options menu concern.
  *
+ * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
+ * SettingsList maintains internal cursor state, fixing the cursor-position
+ * reset bug that occurred with ctx.ui.select.
+ *
  * Exports:
- *   - showSpawnOptionsMenu: default spawn-time options (thinking, max turns, force background, grace turns, system prompt mode, include AGENTS.md)
+ *   - showSpawnOptionsMenu: default spawn-time options (thinking, max turns, force background, grace turns)
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
+import { buildSettingsListTheme, validateNumeric } from "./menu-helpers.js";
 import type { ThinkingLevel } from "../../types.js";
-import { runMenuLoop, parseNumericInput } from "./menu-helpers.js";
 import { getStore } from "../../shell.js";
 
-const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
-  return runMenuLoop(ctx, "Spawn Options", () => {
-    const items: string[] = [];
-    const actions: Array<() => Promise<void>> = [];
-    const store = getStore();
+  const store = getStore();
 
-    // Force background toggle
-    const forceBg = store.agent.forceBackground;
-    items.push(`Force background · ${forceBg ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      store.mutate.agent.setForceBackground(!forceBg);
-      ctx.ui.notify(`Force background ${store.agent.forceBackground ? "ON" : "OFF"}`, "info");
-    });
+  const items: SettingItem[] = [
+    {
+      id: "forceBackground",
+      label: "Force background",
+      currentValue: store.agent.forceBackground ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+    },
+    {
+      id: "graceTurns",
+      label: "Grace turns",
+      currentValue: String(store.agent.graceTurns),
+      submenu: (currentValue, done) => {
+        const input = new Input();
+        input.setValue(currentValue);
+        input.onSubmit = (value) => {
+          const result = validateNumeric(value, 0);
+          if (result === undefined) {
+            ctx.ui.notify("Must be a number ≥ 0", "error");
+            return;
+          }
+          store.mutate.agent.setGraceTurns(result);
+          ctx.ui.notify(`Grace turns set to ${result}`, "info");
+          done(String(result));
+        };
+        input.onEscape = () => done();
+        return input;
+      },
+    },
+    {
+      id: "defaultMaxTurns",
+      label: "Default max turns",
+      currentValue: store.agent.defaultMaxTurns != null ? String(store.agent.defaultMaxTurns) : "unlimited",
+      submenu: (currentValue, done) => {
+        const input = new Input();
+        input.setValue(currentValue);
+        input.onSubmit = (value) => {
+          const trimmed = value.trim().toLowerCase();
+          if (trimmed === "unlimited" || trimmed === "") {
+            store.mutate.agent.setDefaultMaxTurns(undefined);
+            ctx.ui.notify("Default max turns set to unlimited", "info");
+            done("unlimited");
+            return;
+          }
+          const result = validateNumeric(value, 1);
+          if (result === undefined) {
+            ctx.ui.notify("Must be a number ≥ 1 or 'unlimited'", "error");
+            return;
+          }
+          store.mutate.agent.setDefaultMaxTurns(result);
+          ctx.ui.notify(`Default max turns set to ${result}`, "info");
+          done(String(result));
+        };
+        input.onEscape = () => done();
+        return input;
+      },
+    },
+    {
+      id: "defaultThinking",
+      label: "Default thinking level",
+      currentValue: store.agent.defaultThinking ?? "inherit",
+      values: ["off", "minimal", "low", "medium", "high", "xhigh", "inherit"],
+    },
+  ];
 
-    // Grace turns
-    const graceTurns = store.agent.graceTurns;
-    items.push(`Grace turns · ${graceTurns}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
-      if (parsed === undefined) return;
-      store.mutate.agent.setGraceTurns(parsed);
-      ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
-    });
+  const labels: Record<string, string> = {
+    forceBackground: "Force background",
+    defaultThinking: "Default thinking level",
+  };
 
-    // Default max turns
-    const defaultMaxTurns = store.agent.defaultMaxTurns;
-    items.push(`Default max turns · ${defaultMaxTurns != null ? String(defaultMaxTurns) : "unlimited"}`);
-    actions.push(async () => {
-      const initial = defaultMaxTurns != null ? String(defaultMaxTurns) : "unlimited";
-      const input = await ctx.ui.input("Default max turns (number or 'unlimited')", initial);
-      if (input === undefined) return;
-      const trimmed = input.trim().toLowerCase();
-      if (trimmed === "unlimited" || trimmed === "") {
-        store.mutate.agent.setDefaultMaxTurns(undefined);
-        ctx.ui.notify("Default max turns set to unlimited", "info");
-      } else {
-        const parsed = parseInt(trimmed, 10);
-        if (isNaN(parsed) || parsed < 1) {
-          ctx.ui.notify("Invalid value — must be a number ≥ 1 or 'unlimited'", "error");
-          return;
-        }
-        store.mutate.agent.setDefaultMaxTurns(parsed);
-        ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
-      }
-    });
+  const onChange = (id: string, newValue: string) => {
+    switch (id) {
+      case "forceBackground":
+        store.mutate.agent.setForceBackground(newValue === "ON");
+        break;
+      case "defaultThinking":
+        store.mutate.agent.setDefaultThinking(newValue === "inherit" ? undefined : newValue as ThinkingLevel);
+        break;
+    }
+    ctx.ui.notify(`${labels[id] ?? id} set to ${newValue}`, "info");
+  };
 
-    // Default thinking level
-    const defaultThinking = store.agent.defaultThinking;
-    items.push(`Default thinking level · ${defaultThinking ?? "inherit"}`);
-    actions.push(async () => {
-      const allLevels = [...THINKING_LEVELS, "inherit"];
-      const chosen = await ctx.ui.select("Default thinking level", allLevels);
-      if (chosen === undefined) return;
-      const level = chosen === "inherit" ? undefined : (chosen as ThinkingLevel);
-      store.mutate.agent.setDefaultThinking(level);
-      ctx.ui.notify(`Default thinking level set to ${level ?? "inherit"}`, "info");
-    });
-
-    return { items, actions };
-  });
+  await ctx.ui.custom((_tui, theme, _kb, done) =>
+    new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined))
+  );
 }
