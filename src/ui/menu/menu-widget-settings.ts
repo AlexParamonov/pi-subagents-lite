@@ -2,7 +2,8 @@
  * menu-widget-settings.ts — Widget settings menu concern.
  *
  * Exports:
- *   - showWidgetSettingsMenu: compact mode, max lines (full/compact), Ctrl+o shortcut
+ *   - showWidgetSettingsMenu: compact mode, max lines (full/compact), Ctrl+o shortcut,
+ *     stat visibility toggles (tools, turns, input, output, context, cost, time)
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -50,6 +51,26 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       store.mutate.widget.setShortcut(!shortcutEnabled);
       ctx.ui.notify(`Ctrl+o shortcut ${store.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
     });
+
+    // Stat visibility toggles
+    const statToggles: Array<{ label: string; getter: () => boolean; setter: (v: boolean) => void }> = [
+      { label: "Show tools", getter: () => store.agent.showTools, setter: (v) => store.mutate.agent.setShowTools(v) },
+      { label: "Show turns", getter: () => store.agent.showTurns, setter: (v) => store.mutate.agent.setShowTurns(v) },
+      { label: "Show input tokens", getter: () => store.agent.showInput, setter: (v) => store.mutate.agent.setShowInput(v) },
+      { label: "Show output tokens", getter: () => store.agent.showOutput, setter: (v) => store.mutate.agent.setShowOutput(v) },
+      { label: "Show context %", getter: () => store.agent.showContext, setter: (v) => store.mutate.agent.setShowContext(v) },
+      { label: "Show cost", getter: () => store.agent.showCost, setter: (v) => store.mutate.agent.setShowCost(v) },
+      { label: "Show time", getter: () => store.agent.showTime, setter: (v) => store.mutate.agent.setShowTime(v) },
+    ];
+
+    for (const toggle of statToggles) {
+      const enabled = toggle.getter();
+      items.push(`${toggle.label} · ${enabled ? "ON" : "OFF"}`);
+      actions.push(async () => {
+        toggle.setter(!enabled);
+        ctx.ui.notify(`${toggle.label} ${toggle.getter() ? "ON" : "OFF"}`, "info");
+      });
+    }
 
     return { items, actions };
   });

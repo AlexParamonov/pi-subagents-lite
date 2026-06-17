@@ -46,6 +46,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
+    setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
   };
   return { w: w as unknown as AgentWidget, calls };
 }
@@ -127,6 +128,7 @@ describe("ConfigStore persisted mutations", () => {
     expect(saves).toHaveLength(1);
     expect(saves[0].agent.showCost).toBe(true);
     expect(calls).toContain("setShowCost:true");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
   it("setWidgetMaxLines derives compact when unset and syncs the widget", () => {
@@ -274,6 +276,7 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(true);
     expect(calls).toContain("setShowCost:true");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
   it("session clearShowCost syncs config value to widget", () => {
@@ -284,10 +287,12 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(false);
     expect(calls).toContain("setShowCost:false");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
     calls.length = 0;
     store.mutate.session.clearShowCost();
     // After clearing session override, widget should revert to config value (true)
     expect(calls).toContain("setShowCost:true");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
   it("reload clears session showCost override", () => {
@@ -689,5 +694,134 @@ describe("ConfigStore notifyToolsExpanded", () => {
     store.notifyToolsExpanded(true);
     store.notifyToolsExpanded(false);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("ConfigStore show* stats visibility", () => {
+  it("all show* keys default to true", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.showTools).toBe(true);
+    expect(store.agent.showTurns).toBe(true);
+    expect(store.agent.showInput).toBe(true);
+    expect(store.agent.showOutput).toBe(true);
+    expect(store.agent.showContext).toBe(true);
+    expect(store.agent.showTime).toBe(true);
+  });
+
+  it("returns configured values when present", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showTools: false, showTurns: false, showInput: false, showOutput: false, showContext: false, showTime: false },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.showTools).toBe(false);
+    expect(store.agent.showTurns).toBe(false);
+    expect(store.agent.showInput).toBe(false);
+    expect(store.agent.showOutput).toBe(false);
+    expect(store.agent.showContext).toBe(false);
+    expect(store.agent.showTime).toBe(false);
+  });
+
+  it("setShowTools persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    saves.length = 0;
+
+    store.mutate.agent.setShowTools(false);
+    expect(store.agent.showTools).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.showTools).toBe(false);
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("setShowTurns persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.agent.setShowTurns(false);
+    expect(store.agent.showTurns).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("setShowInput persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.agent.setShowInput(false);
+    expect(store.agent.showInput).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("setShowOutput persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.agent.setShowOutput(false);
+    expect(store.agent.showOutput).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("setShowContext persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.agent.setShowContext(false);
+    expect(store.agent.showContext).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("setShowTime persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.agent.setShowTime(false);
+    expect(store.agent.showTime).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("reload syncs stats visibility to widget", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showTools: false }, concurrency: { default: 4 } });
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    store.reload();
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+  });
+
+  it("clearAllModelOverrides preserves show* keys", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, showTools: false, showTurns: false, Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agentConfigSnapshot().showTools).toBe(false);
+    expect(store.agentConfigSnapshot().showTurns).toBe(false);
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
   });
 });

@@ -10,7 +10,7 @@ import {
   getLifetimeTotal,
   getSessionContextPercent,
 } from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName } from "./format.js";
+import { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (model-selector, result-viewer) don't break
@@ -83,7 +83,7 @@ interface RenderBlock {
 }
 
 // ---- Re-exports from format.ts (backward compatibility) ----
-export { formatMs, buildStatsParts, getDisplayName } from "./format.js";
+export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.js";
 export type { LiveView as AgentActivity } from "../spawn/spawn-coordinator.js";
 
 // ---- Widget-internal helpers ----
@@ -147,6 +147,9 @@ export class AgentWidget {
   /** Whether to show cost in stats and status bar. */
   private showCost = false;
 
+  /** Stats visibility flags. Controls which stats appear in the stats line. */
+  private statsVisibility: StatsVisibility = {};
+
   /** Whether the widget callback is currently registered with the TUI. */
   private widgetRegistered = false;
   /** Cached TUI reference from widget factory callback, used for requestRender(). */
@@ -179,6 +182,11 @@ export class AgentWidget {
   /** Set whether to show cost in stats and status bar. */
   setShowCost(enabled: boolean) {
     this.showCost = enabled;
+  }
+
+  /** Set stats visibility flags. */
+  setStatsVisibility(visible: StatsVisibility) {
+    this.statsVisibility = visible;
   }
 
   /** Set compact mode (internal, for sync from ctrl+o). */
@@ -300,10 +308,9 @@ export class AgentWidget {
   /** Render a finished agent line. */
   private renderFinishedLine(a: AgentRecord, theme: Theme): string {
     const name = getDisplayName(a.display.type);
-    const duration = formatMs((a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
-    // Read all stats from the record (activity only has activeTools + responseText)
+    const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
     const statsParts = buildStatsParts({
       toolUses: a.stats.toolUses,
       turnCount: a.stats.turnCount,
@@ -312,9 +319,9 @@ export class AgentWidget {
       output: a.stats.lifetimeUsage.output,
       contextPercent: a.stats.contextPercent ?? null,
       compactions: a.stats.compactionCount,
-      cost: this.showCost ? a.stats.lifetimeUsage.cost : undefined,
-    }, theme);
-    statsParts.push(duration);
+      cost: a.stats.lifetimeUsage.cost,
+      durationMs,
+    }, theme, this.statsVisibility);
 
     const statsLine = statsParts.join("·");
     return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", a.display.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
@@ -333,9 +340,9 @@ export class AgentWidget {
       output: agent.stats.lifetimeUsage.output,
       contextPercent: agent.execution.session ? getSessionContextPercent(agent.execution.session) : agent.stats.contextPercent ?? null,
       compactions: agent.stats.compactionCount,
-      cost: this.showCost ? agent.stats.lifetimeUsage.cost : undefined,
-    }, theme);
-    parts.push(formatMs(Date.now() - agent.lifecycle.startedAt));
+      cost: agent.stats.lifetimeUsage.cost,
+      durationMs: Date.now() - agent.lifecycle.startedAt,
+    }, theme, this.statsVisibility);
     return parts.join("·");
   }
 

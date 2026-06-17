@@ -58,6 +58,18 @@ export interface ResolvedAgentSettings {
   readonly loadSkillsImplicitly: boolean;
   /** Global default for extensions loading: true (load all) or false (none). */
   readonly loadExtensionsImplicitly: boolean;
+  /** Whether to show toolUses count in widget stats line. */
+  readonly showTools: boolean;
+  /** Whether to show turn count in widget stats line. */
+  readonly showTurns: boolean;
+  /** Whether to show input tokens in widget stats line. */
+  readonly showInput: boolean;
+  /** Whether to show output tokens in widget stats line. */
+  readonly showOutput: boolean;
+  /** Whether to show context percent and compactions in widget stats line. */
+  readonly showContext: boolean;
+  /** Whether to show elapsed time in widget stats line. */
+  readonly showTime: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -111,6 +123,12 @@ export class ConfigStore {
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+      showTools: a.showTools !== false,
+      showTurns: a.showTurns !== false,
+      showInput: a.showInput !== false,
+      showOutput: a.showOutput !== false,
+      showContext: a.showContext !== false,
+      showTime: a.showTime !== false,
     };
   }
 
@@ -194,6 +212,7 @@ export class ConfigStore {
         this.sessionShowCost = undefined;
         this.persist();
         this.widget?.setShowCost(enabled);
+        this.syncWidgetStatsVisibility();
       },
       setGraceTurns: (n: number): void => {
         this.config.agent.graceTurns = n;
@@ -231,6 +250,12 @@ export class ConfigStore {
         this.config.agent.loadExtensionsImplicitly = value;
         this.persist();
       },
+      setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
+      setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
+      setShowInput: (enabled: boolean) => this.setAgentVisibility("showInput", enabled),
+      setShowOutput: (enabled: boolean) => this.setAgentVisibility("showOutput", enabled),
+      setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
+      setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
     },
     widget: {
       setCompact: (enabled: boolean): void => {
@@ -307,11 +332,13 @@ export class ConfigStore {
       setShowCost: (enabled: boolean): void => {
         this.sessionShowCost = enabled;
         this.widget?.setShowCost(enabled);
+        this.syncWidgetStatsVisibility();
       },
       /** Clear session showCost override, reverting to config value. */
       clearShowCost: (): void => {
         this.sessionShowCost = undefined;
         this.widget?.setShowCost(this.config.agent.showCost === true);
+        this.syncWidgetStatsVisibility();
       },
     },
   };
@@ -379,6 +406,29 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
   }
 
+  /** Push stats visibility flags to the widget. */
+  private syncWidgetStatsVisibility(): void {
+    const w = this.widget;
+    if (!w) return;
+    const a = this.agent;
+    w.setStatsVisibility({
+      showTools: a.showTools,
+      showTurns: a.showTurns,
+      showInput: a.showInput,
+      showOutput: a.showOutput,
+      showContext: a.showContext,
+      showCost: a.showCost,
+      showTime: a.showTime,
+    });
+  }
+
+  /** Update a widget stats visibility flag: mutate config → persist → sync widget. */
+  private setAgentVisibility(key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime", value: boolean): void {
+    this.config.agent[key] = value;
+    this.persist();
+    this.syncWidgetStatsVisibility();
+  }
+
   private applyConcurrency(): void {
     this.manager?.setConcurrency(this.config.concurrency);
   }
@@ -388,6 +438,7 @@ export class ConfigStore {
     if (this.widget) {
       this.widget.setShowCost(this.agent.showCost);
       this.syncWidgetSettings();
+      this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();
   }
