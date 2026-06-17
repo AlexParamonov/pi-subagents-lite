@@ -7,7 +7,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { runMenuLoop, parseNumericInput } from "./menu-helpers.js";
-import { getStore } from "./shell.js";
+import { getStore } from "../../shell.js";
 
 export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Promise<void> {
   return runMenuLoop(ctx, "Widget Settings", () => {

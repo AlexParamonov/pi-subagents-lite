@@ -15,7 +15,7 @@ import {
   Text,
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import type { Theme } from "./ui/agent-widget.js";
+import type { Theme } from "../ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

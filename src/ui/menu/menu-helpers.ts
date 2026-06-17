@@ -10,8 +10,8 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
-import { parseModelKey } from "./utils.js";
+import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
+import { parseModelKey } from "../../utils.js";
 
 /**
  * Build ModelOption[] from raw "provider/model-id" strings.

@@ -20,7 +20,7 @@ const { mockSendMessage, mockGetRecord, mockGetLifetimeTotal, mockGetSessionCont
   mockGetSessionContextPercent: vi.fn(() => null),
 }));
 
-vi.mock("../src/usage.js", () => ({
+vi.mock("../src/agents/usage.js", () => ({
   addUsage: vi.fn(),
   getLifetimeTotal: mockGetLifetimeTotal,
   getSessionContextPercent: mockGetSessionContextPercent,
@@ -41,8 +41,8 @@ vi.mock("../src/shell.js", () => ({
 }));
 
 // Import after mocks
-import { SpawnCoordinator } from "../src/spawn-coordinator.js";
-import type { AgentManager } from "../src/agent-manager.js";
+import { SpawnCoordinator } from "../src/spawn/spawn-coordinator.js";
+import type { AgentManager } from "../src/agents/agent-manager.js";
 
 // Create a coordinator instance for tests
 const mockManager = {

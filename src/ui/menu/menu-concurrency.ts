@@ -13,7 +13,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { runMenuLoop, runMenu, promptModelSelection, parseNumericInput } from "./menu-helpers.js";
-import { getStore } from "./shell.js";
+import { getStore } from "../../shell.js";
 
 /**
  * Parse a concurrency input: prompt, validate (integer ≥ 1), return parsed value or undefined.

@@ -5,8 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showDebugMenu } from "../src/menu-debug.js";
-import { getAllTypes, getAvailableTypes, getAgentConfig } from "../src/agent-types.js";
+import { showDebugMenu } from "../src/ui/menu/menu-debug.js";
+import { getAllTypes, getAvailableTypes, getAgentConfig } from "../src/agents/agent-types.js";
 
 describe("showDebugMenu — menu loop", () => {
   beforeEach(() => {

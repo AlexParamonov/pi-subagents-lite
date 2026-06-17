@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showSpawnOptionsMenu } from "../src/menu-spawn-options.js";
+import { showSpawnOptionsMenu } from "../src/ui/menu/menu-spawn-options.js";
 
 function resetAgentState(): void {
   mockModules.mockConfig.agent = { default: null, forceBackground: false };

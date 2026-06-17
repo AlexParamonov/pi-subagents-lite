@@ -9,17 +9,17 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "./types.js";
-import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "./agent-types.js";
-import { findModelInRegistry } from "./utils.js";
-import { promptModelSelection, parseNumericInput } from "./menu-helpers.js";
+import type { ThinkingLevel } from "../types.js";
+import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../agents/agent-types.js";
+import { findModelInRegistry } from "../utils.js";
+import { promptModelSelection, parseNumericInput } from "../ui/menu/menu-helpers.js";
 import {
   getPiInstance,
   getSessionCtx,
   getWidget,
   getStore,
   getCoordinator,
-} from "./shell.js";
+} from "../shell.js";
 
 // ============================================================================
 // Worktree picker helpers
@@ -242,7 +242,7 @@ export async function showSpawnAgentMenu(
       // Set UI context so widget can render (same as tool_execution_start handler)
       const widget = getWidget();
       if (widget) {
-        widget.setUICtx(ctx.ui as unknown as import("./ui/agent-widget.js").UICtx);
+        widget.setUICtx(ctx.ui as unknown as import("../ui/agent-widget.js").UICtx);
         widget.ensureTimer();
       }
 

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { buildAgentPrompt } from "../src/prompts.ts";
+import { buildAgentPrompt } from "../src/prompt/prompts.ts";
 import type { AgentConfig, EnvInfo } from "../src/types.ts";
 
 vi.mock("@earendil-works/pi-coding-agent", async () => {

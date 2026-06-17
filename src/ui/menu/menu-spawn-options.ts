@@ -8,10 +8,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { SystemPromptMode, ThinkingLevel } from "./types.js";
+import type { SystemPromptMode, ThinkingLevel } from "../../types.js";
 import { runMenuLoop, parseNumericInput } from "./menu-helpers.js";
-import { getStore } from "./shell.js";
-import { CUSTOM_PROMPT_PATH } from "./agent-runner.js";
+import { getStore } from "../../shell.js";
+import { CUSTOM_PROMPT_PATH } from "../../agents/agent-runner.js";
 
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 

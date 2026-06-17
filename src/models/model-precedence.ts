@@ -12,7 +12,7 @@
  *   6. parentModelId                   (inherit from parent)
  */
 
-import type { SystemPromptMode, ThinkingLevel } from "./types.js";
+import type { SystemPromptMode, ThinkingLevel } from "../types.js";
 
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {

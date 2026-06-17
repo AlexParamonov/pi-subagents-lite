@@ -7,9 +7,9 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord } from "./types.js";
-import { SHORT_ID_LENGTH } from "./types.js";
-import { getManager } from "./shell.js";
+import type { AgentRecord } from "../types.js";
+import { SHORT_ID_LENGTH } from "../types.js";
+import { getManager } from "../shell.js";
 
 /**
  * Format a single agent record as "type·short_id·status".

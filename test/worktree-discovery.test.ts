@@ -17,8 +17,8 @@ import {
   discoverNewAgents,
   resolveType,
   getAgentConfig,
-} from "../src/agent-types.js";
-import { DEFAULT_AGENTS } from "../src/default-agents.js";
+} from "../src/agents/agent-types.js";
+import { DEFAULT_AGENTS } from "../src/agents/default-agents.js";
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */

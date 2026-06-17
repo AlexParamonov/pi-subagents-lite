@@ -494,7 +494,7 @@ const { mockRunAgent } = vi.hoisted(() => ({
   mockRunAgent: vi.fn(),
 }));
 
-vi.mock("../src/agent-runner.js", () => ({
+vi.mock("../src/agents/agent-runner.js", () => ({
   runAgent: mockRunAgent,
 }));
 
@@ -521,7 +521,7 @@ describe("worktree deletion mid-run", () => {
       cwd: "/tmp",
     } as any;
 
-    const { AgentManager } = await import("../src/agent-manager.js");
+    const { AgentManager } = await import("../src/agents/agent-manager.js");
     const manager = new AgentManager();
 
     // Spawn should not throw — the error is caught inside startAgent.

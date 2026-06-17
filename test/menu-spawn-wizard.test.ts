@@ -5,8 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showSpawnAgentMenu } from "../src/spawn-wizard.js";
-import { getAgentConfig } from "../src/agent-types.js";
+import { showSpawnAgentMenu } from "../src/spawn/spawn-wizard.js";
+import { getAgentConfig } from "../src/agents/agent-types.js";
 
 describe("showSpawnAgentMenu — type selection", () => {
   beforeEach(() => {
@@ -574,7 +574,7 @@ describe("showSpawnAgentMenu — worktree picker", () => {
       ["Do something"],
     );
     await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const { discoverNewAgents } = await import("../src/agent-types.js");
+    const { discoverNewAgents } = await import("../src/agents/agent-types.js");
     expect(discoverNewAgents).toHaveBeenCalledWith("/test-feature/.pi/agents");
   });
 
@@ -582,7 +582,7 @@ describe("showSpawnAgentMenu — worktree picker", () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
     const ctx = createMockCtx(["general-purpose", "Spawn"], ["Do something"]);
     await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const { discoverNewAgents } = await import("../src/agent-types.js");
+    const { discoverNewAgents } = await import("../src/agents/agent-types.js");
     expect(discoverNewAgents).not.toHaveBeenCalled();
   });
 

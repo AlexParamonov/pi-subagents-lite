@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { createMockSession, tempDirFixture } from "./fixtures";
 
 // --- Module under test ---
-import { AgentOutputLog } from "../src/output-file.js";
+import { AgentOutputLog } from "../src/agents/output-file.js";
 
 describe("AgentOutputLog", () => {
   const testAgentId = "test-agent-123";

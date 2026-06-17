@@ -10,10 +10,10 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getAllTypes } from "./agent-types.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../types.js";
 import { runMenuLoop, promptModelSelection } from "./menu-helpers.js";
-import { getStore } from "./shell.js";
+import { getStore } from "../../shell.js";
 
 /**
  * Prompt user to choose between session-only or permanent persistence.

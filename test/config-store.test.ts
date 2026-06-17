@@ -6,11 +6,11 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { ConfigStore, type ConfigIO } from "../src/config-store.ts";
+import { ConfigStore, type ConfigIO } from "../src/config/config-store.ts";
 import type { AgentWidget } from "../src/ui/agent-widget.ts";
-import type { AgentManager } from "../src/agent-manager.ts";
-import type { SubagentsConfig } from "../src/model-precedence.ts";
-import { DEFAULT_CONFIG } from "../src/config-io.ts";
+import type { AgentManager } from "../src/agents/agent-manager.ts";
+import type { SubagentsConfig } from "../src/models/model-precedence.ts";
+import { DEFAULT_CONFIG } from "../src/config/config-io.ts";
 
 function defaultConfig(): SubagentsConfig {
   return {

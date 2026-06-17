@@ -17,7 +17,7 @@ import {
   createOutputFilePath,
   writeInitialEntry,
   streamToOutputFile,
-} from "../src/output-file.js";
+} from "../src/agents/output-file.js";
 
 describe("output-file", () => {
   const testAgentId = "test-agent-123";

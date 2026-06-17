@@ -8,9 +8,9 @@
  * Pure functions — no module-level state, no side effects.
  */
 
-import { getConfig } from "./agent-types.js";
-import type { SubagentType, Theme } from "./types.js";
-import { formatTokens, formatCost } from "./usage.js";
+import { getConfig } from "../agents/agent-types.js";
+import type { SubagentType, Theme } from "../types.js";
+import { formatTokens, formatCost } from "../agents/usage.js";
 
 /** Max length for a truncated command in tool arg summaries. */
 const MAX_COMMAND_DISPLAY_LENGTH = 100;

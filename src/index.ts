@@ -30,16 +30,16 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_AGENTS } from "./default-agents.js";
-import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agent-types.js";
-import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
-import { AgentManager } from "./agent-manager.js";
+import { DEFAULT_AGENTS } from "./agents/default-agents.js";
+import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agents/agent-types.js";
+import { scanAgentFilesInDir, mergeAgents } from "./agents/agent-discovery.js";
+import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
-import { showAgentsMainMenu } from "./menus.js";
+import { showAgentsMainMenu } from "./ui/menu/menus.js";
 import { executeAgentTool, executeStopAgentTool, toolCallListener } from "./tool-execution.js";
-import { executeAgentStatusTool } from "./agent-status.js";
-import { SpawnCoordinator } from "./spawn-coordinator.js";
-import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./renderer.js";
+import { executeAgentStatusTool } from "./agents/agent-status.js";
+import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
+import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./ui/renderer.js";
 import {
   getPiInstance,
   getManager,

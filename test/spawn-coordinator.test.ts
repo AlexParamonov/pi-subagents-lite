@@ -11,7 +11,7 @@ import type { AgentRecord } from "../src/types.js";
 
 // --- Mock modules ---
 
-vi.mock("../src/agent-types.js", () => ({
+vi.mock("../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((name: string) => name),
   getAgentConfig: vi.fn(() => undefined),
   discoverNewAgents: vi.fn(async () => 0),
@@ -27,7 +27,7 @@ vi.mock("../src/utils.js", () => ({
   parseThinkingLevel: vi.fn(() => undefined),
 }));
 
-vi.mock("../src/config-io.js", () => ({
+vi.mock("../src/config/config-io.js", () => ({
   loadConfig: vi.fn(() => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } })),
   saveConfigAtomic: vi.fn(),
   DEFAULT_CONFIG: { agent: { default: null, forceBackground: false }, concurrency: { default: 4 } },
@@ -85,7 +85,7 @@ function makeMockCtx() {
 
 describe("SpawnCoordinator", () => {
   // Dynamically import after mocks are set up
-  let SpawnCoordinator: typeof import("../src/spawn-coordinator.js").SpawnCoordinator;
+  let SpawnCoordinator: typeof import("../src/spawn/spawn-coordinator.js").SpawnCoordinator;
   let manager: ReturnType<typeof makeMockManager>;
   let pi: ExtensionAPI;
   let ctx: ExtensionContext;
@@ -95,7 +95,7 @@ describe("SpawnCoordinator", () => {
     manager = makeMockManager();
     pi = makeMockPi();
     ctx = makeMockCtx();
-    const mod = await import("../src/spawn-coordinator.js");
+    const mod = await import("../src/spawn/spawn-coordinator.js");
     SpawnCoordinator = mod.SpawnCoordinator;
   });
 

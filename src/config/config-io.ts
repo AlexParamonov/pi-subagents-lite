@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { SubagentsConfig } from "./model-precedence.js";
+import type { SubagentsConfig } from "../models/model-precedence.js";
 
 const CONFIG_DIR = path.join(process.env.HOME || "", ".pi", "agent");
 const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");

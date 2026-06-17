@@ -34,7 +34,7 @@ vi.mock("node:crypto", () => ({
 
 vi.mock("node:fs", () => mockModules.fsMock);
 
-vi.mock("../src/agent-runner.js", () => ({
+vi.mock("../src/agents/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
 }));
 
@@ -54,7 +54,7 @@ function mockRunResult(overrides?: Partial<ReturnType<typeof mockRunResult>>) {
 }
 
 // --- Import the module under test ---
-import { AgentManager } from "../src/agent-manager.js";
+import { AgentManager } from "../src/agents/agent-manager.js";
 
 describe("totalAgentCost accumulator", () => {
   let manager: AgentManager;

@@ -10,7 +10,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { formatTokens } from "./usage.js";
-import { summarizeToolArgs } from "./format.js";
+import { summarizeToolArgs } from "../ui/format.js";
 
 /** Max content length for full tool result display — longer results get a summary line. */
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 500;

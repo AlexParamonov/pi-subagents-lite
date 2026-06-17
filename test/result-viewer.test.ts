@@ -87,7 +87,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 // Import after mocks
 // ---------------------------------------------------------------------------
 
-import { ResultViewer, type ResultViewerStats } from "../src/result-viewer.js";
+import { ResultViewer, type ResultViewerStats } from "../src/ui/result-viewer.js";
 
 // Destructure hoisted mock classes for use in test helpers (not vi.mock factories).
 const { MockContainer, MockText, markdownRender } = mockClasses;

@@ -92,15 +92,15 @@ vi.mock("@earendil-works/pi-tui", () => ({
   }),
 }));
 
-vi.mock("../src/model-selector.js", () => ({
+vi.mock("../src/models/model-selector.js", () => ({
   ModelSelectorDialog: class {},
 }));
 
-vi.mock("../src/model-precedence.js", () => ({
+vi.mock("../src/models/model-precedence.js", () => ({
   resolveModel: vi.fn((opts: any) => opts?.parentModelId ?? ""),
 }));
 
-vi.mock("../src/agent-types.js", () => ({
+vi.mock("../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((name: string) => name),
   getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(() => ({})),
@@ -109,17 +109,17 @@ vi.mock("../src/agent-types.js", () => ({
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
 }));
 
-vi.mock("../src/agent-discovery.js", () => ({
+vi.mock("../src/agents/agent-discovery.js", () => ({
   scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
   mergeAgents: vi.fn().mockReturnValue(new Map()),
   AgentConfigFromMd: {},
 }));
 
-vi.mock("../src/agent-runner.js", () => ({
+vi.mock("../src/agents/agent-runner.js", () => ({
   runAgent: vi.fn(),
 }));
 
-vi.mock("../src/default-agents.js", () => ({
+vi.mock("../src/agents/default-agents.js", () => ({
   DEFAULT_AGENTS: new Map(),
 }));
 

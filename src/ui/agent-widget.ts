@@ -3,15 +3,15 @@
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import type { AgentManager } from "../agent-manager.js";
+import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord, Theme } from "../types.js";
 import {
   formatCost,
   getLifetimeTotal,
   getSessionContextPercent,
-} from "../usage.js";
-import { formatMs, buildStatsParts, getDisplayName } from "../format.js";
-import type { LiveView } from "../spawn-coordinator.js";
+} from "../agents/usage.js";
+import { formatMs, buildStatsParts, getDisplayName } from "./format.js";
+import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (model-selector, result-viewer) don't break
 export type { Theme } from "../types.js";
@@ -83,8 +83,8 @@ interface RenderBlock {
 }
 
 // ---- Re-exports from format.ts (backward compatibility) ----
-export { formatMs, buildStatsParts, getDisplayName } from "../format.js";
-export type { LiveView as AgentActivity } from "../spawn-coordinator.js";
+export { formatMs, buildStatsParts, getDisplayName } from "./format.js";
+export type { LiveView as AgentActivity } from "../spawn/spawn-coordinator.js";
 
 // ---- Widget-internal helpers ----
 
