@@ -69,11 +69,7 @@ export function buildAgentPrompt(
       "<available_skills>",
     ];
     for (const skill of extras.skillMetas) {
-      lines.push("  <skill>");
-      lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-      lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-      lines.push(`    <location>${escapeXml(skill.location)}</location>`);
-      lines.push("  </skill>");
+      lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><location>${escapeXml(skill.location)}</location></skill>`);
     }
     lines.push("</available_skills>");
     extraSections.push(lines.join("\n"));
