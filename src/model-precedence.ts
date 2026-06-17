@@ -25,6 +25,8 @@ export interface SubagentsConfig {
     widgetShortcut?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */
     systemPromptMode?: "replace" | "inherit" | "custom";
+    /** Whether to include AGENTS.md context files in the subagent system prompt. Default: true. */
+    includeContextFiles?: boolean;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

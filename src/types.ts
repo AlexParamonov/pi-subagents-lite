@@ -105,6 +105,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "widgetCompact",
   "widgetShortcut",
   "systemPromptMode",
+  "includeContextFiles",
 ];
 
 /** Reason for a context compaction event. */

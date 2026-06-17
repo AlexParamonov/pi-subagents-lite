@@ -350,6 +350,49 @@ describe("ConfigStore session overrides", () => {
   });
 });
 
+describe("ConfigStore includeContextFiles", () => {
+  it("defaults to true when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.includeContextFiles).toBe(true);
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, includeContextFiles: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.includeContextFiles).toBe(false);
+  });
+
+  it("setIncludeContextFiles persists the value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.agent.setIncludeContextFiles(false);
+    expect(store.agent.includeContextFiles).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.includeContextFiles).toBe(false);
+  });
+
+  it("setIncludeContextFiles updates the value", () => {
+    const { io } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setIncludeContextFiles(false);
+    expect(store.agent.includeContextFiles).toBe(false);
+    store.mutate.agent.setIncludeContextFiles(true);
+    expect(store.agent.includeContextFiles).toBe(true);
+  });
+
+  it("clearAllModelOverrides preserves includeContextFiles", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, includeContextFiles: false, Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.includeContextFiles).toBe(false);
+  });
+});
+
 describe("ConfigStore systemPromptMode", () => {
   it("defaults to 'replace' when not configured", () => {
     const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });

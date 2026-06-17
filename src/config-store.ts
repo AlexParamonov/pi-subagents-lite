@@ -45,6 +45,8 @@ export interface ResolvedAgentSettings {
   readonly widgetShortcut: boolean;
   /** System prompt mode: replace (default), inherit parent, or custom file. */
   readonly systemPromptMode: "replace" | "inherit" | "custom";
+  /** Whether to include AGENTS.md context files in the subagent system prompt. */
+  readonly includeContextFiles: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -86,6 +88,7 @@ export class ConfigStore {
       widgetCompact: a.widgetCompact === true,
       widgetShortcut: a.widgetShortcut === true,
       systemPromptMode: (a.systemPromptMode as "replace" | "inherit" | "custom") ?? DEFAULT_CONFIG.agent.systemPromptMode ?? "replace",
+      includeContextFiles: a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true,
     };
   }
 
@@ -176,6 +179,10 @@ export class ConfigStore {
       },
       setSystemPromptMode: (mode: "replace" | "inherit" | "custom"): void => {
         this.config.agent.systemPromptMode = mode;
+        this.persist();
+      },
+      setIncludeContextFiles: (enabled: boolean): void => {
+        this.config.agent.includeContextFiles = enabled;
         this.persist();
       },
     },

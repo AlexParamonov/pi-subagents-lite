@@ -36,6 +36,8 @@ const mockModules = vi.hoisted(() => ({
   mockCreateAgentSession: vi.fn(),
   mockDefaultResourceLoader: MockDefaultResourceLoader,
   mockGetAgentDir: vi.fn(),
+  mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
+  mockIncludeContextFiles: true as boolean,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
   clearLoaderOpts: () => { _loaderOpts.length = 0; },
   setLoaderExtensions: (exts: any) => { _loaderGetExtensionsResult.extensions = exts; },
@@ -65,12 +67,26 @@ vi.mock("../src/skill-loader.js", () => ({
   loadSkillMeta: mockModules.mockLoadSkillMeta,
 }));
 
+vi.mock("../src/shell.js", () => ({
+  getStore: () => ({
+    agent: {
+      includeContextFiles: mockModules.mockIncludeContextFiles,
+      systemPromptMode: "replace",
+      graceTurns: 6,
+      forceBackground: false,
+      showCost: false,
+      defaultModel: null,
+    },
+  }),
+}));
+
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: mockModules.mockCreateAgentSession,
   DefaultResourceLoader: mockModules.mockDefaultResourceLoader,
   SessionManager: { inMemory: vi.fn() },
   SettingsManager: { create: vi.fn() },
   getAgentDir: mockModules.mockGetAgentDir,
+  loadProjectContextFiles: mockModules.mockLoadProjectContextFiles,
 }));
 
 // --- Import the module under test ---
@@ -101,6 +117,8 @@ function resetMocks() {
   vi.clearAllMocks();
   mockModules.clearLoaderOpts();
   mockModules.clearLoaderExtensions();
+  mockModules.mockIncludeContextFiles = true;
+  mockModules.mockLoadProjectContextFiles.mockReturnValue([]);
 
   mockModules.mockGetConfig.mockReturnValue({ ...defaultConfig });
   mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig });
@@ -1448,5 +1466,74 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     });
 
     expect(session.agent.onPayload).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — context file gating (includeContextFiles)              */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — context file gating", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("loads context files when includeContextFiles is true", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockIncludeContextFiles = true;
+    mockModules.mockLoadProjectContextFiles.mockReturnValue([
+      { path: "AGENTS.md", content: "project instructions" },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        contextFiles: [{ path: "AGENTS.md", content: "project instructions" }],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("does NOT load context files when includeContextFiles is false", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockIncludeContextFiles = false;
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockLoadProjectContextFiles).not.toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.not.objectContaining({ contextFiles: expect.anything() }),
+      expect.anything(),
+    );
+  });
+
+  it("context file loading failure is non-fatal", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockIncludeContextFiles = true;
+    mockModules.mockLoadProjectContextFiles.mockImplementation(() => {
+      throw new Error("permission denied");
+    });
+
+    // Should not throw
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
+    // buildAgentPrompt still called (without contextFiles)
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalled();
   });
 });

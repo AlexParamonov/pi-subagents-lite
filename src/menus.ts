@@ -344,6 +344,14 @@ export async function showModelSettingsMenu(
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
 
+    // Include AGENTS.md context files toggle
+    const includeContextFiles = store.agent.includeContextFiles;
+    items.push(`Include AGENTS.md · ${includeContextFiles ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      store.mutate.agent.setIncludeContextFiles(!includeContextFiles);
+      ctx.ui.notify(`Include AGENTS.md ${store.agent.includeContextFiles ? "ON" : "OFF"}`, "info");
+    });
+
     // System prompt mode setting
     const systemPromptMode = store.agent.systemPromptMode;
     items.push(`System prompt mode · ${systemPromptMode}`);

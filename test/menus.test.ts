@@ -108,6 +108,7 @@ vi.mock("../src/shell.js", () => {
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
         widgetShortcut: a.widgetShortcut === true,
+        includeContextFiles: a.includeContextFiles ?? true,
       };
     },
     get concurrency() {
@@ -149,7 +150,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut', 'includeContextFiles']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -160,6 +161,7 @@ vi.mock("../src/shell.js", () => {
         setForceBackground(enabled: boolean) { mockModules.mockConfig.agent.forceBackground = enabled; },
         setShowCost(enabled: boolean) { mockModules.mockConfig.agent.showCost = enabled; },
         setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
+        setIncludeContextFiles(enabled: boolean) { mockModules.mockConfig.agent.includeContextFiles = enabled; },
       },
       widget: {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
@@ -2745,6 +2747,94 @@ describe("showSpawnAgentMenu — worktree picker", () => {
     const worktreeIdx = items.findIndex((i: string) => i.startsWith("Worktree"));
     expect(descIdx).toBeGreaterThanOrEqual(0);
     expect(worktreeIdx).toBeGreaterThan(descIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Include AGENTS.md toggle tests
+// ---------------------------------------------------------------------------
+
+describe("showModelSettingsMenu — include AGENTS.md toggle", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false, includeContextFiles: true };
+    mockModules.mockSessionOverrides.default = null;
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows 'Include AGENTS.md · ON' when includeContextFiles is true", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const contextItem = items.find((i: string) => i.startsWith("Include AGENTS.md"));
+    expect(contextItem).toBe("Include AGENTS.md · ON");
+  });
+
+  it("shows 'Include AGENTS.md · OFF' when includeContextFiles is false", async () => {
+    mockModules.mockConfig.agent.includeContextFiles = false;
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const contextItem = items.find((i: string) => i.startsWith("Include AGENTS.md"));
+    expect(contextItem).toBe("Include AGENTS.md · OFF");
+  });
+
+  it("defaults to ON when includeContextFiles is not set", async () => {
+    delete mockModules.mockConfig.agent.includeContextFiles;
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items = ctx.ui.select.mock.calls[0][1];
+    const contextItem = items.find((i: string) => i.startsWith("Include AGENTS.md"));
+    expect(contextItem).toBe("Include AGENTS.md · ON");
+  });
+
+  it("toggles from ON to OFF and saves", async () => {
+    mockModules.mockConfig.agent.includeContextFiles = true;
+
+    const selections = [
+      "Include AGENTS.md · ON",
+      undefined,  // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.includeContextFiles).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Include AGENTS.md OFF", "info");
+  });
+
+  it("toggles from OFF to ON and saves", async () => {
+    mockModules.mockConfig.agent.includeContextFiles = false;
+
+    const selections = [
+      "Include AGENTS.md · OFF",
+      undefined,  // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mockModules.mockConfig.agent.includeContextFiles).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Include AGENTS.md ON", "info");
+  });
+
+  it("positions after 'Grace turns' and before 'System prompt mode'", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const graceTurnsIdx = items.findIndex((i: string) => i.startsWith("Grace turns"));
+    const contextIdx = items.findIndex((i: string) => i.startsWith("Include AGENTS.md"));
+    const systemPromptIdx = items.findIndex((i: string) => i.startsWith("System prompt mode"));
+
+    expect(graceTurnsIdx).toBeGreaterThanOrEqual(0);
+    expect(contextIdx).toBeGreaterThan(graceTurnsIdx);
+    expect(systemPromptIdx).toBeGreaterThan(contextIdx);
   });
 });
 

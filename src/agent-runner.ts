@@ -568,10 +568,10 @@ export async function runAgent(
     }
   }
 
-  // Load AGENTS.md context files for custom mode
+  // Load AGENTS.md context files when the setting is enabled
   const agentDir = getAgentDir();
   let contextFiles: Array<{ path: string; content: string }> | undefined;
-  if (systemPromptMode === "custom") {
+  if (store.agent.includeContextFiles) {
     try {
       contextFiles = loadProjectContextFiles({ cwd: effectiveCwd, agentDir });
     } catch {
