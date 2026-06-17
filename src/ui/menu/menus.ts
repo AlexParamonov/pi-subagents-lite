@@ -22,6 +22,7 @@ import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
 import { showRunningAgentsMenu } from "./menu-running-agents.js";
 import { showDebugMenu } from "./menu-debug.js";
 import { showSpawnOptionsMenu } from "./menu-spawn-options.js";
+import { showSystemPromptMenu } from "./menu-system-prompt.js";
 
 // Spawn wizard — imported and re-exported so the dispatcher calls it from here.
 import { showSpawnAgentMenu } from "../../spawn/spawn-wizard.js";
@@ -33,19 +34,21 @@ export async function showSettingsMenu(
   modelOptions: string[],
 ): Promise<void> {
   const menuItems = [
-    "1. Spawn options — Default thinking, max turns, background, grace turns, system prompt",
-    "2. Model settings — Set global default and per-type model overrides",
-    "3. Concurrency settings — Set per-model slot limits",
-    "4. Widget settings — Configure widget display options",
+    "1. Model settings — Set global default and per-type model overrides",
+    "2. Concurrency settings — Set per-model slot limits",
+    "3. Spawn options — Default thinking, max turns, background, grace turns",
+    "4. System prompt — Prompt mode, custom prompt file, AGENTS.md",
+    "5. Widget settings — Configure widget display options",
     "",
     "Back",
   ];
 
   const handlers: Record<string, () => Promise<void>> = {
-    "1": () => showSpawnOptionsMenu(ctx),
-    "2": () => showModelSettingsMenu(ctx, modelOptions),
-    "3": () => showConcurrencySettingsMenu(ctx, modelOptions),
-    "4": () => showWidgetSettingsMenu(ctx),
+    "1": () => showModelSettingsMenu(ctx, modelOptions),
+    "2": () => showConcurrencySettingsMenu(ctx, modelOptions),
+    "3": () => showSpawnOptionsMenu(ctx),
+    "4": () => showSystemPromptMenu(ctx),
+    "5": () => showWidgetSettingsMenu(ctx),
   };
 
   while (true) {
