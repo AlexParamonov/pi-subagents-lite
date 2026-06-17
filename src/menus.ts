@@ -375,7 +375,7 @@ export async function showModelSettingsMenu(
         actions.push(async () => {
           try {
             fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
-            fs.writeFileSync(CUSTOM_PROMPT_PATH, "# Custom System Prompt\n\nAdd your custom system prompt here.\n", "utf-8");
+            fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are Pi, an expert coding assistant. Think thoroughly. Write concisely.", "utf-8");
             ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
           } catch (err: any) {
             ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
