@@ -1,29 +1,31 @@
 /**
- * skill-loader.ts — Preload named skills.
+ * skill-loader.ts — Load skills using Pi's exported APIs.
  *
- * Roots, in precedence order:
- *   - <cwd>/.pi/skills           (project, Pi's standard)
- *   - <cwd>/.agents/skills       (project, cross-tool Agent Skills spec — https://agentskills.io)
- *   - getAgentDir()/skills       (user, default ~/.pi/agent/skills — Pi's standard)
- *   - ~/.agents/skills           (user, cross-tool Agent Skills spec)
- *   - ~/.pi/skills               (legacy global, pre-Pi)
+ * Aligns skill discovery with Pi so subagents see the same skills as the parent session.
  *
- * Layout per root:
- *   - <root>/<name>.md            (flat file at the top level)
- *   - <root>/.../<name>/SKILL.md  (directory skill, may be nested — Pi's standard)
+ * Roots, in precedence order (first match wins by name):
+ *   1. Ancestor .agents/skills (cwd → git root, root .md files filtered out)
+ *   2. ~/.agents/skills (root .md files filtered out)
+ *   3. ~/.pi/agent/skills (Pi's user default)
+ *   4. <cwd>/.pi/skills (Pi's project default)
  *
- * Recursion skips dotfile entries and node_modules. A directory that itself contains
- * SKILL.md is a skill — we don't descend into it (Pi: skills don't nest).
+ * Pi's loadSkills handles: .gitignore/.ignore/.fdignore, symlinks (follow +
+ * canonical-path dedup), YAML frontmatter, name validation.
  *
- * Symlinks are rejected for security (deviation from Pi, which follows them).
+ * loadSkillsFromDir handles the same for individual .agents/skills directories.
+ * Root .md files from .agents/skills are filtered out because Pi's "agents"
+ * mode (no root files) is not exported.
  */
 
-import type { Dirent } from "node:fs";
-import { existsSync, readdirSync } from "node:fs";
+import { readFileSync, realpathSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { isSymlink, isUnsafeName, safeReadFile } from "./utils.js";
+import { join, resolve } from "node:path";
+import {
+  loadSkills,
+  loadSkillsFromDir,
+  type Skill,
+} from "@earendil-works/pi-coding-agent";
+import { isUnsafeName } from "./utils.js";
 
 export interface PreloadedSkill {
   name: string;
@@ -40,17 +42,139 @@ export interface SkillMeta {
 }
 
 /**
- * Skill search roots in precedence order (project → user → legacy).
- * Shared by preloadSkills and loadSkillMeta.
+ * Load all skills in correct precedence order.
+ *
+ * Precedence (first match wins by name):
+ *   1. Ancestor .agents/skills directories (cwd → git root)
+ *   2. ~/.agents/skills
+ *   3. Pi defaults: ~/.pi/agent/skills, <cwd>/.pi/skills
+ *
+ * Deduplication: by canonical path (symlink dedup) and by name (first match wins).
  */
-function getSkillRoots(cwd: string): string[] {
-  return [
-    join(cwd, ".pi", "skills"),           // project — Pi standard
-    join(cwd, ".agents", "skills"),       // project — Agent Skills spec
-    join(getAgentDir(), "skills"),         // user — Pi standard
-    join(homedir(), ".agents", "skills"),  // user — Agent Skills spec
-    join(homedir(), ".pi", "skills"),      // legacy global, pre-Pi
-  ];
+export function loadAllSkills(cwd: string): Skill[] {
+  const resolvedCwd = resolve(cwd);
+
+  // Ancestor .agents/skills (highest precedence)
+  const ancestorsSkills = loadAncestorAgentsSkills(resolvedCwd);
+
+  // ~/.agents/skills
+  const homeAgentsResult = loadSkillsFromDir({
+    dir: join(homedir(), ".agents", "skills"),
+    source: "agents",
+  });
+  const homeAgentsSkills = filterRootMdFiles(
+    homeAgentsResult.skills,
+    join(homedir(), ".agents", "skills"),
+  );
+
+  // Pi defaults: ~/.pi/agent/skills and <cwd>/.pi/skills
+  const defaultsResult = loadSkills({
+    cwd: resolvedCwd,
+    agentDir: join(homedir(), ".pi", "agent"),
+    skillPaths: [],
+    includeDefaults: true,
+  });
+
+  // Merge in precedence order: ancestors first, then home, then defaults.
+  // First match wins by name and by canonical path.
+  const nameSet = new Set<string>();
+  const realPathSet = new Set<string>();
+  const result: Skill[] = [];
+
+  for (const skill of [...ancestorsSkills, ...homeAgentsSkills]) {
+    const realPath = canonicalizePath(skill.filePath);
+    if (realPathSet.has(realPath) || nameSet.has(skill.name)) continue;
+    nameSet.add(skill.name);
+    realPathSet.add(realPath);
+    result.push(skill);
+  }
+
+  for (const skill of defaultsResult.skills) {
+    const realPath = canonicalizePath(skill.filePath);
+    if (realPathSet.has(realPath) || nameSet.has(skill.name)) continue;
+    nameSet.add(skill.name);
+    realPathSet.add(realPath);
+    result.push(skill);
+  }
+
+  return result;
+}
+
+/**
+ * Walk from cwd up to git root, loading skills from each .agents/skills directory.
+ * Filters out root .md files (Pi's exported API doesn't support "agents" mode).
+ */
+function loadAncestorAgentsSkills(resolvedCwd: string): Skill[] {
+  const gitRoot = findGitRoot(resolvedCwd);
+  const result: Skill[] = [];
+  let dir = resolvedCwd;
+
+  while (true) {
+    const agentsSkillsDir = join(dir, ".agents", "skills");
+    const dirResult = loadSkillsFromDir({
+      dir: agentsSkillsDir,
+      source: "agents",
+    });
+    result.push(...filterRootMdFiles(dirResult.skills, agentsSkillsDir));
+
+    if (dir === gitRoot) break;
+    const parent = resolve(dir, "..");
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+
+  return result;
+}
+
+/**
+ * Filter out root .md files from .agents/skills directories.
+ *
+ * loadSkillsFromDir always includes root .md files (includeRootFiles: true),
+ * but .agents/skills directories should only contain subdirectory skills.
+ * A root .md skill has a filePath whose parent is the skills root itself.
+ */
+function filterRootMdFiles(skills: Skill[], skillsRoot: string): Skill[] {
+  const normalizedRoot = resolve(skillsRoot);
+  return skills.filter((skill) => {
+    const parent = resolve(skill.filePath, "..");
+    return parent !== normalizedRoot;
+  });
+}
+
+/** Walk up from dir to find the git root (directory containing .git). */
+function findGitRoot(dir: string): string {
+  let current = resolve(dir);
+  while (true) {
+    try {
+      const entries = readdirSync(current);
+      if (entries.includes(".git")) return current;
+    } catch { /* ignore */ }
+    const parent = resolve(current, "..");
+    if (parent === current) return current; // filesystem root
+    current = parent;
+  }
+}
+
+/** Resolve path to canonical form, following symlinks. Falls back to raw path. */
+function canonicalizePath(filePath: string): string {
+  try { return realpathSync(filePath); } catch { return filePath; }
+}
+
+/** Extract description from skill content string (frontmatter). */
+function extractDescriptionFromContent(content: string): string {
+  if (!content) return "";
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!normalized.startsWith("---\n")) return "";
+  const endIndex = normalized.indexOf("\n---\n", 4);
+  if (endIndex === -1) return "";
+  const yamlString = normalized.slice(4, endIndex);
+  const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
+  if (descMatch?.[1]) {
+    const desc = descMatch[1].trim();
+    if (!desc) return "";
+    return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
+  }
+  return "";
 }
 
 export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill[] {
@@ -71,125 +195,40 @@ export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
     if (!location) {
       return { name, description: `(Skill "${name}" not found)`, location: "" };
     }
-    const description = extractDescription(location);
+    const description = findSkillDescription(name, cwd);
     return { name, description, location };
   });
 }
 
+/**
+ * Resolve skill name to raw file content across all roots.
+ */
 function loadSkillContent(name: string, cwd: string): string {
   if (isUnsafeName(name)) {
     return `(Skill "${name}" skipped: name contains path traversal characters)`;
   }
-  for (const root of getSkillRoots(cwd)) {
-    const content = findInRoot(root, name, "content");
-    if (content !== undefined) return content;
+  const skills = loadAllSkills(cwd);
+  const match = skills.find((s) => s.name === name);
+  if (!match) {
+    return `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`;
   }
-  return `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`;
+  try {
+    return readFileSync(match.filePath, "utf-8").trim();
+  } catch {
+    return `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`;
+  }
 }
 
-function findInRoot(root: string, name: string, mode: "content" | "location"): string | undefined {
-  if (isSymlink(root)) return undefined;
-  const flatPath = join(root, `${name}.md`);
-  if (mode === "location") {
-    if (existsSync(flatPath)) return flatPath;
-  } else {
-    const content = safeReadFile(flatPath)?.trim();
-    if (content !== undefined) return content;
-  }
-  return findSkillDirectory(root, name, mode);
+/** Find skill description from loaded skills. */
+function findSkillDescription(name: string, cwd: string): string {
+  const skills = loadAllSkills(cwd);
+  const match = skills.find((s) => s.name === name);
+  return match?.description ?? "(no description)";
 }
 
-/**
- * BFS under `root` for a directory named `name` containing `SKILL.md`.
- * Pi-conforming filters. Returns either the file content or the file path.
- */
-function findSkillDirectory(root: string, name: string, mode: "content" | "location"): string | undefined {
-  if (!existsSync(root)) return undefined;
-  const queue: string[] = [root];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined) continue;
-
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    // Deterministic byte-order traversal — locale-independent.
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-
-      // Symlinked dirs already filtered by entry.isDirectory() — Dirent uses lstat semantics.
-      const path = join(current, entry.name);
-      const skillMd = join(path, "SKILL.md");
-      const isSkillDir = existsSync(skillMd);
-
-      if (isSkillDir) {
-        if (entry.name === name) {
-          if (mode === "location") return skillMd;
-          const content = safeReadFile(skillMd)?.trim();
-          if (content !== undefined) return content;
-        }
-        continue; // Pi rule: skills don't nest — don't descend into a skill dir
-      }
-
-      queue.push(path);
-    }
-  }
-  return undefined;
-}
-
-/**
- * Find skill file location without reading content.
- * Returns the full path to the SKILL.md or .md file, or undefined if not found.
- */
+/** Find skill file path from loaded skills. */
 function findSkillLocation(name: string, cwd: string): string | undefined {
   if (isUnsafeName(name)) return undefined;
-  for (const root of getSkillRoots(cwd)) {
-    const location = findInRoot(root, name, "location");
-    if (location !== undefined) return location;
-  }
-  return undefined;
-}
-
-/** Extract description from SKILL.md frontmatter. */
-function extractDescription(filePath: string): string {
-  try {
-    const content = safeReadFile(filePath);
-    if (!content) return "(no description)";
-    return parseFrontmatterDescription(content) ?? "(no description)";
-  } catch {
-    return "(error reading description)";
-  }
-}
-
-/** Extract description from skill content string (frontmatter). */
-function extractDescriptionFromContent(content: string): string {
-  return content ? (parseFrontmatterDescription(content) ?? "") : "";
-}
-
-/**
- * Parse description from frontmatter content string.
- * Returns null if not found or invalid.
- */
-export function parseFrontmatterDescription(content: string): string | null {
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  if (!normalized.startsWith("---\n")) return null;
-  const endIndex = normalized.indexOf("\n---\n", 4);
-  if (endIndex === -1) return null;
-
-  const yamlString = normalized.slice(4, endIndex);
-  const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
-  if (descMatch && descMatch[1]) {
-    const desc = descMatch[1].trim();
-    if (!desc) return null; // Empty description after trimming
-    return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
-  }
-  return null;
+  const skills = loadAllSkills(cwd);
+  return skills.find((s) => s.name === name)?.filePath;
 }

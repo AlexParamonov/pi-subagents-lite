@@ -7,6 +7,7 @@
 
 import type { AgentConfig, EnvInfo, SystemPromptMode } from "./types.js";
 import type { SkillMeta, PreloadedSkill } from "./skill-loader.js";
+import { formatSkillsForPrompt, type Skill } from "@earendil-works/pi-coding-agent";
 
 /** Extra sections to inject into the system prompt (skills). */
 export interface PromptExtras {
@@ -96,20 +97,38 @@ export function buildAgentPrompt(
   const hasSkills = extras?.skillMetas?.length || extras?.skillBlocks?.length;
   let extrasSuffix = "";
   if (hasSkills) {
+    const skillLines: string[] = [];
+
+    // Location-based skills: use Pi's formatSkillsForPrompt for XML escaping and
+    // disable-model-invocation filtering, then extract the <skill> elements.
+    if (extras?.skillMetas?.length) {
+      const piSkills: Skill[] = extras.skillMetas.map((m) => ({
+        name: m.name,
+        description: m.description,
+        filePath: m.location,
+        baseDir: "",
+        sourceInfo: {} as any,
+        disableModelInvocation: false,
+      }));
+      const formatted = formatSkillsForPrompt(piSkills);
+      const skillElements = formatted.match(/<skill>[\s\S]*?<\/skill>/g);
+      if (skillElements) skillLines.push(...skillElements);
+    }
+
+    // Preloaded skills: content tags (not in Pi's formatSkillsForPrompt)
+    for (const skill of extras?.skillBlocks ?? []) {
+      skillLines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`);
+    }
+
     const lines = [
       "The following skills provide specialized instructions for specific tasks.",
       "Use the read tool to load a skill's file when the task matches its description.",
       "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
       "",
       "<available_skills>",
+      ...skillLines,
+      "</available_skills>",
     ];
-    for (const skill of extras?.skillMetas ?? []) {
-      lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><location>${escapeXml(skill.location)}</location></skill>`);
-    }
-    for (const skill of extras?.skillBlocks ?? []) {
-      lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`);
-    }
-    lines.push("</available_skills>");
     extrasSuffix = `\n\n${lines.join("\n")}`;
   }
 

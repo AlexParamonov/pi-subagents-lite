@@ -2,16 +2,47 @@
  * prompts.test.ts — Tests for system prompt building with skills.
  *
  * Covers:
- *   - buildAgentPrompt with skillMetas (compact one-line format)
+ *   - buildAgentPrompt with skillMetas (via formatSkillsForPrompt)
  *   - buildAgentPrompt with skillBlocks (preloaded in available_skills with content tag)
  *   - buildAgentPrompt with both (merged into single available_skills block)
- *   - XML escaping of special characters
+ *   - XML escaping of special characters (Pi's full XML escaping)
  *   - System prompt modes (replace, inherit, custom)
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { buildAgentPrompt } from "../src/prompts.ts";
 import type { AgentConfig, EnvInfo } from "../src/types.ts";
+
+vi.mock("@earendil-works/pi-coding-agent", async () => {
+  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>("@earendil-works/pi-coding-agent");
+  return {
+    ...actual,
+    formatSkillsForPrompt: vi.fn((skills: any[]) => {
+      if (skills.length === 0) return "";
+      const lines = [
+        "\n\nThe following skills provide specialized instructions for specific tasks.",
+        "Use the read tool to load a skill's file when the task matches its description.",
+        "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+        "",
+        "<available_skills>",
+      ];
+      for (const skill of skills) {
+        if (skill.disableModelInvocation) continue;
+        lines.push("  <skill>");
+        lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+        lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+        lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+        lines.push("  </skill>");
+      }
+      lines.push("</available_skills>");
+      return lines.join("\n");
+    }),
+  };
+});
+
+function escapeXml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
 
 const baseConfig: AgentConfig = {
   name: "test-agent",
@@ -28,7 +59,7 @@ const env: EnvInfo = {
 };
 
 describe("buildAgentPrompt", () => {
-  it("renders compact one-line skill elements for whitelist", () => {
+  it("renders skill elements for whitelist via formatSkillsForPrompt", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
         { name: "tdd", description: "TDD workflow", location: "/skills/tdd/SKILL.md" },
@@ -37,8 +68,13 @@ describe("buildAgentPrompt", () => {
     });
 
     expect(result).toContain("<available_skills>");
-    expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><location>/skills/tdd/SKILL.md</location></skill>");
-    expect(result).toContain("<skill><name>debug</name><description>Debugging workflow</description><location>/skills/debug/SKILL.md</location></skill>");
+    // Pi's formatSkillsForPrompt uses multi-line format with indentation
+    expect(result).toContain("<name>tdd</name>");
+    expect(result).toContain("<description>TDD workflow</description>");
+    expect(result).toContain("<location>/skills/tdd/SKILL.md</location>");
+    expect(result).toContain("<name>debug</name>");
+    expect(result).toContain("<description>Debugging workflow</description>");
+    expect(result).toContain("<location>/skills/debug/SKILL.md</location>");
     expect(result).toContain("</available_skills>");
     // Should include instruction to use read tool
     expect(result).toContain("Use the read tool to load a skill's file");
@@ -72,7 +108,9 @@ describe("buildAgentPrompt", () => {
 
     // Both in available_skills
     expect(result).toContain("<available_skills>");
-    expect(result).toContain("<skill><name>debug</name><description>Debug workflow</description><location>/skills/debug/SKILL.md</location></skill>");
+    expect(result).toContain("<name>debug</name>");
+    expect(result).toContain("<description>Debug workflow</description>");
+    expect(result).toContain("<location>/skills/debug/SKILL.md</location>");
     expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><content>Full TDD content here</content></skill>");
     // Single block
     const blockCount = (result.match(/<available_skills>/g) || []).length;
@@ -81,17 +119,17 @@ describe("buildAgentPrompt", () => {
     expect(result).not.toContain("# Preloaded Skill:");
   });
 
-  it("escapes < and > in skill metadata", () => {
+  it("escapes XML special characters in skill metadata (Pi's full escaping)", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "test", description: "Use <code> & \"quotes\"", location: "/path/to/skill" },
+        { name: "test", description: 'Use <code> & "quotes"', location: "/path/to/skill" },
       ],
     });
 
+    // Pi's escapeXml escapes all 5 XML entities
     expect(result).toContain("&lt;code&gt;");
-    // & and quotes are NOT escaped (readable for LLMs)
-    expect(result).toContain("&");
-    expect(result).toContain("\"quotes\"");
+    expect(result).toContain("&amp;");
+    expect(result).toContain("&quot;quotes&quot;");
   });
 
   it("returns no skill sections when no extras provided", () => {
