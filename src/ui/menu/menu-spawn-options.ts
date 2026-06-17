@@ -82,21 +82,17 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     },
   ];
 
-  const labels: Record<string, string> = {
-    forceBackground: "Force background",
-    defaultThinking: "Default thinking level",
-  };
-
   const onChange = (id: string, newValue: string) => {
     switch (id) {
       case "forceBackground":
         store.mutate.agent.setForceBackground(newValue === "ON");
+        ctx.ui.notify(`Force background set to ${newValue}`, "info");
         break;
       case "defaultThinking":
         store.mutate.agent.setDefaultThinking(newValue === "inherit" ? undefined : newValue as ThinkingLevel);
+        ctx.ui.notify(`Default thinking level set to ${newValue}`, "info");
         break;
     }
-    ctx.ui.notify(`${labels[id] ?? id} set to ${newValue}`, "info");
   };
 
   await ctx.ui.custom((_tui, theme, _kb, done) =>
