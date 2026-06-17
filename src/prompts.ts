@@ -40,13 +40,11 @@ export interface PromptExtras {
 export function stripScaffolding(prompt: string): string {
   let result = prompt;
 
-  // 1. Strip <project_context>...</project_context> block (and surrounding whitespace)
-  result = result.replace(/\n?<[\s]*project_context[\s]*>[\s\S]*?<[\s]*\/[\s]*project_context[\s]*>\n?/g, "\n");
+  // 1. Strip <project_context>...</project_context> block
+  result = result.replace(/\n?<\s*project_context\s*>[\s\S]*?<\/\s*project_context\s*>\n?/g, "\n");
 
-  // 2. Strip skills block: multi-line intro text + <available_skills>...</available_skills>
-  //    The intro starts with "The following skills provide" and ends just before <available_skills>
-  //    Also handles bare <available_skills> blocks without the intro.
-  result = result.replace(/\n?(?:The following skills provide[\s\S]*?)?<[\s]*available_skills[\s]*>[\s\S]*?<[\s]*\/[\s]*available_skills[\s]*>\n?/g, "\n");
+  // 2. Strip skills block: optional intro text + <available_skills>...</available_skills>
+  result = result.replace(/\n?(?:The following skills provide[\s\S]*?)?<\s*available_skills\s*>[\s\S]*?<\/\s*available_skills\s*>\n?/g, "\n");
 
   // 3. Strip Current date: line
   result = result.replace(/\n?Current date:.*\n?/g, "\n");
