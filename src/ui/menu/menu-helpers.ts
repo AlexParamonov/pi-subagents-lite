@@ -5,11 +5,14 @@
  *   - runMenuLoop: loops a menu until Escape/Back
  *   - runMenu: shows a single-shot menu and dispatches
  *   - promptModelSelection: shows ModelSelectorDialog
- *   - parseNumericInput: validates numeric input
+ *   - parseNumericInput: validates numeric input (uses ctx.ui.input)
+ *   - buildSettingsListTheme: builds SettingsListTheme from pi-coding-agent Theme
+ *   - validateNumeric: pure numeric validation (no UI)
  *   - matchMenuChoice: maps choice string to handler key
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { SettingsListTheme } from "@earendil-works/pi-tui";
 import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
 import { parseModelKey } from "../../utils.js";
 
@@ -113,6 +116,30 @@ export async function runMenuLoop(
       await actions[idx]();
     }
   }
+}
+
+/**
+ * Build a SettingsListTheme from a pi-coding-agent Theme.
+ * Shared by widget settings and future SettingsList-based menus.
+ */
+export function buildSettingsListTheme(theme: { fg(color: string, text: string): string; bold(text: string): string; italic(text: string): string }): SettingsListTheme {
+  return {
+    label: (text, selected) => selected ? theme.bold(theme.fg("accent", text)) : text,
+    value: (text, selected) => selected ? theme.fg("accent", text) : theme.fg("muted", text),
+    description: (text) => theme.italic(theme.fg("muted", text)),
+    cursor: theme.fg("accent", ">"),
+    hint: (text) => theme.fg("dim", text),
+  };
+}
+
+/**
+ * Pure numeric validation. Returns parsed integer ≥ min, or undefined.
+ * Extracted from parseNumericInput for use in submenu Components.
+ */
+export function validateNumeric(value: string, min: number): number | undefined {
+  const parsed = parseInt(value.trim(), 10);
+  if (isNaN(parsed) || parsed < min) return undefined;
+  return parsed;
 }
 
 /** Map menu choice to handler. Matches by number prefix or first word. */

@@ -1,77 +1,127 @@
 /**
  * menu-widget-settings.ts — Widget settings menu concern.
  *
+ * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
+ * SettingsList maintains internal cursor state, fixing the cursor-position
+ * reset bug that occurred with ctx.ui.select.
+ *
+ * Structure:
+ *   Main list: compact, maxLines, maxLinesCompact, shortcut, usageStats
+ *   Usage stats submenu: 7 stat visibility toggles
+ *
  * Exports:
- *   - showWidgetSettingsMenu: compact mode, max lines (full/compact), Ctrl+o shortcut,
- *     stat visibility toggles (tools, turns, input, output, context, cost, time)
+ *   - showWidgetSettingsMenu
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { runMenuLoop, parseNumericInput } from "./menu-helpers.js";
+import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
+import { buildSettingsListTheme, validateNumeric } from "./menu-helpers.js";
 import { getStore } from "../../shell.js";
 
+/** Stat visibility config — label and store accessors keyed by stat id. */
+function buildStatConfig(store: ReturnType<typeof getStore>) {
+  return new Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>([
+    ["showTools", { label: "Show tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
+    ["showTurns", { label: "Show turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
+    ["showInput", { label: "Show input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) }],
+    ["showOutput", { label: "Show output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) }],
+    ["showContext", { label: "Show context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) }],
+    ["showCost", { label: "Show cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) }],
+    ["showTime", { label: "Show time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) }],
+  ]);
+}
+
 export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Promise<void> {
-  return runMenuLoop(ctx, "Widget Settings", () => {
-    const items: string[] = [];
-    const actions: Array<() => Promise<void>> = [];
-    const store = getStore();
+  const store = getStore();
+  const statConfig = buildStatConfig(store);
 
-    // Force compact mode toggle
-    const isForceCompact = store.agent.widgetCompact;
-    items.push(`Force compact mode · ${isForceCompact ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      store.mutate.widget.setCompact(!isForceCompact);
-      ctx.ui.notify(`Force compact mode ${store.agent.widgetCompact ? "ON" : "OFF"}`, "info");
-    });
-
-    // Max lines (full mode)
-    const maxLines = store.agent.widgetMaxLines;
-    items.push(`Max lines (full) · ${maxLines}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Max lines (full mode, ≥ 2)", String(maxLines), 2, "≥ 2");
-      if (parsed === undefined) return;
-      store.mutate.widget.setMaxLines(parsed);
-      ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
-    });
-
-    // Max lines (compact mode)
-    const maxLinesCompact = store.agent.widgetMaxLinesCompact;
-    items.push(`Max lines (compact) · ${maxLinesCompact}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Max lines (compact mode, ≥ 1)", String(maxLinesCompact), 1, "≥ 1");
-      if (parsed === undefined) return;
-      store.mutate.widget.setMaxLinesCompact(parsed);
-      ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
-    });
-
-    // Ctrl+o shortcut toggle
-    const shortcutEnabled = store.agent.widgetShortcut;
-    items.push(`Ctrl+o shortcut · ${shortcutEnabled ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      store.mutate.widget.setShortcut(!shortcutEnabled);
-      ctx.ui.notify(`Ctrl+o shortcut ${store.agent.widgetShortcut ? "ON" : "OFF"}`, "info");
-    });
-
-    // Stat visibility toggles
-    const statToggles: Array<{ label: string; getter: () => boolean; setter: (v: boolean) => void }> = [
-      { label: "Show tools", getter: () => store.agent.showTools, setter: (v) => store.mutate.agent.setShowTools(v) },
-      { label: "Show turns", getter: () => store.agent.showTurns, setter: (v) => store.mutate.agent.setShowTurns(v) },
-      { label: "Show input tokens", getter: () => store.agent.showInput, setter: (v) => store.mutate.agent.setShowInput(v) },
-      { label: "Show output tokens", getter: () => store.agent.showOutput, setter: (v) => store.mutate.agent.setShowOutput(v) },
-      { label: "Show context %", getter: () => store.agent.showContext, setter: (v) => store.mutate.agent.setShowContext(v) },
-      { label: "Show cost", getter: () => store.agent.showCost, setter: (v) => store.mutate.agent.setShowCost(v) },
-      { label: "Show time", getter: () => store.agent.showTime, setter: (v) => store.mutate.agent.setShowTime(v) },
-    ];
-
-    for (const toggle of statToggles) {
-      const enabled = toggle.getter();
-      items.push(`${toggle.label} · ${enabled ? "ON" : "OFF"}`);
-      actions.push(async () => {
-        toggle.setter(!enabled);
-        ctx.ui.notify(`${toggle.label} ${toggle.getter() ? "ON" : "OFF"}`, "info");
-      });
+  const onChange = (id: string, newValue: string) => {
+    const stat = statConfig.get(id);
+    if (stat) {
+      stat.set(newValue === "ON");
+      ctx.ui.notify(`${stat.label} ${newValue}`, "info");
+      return;
     }
 
-    return { items, actions };
+    switch (id) {
+      case "compact":
+        store.mutate.widget.setCompact(newValue === "ON");
+        ctx.ui.notify(`Force compact mode ${newValue}`, "info");
+        break;
+      case "shortcut":
+        store.mutate.widget.setShortcut(newValue === "ON");
+        ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
+        break;
+    }
+  };
+
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const numericSubmenu = (
+      min: number,
+      onValid: (parsed: number) => void,
+    ) => (currentValue: string, doneSub: (selectedValue?: string) => void) => {
+      const input = new Input();
+      input.setValue(currentValue);
+      input.onSubmit = (value) => {
+        const parsed = validateNumeric(value, min);
+        if (parsed === undefined) {
+          ctx.ui.notify(`Invalid value — must be a number ≥ ${min}`, "error");
+          return;
+        }
+        onValid(parsed);
+        doneSub(String(parsed));
+      };
+      input.onEscape = () => doneSub();
+      return input;
+    };
+
+    const statItems: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
+      id,
+      label: cfg.label,
+      currentValue: cfg.get() ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+    }));
+
+    const items: SettingItem[] = [
+      {
+        id: "compact",
+        label: "Force compact mode",
+        currentValue: store.agent.widgetCompact ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+      },
+      {
+        id: "maxLines",
+        label: "Max lines (full)",
+        currentValue: String(store.agent.widgetMaxLines),
+        submenu: numericSubmenu(2, (parsed) => {
+          store.mutate.widget.setMaxLines(parsed);
+          ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
+        }),
+      },
+      {
+        id: "maxLinesCompact",
+        label: "Max lines (compact)",
+        currentValue: String(store.agent.widgetMaxLinesCompact),
+        submenu: numericSubmenu(1, (parsed) => {
+          store.mutate.widget.setMaxLinesCompact(parsed);
+          ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+        }),
+      },
+      {
+        id: "shortcut",
+        label: "Ctrl+o shortcut",
+        currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+      },
+      {
+        id: "usageStats",
+        label: "Usage stats",
+        currentValue: "",
+        submenu: (_currentValue, done2) =>
+          new SettingsList(statItems, 7, buildSettingsListTheme(theme), onChange, () => done2()),
+      },
+    ];
+
+    return new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
   });
 }

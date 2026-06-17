@@ -3,24 +3,23 @@ Status: APPROVED
 # Review Summary
 
 Files reviewed:
-- `src/config/config-store.ts` (diff 47f93e1..79ba997)
-- `test/config-store.test.ts` (diff 47f93e1..79ba997)
+- `src/ui/menu/menu-widget-settings.ts`
+- `test/build-settings-list-theme.test.ts`
 
-Issues found:
-- 0 critical, 0 important, 0 suggestions
+Issues found: 0 critical, 0 important, 0 suggestions
 
-## Fix Verification
+## Previous Review Items — Verified Resolved
 
-The critical issue from review-1 is resolved. Commit `79ba997` adds `this.syncWidgetStatsVisibility()` to all three `setShowCost` paths:
+### Dead setter code → Data-driven onChange (Confidence: 100)
 
-1. **Permanent config** (`config-store.ts:215`): `mutate.agent.setShowCost` now calls `syncWidgetStatsVisibility()` after persisting and calling `widget.setShowCost`. ✓
-2. **Session override** (`config-store.ts:359`): `mutate.session.setShowCost` now calls `syncWidgetStatsVisibility()` after setting `sessionShowCost`. ✓
-3. **Session clear** (`config-store.ts:365`): `mutate.session.clearShowCost` now calls `syncWidgetStatsVisibility()` after clearing `sessionShowCost`. ✓
+`buildStatToggleItems` now returns `StatToggleItem[]` with a `set` closure on each item. `onChange` uses `statItems.find()` to look up the matching stat and calls `stat.set(newValue === "ON")` directly. The 7 duplicated switch cases are gone. Adding a new stat toggle now only requires one entry in the `defs` array.
 
-The `agent` getter (`config-store.ts:114`) resolves `showCost` as `this.sessionShowCost ?? (a.showCost === true)`, so `syncWidgetStatsVisibility` correctly picks up whichever value is active when it reads `this.agent.showCost`.
+### Weak theme tests → Exact output assertions (Confidence: 100)
 
-## Tests
+Every test now uses `.toBe()` with the exact styled output (e.g. `"**<accent>Test</accent>**"` instead of `.toContain("Test")`). The mock theme's distinctive markers (`<accent>`, `**`, `<muted>`, `<dim>`, `_`) make each assertion precise. Tests will now fail if styling logic regresses.
 
-Four assertions added in `config-store.test.ts`, all verifying `setStatsVisibility` is called after each path. The `widgetStub` mock tracks calls to `setStatsVisibility` with serialized arguments, so these are behavior assertions, not existence checks.
+## Checks
 
-Tests pass (738/738). Typecheck clean.
+- **Typecheck:** clean
+- **Tests:** 42 files, 792 tests pass
+- **No regressions:** diff is scoped to the two fixes only

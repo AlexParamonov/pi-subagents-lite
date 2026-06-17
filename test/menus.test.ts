@@ -160,10 +160,11 @@ describe("showSettingsMenu", () => {
   it("opens Widget settings when selected", async () => {
     const ctx = createMockCtx([selectByName("widget"), undefined]);
     await showSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.select).toHaveBeenCalledTimes(3);
+    // Widget settings now uses ctx.ui.custom (not ctx.ui.select)
+    expect(ctx.ui.select).toHaveBeenCalledTimes(2);
     expect(ctx.ui.select.mock.calls[0][0]).toBe("Settings");
-    expect(ctx.ui.select.mock.calls[1][0]).toBe("Widget Settings");
-    expect(ctx.ui.select.mock.calls[2][0]).toBe("Settings");
+    expect(ctx.ui.custom).toHaveBeenCalled();
+    expect(ctx.ui.select.mock.calls[1][0]).toBe("Settings");
   });
 });
 
@@ -221,12 +222,13 @@ describe("showAgentsMainMenu — settings sub-menu integration", () => {
   it("navigates through Settings to Widget settings", async () => {
     const ctx = createMockCtx([selectByName("settings"), selectByName("widget"), undefined, undefined, undefined]);
     await showAgentsMainMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.select).toHaveBeenCalledTimes(5);
+    // Widget settings now uses ctx.ui.custom (not ctx.ui.select)
+    expect(ctx.ui.select).toHaveBeenCalledTimes(4);
     expect(ctx.ui.select.mock.calls[0][0]).toBe("Subagents Management");
     expect(ctx.ui.select.mock.calls[1][0]).toBe("Settings");
-    expect(ctx.ui.select.mock.calls[2][0]).toBe("Widget Settings");
-    expect(ctx.ui.select.mock.calls[3][0]).toBe("Settings");
-    expect(ctx.ui.select.mock.calls[4][0]).toBe("Subagents Management");
+    expect(ctx.ui.custom).toHaveBeenCalled();
+    expect(ctx.ui.select.mock.calls[2][0]).toBe("Settings");
+    expect(ctx.ui.select.mock.calls[3][0]).toBe("Subagents Management");
   });
 });
 
