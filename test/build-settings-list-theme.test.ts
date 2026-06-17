@@ -24,44 +24,38 @@ describe("buildSettingsListTheme", () => {
     expect(theme).toHaveProperty("hint");
   });
 
-  it("label function applies accent color when selected", () => {
+  it("label applies bold + accent when selected", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    const result = theme.label("Test", true);
-    expect(result).toContain("Test");
+    expect(theme.label("Test", true)).toBe("**<accent>Test</accent>**");
   });
 
-  it("label function returns plain text when not selected", () => {
+  it("label returns plain text when not selected", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    const result = theme.label("Test", false);
-    expect(result).toContain("Test");
+    expect(theme.label("Test", false)).toBe("Test");
   });
 
-  it("value function applies styling when selected", () => {
+  it("value uses accent when selected", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    const result = theme.value("ON", true);
-    expect(result).toContain("ON");
+    expect(theme.value("ON", true)).toBe("<accent>ON</accent>");
   });
 
-  it("value function returns plain text when not selected", () => {
+  it("value uses muted when not selected", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    const result = theme.value("ON", false);
-    expect(result).toContain("ON");
+    expect(theme.value("ON", false)).toBe("<muted>ON</muted>");
   });
 
-  it("description function styles the text", () => {
+  it("description uses italic + muted", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    const result = theme.description("Some description");
-    expect(result).toContain("Some description");
+    expect(theme.description("Some description")).toBe("_<muted>Some description</muted>_");
   });
 
-  it("cursor is a non-empty string", () => {
+  it("cursor uses accent", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    expect(theme.cursor.length).toBeGreaterThan(0);
+    expect(theme.cursor).toBe("<accent>></accent>");
   });
 
-  it("hint function styles the text", () => {
+  it("hint uses dim", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    const result = theme.hint("Press Enter to toggle");
-    expect(result).toContain("Press Enter to toggle");
+    expect(theme.hint("Press Enter to toggle")).toBe("<dim>Press Enter to toggle</dim>");
   });
 });

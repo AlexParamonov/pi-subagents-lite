@@ -18,23 +18,29 @@ import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, validateNumeric } from "./menu-helpers.js";
 import { getStore } from "../../shell.js";
 
+/** Stat toggle with store setter — used for data-driven onChange. */
+interface StatToggleItem extends SettingItem {
+  set: (value: boolean) => void;
+}
+
 /** Stat visibility toggle definitions (shared between main and submenu). */
-function buildStatToggleItems(store: ReturnType<typeof getStore>): SettingItem[] {
-  const statToggles: Array<{ id: string; label: string; getter: () => boolean; setter: (v: boolean) => void }> = [
-    { id: "showTools", label: "Show tools", getter: () => store.agent.showTools, setter: (v) => store.mutate.agent.setShowTools(v) },
-    { id: "showTurns", label: "Show turns", getter: () => store.agent.showTurns, setter: (v) => store.mutate.agent.setShowTurns(v) },
-    { id: "showInput", label: "Show input tokens", getter: () => store.agent.showInput, setter: (v) => store.mutate.agent.setShowInput(v) },
-    { id: "showOutput", label: "Show output tokens", getter: () => store.agent.showOutput, setter: (v) => store.mutate.agent.setShowOutput(v) },
-    { id: "showContext", label: "Show context %", getter: () => store.agent.showContext, setter: (v) => store.mutate.agent.setShowContext(v) },
-    { id: "showCost", label: "Show cost", getter: () => store.agent.showCost, setter: (v) => store.mutate.agent.setShowCost(v) },
-    { id: "showTime", label: "Show time", getter: () => store.agent.showTime, setter: (v) => store.mutate.agent.setShowTime(v) },
+function buildStatToggleItems(store: ReturnType<typeof getStore>): StatToggleItem[] {
+  const defs: Array<{ id: string; label: string; get: () => boolean; set: (v: boolean) => void }> = [
+    { id: "showTools", label: "Show tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) },
+    { id: "showTurns", label: "Show turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) },
+    { id: "showInput", label: "Show input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) },
+    { id: "showOutput", label: "Show output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) },
+    { id: "showContext", label: "Show context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) },
+    { id: "showCost", label: "Show cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) },
+    { id: "showTime", label: "Show time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) },
   ];
 
-  return statToggles.map((t) => ({
-    id: t.id,
-    label: t.label,
-    currentValue: t.getter() ? "ON" : "OFF",
+  return defs.map((d) => ({
+    id: d.id,
+    label: d.label,
+    currentValue: d.get() ? "ON" : "OFF",
     values: ["ON", "OFF"],
+    set: d.set,
   }));
 }
 
@@ -69,6 +75,15 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   const statItems = buildStatToggleItems(store);
 
   const onChange = (id: string, newValue: string) => {
+    // Stat toggles are data-driven via their set() closures
+    const stat = statItems.find((s) => s.id === id);
+    if (stat) {
+      stat.set(newValue === "ON");
+      ctx.ui.notify(`${stat.label} ${newValue}`, "info");
+      return;
+    }
+
+    // Non-stat items (compact, shortcut) handled directly
     switch (id) {
       case "compact":
         store.mutate.widget.setCompact(newValue === "ON");
@@ -77,34 +92,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       case "shortcut":
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
-        break;
-      case "showTools":
-        store.mutate.agent.setShowTools(newValue === "ON");
-        ctx.ui.notify(`Show tools ${newValue}`, "info");
-        break;
-      case "showTurns":
-        store.mutate.agent.setShowTurns(newValue === "ON");
-        ctx.ui.notify(`Show turns ${newValue}`, "info");
-        break;
-      case "showInput":
-        store.mutate.agent.setShowInput(newValue === "ON");
-        ctx.ui.notify(`Show input tokens ${newValue}`, "info");
-        break;
-      case "showOutput":
-        store.mutate.agent.setShowOutput(newValue === "ON");
-        ctx.ui.notify(`Show output tokens ${newValue}`, "info");
-        break;
-      case "showContext":
-        store.mutate.agent.setShowContext(newValue === "ON");
-        ctx.ui.notify(`Show context % ${newValue}`, "info");
-        break;
-      case "showCost":
-        store.mutate.agent.setShowCost(newValue === "ON");
-        ctx.ui.notify(`Show cost ${newValue}`, "info");
-        break;
-      case "showTime":
-        store.mutate.agent.setShowTime(newValue === "ON");
-        ctx.ui.notify(`Show time ${newValue}`, "info");
         break;
     }
   };
