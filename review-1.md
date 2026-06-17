@@ -1,61 +1,145 @@
-Status: APPROVED
+Status: NEEDS_REVISION
 
 # Review Summary
 
 Files reviewed:
-- `src/prompts.ts` (diff: +50/-4)
-- `test/prompts.test.ts` (diff: +226)
+- `src/skill-loader.ts`
+- `src/prompts.ts`
+- `test/skill-loader.test.ts`
+- `test/prompts.test.ts`
 
 Issues found:
-- 0 critical, 0 important, 0 suggestions
+- 1 critical, 1 important, 1 suggestion
 
-## Acceptance Criteria Coverage
+## [CRITICAL] `disableModelInvocation` hardcoded to `false` defeats the filtering
 
-| Criterion | Verdict | Evidence |
-|---|---|---|
-| Strip `<project_context>...</project_context>` | ✅ | Regex on line 53 + test "strips <project_context> block" |
-| Strip skills block (intro + `<available_skills>`) | ✅ | Regex on line 59 + test "strips skills block" |
-| Strip `Current date:` line | ✅ | Regex on line 63 + dedicated test |
-| Strip `Current working directory:` line | ✅ | Regex on line 66 + dedicated test |
-| Preserve base prompt content | ✅ | "strips all scaffolding sections together" asserts base content present |
-| Idempotent (absent sections) | ✅ | "is idempotent" test, plus "handles empty parent prompt" |
-| `includeContextFiles: true` still injects AGENTS.md | ✅ | Dedicated test verifies old stripped, new injected |
-| `includeContextFiles: false` no regression | ✅ | Existing context-files describe block unchanged |
-| Per-agent `skills` still controls injection | ✅ | Dedicated test verifies old stripped, new injected |
-| Replace mode unaffected | ✅ | Existing replace mode test unchanged + new regression test |
-| Custom mode unaffected | ✅ | Existing custom mode test unchanged + new regression test |
+Confidence: 95/100
+Location: `src/prompts.ts:106-114`
+Problem: When constructing `Skill[]` for `formatSkillsForPrompt`, the code hardcodes `disableModelInvocation: false` for every skill:
 
-## Implementation Analysis
+```ts
+const piSkills: Skill[] = extras.skillMetas.map((m) => ({
+  name: m.name,
+  description: m.description,
+  filePath: m.location,
+  baseDir: "",
+  sourceInfo: {} as any,
+  disableModelInvocation: false,  // ← always false
+}));
+```
 
-**`stripScaffolding` (lines 40-73):** Clean, well-documented function. Each regex targets a specific scaffolding delimiter per the issue's constraint. The approach is sound:
+This means `formatSkillsForPrompt` will never filter out a skill marked `disable-model-invocation: true` in its frontmatter. The comment on line 102 even says "disable-model-invocation filtering" is the intended purpose, but the flag is never passed through.
 
-1. Non-greedy `[\s\S]*?` correctly matches across lines without over-reaching.
-2. The optional non-capturing group `(?:The following skills provide[\s\S]*?)?` handles both with-intro and without-intro skills blocks.
-3. Newline cleanup (`\n{3,}` → `\n\n`) + `trim()` prevents whitespace artifacts.
-4. Only called in inherit mode with a truthy `rawHeader` (line 146-147), so replace/custom modes are completely unaffected.
+Why it matters: Acceptance criterion: "Skills with `disable-model-invocation: true` in frontmatter are excluded from the `<available_skills>` prompt block (handled by `formatSkillsForPrompt`)". This criterion is not met.
 
-**Existing test compatibility:** The inherit mode test at line 129 passes `parentPrompt = "You are the parent agent..."` (no scaffolding). `stripScaffolding` returns it unchanged. The `startsWith(parentPrompt)` assertion still holds. No regression.
+Fix: Add `disableModelInvocation` to the `SkillMeta` interface and thread it from `loadAllSkills` results. `Pi's Skill` type already carries the correct value from frontmatter parsing.
 
-## Test Quality
+In `src/skill-loader.ts`, update `SkillMeta` and `loadSkillMeta`:
 
-13 new tests in the `buildAgentPrompt — inherit mode scaffolding stripping` describe block. All tests:
+```ts
+export interface SkillMeta {
+  name: string;
+  description: string;
+  location: string;
+  disableModelInvocation: boolean;
+  content?: string;
+}
 
-- **Use public API** (`buildAgentPrompt`) — no deep internal access to `stripScaffolding`
-- **Test behavior, not existence** — assert what's present/absent in output, not `respond_to?` or type checks
-- **Self-contained** — each test creates its own parent prompt, no shared mutable state
-- **Descriptive names** — test titles document the exact scenario
-- **One concept per test** — individual sections tested separately, then combined
-- **Cover edge cases** — empty prompt, only-scaffolding prompt, special characters, idempotency
+// In loadSkillMeta:
+export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
+  const skills = loadAllSkills(cwd);  // single call
+  return skillNames.map((name) => {
+    const match = skills.find((s) => s.name === name);
+    if (!match) {
+      return {
+        name,
+        description: `(Skill "${name}" not found)`,
+        location: "",
+        disableModelInvocation: false,
+      };
+    }
+    return {
+      name,
+      description: match.description ?? "(no description)",
+      location: match.filePath,
+      disableModelInvocation: match.disableModelInvocation ?? false,
+    };
+  });
+}
+```
 
-The tests verify the critical integration properties:
-- Old context stripped, new context injected (line 464-469)
-- Old skills stripped, new skills injected (line 483-489)
-- Fallback to replace mode when prompt is empty (line 417-423)
-- No cross-mode contamination (lines 495-507)
+In `src/prompts.ts`, use the real value:
 
-## Strengths
+```ts
+const piSkills: Skill[] = extras.skillMetas.map((m) => ({
+  name: m.name,
+  description: m.description,
+  filePath: m.location,
+  baseDir: "",
+  sourceInfo: {} as any,
+  disableModelInvocation: m.disableModelInvocation ?? false,
+}));
+```
 
-1. Minimal footprint — one exported function + one conditional in `buildAgentPrompt`. No changes to `agent-runner.ts` needed.
-2. Regex patterns are targeted to known scaffolding delimiters, not arbitrary XML stripping.
-3. The `mode === "inherit" && rawHeader` guard handles undefined, empty string, and whitespace-only parent prompts gracefully (falls back to replace mode).
-4. Good defensive coding: `[\s]*` inside tag brackets handles minor formatting variations.
+Note: This also fixes the double `loadAllSkills` call in `loadSkillMeta` (see suggestion below).
+
+## [IMPORTANT] Test for `extractDescriptionFromContent` doesn't test description extraction
+
+Confidence: 85/100
+Location: `test/skill-loader.test.ts:379-383`
+Problem: The test named `extractDescriptionFromContent` only tests the "not found" path:
+
+```ts
+describe("extractDescriptionFromContent", () => {
+  it("returns empty string when no description in content", () => {
+    const result = preloadSkills(["nonexistent"], tmpDir);
+    expect(result[0].description).toBe("");
+  });
+});
+```
+
+The old `parseFrontmatterDescription` tests (valid frontmatter, no frontmatter, unclosed frontmatter, empty description, CRLF, quote stripping, truncation) were all removed. The replacement test doesn't exercise the regex extraction at all. If the `extractDescriptionFromContent` regex broke, no test would catch it.
+
+Why it matters: The regex-based frontmatter parsing in `extractDescriptionFromContent` has edge cases (CRLF, unclosed frontmatter, quote stripping, truncation) that were previously tested. This is a regression in test coverage.
+
+Fix: Add tests for `extractDescriptionFromContent` covering the key behaviors. Since it's now internal, test through `preloadSkills` with mocked `loadSkills` returning skills whose file content exercises the parser:
+
+```ts
+describe("extractDescriptionFromContent", () => {
+  it("extracts description from frontmatter in skill content", () => {
+    createSkillDir(tmpDir, "test-skill", "My skill description", "Body");
+    const skillPath = join(tmpDir, ".pi", "skills", "test-skill", "SKILL.md");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("test-skill", "My skill description", skillPath)],
+      diagnostics: [],
+    });
+    const result = preloadSkills(["test-skill"], tmpDir);
+    expect(result[0].description).toBe("My skill description");
+  });
+
+  it("returns empty description when content has no frontmatter", () => {
+    const skillPath = join(tmpDir, ".pi", "skills", "plain", "SKILL.md");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("plain", "", skillPath)],
+      diagnostics: [],
+    });
+    // Write plain content without frontmatter
+    mkdirSync(join(tmpDir, ".pi", "skills", "plain"), { recursive: true });
+    writeFileSync(skillPath, "Just body text, no frontmatter.");
+    const result = preloadSkills(["plain"], tmpDir);
+    expect(result[0].description).toBe("");
+  });
+});
+```
+
+## [SUGGESTION] Unused `writeFileSync` import in test file
+
+Confidence: 80/100
+Location: `test/skill-loader.test.ts:5`
+Problem: `writeFileSync` is imported but never used in the test file. The old code used it; the refactored tests use the fixture helpers instead.
+
+Fix: Remove `writeFileSync` from the import:
+
+```ts
+import { mkdirSync, rmSync } from "node:fs";
+```
