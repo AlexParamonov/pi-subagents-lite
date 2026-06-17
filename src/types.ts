@@ -39,6 +39,8 @@ export interface AgentConfig {
   model?: string;
   thinking?: ThinkingLevel;
   maxTurns?: number;
+  /** Max output tokens per LLM response. Passed to provider as max_tokens or max_completion_tokens. */
+  maxTokens?: number;
   systemPrompt: string;
 
   /** true = this is an embedded default agent (informational) */

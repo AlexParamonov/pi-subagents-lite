@@ -88,6 +88,7 @@ extensions: none
 skills: all
 thinking: high
 max_turns: "50"
+max_tokens: "2048"
 hidden: "false"
 ---
 
@@ -103,6 +104,7 @@ This is the system prompt body.
     expect(result.skills).toBe(true); // "all" → true
     expect(result.thinking).toBe("high");
     expect(result.max_turns).toBe(50);
+    expect(result.max_tokens).toBe(2048);
     expect(result.hidden).toBe(false);
     expect(result.systemPrompt).toBe("This is the system prompt body.");
     expect(result.source).toBe("user");
@@ -124,6 +126,7 @@ Just a body.
     expect(result.skills).toBeUndefined();
     expect(result.thinking).toBeUndefined();
     expect(result.max_turns).toBeUndefined();
+    expect(result.max_tokens).toBeUndefined();
     expect(result.hidden).toBeUndefined();
     expect(result.systemPrompt).toBe("Just a body.");
     expect(result.source).toBe("project");
@@ -186,6 +189,13 @@ body
     const result = parseAgentFile(content, "test.md", "user");
     expect(result.max_turns).toBe(10);
   });
+
+  it("parses max_tokens as number", () => {
+    const content = makeAgentMd({ max_tokens: "1024" });
+    const result = parseAgentFile(content, "test.md", "user");
+    expect(result.max_tokens).toBe(1024);
+  });
+
 
   it("ignores unknown frontmatter fields", () => {
     const content = `---
