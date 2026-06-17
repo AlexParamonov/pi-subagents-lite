@@ -6,12 +6,12 @@
  */
 
 import type { AgentConfig, EnvInfo } from "./types.js";
-import type { SkillMeta } from "./skill-loader.js";
+import type { SkillMeta, PreloadedSkill } from "./skill-loader.js";
 
 /** Extra sections to inject into the system prompt (skills). */
 export interface PromptExtras {
   /** Preloaded skill contents to inject (full content + description). */
-  skillBlocks?: { name: string; description: string; content: string }[];
+  skillBlocks?: PreloadedSkill[];
   /** Skill metadata for whitelist display (name, description, location only). */
   skillMetas?: SkillMeta[];
 }

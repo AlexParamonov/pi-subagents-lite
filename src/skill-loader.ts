@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { isSymlink, isUnsafeName, safeReadFile } from "./utils.js";
 
-interface PreloadedSkill {
+export interface PreloadedSkill {
   name: string;
   description: string;
   content: string;

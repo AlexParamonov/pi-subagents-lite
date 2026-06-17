@@ -234,7 +234,7 @@ describe("parseFrontmatterDescription", () => {
     const content = `---\nname: test\ndescription: ${longDesc}\n---\n\nBody`;
     const result = parseFrontmatterDescription(content);
     expect(result).toHaveLength(200);
-    expect(result).toEndWith("...");
+    expect(result!.endsWith("...")).toBe(true);
   });
 
   it("strips quotes from description value", () => {
