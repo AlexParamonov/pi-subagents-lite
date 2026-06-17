@@ -1,4 +1,4 @@
-Status: NEEDS_REVISION
+Status: APPROVED
 
 # Review Summary
 
@@ -15,159 +15,91 @@ Files reviewed:
 - `test/menus.test.ts`
 - `test/prompts.test.ts`
 
-Issues found:
-- 0 critical, 4 important, 2 suggestions
+Prior review issues addressed:
+- 4/4 important issues fixed
+- 1/2 suggestions fixed ("Create prompt file" test coverage added)
+- 1/2 suggestions deferred (union type alias — see below)
+
+New issues found: 0
 
 ---
 
-## [IMPORTANT] agent-runner.ts test shell mock missing `setSystemPromptMode` and not parameterizable
+## Acceptance Criteria Verification
 
-Confidence: 95/100
-Location: `test/agent-runner.test.ts:74-84`
+| Criterion | Status | Evidence |
+|---|---|---|
+| `systemPromptMode` added to `SubagentsConfig.agent` | ✅ | `model-precedence.ts:27`, `config-store.ts:47` |
+| Default is `"replace"` | ✅ | `config-io.ts:22`, `config-store.ts:86` fallback |
+| Settings menu shows mode + allows switching (permanent) | ✅ | `menus.ts:357-371`, `config-store.ts:188` mutation |
+| `inherit` mode: `ctx.getSystemPrompt()` fetched at spawn | ✅ | `agent-runner.ts:549-555` |
+| `custom` mode: reads `~/.pi/agent/subagents-lite-prompt.md` | ✅ | `agent-runner.ts:558-573` |
+| Missing/empty custom file: fallback + notify | ✅ | `agent-runner.ts:567-572` (empty), `:569` (ENOENT) |
+| Unreadable custom file: fallback + notify | ✅ | `agent-runner.ts:571` (other errors) |
+| "Create prompt file" menu item when file absent | ✅ | `menus.ts:372-384` |
+| Agent's systemPrompt always in `<agent_instructions>` | ✅ | `prompts.ts:99`, all three modes |
+| `<active_agent>` after parent prompt in inherit mode | ✅ | `prompts.ts:110-112` |
+| Tests cover all modes + fallback + empty/missing | ✅ | See test summary below |
 
-Problem: The `vi.mock("../src/shell.js")` in `agent-runner.test.ts` hardcodes `systemPromptMode: "replace"` and omits `setSystemPromptMode` from `mutate.agent`. The `systemPromptMode` value cannot be changed per-test (unlike `mockIncludeContextFiles` which is a hoisted variable). This means zero test coverage for the inherit and custom mode code paths in `runAgent()`.
+## Test Coverage Summary
 
-Why it matters: The acceptance criteria explicitly requires *"Tests cover all three modes, fallback behavior, and empty/missing custom file."* The prompts.test.ts covers `buildAgentPrompt` in isolation, but the runtime orchestration in `runAgent()` — fetching parent prompt via `ctx.getSystemPrompt()`, reading the custom file via `fs.readFileSync`, notification on fallback — is entirely untested through agent-runner. The ~50 lines of new runtime code in `runAgent()` (lines 538-590) have no integration-level test coverage.
+**prompts.test.ts** (unit — `buildAgentPrompt`):
+- 3 modes (replace, inherit, custom) — output structure verified
+- Fallback to replace when extras missing for inherit/custom
+- `<agent_instructions>` wrapping in all modes
+- Context files integration (ordering, escaping, empty/undefined)
+- Skill metadata and blocks
 
-Fix: Make `systemPromptMode` a parameterizable mock variable (like `mockIncludeContextFiles`), and add tests for the three modes:
+**agent-runner.test.ts** (integration — `runAgent`):
+- Replace mode passes `'replace'` to `buildAgentPrompt`
+- Inherit mode calls `ctx.getSystemPrompt()`, passes result as `parentSystemPrompt`
+- Inherit fallback: notify called, `parentSystemPrompt` absent from extras
+- Custom mode: reads file via `fs.readFileSync`, passes as `customSystemPrompt`
+- Custom fallback (ENOENT): notify + no `customSystemPrompt`
+- Custom fallback (empty/whitespace): notify + no `customSystemPrompt`
+- Custom fallback (other error): notify
 
-```ts
-// In vi.hoisted:
-mockModules.mockSystemPromptMode: "replace" as string,
+**config-store.test.ts** (unit — `ConfigStore`):
+- Default resolves to `"replace"`
+- Configured value returned
+- `setSystemPromptMode` persists + updates
+- `clearAllModelOverrides` preserves `systemPromptMode`
 
-// In vi.mock("../src/shell.js"):
-systemPromptMode: mockModules.mockSystemPromptMode,
-
-// New tests:
-it("calls ctx.getSystemPrompt() when mode is inherit", async () => {
-  mockModules.mockSystemPromptMode = "inherit";
-  const ctx = fakeCtx();
-  ctx.getSystemPrompt = vi.fn().mockReturnValue("parent prompt");
-  // ... runAgent ...
-  expect(ctx.getSystemPrompt).toHaveBeenCalled();
-  expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
-    expect.anything(), expect.anything(), expect.anything(),
-    expect.objectContaining({ parentSystemPrompt: "parent prompt" }),
-    "inherit",
-  );
-});
-
-it("falls back to replace when getSystemPrompt throws in inherit mode", async () => {
-  mockModules.mockSystemPromptMode = "inherit";
-  const ctx = fakeCtx();
-  ctx.getSystemPrompt = vi.fn().mockImplementation(() => { throw new Error("no prompt"); });
-  // ... runAgent ... verify notify called, mode still "inherit" but parentSystemPrompt undefined
-});
-```
-
----
-
-## [IMPORTANT] menus.test.ts shell mock incomplete — missing `systemPromptMode` getter and `setSystemPromptMode` mutation
-
-Confidence: 90/100
-Location: `test/menus.test.ts:100-170`
-
-Problem: The menus.test.ts shell mock has two gaps:
-1. The `agent` getter does not include `systemPromptMode` (so `store.agent.systemPromptMode` returns `undefined`).
-2. `mutate.agent` does not include `setSystemPromptMode`.
-3. The `clearAllModelOverrides` mock preserves `includeContextFiles` but NOT `systemPromptMode`.
-
-This means:
-- The existing test "positions after 'Grace turns' and before 'System prompt mode'" would see `"System prompt mode · undefined"` as the menu label instead of `"System prompt mode · replace"`.
-- Any future test that exercises the mode-select action would crash on `store.mutate.agent.setSystemPromptMode(mode)`.
-- A "Clear all overrides" test would lose `systemPromptMode`.
-
-Why it matters: The mock diverges from the real `ConfigStore` interface, creating a maintenance trap. If `menus.ts` ever adds logic that reads `systemPromptMode` outside the menu label (e.g., conditional UI), tests would behave differently than production.
-
-Fix:
-```ts
-// In the agent getter (around line 110):
-systemPromptMode: a.systemPromptMode ?? "replace",
-
-// In clearAllModelOverrides preserved keys (around line 152):
-for (const key of [...existing..., 'systemPromptMode']) {
-
-// In mutate.agent (around line 163):
-setSystemPromptMode(mode: string) { mockModules.mockConfig.agent.systemPromptMode = mode; },
-```
+**menus.test.ts** (integration — `showModelSettingsMenu`):
+- "Create prompt file" shown when mode=custom + file absent
+- Not shown when file exists
+- Not shown when mode≠custom
+- File creation action: `mkdirSync` + `writeFileSync` called
+- Error notification on creation failure
 
 ---
 
-## [IMPORTANT] CUSTOM_PROMPT_PATH constant duplicated in two files
+## Prior Review Fixes Verified
 
-Confidence: 85/100
-Location: `src/agent-runner.ts:30` and `src/menus.ts:369,373`
+1. **agent-runner mock parameterizable** (`test/agent-runner.test.ts:41,75`): `mockSystemPromptMode` is a hoisted variable, reset in `resetMocks()`, overridden per-test. All three mode paths now exercised.
 
-Problem: `CUSTOM_PROMPT_PATH` is defined as a module-level constant in `agent-runner.ts`:
-```ts
-const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
-```
-But `menus.ts` recomputes the same path inline twice:
-```ts
-const customPromptPath = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
-```
+2. **menus.ts mock complete** (`test/menus.test.ts:112,155,166`): `systemPromptMode` in agent getter, `setSystemPromptMode` in mutations, `systemPromptMode` preserved in `clearAllModelOverrides`.
 
-Why it matters: DRY violation. If the path ever changes, both files must be updated independently. The path is a user-facing configuration — a mismatch would cause the menu to check/create a file at a different path than what `runAgent` reads.
+3. **CUSTOM_PROMPT_PATH deduplicated** (`src/agent-runner.ts:31`, `src/menus.ts:25`): Exported from `agent-runner.ts`, imported in `menus.ts`. No circular dependency (menus → agent-runner only).
 
-Fix: Export `CUSTOM_PROMPT_PATH` from a shared location (e.g., `agent-runner.ts` or a new `constants.ts`) and import it in `menus.ts`.
-
----
-
-## [IMPORTANT] Type assertion for `systemPromptMode` in ConfigStore reads arbitrary config values without validation
-
-Confidence: 80/100
-Location: `src/config-store.ts:88`
-
-Problem:
-```ts
-systemPromptMode: (a.systemPromptMode as "replace" | "inherit" | "custom") ?? DEFAULT_CONFIG.agent.systemPromptMode ?? "replace",
-```
-The `as` cast passes through any string from the config file without checking it's a valid mode. A hand-edited `subagents-lite.json` with `"systemPromptMode": "invalid"` would silently propagate through the system. Downstream code in `prompts.ts` checks `mode === "inherit"` and `mode === "custom"` and falls back to replace, so the practical impact is limited — but the config store should still validate.
-
-Why it matters: Type safety. The config store is the authoritative source for resolved settings — it should reject or normalize invalid values rather than passing them through unchecked.
-
-Fix: Add validation:
-```ts
-const rawMode = a.systemPromptMode;
-const validModes = new Set(["replace", "inherit", "custom"]);
-systemPromptMode: validModes.has(rawMode as string) ? rawMode as "replace" | "inherit" | "custom" : "replace",
-```
-
----
-
-## [SUGGESTION] Union type `"replace" | "inherit" | "custom"` repeated across 6+ locations
-
-Confidence: 75/100
-Location: `model-precedence.ts:29`, `config-store.ts:50,88,180`, `menus.ts:360`, `prompts.ts:40`, `agent-runner.ts:272`
-
-Problem: The same union type is inlined in 6+ places. Any addition (e.g., a fourth mode) requires updating every location.
-
-Fix: Define a shared type alias:
-```ts
-// In types.ts:
-export type SystemPromptMode = "replace" | "inherit" | "custom";
-```
-Then reference `SystemPromptMode` everywhere.
-
----
-
-## [SUGGESTION] Acceptance criteria "Create prompt file" has no test coverage
-
-Confidence: 75/100
-Location: `src/menus.ts:370-384`, `test/menus.test.ts`
-
-Problem: The acceptance criteria states: *"Settings menu offers 'Create prompt file' when mode is custom but file doesn't exist."* The menu code implements this with `fs.existsSync(customPromptPath)`, `fs.mkdirSync`, and `fs.writeFileSync`. However, no test exercises this path. The menus.test.ts shell mock lacks `systemPromptMode` so the test can't even set the mode to "custom" to trigger this menu item.
-
-Why it matters: File I/O side effects (creating directories and files) should be tested, especially with error paths (permission denied, disk full).
-
-Fix: After fixing the shell mock, add tests for the "Create prompt file" menu item, mocking `fs.existsSync` and `fs.writeFileSync`.
+4. **ConfigStore validation** (`src/config-store.ts:84-86`): `validModes.has()` rejects invalid config values with `"replace"` fallback.
 
 ---
 
 ## Strengths
 
-- **prompts.test.ts is excellent**: Thorough coverage of all three modes, fallback behavior, XML escaping, context file ordering. Tests verify observable output structure, not internal implementation.
-- **config-store.test.ts is solid**: Default resolution, mutation, persistence, `clearAllModelOverrides` preservation — all well-tested.
-- **Non-fatal error handling in agent-runner.ts**: The inherit/custom mode code correctly falls back to replace with `notify()` rather than crashing. The try/catch granularity (ENOENT vs other errors) is thoughtful.
-- **KV cache optimization preserved**: The inherit mode correctly places `<active_agent>` after the parent prompt, preserving the verbatim byte prefix.
-- **`<agent_instructions>` wrapping is consistent**: The agent's own systemPrompt is always wrapped in `<agent_instructions>` tags regardless of mode — well-structured for downstream parsing.
+- **Thorough fallback handling**: Three distinct failure paths for custom mode (ENOENT, empty, other) each with appropriate notification messages. Inherit mode gracefully handles `getSystemPrompt()` exceptions.
+- **KV cache optimization preserved**: Inherit mode correctly places `<active_agent>` after the verbatim parent prefix, maintaining byte-level cache coherence.
+- **`<agent_instructions>` wrapping is consistent**: The agent's own systemPrompt is always wrapped identically regardless of mode — clean for downstream parsing.
+- **Non-fatal error handling pattern**: All mode-specific failures fall back to replace behavior with `notify()` rather than crashing. The `notify()` helper is a clean abstraction.
+- **Test quality**: Tests verify observable behavior (what gets passed to `buildAgentPrompt`), not internal implementation. Mocks are properly scoped and reset between tests.
+
+---
+
+## Remaining Suggestion (non-blocking, from prior review)
+
+**Union type `"replace" | "inherit" | "custom"` repeated across 7 locations.**
+
+Confidence: 75/100
+Locations: `model-precedence.ts:27`, `config-store.ts:47,86,188`, `menus.ts:363`, `prompts.ts:46`, `agent-runner.ts:272`
+
+The prior review suggested a shared `SystemPromptMode` type alias. Not addressed in this commit. Low risk since TypeScript catches mismatches at compile time, but worth a follow-up if a fourth mode is ever added.
