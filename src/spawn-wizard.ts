@@ -182,7 +182,7 @@ export async function showSpawnAgentMenu(
   const effectiveModelStr = store.modelFor(selectedType, parentModelId, agentConfig);
   let currentModelStr = effectiveModelStr || ""; // "" means inherit parent
   // Thinking: agent config → config default → inherit
-  let currentThinking: ThinkingLevel | undefined = agentConfig.thinking ?? store.agent.defaultThinking;
+  let currentThinking: ThinkingLevel | undefined = agentConfig.thinkingLevel ?? store.agent.defaultThinking;
   // Max turns: agent config → config default → unlimited
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
   // Max tokens: agent config only (no config default)
@@ -263,7 +263,7 @@ export async function showSpawnAgentMenu(
           worktreeLabel: currentWorktreePath ? currentWorktreeLabel : undefined,
           invocation: {
             modelName: model?.id,
-            thinking: currentThinking,
+            thinkingLevel: currentThinking,
             maxTurns: currentMaxTurns,
             runInBackground: currentBackground,
           },

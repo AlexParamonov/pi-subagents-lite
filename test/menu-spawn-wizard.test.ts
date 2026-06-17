@@ -16,8 +16,8 @@ describe("showSpawnAgentMenu — type selection", () => {
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinking: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinking: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
+      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
       return undefined;
     });
   });
@@ -53,7 +53,7 @@ describe("showSpawnAgentMenu — prompt entry", () => {
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinking: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
   });
@@ -92,8 +92,8 @@ describe("showSpawnAgentMenu — options sub-menu", () => {
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinking: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinking: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
+      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
       return undefined;
     });
   });
@@ -327,7 +327,7 @@ describe("showSpawnAgentMenu — spawn action", () => {
     mockModules.mockManager.getRecord.mockReset();
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinking: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
   });
@@ -345,7 +345,7 @@ describe("showSpawnAgentMenu — spawn action", () => {
     expect(options.thinkingLevel).toBe("medium");
     expect(options.maxTurns).toBe(25);
     expect(options.invocation).toBeDefined();
-    expect(options.invocation.thinking).toBe("medium");
+    expect(options.invocation.thinkingLevel).toBe("medium");
     expect(options.invocation.maxTurns).toBe(25);
   });
 
@@ -424,7 +424,7 @@ describe("showSpawnAgentMenu — worktree picker", () => {
     mockModules.mockPiExec.mockReset();
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinking: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
   });

@@ -5,18 +5,18 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { runAgent, type ToolActivity } from "./agent-runner.js";
+import { runAgent } from "./agent-runner.js";
 import { AgentOutputLog } from "./output-file.js";
 import {
-  type AgentInvocation,
   type AgentRecord,
   type AgentStatus,
   type CompactionInfo,
+  type RunCallbacks,
   SHORT_ID_LENGTH,
+  type SpawnConfig,
   type SubagentType,
-  type ThinkingLevel,
+  type ToolActivity,
 } from "./types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
 import { errorMessage } from "./utils.js";
@@ -67,41 +67,10 @@ interface SpawnArgs {
   options: SpawnOptions;
 }
 
-export interface SpawnOptions {
-  description: string;
-  model?: Model<any>;
-  maxTurns?: number;
-  maxTokens?: number;
-  thinkingLevel?: ThinkingLevel;
+export interface SpawnOptions extends SpawnConfig, RunCallbacks {
   isBackground?: boolean;
-  /** Resolved worktree path — forwarded as cwd to runAgent. */
-  worktreePath?: string;
-  /** Short display label for the worktree (set on record display after spawn). */
-  worktreeLabel?: string;
-  /**
-   * Model key for concurrency pool lookup (e.g. "llamacpp/4b_small").
-   * When set, the agent is counted against that model's concurrency limit.
-   * When unset, the agent bypasses per-model concurrency limits.
-   */
-  modelKey?: string;
-  /** Resolved invocation snapshot captured for UI display. */
-  invocation?: AgentInvocation;
   /** Parent abort signal — when aborted, the subagent is also stopped. */
   signal?: AbortSignal;
-  /** Called on tool start/end with activity info (for streaming progress to UI). */
-  onToolActivity?: (activity: ToolActivity) => void;
-  /** Called on streaming text deltas from the assistant response. */
-  onTextDelta?: (delta: string, fullText: string) => void;
-  /** Called when the agent session is created (for accessing session stats). */
-  onSessionCreated?: (session: AgentSession) => void;
-  /** Called at the end of each agentic turn with the cumulative count. */
-  onTurnEnd?: (turnCount: number) => void;
-  /** Called once per assistant message_end with that message's usage delta. */
-  onAssistantUsage?: (usage: LifetimeUsage) => void;
-  /** Called when the session successfully compacts. */
-  onCompaction?: (info: CompactionInfo) => void;
-  /** Grace turns: extra turns allowed after hitting maxTurns. */
-  graceTurns?: number;
 }
 
 export class AgentManager {

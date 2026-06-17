@@ -399,7 +399,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     skills: md.skills,
     preloadSkills: md.preload_skills,
     model: md.model,
-    thinking: md.thinking,
+    thinkingLevel: md.thinking,
     maxTurns: md.max_turns,
     maxTokens: md.max_tokens,
     hidden: md.hidden,

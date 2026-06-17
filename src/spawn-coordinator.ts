@@ -10,9 +10,8 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord, ThinkingLevel, AgentInvocation } from "./types.js";
+import type { AgentRecord, SpawnConfig, ToolActivity } from "./types.js";
 import type { AgentManager, SpawnOptions } from "./agent-manager.js";
-import type { Model } from "@earendil-works/pi-ai";
 import { buildAgentDetails } from "./tool-execution.js";
 import { getWidget } from "./shell.js";
 
@@ -27,20 +26,12 @@ export interface LiveView {
 }
 
 /** Input for spawn(). Built by each caller from its own validation. */
-export interface SpawnIntent {
+export interface SpawnIntent extends SpawnConfig {
   type: string;
   prompt: string;
-  description: string;
-  model?: Model<any>;
-  modelKey?: string;
-  maxTurns?: number;
-  maxTokens?: number;
-  thinkingLevel?: ThinkingLevel;
-  graceTurns: number;
-  worktreePath?: string;
-  worktreeLabel?: string;
-  invocation?: AgentInvocation;
   runInBackground: boolean;
+  /** Narrowed to required — all callers resolve this before spawn. */
+  graceTurns: number;
 }
 
 export interface SpawnResult {
@@ -98,22 +89,16 @@ export class SpawnCoordinator {
     };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
 
+    // Shared config fields (SpawnConfig) pass through unchanged; only the
+    // intent-only fields (type/prompt/runInBackground) need translation.
+    const { type, prompt, runInBackground, ...config } = intent;
     const spawnOptions: SpawnOptions = {
-      description: intent.description,
-      model: intent.model,
-      maxTurns: intent.maxTurns,
-      maxTokens: intent.maxTokens,
-      thinkingLevel: intent.thinkingLevel,
-      modelKey: intent.modelKey,
-      invocation: intent.invocation,
-      graceTurns: intent.graceTurns,
-      worktreePath: intent.worktreePath,
-      worktreeLabel: intent.worktreeLabel,
-      isBackground: intent.runInBackground,
+      ...config,
+      isBackground: runInBackground,
       ...liveViewCallbacks,
     };
 
-    const agentId = this.manager.spawn(pi, ctx, intent.type, intent.prompt, spawnOptions);
+    const agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
 
     // Register live view
     this.liveViews.set(agentId, liveView);
@@ -205,7 +190,7 @@ export class SpawnCoordinator {
   /** Create callbacks that bridge manager events to a specific live view. */
   private createLiveViewCallbacks(view: LiveView): Pick<SpawnOptions, "onToolActivity" | "onTextDelta"> {
     return {
-      onToolActivity: (activity: { type: "start" | "end"; toolName: string }) => {
+      onToolActivity: (activity: ToolActivity) => {
         if (activity.type === "start") {
           view.activeTools.set(`${activity.toolName}_${Date.now()}`, activity.toolName);
         } else {

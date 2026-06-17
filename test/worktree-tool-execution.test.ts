@@ -39,7 +39,7 @@ vi.mock("../src/worktree-validator.js", () => ({
 
 vi.mock("../src/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => type),
-  getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinking: undefined })),
+  getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
 }));
 

@@ -25,7 +25,7 @@ vi.mock("../src/agent-types.js", () => ({
     displayName: type.charAt(0).toUpperCase() + type.slice(1),
     tools: [],
     maxTurns: undefined,
-    thinking: undefined,
+    thinkingLevel: undefined,
   }),
 }));
 

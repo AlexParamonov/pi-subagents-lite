@@ -2,12 +2,32 @@
  * Type definitions for the subagent system.
  */
 
+import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./output-file.js";
 import type { LifetimeUsage } from "./usage.js";
 
 /** Thinking level for agent models. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+/** Tool activity event: start/end of a tool invocation. */
+export interface ToolActivity {
+  type: "start" | "end";
+  toolName: string;
+}
+
+/**
+ * Resolved model + run-limit tunables shared by every spawn/run shape
+ * (RunOptions, SpawnOptions, SpawnIntent). Add a tunable here once and it
+ * flows through the whole chain.
+ */
+export interface RunTunables {
+  model?: Model<any>;
+  maxTurns?: number;
+  maxTokens?: number;
+  thinkingLevel?: ThinkingLevel;
+  graceTurns?: number;
+}
 
 /** Agent type: any string name (built-in defaults or user-defined). */
 export type SubagentType = string;
@@ -40,7 +60,7 @@ export interface AgentConfig {
   /** Skills to preload with full content into system prompt. string[] = listed, false/undefined = none */
   preloadSkills?: string[] | false;
   model?: string;
-  thinking?: ThinkingLevel;
+  thinkingLevel?: ThinkingLevel;
   maxTurns?: number;
   /** Max output tokens per LLM response. Passed to provider as max_tokens or max_completion_tokens. */
   maxTokens?: number;
@@ -71,7 +91,7 @@ export interface AgentRecord {
 export interface AgentInvocation {
   /** Short display name, e.g. "haiku" — only set when different from parent. */
   modelName?: string;
-  thinking?: ThinkingLevel;
+  thinkingLevel?: ThinkingLevel;
   maxTurns?: number;
   runInBackground?: boolean;
 }
@@ -80,6 +100,32 @@ export interface EnvInfo {
   isGitRepo: boolean;
   branch: string | null;
   platform: string;
+}
+
+/**
+ * Streaming/callback surface shared by RunOptions and SpawnOptions.
+ * Bridges agent-runner events to record tracking and live-view updates.
+ */
+export interface RunCallbacks {
+  onToolActivity?: (activity: ToolActivity) => void;
+  onTextDelta?: (delta: string, fullText: string) => void;
+  onSessionCreated?: (session: AgentSession) => void;
+  onTurnEnd?: (turnCount: number) => void;
+  onAssistantUsage?: (usage: LifetimeUsage) => void;
+  onCompaction?: (info: CompactionInfo) => void;
+}
+
+/**
+ * Coordinator-side spawn config shared by SpawnOptions and SpawnIntent.
+ * The resolved run params that both the manager and coordinator agree on;
+ * extends RunTunables with display/identity fields.
+ */
+export interface SpawnConfig extends RunTunables {
+  description: string;
+  modelKey?: string;
+  worktreePath?: string;
+  worktreeLabel?: string;
+  invocation?: AgentInvocation;
 }
 
 /** How many characters of agent ID to show in display. */

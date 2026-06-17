@@ -6,7 +6,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
@@ -26,7 +25,7 @@ import { findModelInRegistry } from "./utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
-import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode, type ThinkingLevel } from "./types.js";
+import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode } from "./types.js";
 import { getStore } from "./shell.js";
 
 /** Path to custom prompt file. Exported for use in menus.ts. */
@@ -45,43 +44,15 @@ function normalizeMaxTurns(n: number | undefined): number | undefined {
 }
 
 /** Info about a tool event in the subagent. */
-export interface ToolActivity {
-  type: "start" | "end";
-  toolName: string;
-}
-
-interface RunOptions {
+interface RunOptions extends RunTunables, RunCallbacks {
   /** ExtensionAPI instance — used for pi.exec() for git detection. */
   pi: ExtensionAPI;
   /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
   agentId?: string;
-  model?: Model<any>;
-  maxTurns?: number;
-  maxTokens?: number;
-  signal?: AbortSignal;
-  thinkingLevel?: ThinkingLevel;
-  /** Override working directory. */
+  /** Override working directory (resolved worktree path). */
   cwd?: string;
-  /** Called on tool start/end with activity info. */
-  onToolActivity?: (activity: ToolActivity) => void;
-  /** Called on streaming text deltas from the assistant response. */
-  onTextDelta?: (delta: string, fullText: string) => void;
-  onSessionCreated?: (session: AgentSession) => void;
-  /** Called at the end of each agentic turn with the cumulative count. */
-  onTurnEnd?: (turnCount: number) => void;
-  /**
-   * Called once per assistant message_end with that message's usage delta.
-   * Lets callers maintain a lifetime accumulator that survives compaction
-   * (which replaces session.state.messages and resets stats-derived sums).
-   */
-  onAssistantUsage?: (usage: LifetimeUsage) => void;
-  /**
-   * Called when the session successfully compacts. `tokensBefore` is upstream's
-   * pre-compaction context size estimate. Aborted compactions don't fire.
-   */
-  onCompaction?: (info: CompactionInfo) => void;
-  /** Grace turns: extra turns allowed after hitting maxTurns. Defaults to 6. */
-  graceTurns?: number;
+  /** Parent abort signal — when aborted, the subagent is also stopped. */
+  signal?: AbortSignal;
 }
 
 interface RunResult {
@@ -428,7 +399,7 @@ async function initSession(
   const model = options.model ?? findModelInRegistry(
     agentConfig?.model, ctx.modelRegistry, ctx.model,
   );
-  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinking;
+  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
   const agentDir = getAgentDir();
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd, agentDir,
