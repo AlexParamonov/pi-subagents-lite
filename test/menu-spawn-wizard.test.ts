@@ -136,13 +136,13 @@ describe("showSpawnAgentMenu — options sub-menu", () => {
     expect(optionsCall[1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · 50");
   });
 
-  it("config default thinking takes precedence over agent config", async () => {
+  it("agent config thinking takes precedence over config default", async () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
     await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    // config default (high) takes precedence over agent config (medium)
-    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · high");
+    // agent config (medium) takes precedence over config default (high)
+    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · medium");
   });
 
   it("shows 'inherit' for thinking when no config default and no agent config", async () => {

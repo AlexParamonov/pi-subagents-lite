@@ -58,3 +58,8 @@ Module-level singletons still require `vi.mock()`. True reduction needs closure/
 
 ### Builder verification
 Verify builder reads issue.md and plan spec before implementing. Integration gaps between coordinator and widget are high-risk — test data flow end-to-end.
+
+## split-menus-into-concern-modules - 2026-06-17
+**What worked:** Clean split into 7 modules with clear boundaries. Builder handled the full refactor in one pass. Refactor loop caught dead re-exports and empty test files.
+**What failed:** Manual tester caught missing `menu-debug.test.ts` — acceptance criteria said "one test file per menu module" but the builder skipped the debug module's test file since its tests lived in the dispatcher's test file.
+**Next time:** When splitting tests, explicitly enumerate expected test files in the builder prompt to prevent gaps. Cross-check module count vs test file count before marking complete.
