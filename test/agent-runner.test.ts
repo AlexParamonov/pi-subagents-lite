@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "node:fs";
 import { fakeCtx, fakePi as makeFakePi } from "./fixtures";
 
 const fakePi = makeFakePi();
@@ -38,6 +39,7 @@ const mockModules = vi.hoisted(() => ({
   mockGetAgentDir: vi.fn(),
   mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
   mockIncludeContextFiles: true as boolean,
+  mockSystemPromptMode: "replace" as string,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
   clearLoaderOpts: () => { _loaderOpts.length = 0; },
   setLoaderExtensions: (exts: any) => { _loaderGetExtensionsResult.extensions = exts; },
@@ -71,7 +73,7 @@ vi.mock("../src/shell.js", () => ({
   getStore: () => ({
     agent: {
       includeContextFiles: mockModules.mockIncludeContextFiles,
-      systemPromptMode: "replace",
+      systemPromptMode: mockModules.mockSystemPromptMode,
       graceTurns: 6,
       forceBackground: false,
       showCost: false,
@@ -118,6 +120,7 @@ function resetMocks() {
   mockModules.clearLoaderOpts();
   mockModules.clearLoaderExtensions();
   mockModules.mockIncludeContextFiles = true;
+  mockModules.mockSystemPromptMode = "replace";
   mockModules.mockLoadProjectContextFiles.mockReturnValue([]);
 
   mockModules.mockGetConfig.mockReturnValue({ ...defaultConfig });
@@ -1535,5 +1538,189 @@ describe("runAgent — context file gating", () => {
     expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
     // buildAgentPrompt still called (without contextFiles)
     expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — system prompt modes (replace, inherit, custom)         */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — system prompt modes", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("uses replace mode by default — passes 'replace' to buildAgentPrompt", async () => {
+    mockModules.mockSystemPromptMode = "replace";
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      "replace",
+    );
+  });
+
+  it("calls ctx.getSystemPrompt() when mode is inherit", async () => {
+    mockModules.mockSystemPromptMode = "inherit";
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    const ctx = fakeCtx();
+    ctx.getSystemPrompt = vi.fn().mockReturnValue("parent prompt content");
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(ctx.getSystemPrompt).toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ parentSystemPrompt: "parent prompt content" }),
+      "inherit",
+    );
+  });
+
+  it("falls back gracefully when getSystemPrompt throws in inherit mode", async () => {
+    mockModules.mockSystemPromptMode = "inherit";
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    const ctx = fakeCtx();
+    ctx.getSystemPrompt = vi.fn().mockImplementation(() => { throw new Error("no prompt"); });
+    ctx.ui = { notify: vi.fn() };
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    // Notified about the failure
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to get parent system prompt"),
+      "warning",
+    );
+    // buildAgentPrompt still called — without parentSystemPrompt
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.not.objectContaining({ parentSystemPrompt: expect.anything() }),
+      "inherit",
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — custom mode (file reading, fallback)                   */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — custom mode", () => {
+  let fsReadFileSyncSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+    mockModules.mockSystemPromptMode = "custom";
+    fsReadFileSyncSpy = vi.spyOn(fs, "readFileSync");
+  });
+
+  afterEach(() => {
+    fsReadFileSyncSpy.mockRestore();
+  });
+
+  it("reads custom prompt file and passes content to buildAgentPrompt", async () => {
+    fsReadFileSyncSpy.mockReturnValue("My custom system prompt");
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(fsReadFileSyncSpy).toHaveBeenCalledWith(
+      expect.stringContaining("subagents-lite-prompt.md"),
+      "utf-8",
+    );
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ customSystemPrompt: "My custom system prompt" }),
+      "custom",
+    );
+  });
+
+  it("falls back when custom file is missing (ENOENT)", async () => {
+    const err = new Error("ENOENT") as any;
+    err.code = "ENOENT";
+    fsReadFileSyncSpy.mockImplementation(() => { throw err; });
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    const ctx = fakeCtx();
+    ctx.ui = { notify: vi.fn() };
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Custom prompt file not found"),
+      "warning",
+    );
+    // buildAgentPrompt called without customSystemPrompt
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.not.objectContaining({ customSystemPrompt: expect.anything() }),
+      "custom",
+    );
+  });
+
+  it("falls back when custom file is empty", async () => {
+    fsReadFileSyncSpy.mockReturnValue("   "); // whitespace only
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    const ctx = fakeCtx();
+    ctx.ui = { notify: vi.fn() };
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Custom prompt file is empty"),
+      "warning",
+    );
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.not.objectContaining({ customSystemPrompt: expect.anything() }),
+      "custom",
+    );
+  });
+
+  it("falls back when custom file is unreadable (other error)", async () => {
+    fsReadFileSyncSpy.mockImplementation(() => { throw new Error("permission denied"); });
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    const ctx = fakeCtx();
+    ctx.ui = { notify: vi.fn() };
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to read custom prompt file"),
+      "warning",
+    );
   });
 });

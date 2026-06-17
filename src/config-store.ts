@@ -78,17 +78,25 @@ export class ConfigStore {
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
     const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_CONFIG.agent.widgetMaxLines ?? 12;
+    const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
+    const widgetCompact = a.widgetCompact === true;
+    const widgetShortcut = a.widgetShortcut === true;
+    const rawMode = a.systemPromptMode;
+    const validModes = new Set(["replace", "inherit", "custom"]);
+    const systemPromptMode = validModes.has(rawMode as string) ? rawMode as "replace" | "inherit" | "custom" : "replace";
+    const includeContextFiles = a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true;
+
     return {
       defaultModel: a.default ?? null,
       forceBackground: a.forceBackground === true,
       showCost: this.sessionShowCost ?? (a.showCost === true),
       graceTurns: a.graceTurns ?? DEFAULT_CONFIG.agent.graceTurns ?? 6,
       widgetMaxLines,
-      widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
-      widgetCompact: a.widgetCompact === true,
-      widgetShortcut: a.widgetShortcut === true,
-      systemPromptMode: (a.systemPromptMode as "replace" | "inherit" | "custom") ?? DEFAULT_CONFIG.agent.systemPromptMode ?? "replace",
-      includeContextFiles: a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true,
+      widgetMaxLinesCompact,
+      widgetCompact,
+      widgetShortcut,
+      systemPromptMode,
+      includeContextFiles,
     };
   }
 

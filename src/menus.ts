@@ -22,6 +22,7 @@ import {
   getStore,
   getManager,
 } from "./shell.js";
+import { CUSTOM_PROMPT_PATH } from "./agent-runner.js";
 
 // Spawn wizard — imported and re-exported so the dispatcher calls it from here.
 import { showSpawnAgentMenu } from "./spawn-wizard.js";
@@ -369,14 +370,13 @@ export async function showModelSettingsMenu(
 
     // Offer to create custom prompt file if mode is custom but file doesn't exist
     if (systemPromptMode === "custom") {
-      const customPromptPath = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
-      if (!fs.existsSync(customPromptPath)) {
+      if (!fs.existsSync(CUSTOM_PROMPT_PATH)) {
         items.push("Create prompt file · ~/.pi/agent/subagents-lite-prompt.md");
         actions.push(async () => {
           try {
-            fs.mkdirSync(path.dirname(customPromptPath), { recursive: true });
-            fs.writeFileSync(customPromptPath, "# Custom System Prompt\n\nAdd your custom system prompt here.\n", "utf-8");
-            ctx.ui.notify(`Created prompt file: ${customPromptPath}`, "info");
+            fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
+            fs.writeFileSync(CUSTOM_PROMPT_PATH, "# Custom System Prompt\n\nAdd your custom system prompt here.\n", "utf-8");
+            ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
           } catch (err: any) {
             ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
           }

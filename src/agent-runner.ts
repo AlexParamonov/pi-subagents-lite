@@ -29,8 +29,8 @@ import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js"
 import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
 import { getStore } from "./shell.js";
 
-/** Path to custom prompt file. */
-const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
+/** Path to custom prompt file. Exported for use in menus.ts. */
+export const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
 
 /** Default grace turns when not specified in config. */
 const DEFAULT_GRACE_TURNS = 6;

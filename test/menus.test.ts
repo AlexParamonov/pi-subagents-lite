@@ -8,7 +8,8 @@
  *   - Edit limit still works after refactor
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "node:fs";
 
 // --- Mock modules ---
 
@@ -108,6 +109,7 @@ vi.mock("../src/shell.js", () => {
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
         widgetShortcut: a.widgetShortcut === true,
+        systemPromptMode: a.systemPromptMode ?? "replace",
         includeContextFiles: a.includeContextFiles ?? true,
       };
     },
@@ -150,7 +152,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut', 'includeContextFiles']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -161,6 +163,7 @@ vi.mock("../src/shell.js", () => {
         setForceBackground(enabled: boolean) { mockModules.mockConfig.agent.forceBackground = enabled; },
         setShowCost(enabled: boolean) { mockModules.mockConfig.agent.showCost = enabled; },
         setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
+        setSystemPromptMode(mode: string) { mockModules.mockConfig.agent.systemPromptMode = mode; },
         setIncludeContextFiles(enabled: boolean) { mockModules.mockConfig.agent.includeContextFiles = enabled; },
       },
       widget: {
@@ -2835,6 +2838,104 @@ describe("showModelSettingsMenu — include AGENTS.md toggle", () => {
     expect(graceTurnsIdx).toBeGreaterThanOrEqual(0);
     expect(contextIdx).toBeGreaterThan(graceTurnsIdx);
     expect(systemPromptIdx).toBeGreaterThan(contextIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Create prompt file" menu action tests
+// ---------------------------------------------------------------------------
+
+describe("showModelSettingsMenu — Create prompt file", () => {
+  let existsSyncSpy: ReturnType<typeof vi.spyOn>;
+  let mkdirSyncSpy: ReturnType<typeof vi.spyOn>;
+  let writeFileSyncSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false, systemPromptMode: "custom" };
+    mockModules.mockSessionOverrides.default = null;
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+
+    existsSyncSpy = vi.spyOn(fs, "existsSync");
+    mkdirSyncSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined as any);
+    writeFileSyncSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    existsSyncSpy.mockRestore();
+    mkdirSyncSpy.mockRestore();
+    writeFileSyncSpy.mockRestore();
+  });
+
+  it("shows 'Create prompt file' when mode is custom and file does not exist", async () => {
+    existsSyncSpy.mockReturnValue(false);
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const createItem = items.find((i: string) => i.startsWith("Create prompt file"));
+    expect(createItem).toBeDefined();
+    expect(createItem).toContain("~/.pi/agent/subagents-lite-prompt.md");
+  });
+
+  it("does NOT show 'Create prompt file' when mode is custom and file exists", async () => {
+    existsSyncSpy.mockReturnValue(true);
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const createItem = items.find((i: string) => i.startsWith("Create prompt file"));
+    expect(createItem).toBeUndefined();
+  });
+
+  it("does NOT show 'Create prompt file' when mode is not custom", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "replace";
+
+    const ctx = createMockCtx([undefined]);
+    await showModelSettingsMenu(ctx, []);
+
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const createItem = items.find((i: string) => i.startsWith("Create prompt file"));
+    expect(createItem).toBeUndefined();
+  });
+
+  it("creates file and shows notification when 'Create prompt file' is selected", async () => {
+    existsSyncSpy.mockReturnValue(false);
+
+    const selections = [
+      "Create prompt file · ~/.pi/agent/subagents-lite-prompt.md",
+      undefined, // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(mkdirSyncSpy).toHaveBeenCalled();
+    expect(writeFileSyncSpy).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Created prompt file"),
+      "info",
+    );
+  });
+
+  it("shows error notification when file creation fails", async () => {
+    existsSyncSpy.mockReturnValue(false);
+    mkdirSyncSpy.mockImplementation(() => { throw new Error("permission denied"); });
+
+    const selections = [
+      "Create prompt file · ~/.pi/agent/subagents-lite-prompt.md",
+      undefined, // Escape to exit
+    ];
+
+    const ctx = createMockCtx(selections);
+    await showModelSettingsMenu(ctx, []);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to create prompt file"),
+      "error",
+    );
   });
 });
 
