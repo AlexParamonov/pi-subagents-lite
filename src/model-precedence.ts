@@ -12,6 +12,8 @@
  *   6. parentModelId                   (inherit from parent)
  */
 
+import type { SystemPromptMode } from "./types.js";
+
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {
   agent: {
@@ -24,7 +26,7 @@ export interface SubagentsConfig {
     widgetCompact?: boolean;
     widgetShortcut?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */
-    systemPromptMode?: "replace" | "inherit" | "custom";
+    systemPromptMode?: SystemPromptMode;
     /** Whether to include AGENTS.md context files in the subagent system prompt. Default: true. */
     includeContextFiles?: boolean;
     [agentType: string]: string | null | undefined | boolean | number;

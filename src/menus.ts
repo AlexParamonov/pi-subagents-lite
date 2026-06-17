@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
-import type { AgentRecord } from "./types.js";
+import type { AgentRecord, SystemPromptMode } from "./types.js";
 import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
@@ -360,7 +360,7 @@ export async function showModelSettingsMenu(
       const choices = ["replace — generic header + env + agent's systemPrompt (current)", "inherit — parent's full system prompt (verbatim) + env + agent's systemPrompt", "custom — content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt"];
       const choice = await ctx.ui.select("System prompt mode", choices);
       if (choice === undefined) return;
-      let mode: "replace" | "inherit" | "custom";
+      let mode: SystemPromptMode;
       if (choice.startsWith("replace")) mode = "replace";
       else if (choice.startsWith("inherit")) mode = "inherit";
       else mode = "custom";

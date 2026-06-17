@@ -5,7 +5,7 @@
  * EnvInfo is imported from types.ts — branch is a string (empty when unknown).
  */
 
-import type { AgentConfig, EnvInfo } from "./types.js";
+import type { AgentConfig, EnvInfo, SystemPromptMode } from "./types.js";
 import type { SkillMeta } from "./skill-loader.js";
 
 /** Extra sections to inject into the system prompt (skills). */
@@ -43,7 +43,7 @@ export function buildAgentPrompt(
   cwd: string,
   env: EnvInfo,
   extras?: PromptExtras,
-  mode: "replace" | "inherit" | "custom" = "replace",
+  mode: SystemPromptMode = "replace",
 ): string {
   const envLines = [
     "# Environment",

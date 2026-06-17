@@ -17,8 +17,11 @@ import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.
 import { resolveModel } from "./model-precedence.js";
 import type { AgentWidget } from "./ui/agent-widget.js";
 import type { AgentManager } from "./agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode } from "./types.js";
 import { DEFAULT_CONFIG, loadConfig, saveConfigAtomic } from "./config-io.js";
+
+/** Valid values for systemPromptMode — checked once at module load. */
+const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
 
 /** Injected persistence adapter. Swap for an in-memory adapter in tests. */
 export interface ConfigIO {
@@ -44,7 +47,7 @@ export interface ResolvedAgentSettings {
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
   /** System prompt mode: replace (default), inherit parent, or custom file. */
-  readonly systemPromptMode: "replace" | "inherit" | "custom";
+  readonly systemPromptMode: SystemPromptMode;
   /** Whether to include AGENTS.md context files in the subagent system prompt. */
   readonly includeContextFiles: boolean;
 }
@@ -82,8 +85,7 @@ export class ConfigStore {
     const widgetCompact = a.widgetCompact === true;
     const widgetShortcut = a.widgetShortcut === true;
     const rawMode = a.systemPromptMode;
-    const validModes = new Set(["replace", "inherit", "custom"]);
-    const systemPromptMode = validModes.has(rawMode as string) ? rawMode as "replace" | "inherit" | "custom" : "replace";
+    const systemPromptMode = VALID_SYSTEM_PROMPT_MODES.has(rawMode as string) ? rawMode as SystemPromptMode : "replace";
     const includeContextFiles = a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true;
 
     return {
@@ -185,7 +187,7 @@ export class ConfigStore {
         this.config.agent.graceTurns = n;
         this.persist();
       },
-      setSystemPromptMode: (mode: "replace" | "inherit" | "custom"): void => {
+      setSystemPromptMode: (mode: SystemPromptMode): void => {
         this.config.agent.systemPromptMode = mode;
         this.persist();
       },

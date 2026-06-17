@@ -26,7 +26,7 @@ import { findModelInRegistry } from "./utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
-import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
+import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode, type ThinkingLevel } from "./types.js";
 import { getStore } from "./shell.js";
 
 /** Path to custom prompt file. Exported for use in menus.ts. */
@@ -269,7 +269,7 @@ function buildPrompt(
   config: ReturnType<typeof getConfig>,
   cwd: string,
   env: EnvInfo,
-  systemPromptMode: "replace" | "inherit" | "custom" = "replace",
+  systemPromptMode: SystemPromptMode = "replace",
   parentSystemPrompt?: string,
   customSystemPrompt?: string,
   contextFiles?: Array<{ path: string; content: string }>,
