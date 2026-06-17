@@ -165,7 +165,7 @@ export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill
       return { name, description: "", content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)` };
     }
     try {
-      return { name, description: match.description ?? "", content: readFileSync(match.filePath, "utf-8").trim() };
+      return { name, description: match.description, content: readFileSync(match.filePath, "utf-8").trim() };
     } catch {
       return { name, description: "", content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)` };
     }
@@ -185,9 +185,9 @@ export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
     }
     return {
       name,
-      description: match.description ?? "(no description)",
+      description: match.description,
       location: match.filePath,
-      disableModelInvocation: match.disableModelInvocation ?? false,
+      disableModelInvocation: match.disableModelInvocation,
     };
   });
 }
