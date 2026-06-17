@@ -108,7 +108,7 @@ export function buildAgentPrompt(
         filePath: m.location,
         baseDir: "",
         sourceInfo: {} as any,
-        disableModelInvocation: false,
+        disableModelInvocation: m.disableModelInvocation ?? false,
       }));
       const formatted = formatSkillsForPrompt(piSkills);
       const skillElements = formatted.match(/<skill>[\s\S]*?<\/skill>/g);

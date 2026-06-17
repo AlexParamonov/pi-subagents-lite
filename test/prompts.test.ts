@@ -62,8 +62,8 @@ describe("buildAgentPrompt", () => {
   it("renders skill elements for whitelist via formatSkillsForPrompt", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "tdd", description: "TDD workflow", location: "/skills/tdd/SKILL.md" },
-        { name: "debug", description: "Debugging workflow", location: "/skills/debug/SKILL.md" },
+        { name: "tdd", description: "TDD workflow", location: "/skills/tdd/SKILL.md", disableModelInvocation: false },
+        { name: "debug", description: "Debugging workflow", location: "/skills/debug/SKILL.md", disableModelInvocation: false },
       ],
     });
 
@@ -99,7 +99,7 @@ describe("buildAgentPrompt", () => {
   it("merges both into single available_skills block", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "debug", description: "Debug workflow", location: "/skills/debug/SKILL.md" },
+        { name: "debug", description: "Debug workflow", location: "/skills/debug/SKILL.md", disableModelInvocation: false },
       ],
       skillBlocks: [
         { name: "tdd", description: "TDD workflow", content: "Full TDD content here" },
@@ -122,7 +122,7 @@ describe("buildAgentPrompt", () => {
   it("escapes XML special characters in skill metadata (Pi's full escaping)", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "test", description: 'Use <code> & "quotes"', location: "/path/to/skill" },
+        { name: "test", description: 'Use <code> & "quotes"', location: "/path/to/skill", disableModelInvocation: false },
       ],
     });
 
@@ -137,6 +137,19 @@ describe("buildAgentPrompt", () => {
 
     expect(result).not.toContain("<available_skills>");
     expect(result).not.toContain("Preloaded Skill");
+  });
+
+  it("excludes skills with disableModelInvocation=true via formatSkillsForPrompt", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      skillMetas: [
+        { name: "visible", description: "Visible skill", location: "/skills/visible/SKILL.md", disableModelInvocation: false },
+        { name: "hidden", description: "Hidden skill", location: "/skills/hidden/SKILL.md", disableModelInvocation: true },
+      ],
+    });
+
+    expect(result).toContain("<name>visible</name>");
+    expect(result).not.toContain("<name>hidden</name>");
+    expect(result).not.toContain("Hidden skill");
   });
 });
 
@@ -520,7 +533,7 @@ Current working directory: /tmp`;
 
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       parentSystemPrompt: parentPrompt,
-      skillMetas: [{ name: "new-skill", description: "New", location: "/skills/new" }],
+      skillMetas: [{ name: "new-skill", description: "New", location: "/skills/new", disableModelInvocation: false }],
     }, "inherit");
 
     // Old skills stripped

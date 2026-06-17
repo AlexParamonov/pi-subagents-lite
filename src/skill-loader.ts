@@ -37,6 +37,8 @@ export interface SkillMeta {
   name: string;
   description: string;
   location: string;
+  /** Whether the skill should be excluded from the <available_skills> prompt block. */
+  disableModelInvocation: boolean;
   /** Full skill content — present when the skill is preloaded. */
   content?: string;
 }
@@ -190,13 +192,18 @@ export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill
  * Used for the skills whitelist — agent can read full content on-demand.
  */
 export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
+  const skills = loadAllSkills(cwd);
   return skillNames.map((name) => {
-    const location = findSkillLocation(name, cwd);
-    if (!location) {
-      return { name, description: `(Skill "${name}" not found)`, location: "" };
+    const match = skills.find((s) => s.name === name);
+    if (!match) {
+      return { name, description: `(Skill "${name}" not found)`, location: "", disableModelInvocation: false };
     }
-    const description = findSkillDescription(name, cwd);
-    return { name, description, location };
+    return {
+      name,
+      description: match.description ?? "(no description)",
+      location: match.filePath,
+      disableModelInvocation: match.disableModelInvocation ?? false,
+    };
   });
 }
 
@@ -219,16 +226,4 @@ function loadSkillContent(name: string, cwd: string): string {
   }
 }
 
-/** Find skill description from loaded skills. */
-function findSkillDescription(name: string, cwd: string): string {
-  const skills = loadAllSkills(cwd);
-  const match = skills.find((s) => s.name === name);
-  return match?.description ?? "(no description)";
-}
 
-/** Find skill file path from loaded skills. */
-function findSkillLocation(name: string, cwd: string): string | undefined {
-  if (isUnsafeName(name)) return undefined;
-  const skills = loadAllSkills(cwd);
-  return skills.find((s) => s.name === name)?.filePath;
-}

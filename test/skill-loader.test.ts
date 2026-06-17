@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { preloadSkills, loadSkillMeta, loadAllSkills } from "../src/skill-loader.ts";
@@ -256,6 +256,26 @@ describe("loadSkillMeta", () => {
     expect(result[1].name).toBe("debug");
     expect(result[1].description).toBe("Debug workflow");
   });
+
+  it("threads disableModelInvocation from loaded skill", () => {
+    const skillPath = join(tmpDir, ".pi", "skills", "internal", "SKILL.md");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("internal", "Internal tool", skillPath, { disableModelInvocation: true })],
+      diagnostics: [],
+    });
+
+    const result = loadSkillMeta(["internal"], tmpDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].disableModelInvocation).toBe(true);
+  });
+
+  it("defaults disableModelInvocation to false for missing skill", () => {
+    const result = loadSkillMeta(["nonexistent"], tmpDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].disableModelInvocation).toBe(false);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -384,8 +404,78 @@ describe("Prompt integration: both together", () => {
 /* ------------------------------------------------------------------ */
 
 describe("extractDescriptionFromContent", () => {
-  it("returns empty string when no description in content", () => {
+  it("returns empty string when skill not found", () => {
     const result = preloadSkills(["nonexistent"], tmpDir);
     expect(result[0].description).toBe("");
+  });
+
+  it("extracts description from frontmatter in skill content", () => {
+    createSkillDir(tmpDir, "test-skill", "My skill description", "Body text");
+    const skillPath = join(tmpDir, ".pi", "skills", "test-skill", "SKILL.md");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("test-skill", "My skill description", skillPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["test-skill"], tmpDir);
+    expect(result[0].description).toBe("My skill description");
+  });
+
+  it("returns empty description when content has no frontmatter", () => {
+    const skillDir = join(tmpDir, ".pi", "skills", "plain");
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillPath, "Just body text, no frontmatter.");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("plain", "", skillPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["plain"], tmpDir);
+    expect(result[0].description).toBe("");
+  });
+
+  it("handles unclosed frontmatter", () => {
+    const skillDir = join(tmpDir, ".pi", "skills", "unclosed");
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillPath, "---\ndescription: No closing\nStill in frontmatter");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("unclosed", "No closing", skillPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["unclosed"], tmpDir);
+    expect(result[0].description).toBe("");
+  });
+
+  it("strips quotes from description", () => {
+    const skillDir = join(tmpDir, ".pi", "skills", "quoted");
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillPath, "---\ndescription: \"Quoted description\"\n---\n\nBody");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("quoted", "Quoted description", skillPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["quoted"], tmpDir);
+    expect(result[0].description).toBe("Quoted description");
+  });
+
+  it("truncates long descriptions to 200 chars", () => {
+    const longDesc = "A".repeat(250);
+    const skillDir = join(tmpDir, ".pi", "skills", "long");
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillPath, `---\ndescription: ${longDesc}\n---\n\nBody`);
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("long", longDesc, skillPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["long"], tmpDir);
+    expect(result[0].description.length).toBeLessThanOrEqual(200);
+    expect(result[0].description.endsWith("...")).toBe(true);
   });
 });
