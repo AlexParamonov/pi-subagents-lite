@@ -37,7 +37,7 @@ export interface PromptExtras {
  * @param prompt  The parent system prompt to clean.
  * @returns       The prompt with scaffolding sections removed.
  */
-export function stripScaffolding(prompt: string): string {
+function stripScaffolding(prompt: string): string {
   let result = prompt;
 
   // 1. Strip <project_context>...</project_context> block
