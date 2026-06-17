@@ -44,11 +44,9 @@ export function buildAgentPrompt(
   envLines.push(`Platform: ${env.platform}`);
   const envBlock = envLines.join("\n");
 
-  // Build optional extras suffix (skills)
-  const extraSections: string[] = [];
-
   // Unified skill index — all skills in one <available_skills> block
   const hasSkills = extras?.skillMetas?.length || extras?.skillBlocks?.length;
+  let extrasSuffix = "";
   if (hasSkills) {
     const lines = [
       "The following skills provide specialized instructions for specific tasks.",
@@ -57,23 +55,15 @@ export function buildAgentPrompt(
       "",
       "<available_skills>",
     ];
-    // Whitelist skills (metadata only, with location)
-    if (extras?.skillMetas?.length) {
-      for (const skill of extras.skillMetas) {
-        lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><location>${escapeXml(skill.location)}</location></skill>`);
-      }
+    for (const skill of extras?.skillMetas ?? []) {
+      lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><location>${escapeXml(skill.location)}</location></skill>`);
     }
-    // Preloaded skills (full content)
-    if (extras?.skillBlocks?.length) {
-      for (const skill of extras.skillBlocks) {
-        lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`);
-      }
+    for (const skill of extras?.skillBlocks ?? []) {
+      lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`);
     }
     lines.push("</available_skills>");
-    extraSections.push(lines.join("\n"));
+    extrasSuffix = `\n\n${lines.join("\n")}`;
   }
-
-  const extrasSuffix = extraSections.length > 0 ? `\n\n${extraSections.join("\n")}` : "";
 
   const header = `You are a pi coding agent sub-agent.
 You have been invoked to handle a specific task autonomously.
