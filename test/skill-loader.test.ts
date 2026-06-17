@@ -33,24 +33,26 @@ afterEach(() => {
 /* ------------------------------------------------------------------ */
 
 describe("preloadSkills", () => {
-  it("loads full content from a skill directory", () => {
+  it("loads full content and extracts description from a skill directory", () => {
     createSkillDir(tmpDir, "tdd", "Test-driven development workflow", "## TDD Steps\n1. Red\n2. Green\n3. Refactor");
 
     const result = preloadSkills(["tdd"], tmpDir);
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("tdd");
+    expect(result[0].description).toBe("Test-driven development workflow");
     expect(result[0].content).toContain("## TDD Steps");
     expect(result[0].content).toContain("1. Red");
   });
 
-  it("loads full content from a flat skill file", () => {
+  it("loads full content and extracts description from a flat skill file", () => {
     createFlatSkill(tmpDir, "debug", "Debugging workflow", "## Debug Steps\n1. Reproduce\n2. Isolate\n3. Fix");
 
     const result = preloadSkills(["debug"], tmpDir);
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("debug");
+    expect(result[0].description).toBe("Debugging workflow");
     expect(result[0].content).toContain("## Debug Steps");
   });
 
@@ -60,6 +62,7 @@ describe("preloadSkills", () => {
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("nonexistent");
     expect(result[0].content).toContain("not found");
+    expect(result[0].description).toBe("");
   });
 });
 
@@ -156,21 +159,24 @@ describe("Prompt integration: whitelist excludes body", () => {
   });
 });
 
-describe("Prompt integration: preload includes body", () => {
-  it("Preloaded Skill section has full content WITH secret token", () => {
+describe("Prompt integration: preload in available_skills with content tag", () => {
+  it("Preloaded skill appears in available_skills with content tag", () => {
     createProofSkill();
     const blocks = preloadSkills(["proof-skill"], tmpDir);
     const prompt = buildAgentPrompt(baseConfig, tmpDir, env, { skillBlocks: blocks });
 
-    expect(prompt).toContain("# Preloaded Skill: proof-skill");
+    expect(prompt).toContain("<available_skills>");
+    expect(prompt).toContain("<skill><name>proof-skill</name><description>Skill with secret token</description><content>");
     expect(prompt).toContain(SECRET_TOKEN);
     expect(prompt).toContain(BODY_MARKER);
-    expect(prompt).not.toContain("<available_skills>");
+    expect(prompt).toContain("</content></skill>");
+    // No separate markdown dump
+    expect(prompt).not.toContain("# Preloaded Skill:");
   });
 });
 
 describe("Prompt integration: both together", () => {
-  it("metadata skill has no secret, preloaded skill has secret", () => {
+  it("metadata skill has no secret, preloaded skill has secret in content tag", () => {
     createProofSkill();
     createSkillDir(tmpDir, "other-skill", "Another skill", "OTHER_SECRET_123");
 
@@ -178,12 +184,19 @@ describe("Prompt integration: both together", () => {
     const blocks = preloadSkills(["other-skill"], tmpDir);
     const prompt = buildAgentPrompt(baseConfig, tmpDir, env, { skillMetas: metas, skillBlocks: blocks });
 
-    // proof-skill: metadata only
-    expect(prompt).toContain("<name>proof-skill</name>");
+    // Single available_skills block
+    const blockCount = (prompt.match(/<available_skills>/g) || []).length;
+    expect(blockCount).toBe(1);
+
+    // proof-skill: metadata only (location)
+    expect(prompt).toContain("<skill><name>proof-skill</name><description>Skill with secret token</description><location>");
     expect(prompt).not.toContain(SECRET_TOKEN);
 
-    // other-skill: preloaded
-    expect(prompt).toContain("# Preloaded Skill: other-skill");
+    // other-skill: preloaded (content tag)
+    expect(prompt).toContain("<skill><name>other-skill</name><description>Another skill</description><content>");
     expect(prompt).toContain("OTHER_SECRET_123");
+
+    // No separate markdown dump
+    expect(prompt).not.toContain("# Preloaded Skill:");
   });
 });
