@@ -33,6 +33,10 @@ export interface SubagentsConfig {
     defaultThinking?: ThinkingLevel;
     /** Default max turns for spawned agents. Undefined = unlimited. */
     defaultMaxTurns?: number;
+    /** Global default for skills loading when agent doesn't explicitly set skills. "load-all" (default) or "none". */
+    loadSkillsImplicitly?: "load-all" | "none";
+    /** Global default for extensions loading when agent doesn't explicitly set extensions. "load-all" (default) or "none". */
+    loadExtensionsImplicitly?: "load-all" | "none";
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

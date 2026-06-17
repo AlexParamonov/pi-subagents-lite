@@ -417,7 +417,6 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
 const BASE_DEFAULTS: AgentConfig = {
   name: "unknown",
   description: "",
-  extensions: true,
-  skills: true,
+  // extensions and skills intentionally omitted — resolved by global default
   systemPrompt: "",
 };

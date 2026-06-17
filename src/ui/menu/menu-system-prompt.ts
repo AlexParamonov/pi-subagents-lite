@@ -54,6 +54,24 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       ctx.ui.notify(`Include AGENTS.md ${store.agent.includeContextFiles ? "ON" : "OFF"}`, "info");
     });
 
+    // Load skills implicitly toggle
+    const loadSkillsImplicitly = store.agent.loadSkillsImplicitly;
+    items.push(`Load skills implicitly · ${loadSkillsImplicitly === "load-all" ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      const newValue = loadSkillsImplicitly === "load-all" ? "none" : "load-all";
+      store.mutate.agent.setLoadSkillsImplicitly(newValue);
+      ctx.ui.notify(`Load skills implicitly ${newValue === "load-all" ? "ON" : "OFF"}`, "info");
+    });
+
+    // Load extensions implicitly toggle
+    const loadExtensionsImplicitly = store.agent.loadExtensionsImplicitly;
+    items.push(`Load extensions implicitly · ${loadExtensionsImplicitly === "load-all" ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      const newValue = loadExtensionsImplicitly === "load-all" ? "none" : "load-all";
+      store.mutate.agent.setLoadExtensionsImplicitly(newValue);
+      ctx.ui.notify(`Load extensions implicitly ${newValue === "load-all" ? "ON" : "OFF"}`, "info");
+    });
+
     return { items, actions };
   });
 }

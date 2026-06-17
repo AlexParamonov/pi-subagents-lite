@@ -3,67 +3,69 @@ Status: APPROVED
 # Review Summary
 
 Files reviewed:
-- `src/skill-loader.ts`
-- `src/prompts.ts`
 - `src/types.ts`
-- `src/agent-runner.ts`
-- `src/spawn-coordinator.ts`
-- `src/agent-manager.ts`
-- `src/spawn-wizard.ts`
-- `src/tool-execution.ts`
-- `src/agent-discovery.ts`
-- `test/skill-loader.test.ts`
-- `test/prompts.test.ts`
-- `test/menu-spawn-wizard.test.ts`
-- `test/agent-widget.test.ts`
-- `test/worktree-discovery.test.ts`
-- `test/worktree-tool-execution.test.ts`
-- `test/worktree-widget-display.test.ts`
+- `src/agents/agent-types.ts`
+- `src/agents/agent-discovery.ts`
+- `src/agents/default-agents.ts`
+- `src/agents/agent-runner.ts`
+- `src/models/model-precedence.ts`
+- `src/config/config-store.ts`
+- `src/ui/menu/menu-system-prompt.ts`
+- `src/ui/format.ts`
+- `test/agent-types-resolver.test.ts`
+- `test/config-store.test.ts`
+- `test/menu-system-prompt.test.ts`
+- `test/menu-mock-setup.ts`
 
 Issues found:
 - 0 critical, 0 important, 0 suggestions
 
-# Review Details
+## Review Notes
 
-## Previous Review Issues (review-1.md) — All Resolved
+This review covers the revision after arch-review-1 identified a BLOCK: `AgentConfig.skills/extensions` were required fields typed `true | string[] | false`, making it impossible to distinguish "explicitly set `true`" from "inherited default `true`". The fix has been applied correctly.
 
-1. **CRITICAL: `disableModelInvocation` hardcoded to `false`** — FIXED. Commit `0943e9e` threads the real value from `loadAllSkills` through `SkillMeta` to `formatSkillsForPrompt` (prompts.ts:111). Test added in skill-loader.test.ts.
+### Acceptance Criteria Verification
 
-2. **IMPORTANT: `extractDescriptionFromContent` tests missing** — FIXED. Commit `0943e9e` added 5 tests covering: frontmatter extraction, no frontmatter, unclosed frontmatter, quote stripping, and truncation to 200 chars.
+All 10 acceptance criteria are met:
 
-3. **SUGGESTION: Unused `writeFileSync` import** — FIXED. `writeFileSync` is now used in the new `extractDescriptionFromContent` tests.
+1. **`loadSkillsImplicitly` accepts `"load-all"` | `"none"`, defaults `"load-all"`** — `ResolvedAgentSettings` in `config-store.ts:57`, `getConfig` parameter default in `agent-types.ts:309`, `config-store.ts:111` (`?? "load-all"`).
 
-## Acceptance Criteria Verification
+2. **`loadExtensionsImplicitly` accepts `"load-all"` | `"none"`, defaults `"load-all"`** — same pattern.
 
-All 14 acceptance criteria are met:
+3. **Agent with no explicit skills/extensions uses global default** — `BASE_DEFAULTS` and both `DEFAULT_AGENTS` entries omit `skills`/`extensions`, leaving them `undefined`. `applyGlobalDefaults` resolves `undefined` from the global setting. Tests at `agent-types-resolver.test.ts:400-410` cover this.
 
-- [x] `skill-loader.ts` imports and uses `loadSkills` from Pi (line 24, 73)
-- [x] `skill-loader.ts` imports and uses `loadSkillsFromDir` from Pi (line 25, 63, 116)
-- [x] Ancestor `.agents/skills` traversal walks cwd to git root (`loadAncestorAgentsSkills`, `findGitRoot`)
-- [x] Root `.md` files filtered from `.agents/skills` (`filterRootMdFiles`, line 137-141)
-- [x] Root `.md` files loaded from `.pi/skills` (via `loadSkills` with `includeDefaults: true`)
-- [x] `disable-model-invocation` skills excluded from prompt (threaded through `SkillMeta` to `formatSkillsForPrompt`)
-- [x] `prompts.ts` uses `formatSkillsForPrompt` (line 113)
-- [x] Symlinks followed and deduped (Pi's `loadSkills`/`loadSkillsFromDir` behavior, plus `canonicalizePath` dedup in `loadAllSkills`)
-- [x] Duplicate skills by name: first match wins (line 92-96, 98-102)
-- [x] `.gitignore`/`.ignore`/`.fdignore` respected (Pi's `loadSkills` internal)
-- [x] Legacy `~/.pi/skills` root removed (only Pi defaults via `loadSkills`)
-- [x] `preloadSkills` resolves by name and returns raw content (line 182-191, 196-209)
-- [x] `loadSkillMeta` returns `{ name, description, location, disableModelInvocation }` (line 196-211)
-- [x] Existing tests pass (713 tests, 38 files, all green)
+4. **Agent with explicit `skills: true` ignores global default** — `applyGlobalDefaults` only overrides `undefined`, not `true`. Test at `agent-types-resolver.test.ts:396-398` confirms `skills: true` passes through under `"none"`.
 
-## Strengths
+5. **Agent with explicit `extensions: true` ignores global default** — test at `agent-types-resolver.test.ts:401-403`.
 
-1. **Clean delegation to Pi's APIs.** The implementation correctly leverages `loadSkills`, `loadSkillsFromDir`, and `formatSkillsForPrompt` instead of reimplementing skill discovery. This eliminates divergent behavior and ensures subagents see the same skills as the parent session.
+6. **System Prompt menu shows "Load skills implicitly · ON/OFF"** — `menu-system-prompt.ts:57-64`, tests at `menu-system-prompt.test.ts:117-134`.
 
-2. **Proper error handling for Pi's API.** Pi's `loadSkillsFromDir` handles missing directories gracefully (returns `{ skills: [], diagnostics: [] }`), and the code doesn't need additional try/catch wrappers.
+7. **System Prompt menu shows "Load extensions implicitly · ON/OFF"** — `menu-system-prompt.ts:66-73`, tests at `menu-system-prompt.test.ts:141-158`.
 
-3. **Well-structured precedence logic.** The `loadAllSkills` function clearly separates the three source groups (ancestors, home agents, Pi defaults) and applies name + canonical path dedup in a single pass.
+8. **Clicking toggles between ON and OFF** — tests at `menu-system-prompt.test.ts:136-154` (skills) and `menu-system-prompt.test.ts:160-178` (extensions).
 
-4. **Thorough test coverage.** Tests cover: precedence ordering, root .md filtering, name dedup, description extraction (5 edge cases), `disableModelInvocation` threading, and prompt integration with secret token proof that whitelist doesn't leak content.
+9. **Config persists in `~/.pi/agent/subagents-lite.json`** — `config-store.ts:227-234` calls `this.persist()`. Tests at `config-store.test.ts:507-514` and `config-store.test.ts:548-555` verify save behavior.
 
-5. **`thinkingLevel` → `thinking` rename is consistent.** The rename touches `types.ts`, `agent-discovery.ts`, `agent-runner.ts`, `spawn-wizard.ts`, `tool-execution.ts`, and all relevant test mocks.
+10. **Backward compatible** — `loadSkillsImplicitly`/`loadExtensionsImplicitly` default to `"load-all"`, preserving current behavior. Embedded agents that previously hardcoded `skills: true, extensions: true` now omit them, but under `"load-all"` (default) they resolve identically to `true`.
 
-6. **Inline destructuring in `SpawnCoordinator.spawn`.** Replacing the `...config` spread with explicit field mapping (spawn-coordinator.ts:100-112) makes the interface contract visible and prevents silent field leakage.
+### Structural Fix Verification
 
-7. **`RunTunables`/`RunCallbacks`/`SpawnConfig` removal.** The old shared interfaces were premature abstractions. Inlining the fields into `RunOptions` and `SpawnOptions` improves readability with no loss of type safety.
+The arch-review-1 BLOCK fix is correct and clean:
+
+- `AgentConfig.skills` and `AgentConfig.extensions` are now optional (`types.ts:59,56`).
+- `BASE_DEFAULTS` (`agent-discovery.ts:419-421`) and both `DEFAULT_AGENTS` entries (`default-agents.ts:17-24, 29-41`) omit both fields.
+- `applyGlobalDefaults` (`agent-types.ts:289-299`) resolves `undefined` from the global setting; concrete values pass through.
+- `toResolved` (`agent-types.ts:277`) returns the narrower optional type; `getConfig` (`agent-types.ts:317-319`) merges the resolved defaults before returning `ResolvedAgentConfig`.
+- `ResolvedAgentConfig.skills` and `ResolvedAgentConfig.extensions` remain required (`agent-types.ts:272-273`), so downstream consumers never see `undefined`.
+
+### Test Quality
+
+Tests are well-structured:
+- `agent-types-resolver.test.ts` — 9 cases covering explicit values, implicit defaults, mixed, and unknown agent types. Tests verify behavior at the public API boundary.
+- `config-store.test.ts` — 10 cases covering defaults, persistence, updates, and `clearAllModelOverrides` preservation.
+- `menu-system-prompt.test.ts` — 8 cases covering display text and toggle behavior for both settings.
+- `menu-mock-setup.ts` — correctly updated to include new fields in `clearAllModelOverrides` preservation list.
+
+### Minor Note (not an issue)
+
+`getDisplayName` in `ui/format.ts:110` calls `getConfig(type)` without store arguments. The new parameters default to `"load-all"`, which is correct since display name resolution doesn't depend on skills/extensions.

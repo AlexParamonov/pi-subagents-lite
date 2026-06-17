@@ -17,8 +17,7 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       displayName: "Agent",
       description: "General-purpose agent for complex, multi-step tasks",
       // registeredTools omitted — means "all available tools" (resolved at lookup time)
-      extensions: true,
-      skills: true,
+      // extensions and skills intentionally omitted — resolved by global default
       systemPrompt: "",
       isDefault: true,
     },
@@ -30,8 +29,7 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       displayName: "Explore",
       description: "Fast codebase exploration agent (read-only)",
       registeredTools: READ_ONLY_TOOLS,
-      extensions: true,
-      skills: true,
+      // extensions and skills intentionally omitted — resolved by global default,
       systemPrompt: `# CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS
 You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
 Your role is EXCLUSIVELY to search and analyze existing code. You do NOT have access to file editing tools.

@@ -274,19 +274,29 @@ export interface ResolvedAgentConfig {
   skills: true | string[] | false;
 }
 
-function toResolved(config: AgentConfig): ResolvedAgentConfig {
+/**
+ * Apply global implicit defaults to skills/extensions.
+ * undefined means "not explicitly set" → resolve from global default.
+ * Concrete values (true, false, string[]) pass through unchanged.
+ */
+function applyGlobalDefaults(
+  skills: true | string[] | false | undefined,
+  extensions: true | string[] | false | undefined,
+  loadSkillsImplicitly: "load-all" | "none",
+  loadExtensionsImplicitly: "load-all" | "none",
+): { skills: true | string[] | false; extensions: true | string[] | false } {
   return {
-    displayName: config.displayName ?? config.name,
-    description: config.description,
-    registeredTools: config.registeredTools ?? BUILTIN_TOOL_NAMES,
-    tools: config.tools,
-    extensions: config.extensions,
-    skills: config.skills,
+    skills: skills === undefined ? (loadSkillsImplicitly === "none" ? false : true) : skills,
+    extensions: extensions === undefined ? (loadExtensionsImplicitly === "none" ? false : true) : extensions,
   };
 }
 
 /** Get config for a type (case-insensitive). Falls back to general-purpose. */
-export function getConfig(type: string): ResolvedAgentConfig {
+export function getConfig(
+  type: string,
+  loadSkillsImplicitly: "load-all" | "none" = "load-all",
+  loadExtensionsImplicitly: "load-all" | "none" = "load-all",
+): ResolvedAgentConfig {
   const resolvedKey = resolveType(type);
   const config = resolvedKey ? agents.get(resolvedKey) : undefined;
 
@@ -296,15 +306,23 @@ export function getConfig(type: string): ResolvedAgentConfig {
     : agents.get("general-purpose");
 
   if (activeConfig && activeConfig.hidden !== true) {
-    return toResolved(activeConfig);
+    const { skills, extensions, ...rest } = activeConfig;
+    const defaults = applyGlobalDefaults(skills, extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
+    return {
+      displayName: rest.displayName ?? rest.name,
+      description: rest.description,
+      registeredTools: rest.registeredTools ?? BUILTIN_TOOL_NAMES,
+      tools: rest.tools,
+      ...defaults,
+    };
   }
 
   // Absolute fallback — general-purpose was hidden or missing
+  const defaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
     registeredTools: BUILTIN_TOOL_NAMES,
-    extensions: true,
-    skills: true,
+    ...defaults,
   };
 }

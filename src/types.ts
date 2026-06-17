@@ -51,12 +51,12 @@ export interface AgentConfig {
   tools?: true | string[] | false;
   /** Tool blacklist — all tools except these are visible. Mutually exclusive with tools (when tools is string[]). */
   excludeTools?: string[];
-  /** true = inherit all, string[] = only listed, false = none. Mutually exclusive with excludeExtensions. */
-  extensions: true | string[] | false;
+  /** true = inherit all, string[] = only listed, false = none. undefined = not set (uses global default). Mutually exclusive with excludeExtensions. */
+  extensions?: true | string[] | false;
   /** Extension blacklist — all extensions except these load. Mutually exclusive with extensions (when extensions is string[]). */
   excludeExtensions?: string[];
-  /** Whitelist of allowed skills (metadata only in system prompt). true = all, string[] = listed, false = none */
-  skills: true | string[] | false;
+  /** Whitelist of allowed skills (metadata only in system prompt). true = all, string[] = listed, false = none. undefined = not set (uses global default). */
+  skills?: true | string[] | false;
   /** Skills to preload with full content into system prompt. string[] = listed, false/undefined = none */
   preloadSkills?: string[] | false;
   model?: string;
@@ -157,6 +157,8 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "includeContextFiles",
   "defaultThinking",
   "defaultMaxTurns",
+  "loadSkillsImplicitly",
+  "loadExtensionsImplicitly",
 ];
 
 /** Reason for a context compaction event. */
