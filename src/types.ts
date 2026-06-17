@@ -104,6 +104,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "widgetMaxLinesCompact",
   "widgetCompact",
   "widgetShortcut",
+  "systemPromptMode",
 ];
 
 /** Reason for a context compaction event. */

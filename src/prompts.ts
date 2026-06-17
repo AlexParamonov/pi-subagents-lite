@@ -14,25 +14,35 @@ export interface PromptExtras {
   skillBlocks?: { name: string; content: string }[];
   /** Skill metadata for whitelist display (name, description, location only). */
   skillMetas?: SkillMeta[];
+  /** Parent system prompt (for inherit mode). */
+  parentSystemPrompt?: string;
+  /** Custom system prompt content (for custom mode). */
+  customSystemPrompt?: string;
 }
 
 /**
  * Build the system prompt for an agent from its config.
  *
- * Always uses fresh-context mode: env header + config.systemPrompt.
- * Prepends an `<active_agent name=""/>` tag so downstream extensions
- * (e.g. permission/policy systems) can resolve per-agent policy.
+ * Three modes:
+ * - replace (default): generic header + env + agent's systemPrompt
+ * - inherit: parent's full system prompt (verbatim) + env + agent's systemPrompt
+ * - custom: content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt
  *
- * @param extras  Optional extra sections to inject (preloaded skills).
+ * Agent's own systemPrompt is always included in <agent_instructions> tags.
+ *
+ * @param config   Agent configuration.
+ * @param cwd      Current working directory.
+ * @param env      Environment info.
+ * @param extras   Optional extra sections to inject (skills, parent/custom prompts).
+ * @param mode     System prompt mode (replace, inherit, custom).
  */
 export function buildAgentPrompt(
   config: AgentConfig,
   cwd: string,
   env: EnvInfo,
   extras?: PromptExtras,
+  mode: "replace" | "inherit" | "custom" = "replace",
 ): string {
-  const activeAgentTag = `<active_agent name="${config.name}"/>\n\n`;
-
   const envLines = [
     "# Environment",
     `Working directory: ${cwd}`,
@@ -76,12 +86,23 @@ export function buildAgentPrompt(
 
   const extrasSuffix = extraSections.length > 0 ? `\n\n${extraSections.join("\n")}` : "";
 
-  const header = `You are a pi coding agent sub-agent.
-You have been invoked to handle a specific task autonomously.
+  // Agent's own system prompt wrapped in <agent_instructions> tags
+  const agentInstructions = `\n<agent_instructions>\n${config.systemPrompt}\n</agent_instructions>`;
 
-${envBlock}`;
+  // Build base prompt based on mode
+  let basePrompt: string;
+  if (mode === "inherit" && extras?.parentSystemPrompt) {
+    // Inherit mode: parent's full system prompt (verbatim) + active_agent tag after
+    basePrompt = `${extras.parentSystemPrompt}\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
+  } else if (mode === "custom" && extras?.customSystemPrompt) {
+    // Custom mode: custom prompt + env + agent's systemPrompt
+    basePrompt = `${extras.customSystemPrompt}\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
+  } else {
+    // Replace mode (default): generic header + env + agent's systemPrompt
+    basePrompt = `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
+  }
 
-  return `${activeAgentTag}${header}\n\n${config.systemPrompt}${extrasSuffix}`;
+  return `${basePrompt}${agentInstructions}${extrasSuffix}`;
 }
 
 function escapeXml(value: string): string {

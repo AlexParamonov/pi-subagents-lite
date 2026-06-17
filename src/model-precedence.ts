@@ -23,6 +23,8 @@ export interface SubagentsConfig {
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
     widgetShortcut?: boolean;
+    /** System prompt mode: replace (default), inherit parent, or custom file. */
+    systemPromptMode?: "replace" | "inherit" | "custom";
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

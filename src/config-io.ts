@@ -22,6 +22,7 @@ export const DEFAULT_CONFIG: SubagentsConfig = {
     // widgetMaxLinesCompact intentionally omitted — derives from widgetMaxLines
     widgetCompact: false,
     widgetShortcut: false,
+    systemPromptMode: "replace",
   },
   concurrency: { default: 4 },
 };

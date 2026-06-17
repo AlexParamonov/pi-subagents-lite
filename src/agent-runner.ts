@@ -4,6 +4,7 @@
  * Tool visibility policy is owned by agent-types.ts (resolveVisibleTools).
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -25,6 +26,10 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
 import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
+import { getStore } from "./shell.js";
+
+/** Path to custom prompt file. */
+const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
 
 /** Default grace turns when not specified in config. */
 const DEFAULT_GRACE_TURNS = 6;
@@ -263,6 +268,9 @@ function buildPrompt(
   config: ReturnType<typeof getConfig>,
   cwd: string,
   env: EnvInfo,
+  systemPromptMode: "replace" | "inherit" | "custom" = "replace",
+  parentSystemPrompt?: string,
+  customSystemPrompt?: string,
 ): string {
   const extras: PromptExtras = {};
   if (Array.isArray(agentConfig?.preloadSkills)) {
@@ -271,12 +279,18 @@ function buildPrompt(
   if (Array.isArray(config.skills)) {
     extras.skillMetas = loadSkillMeta(config.skills, cwd);
   }
+  if (parentSystemPrompt) {
+    extras.parentSystemPrompt = parentSystemPrompt;
+  }
+  if (customSystemPrompt) {
+    extras.customSystemPrompt = customSystemPrompt;
+  }
   if (agentConfig) {
-    return buildAgentPrompt(agentConfig, cwd, env, extras);
+    return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
   }
   const fallback = DEFAULT_AGENTS.get("general-purpose");
   if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
-  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras);
+  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras, systemPromptMode);
 }
 
 /** Build extension name → tool names map from loaded extensions. */
@@ -516,7 +530,43 @@ export async function runAgent(
   const effectiveCwd = options.cwd ?? ctx.cwd;
   const env = await detectEnv(options.pi, effectiveCwd);
 
-  const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env);
+  // Get system prompt mode from config
+  const store = getStore();
+  const systemPromptMode = store.agent.systemPromptMode;
+
+  // Fetch parent system prompt for inherit mode
+  let parentSystemPrompt: string | undefined;
+  if (systemPromptMode === "inherit") {
+    try {
+      parentSystemPrompt = ctx.getSystemPrompt();
+    } catch (err) {
+      notify(`Failed to get parent system prompt: ${err}. Falling back to replace mode.`);
+    }
+  }
+
+  // Read custom prompt file for custom mode
+  let customSystemPrompt: string | undefined;
+  if (systemPromptMode === "custom") {
+    try {
+      const content = fs.readFileSync(CUSTOM_PROMPT_PATH, "utf-8").trim();
+      if (content) {
+        customSystemPrompt = content;
+      } else {
+        notify(`Custom prompt file is empty: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
+      }
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        notify(`Custom prompt file not found: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
+      } else {
+        notify(`Failed to read custom prompt file: ${err.message}. Falling back to replace mode.`);
+      }
+    }
+  }
+
+  const systemPrompt = buildPrompt(
+    type, agentConfig, config, effectiveCwd, env,
+    systemPromptMode, parentSystemPrompt, customSystemPrompt,
+  );
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
   const { extResult } = await reloadAndMap();
   const session = await createAndConfigureSession(

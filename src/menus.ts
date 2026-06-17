@@ -5,6 +5,8 @@
  * Imports shared state (config, manager) from shell.ts.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
 import type { AgentRecord } from "./types.js";
@@ -341,6 +343,38 @@ export async function showModelSettingsMenu(
       store.mutate.agent.setGraceTurns(parsed);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
+
+    // System prompt mode setting
+    const systemPromptMode = store.agent.systemPromptMode;
+    items.push(`System prompt mode · ${systemPromptMode}`);
+    actions.push(async () => {
+      const choices = ["replace — generic header + env + agent's systemPrompt (current)", "inherit — parent's full system prompt (verbatim) + env + agent's systemPrompt", "custom — content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt"];
+      const choice = await ctx.ui.select("System prompt mode", choices);
+      if (choice === undefined) return;
+      let mode: "replace" | "inherit" | "custom";
+      if (choice.startsWith("replace")) mode = "replace";
+      else if (choice.startsWith("inherit")) mode = "inherit";
+      else mode = "custom";
+      store.mutate.agent.setSystemPromptMode(mode);
+      ctx.ui.notify(`System prompt mode set to ${mode}`, "info");
+    });
+
+    // Offer to create custom prompt file if mode is custom but file doesn't exist
+    if (systemPromptMode === "custom") {
+      const customPromptPath = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
+      if (!fs.existsSync(customPromptPath)) {
+        items.push("Create prompt file · ~/.pi/agent/subagents-lite-prompt.md");
+        actions.push(async () => {
+          try {
+            fs.mkdirSync(path.dirname(customPromptPath), { recursive: true });
+            fs.writeFileSync(customPromptPath, "# Custom System Prompt\n\nAdd your custom system prompt here.\n", "utf-8");
+            ctx.ui.notify(`Created prompt file: ${customPromptPath}`, "info");
+          } catch (err: any) {
+            ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
+          }
+        });
+      }
+    }
 
     items.push("");
     actions.push(async () => {});

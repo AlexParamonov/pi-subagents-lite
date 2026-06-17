@@ -350,6 +350,51 @@ describe("ConfigStore session overrides", () => {
   });
 });
 
+describe("ConfigStore systemPromptMode", () => {
+  it("defaults to 'replace' when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.systemPromptMode).toBe("replace");
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, systemPromptMode: "inherit" }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.systemPromptMode).toBe("inherit");
+  });
+
+  it("setSystemPromptMode persists the value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.agent.setSystemPromptMode("custom");
+    expect(store.agent.systemPromptMode).toBe("custom");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.systemPromptMode).toBe("custom");
+  });
+
+  it("setSystemPromptMode updates the value", () => {
+    const { io } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setSystemPromptMode("inherit");
+    expect(store.agent.systemPromptMode).toBe("inherit");
+    store.mutate.agent.setSystemPromptMode("custom");
+    expect(store.agent.systemPromptMode).toBe("custom");
+    store.mutate.agent.setSystemPromptMode("replace");
+    expect(store.agent.systemPromptMode).toBe("replace");
+  });
+
+  it("clearAllModelOverrides preserves systemPromptMode", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, systemPromptMode: "custom", Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.systemPromptMode).toBe("custom");
+  });
+});
+
 describe("ConfigStore lifecycle", () => {
   it("reload re-reads disk and resets session overrides", () => {
     const { io, current } = memIO();

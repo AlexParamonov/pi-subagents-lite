@@ -6,6 +6,7 @@
  *   - buildAgentPrompt with skillBlocks (preload format)
  *   - buildAgentPrompt with both
  *   - XML escaping of special characters
+ *   - System prompt modes (replace, inherit, custom)
  */
 
 import { describe, it, expect } from "vitest";
@@ -95,5 +96,109 @@ describe("buildAgentPrompt", () => {
 
     expect(result).not.toContain("<available_skills>");
     expect(result).not.toContain("Preloaded Skill");
+  });
+});
+
+describe("buildAgentPrompt — system prompt modes", () => {
+  it("replace mode (default): generic header + env + agent's systemPrompt in agent_instructions", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
+
+    // Should have generic header
+    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You have been invoked to handle a specific task autonomously.");
+
+    // Should have active_agent tag
+    expect(result).toContain(`<active_agent name="${baseConfig.name}"/>`);
+
+    // Should have env block
+    expect(result).toContain("# Environment");
+    expect(result).toContain("Working directory: /test/cwd");
+    expect(result).toContain("Git repository: yes");
+    expect(result).toContain("Branch: main");
+    expect(result).toContain("Platform: linux");
+
+    // Should have agent's systemPrompt in agent_instructions tags
+    expect(result).toContain("<agent_instructions>");
+    expect(result).toContain(baseConfig.systemPrompt);
+    expect(result).toContain("</agent_instructions>");
+  });
+
+  it("inherit mode: parent system prompt + active_agent tag + env + agent_instructions", () => {
+    const parentPrompt = "You are the parent agent. You have access to all tools.";
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    // Should have parent prompt verbatim at the start
+    expect(result.startsWith(parentPrompt)).toBe(true);
+
+    // Should have active_agent tag after parent prompt
+    const afterParent = result.slice(parentPrompt.length);
+    expect(afterParent).toContain(`<active_agent name="${baseConfig.name}"/>`);
+
+    // Should have env block
+    expect(result).toContain("# Environment");
+    expect(result).toContain("Working directory: /test/cwd");
+
+    // Should have agent's systemPrompt in agent_instructions tags
+    expect(result).toContain("<agent_instructions>");
+    expect(result).toContain(baseConfig.systemPrompt);
+    expect(result).toContain("</agent_instructions>");
+
+    // Should NOT have generic header
+    expect(result).not.toContain("You are a pi coding agent sub-agent.");
+  });
+
+  it("custom mode: custom prompt + active_agent tag + env + agent_instructions", () => {
+    const customPrompt = "You are a specialized agent for code review tasks.";
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: customPrompt }, "custom");
+
+    // Should have custom prompt at the start
+    expect(result.startsWith(customPrompt)).toBe(true);
+
+    // Should have active_agent tag after custom prompt
+    const afterCustom = result.slice(customPrompt.length);
+    expect(afterCustom).toContain(`<active_agent name="${baseConfig.name}"/>`);
+
+    // Should have env block
+    expect(result).toContain("# Environment");
+    expect(result).toContain("Working directory: /test/cwd");
+
+    // Should have agent's systemPrompt in agent_instructions tags
+    expect(result).toContain("<agent_instructions>");
+    expect(result).toContain(baseConfig.systemPrompt);
+    expect(result).toContain("</agent_instructions>");
+
+    // Should NOT have generic header
+    expect(result).not.toContain("You are a pi coding agent sub-agent.");
+  });
+
+  it("inherit mode falls back to replace when parentSystemPrompt is missing", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "inherit");
+
+    // Should have generic header (fallback)
+    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You have been invoked to handle a specific task autonomously.");
+  });
+
+  it("custom mode falls back to replace when customSystemPrompt is missing", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "custom");
+
+    // Should have generic header (fallback)
+    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You have been invoked to handle a specific task autonomously.");
+  });
+
+  it("agent's systemPrompt is always in agent_instructions tags regardless of mode", () => {
+    const parentPrompt = "Parent prompt.";
+    const customPrompt = "Custom prompt.";
+
+    const replaceResult = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
+    const inheritResult = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+    const customResult = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: customPrompt }, "custom");
+
+    for (const result of [replaceResult, inheritResult, customResult]) {
+      expect(result).toContain("<agent_instructions>");
+      expect(result).toContain(baseConfig.systemPrompt);
+      expect(result).toContain("</agent_instructions>");
+    }
   });
 });

@@ -43,6 +43,8 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  /** System prompt mode: replace (default), inherit parent, or custom file. */
+  readonly systemPromptMode: "replace" | "inherit" | "custom";
 }
 
 /** Side-effect targets, injected after construction. */
@@ -83,6 +85,7 @@ export class ConfigStore {
       widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
       widgetCompact: a.widgetCompact === true,
       widgetShortcut: a.widgetShortcut === true,
+      systemPromptMode: (a.systemPromptMode as "replace" | "inherit" | "custom") ?? DEFAULT_CONFIG.agent.systemPromptMode ?? "replace",
     };
   }
 
@@ -169,6 +172,10 @@ export class ConfigStore {
       },
       setGraceTurns: (n: number): void => {
         this.config.agent.graceTurns = n;
+        this.persist();
+      },
+      setSystemPromptMode: (mode: "replace" | "inherit" | "custom"): void => {
+        this.config.agent.systemPromptMode = mode;
         this.persist();
       },
     },
