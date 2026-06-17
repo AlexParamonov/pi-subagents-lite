@@ -250,36 +250,12 @@ export class ConfigStore {
         this.config.agent.loadExtensionsImplicitly = value;
         this.persist();
       },
-      setShowTools: (enabled: boolean): void => {
-        this.config.agent.showTools = enabled;
-        this.persist();
-        this.syncWidgetStatsVisibility();
-      },
-      setShowTurns: (enabled: boolean): void => {
-        this.config.agent.showTurns = enabled;
-        this.persist();
-        this.syncWidgetStatsVisibility();
-      },
-      setShowInput: (enabled: boolean): void => {
-        this.config.agent.showInput = enabled;
-        this.persist();
-        this.syncWidgetStatsVisibility();
-      },
-      setShowOutput: (enabled: boolean): void => {
-        this.config.agent.showOutput = enabled;
-        this.persist();
-        this.syncWidgetStatsVisibility();
-      },
-      setShowContext: (enabled: boolean): void => {
-        this.config.agent.showContext = enabled;
-        this.persist();
-        this.syncWidgetStatsVisibility();
-      },
-      setShowTime: (enabled: boolean): void => {
-        this.config.agent.showTime = enabled;
-        this.persist();
-        this.syncWidgetStatsVisibility();
-      },
+      setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
+      setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
+      setShowInput: (enabled: boolean) => this.setAgentVisibility("showInput", enabled),
+      setShowOutput: (enabled: boolean) => this.setAgentVisibility("showOutput", enabled),
+      setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
+      setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
     },
     widget: {
       setCompact: (enabled: boolean): void => {
@@ -444,6 +420,13 @@ export class ConfigStore {
       showCost: a.showCost,
       showTime: a.showTime,
     });
+  }
+
+  /** Update a widget stats visibility flag: mutate config → persist → sync widget. */
+  private setAgentVisibility(key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime", value: boolean): void {
+    this.config.agent[key] = value;
+    this.persist();
+    this.syncWidgetStatsVisibility();
   }
 
   private applyConcurrency(): void {
