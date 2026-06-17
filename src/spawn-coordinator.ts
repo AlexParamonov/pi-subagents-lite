@@ -34,6 +34,7 @@ export interface SpawnIntent {
   model?: Model<any>;
   modelKey?: string;
   maxTurns?: number;
+  maxTokens?: number;
   thinkingLevel?: ThinkingLevel;
   graceTurns: number;
   worktreePath?: string;
@@ -101,6 +102,7 @@ export class SpawnCoordinator {
       description: intent.description,
       model: intent.model,
       maxTurns: intent.maxTurns,
+      maxTokens: intent.maxTokens,
       thinkingLevel: intent.thinkingLevel,
       modelKey: intent.modelKey,
       invocation: intent.invocation,

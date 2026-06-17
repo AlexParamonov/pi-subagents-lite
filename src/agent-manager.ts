@@ -71,6 +71,7 @@ export interface SpawnOptions {
   description: string;
   model?: Model<any>;
   maxTurns?: number;
+  maxTokens?: number;
   thinkingLevel?: ThinkingLevel;
   isBackground?: boolean;
   /** Resolved worktree path — forwarded as cwd to runAgent. */
@@ -303,6 +304,7 @@ export class AgentManager {
       agentId: id,
       model: options.model,
       maxTurns: options.maxTurns,
+      maxTokens: options.maxTokens,
       thinkingLevel: options.thinkingLevel,
       cwd: options.worktreePath,
       graceTurns: options.graceTurns,

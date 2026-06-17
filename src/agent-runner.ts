@@ -57,6 +57,7 @@ interface RunOptions {
   agentId?: string;
   model?: Model<any>;
   maxTurns?: number;
+  maxTokens?: number;
   signal?: AbortSignal;
   thinkingLevel?: ThinkingLevel;
   /** Override working directory. */
@@ -439,8 +440,9 @@ async function initSession(
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
   const result = await createAgentSession(sessionOpts);
 
-  // Inject max_tokens into provider request payloads when defined in agent config.
-  const maxTokens = agentConfig?.maxTokens;
+  // Inject max_tokens into provider request payloads.
+  // Spawn-time value wins over agent config (frontmatter).
+  const maxTokens = options.maxTokens ?? agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
     const field = (model.compat as any)?.maxTokensField ?? "max_tokens";
     const origOnPayload = result.session.agent.onPayload;

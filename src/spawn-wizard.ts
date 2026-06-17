@@ -185,6 +185,8 @@ export async function showSpawnAgentMenu(
   let currentThinking: ThinkingLevel | undefined = agentConfig.thinking ?? store.agent.defaultThinking;
   // Max turns: agent config → config default → unlimited
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
+  // Max tokens: agent config only (no config default)
+  let currentMaxTokens: number | undefined = agentConfig.maxTokens;
   let currentGraceTurns: number | undefined = store.agent.graceTurns;
   let currentBackground: boolean = store.agent.forceBackground;
 
@@ -192,6 +194,7 @@ export async function showSpawnAgentMenu(
     const displayModel = currentModelStr || "(inherits parent)";
     const displayThinking = currentThinking ?? "inherit";
     const displayMaxTurns = currentMaxTurns != null ? String(currentMaxTurns) : "unlimited";
+    const displayMaxTokens = currentMaxTokens != null ? String(currentMaxTokens) : "unlimited";
     const displayGraceTurns = String(currentGraceTurns ?? 6);
     const displayBackground = currentBackground ? "ON" : "OFF";
 
@@ -202,6 +205,7 @@ export async function showSpawnAgentMenu(
       `Background · ${displayBackground}`,
       `Thinking · ${displayThinking}`,
       `Max turns · ${displayMaxTurns}`,
+      `Max tokens · ${displayMaxTokens}`,
       `Grace turns · ${displayGraceTurns}`,
       `Description · ${description}`,
     ];
@@ -252,6 +256,7 @@ export async function showSpawnAgentMenu(
           model,
           modelKey,
           maxTurns: currentMaxTurns,
+          maxTokens: currentMaxTokens,
           thinkingLevel: currentThinking,
           graceTurns: currentGraceTurns,
           worktreePath: currentWorktreePath,
@@ -314,6 +319,22 @@ export async function showSpawnAgentMenu(
             ctx.ui.notify("Invalid value — must be a number ≥ 1 or 'unlimited'", "error");
           } else {
             currentMaxTurns = parsed;
+          }
+        }
+      }
+    } else if (choice.startsWith("Max tokens")) {
+      const initial = currentMaxTokens != null ? String(currentMaxTokens) : "unlimited";
+      const input = await ctx.ui.input("Max tokens (number or 'unlimited')", initial);
+      if (input !== undefined) {
+        const trimmed = input.trim().toLowerCase();
+        if (trimmed === "unlimited" || trimmed === "") {
+          currentMaxTokens = undefined;
+        } else {
+          const parsed = parseInt(trimmed, 10);
+          if (isNaN(parsed) || parsed < 1) {
+            ctx.ui.notify("Invalid value — must be a number ≥ 1 or 'unlimited'", "error");
+          } else {
+            currentMaxTokens = parsed;
           }
         }
       }
