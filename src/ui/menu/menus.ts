@@ -1,9 +1,11 @@
 /**
  * menus.ts — /agents command dispatcher.
  *
- * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
- * SettingsList maintains internal cursor state, fixing the cursor-position
- * reset bug that occurred with ctx.ui.select.
+ * Uses ctx.ui.select with a while(true) loop for the dispatcher menus (main, settings).
+ * This pattern is correct for dispatchers because:
+ *   - They don't need cursor persistence (cursor position doesn't matter for dispatchers)
+ *   - ctx.ui.select handles escape correctly and re-renders after each submenu
+ *   - SettingsList-based menus (spawn options, system prompt) have the cursor persistence issue
  *
  * Module structure:
  *   - menu-helpers.ts: shared helpers (runMenuLoop, runMenu, promptModelSelection, parseNumericInput, matchMenuChoice, buildSettingsListTheme, validateNumeric)
@@ -18,8 +20,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme } from "./menu-helpers.js";
+import { matchMenuChoice } from "./menu-helpers.js";
 import { showModelSettingsMenu } from "./menu-model-settings.js";
 import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
 import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
@@ -37,107 +38,59 @@ export async function showSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const items: SettingItem[] = [
-    {
-      id: "model",
-      label: "Model settings",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showModelSettingsMenu(ctx, modelOptions).then(() => done());
-        // Async navigation: the submenu takes over rendering via ctx.ui.select/custom
-        // before SettingsList can interact with the return value. undefined is safe here.
-        return undefined as any;
-      },
-    },
-    {
-      id: "concurrency",
-      label: "Concurrency settings",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showConcurrencySettingsMenu(ctx, modelOptions).then(() => done());
-        return undefined as any;
-      },
-    },
-    {
-      id: "spawn",
-      label: "Spawn options",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showSpawnOptionsMenu(ctx).then(() => done());
-        return undefined as any;
-      },
-    },
-    {
-      id: "systemPrompt",
-      label: "System prompt",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showSystemPromptMenu(ctx).then(() => done());
-        return undefined as any;
-      },
-    },
-    {
-      id: "widget",
-      label: "Widget settings",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showWidgetSettingsMenu(ctx).then(() => done());
-        return undefined as any;
-      },
-    },
+  const menuItems = [
+    "1. Model settings — Set global default and per-type model overrides",
+    "2. Concurrency settings — Set per-model slot limits",
+    "3. Spawn options — Default thinking, max turns, background, grace turns",
+    "4. System prompt — Prompt mode, custom prompt file, AGENTS.md",
+    "5. Widget settings — Configure widget display options",
+    "",
+    "Back",
   ];
 
-  await ctx.ui.custom((_tui, theme, _kb, done) =>
-    new SettingsList(items, 10, buildSettingsListTheme(theme), () => {}, () => done(undefined))
-  );
+  const handlers: Record<string, () => Promise<void>> = {
+    "1": () => showModelSettingsMenu(ctx, modelOptions),
+    "2": () => showConcurrencySettingsMenu(ctx, modelOptions),
+    "3": () => showSpawnOptionsMenu(ctx),
+    "4": () => showSystemPromptMenu(ctx),
+    "5": () => showWidgetSettingsMenu(ctx),
+  };
+
+  while (true) {
+    const choice = await ctx.ui.select("Settings", menuItems);
+    if (choice === undefined || choice === "Back") return;
+
+    const action = matchMenuChoice(choice, handlers);
+    if (action) await action();
+  }
 }
 
 export async function showAgentsMainMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const items: SettingItem[] = [
-    {
-      id: "running",
-      label: "Running agents",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showRunningAgentsMenu(ctx).then(() => done());
-        // Async navigation: the submenu takes over rendering via ctx.ui.select/custom
-        // before SettingsList can interact with the return value. undefined is safe here.
-        return undefined as any;
-      },
-    },
-    {
-      id: "spawn",
-      label: "Spawn agent",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showSpawnAgentMenu(ctx, modelOptions).then(() => done());
-        return undefined as any;
-      },
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showSettingsMenu(ctx, modelOptions).then(() => done());
-        return undefined as any;
-      },
-    },
-    {
-      id: "debug",
-      label: "Debug",
-      currentValue: "→",
-      submenu: (_v, done) => {
-        showDebugMenu(ctx).then(() => done());
-        return undefined as any;
-      },
-    },
+  const menuItems = [
+    "1. Running agents — List running/queued agents",
+    "2. Spawn agent — Manually spawn a new agent",
+    "3. Settings — Model, concurrency, and widget settings",
+    "4. Debug — Agent types, briefing, diagnostics",
+    "",
+    "Press Escape to close",
   ];
 
-  await ctx.ui.custom((_tui, theme, _kb, done) =>
-    new SettingsList(items, 10, buildSettingsListTheme(theme), () => {}, () => done(undefined))
-  );
+  const handlers: Record<string, () => Promise<void>> = {
+    "1": () => showRunningAgentsMenu(ctx),
+    "2": () => showSpawnAgentMenu(ctx, modelOptions),
+    "3": () => showSettingsMenu(ctx, modelOptions),
+    "4": () => showDebugMenu(ctx),
+  };
+
+  // Loop so sub-menus navigate back to root; only Escape at root closes
+  while (true) {
+    const choice = await ctx.ui.select("Subagents Management", menuItems);
+    if (choice === undefined || choice === "Press Escape to close") return;
+
+    const action = matchMenuChoice(choice, handlers);
+    if (action) await action();
+  }
 }
