@@ -274,17 +274,6 @@ export interface ResolvedAgentConfig {
   skills: true | string[] | false;
 }
 
-function toResolved(config: AgentConfig): Omit<ResolvedAgentConfig, "skills" | "extensions"> & { skills?: true | string[] | false; extensions?: true | string[] | false } {
-  return {
-    displayName: config.displayName ?? config.name,
-    description: config.description,
-    registeredTools: config.registeredTools ?? BUILTIN_TOOL_NAMES,
-    tools: config.tools,
-    extensions: config.extensions,
-    skills: config.skills,
-  };
-}
-
 /**
  * Apply global implicit defaults to skills/extensions.
  * undefined means "not explicitly set" → resolve from global default.
@@ -317,18 +306,23 @@ export function getConfig(
     : agents.get("general-purpose");
 
   if (activeConfig && activeConfig.hidden !== true) {
-    const resolved = toResolved(activeConfig);
-    const defaults = applyGlobalDefaults(resolved.skills, resolved.extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
-    return { ...resolved, ...defaults };
+    const { skills, extensions, ...rest } = activeConfig;
+    const defaults = applyGlobalDefaults(skills, extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
+    return {
+      displayName: rest.displayName ?? rest.name,
+      description: rest.description,
+      registeredTools: rest.registeredTools ?? BUILTIN_TOOL_NAMES,
+      tools: rest.tools,
+      ...defaults,
+    };
   }
 
   // Absolute fallback — general-purpose was hidden or missing
-  // Use undefined so global default applies (not "explicitly true")
-  const fallbackDefaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
+  const defaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
     registeredTools: BUILTIN_TOOL_NAMES,
-    ...fallbackDefaults,
+    ...defaults,
   };
 }
