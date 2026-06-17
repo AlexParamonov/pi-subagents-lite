@@ -26,11 +26,6 @@ import { showDebugMenu } from "./menu-debug.js";
 import { showSpawnAgentMenu } from "./spawn-wizard.js";
 export { showSpawnAgentMenu };
 
-// Re-export sub-module entry functions for tests and external consumers
-export { showModelSettingsMenu } from "./menu-model-settings.js";
-export { showConcurrencySettingsMenu } from "./menu-concurrency.js";
-export { showWidgetSettingsMenu } from "./menu-widget-settings.js";
-export { showRunningAgentsMenu, showAgentActions } from "./menu-running-agents.js";
 
 export async function showSettingsMenu(
   ctx: ExtensionCommandContext,
