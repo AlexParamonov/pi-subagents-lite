@@ -57,9 +57,11 @@ function formatSessionTokens(
   return `${tokenStr}(${annot.join("·")}`;
 }
 
-/** Format turn count with optional max limit: "5≤30⟳" or "5⟳". */
+/** Format turn count with optional max limit. Shows max when >= 80% of limit. */
 function formatTurns(turnCount: number, maxTurns?: number | null): string {
-  return maxTurns != null ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
+  if (maxTurns == null) return `${turnCount}⟳ `;
+  const approaching = turnCount >= maxTurns * 0.8;
+  return approaching ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
 }
 
 // ---- Exported formatting functions ----
