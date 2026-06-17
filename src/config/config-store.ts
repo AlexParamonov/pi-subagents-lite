@@ -212,6 +212,7 @@ export class ConfigStore {
         this.sessionShowCost = undefined;
         this.persist();
         this.widget?.setShowCost(enabled);
+        this.syncWidgetStatsVisibility();
       },
       setGraceTurns: (n: number): void => {
         this.config.agent.graceTurns = n;
@@ -355,11 +356,13 @@ export class ConfigStore {
       setShowCost: (enabled: boolean): void => {
         this.sessionShowCost = enabled;
         this.widget?.setShowCost(enabled);
+        this.syncWidgetStatsVisibility();
       },
       /** Clear session showCost override, reverting to config value. */
       clearShowCost: (): void => {
         this.sessionShowCost = undefined;
         this.widget?.setShowCost(this.config.agent.showCost === true);
+        this.syncWidgetStatsVisibility();
       },
     },
   };

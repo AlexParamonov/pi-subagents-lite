@@ -128,6 +128,7 @@ describe("ConfigStore persisted mutations", () => {
     expect(saves).toHaveLength(1);
     expect(saves[0].agent.showCost).toBe(true);
     expect(calls).toContain("setShowCost:true");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
   it("setWidgetMaxLines derives compact when unset and syncs the widget", () => {
@@ -275,6 +276,7 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(true);
     expect(calls).toContain("setShowCost:true");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
   it("session clearShowCost syncs config value to widget", () => {
@@ -285,10 +287,12 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(false);
     expect(calls).toContain("setShowCost:false");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
     calls.length = 0;
     store.mutate.session.clearShowCost();
     // After clearing session override, widget should revert to config value (true)
     expect(calls).toContain("setShowCost:true");
+    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
   it("reload clears session showCost override", () => {
