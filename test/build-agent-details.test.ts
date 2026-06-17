@@ -69,7 +69,8 @@ describe("buildAgentDetails", () => {
     // Should NOT include stats or status fields
     expect(details.turnCount).toBeUndefined();
     expect(details.status).toBeUndefined();
-    expect(details.tokens).toBeUndefined();
+    expect(details.input).toBeUndefined();
+    expect(details.output).toBeUndefined();
   });
 
   it("returns only two keys when no options given", () => {
@@ -89,7 +90,8 @@ describe("buildAgentDetails", () => {
     expect(details.turnCount).toBeDefined();
     expect(details.maxTurns).toBeDefined();
     expect(details.toolUses).toBe(5);
-    expect(details.tokens).toBeDefined();
+    expect(details.input).toBeDefined();
+    expect(details.output).toBeDefined();
     expect(details.cost).toBe(0.01);
     expect(details.contextPercent).toBeDefined();
     expect(details.durationMs).toBeDefined();
@@ -97,14 +99,14 @@ describe("buildAgentDetails", () => {
     expect(details.modelName).toBeUndefined(); // no invocation set
   });
 
-  it("computes totalTokens from lifetimeUsage", () => {
+  it("computes input and output from lifetimeUsage", () => {
     const record = makeRecord({
       stats: { lifetimeUsage: { input: 1000, output: 2000, cacheWrite: 500, cost: 0.05 }, toolUses: 5, compactionCount: 1, turnCount: 10, maxTurns: 25 },
     });
     const details = buildAgentDetails(record, { includeStats: true });
 
-    // totalTokens = input + output + cacheWrite + cost = 3500.05
-    expect(details.tokens).toBe(3500.05);
+    expect(details.input).toBe(1000);
+    expect(details.output).toBe(2000);
   });
 
   it("computes durationMs as completedAt - startedAt", () => {
@@ -149,7 +151,8 @@ describe("buildAgentDetails", () => {
 
     expect(details.status).toBe("error");
     expect(details.outputFile).toBe("/tmp/err.log");
-    expect(details.tokens).toBeDefined();
+    expect(details.input).toBeDefined();
+    expect(details.output).toBeDefined();
     expect(details.durationMs).toBeDefined();
     expect(details.toolUses).toBe(5);
   });
@@ -178,7 +181,8 @@ describe("buildAgentDetails", () => {
     });
     const details = buildAgentDetails(record, { includeStats: true });
 
-    expect(details.tokens).toBe(0);
+    expect(details.input).toBe(0);
+    expect(details.output).toBe(0);
     expect(details.cost).toBe(0);
   });
 

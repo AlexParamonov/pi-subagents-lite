@@ -36,6 +36,13 @@ export function formatTokens(count: number): string {
   return `${count}`;
 }
 
+/** Format token count for widget display: rounded to whole number for k. */
+export function formatTokensCompact(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${Math.round(count / 1_000)}k`;
+  return `${count}`;
+}
+
 /** Format cost as a dollar amount: "$0.00", "$0.01", "$1.23". */
 export function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`;

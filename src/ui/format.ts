@@ -10,7 +10,7 @@
 
 import { getConfig } from "../agents/agent-types.js";
 import type { SubagentType, Theme } from "../types.js";
-import { formatTokens, formatCost } from "../agents/usage.js";
+import { formatTokens, formatTokensCompact, formatCost } from "../agents/usage.js";
 
 /** Max length for a truncated command in tool arg summaries. */
 const MAX_COMMAND_DISPLAY_LENGTH = 100;
@@ -31,12 +31,16 @@ const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 200;
  *   "12.3k(45%·↻ 2)"             — both
  */
 function formatSessionTokens(
-  tokens: number,
+  inputTokens: number,
+  outputTokens: number,
   percent: number | null,
   theme: Theme,
   compactions = 0,
 ): string {
-  const tokenStr = formatTokens(tokens);
+  const tokenParts: string[] = [];
+  if (inputTokens > 0) tokenParts.push(`↑${formatTokensCompact(inputTokens)}`);
+  if (outputTokens > 0) tokenParts.push(`↓${formatTokensCompact(outputTokens)}`);
+  const tokenStr = tokenParts.join(" ");
   const annot: string[] = [];
   if (percent !== null) {
     const color = percent >= 85 ? "error" : percent >= 70 ? "warning" : "dim";
@@ -78,7 +82,7 @@ export function formatMs(ms: number): string {
 }
 
 /**
- * Build common stats parts: toolUses · turns · tokens with context % · cost.
+ * Build common stats parts: toolUses · turns · input↓ output with context % · cost.
  * Shared by AgentWidget and index.ts for consistent stats display.
  */
 export function buildStatsParts(
@@ -86,7 +90,8 @@ export function buildStatsParts(
     toolUses: number;
     turnCount?: number;
     maxTurns?: number;
-    tokens: number;
+    input: number;
+    output: number;
     contextPercent: number | null;
     compactions: number;
     cost?: number;
@@ -96,10 +101,8 @@ export function buildStatsParts(
   const parts: string[] = [];
   if (args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
   if (args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns));
-  if (args.tokens > 0) {
-    parts.push(formatSessionTokens(
-      args.tokens, args.contextPercent, theme, args.compactions,
-    ));
+  if (args.input > 0 || args.output > 0) {
+    parts.push(formatSessionTokens(args.input, args.output, args.contextPercent, theme, args.compactions));
   }
   if (args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
   return parts;

@@ -26,7 +26,7 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       const modes: SystemPromptMode[] = ["replace", "inherit", "custom"];
       const chosen = await ctx.ui.select("System prompt mode", modes);
       if (chosen === undefined) return;
-      store.mutate.agent.setSystemPromptMode(chosen);
+      store.mutate.agent.setSystemPromptMode(chosen as SystemPromptMode);
       ctx.ui.notify(`System prompt mode set to ${chosen}`, "info");
     });
 

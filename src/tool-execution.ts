@@ -77,13 +77,13 @@ export function buildAgentDetails(
   }
 
   if (options?.includeStats) {
-    const totalTokens = getLifetimeTotal(record.stats.lifetimeUsage);
     const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
 
     details.turnCount = record.stats.turnCount;
     details.maxTurns = record.stats.maxTurns;
     details.toolUses = record.stats.toolUses;
-    details.tokens = totalTokens;
+    details.input = record.stats.lifetimeUsage.input;
+    details.output = record.stats.lifetimeUsage.output;
     details.contextPercent = getSessionContextPercent(record.execution.session);
     details.durationMs = elapsedMs;
     details.compactions = record.stats.compactionCount;
