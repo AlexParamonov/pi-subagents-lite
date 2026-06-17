@@ -10,7 +10,7 @@ import {
   getLifetimeTotal,
   getSessionContextPercent,
 } from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.js";
+import { formatMs, buildStatsParts, getDisplayName, truncateDesc, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (model-selector, result-viewer) don't break
@@ -324,7 +324,7 @@ export class AgentWidget {
   /** Render a finished agent line. */
   private renderFinishedLine(a: AgentRecord, theme: Theme): string {
     const name = getDisplayName(a.display.type);
-    const fullDesc = a.display.description.length > this.descLengthFull ? a.display.description.slice(0, this.descLengthFull - 3) + "..." : a.display.description;
+    const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -406,7 +406,7 @@ export class AgentWidget {
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
-        const desc = a.display.description.length > this.descLengthCompact ? a.display.description.slice(0, this.descLengthCompact - 3) + "..." : a.display.description;
+        const desc = truncateDesc(a.display.description, this.descLengthCompact);
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
@@ -414,7 +414,7 @@ export class AgentWidget {
         });
       } else {
         // Full: header + continuation lines
-        const fullDesc = a.display.description.length > this.descLengthFull ? a.display.description.slice(0, this.descLengthFull - 3) + "..." : a.display.description;
+        const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
         if (a.display.outputFile || a.display.worktreeLabel) {

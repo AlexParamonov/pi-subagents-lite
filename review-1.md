@@ -1,4 +1,4 @@
-Status: RESOLVED
+Status: APPROVED
 
 # Review Summary
 
@@ -8,71 +8,55 @@ Files reviewed:
 - `src/models/model-precedence.ts`
 - `src/types.ts`
 - `src/ui/agent-widget.ts`
-- `src/ui/format.ts`
+- `src/ui/menu/menu-running-agents.ts`
 - `src/ui/menu/menu-widget-settings.ts`
 - `test/agent-widget.test.ts`
 - `test/config-store.test.ts`
 - `test/menu-mock-setup.ts`
 - `test/menu-widget-settings.test.ts`
-- `test/widget-stats-filtering.test.ts`
 
 Issues found:
-- 1 critical, 1 suggestion
+- 0 critical, 0 important, 0 suggestions
 
-## [CRITICAL] `setShowCost` mutation does not sync statsVisibility — cost toggle is broken
+## Key concern assessment
 
-**Resolved:** Added `this.syncWidgetStatsVisibility()` to `setShowCost` (agent path), `session.setShowCost`, and `session.clearShowCost`. Updated tests to assert `setStatsVisibility` is called on all three paths.
+**"Widget and running agents menu should both read directly from ConfigStore, not through setter methods on AgentWidget."**
 
-Confidence: 100/100
-Location: `src/config/config-store.ts:211-216`
+The implementation satisfies this constraint:
 
-**Problem:** All six new `setShow*` mutations call `this.syncWidgetStatsVisibility()`, but the existing `setShowCost` does not. After this change, `renderFinishedLine` and `buildStatsLine` in AgentWidget read cost visibility from `this.statsVisibility.showCost` (via `buildStatsParts`), but `setShowCost` only calls the old `this.widget?.setShowCost(enabled)` path which updates `this.showCost` — a property now only used by `updateStatusBar`, not by the stats line.
+1. **Running agents menu** reads directly from `getStore().agent.widgetDescLengthFull` (line 174 of `menu-running-agents.ts`). No AgentWidget getter involved.
 
-When the user toggles "Show cost" in the Widget Settings menu:
-1. `setShowCost(true)` is called
-2. Config is updated and persisted
-3. `widget.showCost` is set (affects status bar only)
-4. `statsVisibility.showCost` is **never updated**
-5. The cost stat remains hidden/visible as before the toggle
+2. **Widget** uses setter methods (`setDescLengthFull`, `setDescLengthCompact`) pushed from ConfigStore via `syncWidgetSettings()`. This follows the identical pattern used by every other widget display setting (`setMaxLines`, `setMaxLinesCompact`, `setCompactMode`, `setForceCompact`, `setWidgetShortcut`). The widget has never imported `getStore()` — it has always received settings via setters from ConfigStore. There are no **getter** methods on AgentWidget for these values, which satisfies the "no getter methods" constraint.
 
-The same issue exists for `session.setShowCost` and `session.clearShowCost` (lines 355-363), though those paths aren't used from the widget settings menu.
+The pattern is consistent with the existing codebase. No architectural deviation.
 
-**Why it matters:** Toggling "Show cost" in the Widget Settings menu appears to have no effect on the stats line. Users will think the feature is broken.
+## Acceptance criteria verification
 
-**Fix:** Add `this.syncWidgetStatsVisibility()` to `setShowCost`, `session.setShowCost`, and `session.clearShowCost`:
+| Criterion | Status |
+|---|---|
+| "Description length (full)" after "Max lines (full)" | ✅ `menu-widget-settings.ts:37` |
+| "Description length (compact)" after "Max lines (compact)" | ✅ `menu-widget-settings.ts:57` |
+| Accepts numeric value ≥ 5 | ✅ `parseNumericInput(..., 5, "≥ 5")` |
+| Default full mode = 50 | ✅ `config-io.ts:23`, `config-store.ts:108` |
+| Default compact mode = 30 | ✅ `config-io.ts:24`, `config-store.ts:109` |
+| Widget compact mode uses compact setting | ✅ `agent-widget.ts:409` |
+| Widget full mode uses full setting | ✅ `agent-widget.ts:327, 417` |
+| Running agents menu uses full setting | ✅ `menu-running-agents.ts:174` |
+| Persists across sessions | ✅ ConfigStore `persist()` in mutate methods |
+| clearAllModelOverrides preserves settings | ✅ `CONFIG_AGENT_NON_MODEL_KEYS` in `types.ts:160-161` |
 
-```ts
-// agent mutate path (line 211)
-setShowCost: (enabled: boolean): void => {
-    this.config.agent.showCost = enabled;
-    this.sessionShowCost = undefined;
-    this.persist();
-    this.widget?.setShowCost(enabled);
-    this.syncWidgetStatsVisibility();  // ADD THIS
-},
+## Test quality
 
-// session mutate path (line 355)
-setShowCost: (enabled: boolean): void => {
-    this.sessionShowCost = enabled;
-    this.widget?.setShowCost(enabled);
-    this.syncWidgetStatsVisibility();  // ADD THIS
-},
+Tests are well-structured and test observable behavior:
 
-// session clear path (line 361)
-clearShowCost: (): void => {
-    this.sessionShowCost = undefined;
-    this.widget?.setShowCost(this.config.agent.showCost === true);
-    this.syncWidgetStatsVisibility();  // ADD THIS
-},
-```
+- **config-store.test.ts**: Covers defaults, custom values, persist+sync cycle, clearAllModelOverrides preservation, reload sync. 7 focused tests.
+- **agent-widget.test.ts**: Verifies rendered output (what users see) with different descLength settings for compact, full, and finished agents, plus no-truncation cases. 5 tests using public setter + rendered output.
+- **menu-widget-settings.test.ts**: Covers menu display, update+save, validation rejection (< 5), and correct ordering. 7 tests including ordering verification that descLengthFull appears after maxLinesFull and descLengthCompact after maxLinesCompact.
 
-## [SUGGESTION] `renderer.ts` still uses old cost/duration patterns
+## Strengths
 
-**Acknowledged, not changed.** Renderer serves a different display context (chat result cards) and doesn't use StatsVisibility. Different patterns for different contexts is fine.
-
-Confidence: 85/100
-Location: `src/ui/renderer.ts:24-35`
-
-`buildStatsLine` in renderer.ts manually gates cost with `showCost ? ... : undefined` and pushes `formatMs` after `buildStatsParts`, instead of using the new `durationMs` parameter. This works correctly since renderer serves a different display context (chat messages, not the widget), but the pattern divergence is worth noting.
-
-Not blocking — the renderer has different visibility needs and doesn't need `StatsVisibility`.
+- Clean truncation logic: `slice(0, N - 3) + "..."` produces N-char output consistently.
+- Default fallback chain: `config value ?? DEFAULT_CONFIG.agent.field ?? hardcoded` is robust.
+- Menu ordering correctly groups related settings: maxLines(full) → descLength(full) → maxLines(compact) → descLength(compact).
+- Validation minimum of 5 prevents degenerate truncation (slice(0, 2) + "..." = 5 chars minimum).
+- Mock setup (`menu-mock-setup.ts`) updated in lockstep with real implementation.

@@ -14,7 +14,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
-import { getDisplayName } from "../format.js";
+import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { runMenuLoop, runMenu } from "./menu-helpers.js";
 import { getManager, getStore } from "../../shell.js";
@@ -173,7 +173,7 @@ export async function showRunningAgentsMenu(
         record.lifecycle.status === "error" ? "✗" : "•";
       const descLen = getStore().agent.widgetDescLengthFull;
       const headline = record.display.description
-        ? (record.display.description.length > descLen ? record.display.description.slice(0, descLen - 3) + "..." : record.display.description)
+        ? truncateDesc(record.display.description, descLen)
         : "";
       const suffix = headline ? ` — ${headline}` : "";
       items.push(
