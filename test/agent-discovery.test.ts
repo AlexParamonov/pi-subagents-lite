@@ -196,7 +196,6 @@ body
     expect(result.max_tokens).toBe(1024);
   });
 
-
   it("ignores unknown frontmatter fields", () => {
     const content = `---
 name: agent
