@@ -2,22 +2,18 @@
  * menu-model-settings.ts — Model settings menu concern.
  *
  * Exports:
- *   - showModelSettingsMenu: model settings with global default, per-type overrides, cost display, grace turns, system prompt mode, include AGENTS.md
+ *   - showModelSettingsMenu: model settings with global default, per-type overrides, cost display
  *
  * Private helpers (single-consumer, co-located):
  *   - promptOverrideMode: session vs permanent persistence choice
  *   - applyModelOverride: apply model selection with persistence
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAllTypes } from "./agent-types.js";
-import type { SystemPromptMode } from "./types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
-import { runMenuLoop, promptModelSelection, parseNumericInput } from "./menu-helpers.js";
+import { runMenuLoop, promptModelSelection } from "./menu-helpers.js";
 import { getStore } from "./shell.js";
-import { CUSTOM_PROMPT_PATH } from "./agent-runner.js";
 
 /**
  * Prompt user to choose between session-only or permanent persistence.
@@ -135,19 +131,6 @@ export async function showModelSettingsMenu(
         : store.agent.defaultModel ?? "(inherits parent)",
     ));
 
-    // Force background toggle
-    const forceBgLabel = store.agent.forceBackground
-      ? "Force background · ON"
-      : "Force background · OFF";
-    items.push(forceBgLabel);
-    actions.push(async () => {
-      store.mutate.agent.setForceBackground(!store.agent.forceBackground);
-      ctx.ui.notify(
-        `Force background ${store.agent.forceBackground ? "ON" : "OFF"}`,
-        "info",
-      );
-    });
-
     // Cost display toggle — session or permanent (like model overrides)
     const showCost = store.agent.showCost;
     const hasSessionCost = store.hasSessionShowCost;
@@ -168,55 +151,6 @@ export async function showModelSettingsMenu(
       }
       ctx.ui.notify(`Cost display ${newValue ? "ON" : "OFF"}`, "info");
     });
-
-    // Grace turns setting
-    const graceTurns = store.agent.graceTurns;
-    items.push(`Grace turns · ${graceTurns}`);
-    actions.push(async () => {
-      const parsed = await parseNumericInput(ctx, "Grace turns (≥ 0)", String(graceTurns), 0, "≥ 0");
-      if (parsed === undefined) return;
-      store.mutate.agent.setGraceTurns(parsed);
-      ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
-    });
-
-    // Include AGENTS.md context files toggle
-    const includeContextFiles = store.agent.includeContextFiles;
-    items.push(`Include AGENTS.md · ${includeContextFiles ? "ON" : "OFF"}`);
-    actions.push(async () => {
-      store.mutate.agent.setIncludeContextFiles(!includeContextFiles);
-      ctx.ui.notify(`Include AGENTS.md ${store.agent.includeContextFiles ? "ON" : "OFF"}`, "info");
-    });
-
-    // System prompt mode setting
-    const systemPromptMode = store.agent.systemPromptMode;
-    items.push(`System prompt mode · ${systemPromptMode}`);
-    actions.push(async () => {
-      const choices = ["replace — generic header + env + agent's systemPrompt (current)", "inherit — parent's full system prompt (verbatim) + env + agent's systemPrompt", "custom — content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt"];
-      const choice = await ctx.ui.select("System prompt mode", choices);
-      if (choice === undefined) return;
-      let mode: SystemPromptMode;
-      if (choice.startsWith("replace")) mode = "replace";
-      else if (choice.startsWith("inherit")) mode = "inherit";
-      else mode = "custom";
-      store.mutate.agent.setSystemPromptMode(mode);
-      ctx.ui.notify(`System prompt mode set to ${mode}`, "info");
-    });
-
-    // Offer to create custom prompt file if mode is custom but file doesn't exist
-    if (systemPromptMode === "custom") {
-      if (!fs.existsSync(CUSTOM_PROMPT_PATH)) {
-        items.push("Create prompt file · ~/.pi/agent/subagents-lite-prompt.md");
-        actions.push(async () => {
-          try {
-            fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
-            fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are Pi, an expert coding assistant. Think thoroughly. Write concisely.", "utf-8");
-            ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
-          } catch (err: any) {
-            ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
-          }
-        });
-      }
-    }
 
     items.push("");
     actions.push(async () => {});
