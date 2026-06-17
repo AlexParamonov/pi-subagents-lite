@@ -242,7 +242,7 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
         { path: "/test/cwd/AGENTS.md", content: "Context content." },
       ],
       skillBlocks: [
-        { name: "tdd", content: "TDD content." },
+        { name: "tdd", description: "TDD workflow", content: "TDD content." },
       ],
     });
 
