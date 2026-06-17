@@ -25,10 +25,10 @@ const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 200;
  * Thresholds for percent: <70% dim, 70–85% warning, ≥85% error.
  * Compaction count rendered as `↻ N` in dim.
  *
- *   "12.3k"                     — no annotations
- *   "12.3k(45%)"                — percent only
- *   "12.3k(↻ 2)"                 — compactions only (e.g. right after compact)
- *   "12.3k(45%·↻ 2)"             — both
+ *   "↑12k↓8k"                    — no annotations
+ *   "↑12k↓8k 45%"                — percent only
+ *   "↑12k↓8k ↻ 2"                 — compactions only (e.g. right after compact)
+ *   "↑12k↓8k 45% ↻ 2"             — both
  */
 function formatSessionTokens(
   inputTokens: number,
@@ -40,7 +40,7 @@ function formatSessionTokens(
   const tokenParts: string[] = [];
   if (inputTokens > 0) tokenParts.push(`↑${formatTokensCompact(inputTokens)}`);
   if (outputTokens > 0) tokenParts.push(`↓${formatTokensCompact(outputTokens)}`);
-  const tokenStr = tokenParts.join(" ");
+  const tokenStr = tokenParts.join("");
   const annot: string[] = [];
   if (percent !== null) {
     const color = percent >= 85 ? "error" : percent >= 70 ? "warning" : "dim";
@@ -50,11 +50,7 @@ function formatSessionTokens(
     annot.push(theme.fg("dim", `↻ ${compactions}`));
   }
   if (annot.length === 0) return tokenStr;
-  // Include closing paren in the last annotation's color span to prevent
-  // ANSI reset from leaving `)` in default color when wrapped in outer dim.
-  const lastIdx = annot.length - 1;
-  annot[lastIdx] += ")";
-  return `${tokenStr}(${annot.join("·")}`;
+  return `${tokenStr} ${annot.join(" ")}`;
 }
 
 /** Format turn count with optional max limit. Shows max when >= 80% of limit. */
