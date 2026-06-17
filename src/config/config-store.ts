@@ -46,6 +46,8 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  readonly widgetDescLengthFull: number;
+  readonly widgetDescLengthCompact: number;
   /** System prompt mode: replace (default), inherit parent, or custom file. */
   readonly systemPromptMode: SystemPromptMode;
   /** Whether to include AGENTS.md context files in the subagent system prompt. */
@@ -104,6 +106,8 @@ export class ConfigStore {
     const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
     const widgetCompact = a.widgetCompact === true;
     const widgetShortcut = a.widgetShortcut === true;
+    const widgetDescLengthFull = a.widgetDescLengthFull ?? DEFAULT_CONFIG.agent.widgetDescLengthFull ?? 50;
+    const widgetDescLengthCompact = a.widgetDescLengthCompact ?? DEFAULT_CONFIG.agent.widgetDescLengthCompact ?? 30;
     const rawMode = a.systemPromptMode;
     const systemPromptMode = VALID_SYSTEM_PROMPT_MODES.has(rawMode as string) ? rawMode as SystemPromptMode : "replace";
     const includeContextFiles = a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true;
@@ -117,6 +121,8 @@ export class ConfigStore {
       widgetMaxLinesCompact,
       widgetCompact,
       widgetShortcut,
+      widgetDescLengthFull,
+      widgetDescLengthCompact,
       systemPromptMode,
       includeContextFiles,
       defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
@@ -276,6 +282,16 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
+      setDescLengthFull: (n: number): void => {
+        this.config.agent.widgetDescLengthFull = n;
+        this.persist();
+        this.syncWidgetSettings();
+      },
+      setDescLengthCompact: (n: number): void => {
+        this.config.agent.widgetDescLengthCompact = n;
+        this.persist();
+        this.syncWidgetSettings();
+      },
       // Note: persists only. Does NOT syncWidgetSettings — matches the existing
       // behavior, where toggling the shortcut takes effect on next reload rather
       // than immediately. Flagged for a follow-up (the other three widget
@@ -404,6 +420,8 @@ export class ConfigStore {
     w.setWidgetShortcut(a.widgetShortcut);
     w.setMaxLines(a.widgetMaxLines);
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
+    w.setDescLengthFull(a.widgetDescLengthFull);
+    w.setDescLengthCompact(a.widgetDescLengthCompact);
   }
 
   /** Push stats visibility flags to the widget. */

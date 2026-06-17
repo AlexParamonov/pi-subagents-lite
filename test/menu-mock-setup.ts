@@ -109,6 +109,8 @@ vi.mock("../src/shell.js", () => {
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
         widgetShortcut: a.widgetShortcut === true,
+        widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
+        widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
         systemPromptMode: a.systemPromptMode ?? "replace",
         includeContextFiles: a.includeContextFiles ?? true,
         defaultThinking: a.defaultThinking,
@@ -161,7 +163,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -189,6 +191,8 @@ vi.mock("../src/shell.js", () => {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
         setMaxLines(lines: number) { mockModules.mockConfig.agent.widgetMaxLines = lines; },
         setMaxLinesCompact(lines: number) { mockModules.mockConfig.agent.widgetMaxLinesCompact = lines; },
+        setDescLengthFull(n: number) { mockModules.mockConfig.agent.widgetDescLengthFull = n; },
+        setDescLengthCompact(n: number) { mockModules.mockConfig.agent.widgetDescLengthCompact = n; },
         setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
       },
       concurrency: {

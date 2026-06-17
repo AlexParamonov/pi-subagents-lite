@@ -55,6 +55,7 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
       default: null, forceBackground: false,
       widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
       widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
       showTools: true, showTurns: true, showInput: true, showOutput: true,
       showContext: true, showCost: false, showTime: true,
     };
@@ -73,18 +74,18 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("creates a SettingsList with 5 main items", async () => {
+  it("creates a SettingsList with 7 main items", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    expect(settingsListCalls[0].items.length).toBe(5);
+    expect(settingsListCalls[0].items.length).toBe(7);
   });
 
   it("main items have correct ids", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["compact", "maxLines", "maxLinesCompact", "shortcut", "usageStats"]);
+    expect(ids).toEqual(["compact", "maxLines", "descLengthFull", "maxLinesCompact", "descLengthCompact", "shortcut", "usageStats"]);
   });
 
   it("shows 'Force compact mode' with current value", async () => {
@@ -112,6 +113,7 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
       default: null, forceBackground: false,
       widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
       widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
       showTools: true, showTurns: true, showInput: true, showOutput: true,
       showContext: true, showCost: false, showTime: true,
     };
@@ -148,6 +150,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
       default: null, forceBackground: false,
       widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
       widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
       showTools: true, showTurns: true, showInput: true, showOutput: true,
       showContext: true, showCost: false, showTime: true,
     };
@@ -252,6 +255,87 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (compact) set to 4", "info");
     expect(mockDone).toHaveBeenCalledWith("4");
   });
+
+  it("descLengthFull shows default value 50", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const descLengthFull = settingsListCalls[0].items.find((i: any) => i.id === "descLengthFull");
+    expect(descLengthFull.label).toBe("Description length (full)");
+    expect(descLengthFull.currentValue).toBe("50");
+    expect(typeof descLengthFull.submenu).toBe("function");
+  });
+
+  it("descLengthFull submenu accepts valid value", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthFull = 50;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+
+    const descLengthFull = settingsListCalls[0].items.find((i: any) => i.id === "descLengthFull");
+    const mockDone = vi.fn();
+    descLengthFull.submenu("50", mockDone);
+
+    expect(inputInstances.length).toBe(1);
+    expect(inputInstances[0].value).toBe("50");
+
+    inputInstances[0].onSubmit!("80");
+    expect(mockModules.mockConfig.agent.widgetDescLengthFull).toBe(80);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Description length (full) set to 80", "info");
+    expect(mockDone).toHaveBeenCalledWith("80");
+  });
+
+  it("descLengthFull submenu rejects value below 5", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthFull = 50;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+
+    const descLengthFull = settingsListCalls[0].items.find((i: any) => i.id === "descLengthFull");
+    const mockDone = vi.fn();
+    descLengthFull.submenu("50", mockDone);
+
+    inputInstances[0].onSubmit!("3");
+    expect(mockModules.mockConfig.agent.widgetDescLengthFull).toBe(50);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 5", "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+
+  it("descLengthCompact shows default value 30", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const descLengthCompact = settingsListCalls[0].items.find((i: any) => i.id === "descLengthCompact");
+    expect(descLengthCompact.label).toBe("Description length (compact)");
+    expect(descLengthCompact.currentValue).toBe("30");
+    expect(typeof descLengthCompact.submenu).toBe("function");
+  });
+
+  it("descLengthCompact submenu accepts valid value", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthCompact = 30;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+
+    const descLengthCompact = settingsListCalls[0].items.find((i: any) => i.id === "descLengthCompact");
+    const mockDone = vi.fn();
+    descLengthCompact.submenu("30", mockDone);
+
+    inputInstances[0].onSubmit!("20");
+    expect(mockModules.mockConfig.agent.widgetDescLengthCompact).toBe(20);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Description length (compact) set to 20", "info");
+    expect(mockDone).toHaveBeenCalledWith("20");
+  });
+
+  it("descLengthCompact submenu rejects value below 5", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthCompact = 30;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+
+    const descLengthCompact = settingsListCalls[0].items.find((i: any) => i.id === "descLengthCompact");
+    const mockDone = vi.fn();
+    descLengthCompact.submenu("30", mockDone);
+
+    inputInstances[0].onSubmit!("4");
+    expect(mockModules.mockConfig.agent.widgetDescLengthCompact).toBe(30);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 5", "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
 });
 
 describe("showWidgetSettingsMenu — Usage stats submenu", () => {
@@ -260,6 +344,7 @@ describe("showWidgetSettingsMenu — Usage stats submenu", () => {
       default: null, forceBackground: false,
       widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
       widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
       showTools: true, showTurns: true, showInput: true, showOutput: true,
       showContext: true, showCost: false, showTime: true,
     };
@@ -366,6 +451,7 @@ describe("showWidgetSettingsMenu — item order", () => {
       default: null, forceBackground: false,
       widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
       widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
       showTools: true, showTurns: true, showInput: true, showOutput: true,
       showContext: true, showCost: false, showTime: true,
     };
@@ -377,11 +463,11 @@ describe("showWidgetSettingsMenu — item order", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("items appear in correct order: compact, maxLines, maxLinesCompact, shortcut, usageStats", async () => {
+  it("items appear in correct order: compact, maxLines, descLengthFull, maxLinesCompact, descLengthCompact, shortcut, usageStats", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["compact", "maxLines", "maxLinesCompact", "shortcut", "usageStats"]);
+    expect(ids).toEqual(["compact", "maxLines", "descLengthFull", "maxLinesCompact", "descLengthCompact", "shortcut", "usageStats"]);
   });
 
   it("stat items in submenu appear in correct order", async () => {

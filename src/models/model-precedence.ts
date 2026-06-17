@@ -49,6 +49,10 @@ export interface SubagentsConfig {
     showContext?: boolean;
     /** Whether to show elapsed time in widget stats line. Default: true. */
     showTime?: boolean;
+    /** Max description length in widget full mode. Default: 50. */
+    widgetDescLengthFull?: number;
+    /** Max description length in widget compact mode. Default: 30. */
+    widgetDescLengthCompact?: number;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

@@ -14,10 +14,10 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
-import { getDisplayName } from "../format.js";
+import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { runMenuLoop, runMenu } from "./menu-helpers.js";
-import { getManager } from "../../shell.js";
+import { getManager, getStore } from "../../shell.js";
 
 /**
  * Show a ResultViewer for an agent's result, error, or snapshot.
@@ -171,8 +171,9 @@ export async function showRunningAgentsMenu(
         record.lifecycle.status === "completed" ? "✓" :
         record.lifecycle.status === "queued" ? "⏳" :
         record.lifecycle.status === "error" ? "✗" : "•";
+      const descLen = getStore().agent.widgetDescLengthFull;
       const headline = record.display.description
-        ? (record.display.description.length > 50 ? record.display.description.slice(0, 47) + "..." : record.display.description)
+        ? truncateDesc(record.display.description, descLen)
         : "";
       const suffix = headline ? ` — ${headline}` : "";
       items.push(

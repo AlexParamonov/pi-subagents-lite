@@ -6,7 +6,7 @@
  * reset bug that occurred with ctx.ui.select.
  *
  * Structure:
- *   Main list: compact, maxLines, maxLinesCompact, shortcut, usageStats
+ *   Main list: compact, maxLines, descLengthFull, maxLinesCompact, descLengthCompact, shortcut, usageStats
  *   Usage stats submenu: 7 stat visibility toggles
  *
  * Exports:
@@ -99,12 +99,30 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         }),
       },
       {
+        id: "descLengthFull",
+        label: "Description length (full)",
+        currentValue: String(store.agent.widgetDescLengthFull),
+        submenu: numericSubmenu(5, (parsed) => {
+          store.mutate.widget.setDescLengthFull(parsed);
+          ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
+        }),
+      },
+      {
         id: "maxLinesCompact",
         label: "Max lines (compact)",
         currentValue: String(store.agent.widgetMaxLinesCompact),
         submenu: numericSubmenu(1, (parsed) => {
           store.mutate.widget.setMaxLinesCompact(parsed);
           ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+        }),
+      },
+      {
+        id: "descLengthCompact",
+        label: "Description length (compact)",
+        currentValue: String(store.agent.widgetDescLengthCompact),
+        submenu: numericSubmenu(5, (parsed) => {
+          store.mutate.widget.setDescLengthCompact(parsed);
+          ctx.ui.notify(`Description length (compact) set to ${parsed}`, "info");
         }),
       },
       {

@@ -509,6 +509,85 @@ describe("max lines configuration", () => {
   });
 });
 
+describe("description length configuration", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("compact mode truncates description using descLengthCompact setting", () => {
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    widget.setDescLengthCompact(15);
+    const agent = makeRunningAgent("a1");
+    agent.display.description = "This is a very long description that should be truncated";
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const agentLine = lines[1];
+    // Should be truncated at 15 chars (12 + "...")
+    expect(agentLine).toContain("This is a ve...");
+    expect(agentLine).not.toContain("very long");
+  });
+
+  it("full mode truncates description using descLengthFull setting", () => {
+    widget.setDescLengthFull(20);
+    const agent = makeRunningAgent("a1");
+    agent.display.description = "This is a very long description that should be truncated";
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const agentLine = lines[1];
+    // Should be truncated at 20 chars (17 + "...")
+    expect(agentLine).toContain("This is a very lo...");
+  });
+
+  it("finished agent truncates description using descLengthFull setting", () => {
+    widget.setDescLengthFull(25);
+    const agent = makeFinishedAgent("a1");
+    agent.display.description = "This is a very long description that should be truncated";
+    widget.markFinished("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const agentLine = lines[1];
+    // Should be truncated at 25 chars: 22 chars + "..."
+    expect(agentLine).toContain("This is a very long de...");
+  });
+
+  it("compact mode shows full description when shorter than limit", () => {
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    widget.setDescLengthCompact(50);
+    const agent = makeRunningAgent("a1");
+    agent.display.description = "Short desc";
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines[1]).toContain("Short desc");
+    expect(lines[1]).not.toContain("...");
+  });
+
+  it("full mode shows full description when shorter than limit", () => {
+    widget.setDescLengthFull(100);
+    const agent = makeRunningAgent("a1");
+    agent.display.description = "Short desc";
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines[1]).toContain("Short desc");
+  });
+});
+
 describe("formatMs", () => {
   it("formats hours, minutes, and seconds", () => {
     expect(formatMs(3661000)).toBe("1h 1m 1s");

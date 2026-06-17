@@ -20,6 +20,8 @@ export const DEFAULT_CONFIG: SubagentsConfig = {
     graceTurns: 6,
     widgetMaxLines: 12,
     // widgetMaxLinesCompact intentionally omitted — derives from widgetMaxLines
+    widgetDescLengthFull: 50,
+    widgetDescLengthCompact: 30,
     widgetCompact: false,
     widgetShortcut: false,
     systemPromptMode: "replace",
