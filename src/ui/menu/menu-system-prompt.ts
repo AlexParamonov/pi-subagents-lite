@@ -56,20 +56,18 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
 
     // Load skills implicitly toggle
     const loadSkillsImplicitly = store.agent.loadSkillsImplicitly;
-    items.push(`Load skills implicitly · ${loadSkillsImplicitly === "load-all" ? "ON" : "OFF"}`);
+    items.push(`Load skills implicitly · ${loadSkillsImplicitly ? "ON" : "OFF"}`);
     actions.push(async () => {
-      const newValue = loadSkillsImplicitly === "load-all" ? "none" : "load-all";
-      store.mutate.agent.setLoadSkillsImplicitly(newValue);
-      ctx.ui.notify(`Load skills implicitly ${newValue === "load-all" ? "ON" : "OFF"}`, "info");
+      store.mutate.agent.setLoadSkillsImplicitly(!loadSkillsImplicitly);
+      ctx.ui.notify(`Load skills implicitly ${!loadSkillsImplicitly ? "ON" : "OFF"}`, "info");
     });
 
     // Load extensions implicitly toggle
     const loadExtensionsImplicitly = store.agent.loadExtensionsImplicitly;
-    items.push(`Load extensions implicitly · ${loadExtensionsImplicitly === "load-all" ? "ON" : "OFF"}`);
+    items.push(`Load extensions implicitly · ${loadExtensionsImplicitly ? "ON" : "OFF"}`);
     actions.push(async () => {
-      const newValue = loadExtensionsImplicitly === "load-all" ? "none" : "load-all";
-      store.mutate.agent.setLoadExtensionsImplicitly(newValue);
-      ctx.ui.notify(`Load extensions implicitly ${newValue === "load-all" ? "ON" : "OFF"}`, "info");
+      store.mutate.agent.setLoadExtensionsImplicitly(!loadExtensionsImplicitly);
+      ctx.ui.notify(`Load extensions implicitly ${!loadExtensionsImplicitly ? "ON" : "OFF"}`, "info");
     });
 
     return { items, actions };
