@@ -83,15 +83,7 @@ export function loadAllSkills(cwd: string): Skill[] {
   const realPathSet = new Set<string>();
   const result: Skill[] = [];
 
-  for (const skill of [...ancestorsSkills, ...homeAgentsSkills]) {
-    const realPath = canonicalizePath(skill.filePath);
-    if (realPathSet.has(realPath) || nameSet.has(skill.name)) continue;
-    nameSet.add(skill.name);
-    realPathSet.add(realPath);
-    result.push(skill);
-  }
-
-  for (const skill of defaultsResult.skills) {
+  for (const skill of [...ancestorsSkills, ...homeAgentsSkills, ...defaultsResult.skills]) {
     const realPath = canonicalizePath(skill.filePath);
     if (realPathSet.has(realPath) || nameSet.has(skill.name)) continue;
     nameSet.add(skill.name);
