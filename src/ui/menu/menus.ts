@@ -44,6 +44,8 @@ export async function showSettingsMenu(
       currentValue: "→",
       submenu: (_v, done) => {
         showModelSettingsMenu(ctx, modelOptions).then(() => done());
+        // Async navigation: the submenu takes over rendering via ctx.ui.select/custom
+        // before SettingsList can interact with the return value. undefined is safe here.
         return undefined as any;
       },
     },
@@ -101,6 +103,8 @@ export async function showAgentsMainMenu(
       currentValue: "→",
       submenu: (_v, done) => {
         showRunningAgentsMenu(ctx).then(() => done());
+        // Async navigation: the submenu takes over rendering via ctx.ui.select/custom
+        // before SettingsList can interact with the return value. undefined is safe here.
         return undefined as any;
       },
     },

@@ -6,7 +6,7 @@
  *   - worktree_path parameter is present in the Agent tool schema
  *   - worktree_path has no .description() (stealth-tool convention)
  *
- * Briefing content is tested in menus.test.ts (handleAgentBriefing — worktree_path content).
+ * Briefing content is tested in menu-debug.test.ts (worktree_path usage guidelines, agent type headings, etc.).
  */
 
 import { describe, it, expect, beforeEach } from "vitest";

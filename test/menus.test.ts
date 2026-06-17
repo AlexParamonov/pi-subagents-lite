@@ -185,7 +185,7 @@ describe("showSettingsMenu — SettingsList integration", () => {
   });
 });
 
-describe("handleAgentBriefing — worktree_path content", () => {
+describe("main menu — debug submenu navigation", () => {
   beforeEach(() => {
     resetAgentState();
     vi.clearAllMocks();
@@ -197,24 +197,12 @@ describe("handleAgentBriefing — worktree_path content", () => {
     });
   });
 
-  it("includes worktree_path in the parameters table", async () => {
-    const mockSendUserMessage = vi.fn();
-    mockModules.mockPiInstance.sendUserMessage = mockSendUserMessage;
+  // Briefing content (worktree_path, agent types, etc.) is tested in menu-debug.test.ts.
+  // Here we verify the main menu can navigate to the debug submenu.
+  it("debug submenu is accessible from main menu", async () => {
     const ctx = createMockCtx();
     await showAgentsMainMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    // Open Debug submenu, then invoke briefing
     const debugItem = settingsListCalls[0].items.find((i: any) => i.id === "debug");
-    debugItem.submenu("→", vi.fn());
-    // Debug menu uses ctx.ui.select, find the "Agent briefing" option
-    const debugSelectCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Debug");
-    expect(debugSelectCall).toBeDefined();
-    // Simulate selecting "2. Agent briefing"
-    // We need to actually invoke the handler. The debug menu is a select-based menu.
-    // For the briefing test, we can check the mock pi instance directly.
-    // Since the debug menu is still select-based (not migrated), we test through the mock.
-    // The briefing handler calls getPiInstance().sendUserMessage(), so we check that.
-    // Note: The debug menu is not part of this migration. It's tested in menu-debug.test.ts.
-    // Here we just verify the main menu can navigate to debug.
     expect(debugItem).toBeDefined();
     expect(typeof debugItem.submenu).toBe("function");
   });
