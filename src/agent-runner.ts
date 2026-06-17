@@ -261,7 +261,61 @@ async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
 // ── runAgent phases ────────────────────────────────────────────────
 
 /**
+ * Resolve system prompt mode, fetch the appropriate source prompt, and
+ * load project context files. Returns everything buildPrompt needs.
+ */
+function resolveSystemPromptSources(
+  ctx: ExtensionContext,
+  cwd: string,
+  notify: (msg: string) => void,
+): { mode: SystemPromptMode; extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> } {
+  const store = getStore();
+  const mode = store.agent.systemPromptMode;
+  const extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {};
+
+  // Fetch parent system prompt for inherit mode
+  if (mode === "inherit") {
+    try {
+      extras.parentSystemPrompt = ctx.getSystemPrompt();
+    } catch (err) {
+      notify(`Failed to get parent system prompt: ${err}. Falling back to replace mode.`);
+    }
+  }
+
+  // Read custom prompt file for custom mode
+  if (mode === "custom") {
+    try {
+      const content = fs.readFileSync(CUSTOM_PROMPT_PATH, "utf-8").trim();
+      if (content) {
+        extras.customSystemPrompt = content;
+      } else {
+        notify(`Custom prompt file is empty: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
+      }
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        notify(`Custom prompt file not found: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
+      } else {
+        notify(`Failed to read custom prompt file: ${err.message}. Falling back to replace mode.`);
+      }
+    }
+  }
+
+  // Load AGENTS.md context files when the setting is enabled
+  if (store.agent.includeContextFiles) {
+    try {
+      extras.contextFiles = loadProjectContextFiles({ cwd, agentDir: getAgentDir() });
+    } catch {
+      // Non-fatal: context files are supplementary
+    }
+  }
+
+  return { mode, extras };
+}
+
+/**
  * Phase 1: Resolve system prompt from agent config, skills, and env info.
+ *
+ * @param resolverExtras  Partial extras from resolveSystemPromptSources (mode-specific prompts + context files).
  */
 function buildPrompt(
   type: SubagentType,
@@ -270,25 +324,14 @@ function buildPrompt(
   cwd: string,
   env: EnvInfo,
   systemPromptMode: SystemPromptMode = "replace",
-  parentSystemPrompt?: string,
-  customSystemPrompt?: string,
-  contextFiles?: Array<{ path: string; content: string }>,
+  resolverExtras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {},
 ): string {
-  const extras: PromptExtras = {};
+  const extras: PromptExtras = { ...resolverExtras };
   if (Array.isArray(agentConfig?.preloadSkills)) {
     extras.skillBlocks = preloadSkills(agentConfig.preloadSkills, cwd);
   }
   if (Array.isArray(config.skills)) {
     extras.skillMetas = loadSkillMeta(config.skills, cwd);
-  }
-  if (parentSystemPrompt) {
-    extras.parentSystemPrompt = parentSystemPrompt;
-  }
-  if (customSystemPrompt) {
-    extras.customSystemPrompt = customSystemPrompt;
-  }
-  if (contextFiles?.length) {
-    extras.contextFiles = contextFiles;
   }
   if (agentConfig) {
     return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
@@ -535,53 +578,12 @@ export async function runAgent(
   const effectiveCwd = options.cwd ?? ctx.cwd;
   const env = await detectEnv(options.pi, effectiveCwd);
 
-  // Get system prompt mode from config
-  const store = getStore();
-  const systemPromptMode = store.agent.systemPromptMode;
-
-  // Fetch parent system prompt for inherit mode
-  let parentSystemPrompt: string | undefined;
-  if (systemPromptMode === "inherit") {
-    try {
-      parentSystemPrompt = ctx.getSystemPrompt();
-    } catch (err) {
-      notify(`Failed to get parent system prompt: ${err}. Falling back to replace mode.`);
-    }
-  }
-
-  // Read custom prompt file for custom mode
-  let customSystemPrompt: string | undefined;
-  if (systemPromptMode === "custom") {
-    try {
-      const content = fs.readFileSync(CUSTOM_PROMPT_PATH, "utf-8").trim();
-      if (content) {
-        customSystemPrompt = content;
-      } else {
-        notify(`Custom prompt file is empty: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
-      }
-    } catch (err: any) {
-      if (err.code === "ENOENT") {
-        notify(`Custom prompt file not found: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
-      } else {
-        notify(`Failed to read custom prompt file: ${err.message}. Falling back to replace mode.`);
-      }
-    }
-  }
-
-  // Load AGENTS.md context files when the setting is enabled
-  const agentDir = getAgentDir();
-  let contextFiles: Array<{ path: string; content: string }> | undefined;
-  if (store.agent.includeContextFiles) {
-    try {
-      contextFiles = loadProjectContextFiles({ cwd: effectiveCwd, agentDir });
-    } catch {
-      // Non-fatal: context files are supplementary
-    }
-  }
+  // Resolve system prompt mode + source prompts + context files
+  const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, notify);
 
   const systemPrompt = buildPrompt(
     type, agentConfig, config, effectiveCwd, env,
-    systemPromptMode, parentSystemPrompt, customSystemPrompt, contextFiles,
+    mode, promptExtras,
   );
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
   const { extResult } = await reloadAndMap();
