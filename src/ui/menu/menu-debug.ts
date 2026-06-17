@@ -10,9 +10,9 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
+import { getAgentConfig, getAvailableTypes, getAllTypes } from "../../agents/agent-types.js";
 import { matchMenuChoice } from "./menu-helpers.js";
-import { getPiInstance } from "./shell.js";
+import { getPiInstance } from "../../shell.js";
 
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   const types = getAllTypes();

@@ -4,8 +4,8 @@
 
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { AgentOutputLog } from "./output-file.js";
-import type { LifetimeUsage } from "./usage.js";
+import type { AgentOutputLog } from "./agents/output-file.js";
+import type { LifetimeUsage } from "./agents/usage.js";
 
 /** Thinking level for agent models. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";

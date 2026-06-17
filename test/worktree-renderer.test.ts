@@ -36,14 +36,14 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
 }));
 
-vi.mock("../src/format.js", () => ({
+vi.mock("../src/ui/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
 }));
 
 // Import after mocks are set up
-import { renderSubagentResult } from "../src/renderer.js";
+import { renderSubagentResult } from "../src/ui/renderer.js";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */

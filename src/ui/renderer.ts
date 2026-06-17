@@ -5,7 +5,7 @@
  */
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
-import type { Theme } from "./types.js";
+import type { Theme } from "../types.js";
 import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
 
 // ============================================================================

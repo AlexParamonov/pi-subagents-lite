@@ -25,7 +25,7 @@ import {
   loadSkillsFromDir,
   type Skill,
 } from "@earendil-works/pi-coding-agent";
-import { isUnsafeName } from "./utils.js";
+import { isUnsafeName } from "../utils.js";
 
 export interface PreloadedSkill {
   name: string;

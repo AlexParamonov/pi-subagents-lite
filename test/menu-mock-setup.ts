@@ -52,7 +52,7 @@ mockModules.mockPiInstance = { sendUserMessage: vi.fn(), exec: mockModules.mockP
 
 // --- vi.mock() calls ---
 
-vi.mock("../src/agent-types.js", () => ({
+vi.mock("../src/agents/agent-types.js", () => ({
   getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
@@ -61,11 +61,11 @@ vi.mock("../src/agent-types.js", () => ({
   discoverNewAgents: vi.fn(async () => 0),
 }));
 
-vi.mock("../src/model-selector.js", () => ({
+vi.mock("../src/models/model-selector.js", () => ({
   ModelSelectorDialog: class {},
 }));
 
-vi.mock("../src/result-viewer.js", () => ({
+vi.mock("../src/ui/result-viewer.js", () => ({
   ResultViewer: class {
     constructor(...args: any[]) {
       mockModules.resultViewerCalls.push(args);
@@ -73,15 +73,15 @@ vi.mock("../src/result-viewer.js", () => ({
   },
 }));
 
-vi.mock("../src/format.js", () => ({
+vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
 }));
 
-vi.mock("../src/context.js", () => ({
+vi.mock("../src/prompt/context.js", () => ({
   buildSnapshotMarkdown: vi.fn(),
 }));
 
-vi.mock("../src/config-io.js", () => ({
+vi.mock("../src/config/config-io.js", () => ({
   saveConfigAtomic: vi.fn(),
   DEFAULT_CONFIG: {
     agent: { default: null, forceBackground: false },

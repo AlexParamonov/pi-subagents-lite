@@ -16,8 +16,8 @@ import {
   type MarkdownTheme,
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { type LifetimeUsage, formatTokens } from "./usage.js";
-import type { Theme } from "./ui/agent-widget.js";
+import { type LifetimeUsage, formatTokens } from "../agents/usage.js";
+import type { Theme } from "./agent-widget.js";
 import { formatMs } from "./format.js";
 
 /* ------------------------------------------------------------------ */

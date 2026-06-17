@@ -5,8 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showWidgetSettingsMenu } from "../src/menu-widget-settings.js";
-import { getAgentConfig } from "../src/agent-types.js";
+import { showWidgetSettingsMenu } from "../src/ui/menu/menu-widget-settings.js";
+import { getAgentConfig } from "../src/agents/agent-types.js";
 
 describe("showWidgetSettingsMenu — widget settings", () => {
   beforeEach(() => {

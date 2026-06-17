@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { resolveModel } from "../src/model-precedence.ts";
-import type { SubagentsConfig } from "../src/model-precedence.ts";
+import { resolveModel } from "../src/models/model-precedence.ts";
+import type { SubagentsConfig } from "../src/models/model-precedence.ts";
 
 const baseConfig: SubagentsConfig = {
   agent: { default: null, forceBackground: false },

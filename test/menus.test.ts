@@ -5,8 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx, selectByName } from "./menu-test-helpers.js";
-import { showAgentsMainMenu, showSettingsMenu } from "../src/menus.js";
-import { getAgentConfig } from "../src/agent-types.js";
+import { showAgentsMainMenu, showSettingsMenu } from "../src/ui/menu/menus.js";
+import { getAgentConfig } from "../src/agents/agent-types.js";
 
 function resetAgentState(): void {
   mockModules.mockConfig.agent = { default: null, forceBackground: false };

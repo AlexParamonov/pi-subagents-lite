@@ -10,10 +10,10 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord, SpawnConfig, ToolActivity } from "./types.js";
-import type { AgentManager, SpawnOptions } from "./agent-manager.js";
-import { buildAgentDetails } from "./tool-execution.js";
-import { getWidget } from "./shell.js";
+import type { AgentRecord, SpawnConfig, ToolActivity } from "../types.js";
+import type { AgentManager, SpawnOptions } from "../agents/agent-manager.js";
+import { buildAgentDetails } from "../tool-execution.js";
+import { getWidget } from "../shell.js";
 
 // ============================================================================
 // Types

@@ -19,14 +19,14 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getConfig, getToolNamesForType, resolveVisibleTools } from "./agent-types.js";
-import { extractText } from "./context.js";
+import { extractText } from "../prompt/context.js";
 import type { LifetimeUsage } from "./usage.js";
-import { findModelInRegistry } from "./utils.js";
+import { findModelInRegistry } from "../utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
-import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
-import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
-import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode } from "./types.js";
-import { getStore } from "./shell.js";
+import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
+import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
+import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode } from "../types.js";
+import { getStore } from "../shell.js";
 
 /** Path to custom prompt file. Exported for use in menus.ts. */
 export const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");

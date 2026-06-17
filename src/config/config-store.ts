@@ -13,11 +13,11 @@
  * at session_start. `dispose()` drops deps at session_shutdown.
  */
 
-import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.js";
-import { resolveModel } from "./model-precedence.js";
-import type { AgentWidget } from "./ui/agent-widget.js";
-import type { AgentManager } from "./agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode, type ThinkingLevel } from "./types.js";
+import type { SubagentsConfig, SessionModelOverrides } from "../models/model-precedence.js";
+import { resolveModel } from "../models/model-precedence.js";
+import type { AgentWidget } from "../ui/agent-widget.js";
+import type { AgentManager } from "../agents/agent-manager.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode, type ThinkingLevel } from "../types.js";
 import { DEFAULT_CONFIG, loadConfig, saveConfigAtomic } from "./config-io.js";
 
 /** Valid values for systemPromptMode — checked once at module load. */

@@ -37,13 +37,13 @@ vi.mock("../src/worktree-validator.js", () => ({
   }),
 }));
 
-vi.mock("../src/agent-types.js", () => ({
+vi.mock("../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => type),
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
 }));
 
-vi.mock("../src/model-precedence.js", () => ({
+vi.mock("../src/models/model-precedence.js", () => ({
   resolveModel: vi.fn(() => undefined),
 }));
 
@@ -109,7 +109,7 @@ vi.mock("../src/shell.js", () => ({
   }),
 }));
 
-vi.mock("../src/usage.js", () => ({
+vi.mock("../src/agents/usage.js", () => ({
   addUsage: vi.fn(),
   getLifetimeTotal: vi.fn(() => 0),
   getSessionContextPercent: vi.fn(() => null),
@@ -117,7 +117,7 @@ vi.mock("../src/usage.js", () => ({
 
 // Import after mocks are in place
 import { executeAgentTool } from "../src/tool-execution.js";
-import * as agentTypes from "../src/agent-types.js";
+import * as agentTypes from "../src/agents/agent-types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */

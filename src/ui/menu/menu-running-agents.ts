@@ -11,13 +11,13 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord } from "./types.js";
-import { SHORT_ID_LENGTH } from "./types.js";
-import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
-import { getDisplayName } from "./format.js";
-import { buildSnapshotMarkdown } from "./context.js";
+import type { AgentRecord } from "../../types.js";
+import { SHORT_ID_LENGTH } from "../../types.js";
+import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
+import { getDisplayName } from "../format.js";
+import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { runMenuLoop, runMenu } from "./menu-helpers.js";
-import { getManager } from "./shell.js";
+import { getManager } from "../../shell.js";
 
 /**
  * Show a ResultViewer for an agent's result, error, or snapshot.

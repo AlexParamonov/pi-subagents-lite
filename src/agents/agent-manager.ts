@@ -17,9 +17,9 @@ import {
   type SpawnConfig,
   type SubagentType,
   type ToolActivity,
-} from "./types.js";
+} from "../types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
-import { errorMessage } from "./utils.js";
+import { errorMessage } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
 const CLEANUP_INTERVAL_MS = 60_000;

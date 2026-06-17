@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { extractText, buildSnapshotMarkdown } from "../src/context.js";
+import { extractText, buildSnapshotMarkdown } from "../src/prompt/context.js";
 
 /* ------------------------------------------------------------------ */
 /*  extractText                                                        */

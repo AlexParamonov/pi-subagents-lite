@@ -12,15 +12,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentManager } from "../src/agent-manager.js";
-import type { LiveView } from "../src/spawn-coordinator.js";
+import type { AgentManager } from "../src/agents/agent-manager.js";
+import type { LiveView } from "../src/spawn/spawn-coordinator.js";
 import { AgentWidget } from "../src/ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup (same as agent-widget.test.ts)                         */
 /* ------------------------------------------------------------------ */
 
-vi.mock("../src/agent-types.js", () => ({
+vi.mock("../src/agents/agent-types.js", () => ({
   getConfig: (type: string) => ({
     displayName: type.charAt(0).toUpperCase() + type.slice(1),
     tools: [],

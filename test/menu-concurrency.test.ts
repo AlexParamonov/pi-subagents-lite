@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showConcurrencySettingsMenu } from "../src/menu-concurrency.js";
+import { showConcurrencySettingsMenu } from "../src/ui/menu/menu-concurrency.js";
 
 function resetConfig(): void {
   mockModules.mockConfig.concurrency = { default: 4 };

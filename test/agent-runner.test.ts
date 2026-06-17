@@ -46,8 +46,8 @@ const mockModules = vi.hoisted(() => ({
   clearLoaderExtensions: () => { _loaderGetExtensionsResult.extensions = []; },
 }));
 
-vi.mock("../src/agent-types.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/agent-types.js")>();
+vi.mock("../src/agents/agent-types.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/agents/agent-types.js")>();
   return {
     ...actual,
     getConfig: mockModules.mockGetConfig,
@@ -56,15 +56,15 @@ vi.mock("../src/agent-types.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/prompts.js", () => ({
+vi.mock("../src/prompt/prompts.js", () => ({
   buildAgentPrompt: mockModules.mockBuildAgentPrompt,
 }));
 
-vi.mock("../src/context.js", () => ({
+vi.mock("../src/prompt/context.js", () => ({
   extractText: mockModules.mockExtractText,
 }));
 
-vi.mock("../src/skill-loader.js", () => ({
+vi.mock("../src/prompt/skill-loader.js", () => ({
   preloadSkills: mockModules.mockPreloadSkills,
   loadSkillMeta: mockModules.mockLoadSkillMeta,
 }));
@@ -93,7 +93,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, subscribeToSessionEvents } from "../src/agent-runner.js";
+import { runAgent, subscribeToSessionEvents } from "../src/agents/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",

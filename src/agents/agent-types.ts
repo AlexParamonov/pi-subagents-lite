@@ -7,7 +7,7 @@
 
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
-import type { AgentConfig } from "./types.js";
+import type { AgentConfig } from "../types.js";
 
 /**
  * All tool names that Pi can provide to a session.

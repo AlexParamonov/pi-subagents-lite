@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showAgentActions } from "../src/menu-running-agents.js";
+import { showAgentActions } from "../src/ui/menu/menu-running-agents.js";
 
 describe("showResultViewer — stats passing", () => {
   beforeEach(() => {

@@ -14,7 +14,7 @@ import {
   addUsage,
   getLifetimeTotal,
   formatTokens,
-} from "../src/usage.js";
+} from "../src/agents/usage.js";
 
 /* ------------------------------------------------------------------ */
 /*  LifetimeUsage type — cost field                                    */
