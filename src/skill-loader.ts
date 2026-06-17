@@ -163,22 +163,7 @@ function extractDescription(filePath: string): string {
   try {
     const content = safeReadFile(filePath);
     if (!content) return "(no description)";
-
-    // Simple frontmatter extraction
-    const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    if (!normalized.startsWith("---\n")) return "(no description)";
-    const endIndex = normalized.indexOf("\n---\n", 4);
-    if (endIndex === -1) return "(no description)";
-
-    const yamlString = normalized.slice(4, endIndex);
-    // Simple extraction of description field
-    const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
-    if (descMatch && descMatch[1]) {
-      // Truncate long descriptions
-      const desc = descMatch[1].trim();
-      return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
-    }
-    return "(no description)";
+    return parseFrontmatterDescription(content) ?? "(no description)";
   } catch {
     return "(error reading description)";
   }
@@ -186,18 +171,25 @@ function extractDescription(filePath: string): string {
 
 /** Extract description from skill content string (frontmatter). */
 function extractDescriptionFromContent(content: string): string {
-  if (!content) return "";
+  return content ? (parseFrontmatterDescription(content) ?? "") : "";
+}
 
+/**
+ * Parse description from frontmatter content string.
+ * Returns null if not found or invalid.
+ */
+export function parseFrontmatterDescription(content: string): string | null {
   const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  if (!normalized.startsWith("---\n")) return "";
+  if (!normalized.startsWith("---\n")) return null;
   const endIndex = normalized.indexOf("\n---\n", 4);
-  if (endIndex === -1) return "";
+  if (endIndex === -1) return null;
 
   const yamlString = normalized.slice(4, endIndex);
   const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
   if (descMatch && descMatch[1]) {
     const desc = descMatch[1].trim();
+    if (!desc) return null; // Empty description after trimming
     return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
   }
-  return "";
+  return null;
 }

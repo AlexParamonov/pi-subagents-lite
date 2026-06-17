@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { preloadSkills, loadSkillMeta } from "../src/skill-loader.ts";
+import { preloadSkills, loadSkillMeta, parseFrontmatterDescription } from "../src/skill-loader.ts";
 import { buildAgentPrompt } from "../src/prompts.ts";
 import type { AgentConfig, EnvInfo } from "../src/types.ts";
 import { createSkillDir, createFlatSkill } from "./fixtures";
@@ -198,5 +198,67 @@ describe("Prompt integration: both together", () => {
 
     // No separate markdown dump
     expect(prompt).not.toContain("# Preloaded Skill:");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Unit: parseFrontmatterDescription                                 */
+/* ------------------------------------------------------------------ */
+
+describe("parseFrontmatterDescription", () => {
+  it("returns description from valid frontmatter", () => {
+    const content = "---\nname: test\ndescription: Test skill\n---\n\nBody";
+    expect(parseFrontmatterDescription(content)).toBe("Test skill");
+  });
+
+  it("returns null when no frontmatter is present", () => {
+    expect(parseFrontmatterDescription("No frontmatter here")).toBeNull();
+  });
+
+  it("returns null when frontmatter is not closed", () => {
+    const content = "---\nname: test\ndescription: Test skill";
+    expect(parseFrontmatterDescription(content)).toBeNull();
+  });
+
+  it("returns null when no description field", () => {
+    const content = "---\nname: test\n---\n\nBody";
+    expect(parseFrontmatterDescription(content)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(parseFrontmatterDescription("")).toBeNull();
+  });
+
+  it("truncates descriptions longer than 200 chars", () => {
+    const longDesc = "A".repeat(250);
+    const content = `---\nname: test\ndescription: ${longDesc}\n---\n\nBody`;
+    const result = parseFrontmatterDescription(content);
+    expect(result).toHaveLength(200);
+    expect(result).toEndWith("...");
+  });
+
+  it("strips quotes from description value", () => {
+    const content = "---\nname: test\ndescription: \"Quoted description\"\n---\n\nBody";
+    expect(parseFrontmatterDescription(content)).toBe("Quoted description");
+  });
+
+  it("normalizes Windows line endings (CRLF)", () => {
+    const content = "---\r\nname: test\r\ndescription: CRLF skill\r\n---\r\n\r\nBody";
+    expect(parseFrontmatterDescription(content)).toBe("CRLF skill");
+  });
+});
+
+describe("extractDescription uses parseFrontmatterDescription", () => {
+  it("returns (no description) when helper returns null", () => {
+    createFlatSkill(tmpDir, "no-desc", "", "Body without description");
+    const result = loadSkillMeta(["no-desc"], tmpDir);
+    expect(result[0].description).toBe("(no description)");
+  });
+});
+
+describe("extractDescriptionFromContent uses parseFrontmatterDescription", () => {
+  it("returns empty string when helper returns null", () => {
+    const result = preloadSkills(["nonexistent"], tmpDir);
+    expect(result[0].description).toBe("");
   });
 });
