@@ -58,10 +58,13 @@ function formatSessionTokens(
 }
 
 /** Format turn count with optional max limit. Shows max when >= 80% of limit. */
-function formatTurns(turnCount: number, maxTurns?: number | null): string {
+function formatTurns(turnCount: number, maxTurns: number | null | undefined, theme: Theme): string {
   if (maxTurns == null) return `${turnCount}⟳ `;
-  const approaching = turnCount >= maxTurns * 0.8;
-  return approaching ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
+  const ratio = turnCount / maxTurns;
+  const text = ratio >= 0.8 ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
+  if (ratio >= 1) return theme.fg("error", text);
+  if (ratio >= 0.8) return theme.fg("warning", text);
+  return text;
 }
 
 // ---- Exported formatting functions ----
@@ -102,7 +105,7 @@ export function buildStatsParts(
 ): string[] {
   const parts: string[] = [];
   if (args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
-  if (args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns));
+  if (args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
   if (args.input > 0 || args.output > 0) {
     parts.push(formatSessionTokens(args.input, args.output, args.contextPercent, theme, args.compactions));
   }
