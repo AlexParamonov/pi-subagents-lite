@@ -697,3 +697,106 @@ describe("renderFinishedLine context percent", () => {
     expect(hasActivity).toBe(true);
   });
 });
+
+// ------------------------------------------------------------------ */
+/*  Stats visibility integration tests                               */
+/* ------------------------------------------------------------------ */
+
+describe("stats visibility integration", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("hides tools count when showTools is false", () => {
+    widget.setStatsVisibility({ showTools: false });
+    const agent = makeRunningAgent("a1");
+    agent.stats.toolUses = 10;
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    expect(allText).not.toContain("🛠");
+  });
+
+  it("hides time when showTime is false", () => {
+    widget.setStatsVisibility({ showTime: false });
+    const agent = makeRunningAgent("a1");
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    // The running agent started 60s ago so would show "1m" — should be absent
+    expect(allText).not.toMatch(/\d+m \d+s|\d+s/);
+  });
+
+  it("hides context percent and compactions when showContext is false", () => {
+    widget.setStatsVisibility({ showContext: false });
+    const agent = makeRunningAgent("a1");
+    agent.stats.compactionCount = 3;
+    agent.execution = {
+      session: {
+        getSessionStats: () => ({ contextUsage: { percent: 75 } }),
+      },
+    };
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    expect(allText).not.toContain("%");
+    expect(allText).not.toContain("↻");
+  });
+
+  it("hides cost when showCost is false via statsVisibility", () => {
+    widget.setStatsVisibility({ showCost: false });
+    const agent = makeRunningAgent("a1");
+    agent.stats.lifetimeUsage.cost = 1.50;
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    expect(allText).not.toContain("$");
+  });
+
+  it("hides tools in finished agent stats when showTools is false", () => {
+    widget.setStatsVisibility({ showTools: false });
+    const agent = makeFinishedAgent("a1");
+    agent.stats.toolUses = 15;
+    widget.markFinished("a1");
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    expect(allText).not.toContain("🛠");
+  });
+
+  it("shows all stats when visibility flags are all true (default)", () => {
+    // Don't set any visibility flags — defaults should show everything
+    const agent = makeRunningAgent("a1");
+    agent.stats.compactionCount = 1;
+    agent.stats.lifetimeUsage.cost = 0.50;
+    agent.execution = {
+      session: {
+        getSessionStats: () => ({ contextUsage: { percent: 60 } }),
+      },
+    };
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    expect(allText).toContain("🛠");
+    expect(allText).toContain("⟳");
+    expect(allText).toContain("↑");
+    expect(allText).toContain("$");
+  });
+});

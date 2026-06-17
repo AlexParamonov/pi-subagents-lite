@@ -24,6 +24,13 @@ export const DEFAULT_CONFIG: SubagentsConfig = {
     widgetShortcut: false,
     systemPromptMode: "replace",
     includeContextFiles: true,
+    showTools: true,
+    showTurns: true,
+    showInput: true,
+    showOutput: true,
+    showContext: true,
+    showCost: false,
+    showTime: true,
   },
   concurrency: { default: 4 },
 };

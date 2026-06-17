@@ -58,6 +58,18 @@ export interface ResolvedAgentSettings {
   readonly loadSkillsImplicitly: boolean;
   /** Global default for extensions loading: true (load all) or false (none). */
   readonly loadExtensionsImplicitly: boolean;
+  /** Whether to show toolUses count in widget stats line. */
+  readonly showTools: boolean;
+  /** Whether to show turn count in widget stats line. */
+  readonly showTurns: boolean;
+  /** Whether to show input tokens in widget stats line. */
+  readonly showInput: boolean;
+  /** Whether to show output tokens in widget stats line. */
+  readonly showOutput: boolean;
+  /** Whether to show context percent and compactions in widget stats line. */
+  readonly showContext: boolean;
+  /** Whether to show elapsed time in widget stats line. */
+  readonly showTime: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -111,6 +123,12 @@ export class ConfigStore {
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+      showTools: a.showTools !== false,
+      showTurns: a.showTurns !== false,
+      showInput: a.showInput !== false,
+      showOutput: a.showOutput !== false,
+      showContext: a.showContext !== false,
+      showTime: a.showTime !== false,
     };
   }
 
@@ -230,6 +248,36 @@ export class ConfigStore {
       setLoadExtensionsImplicitly: (value: boolean): void => {
         this.config.agent.loadExtensionsImplicitly = value;
         this.persist();
+      },
+      setShowTools: (enabled: boolean): void => {
+        this.config.agent.showTools = enabled;
+        this.persist();
+        this.syncWidgetStatsVisibility();
+      },
+      setShowTurns: (enabled: boolean): void => {
+        this.config.agent.showTurns = enabled;
+        this.persist();
+        this.syncWidgetStatsVisibility();
+      },
+      setShowInput: (enabled: boolean): void => {
+        this.config.agent.showInput = enabled;
+        this.persist();
+        this.syncWidgetStatsVisibility();
+      },
+      setShowOutput: (enabled: boolean): void => {
+        this.config.agent.showOutput = enabled;
+        this.persist();
+        this.syncWidgetStatsVisibility();
+      },
+      setShowContext: (enabled: boolean): void => {
+        this.config.agent.showContext = enabled;
+        this.persist();
+        this.syncWidgetStatsVisibility();
+      },
+      setShowTime: (enabled: boolean): void => {
+        this.config.agent.showTime = enabled;
+        this.persist();
+        this.syncWidgetStatsVisibility();
       },
     },
     widget: {
@@ -379,6 +427,22 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
   }
 
+  /** Push stats visibility flags to the widget. */
+  private syncWidgetStatsVisibility(): void {
+    const w = this.widget;
+    if (!w) return;
+    const a = this.agent;
+    w.setStatsVisibility({
+      showTools: a.showTools,
+      showTurns: a.showTurns,
+      showInput: a.showInput,
+      showOutput: a.showOutput,
+      showContext: a.showContext,
+      showCost: a.showCost,
+      showTime: a.showTime,
+    });
+  }
+
   private applyConcurrency(): void {
     this.manager?.setConcurrency(this.config.concurrency);
   }
@@ -388,6 +452,7 @@ export class ConfigStore {
     if (this.widget) {
       this.widget.setShowCost(this.agent.showCost);
       this.syncWidgetSettings();
+      this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();
   }

@@ -82,9 +82,23 @@ export function formatMs(ms: number): string {
   return parts.join(" ");
 }
 
+/** Visibility flags for stats parts. All default to true. */
+export interface StatsVisibility {
+  showTools?: boolean;
+  showTurns?: boolean;
+  showInput?: boolean;
+  showOutput?: boolean;
+  showContext?: boolean;
+  showCost?: boolean;
+  showTime?: boolean;
+}
+
 /**
- * Build common stats parts: toolUses · turns · input↓ output with context % · cost.
+ * Build common stats parts: toolUses · turns · input↓ output with context % · cost · time.
  * Shared by AgentWidget and index.ts for consistent stats display.
+ *
+ * @param visible - Optional visibility flags. All default to true for backward compatibility.
+ * @param durationMs - Optional duration in ms. When provided and showTime is not false, appends formatted time.
  */
 export function buildStatsParts(
   args: {
@@ -96,16 +110,30 @@ export function buildStatsParts(
     contextPercent: number | null;
     compactions: number;
     cost?: number;
+    durationMs?: number;
   },
   theme: Theme,
+  visible?: StatsVisibility,
 ): string[] {
   const parts: string[] = [];
-  if (args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
-  if (args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
-  if (args.input > 0 || args.output > 0) {
-    parts.push(formatSessionTokens(args.input, args.output, args.contextPercent, theme, args.compactions));
+  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
+  if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
+  if (visible?.showInput !== false || visible?.showOutput !== false) {
+    const showIn = visible?.showInput !== false;
+    const showOut = visible?.showOutput !== false;
+    const inputTokens = showIn ? args.input : 0;
+    const outputTokens = showOut ? args.output : 0;
+    if (inputTokens > 0 || outputTokens > 0) {
+      parts.push(formatSessionTokens(
+        inputTokens, outputTokens,
+        visible?.showContext !== false ? args.contextPercent : null,
+        theme,
+        visible?.showContext !== false ? args.compactions : 0,
+      ));
+    }
   }
-  if (args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
+  if (visible?.showCost !== false && args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
+  if (visible?.showTime !== false && args.durationMs != null) parts.push(formatMs(args.durationMs));
   return parts;
 }
 

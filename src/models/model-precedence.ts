@@ -37,6 +37,18 @@ export interface SubagentsConfig {
     loadSkillsImplicitly?: boolean;
     /** Global default for extensions loading when agent doesn't explicitly set extensions. true (default) or false. */
     loadExtensionsImplicitly?: boolean;
+    /** Whether to show toolUses count in widget stats line. Default: true. */
+    showTools?: boolean;
+    /** Whether to show turn count in widget stats line. Default: true. */
+    showTurns?: boolean;
+    /** Whether to show input tokens in widget stats line. Default: true. */
+    showInput?: boolean;
+    /** Whether to show output tokens in widget stats line. Default: true. */
+    showOutput?: boolean;
+    /** Whether to show context percent and compactions in widget stats line. Default: true. */
+    showContext?: boolean;
+    /** Whether to show elapsed time in widget stats line. Default: true. */
+    showTime?: boolean;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

@@ -144,3 +144,118 @@ describe("showWidgetSettingsMenu — Ctrl+o shortcut toggle", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut OFF", "info");
   });
 });
+
+describe("showWidgetSettingsMenu — stat visibility toggles", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null, forceBackground: false,
+      widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
+      showTools: true, showTurns: true, showInput: true, showOutput: true,
+      showContext: true, showCost: false, showTime: true,
+    };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows all 7 stat toggle items", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showWidgetSettingsMenu(ctx);
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    expect(items.some((i: string) => i.startsWith("Show tools" ))).toBe(true);
+    expect(items.some((i: string) => i.startsWith("Show turns" ))).toBe(true);
+    expect(items.some((i: string) => i.startsWith("Show input tokens" ))).toBe(true);
+    expect(items.some((i: string) => i.startsWith("Show output tokens" ))).toBe(true);
+    expect(items.some((i: string) => i.startsWith("Show context %" ))).toBe(true);
+    expect(items.some((i: string) => i.startsWith("Show cost" ))).toBe(true);
+    expect(items.some((i: string) => i.startsWith("Show time" ))).toBe(true);
+  });
+
+  it("shows correct ON/OFF state for each toggle", async () => {
+    mockModules.mockConfig.agent.showTools = true;
+    mockModules.mockConfig.agent.showTurns = false;
+    mockModules.mockConfig.agent.showInput = true;
+    mockModules.mockConfig.agent.showOutput = false;
+    mockModules.mockConfig.agent.showContext = true;
+    mockModules.mockConfig.agent.showCost = false;
+    mockModules.mockConfig.agent.showTime = true;
+    const ctx = createMockCtx([undefined]);
+    await showWidgetSettingsMenu(ctx);
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    expect(items.find((i: string) => i.startsWith("Show tools" ))).toContain("ON");
+    expect(items.find((i: string) => i.startsWith("Show turns" ))).toContain("OFF");
+    expect(items.find((i: string) => i.startsWith("Show input tokens" ))).toContain("ON");
+    expect(items.find((i: string) => i.startsWith("Show output tokens" ))).toContain("OFF");
+    expect(items.find((i: string) => i.startsWith("Show context %" ))).toContain("ON");
+    expect(items.find((i: string) => i.startsWith("Show cost" ))).toContain("OFF");
+    expect(items.find((i: string) => i.startsWith("Show time" ))).toContain("ON");
+  });
+
+  it("toggles showTools and saves", async () => {
+    mockModules.mockConfig.agent.showTools = true;
+    const ctx = createMockCtx(["Show tools · ON", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showTools).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show tools OFF", "info");
+  });
+
+  it("toggles showTurns and saves", async () => {
+    mockModules.mockConfig.agent.showTurns = false;
+    const ctx = createMockCtx(["Show turns · OFF", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showTurns).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show turns ON", "info");
+  });
+
+  it("toggles showInput and saves", async () => {
+    mockModules.mockConfig.agent.showInput = true;
+    const ctx = createMockCtx(["Show input tokens · ON", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showInput).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show input tokens OFF", "info");
+  });
+
+  it("toggles showOutput and saves", async () => {
+    mockModules.mockConfig.agent.showOutput = true;
+    const ctx = createMockCtx(["Show output tokens · ON", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showOutput).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show output tokens OFF", "info");
+  });
+
+  it("toggles showContext and saves", async () => {
+    mockModules.mockConfig.agent.showContext = true;
+    const ctx = createMockCtx(["Show context % · ON", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showContext).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show context % OFF", "info");
+  });
+
+  it("toggles showCost and saves", async () => {
+    mockModules.mockConfig.agent.showCost = false;
+    const ctx = createMockCtx(["Show cost · OFF", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showCost).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show cost ON", "info");
+  });
+
+  it("toggles showTime and saves", async () => {
+    mockModules.mockConfig.agent.showTime = true;
+    const ctx = createMockCtx(["Show time · ON", undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.showTime).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show time OFF", "info");
+  });
+
+  it("stat toggles appear after existing settings", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showWidgetSettingsMenu(ctx);
+    const items: string[] = ctx.ui.select.mock.calls[0][1];
+    const shortcutIdx = items.findIndex((i: string) => i.startsWith("Ctrl+o shortcut" ));
+    const toolsIdx = items.findIndex((i: string) => i.startsWith("Show tools" ));
+    const timeIdx = items.findIndex((i: string) => i.startsWith("Show time" ));
+    expect(shortcutIdx).toBeLessThan(toolsIdx);
+    expect(toolsIdx).toBeLessThan(timeIdx);
+  });
+});
