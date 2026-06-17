@@ -18,72 +18,31 @@ import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, validateNumeric } from "./menu-helpers.js";
 import { getStore } from "../../shell.js";
 
-/** Stat toggle with store setter — used for data-driven onChange. */
-interface StatToggleItem extends SettingItem {
-  set: (value: boolean) => void;
-}
-
-/** Stat visibility toggle definitions (shared between main and submenu). */
-function buildStatToggleItems(store: ReturnType<typeof getStore>): StatToggleItem[] {
-  const defs: Array<{ id: string; label: string; get: () => boolean; set: (v: boolean) => void }> = [
-    { id: "showTools", label: "Show tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) },
-    { id: "showTurns", label: "Show turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) },
-    { id: "showInput", label: "Show input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) },
-    { id: "showOutput", label: "Show output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) },
-    { id: "showContext", label: "Show context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) },
-    { id: "showCost", label: "Show cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) },
-    { id: "showTime", label: "Show time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) },
-  ];
-
-  return defs.map((d) => ({
-    id: d.id,
-    label: d.label,
-    currentValue: d.get() ? "ON" : "OFF",
-    values: ["ON", "OFF"],
-    set: d.set,
-  }));
-}
-
-/** Create a submenu for numeric input using pi-tui Input. */
-function createNumericSubmenu(
-  initialValue: string,
-  min: number,
-  onValid: (parsed: number) => void,
-  minLabel: string,
-  ctx: ExtensionCommandContext,
-): (currentValue: string, done: (selectedValue?: string) => void) => InstanceType<typeof Input> {
-  return (currentValue, done) => {
-    const input = new Input();
-    input.setValue(currentValue);
-    input.onSubmit = (value) => {
-      const parsed = validateNumeric(value, min);
-      if (parsed === undefined) {
-        ctx.ui.notify(`Invalid value — must be a number ${minLabel}`, "error");
-        return;
-      }
-      onValid(parsed);
-      done(String(parsed));
-    };
-    input.onEscape = () => done();
-    return input;
-  };
+/** Stat visibility config — label and store accessors keyed by stat id. */
+function buildStatConfig(store: ReturnType<typeof getStore>) {
+  return new Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>([
+    ["showTools", { label: "Show tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
+    ["showTurns", { label: "Show turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
+    ["showInput", { label: "Show input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) }],
+    ["showOutput", { label: "Show output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) }],
+    ["showContext", { label: "Show context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) }],
+    ["showCost", { label: "Show cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) }],
+    ["showTime", { label: "Show time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) }],
+  ]);
 }
 
 export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
-
-  const statItems = buildStatToggleItems(store);
+  const statConfig = buildStatConfig(store);
 
   const onChange = (id: string, newValue: string) => {
-    // Stat toggles are data-driven via their set() closures
-    const stat = statItems.find((s) => s.id === id);
+    const stat = statConfig.get(id);
     if (stat) {
       stat.set(newValue === "ON");
       ctx.ui.notify(`${stat.label} ${newValue}`, "info");
       return;
     }
 
-    // Non-stat items (compact, shortcut) handled directly
     switch (id) {
       case "compact":
         store.mutate.widget.setCompact(newValue === "ON");
@@ -96,19 +55,33 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     }
   };
 
-  const maxLinesSubmenu = createNumericSubmenu(
-    String(store.agent.widgetMaxLines), 2,
-    (parsed) => { store.mutate.widget.setMaxLines(parsed); ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info"); },
-    "≥ 2", ctx,
-  );
-
-  const maxLinesCompactSubmenu = createNumericSubmenu(
-    String(store.agent.widgetMaxLinesCompact), 1,
-    (parsed) => { store.mutate.widget.setMaxLinesCompact(parsed); ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info"); },
-    "≥ 1", ctx,
-  );
-
   await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const numericSubmenu = (
+      min: number,
+      onValid: (parsed: number) => void,
+    ) => (currentValue: string, doneSub: (selectedValue?: string) => void) => {
+      const input = new Input();
+      input.setValue(currentValue);
+      input.onSubmit = (value) => {
+        const parsed = validateNumeric(value, min);
+        if (parsed === undefined) {
+          ctx.ui.notify(`Invalid value — must be a number ≥ ${min}`, "error");
+          return;
+        }
+        onValid(parsed);
+        doneSub(String(parsed));
+      };
+      input.onEscape = () => doneSub();
+      return input;
+    };
+
+    const statItems: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
+      id,
+      label: cfg.label,
+      currentValue: cfg.get() ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+    }));
+
     const items: SettingItem[] = [
       {
         id: "compact",
@@ -120,13 +93,19 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         id: "maxLines",
         label: "Max lines (full)",
         currentValue: String(store.agent.widgetMaxLines),
-        submenu: maxLinesSubmenu,
+        submenu: numericSubmenu(2, (parsed) => {
+          store.mutate.widget.setMaxLines(parsed);
+          ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
+        }),
       },
       {
         id: "maxLinesCompact",
         label: "Max lines (compact)",
         currentValue: String(store.agent.widgetMaxLinesCompact),
-        submenu: maxLinesCompactSubmenu,
+        submenu: numericSubmenu(1, (parsed) => {
+          store.mutate.widget.setMaxLinesCompact(parsed);
+          ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+        }),
       },
       {
         id: "shortcut",

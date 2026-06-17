@@ -1,78 +1,97 @@
-Status: RESOLVED
+Status: NEEDS_REVISION
 
 # Review Summary
 
 Files reviewed:
-- `src/config/config-io.ts`
-- `src/config/config-store.ts`
-- `src/models/model-precedence.ts`
-- `src/types.ts`
-- `src/ui/agent-widget.ts`
-- `src/ui/format.ts`
+- `src/ui/menu/menu-helpers.ts`
 - `src/ui/menu/menu-widget-settings.ts`
-- `test/agent-widget.test.ts`
-- `test/config-store.test.ts`
-- `test/menu-mock-setup.ts`
 - `test/menu-widget-settings.test.ts`
-- `test/widget-stats-filtering.test.ts`
+- `test/menus.test.ts`
+- `test/build-settings-list-theme.test.ts`
+- `test/validate-numeric.test.ts`
 
 Issues found:
-- 1 critical, 1 suggestion
+- 0 critical, 2 important, 0 suggestions
 
-## [CRITICAL] `setShowCost` mutation does not sync statsVisibility — cost toggle is broken
+The implementation correctly migrates from `runMenuLoop`/`ctx.ui.select` to `SettingsList`/`ctx.ui.custom`, which fixes the cursor position reset bug. The `validateNumeric` extraction and `buildSettingsListTheme` helper are clean. Tests pass and typecheck is clean.
 
-**Resolved:** Added `this.syncWidgetStatsVisibility()` to `setShowCost` (agent path), `session.setShowCost`, and `session.clearShowCost`. Updated tests to assert `setStatsVisibility` is called on all three paths.
+## [IMPORTANT] Dead code: unused `setter` field in `buildStatToggleItems`
 
-Confidence: 100/100
-Location: `src/config/config-store.ts:211-216`
+Confidence: 90/100
+Location: `src/ui/menu/menu-widget-settings.ts:22-31`
 
-**Problem:** All six new `setShow*` mutations call `this.syncWidgetStatsVisibility()`, but the existing `setShowCost` does not. After this change, `renderFinishedLine` and `buildStatsLine` in AgentWidget read cost visibility from `this.statsVisibility.showCost` (via `buildStatsParts`), but `setShowCost` only calls the old `this.widget?.setShowCost(enabled)` path which updates `this.showCost` — a property now only used by `updateStatusBar`, not by the stats line.
+Problem: `buildStatToggleItems` defines a `setter` field on each stat toggle object but never uses it. The `.map()` on line 33 only extracts `id`, `label`, and `currentValue` (via `getter()`). The `setter` closures are dead code.
 
-When the user toggles "Show cost" in the Widget Settings menu:
-1. `setShowCost(true)` is called
-2. Config is updated and persisted
-3. `widget.showCost` is set (affects status bar only)
-4. `statsVisibility.showCost` is **never updated**
-5. The cost stat remains hidden/visible as before the toggle
+Meanwhile, the `onChange` function (lines 56-92) duplicates the same store mutation logic via a hardcoded switch statement.
 
-The same issue exists for `session.setShowCost` and `session.clearShowCost` (lines 355-363), though those paths aren't used from the widget settings menu.
+Why it matters: The `setter` field was clearly intended to drive `onChange` in a data-driven way. Having both dead `setter` definitions and a parallel hardcoded switch creates a maintenance trap: adding a new stat requires updating two places (the `statToggles` array and the `onChange` switch), and a developer might update one and forget the other.
 
-**Why it matters:** Toggling "Show cost" in the Widget Settings menu appears to have no effect on the stats line. Users will think the feature is broken.
+Fix: Either use the `setter` in `onChange` to avoid duplication, or remove the `setter` field entirely since `onChange` handles it. Using `setter` is cleaner:
 
-**Fix:** Add `this.syncWidgetStatsVisibility()` to `setShowCost`, `session.setShowCost`, and `session.clearShowCost`:
+```typescript
+function buildStatToggleItems(
+  store: ReturnType<typeof getStore>,
+): Array<SettingItem & { setter: (v: boolean) => void }> {
+  // ... keep setter in the returned items
+}
 
-```ts
-// agent mutate path (line 211)
-setShowCost: (enabled: boolean): void => {
-    this.config.agent.showCost = enabled;
-    this.sessionShowCost = undefined;
-    this.persist();
-    this.widget?.setShowCost(enabled);
-    this.syncWidgetStatsVisibility();  // ADD THIS
-},
-
-// session mutate path (line 355)
-setShowCost: (enabled: boolean): void => {
-    this.sessionShowCost = enabled;
-    this.widget?.setShowCost(enabled);
-    this.syncWidgetStatsVisibility();  // ADD THIS
-},
-
-// session clear path (line 361)
-clearShowCost: (): void => {
-    this.sessionShowCost = undefined;
-    this.widget?.setShowCost(this.config.agent.showCost === true);
-    this.syncWidgetStatsVisibility();  // ADD THIS
-},
+// Then in onChange:
+const statItem = statItems.find((s) => s.id === id);
+if (statItem) {
+  statItem.setter(newValue === "ON");
+  ctx.ui.notify(`${statItem.label} ${newValue}`, "info");
+  break;
+}
 ```
 
-## [SUGGESTION] `renderer.ts` still uses old cost/duration patterns
-
-**Acknowledged, not changed.** Renderer serves a different display context (chat result cards) and doesn't use StatsVisibility. Different patterns for different contexts is fine.
+## [IMPORTANT] Weak `buildSettingsListTheme` tests don't verify styling behavior
 
 Confidence: 85/100
-Location: `src/ui/renderer.ts:24-35`
+Location: `test/build-settings-list-theme.test.ts`
 
-`buildStatsLine` in renderer.ts manually gates cost with `showCost ? ... : undefined` and pushes `formatMs` after `buildStatsParts`, instead of using the new `durationMs` parameter. This works correctly since renderer serves a different display context (chat messages, not the widget), but the pattern divergence is worth noting.
+Problem: Every test in the file uses `.toContain(text)` to verify the return value. The mock theme produces distinctive, verifiable output:
 
-Not blocking — the renderer has different visibility needs and doesn't need `StatsVisibility`.
+```typescript
+fg: (color, text) => `<${color}>${text}</${color}>`
+bold: (text) => `**${text}**`
+italic: (text) => `_${text}_`
+```
+
+So `label("Test", true)` should produce `**<accent>Test</accent>**`, but the test only checks `.toContain("Test")`. This means the tests would pass if every styling function returned plain unstyled text. The test names claim to verify styling ("applies accent color when selected", "applies styling when selected") but don't actually assert it.
+
+Why it matters: These tests create false confidence. They'd pass even if someone accidentally reverted all the styling logic. The mock theme was clearly set up to enable exact output verification but isn't used that way.
+
+Fix: Verify the actual styled output:
+
+```typescript
+it("label applies bold + accent when selected", () => {
+  const theme = buildSettingsListTheme(createMockTheme());
+  expect(theme.label("Test", true)).toBe("**<accent>Test</accent>**");
+});
+
+it("label returns plain text when not selected", () => {
+  const theme = buildSettingsListTheme(createMockTheme());
+  expect(theme.label("Test", false)).toBe("Test");
+});
+
+it("value uses accent when selected, muted when not", () => {
+  const theme = buildSettingsListTheme(createMockTheme());
+  expect(theme.value("ON", true)).toBe("<accent>ON</accent>");
+  expect(theme.value("ON", false)).toBe("<muted>ON</muted>");
+});
+
+it("description uses italic + muted", () => {
+  const theme = buildSettingsListTheme(createMockTheme());
+  expect(theme.description("desc")).toBe("_<muted>desc</muted>_");
+});
+
+it("cursor uses accent", () => {
+  const theme = buildSettingsListTheme(createMockTheme());
+  expect(theme.cursor).toBe("<accent>></accent>");
+});
+
+it("hint uses dim", () => {
+  const theme = buildSettingsListTheme(createMockTheme());
+  expect(theme.hint("text")).toBe("<dim>text</dim>");
+});
+```
