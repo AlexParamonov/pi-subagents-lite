@@ -99,7 +99,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         actions.push(async () => {
           try {
             fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
-            fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are Pi, an expert coding assistant. Think thoroughly. Write concisely.", "utf-8");
+            fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are a Pi, an expect coding sub-agent.\nYou have been invoked to handle a specific task autonomously", "utf-8");
             ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
           } catch (err: any) {
             ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");

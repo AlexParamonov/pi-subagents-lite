@@ -146,7 +146,7 @@ export function buildAgentPrompt(
     : rawHeader;
   const basePrompt = customHeader
     ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
-    : `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
+    : `You are a Pi, an expect coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
 
   return `${basePrompt}${agentInstructions}${contextSuffix}${extrasSuffix}`;
 }
