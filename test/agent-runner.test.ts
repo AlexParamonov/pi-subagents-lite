@@ -1328,108 +1328,20 @@ describe("runAgent — grace turns", () => {
 /* ------------------------------------------------------------------ */
 
 describe("runAgent — maxTokens: front matter to provider payload", () => {
+  let session: ReturnType<typeof createMockSession>;
+
   beforeEach(() => {
     resetMocks();
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
-  });
 
-  it("max_tokens in agent config ends up in the provider request payload", async () => {
-    const session = createMockSession();
+    session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     session.agent = { onPayload: undefined };
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-
-    // Simulates what agent-discovery produces from: max_tokens: 4096
-    mockModules.mockGetAgentConfig.mockReturnValue({
-      ...defaultAgentConfig,
-      maxTokens: 4096,
-    });
-
-    const mockModel = {
-      id: "llama-3.1-8b",
-      name: "Llama 3.1 8B",
-      provider: "vllm",
-      api: "openai-completions",
-      baseUrl: "http://localhost:8000/v1",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 128000,
-      maxTokens: 16384,
-      compat: { maxTokensField: "max_tokens" },
-    };
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      model: mockModel,
-    });
-
-    // Simulate the provider request body that the stream layer would build
-    const rawPayload = {
-      model: "llama-3.1-8b",
-      messages: [{ role: "user", content: "do something" }],
-      stream: true,
-    };
-
-    const finalPayload = await session.agent.onPayload(rawPayload, mockModel);
-
-    // The provider receives max_tokens in the request body
-    expect(finalPayload.max_tokens).toBe(4096);
-    expect(finalPayload.model).toBe("llama-3.1-8b");
-    expect(finalPayload.stream).toBe(true);
   });
 
-  it("uses max_completion_tokens when the provider requires it", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
-    session.agent = { onPayload: undefined };
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-
-    mockModules.mockGetAgentConfig.mockReturnValue({
-      ...defaultAgentConfig,
-      maxTokens: 8192,
-    });
-
-    const mockModel = {
-      id: "some-model",
-      name: "Some Model",
-      provider: "openai",
-      api: "openai-completions",
-      baseUrl: "https://api.openai.com/v1",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 128000,
-      maxTokens: 16384,
-      compat: { maxTokensField: "max_completion_tokens" },
-    };
-
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      model: mockModel,
-    });
-
-    const rawPayload = {
-      model: "some-model",
-      messages: [{ role: "user", content: "do something" }],
-    };
-
-    const finalPayload = await session.agent.onPayload(rawPayload, mockModel);
-
-    expect(finalPayload.max_completion_tokens).toBe(8192);
-    expect(finalPayload.max_tokens).toBeUndefined();
-  });
-
-  it("no max_tokens injected when agent config omits it", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
-    session.agent = { onPayload: undefined };
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-
-    // Agent config without maxTokens — no injection
-    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig });
-
-    const mockModel = {
+  function makeMockModel(overrides = {}) {
+    return {
       id: "test-model",
       name: "Test Model",
       provider: "openai",
@@ -1440,12 +1352,61 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: 128000,
       maxTokens: 16384,
+      ...overrides,
     };
+  }
 
-    await runAgent(fakeCtx(), "test-agent", "do something", {
-      pi: fakePi,
-      model: mockModel,
+  it("max_tokens in agent config ends up in the provider request payload", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
     });
+
+    const model = makeMockModel({
+      id: "llama-3.1-8b",
+      name: "Llama 3.1 8B",
+      provider: "vllm",
+      baseUrl: "http://localhost:8000/v1",
+      compat: { maxTokensField: "max_tokens" },
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = {
+      model: "llama-3.1-8b",
+      messages: [{ role: "user", content: "do something" }],
+      stream: true,
+    };
+    const finalPayload = await session.agent.onPayload(rawPayload, model);
+
+    expect(finalPayload.max_tokens).toBe(4096);
+    expect(finalPayload.model).toBe("llama-3.1-8b");
+    expect(finalPayload.stream).toBe(true);
+  });
+
+  it("uses max_completion_tokens when the provider requires it", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 8192,
+    });
+
+    const model = makeMockModel({ compat: { maxTokensField: "max_completion_tokens" } });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload(
+      { model: "some-model", messages: [{ role: "user", content: "do something" }] },
+      model,
+    );
+
+    expect(finalPayload.max_completion_tokens).toBe(8192);
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("no max_tokens injected when agent config omits it", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model: makeMockModel() });
 
     expect(session.agent.onPayload).toBeUndefined();
   });
