@@ -17,25 +17,13 @@ vi.mock("@earendil-works/pi-coding-agent", async () => {
   const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>("@earendil-works/pi-coding-agent");
   return {
     ...actual,
+    // Return only <skill> elements — buildAgentPrompt extracts these with regex
+    // and adds its own intro text and <available_skills> wrapper.
     formatSkillsForPrompt: vi.fn((skills: any[]) => {
-      if (skills.length === 0) return "";
-      const lines = [
-        "\n\nThe following skills provide specialized instructions for specific tasks.",
-        "Use the read tool to load a skill's file when the task matches its description.",
-        "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
-        "",
-        "<available_skills>",
-      ];
-      for (const skill of skills) {
-        if (skill.disableModelInvocation) continue;
-        lines.push("  <skill>");
-        lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-        lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-        lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-        lines.push("  </skill>");
-      }
-      lines.push("</available_skills>");
-      return lines.join("\n");
+      return skills
+        .filter((s: any) => !s.disableModelInvocation)
+        .map((s: any) => `<skill><name>${escapeXml(s.name)}</name><description>${escapeXml(s.description)}</description><location>${escapeXml(s.filePath)}</location></skill>`)
+        .join("\n");
     }),
   };
 });
@@ -68,7 +56,7 @@ describe("buildAgentPrompt", () => {
     });
 
     expect(result).toContain("<available_skills>");
-    // Pi's formatSkillsForPrompt uses multi-line format with indentation
+    // formatSkillsForPrompt produces <skill> elements; buildAgentPrompt wraps them
     expect(result).toContain("<name>tdd</name>");
     expect(result).toContain("<description>TDD workflow</description>");
     expect(result).toContain("<location>/skills/tdd/SKILL.md</location>");

@@ -162,28 +162,21 @@ function canonicalizePath(filePath: string): string {
   try { return realpathSync(filePath); } catch { return filePath; }
 }
 
-/** Extract description from skill content string (frontmatter). */
-function extractDescriptionFromContent(content: string): string {
-  if (!content) return "";
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  if (!normalized.startsWith("---\n")) return "";
-  const endIndex = normalized.indexOf("\n---\n", 4);
-  if (endIndex === -1) return "";
-  const yamlString = normalized.slice(4, endIndex);
-  const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
-  if (descMatch?.[1]) {
-    const desc = descMatch[1].trim();
-    if (!desc) return "";
-    return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
-  }
-  return "";
-}
-
 export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill[] {
+  const skills = loadAllSkills(cwd);
   return skillNames.map((name) => {
-    const content = loadSkillContent(name, cwd);
-    const description = extractDescriptionFromContent(content);
-    return { name, description, content };
+    if (isUnsafeName(name)) {
+      return { name, description: "", content: `(Skill "${name}" skipped: name contains path traversal characters)` };
+    }
+    const match = skills.find((s) => s.name === name);
+    if (!match) {
+      return { name, description: "", content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)` };
+    }
+    try {
+      return { name, description: match.description ?? "", content: readFileSync(match.filePath, "utf-8").trim() };
+    } catch {
+      return { name, description: "", content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)` };
+    }
   });
 }
 
@@ -205,25 +198,6 @@ export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
       disableModelInvocation: match.disableModelInvocation ?? false,
     };
   });
-}
-
-/**
- * Resolve skill name to raw file content across all roots.
- */
-function loadSkillContent(name: string, cwd: string): string {
-  if (isUnsafeName(name)) {
-    return `(Skill "${name}" skipped: name contains path traversal characters)`;
-  }
-  const skills = loadAllSkills(cwd);
-  const match = skills.find((s) => s.name === name);
-  if (!match) {
-    return `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`;
-  }
-  try {
-    return readFileSync(match.filePath, "utf-8").trim();
-  } catch {
-    return `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`;
-  }
 }
 
 
