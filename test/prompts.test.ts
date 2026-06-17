@@ -202,3 +202,81 @@ describe("buildAgentPrompt — system prompt modes", () => {
     }
   });
 });
+
+describe("buildAgentPrompt — context files (AGENTS.md)", () => {
+  it("includes project_context block when contextFiles provided", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      contextFiles: [
+        { path: "/test/cwd/AGENTS.md", content: "Always use TDD." },
+      ],
+    });
+
+    expect(result).toContain("<project_context>");
+    expect(result).toContain("Project-specific instructions and guidelines:");
+    expect(result).toContain("<project_instructions path=\"/test/cwd/AGENTS.md\">");
+    expect(result).toContain("Always use TDD.");
+    expect(result).toContain("</project_instructions>");
+    expect(result).toContain("</project_context>");
+  });
+
+  it("includes multiple context files", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      contextFiles: [
+        { path: "/home/AGENTS.md", content: "Global guidelines." },
+        { path: "/test/cwd/AGENTS.md", content: "Project guidelines." },
+      ],
+    });
+
+    expect(result).toContain("<project_instructions path=\"/home/AGENTS.md\">");
+    expect(result).toContain("Global guidelines.");
+    expect(result).toContain("<project_instructions path=\"/test/cwd/AGENTS.md\">");
+    expect(result).toContain("Project guidelines.");
+  });
+
+  it("places project_context after agent_instructions and before skill extras", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      contextFiles: [
+        { path: "/test/cwd/AGENTS.md", content: "Context content." },
+      ],
+      skillBlocks: [
+        { name: "tdd", content: "TDD content." },
+      ],
+    });
+
+    const agentInstructionsEnd = result.indexOf("</agent_instructions>");
+    const projectContextStart = result.indexOf("<project_context>");
+    const skillStart = result.indexOf("# Preloaded Skill: tdd");
+
+    // project_context should come after agent_instructions
+    expect(projectContextStart).toBeGreaterThan(agentInstructionsEnd);
+    // skill extras should come after project_context
+    expect(skillStart).toBeGreaterThan(projectContextStart);
+  });
+
+  it("does not include project_context when contextFiles is empty", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      contextFiles: [],
+    });
+
+    expect(result).not.toContain("<project_context>");
+  });
+
+  it("does not include project_context when contextFiles is undefined", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {});
+
+    expect(result).not.toContain("<project_context>");
+  });
+
+  it("escapes XML in context file paths but not content", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      contextFiles: [
+        { path: "/path/<with>/special.md", content: "Use <tag> syntax." },
+      ],
+    });
+
+    // Path in attribute is escaped
+    expect(result).toContain("&lt;with&gt;");
+    // Content between tags is NOT escaped (readable for LLMs, consistent with skillBlocks)
+    expect(result).toContain("Use <tag> syntax.");
+  });
+});

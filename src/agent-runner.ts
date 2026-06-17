@@ -15,6 +15,7 @@ import {
   DefaultResourceLoader,
   type ExtensionAPI,
   getAgentDir,
+  loadProjectContextFiles,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -271,6 +272,7 @@ function buildPrompt(
   systemPromptMode: "replace" | "inherit" | "custom" = "replace",
   parentSystemPrompt?: string,
   customSystemPrompt?: string,
+  contextFiles?: Array<{ path: string; content: string }>,
 ): string {
   const extras: PromptExtras = {};
   if (Array.isArray(agentConfig?.preloadSkills)) {
@@ -284,6 +286,9 @@ function buildPrompt(
   }
   if (customSystemPrompt) {
     extras.customSystemPrompt = customSystemPrompt;
+  }
+  if (contextFiles?.length) {
+    extras.contextFiles = contextFiles;
   }
   if (agentConfig) {
     return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
@@ -563,9 +568,20 @@ export async function runAgent(
     }
   }
 
+  // Load AGENTS.md context files for custom mode
+  const agentDir = getAgentDir();
+  let contextFiles: Array<{ path: string; content: string }> | undefined;
+  if (systemPromptMode === "custom") {
+    try {
+      contextFiles = loadProjectContextFiles({ cwd: effectiveCwd, agentDir });
+    } catch {
+      // Non-fatal: context files are supplementary
+    }
+  }
+
   const systemPrompt = buildPrompt(
     type, agentConfig, config, effectiveCwd, env,
-    systemPromptMode, parentSystemPrompt, customSystemPrompt,
+    systemPromptMode, parentSystemPrompt, customSystemPrompt, contextFiles,
   );
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
   const { extResult } = await reloadAndMap();

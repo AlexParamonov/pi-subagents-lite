@@ -18,6 +18,8 @@ export interface PromptExtras {
   parentSystemPrompt?: string;
   /** Custom system prompt content (for custom mode). */
   customSystemPrompt?: string;
+  /** Project context files (AGENTS.md) for custom mode. */
+  contextFiles?: Array<{ path: string; content: string }>;
 }
 
 /**
@@ -89,6 +91,25 @@ export function buildAgentPrompt(
   // Agent's own system prompt wrapped in <agent_instructions> tags
   const agentInstructions = `\n<agent_instructions>\n${config.systemPrompt}\n</agent_instructions>`;
 
+  // Project context files (AGENTS.md) — placed after agent_instructions, before extras
+  let contextSuffix = "";
+  if (extras?.contextFiles?.length) {
+    const lines = [
+      "<project_context>",
+      "",
+      "Project-specific instructions and guidelines:",
+      "",
+    ];
+    for (const file of extras.contextFiles) {
+      lines.push(`<project_instructions path="${escapeXml(file.path)}">`);
+      lines.push(file.content);
+      lines.push(`</project_instructions>`);
+      lines.push("");
+    }
+    lines.push("</project_context>");
+    contextSuffix = `\n\n${lines.join("\n")}`;
+  }
+
   // Build base prompt based on mode
   let basePrompt: string;
   if (mode === "inherit" && extras?.parentSystemPrompt) {
@@ -102,7 +123,7 @@ export function buildAgentPrompt(
     basePrompt = `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
   }
 
-  return `${basePrompt}${agentInstructions}${extrasSuffix}`;
+  return `${basePrompt}${agentInstructions}${contextSuffix}${extrasSuffix}`;
 }
 
 function escapeXml(value: string): string {
