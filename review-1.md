@@ -3,103 +3,59 @@ Status: APPROVED
 # Review Summary
 
 Files reviewed:
-- `src/agent-runner.ts`
-- `src/prompts.ts`
-- `src/config-store.ts`
-- `src/config-io.ts`
-- `src/model-precedence.ts`
-- `src/menus.ts`
-- `src/types.ts`
-- `test/agent-runner.test.ts`
-- `test/config-store.test.ts`
-- `test/menus.test.ts`
-- `test/prompts.test.ts`
+- `src/prompts.ts` (diff: +50/-4)
+- `test/prompts.test.ts` (diff: +226)
 
-Prior review issues addressed:
-- 4/4 important issues fixed
-- 1/2 suggestions fixed ("Create prompt file" test coverage added)
-- 1/2 suggestions deferred (union type alias — see below)
+Issues found:
+- 0 critical, 0 important, 0 suggestions
 
-New issues found: 0
+## Acceptance Criteria Coverage
 
----
-
-## Acceptance Criteria Verification
-
-| Criterion | Status | Evidence |
+| Criterion | Verdict | Evidence |
 |---|---|---|
-| `systemPromptMode` added to `SubagentsConfig.agent` | ✅ | `model-precedence.ts:27`, `config-store.ts:47` |
-| Default is `"replace"` | ✅ | `config-io.ts:22`, `config-store.ts:86` fallback |
-| Settings menu shows mode + allows switching (permanent) | ✅ | `menus.ts:357-371`, `config-store.ts:188` mutation |
-| `inherit` mode: `ctx.getSystemPrompt()` fetched at spawn | ✅ | `agent-runner.ts:549-555` |
-| `custom` mode: reads `~/.pi/agent/subagents-lite-prompt.md` | ✅ | `agent-runner.ts:558-573` |
-| Missing/empty custom file: fallback + notify | ✅ | `agent-runner.ts:567-572` (empty), `:569` (ENOENT) |
-| Unreadable custom file: fallback + notify | ✅ | `agent-runner.ts:571` (other errors) |
-| "Create prompt file" menu item when file absent | ✅ | `menus.ts:372-384` |
-| Agent's systemPrompt always in `<agent_instructions>` | ✅ | `prompts.ts:99`, all three modes |
-| `<active_agent>` after parent prompt in inherit mode | ✅ | `prompts.ts:110-112` |
-| Tests cover all modes + fallback + empty/missing | ✅ | See test summary below |
+| Strip `<project_context>...</project_context>` | ✅ | Regex on line 53 + test "strips <project_context> block" |
+| Strip skills block (intro + `<available_skills>`) | ✅ | Regex on line 59 + test "strips skills block" |
+| Strip `Current date:` line | ✅ | Regex on line 63 + dedicated test |
+| Strip `Current working directory:` line | ✅ | Regex on line 66 + dedicated test |
+| Preserve base prompt content | ✅ | "strips all scaffolding sections together" asserts base content present |
+| Idempotent (absent sections) | ✅ | "is idempotent" test, plus "handles empty parent prompt" |
+| `includeContextFiles: true` still injects AGENTS.md | ✅ | Dedicated test verifies old stripped, new injected |
+| `includeContextFiles: false` no regression | ✅ | Existing context-files describe block unchanged |
+| Per-agent `skills` still controls injection | ✅ | Dedicated test verifies old stripped, new injected |
+| Replace mode unaffected | ✅ | Existing replace mode test unchanged + new regression test |
+| Custom mode unaffected | ✅ | Existing custom mode test unchanged + new regression test |
 
-## Test Coverage Summary
+## Implementation Analysis
 
-**prompts.test.ts** (unit — `buildAgentPrompt`):
-- 3 modes (replace, inherit, custom) — output structure verified
-- Fallback to replace when extras missing for inherit/custom
-- `<agent_instructions>` wrapping in all modes
-- Context files integration (ordering, escaping, empty/undefined)
-- Skill metadata and blocks
+**`stripScaffolding` (lines 40-73):** Clean, well-documented function. Each regex targets a specific scaffolding delimiter per the issue's constraint. The approach is sound:
 
-**agent-runner.test.ts** (integration — `runAgent`):
-- Replace mode passes `'replace'` to `buildAgentPrompt`
-- Inherit mode calls `ctx.getSystemPrompt()`, passes result as `parentSystemPrompt`
-- Inherit fallback: notify called, `parentSystemPrompt` absent from extras
-- Custom mode: reads file via `fs.readFileSync`, passes as `customSystemPrompt`
-- Custom fallback (ENOENT): notify + no `customSystemPrompt`
-- Custom fallback (empty/whitespace): notify + no `customSystemPrompt`
-- Custom fallback (other error): notify
+1. Non-greedy `[\s\S]*?` correctly matches across lines without over-reaching.
+2. The optional non-capturing group `(?:The following skills provide[\s\S]*?)?` handles both with-intro and without-intro skills blocks.
+3. Newline cleanup (`\n{3,}` → `\n\n`) + `trim()` prevents whitespace artifacts.
+4. Only called in inherit mode with a truthy `rawHeader` (line 146-147), so replace/custom modes are completely unaffected.
 
-**config-store.test.ts** (unit — `ConfigStore`):
-- Default resolves to `"replace"`
-- Configured value returned
-- `setSystemPromptMode` persists + updates
-- `clearAllModelOverrides` preserves `systemPromptMode`
+**Existing test compatibility:** The inherit mode test at line 129 passes `parentPrompt = "You are the parent agent..."` (no scaffolding). `stripScaffolding` returns it unchanged. The `startsWith(parentPrompt)` assertion still holds. No regression.
 
-**menus.test.ts** (integration — `showModelSettingsMenu`):
-- "Create prompt file" shown when mode=custom + file absent
-- Not shown when file exists
-- Not shown when mode≠custom
-- File creation action: `mkdirSync` + `writeFileSync` called
-- Error notification on creation failure
+## Test Quality
 
----
+13 new tests in the `buildAgentPrompt — inherit mode scaffolding stripping` describe block. All tests:
 
-## Prior Review Fixes Verified
+- **Use public API** (`buildAgentPrompt`) — no deep internal access to `stripScaffolding`
+- **Test behavior, not existence** — assert what's present/absent in output, not `respond_to?` or type checks
+- **Self-contained** — each test creates its own parent prompt, no shared mutable state
+- **Descriptive names** — test titles document the exact scenario
+- **One concept per test** — individual sections tested separately, then combined
+- **Cover edge cases** — empty prompt, only-scaffolding prompt, special characters, idempotency
 
-1. **agent-runner mock parameterizable** (`test/agent-runner.test.ts:41,75`): `mockSystemPromptMode` is a hoisted variable, reset in `resetMocks()`, overridden per-test. All three mode paths now exercised.
-
-2. **menus.ts mock complete** (`test/menus.test.ts:112,155,166`): `systemPromptMode` in agent getter, `setSystemPromptMode` in mutations, `systemPromptMode` preserved in `clearAllModelOverrides`.
-
-3. **CUSTOM_PROMPT_PATH deduplicated** (`src/agent-runner.ts:31`, `src/menus.ts:25`): Exported from `agent-runner.ts`, imported in `menus.ts`. No circular dependency (menus → agent-runner only).
-
-4. **ConfigStore validation** (`src/config-store.ts:84-86`): `validModes.has()` rejects invalid config values with `"replace"` fallback.
-
----
+The tests verify the critical integration properties:
+- Old context stripped, new context injected (line 464-469)
+- Old skills stripped, new skills injected (line 483-489)
+- Fallback to replace mode when prompt is empty (line 417-423)
+- No cross-mode contamination (lines 495-507)
 
 ## Strengths
 
-- **Thorough fallback handling**: Three distinct failure paths for custom mode (ENOENT, empty, other) each with appropriate notification messages. Inherit mode gracefully handles `getSystemPrompt()` exceptions.
-- **KV cache optimization preserved**: Inherit mode correctly places `<active_agent>` after the verbatim parent prefix, maintaining byte-level cache coherence.
-- **`<agent_instructions>` wrapping is consistent**: The agent's own systemPrompt is always wrapped identically regardless of mode — clean for downstream parsing.
-- **Non-fatal error handling pattern**: All mode-specific failures fall back to replace behavior with `notify()` rather than crashing. The `notify()` helper is a clean abstraction.
-- **Test quality**: Tests verify observable behavior (what gets passed to `buildAgentPrompt`), not internal implementation. Mocks are properly scoped and reset between tests.
-
----
-
-## Remaining Suggestion (non-blocking, from prior review)
-
-**Union type `"replace" | "inherit" | "custom"` repeated across 7 locations.**
-
-Confidence: 75/100
-Locations: `model-precedence.ts:27`, `config-store.ts:47,86,188`, `menus.ts:363`, `prompts.ts:46`, `agent-runner.ts:272`
-
-The prior review suggested a shared `SystemPromptMode` type alias. Not addressed in this commit. Low risk since TypeScript catches mismatches at compile time, but worth a follow-up if a fourth mode is ever added.
+1. Minimal footprint — one exported function + one conditional in `buildAgentPrompt`. No changes to `agent-runner.ts` needed.
+2. Regex patterns are targeted to known scaffolding delimiters, not arbitrary XML stripping.
+3. The `mode === "inherit" && rawHeader` guard handles undefined, empty string, and whitespace-only parent prompts gracefully (falls back to replace mode).
+4. Good defensive coding: `[\s]*` inside tag brackets handles minor formatting variations.

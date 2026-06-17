@@ -23,11 +23,47 @@ export interface PromptExtras {
 }
 
 /**
+ * Strip pi scaffolding sections from a parent system prompt.
+ *
+ * In inherit mode, the parent's prompt already contains:
+ *   - <project_context>...</project_context>  (AGENTS.md)
+ *   - Skills block (text intro + <available_skills>...</available_skills>)
+ *   - Current date: YYYY-MM-DD
+ *   - Current working directory: /path
+ *
+ * These are re-added by subagents-lite from the subagent's own config,
+ * so we strip them to avoid duplication.
+ *
+ * @param prompt  The parent system prompt to clean.
+ * @returns       The prompt with scaffolding sections removed.
+ */
+function stripScaffolding(prompt: string): string {
+  let result = prompt;
+
+  // 1. Strip <project_context>...</project_context> block
+  result = result.replace(/\n?<\s*project_context\s*>[\s\S]*?<\/\s*project_context\s*>\n?/g, "\n");
+
+  // 2. Strip skills block: optional intro text + <available_skills>...</available_skills>
+  result = result.replace(/\n?(?:The following skills provide[\s\S]*?)?<\s*available_skills\s*>[\s\S]*?<\/\s*available_skills\s*>\n?/g, "\n");
+
+  // 3. Strip Current date: line
+  result = result.replace(/\n?Current date:.*\n?/g, "\n");
+
+  // 4. Strip Current working directory: line
+  result = result.replace(/\n?Current working directory:.*\n?/g, "\n");
+
+  // Clean up: collapse runs of 3+ newlines into 2
+  result = result.replace(/\n{3,}/g, "\n\n");
+
+  return result.trim();
+}
+
+/**
  * Build the system prompt for an agent from its config.
  *
  * Three modes:
  * - replace (default): generic header + env + agent's systemPrompt
- * - inherit: parent's full system prompt (verbatim) + env + agent's systemPrompt
+ * - inherit: parent's system prompt (stripped of scaffolding) + env + agent's systemPrompt
  * - custom: content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt
  *
  * Agent's own systemPrompt is always included in <agent_instructions> tags.
@@ -101,9 +137,13 @@ export function buildAgentPrompt(
 
   // Build base prompt: mode-specific header if provided, otherwise default
   const activeAgentTag = `<active_agent name="${config.name}"/>`;
-  const customHeader = mode === "inherit" ? extras?.parentSystemPrompt
-                    : mode === "custom"  ? extras?.customSystemPrompt
-                    : undefined;
+  const rawHeader = mode === "inherit" ? extras?.parentSystemPrompt
+                 : mode === "custom"  ? extras?.customSystemPrompt
+                 : undefined;
+  // Strip scaffolding from inherited parent prompt to avoid duplication
+  const customHeader = mode === "inherit" && rawHeader
+    ? stripScaffolding(rawHeader)
+    : rawHeader;
   const basePrompt = customHeader
     ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
     : `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;

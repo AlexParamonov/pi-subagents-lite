@@ -283,3 +283,226 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
     expect(result).toContain("Use <tag> syntax.");
   });
 });
+
+describe("buildAgentPrompt — inherit mode scaffolding stripping", () => {
+  const parentBase = "You are a helpful AI assistant. You follow instructions carefully.";
+
+  it("strips <project_context>...</project_context> block", () => {
+    const parentPrompt = `${parentBase}
+
+<project_context>
+
+Project-specific instructions and guidelines:
+
+<project_instructions path="/home/user/AGENTS.md">
+Always use TDD.
+</project_instructions>
+
+</project_context>`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain(parentBase);
+    expect(result).not.toContain("<project_context>");
+    expect(result).not.toContain("Always use TDD.");
+    expect(result).not.toContain("</project_context>");
+  });
+
+  it("strips skills block (text intro + <available_skills>)", () => {
+    const parentPrompt = `${parentBase}
+
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+<skill><name>tdd</name><description>TDD workflow</description><location>/skills/tdd/SKILL.md</location></skill>
+</available_skills>`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain(parentBase);
+    expect(result).not.toContain("<available_skills>");
+    expect(result).not.toContain("The following skills provide");
+    expect(result).not.toContain("Use the read tool to load a skill");
+    expect(result).not.toContain("</available_skills>");
+  });
+
+  it("strips Current date: line", () => {
+    const parentPrompt = `${parentBase}
+
+Current date: 2026-06-17`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain(parentBase);
+    expect(result).not.toContain("Current date:");
+  });
+
+  it("strips Current working directory: line", () => {
+    const parentPrompt = `${parentBase}
+
+Current working directory: /home/user/project`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain(parentBase);
+    expect(result).not.toContain("Current working directory:");
+  });
+
+  it("strips all scaffolding sections together", () => {
+    const parentPrompt = `You are a pi coding agent sub-agent.
+You have been invoked to handle a specific task autonomously.
+
+<active_agent name="parent"/>
+
+# Environment
+Working directory: /home/user/project
+Git repository: yes
+Branch: main
+Platform: linux
+
+<agent_instructions>
+Do the thing.
+</agent_instructions>
+
+<project_context>
+
+Project-specific instructions and guidelines:
+
+<project_instructions path="/home/user/AGENTS.md">
+Always use TDD.
+</project_instructions>
+
+</project_context>
+
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+<skill><name>tdd</name><description>TDD workflow</description><location>/skills/tdd/SKILL.md</location></skill>
+</available_skills>
+
+Current date: 2026-06-17
+Current working directory: /home/user/project`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    // Base prompt content preserved
+    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("Do the thing.");
+    // Scaffolding stripped
+    expect(result).not.toContain("<project_context>");
+    expect(result).not.toContain("</project_context>");
+    expect(result).not.toContain("<available_skills>");
+    expect(result).not.toContain("</available_skills>");
+    expect(result).not.toContain("The following skills provide");
+    expect(result).not.toContain("Current date:");
+    expect(result).not.toContain("Current working directory:");
+    // Subagent adds its own env block
+    expect(result).toContain("Working directory: /test/cwd");
+  });
+
+  it("is idempotent — no crash when sections are absent", () => {
+    const parentPrompt = `You are a helpful AI assistant.`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain("You are a helpful AI assistant.");
+    expect(result).toContain("<agent_instructions>");
+    expect(result).toContain(baseConfig.systemPrompt);
+  });
+
+  it("handles empty parent prompt", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: "" }, "inherit");
+
+    // Falls back to replace mode header
+    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("<agent_instructions>");
+  });
+
+  it("handles parent prompt with only scaffolding", () => {
+    const parentPrompt = `<project_context>
+<project_instructions path="/AGENTS.md">stuff</project_instructions>
+</project_context>
+
+<available_skills>
+<skill><name>x</name><description>y</description></skill>
+</available_skills>
+
+Current date: 2026-01-01
+Current working directory: /tmp`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    // All scaffolding gone — falls back to replace mode header since nothing remains
+    expect(result).not.toContain("<project_context>");
+    expect(result).not.toContain("<available_skills>");
+    expect(result).not.toContain("Current date:");
+    expect(result).not.toContain("Current working directory:");
+    // Still has agent instructions
+    expect(result).toContain("<agent_instructions>");
+  });
+
+  it("preserves special characters in base prompt", () => {
+    const parentPrompt = `Use <code> blocks & "quotes" carefully. Here's a path: /home/user/file.ts`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain("Use <code> blocks & \"quotes\" carefully.");
+    expect(result).toContain("Here's a path: /home/user/file.ts");
+  });
+
+  it("includeContextFiles: true still injects AGENTS.md after stripping", () => {
+    const parentPrompt = `${parentBase}
+
+<project_context>
+<project_instructions path="/old/AGENTS.md">Old content.</project_instructions>
+</project_context>`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      parentSystemPrompt: parentPrompt,
+      contextFiles: [{ path: "/new/AGENTS.md", content: "New content." }],
+    }, "inherit");
+
+    // Old context stripped
+    expect(result).not.toContain("Old content.");
+    // New context injected
+    expect(result).toContain("New content.");
+    expect(result).toContain("<project_context>");
+  });
+
+  it("per-agent skills setting still controls skill injection after stripping", () => {
+    const parentPrompt = `${parentBase}
+
+<available_skills>
+<skill><name>old-skill</name><description>Old</description></skill>
+</available_skills>`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      parentSystemPrompt: parentPrompt,
+      skillMetas: [{ name: "new-skill", description: "New", location: "/skills/new" }],
+    }, "inherit");
+
+    // Old skills stripped
+    expect(result).not.toContain("old-skill");
+    // New skills injected
+    expect(result).toContain("new-skill");
+    expect(result).toContain("<available_skills>");
+  });
+
+  it("replace mode is unaffected by stripping logic", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
+
+    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).not.toContain("<project_context>");
+  });
+
+  it("custom mode is unaffected by stripping logic", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: "Custom." }, "custom");
+
+    expect(result).toContain("Custom.");
+    expect(result).not.toContain("<project_context>");
+  });
+});
