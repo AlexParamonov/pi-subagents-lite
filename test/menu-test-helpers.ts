@@ -8,9 +8,6 @@
  * Exports:
  *   - createMockCtx: create a mock ExtensionCommandContext with controllable UI
  *   - selectByName: helper to select menu items by short name
- *   - resetAgentState: reset agent config to defaults
- *   - resetConfig: reset concurrency config to defaults
- *   - setupMocks: apply standard vi.mock() calls for shell, agent-types, etc.
  */
 
 import { vi } from "vitest";
