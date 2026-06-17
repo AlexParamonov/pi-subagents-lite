@@ -2,9 +2,9 @@
  * prompts.test.ts — Tests for system prompt building with skills.
  *
  * Covers:
- *   - buildAgentPrompt with skillMetas (whitelist format)
- *   - buildAgentPrompt with skillBlocks (preload format)
- *   - buildAgentPrompt with both
+ *   - buildAgentPrompt with skillMetas (compact one-line format)
+ *   - buildAgentPrompt with skillBlocks (preloaded in available_skills with content tag)
+ *   - buildAgentPrompt with both (merged into single available_skills block)
  *   - XML escaping of special characters
  *   - System prompt modes (replace, inherit, custom)
  */
@@ -28,7 +28,7 @@ const env: EnvInfo = {
 };
 
 describe("buildAgentPrompt", () => {
-  it("includes available_skills XML when skillMetas provided", () => {
+  it("renders compact one-line skill elements for whitelist", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
         { name: "tdd", description: "TDD workflow", location: "/skills/tdd/SKILL.md" },
@@ -37,45 +37,48 @@ describe("buildAgentPrompt", () => {
     });
 
     expect(result).toContain("<available_skills>");
-    expect(result).toContain("<name>tdd</name>");
-    expect(result).toContain("<description>TDD workflow</description>");
-    expect(result).toContain("<location>/skills/tdd/SKILL.md</location>");
-    expect(result).toContain("<name>debug</name>");
+    expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><location>/skills/tdd/SKILL.md</location></skill>");
+    expect(result).toContain("<skill><name>debug</name><description>Debugging workflow</description><location>/skills/debug/SKILL.md</location></skill>");
     expect(result).toContain("</available_skills>");
     // Should include instruction to use read tool
     expect(result).toContain("Use the read tool to load a skill's file");
   });
 
-  it("includes preloaded skill content when skillBlocks provided", () => {
+  it("renders preloaded skills in available_skills with content tag", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillBlocks: [
-        { name: "tdd", content: "## TDD Steps\n1. Red\n2. Green\n3. Refactor" },
+        { name: "tdd", description: "TDD workflow", content: "## TDD Steps\n1. Red\n2. Green\n3. Refactor" },
       ],
     });
 
-    expect(result).toContain("# Preloaded Skill: tdd");
+    // Should be in available_skills block
+    expect(result).toContain("<available_skills>");
+    expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><content>");
     expect(result).toContain("## TDD Steps");
-    expect(result).toContain("1. Red");
-    // Should NOT have available_skills
-    expect(result).not.toContain("<available_skills>");
+    expect(result).toContain("</content></skill>");
+    // Should NOT have separate markdown dump
+    expect(result).not.toContain("# Preloaded Skill:");
   });
 
-  it("includes both when both provided", () => {
+  it("merges both into single available_skills block", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
         { name: "debug", description: "Debug workflow", location: "/skills/debug/SKILL.md" },
       ],
       skillBlocks: [
-        { name: "tdd", content: "Full TDD content here" },
+        { name: "tdd", description: "TDD workflow", content: "Full TDD content here" },
       ],
     });
 
-    // Metadata for debug
-    expect(result).toContain("<name>debug</name>");
-    expect(result).toContain("<description>Debug workflow</description>");
-    // Preloaded content for tdd
-    expect(result).toContain("# Preloaded Skill: tdd");
-    expect(result).toContain("Full TDD content here");
+    // Both in available_skills
+    expect(result).toContain("<available_skills>");
+    expect(result).toContain("<skill><name>debug</name><description>Debug workflow</description><location>/skills/debug/SKILL.md</location></skill>");
+    expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><content>Full TDD content here</content></skill>");
+    // Single block
+    const blockCount = (result.match(/<available_skills>/g) || []).length;
+    expect(blockCount).toBe(1);
+    // No separate markdown dump
+    expect(result).not.toContain("# Preloaded Skill:");
   });
 
   it("escapes < and > in skill metadata", () => {
@@ -245,7 +248,7 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
 
     const agentInstructionsEnd = result.indexOf("</agent_instructions>");
     const projectContextStart = result.indexOf("<project_context>");
-    const skillStart = result.indexOf("# Preloaded Skill: tdd");
+    const skillStart = result.indexOf("<available_skills>");
 
     // project_context should come after agent_instructions
     expect(projectContextStart).toBeGreaterThan(agentInstructionsEnd);

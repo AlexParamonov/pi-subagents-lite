@@ -25,8 +25,9 @@ import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { isSymlink, isUnsafeName, safeReadFile } from "./utils.js";
 
-interface PreloadedSkill {
+export interface PreloadedSkill {
   name: string;
+  description: string;
   content: string;
 }
 
@@ -34,6 +35,8 @@ export interface SkillMeta {
   name: string;
   description: string;
   location: string;
+  /** Full skill content — present when the skill is preloaded. */
+  content?: string;
 }
 
 /**
@@ -51,7 +54,11 @@ function getSkillRoots(cwd: string): string[] {
 }
 
 export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill[] {
-  return skillNames.map((name) => ({ name, content: loadSkillContent(name, cwd) }));
+  return skillNames.map((name) => {
+    const content = loadSkillContent(name, cwd);
+    const description = extractDescriptionFromContent(content);
+    return { name, description, content };
+  });
 }
 
 /**
@@ -156,23 +163,33 @@ function extractDescription(filePath: string): string {
   try {
     const content = safeReadFile(filePath);
     if (!content) return "(no description)";
-
-    // Simple frontmatter extraction
-    const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    if (!normalized.startsWith("---\n")) return "(no description)";
-    const endIndex = normalized.indexOf("\n---\n", 4);
-    if (endIndex === -1) return "(no description)";
-
-    const yamlString = normalized.slice(4, endIndex);
-    // Simple extraction of description field
-    const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
-    if (descMatch && descMatch[1]) {
-      // Truncate long descriptions
-      const desc = descMatch[1].trim();
-      return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
-    }
-    return "(no description)";
+    return parseFrontmatterDescription(content) ?? "(no description)";
   } catch {
     return "(error reading description)";
   }
+}
+
+/** Extract description from skill content string (frontmatter). */
+function extractDescriptionFromContent(content: string): string {
+  return content ? (parseFrontmatterDescription(content) ?? "") : "";
+}
+
+/**
+ * Parse description from frontmatter content string.
+ * Returns null if not found or invalid.
+ */
+export function parseFrontmatterDescription(content: string): string | null {
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!normalized.startsWith("---\n")) return null;
+  const endIndex = normalized.indexOf("\n---\n", 4);
+  if (endIndex === -1) return null;
+
+  const yamlString = normalized.slice(4, endIndex);
+  const descMatch = yamlString.match(/^description:\s*["']?(.+?)["']?\s*$/m);
+  if (descMatch && descMatch[1]) {
+    const desc = descMatch[1].trim();
+    if (!desc) return null; // Empty description after trimming
+    return desc.length > 200 ? desc.slice(0, 197) + "..." : desc;
+  }
+  return null;
 }

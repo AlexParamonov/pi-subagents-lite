@@ -6,12 +6,12 @@
  */
 
 import type { AgentConfig, EnvInfo, SystemPromptMode } from "./types.js";
-import type { SkillMeta } from "./skill-loader.js";
+import type { SkillMeta, PreloadedSkill } from "./skill-loader.js";
 
 /** Extra sections to inject into the system prompt (skills). */
 export interface PromptExtras {
-  /** Preloaded skill contents to inject (full content). */
-  skillBlocks?: { name: string; content: string }[];
+  /** Preloaded skill contents to inject (full content + description). */
+  skillBlocks?: PreloadedSkill[];
   /** Skill metadata for whitelist display (name, description, location only). */
   skillMetas?: SkillMeta[];
   /** Parent system prompt (for inherit mode). */
@@ -56,11 +56,10 @@ export function buildAgentPrompt(
   envLines.push(`Platform: ${env.platform}`);
   const envBlock = envLines.join("\n");
 
-  // Build optional extras suffix (skills)
-  const extraSections: string[] = [];
-
-  // Skill metadata whitelist (like Pi's available_skills format)
-  if (extras?.skillMetas?.length) {
+  // Unified skill index — all skills in one <available_skills> block
+  const hasSkills = extras?.skillMetas?.length || extras?.skillBlocks?.length;
+  let extrasSuffix = "";
+  if (hasSkills) {
     const lines = [
       "The following skills provide specialized instructions for specific tasks.",
       "Use the read tool to load a skill's file when the task matches its description.",
@@ -68,21 +67,15 @@ export function buildAgentPrompt(
       "",
       "<available_skills>",
     ];
-    for (const skill of extras.skillMetas) {
+    for (const skill of extras?.skillMetas ?? []) {
       lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><location>${escapeXml(skill.location)}</location></skill>`);
     }
-    lines.push("</available_skills>");
-    extraSections.push(lines.join("\n"));
-  }
-
-  // Preloaded skill contents (full dump into system prompt)
-  if (extras?.skillBlocks?.length) {
-    for (const skill of extras.skillBlocks) {
-      extraSections.push(`\n# Preloaded Skill: ${skill.name}\n${skill.content}`);
+    for (const skill of extras?.skillBlocks ?? []) {
+      lines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`);
     }
+    lines.push("</available_skills>");
+    extrasSuffix = `\n\n${lines.join("\n")}`;
   }
-
-  const extrasSuffix = extraSections.length > 0 ? `\n\n${extraSections.join("\n")}` : "";
 
   // Agent's own system prompt wrapped in <agent_instructions> tags
   const agentInstructions = `\n<agent_instructions>\n${config.systemPrompt}\n</agent_instructions>`;
@@ -113,7 +106,7 @@ export function buildAgentPrompt(
                     : undefined;
   const basePrompt = customHeader
     ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
-    : `You are Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
+    : `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
 
   return `${basePrompt}${agentInstructions}${contextSuffix}${extrasSuffix}`;
 }
@@ -124,5 +117,3 @@ function escapeXml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
-
-
