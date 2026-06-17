@@ -5,7 +5,7 @@
  * EnvInfo is imported from types.ts — branch is a string (empty when unknown).
  */
 
-import type { AgentConfig, EnvInfo } from "./types.js";
+import type { AgentConfig, EnvInfo, SystemPromptMode } from "./types.js";
 import type { SkillMeta } from "./skill-loader.js";
 
 /** Extra sections to inject into the system prompt (skills). */
@@ -14,25 +14,37 @@ export interface PromptExtras {
   skillBlocks?: { name: string; content: string }[];
   /** Skill metadata for whitelist display (name, description, location only). */
   skillMetas?: SkillMeta[];
+  /** Parent system prompt (for inherit mode). */
+  parentSystemPrompt?: string;
+  /** Custom system prompt content (for custom mode). */
+  customSystemPrompt?: string;
+  /** Project context files (AGENTS.md) for custom mode. */
+  contextFiles?: Array<{ path: string; content: string }>;
 }
 
 /**
  * Build the system prompt for an agent from its config.
  *
- * Always uses fresh-context mode: env header + config.systemPrompt.
- * Prepends an `<active_agent name=""/>` tag so downstream extensions
- * (e.g. permission/policy systems) can resolve per-agent policy.
+ * Three modes:
+ * - replace (default): generic header + env + agent's systemPrompt
+ * - inherit: parent's full system prompt (verbatim) + env + agent's systemPrompt
+ * - custom: content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt
  *
- * @param extras  Optional extra sections to inject (preloaded skills).
+ * Agent's own systemPrompt is always included in <agent_instructions> tags.
+ *
+ * @param config   Agent configuration.
+ * @param cwd      Current working directory.
+ * @param env      Environment info.
+ * @param extras   Optional extra sections to inject (skills, parent/custom prompts).
+ * @param mode     System prompt mode (replace, inherit, custom).
  */
 export function buildAgentPrompt(
   config: AgentConfig,
   cwd: string,
   env: EnvInfo,
   extras?: PromptExtras,
+  mode: SystemPromptMode = "replace",
 ): string {
-  const activeAgentTag = `<active_agent name="${config.name}"/>\n\n`;
-
   const envLines = [
     "# Environment",
     `Working directory: ${cwd}`,
@@ -76,12 +88,38 @@ export function buildAgentPrompt(
 
   const extrasSuffix = extraSections.length > 0 ? `\n\n${extraSections.join("\n")}` : "";
 
-  const header = `You are a pi coding agent sub-agent.
-You have been invoked to handle a specific task autonomously.
+  // Agent's own system prompt wrapped in <agent_instructions> tags
+  const agentInstructions = `\n<agent_instructions>\n${config.systemPrompt}\n</agent_instructions>`;
 
-${envBlock}`;
+  // Project context files (AGENTS.md) — placed after agent_instructions, before extras
+  let contextSuffix = "";
+  if (extras?.contextFiles?.length) {
+    const lines = [
+      "<project_context>",
+      "",
+      "Project-specific instructions and guidelines:",
+      "",
+    ];
+    for (const file of extras.contextFiles) {
+      lines.push(`<project_instructions path="${escapeXml(file.path)}">`);
+      lines.push(file.content);
+      lines.push(`</project_instructions>`);
+      lines.push("");
+    }
+    lines.push("</project_context>");
+    contextSuffix = `\n\n${lines.join("\n")}`;
+  }
 
-  return `${activeAgentTag}${header}\n\n${config.systemPrompt}${extrasSuffix}`;
+  // Build base prompt: mode-specific header if provided, otherwise default
+  const activeAgentTag = `<active_agent name="${config.name}"/>`;
+  const customHeader = mode === "inherit" ? extras?.parentSystemPrompt
+                    : mode === "custom"  ? extras?.customSystemPrompt
+                    : undefined;
+  const basePrompt = customHeader
+    ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
+    : `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
+
+  return `${basePrompt}${agentInstructions}${contextSuffix}${extrasSuffix}`;
 }
 
 function escapeXml(value: string): string {

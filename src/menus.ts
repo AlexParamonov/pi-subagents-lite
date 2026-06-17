@@ -5,9 +5,11 @@
  * Imports shared state (config, manager) from shell.ts.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "./agent-types.js";
-import type { AgentRecord } from "./types.js";
+import type { AgentRecord, SystemPromptMode } from "./types.js";
 import { SHORT_ID_LENGTH, CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import { ModelSelectorDialog, type ModelOption } from "./model-selector.js";
 import { ResultViewer, type ResultViewerStats } from "./result-viewer.js";
@@ -20,6 +22,7 @@ import {
   getStore,
   getManager,
 } from "./shell.js";
+import { CUSTOM_PROMPT_PATH } from "./agent-runner.js";
 
 // Spawn wizard — imported and re-exported so the dispatcher calls it from here.
 import { showSpawnAgentMenu } from "./spawn-wizard.js";
@@ -341,6 +344,45 @@ export async function showModelSettingsMenu(
       store.mutate.agent.setGraceTurns(parsed);
       ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
     });
+
+    // Include AGENTS.md context files toggle
+    const includeContextFiles = store.agent.includeContextFiles;
+    items.push(`Include AGENTS.md · ${includeContextFiles ? "ON" : "OFF"}`);
+    actions.push(async () => {
+      store.mutate.agent.setIncludeContextFiles(!includeContextFiles);
+      ctx.ui.notify(`Include AGENTS.md ${store.agent.includeContextFiles ? "ON" : "OFF"}`, "info");
+    });
+
+    // System prompt mode setting
+    const systemPromptMode = store.agent.systemPromptMode;
+    items.push(`System prompt mode · ${systemPromptMode}`);
+    actions.push(async () => {
+      const choices = ["replace — generic header + env + agent's systemPrompt (current)", "inherit — parent's full system prompt (verbatim) + env + agent's systemPrompt", "custom — content of ~/.pi/agent/subagents-lite-prompt.md + env + agent's systemPrompt"];
+      const choice = await ctx.ui.select("System prompt mode", choices);
+      if (choice === undefined) return;
+      let mode: SystemPromptMode;
+      if (choice.startsWith("replace")) mode = "replace";
+      else if (choice.startsWith("inherit")) mode = "inherit";
+      else mode = "custom";
+      store.mutate.agent.setSystemPromptMode(mode);
+      ctx.ui.notify(`System prompt mode set to ${mode}`, "info");
+    });
+
+    // Offer to create custom prompt file if mode is custom but file doesn't exist
+    if (systemPromptMode === "custom") {
+      if (!fs.existsSync(CUSTOM_PROMPT_PATH)) {
+        items.push("Create prompt file · ~/.pi/agent/subagents-lite-prompt.md");
+        actions.push(async () => {
+          try {
+            fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
+            fs.writeFileSync(CUSTOM_PROMPT_PATH, "# Custom System Prompt\n\nAdd your custom system prompt here.\n", "utf-8");
+            ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
+          } catch (err: any) {
+            ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
+          }
+        });
+      }
+    }
 
     items.push("");
     actions.push(async () => {});

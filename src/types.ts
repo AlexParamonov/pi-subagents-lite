@@ -12,6 +12,9 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 /** Agent type: any string name (built-in defaults or user-defined). */
 export type SubagentType = string;
 
+/** How the subagent system prompt is constructed. */
+export type SystemPromptMode = "replace" | "inherit" | "custom";
+
 /** Unified agent configuration — used for both default and user-defined agents. */
 export interface AgentConfig {
   name: string;
@@ -104,6 +107,8 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "widgetMaxLinesCompact",
   "widgetCompact",
   "widgetShortcut",
+  "systemPromptMode",
+  "includeContextFiles",
 ];
 
 /** Reason for a context compaction event. */

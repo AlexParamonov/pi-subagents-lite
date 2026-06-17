@@ -17,8 +17,11 @@ import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.
 import { resolveModel } from "./model-precedence.js";
 import type { AgentWidget } from "./ui/agent-widget.js";
 import type { AgentManager } from "./agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode } from "./types.js";
 import { DEFAULT_CONFIG, loadConfig, saveConfigAtomic } from "./config-io.js";
+
+/** Valid values for systemPromptMode — checked once at module load. */
+const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
 
 /** Injected persistence adapter. Swap for an in-memory adapter in tests. */
 export interface ConfigIO {
@@ -43,6 +46,10 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  /** System prompt mode: replace (default), inherit parent, or custom file. */
+  readonly systemPromptMode: SystemPromptMode;
+  /** Whether to include AGENTS.md context files in the subagent system prompt. */
+  readonly includeContextFiles: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -74,15 +81,24 @@ export class ConfigStore {
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
     const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_CONFIG.agent.widgetMaxLines ?? 12;
+    const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
+    const widgetCompact = a.widgetCompact === true;
+    const widgetShortcut = a.widgetShortcut === true;
+    const rawMode = a.systemPromptMode;
+    const systemPromptMode = VALID_SYSTEM_PROMPT_MODES.has(rawMode as string) ? rawMode as SystemPromptMode : "replace";
+    const includeContextFiles = a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true;
+
     return {
       defaultModel: a.default ?? null,
       forceBackground: a.forceBackground === true,
       showCost: this.sessionShowCost ?? (a.showCost === true),
       graceTurns: a.graceTurns ?? DEFAULT_CONFIG.agent.graceTurns ?? 6,
       widgetMaxLines,
-      widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
-      widgetCompact: a.widgetCompact === true,
-      widgetShortcut: a.widgetShortcut === true,
+      widgetMaxLinesCompact,
+      widgetCompact,
+      widgetShortcut,
+      systemPromptMode,
+      includeContextFiles,
     };
   }
 
@@ -169,6 +185,14 @@ export class ConfigStore {
       },
       setGraceTurns: (n: number): void => {
         this.config.agent.graceTurns = n;
+        this.persist();
+      },
+      setSystemPromptMode: (mode: SystemPromptMode): void => {
+        this.config.agent.systemPromptMode = mode;
+        this.persist();
+      },
+      setIncludeContextFiles: (enabled: boolean): void => {
+        this.config.agent.includeContextFiles = enabled;
         this.persist();
       },
     },

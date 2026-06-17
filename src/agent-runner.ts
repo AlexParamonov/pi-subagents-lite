@@ -4,6 +4,7 @@
  * Tool visibility policy is owned by agent-types.ts (resolveVisibleTools).
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -14,6 +15,7 @@ import {
   DefaultResourceLoader,
   type ExtensionAPI,
   getAgentDir,
+  loadProjectContextFiles,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -24,7 +26,11 @@ import { findModelInRegistry } from "./utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "./skill-loader.js";
-import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type ThinkingLevel } from "./types.js";
+import { type CompactionInfo, type EnvInfo, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode, type ThinkingLevel } from "./types.js";
+import { getStore } from "./shell.js";
+
+/** Path to custom prompt file. Exported for use in menus.ts. */
+export const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
 
 /** Default grace turns when not specified in config. */
 const DEFAULT_GRACE_TURNS = 6;
@@ -255,7 +261,61 @@ async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
 // ── runAgent phases ────────────────────────────────────────────────
 
 /**
+ * Resolve system prompt mode, fetch the appropriate source prompt, and
+ * load project context files. Returns everything buildPrompt needs.
+ */
+function resolveSystemPromptSources(
+  ctx: ExtensionContext,
+  cwd: string,
+  notify: (msg: string) => void,
+): { mode: SystemPromptMode; extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> } {
+  const store = getStore();
+  const mode = store.agent.systemPromptMode;
+  const extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {};
+
+  // Fetch parent system prompt for inherit mode
+  if (mode === "inherit") {
+    try {
+      extras.parentSystemPrompt = ctx.getSystemPrompt();
+    } catch (err) {
+      notify(`Failed to get parent system prompt: ${err}. Falling back to replace mode.`);
+    }
+  }
+
+  // Read custom prompt file for custom mode
+  if (mode === "custom") {
+    try {
+      const content = fs.readFileSync(CUSTOM_PROMPT_PATH, "utf-8").trim();
+      if (content) {
+        extras.customSystemPrompt = content;
+      } else {
+        notify(`Custom prompt file is empty: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
+      }
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        notify(`Custom prompt file not found: ${CUSTOM_PROMPT_PATH}. Falling back to replace mode.`);
+      } else {
+        notify(`Failed to read custom prompt file: ${err.message}. Falling back to replace mode.`);
+      }
+    }
+  }
+
+  // Load AGENTS.md context files when the setting is enabled
+  if (store.agent.includeContextFiles) {
+    try {
+      extras.contextFiles = loadProjectContextFiles({ cwd, agentDir: getAgentDir() });
+    } catch {
+      // Non-fatal: context files are supplementary
+    }
+  }
+
+  return { mode, extras };
+}
+
+/**
  * Phase 1: Resolve system prompt from agent config, skills, and env info.
+ *
+ * @param resolverExtras  Partial extras from resolveSystemPromptSources (mode-specific prompts + context files).
  */
 function buildPrompt(
   type: SubagentType,
@@ -263,8 +323,10 @@ function buildPrompt(
   config: ReturnType<typeof getConfig>,
   cwd: string,
   env: EnvInfo,
+  systemPromptMode: SystemPromptMode = "replace",
+  resolverExtras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {},
 ): string {
-  const extras: PromptExtras = {};
+  const extras: PromptExtras = { ...resolverExtras };
   if (Array.isArray(agentConfig?.preloadSkills)) {
     extras.skillBlocks = preloadSkills(agentConfig.preloadSkills, cwd);
   }
@@ -272,11 +334,11 @@ function buildPrompt(
     extras.skillMetas = loadSkillMeta(config.skills, cwd);
   }
   if (agentConfig) {
-    return buildAgentPrompt(agentConfig, cwd, env, extras);
+    return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
   }
   const fallback = DEFAULT_AGENTS.get("general-purpose");
   if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
-  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras);
+  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras, systemPromptMode);
 }
 
 /** Build extension name → tool names map from loaded extensions. */
@@ -507,7 +569,13 @@ export async function runAgent(
   const effectiveCwd = options.cwd ?? ctx.cwd;
   const env = await detectEnv(options.pi, effectiveCwd);
 
-  const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env);
+  // Resolve system prompt mode + source prompts + context files
+  const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, notify);
+
+  const systemPrompt = buildPrompt(
+    type, agentConfig, config, effectiveCwd, env,
+    mode, promptExtras,
+  );
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
   const { extResult } = await reloadAndMap();
   const session = await createAndConfigureSession(
