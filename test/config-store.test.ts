@@ -438,6 +438,90 @@ describe("ConfigStore systemPromptMode", () => {
   });
 });
 
+describe("ConfigStore defaultThinking", () => {
+  it("defaults to undefined when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.defaultThinking).toBeUndefined();
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, defaultThinking: "high" }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.defaultThinking).toBe("high");
+  });
+
+  it("setDefaultThinking persists the value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.agent.setDefaultThinking("medium");
+    expect(store.agent.defaultThinking).toBe("medium");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.defaultThinking).toBe("medium");
+  });
+
+  it("setDefaultThinking(undefined) removes the field", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, defaultThinking: "high" }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    store.mutate.agent.setDefaultThinking(undefined);
+    expect(store.agent.defaultThinking).toBeUndefined();
+    expect(store.agentConfigSnapshot().defaultThinking).toBeUndefined();
+  });
+
+  it("clearAllModelOverrides preserves defaultThinking", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, defaultThinking: "low", Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.defaultThinking).toBe("low");
+  });
+});
+
+describe("ConfigStore defaultMaxTurns", () => {
+  it("defaults to undefined when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.defaultMaxTurns).toBeUndefined();
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, defaultMaxTurns: 50 }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.defaultMaxTurns).toBe(50);
+  });
+
+  it("setDefaultMaxTurns persists the value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.agent.setDefaultMaxTurns(30);
+    expect(store.agent.defaultMaxTurns).toBe(30);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.defaultMaxTurns).toBe(30);
+  });
+
+  it("setDefaultMaxTurns(undefined) removes the field", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, defaultMaxTurns: 50 }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    store.mutate.agent.setDefaultMaxTurns(undefined);
+    expect(store.agent.defaultMaxTurns).toBeUndefined();
+    expect(store.agentConfigSnapshot().defaultMaxTurns).toBeUndefined();
+  });
+
+  it("clearAllModelOverrides preserves defaultMaxTurns", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, defaultMaxTurns: 25, Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.defaultMaxTurns).toBe(25);
+  });
+});
+
 describe("ConfigStore lifecycle", () => {
   it("reload re-reads disk and resets session overrides", () => {
     const { io, current } = memIO();

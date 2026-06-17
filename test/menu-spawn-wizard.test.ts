@@ -112,6 +112,61 @@ describe("showSpawnAgentMenu — options sub-menu", () => {
     expect(items.find((i: string) => i.startsWith("Background"))).toBe("Background · OFF");
   });
 
+  it("pre-populates thinking from config default when agent has no thinking", async () => {
+    mockModules.mockConfig.agent.defaultThinking = "high";
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · high");
+  });
+
+  it("pre-populates max turns from config default when agent has no maxTurns", async () => {
+    mockModules.mockConfig.agent.defaultMaxTurns = 50;
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall[1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · 50");
+  });
+
+  it("config default thinking takes precedence over agent config", async () => {
+    mockModules.mockConfig.agent.defaultThinking = "high";
+    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    // config default (high) takes precedence over agent config (medium)
+    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · high");
+  });
+
+  it("shows 'inherit' for thinking when no config default and no agent config", async () => {
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · inherit");
+  });
+
+  it("shows 'unlimited' for max turns when no config default and no agent config", async () => {
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
+    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
+    expect(optionsCall[1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · unlimited");
+  });
+
   it("auto-generates description from first 50 chars of prompt", async () => {
     const longPrompt = "A".repeat(60);
     const ctx = createMockCtx(["general-purpose", undefined], [longPrompt]);

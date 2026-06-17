@@ -111,6 +111,8 @@ vi.mock("../src/shell.js", () => {
         widgetShortcut: a.widgetShortcut === true,
         systemPromptMode: a.systemPromptMode ?? "replace",
         includeContextFiles: a.includeContextFiles ?? true,
+        defaultThinking: a.defaultThinking,
+        defaultMaxTurns: a.defaultMaxTurns,
       };
     },
     get concurrency() {
@@ -151,7 +153,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -164,6 +166,8 @@ vi.mock("../src/shell.js", () => {
         setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
         setSystemPromptMode(mode: string) { mockModules.mockConfig.agent.systemPromptMode = mode; },
         setIncludeContextFiles(enabled: boolean) { mockModules.mockConfig.agent.includeContextFiles = enabled; },
+        setDefaultThinking(level: string | undefined) { mockModules.mockConfig.agent.defaultThinking = level; },
+        setDefaultMaxTurns(n: number | undefined) { mockModules.mockConfig.agent.defaultMaxTurns = n; },
       },
       widget: {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },

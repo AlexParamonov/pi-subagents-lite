@@ -12,7 +12,7 @@
  *   6. parentModelId                   (inherit from parent)
  */
 
-import type { SystemPromptMode } from "./types.js";
+import type { SystemPromptMode, ThinkingLevel } from "./types.js";
 
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {
@@ -29,6 +29,10 @@ export interface SubagentsConfig {
     systemPromptMode?: SystemPromptMode;
     /** Whether to include AGENTS.md context files in the subagent system prompt. Default: true. */
     includeContextFiles?: boolean;
+    /** Default thinking level for spawned agents. Undefined = inherit from agent config. */
+    defaultThinking?: ThinkingLevel;
+    /** Default max turns for spawned agents. Undefined = unlimited. */
+    defaultMaxTurns?: number;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

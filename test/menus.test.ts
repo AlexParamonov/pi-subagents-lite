@@ -117,10 +117,11 @@ describe("showAgentsMainMenu — clear all overrides", () => {
 describe("showSettingsMenu", () => {
   beforeEach(() => { resetAgentState(); vi.clearAllMocks(); });
 
-  it("shows Model settings, Concurrency settings, and Widget settings in sub-menu", async () => {
+  it("shows Spawn options, Model settings, Concurrency settings, and Widget settings in sub-menu", async () => {
     const ctx = createMockCtx([undefined]);
     await showSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     const items = ctx.ui.select.mock.calls[0][1];
+    expect(items.find((i: string) => i.includes("Spawn options"))).toBeDefined();
     expect(items.find((i: string) => i.includes("Model settings"))).toBeDefined();
     expect(items.find((i: string) => i.includes("Concurrency settings"))).toBeDefined();
     expect(items.find((i: string) => i.includes("Widget settings"))).toBeDefined();

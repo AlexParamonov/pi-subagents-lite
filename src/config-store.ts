@@ -17,7 +17,7 @@ import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.
 import { resolveModel } from "./model-precedence.js";
 import type { AgentWidget } from "./ui/agent-widget.js";
 import type { AgentManager } from "./agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode } from "./types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode, type ThinkingLevel } from "./types.js";
 import { DEFAULT_CONFIG, loadConfig, saveConfigAtomic } from "./config-io.js";
 
 /** Valid values for systemPromptMode — checked once at module load. */
@@ -50,6 +50,10 @@ export interface ResolvedAgentSettings {
   readonly systemPromptMode: SystemPromptMode;
   /** Whether to include AGENTS.md context files in the subagent system prompt. */
   readonly includeContextFiles: boolean;
+  /** Default thinking level for spawned agents. Undefined = inherit from agent config. */
+  readonly defaultThinking: ThinkingLevel | undefined;
+  /** Default max turns for spawned agents. Undefined = unlimited. */
+  readonly defaultMaxTurns: number | undefined;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -99,6 +103,8 @@ export class ConfigStore {
       widgetShortcut,
       systemPromptMode,
       includeContextFiles,
+      defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
+      defaultMaxTurns: a.defaultMaxTurns,
     };
   }
 
@@ -193,6 +199,22 @@ export class ConfigStore {
       },
       setIncludeContextFiles: (enabled: boolean): void => {
         this.config.agent.includeContextFiles = enabled;
+        this.persist();
+      },
+      setDefaultThinking: (level: ThinkingLevel | undefined): void => {
+        if (level === undefined) {
+          delete this.config.agent.defaultThinking;
+        } else {
+          this.config.agent.defaultThinking = level;
+        }
+        this.persist();
+      },
+      setDefaultMaxTurns: (n: number | undefined): void => {
+        if (n === undefined) {
+          delete this.config.agent.defaultMaxTurns;
+        } else {
+          this.config.agent.defaultMaxTurns = n;
+        }
         this.persist();
       },
     },
