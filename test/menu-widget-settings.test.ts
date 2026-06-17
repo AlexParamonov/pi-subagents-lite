@@ -85,18 +85,66 @@ describe("showWidgetSettingsMenu — widget settings", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 1", "error");
   });
 
+  it("shows 'Description length (full) · 50' with default value", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(ctx.ui.select.mock.calls[0][1].find((i: string) => i.startsWith("Description length (full)"))).toBe("Description length (full) · 50");
+  });
+
+  it("updates description length (full) and saves", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthFull = 50;
+    const ctx = createMockCtx(["Description length (full) · 50", undefined], ["80"]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.widgetDescLengthFull).toBe(80);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Description length (full) set to 80", "info");
+  });
+
+  it("rejects description length (full) < 5", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthFull = 50;
+    const ctx = createMockCtx(["Description length (full) · 50", undefined], ["3"]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.widgetDescLengthFull).toBe(50);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 5", "error");
+  });
+
+  it("shows 'Description length (compact) · 30' with default value", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showWidgetSettingsMenu(ctx);
+    expect(ctx.ui.select.mock.calls[0][1].find((i: string) => i.startsWith("Description length (compact)"))).toBe("Description length (compact) · 30");
+  });
+
+  it("updates description length (compact) and saves", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthCompact = 30;
+    const ctx = createMockCtx(["Description length (compact) · 30", undefined], ["20"]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.widgetDescLengthCompact).toBe(20);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Description length (compact) set to 20", "info");
+  });
+
+  it("rejects description length (compact) < 5", async () => {
+    mockModules.mockConfig.agent.widgetDescLengthCompact = 30;
+    const ctx = createMockCtx(["Description length (compact) · 30", undefined], ["4"]);
+    await showWidgetSettingsMenu(ctx);
+    expect(mockModules.mockConfig.agent.widgetDescLengthCompact).toBe(30);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 5", "error");
+  });
+
   it("shows settings in correct order", async () => {
     const ctx = createMockCtx([undefined]);
     await showWidgetSettingsMenu(ctx);
     const items: string[] = ctx.ui.select.mock.calls[0][1];
     const compactIdx = items.findIndex((i: string) => i.startsWith("Force compact mode"));
     const maxLinesIdx = items.findIndex((i: string) => i.startsWith("Max lines (full)"));
+    const descLengthFullIdx = items.findIndex((i: string) => i.startsWith("Description length (full)"));
     const maxLinesCompactIdx = items.findIndex((i: string) => i.startsWith("Max lines (compact)"));
+    const descLengthCompactIdx = items.findIndex((i: string) => i.startsWith("Description length (compact)"));
     const shortcutIdx = items.findIndex((i: string) => i.startsWith("Ctrl+o shortcut"));
     expect(compactIdx).toBeGreaterThanOrEqual(0);
     expect(maxLinesIdx).toBeGreaterThan(compactIdx);
-    expect(maxLinesCompactIdx).toBeGreaterThan(maxLinesIdx);
-    expect(shortcutIdx).toBeGreaterThan(maxLinesCompactIdx);
+    expect(descLengthFullIdx).toBeGreaterThan(maxLinesIdx);
+    expect(maxLinesCompactIdx).toBeGreaterThan(descLengthFullIdx);
+    expect(descLengthCompactIdx).toBeGreaterThan(maxLinesCompactIdx);
+    expect(shortcutIdx).toBeGreaterThan(descLengthCompactIdx);
   });
 });
 

@@ -34,6 +34,16 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
     });
 
+    // Description length (full mode)
+    const descLengthFull = store.agent.widgetDescLengthFull;
+    items.push(`Description length (full) · ${descLengthFull}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Description length (full mode, ≥ 5)", String(descLengthFull), 5, "≥ 5");
+      if (parsed === undefined) return;
+      store.mutate.widget.setDescLengthFull(parsed);
+      ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
+    });
+
     // Max lines (compact mode)
     const maxLinesCompact = store.agent.widgetMaxLinesCompact;
     items.push(`Max lines (compact) · ${maxLinesCompact}`);
@@ -42,6 +52,16 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       if (parsed === undefined) return;
       store.mutate.widget.setMaxLinesCompact(parsed);
       ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
+    });
+
+    // Description length (compact mode)
+    const descLengthCompact = store.agent.widgetDescLengthCompact;
+    items.push(`Description length (compact) · ${descLengthCompact}`);
+    actions.push(async () => {
+      const parsed = await parseNumericInput(ctx, "Description length (compact mode, ≥ 5)", String(descLengthCompact), 5, "≥ 5");
+      if (parsed === undefined) return;
+      store.mutate.widget.setDescLengthCompact(parsed);
+      ctx.ui.notify(`Description length (compact) set to ${parsed}`, "info");
     });
 
     // Ctrl+o shortcut toggle

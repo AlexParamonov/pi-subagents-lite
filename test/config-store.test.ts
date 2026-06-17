@@ -45,6 +45,8 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
+    setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
+    setDescLengthCompact: (n: number) => calls.push(`setDescLengthCompact:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
   };
@@ -568,6 +570,83 @@ describe("ConfigStore loadExtensionsImplicitly", () => {
     const store = new ConfigStore(io);
     store.mutate.agent.clearAllModelOverrides();
     expect(store.agent.loadExtensionsImplicitly).toBe(false);
+  });
+});
+
+describe("ConfigStore widgetDescLength", () => {
+  it("widgetDescLengthFull defaults to 50 when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.widgetDescLengthFull).toBe(50);
+  });
+
+  it("widgetDescLengthCompact defaults to 30 when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.widgetDescLengthCompact).toBe(30);
+  });
+
+  it("returns configured values when present", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetDescLengthFull: 80, widgetDescLengthCompact: 20 },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.widgetDescLengthFull).toBe(80);
+    expect(store.agent.widgetDescLengthCompact).toBe(20);
+  });
+
+  it("setDescLengthFull persists the value and syncs widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    saves.length = 0;
+    store.mutate.widget.setDescLengthFull(80);
+    expect(store.agent.widgetDescLengthFull).toBe(80);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.widgetDescLengthFull).toBe(80);
+    expect(calls).toContain("setDescLengthFull:80");
+  });
+
+  it("setDescLengthCompact persists the value and syncs widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    saves.length = 0;
+    store.mutate.widget.setDescLengthCompact(20);
+    expect(store.agent.widgetDescLengthCompact).toBe(20);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.widgetDescLengthCompact).toBe(20);
+    expect(calls).toContain("setDescLengthCompact:20");
+  });
+
+  it("clearAllModelOverrides preserves widgetDescLength settings", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agentConfigSnapshot().widgetDescLengthFull).toBe(80);
+    expect(store.agentConfigSnapshot().widgetDescLengthCompact).toBe(20);
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+  });
+
+  it("reload syncs desc length settings to widget", () => {
+    const { io, current } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    current().agent.widgetDescLengthFull = 100;
+    current().agent.widgetDescLengthCompact = 15;
+    store.reload();
+    expect(calls).toContain("setDescLengthFull:100");
+    expect(calls).toContain("setDescLengthCompact:15");
   });
 });
 

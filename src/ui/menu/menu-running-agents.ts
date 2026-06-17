@@ -17,7 +17,7 @@ import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
 import { getDisplayName } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { runMenuLoop, runMenu } from "./menu-helpers.js";
-import { getManager } from "../../shell.js";
+import { getManager, getStore } from "../../shell.js";
 
 /**
  * Show a ResultViewer for an agent's result, error, or snapshot.
@@ -171,8 +171,9 @@ export async function showRunningAgentsMenu(
         record.lifecycle.status === "completed" ? "✓" :
         record.lifecycle.status === "queued" ? "⏳" :
         record.lifecycle.status === "error" ? "✗" : "•";
+      const descLen = getStore().agent.widgetDescLengthFull;
       const headline = record.display.description
-        ? (record.display.description.length > 50 ? record.display.description.slice(0, 47) + "..." : record.display.description)
+        ? (record.display.description.length > descLen ? record.display.description.slice(0, descLen - 3) + "..." : record.display.description)
         : "";
       const suffix = headline ? ` — ${headline}` : "";
       items.push(

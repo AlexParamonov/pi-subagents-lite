@@ -174,6 +174,12 @@ export class AgentWidget {
   /** Maximum lines for compact mode. */
   private maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2);
 
+  /** Max description length in full mode. */
+  private descLengthFull = 50;
+
+  /** Max description length in compact mode. */
+  private descLengthCompact = 30;
+
   constructor(
     private manager: AgentManager,
     private getLiveView: (id: string) => LiveView | undefined,
@@ -220,6 +226,16 @@ export class AgentWidget {
   /** Set max lines for compact mode. */
   setMaxLinesCompact(lines: number) {
     this.maxLinesCompact = lines;
+  }
+
+  /** Set max description length for full mode. */
+  setDescLengthFull(len: number) {
+    this.descLengthFull = len;
+  }
+
+  /** Set max description length for compact mode. */
+  setDescLengthCompact(len: number) {
+    this.descLengthCompact = len;
   }
 
   /** Set the UI context (grabbed from first tool execution). */
@@ -308,6 +324,7 @@ export class AgentWidget {
   /** Render a finished agent line. */
   private renderFinishedLine(a: AgentRecord, theme: Theme): string {
     const name = getDisplayName(a.display.type);
+    const fullDesc = a.display.description.length > this.descLengthFull ? a.display.description.slice(0, this.descLengthFull - 3) + "..." : a.display.description;
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -324,7 +341,7 @@ export class AgentWidget {
     }, theme, this.statsVisibility);
 
     const statsLine = statsParts.join("·");
-    return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", a.display.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+    return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
@@ -389,7 +406,7 @@ export class AgentWidget {
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
-        const desc = a.display.description.length > 30 ? a.display.description.slice(0, 27) + "..." : a.display.description;
+        const desc = a.display.description.length > this.descLengthCompact ? a.display.description.slice(0, this.descLengthCompact - 3) + "..." : a.display.description;
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
@@ -397,7 +414,8 @@ export class AgentWidget {
         });
       } else {
         // Full: header + continuation lines
-        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${a.display.description}  ${statsLine}`;
+        const fullDesc = a.display.description.length > this.descLengthFull ? a.display.description.slice(0, this.descLengthFull - 3) + "..." : a.display.description;
+        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
         if (a.display.outputFile || a.display.worktreeLabel) {
           const parts: string[] = [];
