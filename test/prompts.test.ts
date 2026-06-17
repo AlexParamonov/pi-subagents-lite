@@ -107,7 +107,7 @@ describe("buildAgentPrompt — system prompt modes", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
 
     // Should have generic header
-    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
 
     // Should have active_agent tag
@@ -147,7 +147,7 @@ describe("buildAgentPrompt — system prompt modes", () => {
     expect(result).toContain("</agent_instructions>");
 
     // Should NOT have generic header
-    expect(result).not.toContain("You are a pi coding agent sub-agent.");
+    expect(result).not.toContain("You are a Pi, an expert coding sub-agent.");
   });
 
   it("custom mode: custom prompt + active_agent tag + env + agent_instructions", () => {
@@ -171,14 +171,14 @@ describe("buildAgentPrompt — system prompt modes", () => {
     expect(result).toContain("</agent_instructions>");
 
     // Should NOT have generic header
-    expect(result).not.toContain("You are a pi coding agent sub-agent.");
+    expect(result).not.toContain("You are a Pi, an expert coding sub-agent.");
   });
 
   it("inherit mode falls back to replace when parentSystemPrompt is missing", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "inherit");
 
     // Should have generic header (fallback)
-    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
   });
 
@@ -186,7 +186,7 @@ describe("buildAgentPrompt — system prompt modes", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "custom");
 
     // Should have generic header (fallback)
-    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
   });
 
@@ -351,7 +351,7 @@ Current working directory: /home/user/project`;
   });
 
   it("strips all scaffolding sections together", () => {
-    const parentPrompt = `You are a pi coding agent sub-agent.
+    const parentPrompt = `You are a Pi, an expert coding sub-agent.
 You have been invoked to handle a specific task autonomously.
 
 <active_agent name="parent"/>
@@ -390,7 +390,7 @@ Current working directory: /home/user/project`;
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
 
     // Base prompt content preserved
-    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("Do the thing.");
     // Scaffolding stripped
     expect(result).not.toContain("<project_context>");
@@ -418,7 +418,7 @@ Current working directory: /home/user/project`;
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: "" }, "inherit");
 
     // Falls back to replace mode header
-    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("<agent_instructions>");
   });
 
@@ -495,7 +495,7 @@ Current working directory: /tmp`;
   it("replace mode is unaffected by stripping logic", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
 
-    expect(result).toContain("You are a pi coding agent sub-agent.");
+    expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).not.toContain("<project_context>");
   });
 
