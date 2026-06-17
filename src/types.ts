@@ -157,6 +157,8 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "includeContextFiles",
   "defaultThinking",
   "defaultMaxTurns",
+  "loadSkillsImplicitly",
+  "loadExtensionsImplicitly",
 ];
 
 /** Reason for a context compaction event. */

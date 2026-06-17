@@ -480,6 +480,92 @@ describe("ConfigStore defaultThinking", () => {
   });
 });
 
+describe("ConfigStore loadSkillsImplicitly", () => {
+  it("defaults to 'load-all' when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.loadSkillsImplicitly).toBe("load-all");
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, loadSkillsImplicitly: "none" }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.loadSkillsImplicitly).toBe("none");
+  });
+
+  it("setLoadSkillsImplicitly persists the value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.agent.setLoadSkillsImplicitly("none");
+    expect(store.agent.loadSkillsImplicitly).toBe("none");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.loadSkillsImplicitly).toBe("none");
+  });
+
+  it("setLoadSkillsImplicitly updates the value", () => {
+    const { io } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setLoadSkillsImplicitly("none");
+    expect(store.agent.loadSkillsImplicitly).toBe("none");
+    store.mutate.agent.setLoadSkillsImplicitly("load-all");
+    expect(store.agent.loadSkillsImplicitly).toBe("load-all");
+  });
+
+  it("clearAllModelOverrides preserves loadSkillsImplicitly", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, loadSkillsImplicitly: "none", Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.loadSkillsImplicitly).toBe("none");
+  });
+});
+
+describe("ConfigStore loadExtensionsImplicitly", () => {
+  it("defaults to 'load-all' when not configured", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.loadExtensionsImplicitly).toBe("load-all");
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, loadExtensionsImplicitly: "none" }, concurrency: { default: 4 } });
+    const store = new ConfigStore(io);
+    expect(store.agent.loadExtensionsImplicitly).toBe("none");
+  });
+
+  it("setLoadExtensionsImplicitly persists the value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+    store.mutate.agent.setLoadExtensionsImplicitly("none");
+    expect(store.agent.loadExtensionsImplicitly).toBe("none");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.loadExtensionsImplicitly).toBe("none");
+  });
+
+  it("setLoadExtensionsImplicitly updates the value", () => {
+    const { io } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setLoadExtensionsImplicitly("none");
+    expect(store.agent.loadExtensionsImplicitly).toBe("none");
+    store.mutate.agent.setLoadExtensionsImplicitly("load-all");
+    expect(store.agent.loadExtensionsImplicitly).toBe("load-all");
+  });
+
+  it("clearAllModelOverrides preserves loadExtensionsImplicitly", () => {
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: true, loadExtensionsImplicitly: "none", Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.loadExtensionsImplicitly).toBe("none");
+  });
+});
+
 describe("ConfigStore defaultMaxTurns", () => {
   it("defaults to undefined when not configured", () => {
     const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });

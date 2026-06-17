@@ -13,7 +13,10 @@ import {
   resolveVisibleTools,
   EXCLUDED_TOOL_NAMES,
   BUILTIN_TOOL_NAMES,
+  getConfig,
+  registerAgents,
 } from "../src/agents/agent-types.js";
+import type { AgentConfig } from "../src/types.ts";
 
 /* ------------------------------------------------------------------ */
 /*  Sanity: constants                                                 */
@@ -360,5 +363,77 @@ describe("resolveVisibleTools — edge cases", () => {
       tools: ["read"],
     });
     expect(result).toEqual(["read"]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  getConfig with global implicit defaults                           */
+/* ------------------------------------------------------------------ */
+
+describe("getConfig — global implicit defaults", () => {
+  beforeEach(() => {
+    // Register a test agent with skills: true and extensions: true
+    const agents = new Map<string, AgentConfig>();
+    agents.set("test-agent", {
+      name: "test-agent",
+      description: "Test agent",
+      extensions: true,
+      skills: true,
+      systemPrompt: "test",
+    });
+    agents.set("explicit-skills", {
+      name: "explicit-skills",
+      description: "Agent with explicit skills list",
+      extensions: true,
+      skills: ["tdd"],
+      systemPrompt: "test",
+    });
+    agents.set("no-skills", {
+      name: "no-skills",
+      description: "Agent with skills disabled",
+      extensions: false,
+      skills: false,
+      systemPrompt: "test",
+    });
+    registerAgents(agents);
+  });
+
+  it("agent with skills: true gets global loadSkillsImplicitly=none → false", () => {
+    const result = getConfig("test-agent", "none", "load-all");
+    expect(result.skills).toBe(false);
+  });
+
+  it("agent with extensions: true gets global loadExtensionsImplicitly=none → false", () => {
+    const result = getConfig("test-agent", "load-all", "none");
+    expect(result.extensions).toBe(false);
+  });
+
+  it("agent with skills: true gets global loadSkillsImplicitly=load-all → true", () => {
+    const result = getConfig("test-agent", "load-all", "load-all");
+    expect(result.skills).toBe(true);
+  });
+
+  it("agent with explicit skills list ignores global default", () => {
+    const result = getConfig("explicit-skills", "none", "none");
+    expect(result.skills).toEqual(["tdd"]);
+    expect(result.extensions).toBe(false);
+  });
+
+  it("agent with skills: false ignores global default", () => {
+    const result = getConfig("no-skills", "load-all", "load-all");
+    expect(result.skills).toBe(false);
+    expect(result.extensions).toBe(false);
+  });
+
+  it("unknown agent type uses global defaults", () => {
+    const result = getConfig("nonexistent", "none", "none");
+    expect(result.skills).toBe(false);
+    expect(result.extensions).toBe(false);
+  });
+
+  it("unknown agent type with load-all defaults to true", () => {
+    const result = getConfig("nonexistent", "load-all", "load-all");
+    expect(result.skills).toBe(true);
+    expect(result.extensions).toBe(true);
   });
 });

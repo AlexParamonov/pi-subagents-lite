@@ -524,7 +524,8 @@ export async function runAgent(
   prompt: string,
   options: RunOptions,
 ): Promise<RunResult> {
-  const config = getConfig(type);
+  const store = getStore();
+  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
   const agentConfig = getAgentConfig(type);
 
   // Warn on mutual exclusion violations

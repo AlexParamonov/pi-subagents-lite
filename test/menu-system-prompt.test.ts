@@ -109,6 +109,80 @@ describe("showSystemPromptMenu — Create prompt file", () => {
   });
 });
 
+describe("showSystemPromptMenu — Load skills implicitly", () => {
+  beforeEach(() => {
+    resetAgentState();
+    vi.clearAllMocks();
+  });
+
+  it("shows 'Load skills implicitly · ON' when loadSkillsImplicitly is load-all", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showSystemPromptMenu(ctx);
+    const items = ctx.ui.select.mock.calls[0][1];
+    expect(items.find((i: string) => i.startsWith("Load skills implicitly"))).toBe("Load skills implicitly · ON");
+  });
+
+  it("shows 'Load skills implicitly · OFF' when loadSkillsImplicitly is none", async () => {
+    mockModules.mockConfig.agent.loadSkillsImplicitly = "none";
+    const ctx = createMockCtx([undefined]);
+    await showSystemPromptMenu(ctx);
+    const items = ctx.ui.select.mock.calls[0][1];
+    expect(items.find((i: string) => i.startsWith("Load skills implicitly"))).toBe("Load skills implicitly · OFF");
+  });
+
+  it("toggles from ON to OFF and saves", async () => {
+    const ctx = createMockCtx(["Load skills implicitly · ON", undefined]);
+    await showSystemPromptMenu(ctx);
+    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe("none");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Load skills implicitly OFF", "info");
+  });
+
+  it("toggles from OFF to ON and saves", async () => {
+    mockModules.mockConfig.agent.loadSkillsImplicitly = "none";
+    const ctx = createMockCtx(["Load skills implicitly · OFF", undefined]);
+    await showSystemPromptMenu(ctx);
+    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe("load-all");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Load skills implicitly ON", "info");
+  });
+});
+
+describe("showSystemPromptMenu — Load extensions implicitly", () => {
+  beforeEach(() => {
+    resetAgentState();
+    vi.clearAllMocks();
+  });
+
+  it("shows 'Load extensions implicitly · ON' when loadExtensionsImplicitly is load-all", async () => {
+    const ctx = createMockCtx([undefined]);
+    await showSystemPromptMenu(ctx);
+    const items = ctx.ui.select.mock.calls[0][1];
+    expect(items.find((i: string) => i.startsWith("Load extensions implicitly"))).toBe("Load extensions implicitly · ON");
+  });
+
+  it("shows 'Load extensions implicitly · OFF' when loadExtensionsImplicitly is none", async () => {
+    mockModules.mockConfig.agent.loadExtensionsImplicitly = "none";
+    const ctx = createMockCtx([undefined]);
+    await showSystemPromptMenu(ctx);
+    const items = ctx.ui.select.mock.calls[0][1];
+    expect(items.find((i: string) => i.startsWith("Load extensions implicitly"))).toBe("Load extensions implicitly · OFF");
+  });
+
+  it("toggles from ON to OFF and saves", async () => {
+    const ctx = createMockCtx(["Load extensions implicitly · ON", undefined]);
+    await showSystemPromptMenu(ctx);
+    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe("none");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Load extensions implicitly OFF", "info");
+  });
+
+  it("toggles from OFF to ON and saves", async () => {
+    mockModules.mockConfig.agent.loadExtensionsImplicitly = "none";
+    const ctx = createMockCtx(["Load extensions implicitly · OFF", undefined]);
+    await showSystemPromptMenu(ctx);
+    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe("load-all");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Load extensions implicitly ON", "info");
+  });
+});
+
 describe("showSystemPromptMenu — Include AGENTS.md", () => {
   beforeEach(() => {
     resetAgentState();

@@ -54,6 +54,10 @@ export interface ResolvedAgentSettings {
   readonly defaultThinking: ThinkingLevel | undefined;
   /** Default max turns for spawned agents. Undefined = unlimited. */
   readonly defaultMaxTurns: number | undefined;
+  /** Global default for skills loading: "load-all" or "none". */
+  readonly loadSkillsImplicitly: "load-all" | "none";
+  /** Global default for extensions loading: "load-all" or "none". */
+  readonly loadExtensionsImplicitly: "load-all" | "none";
 }
 
 /** Side-effect targets, injected after construction. */
@@ -105,6 +109,8 @@ export class ConfigStore {
       includeContextFiles,
       defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
       defaultMaxTurns: a.defaultMaxTurns,
+      loadSkillsImplicitly: a.loadSkillsImplicitly ?? "load-all",
+      loadExtensionsImplicitly: a.loadExtensionsImplicitly ?? "load-all",
     };
   }
 
@@ -215,6 +221,14 @@ export class ConfigStore {
         } else {
           this.config.agent.defaultMaxTurns = n;
         }
+        this.persist();
+      },
+      setLoadSkillsImplicitly: (value: "load-all" | "none"): void => {
+        this.config.agent.loadSkillsImplicitly = value;
+        this.persist();
+      },
+      setLoadExtensionsImplicitly: (value: "load-all" | "none"): void => {
+        this.config.agent.loadExtensionsImplicitly = value;
         this.persist();
       },
     },

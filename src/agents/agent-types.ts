@@ -285,8 +285,25 @@ function toResolved(config: AgentConfig): ResolvedAgentConfig {
   };
 }
 
+/** Apply global implicit defaults to skills/extensions when agent uses the default value. */
+function applyGlobalDefaults(
+  skills: true | string[] | false,
+  extensions: true | string[] | false,
+  loadSkillsImplicitly: "load-all" | "none",
+  loadExtensionsImplicitly: "load-all" | "none",
+): { skills: true | string[] | false; extensions: true | string[] | false } {
+  return {
+    skills: skills === true && loadSkillsImplicitly === "none" ? false : skills,
+    extensions: extensions === true && loadExtensionsImplicitly === "none" ? false : extensions,
+  };
+}
+
 /** Get config for a type (case-insensitive). Falls back to general-purpose. */
-export function getConfig(type: string): ResolvedAgentConfig {
+export function getConfig(
+  type: string,
+  loadSkillsImplicitly: "load-all" | "none" = "load-all",
+  loadExtensionsImplicitly: "load-all" | "none" = "load-all",
+): ResolvedAgentConfig {
   const resolvedKey = resolveType(type);
   const config = resolvedKey ? agents.get(resolvedKey) : undefined;
 
@@ -296,15 +313,17 @@ export function getConfig(type: string): ResolvedAgentConfig {
     : agents.get("general-purpose");
 
   if (activeConfig && activeConfig.hidden !== true) {
-    return toResolved(activeConfig);
+    const resolved = toResolved(activeConfig);
+    const defaults = applyGlobalDefaults(resolved.skills, resolved.extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
+    return { ...resolved, ...defaults };
   }
 
   // Absolute fallback — general-purpose was hidden or missing
+  const fallbackDefaults = applyGlobalDefaults(true, true, loadSkillsImplicitly, loadExtensionsImplicitly);
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
     registeredTools: BUILTIN_TOOL_NAMES,
-    extensions: true,
-    skills: true,
+    ...fallbackDefaults,
   };
 }
