@@ -113,8 +113,8 @@ vi.mock("../src/shell.js", () => {
         includeContextFiles: a.includeContextFiles ?? true,
         defaultThinking: a.defaultThinking,
         defaultMaxTurns: a.defaultMaxTurns,
-        loadSkillsImplicitly: a.loadSkillsImplicitly ?? "load-all",
-        loadExtensionsImplicitly: a.loadExtensionsImplicitly ?? "load-all",
+        loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
+        loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
       };
     },
     get concurrency() {
@@ -170,8 +170,8 @@ vi.mock("../src/shell.js", () => {
         setIncludeContextFiles(enabled: boolean) { mockModules.mockConfig.agent.includeContextFiles = enabled; },
         setDefaultThinking(level: string | undefined) { mockModules.mockConfig.agent.defaultThinking = level; },
         setDefaultMaxTurns(n: number | undefined) { mockModules.mockConfig.agent.defaultMaxTurns = n; },
-        setLoadSkillsImplicitly(value: string) { mockModules.mockConfig.agent.loadSkillsImplicitly = value; },
-        setLoadExtensionsImplicitly(value: string) { mockModules.mockConfig.agent.loadExtensionsImplicitly = value; },
+        setLoadSkillsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadSkillsImplicitly = value; },
+        setLoadExtensionsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadExtensionsImplicitly = value; },
       },
       widget: {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },

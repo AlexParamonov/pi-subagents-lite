@@ -54,10 +54,10 @@ export interface ResolvedAgentSettings {
   readonly defaultThinking: ThinkingLevel | undefined;
   /** Default max turns for spawned agents. Undefined = unlimited. */
   readonly defaultMaxTurns: number | undefined;
-  /** Global default for skills loading: "load-all" or "none". */
-  readonly loadSkillsImplicitly: "load-all" | "none";
-  /** Global default for extensions loading: "load-all" or "none". */
-  readonly loadExtensionsImplicitly: "load-all" | "none";
+  /** Global default for skills loading: true (load all) or false (none). */
+  readonly loadSkillsImplicitly: boolean;
+  /** Global default for extensions loading: true (load all) or false (none). */
+  readonly loadExtensionsImplicitly: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -109,8 +109,8 @@ export class ConfigStore {
       includeContextFiles,
       defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
       defaultMaxTurns: a.defaultMaxTurns,
-      loadSkillsImplicitly: a.loadSkillsImplicitly ?? "load-all",
-      loadExtensionsImplicitly: a.loadExtensionsImplicitly ?? "load-all",
+      loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
+      loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
     };
   }
 
@@ -223,11 +223,11 @@ export class ConfigStore {
         }
         this.persist();
       },
-      setLoadSkillsImplicitly: (value: "load-all" | "none"): void => {
+      setLoadSkillsImplicitly: (value: boolean): void => {
         this.config.agent.loadSkillsImplicitly = value;
         this.persist();
       },
-      setLoadExtensionsImplicitly: (value: "load-all" | "none"): void => {
+      setLoadExtensionsImplicitly: (value: boolean): void => {
         this.config.agent.loadExtensionsImplicitly = value;
         this.persist();
       },

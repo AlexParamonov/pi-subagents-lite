@@ -282,20 +282,20 @@ export interface ResolvedAgentConfig {
 function applyGlobalDefaults(
   skills: true | string[] | false | undefined,
   extensions: true | string[] | false | undefined,
-  loadSkillsImplicitly: "load-all" | "none",
-  loadExtensionsImplicitly: "load-all" | "none",
+  loadSkillsImplicitly: boolean,
+  loadExtensionsImplicitly: boolean,
 ): { skills: true | string[] | false; extensions: true | string[] | false } {
   return {
-    skills: skills === undefined ? (loadSkillsImplicitly === "none" ? false : true) : skills,
-    extensions: extensions === undefined ? (loadExtensionsImplicitly === "none" ? false : true) : extensions,
+    skills: skills === undefined ? loadSkillsImplicitly : skills,
+    extensions: extensions === undefined ? loadExtensionsImplicitly : extensions,
   };
 }
 
 /** Get config for a type (case-insensitive). Falls back to general-purpose. */
 export function getConfig(
   type: string,
-  loadSkillsImplicitly: "load-all" | "none" = "load-all",
-  loadExtensionsImplicitly: "load-all" | "none" = "load-all",
+  loadSkillsImplicitly: boolean = true,
+  loadExtensionsImplicitly: boolean = true,
 ): ResolvedAgentConfig {
   const resolvedKey = resolveType(type);
   const config = resolvedKey ? agents.get(resolvedKey) : undefined;

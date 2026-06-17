@@ -115,15 +115,15 @@ describe("showSystemPromptMenu — Load skills implicitly", () => {
     vi.clearAllMocks();
   });
 
-  it("shows 'Load skills implicitly · ON' when loadSkillsImplicitly is load-all", async () => {
+  it("shows 'Load skills implicitly · ON' when loadSkillsImplicitly is true", async () => {
     const ctx = createMockCtx([undefined]);
     await showSystemPromptMenu(ctx);
     const items = ctx.ui.select.mock.calls[0][1];
     expect(items.find((i: string) => i.startsWith("Load skills implicitly"))).toBe("Load skills implicitly · ON");
   });
 
-  it("shows 'Load skills implicitly · OFF' when loadSkillsImplicitly is none", async () => {
-    mockModules.mockConfig.agent.loadSkillsImplicitly = "none";
+  it("shows 'Load skills implicitly · OFF' when loadSkillsImplicitly is false", async () => {
+    mockModules.mockConfig.agent.loadSkillsImplicitly = false;
     const ctx = createMockCtx([undefined]);
     await showSystemPromptMenu(ctx);
     const items = ctx.ui.select.mock.calls[0][1];
@@ -133,15 +133,15 @@ describe("showSystemPromptMenu — Load skills implicitly", () => {
   it("toggles from ON to OFF and saves", async () => {
     const ctx = createMockCtx(["Load skills implicitly · ON", undefined]);
     await showSystemPromptMenu(ctx);
-    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe("none");
+    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe(false);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Load skills implicitly OFF", "info");
   });
 
   it("toggles from OFF to ON and saves", async () => {
-    mockModules.mockConfig.agent.loadSkillsImplicitly = "none";
+    mockModules.mockConfig.agent.loadSkillsImplicitly = false;
     const ctx = createMockCtx(["Load skills implicitly · OFF", undefined]);
     await showSystemPromptMenu(ctx);
-    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe("load-all");
+    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Load skills implicitly ON", "info");
   });
 });
@@ -152,15 +152,15 @@ describe("showSystemPromptMenu — Load extensions implicitly", () => {
     vi.clearAllMocks();
   });
 
-  it("shows 'Load extensions implicitly · ON' when loadExtensionsImplicitly is load-all", async () => {
+  it("shows 'Load extensions implicitly · ON' when loadExtensionsImplicitly is true", async () => {
     const ctx = createMockCtx([undefined]);
     await showSystemPromptMenu(ctx);
     const items = ctx.ui.select.mock.calls[0][1];
     expect(items.find((i: string) => i.startsWith("Load extensions implicitly"))).toBe("Load extensions implicitly · ON");
   });
 
-  it("shows 'Load extensions implicitly · OFF' when loadExtensionsImplicitly is none", async () => {
-    mockModules.mockConfig.agent.loadExtensionsImplicitly = "none";
+  it("shows 'Load extensions implicitly · OFF' when loadExtensionsImplicitly is false", async () => {
+    mockModules.mockConfig.agent.loadExtensionsImplicitly = false;
     const ctx = createMockCtx([undefined]);
     await showSystemPromptMenu(ctx);
     const items = ctx.ui.select.mock.calls[0][1];
@@ -170,15 +170,15 @@ describe("showSystemPromptMenu — Load extensions implicitly", () => {
   it("toggles from ON to OFF and saves", async () => {
     const ctx = createMockCtx(["Load extensions implicitly · ON", undefined]);
     await showSystemPromptMenu(ctx);
-    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe("none");
+    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe(false);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Load extensions implicitly OFF", "info");
   });
 
   it("toggles from OFF to ON and saves", async () => {
-    mockModules.mockConfig.agent.loadExtensionsImplicitly = "none";
+    mockModules.mockConfig.agent.loadExtensionsImplicitly = false;
     const ctx = createMockCtx(["Load extensions implicitly · OFF", undefined]);
     await showSystemPromptMenu(ctx);
-    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe("load-all");
+    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledWith("Load extensions implicitly ON", "info");
   });
 });
