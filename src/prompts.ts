@@ -110,18 +110,14 @@ export function buildAgentPrompt(
     contextSuffix = `\n\n${lines.join("\n")}`;
   }
 
-  // Build base prompt based on mode
-  let basePrompt: string;
-  if (mode === "inherit" && extras?.parentSystemPrompt) {
-    // Inherit mode: parent's full system prompt (verbatim) + active_agent tag after
-    basePrompt = `${extras.parentSystemPrompt}\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
-  } else if (mode === "custom" && extras?.customSystemPrompt) {
-    // Custom mode: custom prompt + env + agent's systemPrompt
-    basePrompt = `${extras.customSystemPrompt}\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
-  } else {
-    // Replace mode (default): generic header + env + agent's systemPrompt
-    basePrompt = `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n<active_agent name="${config.name}"/>\n\n${envBlock}`;
-  }
+  // Build base prompt: mode-specific header if provided, otherwise default
+  const activeAgentTag = `<active_agent name="${config.name}"/>`;
+  const customHeader = mode === "inherit" ? extras?.parentSystemPrompt
+                    : mode === "custom"  ? extras?.customSystemPrompt
+                    : undefined;
+  const basePrompt = customHeader
+    ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
+    : `You are a pi coding agent sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
 
   return `${basePrompt}${agentInstructions}${contextSuffix}${extrasSuffix}`;
 }
