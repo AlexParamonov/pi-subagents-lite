@@ -55,34 +55,19 @@ export class SettingsListWrapper implements Component {
             { value: "__sep__", label: "" },
             { value: "__back__", label: "Back" },
           );
-          // Proxy to intercept onSelect assignment (caller sets it after constructor)
-          let selectHandler: ((item: any) => void) | undefined;
-          const proxied = new Proxy(list, {
-            set(target, prop, value) {
-              if (prop === "onSelect") {
-                selectHandler = value;
-                return true;
-              }
-              target[prop] = value;
-              return true;
-            },
-            defineProperty(_target, prop, descriptor) {
-              if (prop === "onSelect" && descriptor.value) {
-                selectHandler = descriptor.value;
-                return true;
-              }
-              return Reflect.defineProperty(_target, prop, descriptor);
-            },
-          });
-          // Replace onSelect with wrapper that handles Back + delegates
-          proxied.onSelect = (item: any) => {
+          // Intercept onSelect so the Back item closes the menu. SelectList
+          // reads its own onSelect property at dispatch time (this.onSelect on
+          // the target), so reassigning it here is what actually works — a Proxy
+          // cannot intercept the dispatch.
+          const prevOnSelect = list.onSelect;
+          list.onSelect = (item: any) => {
             if (item.value === "__back__") {
               closeMenu();
               return;
             }
-            if (selectHandler) selectHandler(item);
+            prevOnSelect?.(item);
           };
-          this.settingsList = proxied;
+          list.onCancel = () => closeMenu();
         } else {
           // SettingsList expects SettingItem shape: { id, label, currentValue, submenu }
           list.items.push(
