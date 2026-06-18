@@ -34,6 +34,28 @@ import { showSpawnAgentMenu } from "../../spawn/spawn-wizard.js";
 export { showSpawnAgentMenu };
 
 
+/**
+ * Render `items` as a titled SelectList and dispatch the chosen value.
+ * Re-loops after each dispatch until the user cancels (Esc or Back).
+ * Each iteration builds a fresh list so state never leaks between visits.
+ */
+async function runSelectMenu(
+  ctx: ExtensionCommandContext,
+  title: string,
+  items: SelectItem[],
+  dispatch: (choice: string) => Promise<void>,
+): Promise<void> {
+  while (true) {
+    const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
+      const list = new SelectList(items, 10, buildSelectListTheme(theme));
+      list.onSelect = (item) => done(item.value);
+      return new SettingsListWrapper(list, { title, theme, onCancel: () => done(undefined) });
+    });
+    if (choice === undefined) return;
+    await dispatch(choice);
+  }
+}
+
 export async function showSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
@@ -46,14 +68,7 @@ export async function showSettingsMenu(
     { value: "widget", label: "Widget settings", description: "Configure widget display options" },
   ];
 
-  while (true) {
-    const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
-      const list = new SelectList(items, 10, buildSelectListTheme(theme));
-      list.onSelect = (item) => done(item.value);
-      return new SettingsListWrapper(list, { title: "Settings", theme, onCancel: () => done(undefined) });
-    });
-    if (choice === undefined) return;
-
+  await runSelectMenu(ctx, "Settings", items, async (choice) => {
     switch (choice) {
       case "model": await showModelSettingsMenu(ctx, modelOptions); break;
       case "concurrency": await showConcurrencySettingsMenu(ctx, modelOptions); break;
@@ -61,7 +76,7 @@ export async function showSettingsMenu(
       case "systemprompt": await showSystemPromptMenu(ctx); break;
       case "widget": await showWidgetSettingsMenu(ctx); break;
     }
-  }
+  });
 }
 
 export async function showAgentsMainMenu(
@@ -75,19 +90,12 @@ export async function showAgentsMainMenu(
     { value: "debug", label: "Debug", description: "Agent types, briefing, diagnostics" },
   ];
 
-  while (true) {
-    const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
-      const list = new SelectList(items, 10, buildSelectListTheme(theme));
-      list.onSelect = (item) => done(item.value);
-      return new SettingsListWrapper(list, { title: "Agents", theme, onCancel: () => done(undefined) });
-    });
-    if (choice === undefined) return;
-
+  await runSelectMenu(ctx, "Agents", items, async (choice) => {
     switch (choice) {
       case "running": await showRunningAgentsMenu(ctx); break;
       case "spawn": await showSpawnAgentMenu(ctx, modelOptions); break;
       case "settings": await showSettingsMenu(ctx, modelOptions); break;
       case "debug": await showDebugMenu(ctx); break;
     }
-  }
+  });
 }
