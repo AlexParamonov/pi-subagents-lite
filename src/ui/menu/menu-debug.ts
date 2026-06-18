@@ -105,33 +105,21 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }
 
-/**
- * Create a debug menu Component for use within a parent ctx.ui.custom.
- * Actions execute on select; Escape calls onDone.
- */
-export function createDebugMenuComponent(
-  ctx: ExtensionCommandContext,
-  theme: any,
-  onDone: () => void,
-): SettingsListWrapper {
-  const items: SelectItem[] = [
-    { value: "agent-types", label: "Agent types", description: "List available agent types and their configs" },
-    { value: "agent-briefing", label: "Agent briefing", description: "Send agent types/capabilities info to LLM (Optional, if having issues)" },
-  ];
-
-  const selectList = new SelectList(items, 10, buildSelectListTheme(theme));
-  selectList.onSelect = async (item) => {
-    if (item.value === "agent-types") {
-      await showAgentTypes(ctx);
-    } else if (item.value === "agent-briefing") {
-      await handleAgentBriefing(ctx);
-    }
-  };
-  return new SettingsListWrapper(selectList, { title: "Debug", theme, onCancel: () => onDone() });
-}
-
 export async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void> {
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    return createDebugMenuComponent(ctx, theme, () => done(undefined));
+    const items: SelectItem[] = [
+      { value: "agent-types", label: "Agent types", description: "List available agent types and their configs" },
+      { value: "agent-briefing", label: "Agent briefing", description: "Send agent types/capabilities info to LLM (Optional, if having issues)" },
+    ];
+
+    const selectList = new SelectList(items, 10, buildSelectListTheme(theme));
+    selectList.onSelect = async (item) => {
+      if (item.value === "agent-types") {
+        await showAgentTypes(ctx);
+      } else if (item.value === "agent-briefing") {
+        await handleAgentBriefing(ctx);
+      }
+    };
+    return new SettingsListWrapper(selectList, { title: "Debug", theme, onCancel: () => done(undefined) });
   });
 }
