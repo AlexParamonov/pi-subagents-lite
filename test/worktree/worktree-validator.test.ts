@@ -25,7 +25,7 @@ import {
   WORKTREE_VALIDATION_ERRORS,
   type WorktreeValidationSuccess,
   type WorktreeValidationFailure,
-} from "../../src/worktree-validator.js";
+} from "../../src/spawn/worktree-validator.js";
 
 // ── helpers ──────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ describe("validateWorktreePath", () => {
 
   it("label uses forward slashes even for Windows-style relative paths", async () => {
     // Simulate a Windows-style path scenario by testing computeLabel directly
-    const { computeLabel } = await import("../../src/worktree-validator.js");
+    const { computeLabel } = await import("../../src/spawn/worktree-validator.js");
     // On any OS, computeLabel should produce forward-slash output
     const label = computeLabel("C:\\Users\\dev\\feature\\packages\\web", "C:\\Users\\dev\\feature");
     expect(label).toBe("feature/packages/web");

@@ -17,7 +17,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   discoverNewAgents: vi.fn(async () => 0),
 }));
 
-vi.mock("../../src/worktree-validator.js", () => ({
+vi.mock("../../src/spawn/worktree-validator.js", () => ({
   validateWorktreePath: vi.fn(async () => ({ ok: true, resolvedPath: "/wt", label: "wt" })),
 }));
 

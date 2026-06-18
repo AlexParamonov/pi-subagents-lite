@@ -44,14 +44,14 @@ describe("inline-stop-agent — module structure", () => {
   });
 
   it("executeStopAgentTool is exported from tool-execution.ts", async () => {
-    const mod = await import("../../src/tool-execution.js");
+    const mod = await import("../../src/agents/tool-execution.js");
     expect(typeof mod.executeStopAgentTool).toBe("function");
   });
 
   it("index.ts imports executeStopAgentTool from tool-execution.ts", () => {
     const indexSrc = fs.readFileSync("src/index.ts", "utf-8");
     const hasImportFromToolExecution = indexSrc.includes("executeStopAgentTool") &&
-      (indexSrc.includes('from "./tool-execution.js"') || indexSrc.includes("from './tool-execution.js'"));
+      (indexSrc.includes('from "./agents/tool-execution.js"') || indexSrc.includes("from './agents/tool-execution.js'"));
     const hasImportFromStopAgent = indexSrc.includes('from "./stop-agent-tool.js"') ||
                                     indexSrc.includes("from './stop-agent-tool.js'");
     expect(hasImportFromToolExecution).toBe(true);
@@ -65,7 +65,7 @@ describe("inline-stop-agent — behavior preserved", () => {
   });
 
   it("returns error when agent_id is missing", async () => {
-    const { executeStopAgentTool } = await import("../../src/tool-execution.js");
+    const { executeStopAgentTool } = await import("../../src/agents/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_1", {}, undefined, undefined, {} as any,
@@ -79,7 +79,7 @@ describe("inline-stop-agent — behavior preserved", () => {
     mockGetRecord.mockReturnValue({ id: "abc123def456ghi", type: "builder", lifecycle: { status: "running" } });
     mockAbort.mockReturnValue(true);
 
-    const { executeStopAgentTool } = await import("../../src/tool-execution.js");
+    const { executeStopAgentTool } = await import("../../src/agents/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_2", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any,
@@ -96,7 +96,7 @@ describe("inline-stop-agent — behavior preserved", () => {
       { id: "aaa111bbb222ccc", display: { type: "builder" }, lifecycle: { status: "running" } },
     ]);
 
-    const { executeStopAgentTool } = await import("../../src/tool-execution.js");
+    const { executeStopAgentTool } = await import("../../src/agents/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_3", { agent_id: "nonexistent" }, undefined, undefined, {} as any,
@@ -111,7 +111,7 @@ describe("inline-stop-agent — behavior preserved", () => {
     mockGetRecord.mockReturnValue({ id: "abc123def456ghi", type: "builder", lifecycle: { status: "completed" } });
     mockListAgents.mockReturnValue([]);
 
-    const { executeStopAgentTool } = await import("../../src/tool-execution.js");
+    const { executeStopAgentTool } = await import("../../src/agents/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_4", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any,
@@ -129,7 +129,7 @@ describe("inline-stop-agent — behavior preserved", () => {
       { id: "r3", display: { type: "explore" }, lifecycle: { status: "completed" } },
     ]);
 
-    const { executeStopAgentTool } = await import("../../src/tool-execution.js");
+    const { executeStopAgentTool } = await import("../../src/agents/tool-execution.js");
 
     const result = await executeStopAgentTool(
       "call_5", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any,

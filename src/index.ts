@@ -36,7 +36,7 @@ import { scanAgentFilesInDir, mergeAgents } from "./agents/agent-discovery.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { showAgentsMainMenu } from "./ui/menu/menus.js";
-import { executeAgentTool, executeStopAgentTool, toolCallListener } from "./tool-execution.js";
+import { executeAgentTool, executeStopAgentTool, toolCallListener } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./ui/renderer.js";

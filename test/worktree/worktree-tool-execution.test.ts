@@ -28,7 +28,7 @@ const { mockValidateWorktreePath, mockSpawn, mockGetRecord, mockDiscoverNewAgent
   mockDiscoverNewAgents: vi.fn(),
 }));
 
-vi.mock("../../src/worktree-validator.js", () => ({
+vi.mock("../../src/spawn/worktree-validator.js", () => ({
   validateWorktreePath: mockValidateWorktreePath,
   computeLabel: vi.fn((resolved: string, root: string) => {
     if (resolved === root) return root.split("/").pop() || root;
@@ -116,7 +116,7 @@ vi.mock("../../src/agents/usage.js", () => ({
 }));
 
 // Import after mocks are in place
-import { executeAgentTool } from "../../src/tool-execution.js";
+import { executeAgentTool } from "../../src/agents/tool-execution.js";
 import * as agentTypes from "../../src/agents/agent-types.js";
 
 /* ------------------------------------------------------------------ */

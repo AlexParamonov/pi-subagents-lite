@@ -91,7 +91,7 @@ vi.mock("../src/config/config-io.js", () => ({
   },
 }));
 
-vi.mock("../src/tool-execution.js", () => ({
+vi.mock("../src/agents/tool-execution.js", () => ({
   buildAgentDetails: vi.fn(() => ({})),
   successResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], details })),
   errorResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], isError: true, details })),

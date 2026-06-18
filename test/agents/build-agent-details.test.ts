@@ -18,10 +18,10 @@ import type { AgentRecord } from "../../src/types.js";
 /* ------------------------------------------------------------------ */
 
 describe("buildAgentDetails", () => {
-  let buildAgentDetails: typeof import("../../src/tool-execution.js").buildAgentDetails;
+  let buildAgentDetails: typeof import("../../src/agents/tool-execution.js").buildAgentDetails;
 
   beforeEach(async () => {
-    const mod = await import("../../src/tool-execution.js");
+    const mod = await import("../../src/agents/tool-execution.js");
     buildAgentDetails = mod.buildAgentDetails;
   });
 
