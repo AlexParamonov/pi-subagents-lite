@@ -47,7 +47,7 @@ async function runSelectMenu(
 ): Promise<void> {
   while (true) {
     const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
-      const list = new SelectList(items, 10, buildSelectListTheme(theme));
+      const list = new SelectList([...items], 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
       return new SettingsListWrapper(list, { title, theme, onCancel: () => done(undefined) });
     });

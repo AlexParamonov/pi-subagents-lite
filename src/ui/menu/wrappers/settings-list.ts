@@ -61,6 +61,7 @@ export class SettingsListWrapper implements Component {
               closeMenu();
               return;
             }
+            if (item.value === "__sep__") return;
             prevOnSelect?.(item);
           };
           list.onCancel = () => closeMenu();
