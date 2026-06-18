@@ -137,3 +137,23 @@ describe("buildStatsParts — backward compatibility", () => {
     expect(parts.some(p => p.includes("$"))).toBe(true);
   });
 });
+
+describe("buildStatsParts — cost behavior", () => {
+  it("does not include cost when not provided", () => {
+    const parts = buildStatsParts({
+      toolUses: 5, turnCount: 3, maxTurns: 30, input: 1000, output: 500,
+      contextPercent: 50, compactions: 2, durationMs: 65000,
+    }, mockTheme);
+    expect(parts.some(p => p.includes("$"))).toBe(false);
+  });
+
+  it("does not include cost when cost is 0", () => {
+    const parts = buildStatsParts({ ...allStats, cost: 0 }, mockTheme);
+    expect(parts.some(p => p.includes("$"))).toBe(false);
+  });
+
+  it("includes cost formatted as dollar amount", () => {
+    const parts = buildStatsParts(allStats, mockTheme);
+    expect(parts.some(p => p === "$1.23")).toBe(true);
+  });
+});

@@ -14,6 +14,7 @@ import {
   addUsage,
   getLifetimeTotal,
   formatTokens,
+  formatCost,
 } from "../../src/agents/usage.js";
 
 /* ------------------------------------------------------------------ */
@@ -112,5 +113,35 @@ describe("formatTokens", () => {
 
   it("handles exactly 1 million", () => {
     expect(formatTokens(1_000_000)).toBe("1.0M");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  formatCost — dollar formatting                                   */
+/* ------------------------------------------------------------------ */
+
+describe("formatCost", () => {
+  it("formats zero as $0.00", () => {
+    expect(formatCost(0)).toBe("$0.00");
+  });
+
+  it("formats small cost with 2 decimal places", () => {
+    expect(formatCost(0.008)).toBe("$0.01");
+  });
+
+  it("formats $1.23", () => {
+    expect(formatCost(1.23)).toBe("$1.23");
+  });
+
+  it("formats $0.01", () => {
+    expect(formatCost(0.01)).toBe("$0.01");
+  });
+
+  it("formats $12.34", () => {
+    expect(formatCost(12.345)).toBe("$12.35");
+  });
+
+  it("formats very small cost as $0.00", () => {
+    expect(formatCost(0.001)).toBe("$0.00");
   });
 });

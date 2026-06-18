@@ -341,4 +341,34 @@ describe("SpawnCoordinator", () => {
       expect(coordinator.liveView("agent-1")).toBeUndefined();
     });
   });
+  describe("nudge message status", () => {
+    it("uses lifecycle status in the nudge message", async () => {
+      const statuses: Array<{ status: string; expected: string }> = [
+        { status: "completed", expected: "completed" },
+        { status: "error", expected: "error" },
+        { status: "aborted", expected: "aborted" },
+        { status: "stopped", expected: "stopped" },
+        { status: "steered", expected: "steered" },
+      ];
+
+      for (const { status, expected } of statuses) {
+        vi.clearAllMocks();
+        const coordinator = new SpawnCoordinator(manager as any, pi);
+
+        const result = await coordinator.spawn(pi, ctx, {
+          type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        });
+
+        manager.getRecord(result.agentId).lifecycle.status = status;
+        manager.getRecord(result.agentId).result = "Result text";
+
+        coordinator.scheduleNudge(result.agentId);
+        vi.advanceTimersByTime(200);
+
+        expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+        const content = pi.sendMessage.mock.calls[0][0].content;
+        expect(content).toContain(`[Subagent "builder" ${expected}]`);
+      }
+    });
+  });
 });

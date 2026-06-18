@@ -362,3 +362,26 @@ describe("event listener registration", () => {
 });
 
 
+// worktree_path schema tests (merged from worktree-schema-briefing)
+describe("Agent tool schema — worktree_path", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  it("worktree_path is optional in the schema", () => {
+    const tool = api.tools.find((t) => t.name === "Agent")!;
+    const required = tool.parameters.required ?? [];
+    expect(required).not.toContain("worktree_path");
+  });
+
+  it("worktree_path is a string type in the schema", () => {
+    const tool = api.tools.find((t) => t.name === "Agent")!;
+    const prop = tool.parameters.properties?.worktree_path;
+    expect(prop).toBeDefined();
+    expect(prop.type).toBe("string");
+  });
+});
+
