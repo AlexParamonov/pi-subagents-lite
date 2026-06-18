@@ -1,3 +1,4 @@
+import { getStatusNote } from "../status-note.js";
 /**
  * tool-execution.ts — Agent tool execution handlers.
  *
@@ -187,7 +188,8 @@ export async function executeAgentTool(
     return errorResult(`Agent failed: ${record.error || "unknown error"}`, details);
   }
 
-  return successResult(record.result ?? "", details);
+  const statusNote = getStatusNote(record.lifecycle.status);
+  return successResult((record.result ?? "") + statusNote, details);
 }
 
 // ============================================================================

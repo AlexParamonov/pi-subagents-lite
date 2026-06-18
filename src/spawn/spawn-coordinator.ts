@@ -1,3 +1,4 @@
+import { getStatusNote } from "../status-note.js";
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
@@ -218,7 +219,7 @@ export class SpawnCoordinator {
     this.pi.sendMessage(
       {
         customType: "subagent-result",
-        content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""}`,
+        content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""} ${getStatusNote(record.lifecycle.status)}`,
         details,
         display: true,
       },
