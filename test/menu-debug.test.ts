@@ -50,7 +50,7 @@ vi.mock("@earendil-works/pi-tui", () => {
 });
 
 // Capture SettingsListWrapper usage
-vi.mock("../src/ui/menu/wrappers/settings-list-wrapper.js", () => ({
+vi.mock("../src/ui/menu/wrappers/settings-list.js", () => ({
   SettingsListWrapper: class MockSettingsListWrapper {
     constructor(component: any, options: any) {
       settingsListWrapperCalls.push({ component, options });

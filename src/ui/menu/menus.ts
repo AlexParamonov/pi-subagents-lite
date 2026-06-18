@@ -20,7 +20,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
 import { buildSelectListTheme } from "./helpers.js";
-import { SelectListWrapper } from "./wrappers/select-list-wrapper.js";
+import { SelectListWrapper } from "./wrappers/select-list.js";
 import { showModelSettingsMenu } from "./menu-model-settings.js";
 import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
 import { showWidgetSettingsMenu } from "./menu-widget-settings.js";

@@ -16,8 +16,8 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme } from "./helpers.js";
-import { createNumericSubmenu } from "./submenus/numeric-input-submenu.js";
-import { SettingsListWrapper } from "./wrappers/settings-list-wrapper.js";
+import { createNumericSubmenu } from "./submenus/numeric-input.js";
+import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 
 /** Stat visibility config — label and store accessors keyed by stat id. */

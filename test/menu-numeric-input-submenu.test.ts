@@ -32,7 +32,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
 }));
 
-import { createNumericSubmenu } from "../src/ui/menu/submenus/numeric-input-submenu.js";
+import { createNumericSubmenu } from "../src/ui/menu/submenus/numeric-input.js";
 
 function mockCtx() {
   return { ui: { notify: vi.fn() } } as any;
