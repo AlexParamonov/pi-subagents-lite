@@ -13,10 +13,10 @@ import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-t
 import type { ThinkingLevel } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../agents/agent-types.js";
 import { findModelInRegistry } from "../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme, backSubmenuItem } from "../ui/menu/menu-helpers.js";
-import { createModelSelectSubmenu } from "../ui/menu/menu-model-select-submenu.js";
-import { createNumericSubmenu, createInputSubmenu } from "../ui/menu/menu-numeric-input-submenu.js";
-import { SettingsListWrapper } from "../ui/menu/menu-settings-list-wrapper.js";
+import { buildSettingsListTheme, buildSelectListTheme, backSubmenuItem } from "../ui/menu/helpers.js";
+import { createModelSelectSubmenu } from "../ui/menu/model-select-submenu.js";
+import { createNumericSubmenu, createInputSubmenu } from "../ui/menu/numeric-input-submenu.js";
+import { SettingsListWrapper } from "../ui/menu/settings-list-wrapper.js";
 import {
   getPiInstance,
   getSessionCtx,

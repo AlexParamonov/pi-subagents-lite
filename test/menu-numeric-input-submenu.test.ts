@@ -12,7 +12,7 @@ let inputInstances: Array<{
   getValue: () => string;
 }> = [];
 
-vi.mock("../src/ui/menu/menu-helpers.js", () => ({
+vi.mock("../src/ui/menu/helpers.js", () => ({
   validateNumeric: (value: string, min: number) => {
     const parsed = parseInt(value.trim(), 10);
     if (isNaN(parsed) || parsed < min) return undefined;
@@ -32,7 +32,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
 }));
 
-import { createNumericSubmenu } from "../src/ui/menu/menu-numeric-input-submenu.js";
+import { createNumericSubmenu } from "../src/ui/menu/numeric-input-submenu.js";
 
 function mockCtx() {
   return { ui: { notify: vi.fn() } } as any;

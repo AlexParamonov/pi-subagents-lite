@@ -1,5 +1,5 @@
 /**
- * menu-numeric-input-submenu.ts — Shared input submenu Components.
+ * numeric-input-submenu.ts — Shared input submenu Components.
  *
  * - createNumericSubmenu: numeric input with validation
  * - createInputSubmenu: plain text input
@@ -8,7 +8,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Input, type Component } from "@earendil-works/pi-tui";
 
-import { validateNumeric } from "./menu-helpers.js";
+import { validateNumeric } from "./helpers.js";
 
 /**
  * Returns a `(initialValue, done) => submenu` function wired to

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { validateNumeric } from "../src/ui/menu/menu-helpers.js";
+import { validateNumeric } from "../src/ui/menu/helpers.js";
 
 describe("validateNumeric", () => {
   it("returns parsed integer for valid input", () => {

@@ -11,10 +11,10 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./menu-helpers.js";
-import { createNumericSubmenu } from "./menu-numeric-input-submenu.js";
-import { createConfirmSubmenu } from "./menu-confirm-submenu.js";
-import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
+import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { createNumericSubmenu } from "./numeric-input-submenu.js";
+import { createConfirmSubmenu } from "./confirm-submenu.js";
+import { SettingsListWrapper } from "./settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
 
 export async function showConcurrencySettingsMenu(

@@ -11,9 +11,9 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, backSubmenuItem } from "./menu-helpers.js";
-import { createNumericSubmenu } from "./menu-numeric-input-submenu.js";
-import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
+import { buildSettingsListTheme, backSubmenuItem } from "./helpers.js";
+import { createNumericSubmenu } from "./numeric-input-submenu.js";
+import { SettingsListWrapper } from "./settings-list-wrapper.js";
 import type { ThinkingLevel } from "../../types.js";
 import { getStore } from "../../shell.js";
 

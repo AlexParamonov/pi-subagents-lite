@@ -1,5 +1,5 @@
 /**
- * menu-settings-list-wrapper.ts — Wrapper component that adds header/footer to SettingsList.
+ * settings-list-wrapper.ts — Wrapper component that adds header/footer to SettingsList.
  *
  * Wraps a SettingsList with:
  * - Top separator line

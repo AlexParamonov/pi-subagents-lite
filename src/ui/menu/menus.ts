@@ -6,7 +6,7 @@
  * No nested ctx.ui.custom calls.
  *
  * Module structure:
- *   - menu-helpers.ts: shared helpers (buildSettingsListTheme, buildSelectListTheme, validateNumeric)
+ *   - helpers.ts: shared helpers (buildSettingsListTheme, buildSelectListTheme, validateNumeric)
  *   - menu-model-settings.ts: showModelSettingsMenu
  *   - menu-concurrency.ts: showConcurrencySettingsMenu
  *   - menu-widget-settings.ts: showWidgetSettingsMenu
@@ -19,8 +19,8 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
-import { buildSelectListTheme } from "./menu-helpers.js";
-import { SelectListWrapper } from "./menu-select-list-wrapper.js";
+import { buildSelectListTheme } from "./helpers.js";
+import { SelectListWrapper } from "./select-list-wrapper.js";
 import { showModelSettingsMenu } from "./menu-model-settings.js";
 import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
 import { showWidgetSettingsMenu } from "./menu-widget-settings.js";

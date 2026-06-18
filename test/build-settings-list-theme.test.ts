@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildSettingsListTheme } from "../src/ui/menu/menu-helpers.js";
+import { buildSettingsListTheme } from "../src/ui/menu/helpers.js";
 import type { SettingsListTheme } from "@earendil-works/pi-tui";
 
 function createMockTheme() {

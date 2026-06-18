@@ -1,5 +1,5 @@
 /**
- * menu-select-list-wrapper.ts — Wrapper component that adds header/footer to SelectList.
+ * select-list-wrapper.ts — Wrapper component that adds header/footer to SelectList.
  *
  * Wraps a SelectList with:
  * - Top separator line

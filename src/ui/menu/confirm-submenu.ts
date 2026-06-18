@@ -1,12 +1,12 @@
 /**
- * menu-confirm-submenu.ts — Yes/no confirm dialog for destructive actions.
+ * confirm-submenu.ts — Yes/no confirm dialog for destructive actions.
  *
  * Creates a submenu factory for SettingsList items that need a confirmation
  * dialog (clear overrides, reset concurrency, etc.).
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
-import { buildSelectListTheme } from "./menu-helpers.js";
+import { buildSelectListTheme } from "./helpers.js";
 
 export interface ConfirmSubmenuOptions {
   /** Message shown to the user */

@@ -1,9 +1,9 @@
 /**
- * Tests for buildSelectListTheme in menu-helpers.ts.
+ * Tests for buildSelectListTheme in helpers.ts.
  */
 
 import { describe, it, expect } from "vitest";
-import { buildSelectListTheme, buildSettingsListTheme } from "../src/ui/menu/menu-helpers.js";
+import { buildSelectListTheme, buildSettingsListTheme } from "../src/ui/menu/helpers.js";
 
 const mockTheme = {
   fg: (color: string, text: string) => `[${color}]${text}`,

@@ -1,5 +1,5 @@
 /**
- * menu-model-select-submenu.ts — 2-step model override submenu.
+ * model-select-submenu.ts — 2-step model override submenu.
  *
  * Step 1: SelectList with override mode (session/permanent/clear)
  * Step 2 (if session/permanent): ModelSelectorDialog for model selection
@@ -9,7 +9,7 @@
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
 import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
-import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "./menu-helpers.js";
+import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 
 export interface ModelSelectSubmenuOptions {
   modelOptions: string[];

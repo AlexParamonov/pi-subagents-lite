@@ -13,10 +13,10 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../types.js";
-import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./menu-helpers.js";
-import { createModelSelectSubmenu } from "./menu-model-select-submenu.js";
-import { createConfirmSubmenu } from "./menu-confirm-submenu.js";
-import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
+import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { createModelSelectSubmenu } from "./model-select-submenu.js";
+import { createConfirmSubmenu } from "./confirm-submenu.js";
+import { SettingsListWrapper } from "./settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
 
 export async function showModelSettingsMenu(

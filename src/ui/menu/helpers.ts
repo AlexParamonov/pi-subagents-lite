@@ -1,5 +1,5 @@
 /**
- * menu-helpers.ts — Shared helpers for menu modules.
+ * helpers.ts — Shared helpers for menu modules.
  *
  * Exports:
  *   - promptModelSelection: shows ModelSelectorDialog (used by spawn-wizard)

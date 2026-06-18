@@ -21,8 +21,8 @@ import { SHORT_ID_LENGTH } from "../../types.js";
 import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
-import { buildSelectListTheme } from "./menu-helpers.js";
-import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
+import { buildSelectListTheme } from "./helpers.js";
+import { SettingsListWrapper } from "./settings-list-wrapper.js";
 import { getManager, getStore } from "../../shell.js";
 
 /**
