@@ -98,22 +98,22 @@ describe("createNumericSubmenu", () => {
     expect(done).toHaveBeenCalledWith();
   });
 
-  it("calls onEmpty and done() on empty input", () => {
+  it("calls onEmpty and done('(not set)') on empty input", () => {
     const onEmpty = vi.fn();
     const done = vi.fn();
     createNumericSubmenu(mockCtx(), {}, vi.fn(), onEmpty)("5", done);
     inputInstances[0].onSubmit!("");
     expect(onEmpty).toHaveBeenCalled();
-    expect(done).toHaveBeenCalledWith();
+    expect(done).toHaveBeenCalledWith("(not set)");
   });
 
-  it("calls onEmpty and done() when input is 'unlimited'", () => {
+  it("calls onEmpty and done('(not set)') when input is 'unlimited'", () => {
     const onEmpty = vi.fn();
     const done = vi.fn();
     createNumericSubmenu(mockCtx(), {}, vi.fn(), onEmpty)("5", done);
     inputInstances[0].onSubmit!("unlimited");
     expect(onEmpty).toHaveBeenCalled();
-    expect(done).toHaveBeenCalledWith();
+    expect(done).toHaveBeenCalledWith("(not set)");
   });
 
   it("errors on empty input when required", () => {

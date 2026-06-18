@@ -215,7 +215,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     await showSpawnOptionsMenu(ctx);
     const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
     expect(dmt.label).toBe("Default max turns");
-    expect(dmt.currentValue).toBe("unset");
+    expect(dmt.currentValue).toBe("(not set)");
     expect(typeof dmt.submenu).toBe("function");
   });
 
@@ -252,7 +252,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
 
     inputInstances[0].onSubmit!("unlimited");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
-    expect(mockDone).toHaveBeenCalledWith();
+    expect(mockDone).toHaveBeenCalledWith("(not set)");
   });
 
   it("max turns submenu rejects value < 1", async () => {

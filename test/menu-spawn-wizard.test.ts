@@ -298,7 +298,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
-    expect(item.currentValue).toBe("unset");
+    expect(item.currentValue).toBe("(not set)");
   });
 
   it("pre-populates from config default when agent has no maxTurns", async () => {
@@ -330,7 +330,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("unlimited");
-    expect(mockDone).toHaveBeenCalledWith();
+    expect(mockDone).toHaveBeenCalledWith("(not set)");
   });
 
   it("max turns submenu rejects value < 1", async () => {
@@ -377,7 +377,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
-    expect(item.currentValue).toBe("unset");
+    expect(item.currentValue).toBe("(not set)");
   });
 
   it("max tokens submenu accepts valid number", async () => {
@@ -536,8 +536,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const wtSelectList = selectListInstances[selectListInstances.length - 1];
     const values = wtSelectList.items.map((i: any) => i.value);
     expect(values[0]).toBe("Inherits parent cwd");
-    expect(values).toHaveLength(5);
-    expect(values[4]).toBe("__back__");
+    expect(values).toHaveLength(3);
   });
 
   it("shows 'detached' for detached HEAD worktrees", async () => {
