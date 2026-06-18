@@ -156,7 +156,7 @@ export async function showAgentActions(
 ): Promise<void> {
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const list = buildAgentActionsList(ctx, record, theme, () => done(undefined));
-    return new SettingsListWrapper(list, { title: `Agent ${record.id.slice(0, SHORT_ID_LENGTH)}`, theme });
+    return new SettingsListWrapper(list, { title: `Agent ${record.id.slice(0, SHORT_ID_LENGTH)}`, theme, onCancel: () => done(undefined) });
   });
 }
 
@@ -200,7 +200,7 @@ export function createRunningAgentsMenuComponent(
     }
   };
   list.onCancel = () => onDone();
-  return new SettingsListWrapper(list, { title: "Running Agents", theme });
+  return new SettingsListWrapper(list, { title: "Running Agents", theme, onCancel: () => onDone() });
 }
 
 export async function showRunningAgentsMenu(

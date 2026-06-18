@@ -22,7 +22,9 @@ let settingsListCalls: Array<{
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
+    items: any[];
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+      this.items = items;
       settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options });
     }
   },
@@ -59,20 +61,20 @@ describe("showSystemPromptMenu — SettingsList integration", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    expect(settingsListCalls[0].items.length).toBe(5);
+    expect(settingsListCalls[0].items.length).toBe(6);
   });
 
   it("items have correct ids by default", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "back"]);
+    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "__sep__", "__back__"]);
   });
 
   it("Back item has submenu that calls done", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const backItem = settingsListCalls[0].items.find((i: any) => i.id === "back");
+    const backItem = settingsListCalls[0].items.find((i: any) => i.id === "__back__");
     expect(backItem).toBeDefined();
     expect(backItem.label).toBe("Back");
     const done = vi.fn();
@@ -307,7 +309,7 @@ describe("showSystemPromptMenu — item order", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "back"]);
+    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "__sep__", "__back__"]);
   });
 
   it("items include createPromptFile at correct position when conditional", async () => {
@@ -316,7 +318,7 @@ describe("showSystemPromptMenu — item order", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["systemPromptMode", "createPromptFile", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "back"]);
+    expect(ids).toEqual(["systemPromptMode", "createPromptFile", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "__sep__", "__back__"]);
     vi.restoreAllMocks();
   });
 });

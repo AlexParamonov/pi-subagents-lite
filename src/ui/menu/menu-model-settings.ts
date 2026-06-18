@@ -188,6 +188,6 @@ export async function showModelSettingsMenu(
     };
 
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "Model Settings", theme });
+    return new SettingsListWrapper(settingsList, { title: "Model Settings", theme, onCancel: () => done(undefined) });
   });
 }

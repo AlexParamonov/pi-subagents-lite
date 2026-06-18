@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, backSubmenuItem } from "./helpers.js";
+import { buildSettingsListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { SystemPromptMode } from "../../types.js";
 import { getStore } from "../../shell.js";
@@ -93,9 +93,7 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
   };
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    // Back needs access to done to close the menu
-    items.push(backSubmenuItem(() => done(undefined)));
     const settingsList = new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "System Prompt", theme });
+    return new SettingsListWrapper(settingsList, { title: "System Prompt", theme, onCancel: () => done(undefined) });
   });
 }

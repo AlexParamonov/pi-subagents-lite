@@ -128,7 +128,7 @@ export function createDebugMenuComponent(
     }
   };
   selectList.onCancel = () => onDone();
-  return new SettingsListWrapper(selectList, { title: "Debug", theme });
+  return new SettingsListWrapper(selectList, { title: "Debug", theme, onCancel: () => onDone() });
 }
 
 export async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void> {

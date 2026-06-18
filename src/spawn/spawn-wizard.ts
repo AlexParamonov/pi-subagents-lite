@@ -13,10 +13,11 @@ import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-t
 import type { ThinkingLevel } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../agents/agent-types.js";
 import { findModelInRegistry } from "../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme, backSubmenuItem } from "../ui/menu/helpers.js";
+import { buildSettingsListTheme, buildSelectListTheme } from "../ui/menu/helpers.js";
 import { createModelSelectSubmenu } from "../ui/menu/submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "../ui/menu/submenus/numeric-input.js";
 import { SettingsListWrapper } from "../ui/menu/wrappers/settings-list.js";
+import { SelectListWrapper } from "../ui/menu/wrappers/select-list.js";
 import {
   getPiInstance,
   getSessionCtx,
@@ -342,7 +343,7 @@ export async function showSpawnAgentMenu(
                 }),
               ];
               const list = new SelectList(pickerItems, 10, buildSelectListTheme(theme));
-              list.onSelect = (item: any) => {
+              list.onSelect = (item) => {
                 if (item.value === "Inherits parent cwd") {
                   currentWorktreePath = undefined;
                   done("Inherits parent cwd");
@@ -352,8 +353,7 @@ export async function showSpawnAgentMenu(
                   done(wt?.branch ?? "detached");
                 }
               };
-              list.onCancel = () => done();
-              return list;
+              return new SelectListWrapper(list, { title: "Worktree", theme, onCancel: () => done() });
             },
           } as SettingItem]
         : []),
@@ -392,15 +392,9 @@ export async function showSpawnAgentMenu(
         label: "Prompt",
         currentValue: prompt,
         submenu: createInputSubmenu(ctx, { required: true }),
-      },
-      {
-        id: "separator",
-        label: "",
-        currentValue: "",
-      },
+      }
     ];
 
-    items.push(backSubmenuItem(() => doneRef()));
     return items;
   };
 
@@ -426,6 +420,6 @@ export async function showSpawnAgentMenu(
       }
     };
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, doneRef);
-    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme });
+    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme, onCancel: () => doneRef() });
   });
 }

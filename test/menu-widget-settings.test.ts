@@ -30,7 +30,9 @@ let inputInstances: Array<{
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
+    items: any[];
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+      this.items = items;
       settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options });
     }
   },
@@ -78,14 +80,14 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    expect(settingsListCalls[0].items.length).toBe(7);
+    expect(settingsListCalls[0].items.length).toBe(9);
   });
 
   it("main items have correct ids", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["compact", "maxLines", "descLengthFull", "maxLinesCompact", "descLengthCompact", "shortcut", "usageStats"]);
+    expect(ids).toEqual(["compact", "maxLines", "descLengthFull", "maxLinesCompact", "descLengthCompact", "shortcut", "usageStats", "__sep__", "__back__"]);
   });
 
   it("shows 'Force compact mode' with current value", async () => {
@@ -467,7 +469,7 @@ describe("showWidgetSettingsMenu — item order", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["compact", "maxLines", "descLengthFull", "maxLinesCompact", "descLengthCompact", "shortcut", "usageStats"]);
+    expect(ids).toEqual(["compact", "maxLines", "descLengthFull", "maxLinesCompact", "descLengthCompact", "shortcut", "usageStats", "__sep__", "__back__"]);
   });
 
   it("stat items in submenu appear in correct order", async () => {

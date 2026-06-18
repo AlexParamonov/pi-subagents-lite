@@ -124,6 +124,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     ];
 
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "Widget Settings", theme });
+    return new SettingsListWrapper(settingsList, { title: "Widget Settings", theme, onCancel: () => done(undefined) });
   });
 }

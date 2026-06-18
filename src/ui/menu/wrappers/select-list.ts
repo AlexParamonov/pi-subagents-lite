@@ -8,7 +8,7 @@
  * - Bottom separator line
  */
 
-import { type Component, isFocusable } from "@earendil-works/pi-tui";
+import { type Component, isFocusable, SelectList } from "@earendil-works/pi-tui";
 
 export interface SelectListWrapperTheme {
   bold: (text: string) => string;
@@ -19,6 +19,7 @@ export interface SelectListWrapperOptions {
   title: string;
   theme: SelectListWrapperTheme;
   separatorChar?: string;
+  onCancel?: () => void;
 }
 
 export class SelectListWrapper implements Component {
@@ -32,6 +33,21 @@ export class SelectListWrapper implements Component {
     this.title = options.title;
     this.theme = options.theme;
     this.separatorChar = options.separatorChar ?? "─";
+
+    // Append Back item and wire cancel
+    if (options.onCancel) {
+      const list = this.selectList as any;
+      list.items = [...list.items, { value: "", label: "", description: "" }, { value: "__back__", label: "Back", description: "" }];
+      const prevOnSelect = list.onSelect;
+      list.onSelect = (item: any) => {
+        if (item.value === "__back__") {
+          options.onCancel!();
+        } else {
+          prevOnSelect?.(item);
+        }
+      };
+      list.onCancel = () => options.onCancel!();
+    }
   }
 
   invalidate(): void {

@@ -168,6 +168,6 @@ export async function showConcurrencySettingsMenu(
     const onChange = (_id: string, _newValue: string) => {};
 
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "Concurrency Settings", theme });
+    return new SettingsListWrapper(settingsList, { title: "Concurrency Settings", theme, onCancel: () => done(undefined) });
   });
 }

@@ -23,6 +23,7 @@ export interface SettingsListWrapperOptions {
   footerText?: string;
   /** If true, skip j/k→arrow and arrow→enter/escape conversion. Input passes through unchanged. */
   passthroughKeys?: boolean;
+  onCancel?: () => void;
 }
 
 export class SettingsListWrapper implements Component {
@@ -40,6 +41,27 @@ export class SettingsListWrapper implements Component {
     this.separatorChar = options.separatorChar ?? "─";
     this.footerText = options.footerText ?? "Enter/→ to change · Esc to cancel";
     this.passthroughKeys = options.passthroughKeys ?? false;
+
+    // Append Back item when onCancel provided
+    if (options.onCancel) {
+      const list = this.settingsList as any;
+      if (Array.isArray(list.items)) {
+        const closeMenu = options.onCancel;
+        list.items.push(
+          { id: "__sep__", label: "", currentValue: "" },
+          {
+            id: "__back__",
+            label: "Back",
+            currentValue: "",
+            submenu: (_v: string, subDone: (v?: string) => void) => {
+              subDone();
+              closeMenu();
+              return undefined as any;
+            },
+          },
+        );
+      }
+    }
   }
 
   invalidate(): void {

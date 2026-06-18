@@ -51,7 +51,7 @@ export async function showSettingsMenu(
       const list = new SelectList(items, 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
       list.onCancel = () => done(undefined);
-      return new SelectListWrapper(list, { title: "Settings", theme });
+      return new SelectListWrapper(list, { title: "Settings", theme, onCancel: () => done(undefined) });
     });
     if (choice === undefined) return;
 
@@ -81,7 +81,7 @@ export async function showAgentsMainMenu(
       const list = new SelectList(items, 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
       list.onCancel = () => done(undefined);
-      return new SelectListWrapper(list, { title: "Agents", theme });
+      return new SelectListWrapper(list, { title: "Agents", theme, onCancel: () => done(undefined) });
     });
     if (choice === undefined) return;
 

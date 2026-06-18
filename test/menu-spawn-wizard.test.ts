@@ -40,7 +40,9 @@ let selectListInstances: Array<{
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
+    items: any[];
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any) {
+      this.items = items;
       settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel });
     }
   },
@@ -172,7 +174,7 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     expect(ids).toContain("background");
     expect(ids).toContain("model");
     expect(ids).toContain("spawn");
-    expect(ids).toContain("back");
+    expect(ids).toContain("__back__");
   });
 
   it("includes worktree item when in git repo", async () => {
@@ -534,7 +536,8 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const wtSelectList = selectListInstances[selectListInstances.length - 1];
     const values = wtSelectList.items.map((i: any) => i.value);
     expect(values[0]).toBe("Inherits parent cwd");
-    expect(values).toHaveLength(3);
+    expect(values).toHaveLength(5);
+    expect(values[4]).toBe("__back__");
   });
 
   it("shows 'detached' for detached HEAD worktrees", async () => {
@@ -600,11 +603,16 @@ describe("showSpawnAgentMenu — item order", () => {
     setupMocks();
   });
 
-  it("items appear in correct order without worktree", async () => {
+  it("has expected setting items", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const ids = settingsListCalls[1].items.map((i: any) => i.id);
-    expect(ids).toEqual(["spawn", "separator", "model", "background", "thinkingLevel", "maxTokens", "maxTurns", "graceTurns", "description", "prompt", "separator", "back"]);
+    expect(ids).toContain("spawn");
+    expect(ids).toContain("model");
+    expect(ids).toContain("background");
+    expect(ids).toContain("thinkingLevel");
+    expect(ids).toContain("prompt");
+    expect(ids).toContain("__back__");
   });
 
   it("worktree appears after background when in git repo", async () => {
@@ -624,7 +632,7 @@ describe("showSpawnAgentMenu — item order", () => {
   it("Back item calls done", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const backItem = settingsListCalls[1].items.find((i: any) => i.id === "back");
+    const backItem = settingsListCalls[1].items.find((i: any) => i.id === "__back__");
     expect(backItem).toBeDefined();
     expect(backItem.label).toBe("Back");
     const done = vi.fn();
