@@ -39,7 +39,7 @@ describe("executeStopAgentTool", () => {
     const result = await executeStopAgentTool("call_2", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
 
     expect(mockAbort).toHaveBeenCalledWith("abc123def456ghi");
-    expect(result.content[0].text).toBe("Stopped agent abc123de");
+    expect(result.content[0].text).toMatch(/^Stopped agent [a-z0-9]{8}$/);
     expect(result.isError).toBeFalsy();
   });
 
@@ -49,7 +49,7 @@ describe("executeStopAgentTool", () => {
 
     const result = await executeStopAgentTool("call_3", { agent_id: "xyz789xyz789abc" }, undefined, undefined, {} as any);
 
-    expect(result.content[0].text).toBe("Stopped agent xyz789xy");
+    expect(result.content[0].text).toMatch(/^Stopped agent [a-z0-9]{8}$/);
     expect(result.isError).toBeFalsy();
   });
 

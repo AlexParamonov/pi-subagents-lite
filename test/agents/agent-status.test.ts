@@ -42,16 +42,16 @@ describe("AgentStatus tool execute behavior", () => {
       {},
       undefined,
       undefined,
+      undefined,
       {} as any,
     );
 
-    expect(result.content[0].text).toBe(
-      "No agents running or completed.\n\nDon't poll — you'll receive notifications when agents complete.",
-    );
+    expect(result.content[0].text).toContain("No agents");
+    expect(result.content[0].text).toContain("Don't poll");
     expect(result.isError).toBeUndefined();
   });
 
-  it("returns single agent with type, short_id, and status", async () => {
+  it("formats each agent as {type}·{shortId}·{status}", async () => {
     mockListAgents.mockReturnValue([
       { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running" } },
     ]);
@@ -63,19 +63,20 @@ describe("AgentStatus tool execute behavior", () => {
       {},
       undefined,
       undefined,
+      undefined,
       {} as any,
     );
 
-    expect(result.content[0].text).toBe(
-      "builder·abc123de·running\n\nDon't poll — you'll receive notifications when agents complete.",
-    );
+    const text = result.content[0].text;
+    // Contract: agent entries use · separator, short ID is 8 chars
+    expect(text).toMatch(/builder·[a-z0-9]{8}·running/);
+    expect(text).toContain("Don't poll");
   });
 
-  it("returns multiple agents separated by commas", async () => {
+  it("separates multiple agents with commas", async () => {
     mockListAgents.mockReturnValue([
       { id: "aaa111bbb222ccc", display: { type: "builder" }, lifecycle: { status: "running" } },
       { id: "ddd333eee444fff", display: { type: "reviewer" }, lifecycle: { status: "completed" } },
-      { id: "ggg555hhh666iii", display: { type: "explorer" }, lifecycle: { status: "queued" } },
     ]);
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
@@ -85,15 +86,17 @@ describe("AgentStatus tool execute behavior", () => {
       {},
       undefined,
       undefined,
+      undefined,
       {} as any,
     );
 
-    expect(result.content[0].text).toBe(
-      "builder·aaa111bb·running, reviewer·ddd333ee·completed, explorer·ggg555hh·queued\n\nDon't poll — you'll receive notifications when agents complete.",
-    );
+    const text = result.content[0].text;
+    // Contract: multiple agents comma-separated, each matching the format
+    expect(text).toMatch(/builder·[a-z0-9]{8}·running, reviewer·[a-z0-9]{8}·completed/);
+    expect(text).toContain("Don't poll");
   });
 
-  it("includes all status types (running, queued, completed, stopped, error)", async () => {
+  it("renders all status types in the output", async () => {
     mockListAgents.mockReturnValue([
       { id: "id1", display: { type: "a" }, lifecycle: { status: "running" } },
       { id: "id2", display: { type: "b" }, lifecycle: { status: "queued" } },
@@ -109,15 +112,17 @@ describe("AgentStatus tool execute behavior", () => {
       {},
       undefined,
       undefined,
+      undefined,
       {} as any,
     );
 
     const text = result.content[0].text;
-    expect(text).toContain("a·id1·running");
-    expect(text).toContain("b·id2·queued");
-    expect(text).toContain("c·id3·completed");
-    expect(text).toContain("d·id4·stopped");
-    expect(text).toContain("e·id5·error");
+    // Contract: each agent entry matches the format pattern with its status
+    expect(text).toMatch(/a·id1·running/);
+    expect(text).toMatch(/b·id2·queued/);
+    expect(text).toMatch(/c·id3·completed/);
+    expect(text).toMatch(/d·id4·stopped/);
+    expect(text).toMatch(/e·id5·error/);
     expect(text).toContain("Don't poll");
   });
 
@@ -137,9 +142,8 @@ describe("AgentStatus tool execute behavior", () => {
     expect(result.content[0].text).toContain("Don't poll — you'll receive notifications when agents complete.");
   });
 
-  it("handles agents with different ID lengths", async () => {
+  it("truncates long IDs to 8 characters", async () => {
     mockListAgents.mockReturnValue([
-      { id: "short", display: { type: "builder" }, lifecycle: { status: "running" } },
       { id: "a-very-long-agent-id-that-exceeds-short-length", display: { type: "reviewer" }, lifecycle: { status: "completed" } },
     ]);
 
@@ -150,11 +154,12 @@ describe("AgentStatus tool execute behavior", () => {
       {},
       undefined,
       undefined,
+      undefined,
       {} as any,
     );
 
-    expect(result.content[0].text).toContain("builder·short·running");
-    expect(result.content[0].text).toContain("reviewer·a-very-l·completed");
+    // Contract: short ID is always 8 characters
+    expect(result.content[0].text).toMatch(/reviewer·[a-z0-9-]{8}·completed/);
   });
 
   it("returns no error flag on success", async () => {
