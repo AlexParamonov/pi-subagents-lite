@@ -164,6 +164,7 @@ export function buildAgentActionsList(
     } else if (item.value === "stop") {
       getManager()?.abort(record.id);
       ctx.ui.notify(`Stopped ${shortId}`, "info");
+      done();
     }
   };
   list.onCancel = () => done();
