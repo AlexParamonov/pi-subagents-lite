@@ -65,18 +65,29 @@ describe("showSpawnOptionsMenu — SettingsList integration", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("creates a SettingsList with 4 items", async () => {
+  it("creates a SettingsList with 5 items (including Back)", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    expect(settingsListCalls[0].items.length).toBe(4);
+    expect(settingsListCalls[0].items.length).toBe(5);
   });
 
   it("items have correct ids", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["forceBackground", "graceTurns", "defaultMaxTurns", "defaultThinking"]);
+    expect(ids).toEqual(["forceBackground", "graceTurns", "defaultMaxTurns", "defaultThinking", "back"]);
+  });
+
+  it("Back item has submenu that calls done", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const backItem = settingsListCalls[0].items.find((i: any) => i.id === "back");
+    expect(backItem).toBeDefined();
+    expect(backItem.label).toBe("Back");
+    const done = vi.fn();
+    backItem.submenu("", done);
+    expect(done).toHaveBeenCalled();
   });
 });
 
@@ -341,10 +352,10 @@ describe("showSpawnOptionsMenu — item order", () => {
     inputInstances = [];
   });
 
-  it("items appear in correct order: forceBackground, graceTurns, defaultMaxTurns, defaultThinking", async () => {
+  it("items appear in correct order: forceBackground, graceTurns, defaultMaxTurns, defaultThinking, back", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["forceBackground", "graceTurns", "defaultMaxTurns", "defaultThinking"]);
+    expect(ids).toEqual(["forceBackground", "graceTurns", "defaultMaxTurns", "defaultThinking", "back"]);
   });
 });

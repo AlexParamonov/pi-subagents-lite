@@ -13,9 +13,9 @@ import type { AgentConfig } from "../types.js";
  * All tool names that Pi can provide to a session.
  *
  * Note: only `read`, `bash`, `edit`, `write` are active by default.
- * `grep` must be explicitly activated via setActiveToolsByName().
- * `find` and `ls` were removed — they're thin wrappers over bash commands
- * that add ~180 tokens/turn with no real benefit.
+ * `find` and `grep` must be explicitly activated via setActiveToolsByName().
+ * `ls` was removed — it's a thin wrapper over bash that adds ~180 tokens/turn
+ * with no real benefit.
  */
 export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find"];
 

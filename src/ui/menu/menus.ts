@@ -1,14 +1,12 @@
 /**
  * menus.ts — /agents command dispatcher.
  *
- * Uses ctx.ui.select with a while(true) loop for the dispatcher menus (main, settings).
- * This pattern is correct for dispatchers because:
- *   - They don't need cursor persistence (cursor position doesn't matter for dispatchers)
- *   - ctx.ui.select handles escape correctly and re-renders after each submenu
- *   - SettingsList-based menus (spawn options, system prompt) have the cursor persistence issue
+ * Uses SelectList from @earendil-works/pi-tui via ctx.ui.custom.
+ * Each iteration creates a fresh SelectList; submenu closes it before opening.
+ * No nested ctx.ui.custom calls.
  *
  * Module structure:
- *   - menu-helpers.ts: shared helpers (runMenuLoop, runMenu, promptModelSelection, parseNumericInput, matchMenuChoice, buildSettingsListTheme, validateNumeric)
+ *   - menu-helpers.ts: shared helpers (buildSettingsListTheme, buildSelectListTheme, validateNumeric)
  *   - menu-model-settings.ts: showModelSettingsMenu
  *   - menu-concurrency.ts: showConcurrencySettingsMenu
  *   - menu-widget-settings.ts: showWidgetSettingsMenu
@@ -20,7 +18,9 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { matchMenuChoice } from "./menu-helpers.js";
+import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
+import { buildSelectListTheme } from "./menu-helpers.js";
+import { SelectListWrapper } from "./menu-select-list-wrapper.js";
 import { showModelSettingsMenu } from "./menu-model-settings.js";
 import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
 import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
@@ -38,30 +38,30 @@ export async function showSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const menuItems = [
-    "1. Model settings — Set global default and per-type model overrides",
-    "2. Concurrency settings — Set per-model slot limits",
-    "3. Spawn options — Default thinking, max turns, background, grace turns",
-    "4. System prompt — Prompt mode, custom prompt file, AGENTS.md",
-    "5. Widget settings — Configure widget display options",
-    "",
-    "Back",
+  const items: SelectItem[] = [
+    { value: "model", label: "Model settings", description: "Set global default and per-type model overrides" },
+    { value: "concurrency", label: "Concurrency settings", description: "Set per-model slot limits" },
+    { value: "spawnoptions", label: "Spawn options", description: "Default thinking, max turns, background, grace turns" },
+    { value: "systemprompt", label: "System prompt", description: "Prompt mode, custom prompt file, AGENTS.md" },
+    { value: "widget", label: "Widget settings", description: "Configure widget display options" },
   ];
 
-  const handlers: Record<string, () => Promise<void>> = {
-    "1": () => showModelSettingsMenu(ctx, modelOptions),
-    "2": () => showConcurrencySettingsMenu(ctx, modelOptions),
-    "3": () => showSpawnOptionsMenu(ctx),
-    "4": () => showSystemPromptMenu(ctx),
-    "5": () => showWidgetSettingsMenu(ctx),
-  };
-
   while (true) {
-    const choice = await ctx.ui.select("Settings", menuItems);
-    if (choice === undefined || choice === "Back") return;
+    const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
+      const list = new SelectList(items, 10, buildSelectListTheme(theme));
+      list.onSelect = (item) => done(item.value);
+      list.onCancel = () => done(undefined);
+      return new SelectListWrapper(list, { title: "Settings", theme });
+    });
+    if (choice === undefined) return;
 
-    const action = matchMenuChoice(choice, handlers);
-    if (action) await action();
+    switch (choice) {
+      case "model": await showModelSettingsMenu(ctx, modelOptions); break;
+      case "concurrency": await showConcurrencySettingsMenu(ctx, modelOptions); break;
+      case "spawnoptions": await showSpawnOptionsMenu(ctx); break;
+      case "systemprompt": await showSystemPromptMenu(ctx); break;
+      case "widget": await showWidgetSettingsMenu(ctx); break;
+    }
   }
 }
 
@@ -69,28 +69,27 @@ export async function showAgentsMainMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const menuItems = [
-    "1. Running agents — List running/queued agents",
-    "2. Spawn agent — Manually spawn a new agent",
-    "3. Settings — Model, concurrency, and widget settings",
-    "4. Debug — Agent types, briefing, diagnostics",
-    "",
-    "Press Escape to close",
+  const items: SelectItem[] = [
+    { value: "running", label: "Running agents", description: "List running/queued agents" },
+    { value: "spawn", label: "Spawn agent", description: "Manually spawn a new agent" },
+    { value: "settings", label: "Settings", description: "Model, concurrency, and widget settings" },
+    { value: "debug", label: "Debug", description: "Agent types, briefing, diagnostics" },
   ];
 
-  const handlers: Record<string, () => Promise<void>> = {
-    "1": () => showRunningAgentsMenu(ctx),
-    "2": () => showSpawnAgentMenu(ctx, modelOptions),
-    "3": () => showSettingsMenu(ctx, modelOptions),
-    "4": () => showDebugMenu(ctx),
-  };
-
-  // Loop so sub-menus navigate back to root; only Escape at root closes
   while (true) {
-    const choice = await ctx.ui.select("Subagents Management", menuItems);
-    if (choice === undefined || choice === "Press Escape to close") return;
+    const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
+      const list = new SelectList(items, 10, buildSelectListTheme(theme));
+      list.onSelect = (item) => done(item.value);
+      list.onCancel = () => done(undefined);
+      return new SelectListWrapper(list, { title: "Agents", theme });
+    });
+    if (choice === undefined) return;
 
-    const action = matchMenuChoice(choice, handlers);
-    if (action) await action();
+    switch (choice) {
+      case "running": await showRunningAgentsMenu(ctx); break;
+      case "spawn": await showSpawnAgentMenu(ctx, modelOptions); break;
+      case "settings": await showSettingsMenu(ctx, modelOptions); break;
+      case "debug": await showDebugMenu(ctx); break;
+    }
   }
 }

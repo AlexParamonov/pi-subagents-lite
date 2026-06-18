@@ -14,8 +14,10 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, validateNumeric } from "./menu-helpers.js";
+import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
+import { buildSettingsListTheme } from "./menu-helpers.js";
+import { createNumericInputSubmenu } from "./menu-numeric-input-submenu.js";
+import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
 
 /** Stat visibility config — label and store accessors keyed by stat id. */
@@ -56,24 +58,13 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   };
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const numericSubmenu = (
-      min: number,
-      onValid: (parsed: number) => void,
-    ) => (currentValue: string, doneSub: (selectedValue?: string) => void) => {
-      const input = new Input();
-      input.setValue(currentValue);
-      input.onSubmit = (value) => {
-        const parsed = validateNumeric(value, min);
-        if (parsed === undefined) {
-          ctx.ui.notify(`Invalid value — must be a number ≥ ${min}`, "error");
-          return;
-        }
-        onValid(parsed);
-        doneSub(String(parsed));
-      };
-      input.onEscape = () => doneSub();
-      return input;
-    };
+    const numericSubmenu = (min: number, onValid: (parsed: number) => void) =>
+      createNumericInputSubmenu({
+        min,
+        minLabel: `≥ ${min}`,
+        onValid,
+        onError: (msg) => ctx.ui.notify(msg, "error"),
+      });
 
     const statItems: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
       id,
@@ -134,12 +125,13 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       {
         id: "usageStats",
         label: "Usage stats",
-        currentValue: "",
+        currentValue: "→",
         submenu: (_currentValue, done2) =>
           new SettingsList(statItems, 7, buildSettingsListTheme(theme), onChange, () => done2()),
       },
     ];
 
-    return new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
+    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
+    return new SettingsListWrapper(settingsList, { title: "Widget Settings", theme });
   });
 }

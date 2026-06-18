@@ -1,18 +1,16 @@
 /**
  * menu-helpers.ts — Shared helpers for menu modules.
  *
- * Exports only helpers used by 2+ menu concerns:
- *   - runMenuLoop: loops a menu until Escape/Back
- *   - runMenu: shows a single-shot menu and dispatches
- *   - promptModelSelection: shows ModelSelectorDialog
- *   - parseNumericInput: validates numeric input (uses ctx.ui.input)
+ * Exports:
+ *   - promptModelSelection: shows ModelSelectorDialog (used by spawn-wizard)
  *   - buildSettingsListTheme: builds SettingsListTheme from pi-coding-agent Theme
+ *   - buildSelectListTheme: builds SelectListTheme from pi-coding-agent Theme
  *   - validateNumeric: pure numeric validation (no UI)
- *   - matchMenuChoice: maps choice string to handler key
+ *   - createDelegatingComponent: swappable-component proxy for submenu transitions
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { SettingsListTheme } from "@earendil-works/pi-tui";
+import type { Component, SettingsListTheme, SettingItem } from "@earendil-works/pi-tui";
 import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
 import { parseModelKey } from "../../utils.js";
 
@@ -20,7 +18,7 @@ import { parseModelKey } from "../../utils.js";
  * Build ModelOption[] from raw "provider/model-id" strings.
  * Includes "(inherits parent)" as the first option.
  */
-function buildModelOptions(rawOptions: string[]): ModelOption[] {
+export function buildModelOptions(rawOptions: string[]): ModelOption[] {
   const items: ModelOption[] = [
     { value: "(inherits parent)", label: "(inherits parent)", provider: "" },
   ];
@@ -53,81 +51,17 @@ export async function promptModelSelection(
 }
 
 /**
- * Prompt for numeric input, validate (integer ≥ min), return parsed value or undefined.
- * Returns undefined if the user cancels or the value is invalid.
- */
-export async function parseNumericInput(
-  ctx: ExtensionCommandContext,
-  label: string,
-  initialValue: string,
-  min: number,
-  minLabel: string,
-): Promise<number | undefined> {
-  const input = await ctx.ui.input(label, initialValue);
-  if (input === undefined) return undefined;
-  const parsed = parseInt(input.trim(), 10);
-  if (isNaN(parsed) || parsed < min) {
-    ctx.ui.notify(`Invalid value — must be a number ${minLabel}`, "error");
-    return undefined;
-  }
-  return parsed;
-}
-
-/**
- * Show a select menu once, dispatch the chosen action.
- * Used by the per-agent action sub-menu (single-shot, not a loop).
- */
-export async function runMenu(
-  ctx: ExtensionCommandContext,
-  title: string,
-  items: string[],
-  actions: Array<() => Promise<void>>,
-): Promise<void> {
-  const choice = await ctx.ui.select(title, items);
-  if (choice === undefined) return;
-  const idx = items.indexOf(choice);
-  if (idx >= 0 && idx < actions.length) {
-    await actions[idx]();
-  }
-}
-
-/**
- * Loop a menu until the user presses Escape or selects "Back".
- * Rebuilds items/actions each iteration so the display stays fresh.
- * Appends blank spacer + "Back" automatically.
- * Used by model settings, concurrency settings, and running agents menus.
- */
-export async function runMenuLoop(
-  ctx: ExtensionCommandContext,
-  title: string,
-  build: () => { items: string[]; actions: Array<() => Promise<void>> },
-): Promise<void> {
-  while (true) {
-    const { items, actions } = build();
-    items.push("");
-    actions.push(async () => {});
-    items.push("Back");
-    actions.push(async () => {});
-
-    const choice = await ctx.ui.select(title, items);
-    if (choice === undefined || choice === "Back") return;
-    const idx = items.indexOf(choice);
-    if (idx >= 0 && idx < actions.length) {
-      await actions[idx]();
-    }
-  }
-}
-
-/**
  * Build a SettingsListTheme from a pi-coding-agent Theme.
  * Shared by widget settings and future SettingsList-based menus.
  */
-export function buildSettingsListTheme(theme: { fg(color: string, text: string): string; bold(text: string): string; italic(text: string): string }): SettingsListTheme {
+export function buildSettingsListTheme(theme: { fg(color: string, text: string): string; bold(text: string): string }): SettingsListTheme {
   return {
-    label: (text, selected) => selected ? theme.bold(theme.fg("accent", text)) : text,
+    label: (text, selected) => selected ? theme.fg("accent", text) : text,
     value: (text, selected) => selected ? theme.fg("accent", text) : theme.fg("muted", text),
-    description: (text) => theme.italic(theme.fg("muted", text)),
-    cursor: theme.fg("accent", ">"),
+    description: (text) => theme.fg("muted", text),
+    // Use "→ " (2 chars) to match non-selected prefix "  " (2 spaces)
+    // This prevents menu items from shifting left/right when cursor moves
+    cursor: theme.fg("accent", "→ "),
     hint: (text) => theme.fg("dim", text),
   };
 }
@@ -142,15 +76,53 @@ export function validateNumeric(value: string, min: number): number | undefined 
   return parsed;
 }
 
-/** Map menu choice to handler. Matches by number prefix or first word. */
-export function matchMenuChoice(
-  choice: string,
-  handlers: Record<string, () => Promise<void>>,
-): (() => Promise<void>) | undefined {
-  // Try number prefix first (e.g., "1." from "1. Running agents")
-  const numMatch = choice.match(/^(\d+)/);
-  if (numMatch) return handlers[numMatch[1]];
-  // Fall back to first word
-  const key = choice.split(" ")[0].toLowerCase();
-  return handlers[key];
+/**
+ * Create a "Back" item that closes the whole SettingsList menu.
+ *
+ * SettingsList has no native action item: activating an item needs a submenu
+ * or values. So Back is a submenu that immediately closes both the submenu
+ * (subDone) and the parent menu (closeMenu). Returning undefined skips
+ * rendering a submenu body.
+ */
+export function backSubmenuItem(closeMenu: () => void): SettingItem {
+  return {
+    id: "back",
+    label: "Back",
+    currentValue: "",
+    submenu: (_v, subDone) => {
+      subDone();
+      closeMenu();
+      return undefined as any;
+    },
+  };
 }
+
+/**
+ * Create a Component that delegates to a swappable inner component.
+ * Use in submenus that switch between SelectList → Input (or similar).
+ */
+export function createDelegatingComponent(initial: Component): Component & { setActive(c: Component): void } {
+  let active = initial;
+  return {
+    invalidate() { active.invalidate?.(); },
+    render(width: number) { return active.render(width); },
+    handleInput(data: string) { active.handleInput?.(data); },
+    setActive(c: Component) { active = c; },
+  };
+}
+
+/**
+ * Build a SelectListTheme from a pi-coding-agent Theme.
+ * Produces identical visual style to buildSettingsListTheme:
+ *   → cursor, accent colors, muted descriptions.
+ */
+export function buildSelectListTheme(theme: { fg(color: string, text: string): string; bold(text: string): string }): import("@earendil-works/pi-tui").SelectListTheme {
+  return {
+    selectedPrefix: () => theme.fg("accent", "→ "),
+    selectedText: (text) => theme.fg("accent", text),
+    description: (text) => theme.fg("muted", text),
+    scrollInfo: (text) => theme.fg("dim", text),
+    noMatch: (text) => theme.fg("dim", text),
+  };
+}
+

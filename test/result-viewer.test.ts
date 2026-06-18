@@ -488,6 +488,51 @@ describe("ResultViewer stats line", () => {
     expect(statsLine).not.toMatch(/\d+s$/);
   });
 
+  it("shows model name before token usage when modelName is provided", () => {
+    const stats: ResultViewerStats = {
+      lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 },
+      turnCount: 15,
+      durationMs: 47000,
+      modelName: "gpt-4o",
+    };
+
+    const viewer = new ResultViewer(
+      "test",
+      "content",
+      dummyCallbacks,
+      noopTheme,
+      40,
+      stats,
+    );
+
+    const texts = collectTopLevelText(viewer);
+    const statsLine = texts.find((t) => t.includes("↑12.0k"));
+    expect(statsLine).toBeDefined();
+    expect(statsLine).toMatch(/^ gpt-4o · ↑/);
+  });
+
+  it("omits model name prefix when modelName is undefined", () => {
+    const stats: ResultViewerStats = {
+      lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 },
+      turnCount: 15,
+      durationMs: 47000,
+    };
+
+    const viewer = new ResultViewer(
+      "test",
+      "content",
+      dummyCallbacks,
+      noopTheme,
+      40,
+      stats,
+    );
+
+    const texts = collectTopLevelText(viewer);
+    const statsLine = texts.find((t) => /^ ↑\d/.test(t));
+    expect(statsLine).toBeDefined();
+    expect(statsLine).toMatch(/^ ↑/);
+  });
+
   it("handles zero usage values", () => {
     const stats: ResultViewerStats = {
       lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },

@@ -13,7 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme } from "./menu-helpers.js";
+import { buildSettingsListTheme, backSubmenuItem } from "./menu-helpers.js";
+import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import type { SystemPromptMode } from "../../types.js";
 import { getStore } from "../../shell.js";
 import { CUSTOM_PROMPT_PATH } from "../../agents/agent-runner.js";
@@ -70,7 +71,7 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       case "createPromptFile":
         try {
           fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
-          fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are a Pi, an expect coding sub-agent.\nYou have been invoked to handle a specific task autonomously", "utf-8");
+          fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously", "utf-8");
           ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
         } catch (err: any) {
           ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
@@ -91,7 +92,10 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
     }
   };
 
-  await ctx.ui.custom((_tui, theme, _kb, done) =>
-    new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined))
-  );
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    // Back needs access to done to close the menu
+    items.push(backSubmenuItem(() => done(undefined)));
+    const settingsList = new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined));
+    return new SettingsListWrapper(settingsList, { title: "System Prompt", theme });
+  });
 }

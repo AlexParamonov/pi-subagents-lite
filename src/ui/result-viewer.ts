@@ -34,6 +34,7 @@ export interface ResultViewerStats {
   lifetimeUsage: LifetimeUsage;
   turnCount?: number;
   durationMs?: number;
+  modelName?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -201,6 +202,10 @@ export class ResultViewer extends Container implements Component {
    */
   private formatStatsLine(stats: ResultViewerStats): string {
     const parts: string[] = [];
+
+    if (stats.modelName) {
+      parts.push(stats.modelName);
+    }
 
     const { lifetimeUsage } = stats;
     parts.push(`↑${formatTokens(lifetimeUsage.input)}`);

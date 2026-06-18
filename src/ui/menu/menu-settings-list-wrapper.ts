@@ -1,0 +1,102 @@
+/**
+ * menu-settings-list-wrapper.ts — Wrapper component that adds header/footer to SettingsList.
+ *
+ * Wraps a SettingsList with:
+ * - Top separator line
+ * - Header with title
+ * - SettingsList content
+ * - Bottom separator line
+ * - Footer with navigation hints
+ */
+
+import { type Component, isFocusable } from "@earendil-works/pi-tui";
+
+export interface SettingsListWrapperTheme {
+  bold: (text: string) => string;
+  fg: (color: any, text: string) => string;
+}
+
+export interface SettingsListWrapperOptions {
+  title: string;
+  theme: SettingsListWrapperTheme;
+  separatorChar?: string;
+  footerText?: string;
+  /** If true, skip j/k→arrow and arrow→enter/escape conversion. Input passes through unchanged. */
+  passthroughKeys?: boolean;
+}
+
+export class SettingsListWrapper implements Component {
+  private settingsList: Component;
+  private title: string;
+  private theme: SettingsListWrapperTheme;
+  private separatorChar: string;
+  private footerText: string;
+  private passthroughKeys: boolean;
+
+  constructor(settingsList: Component, options: SettingsListWrapperOptions) {
+    this.settingsList = settingsList;
+    this.title = options.title;
+    this.theme = options.theme;
+    this.separatorChar = options.separatorChar ?? "─";
+    this.footerText = options.footerText ?? "Enter/→ to change · Esc to cancel";
+    this.passthroughKeys = options.passthroughKeys ?? false;
+  }
+
+  invalidate(): void {
+    this.settingsList.invalidate?.();
+  }
+
+  private get hasSubmenu(): boolean {
+    const submenu = (this.settingsList as any)?.submenuComponent ?? null;
+    return isFocusable(submenu);
+  }
+
+  handleInput(data: string): void {
+    if (this.passthroughKeys) {
+      this.settingsList.handleInput?.(data);
+      return;
+    }
+    if (data === "k" || data === "j") {
+      if (this.hasSubmenu) {
+        // Submenu: pass through as normal letters
+        this.settingsList.handleInput?.(data);
+      } else {
+        // Main list: convert to arrow keys
+        this.settingsList.handleInput?.(data === "k" ? "\x1b[A" : "\x1b[B");
+      }
+    } else if (data === "\x1b[C" || data === "\x1bOC" || data === "\x1b[D" || data === "\x1bOD") {
+      if (this.hasSubmenu) {
+        // Submenu: pass arrow keys through (Input needs them for cursor)
+        this.settingsList.handleInput?.(data);
+      } else {
+        // Main list: → enters, ← escapes
+        this.settingsList.handleInput?.(data.includes("C") ? "\r" : "\x1b");
+      }
+    } else {
+      this.settingsList.handleInput?.(data);
+    }
+  }
+
+  render(width: number): string[] {
+    const lines: string[] = [];
+
+    // Top separator
+    lines.push(this.separatorChar.repeat(width));
+    lines.push("");
+
+    // Header (left-aligned with spacing, bold and colored)
+    const styledTitle = this.theme.bold(this.theme.fg("accent", this.title));
+    lines.push("  " + styledTitle);
+    lines.push("");
+
+    // SettingsList content
+    const settingsLines = this.settingsList.render(width);
+    lines.push(...settingsLines);
+
+    // Bottom separator
+    lines.push("");
+    lines.push(this.separatorChar.repeat(width));
+
+    return lines;
+  }
+}

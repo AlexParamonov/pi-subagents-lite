@@ -1,115 +1,246 @@
 /**
  * menu-spawn-wizard.test.ts — Tests for showSpawnAgentMenu.
+ *
+ * Wizard approach: 3 sequential ctx.ui.custom calls.
+ *   Step 1: SelectList for type selection
+ *   Step 2: Input for prompt entry
+ *   Step 3: SettingsList for options + spawn
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules } from "./menu-mock-setup.js";
 import { createMockCtx } from "./menu-test-helpers.js";
-import { showSpawnAgentMenu } from "../src/spawn/spawn-wizard.js";
 import { getAgentConfig } from "../src/agents/agent-types.js";
 
-describe("showSpawnAgentMenu — type selection", () => {
+// Capture SettingsList constructor calls from pi-tui
+let settingsListCalls: Array<{
+  items: any[];
+  maxVisible: number;
+  theme: any;
+  onChange: (id: string, newValue: string) => void;
+  onCancel: () => void;
+}> = [];
+
+// Capture Input instances created
+let inputInstances: Array<{
+  value: string;
+  onSubmit?: (value: string) => void;
+  onEscape?: () => void;
+  setValue: (v: string) => void;
+  getValue: () => string;
+}> = [];
+
+// Capture SelectList instances created
+let selectListInstances: Array<{
+  items: any[];
+  maxVisible: number;
+  onSelect?: (item: any) => void;
+  onCancel?: () => void;
+}> = [];
+
+vi.mock("@earendil-works/pi-tui", () => ({
+  SettingsList: class MockSettingsList {
+    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any) {
+      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel });
+    }
+  },
+  Input: class MockInput {
+    value = "";
+    onSubmit?: (value: string) => void;
+    onEscape?: () => void;
+    setValue(v: string) { this.value = v; }
+    getValue() { return this.value; }
+    constructor() {
+      inputInstances.push(this as any);
+    }
+  },
+  SelectList: class MockSelectList {
+    onSelect?: (item: any) => void;
+    onCancel?: () => void;
+    items: any[];
+    maxVisible: number;
+    constructor(items: any[], maxVisible: number, _theme?: any) {
+      this.items = items;
+      this.maxVisible = maxVisible;
+      selectListInstances.push(this as any);
+    }
+  },
+}));
+
+// Import AFTER mock setup
+import { showSpawnAgentMenu } from "../src/spawn/spawn-wizard.js";
+
+function setupMocks() {
+  mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 6 };
+  mockModules.mockSessionOverrides.default = null;
+  mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
+  mockModules.mockManager.getRecord.mockReset();
+  mockModules.mockPiExec.mockReset();
+  vi.clearAllMocks();
+  settingsListCalls = [];
+  inputInstances = [];
+  selectListInstances = [];
+  (getAgentConfig as any).mockImplementation((name: string) => {
+    if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, maxTokens: 10000, extensions: true, skills: true, systemPrompt: "" };
+    if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
+    return undefined;
+  });
+}
+
+/**
+ * Create a mock ctx that returns step results sequentially.
+ * stepResults: array of values returned from each ctx.ui.custom call.
+ *   undefined = cancel at that step.
+ */
+function createMockWizardCtx(stepResults: (string | undefined)[]) {
+  const ctx = createMockCtx();
+  let callCount = 0;
+  ctx.ui.custom = vi.fn(async (factory) => {
+    const stepIndex = callCount++;
+    // Call factory to create component (captured by pi-tui mocks)
+    const theme = { fg: (c: string, t: string) => t, bold: (t: string) => t };
+    factory(null, theme, null, () => {});
+    return stepResults[stepIndex];
+  });
+  return ctx;
+}
+
+// Helper to complete all 3 wizard steps
+async function completeWizard(ctx: ReturnType<typeof createMockCtx>) {
+  await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+}
+
+describe("showSpawnAgentMenu — wizard flow", () => {
   beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
-    mockModules.mockManager.getRecord.mockReset();
-    vi.clearAllMocks();
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
-      return undefined;
-    });
+    setupMocks();
   });
 
-  it("shows types from getAvailableTypes()", async () => {
-    const ctx = createMockCtx([undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.select).toHaveBeenCalledTimes(1);
-    expect(ctx.ui.select.mock.calls[0][0]).toBe("Select agent type");
-    expect(ctx.ui.select.mock.calls[0][1]).toEqual(["general-purpose", "Explore"]);
+  it("makes 1 ctx.ui.custom call when type selection cancelled", async () => {
+    const ctx = createMockWizardCtx([undefined]);
+    await completeWizard(ctx);
+    expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
   });
 
-  it("returns to main menu on Escape at type selection", async () => {
-    const ctx = createMockCtx([undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.select).toHaveBeenCalledTimes(1);
-    expect(ctx.ui.input).not.toHaveBeenCalled();
+  it("makes 2 ctx.ui.custom calls when prompt cancelled", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", undefined]);
+    await completeWizard(ctx);
+    expect(ctx.ui.custom).toHaveBeenCalledTimes(2);
   });
 
-  it("shows error for unknown type and loops back", async () => {
-    const ctx = createMockCtx(["unknown-type", undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Unknown agent type: unknown-type", "error");
-    expect(ctx.ui.select).toHaveBeenCalledTimes(2);
+  it("makes 3 ctx.ui.custom calls for full wizard (type → prompt → options)", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    expect(ctx.ui.custom).toHaveBeenCalledTimes(3);
+  });
+
+  it("creates SettingsList for type selection (step 1) with search", async () => {
+    const ctx = createMockWizardCtx([undefined]);
+    await completeWizard(ctx);
+    expect(settingsListCalls.length).toBe(1);
+    expect(settingsListCalls[0].items.map((i: any) => i.id)).toEqual(["general-purpose", "Explore"]);
+  });
+
+  it("creates Input for prompt entry (step 2)", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", undefined]);
+    await completeWizard(ctx);
+    expect(inputInstances.length).toBe(1);
+  });
+
+  it("creates SettingsList for options (step 3) plus type selector (step 1)", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    expect(settingsListCalls.length).toBe(2);
   });
 });
 
-describe("showSpawnAgentMenu — prompt entry", () => {
+describe("showSpawnAgentMenu — step 3 options items", () => {
   beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
-    mockModules.mockManager.getRecord.mockReset();
-    vi.clearAllMocks();
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      return undefined;
+    setupMocks();
+  });
+
+  it("options SettingsList has correct items (no type)", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    expect(ids).not.toContain("agentType");
+    expect(ids).toContain("prompt");
+    expect(ids).toContain("description");
+    expect(ids).toContain("thinkingLevel");
+    expect(ids).toContain("maxTurns");
+    expect(ids).toContain("maxTokens");
+    expect(ids).toContain("graceTurns");
+    expect(ids).toContain("background");
+    expect(ids).toContain("model");
+    expect(ids).toContain("spawn");
+    expect(ids).toContain("back");
+  });
+
+  it("includes worktree item when in git repo", async () => {
+    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return { code: 0, stdout: "/test/.git", stderr: "" };
+      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") return { code: 0, stdout: "worktree /test\nbranch refs/heads/main", stderr: "" };
+      return { code: 1, stdout: "", stderr: "" };
     });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    expect(ids).toContain("worktree");
   });
 
-  it("shows prompt input after type selection", async () => {
-    const ctx = createMockCtx(["general-purpose", undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.input).toHaveBeenCalledWith("Agent prompt");
-  });
-
-  it("shows error for empty prompt and loops back", async () => {
-    const ctx = createMockCtx(["general-purpose", undefined], ["", undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Prompt cannot be empty", "error");
-    expect(ctx.ui.input).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns to main menu on Escape at prompt", async () => {
-    const ctx = createMockCtx(["general-purpose", undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.select).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects whitespace-only prompt", async () => {
-    const ctx = createMockCtx(["general-purpose", undefined], ["   ", undefined]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Prompt cannot be empty", "error");
+  it("does not include worktree item when not in git repo", async () => {
+    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return { code: 128, stdout: "", stderr: "" };
+      return { code: 1, stdout: "", stderr: "" };
+    });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    expect(ids).not.toContain("worktree");
   });
 });
 
-describe("showSpawnAgentMenu — options sub-menu", () => {
+describe("showSpawnAgentMenu — description", () => {
   beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 8 };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
-    mockModules.mockManager.getRecord.mockReset();
-    vi.clearAllMocks();
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
-      return undefined;
-    });
+    setupMocks();
   });
 
-  it("shows pre-filled options from agent config and global config", async () => {
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall).toBeDefined();
-    const items: string[] = optionsCall[1];
-    expect(items.find((i: string) => i.startsWith("Description"))).toBe("Description · Do something");
-    expect(items.find((i: string) => i.startsWith("Model"))).toBe("Model · anthropic/claude-sonnet-4-20250514");
-    expect(items.find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · medium");
-    expect(items.find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · 25");
-    expect(items.find((i: string) => i.startsWith("Grace turns"))).toBe("Grace turns · 8");
-    expect(items.find((i: string) => i.startsWith("Background"))).toBe("Background · OFF");
+  it("description pre-filled from prompt (truncated if >50 chars)", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "a".repeat(100), undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "description");
+    expect(item.currentValue).toBe("a".repeat(50));
+  });
+
+  it("description pre-filled from prompt (full if <=50 chars)", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "description");
+    expect(item.currentValue).toBe("fix the bug");
+  });
+
+  it("description submenu creates Input", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "description");
+    const beforeCount = inputInstances.length;
+    const mockDone = vi.fn();
+    item.submenu("fix the bug", mockDone);
+    expect(inputInstances.length).toBe(beforeCount + 1);
+  });
+});
+
+describe("showSpawnAgentMenu — thinking level", () => {
+  beforeEach(() => {
+    setupMocks();
+  });
+
+  it("shows agent config thinking level", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.label).toBe("Thinking level");
+    expect(item.currentValue).toBe("medium");
+    expect(item.values).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "inherit"]);
   });
 
   it("pre-populates thinking from config default when agent has no thinking", async () => {
@@ -118,189 +249,228 @@ describe("showSpawnAgentMenu — options sub-menu", () => {
       if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · high");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.currentValue).toBe("high");
   });
 
-  it("pre-populates max turns from config default when agent has no maxTurns", async () => {
+  it("agent config thinking takes precedence over config default", async () => {
+    mockModules.mockConfig.agent.defaultThinking = "high";
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.currentValue).toBe("medium");
+  });
+
+  it("shows 'inherit' when no config default and no agent config", async () => {
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.currentValue).toBe("inherit");
+  });
+});
+
+describe("showSpawnAgentMenu — max turns submenu", () => {
+  beforeEach(() => {
+    setupMocks();
+  });
+
+  it("shows agent config max turns", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    expect(item.label).toBe("Max turns");
+    expect(item.currentValue).toBe("25");
+  });
+
+  it("shows 'unlimited' when no config and no agent config", async () => {
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    expect(item.currentValue).toBe("unlimited");
+  });
+
+  it("pre-populates from config default when agent has no maxTurns", async () => {
     mockModules.mockConfig.agent.defaultMaxTurns = 50;
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · 50");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    expect(item.currentValue).toBe("50");
   });
 
-  it("agent config thinking takes precedence over config default", async () => {
-    mockModules.mockConfig.agent.defaultThinking = "high";
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    // agent config (medium) takes precedence over config default (high)
-    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · medium");
+  it("max turns submenu accepts valid number", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const mockDone = vi.fn();
+    item.submenu("25", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("15");
+    expect(mockDone).toHaveBeenCalledWith("15");
   });
 
-  it("shows 'inherit' for thinking when no config default and no agent config", async () => {
+  it("max turns submenu accepts 'unlimited'", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const mockDone = vi.fn();
+    item.submenu("25", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("unlimited");
+    expect(mockDone).toHaveBeenCalledWith("unlimited");
+  });
+
+  it("max turns submenu rejects value < 1", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const mockDone = vi.fn();
+    item.submenu("25", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("0");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+
+  it("max turns submenu rejects invalid input", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const mockDone = vi.fn();
+    item.submenu("25", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("abc");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("showSpawnAgentMenu — max tokens submenu", () => {
+  beforeEach(() => {
+    setupMocks();
+  });
+
+  it("shows agent config max tokens", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    expect(item.label).toBe("Max tokens");
+    expect(item.currentValue).toBe("10000");
+  });
+
+  it("shows 'unlimited' when no agent config", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · inherit");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    expect(item.currentValue).toBe("unlimited");
   });
 
-  it("shows 'unlimited' for max turns when no config default and no agent config", async () => {
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
-      return undefined;
-    });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · unlimited");
+  it("max tokens submenu accepts valid number", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    const mockDone = vi.fn();
+    item.submenu("10000", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("5000");
+    expect(mockDone).toHaveBeenCalledWith("5000");
   });
 
-  it("auto-generates description from first 50 chars of prompt", async () => {
-    const longPrompt = "A".repeat(60);
-    const ctx = createMockCtx(["general-purpose", undefined], [longPrompt]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Description"))).toBe(`Description · ${"A".repeat(50)}`);
+  it("max tokens submenu rejects invalid input", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    const mockDone = vi.fn();
+    item.submenu("10000", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("abc");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("showSpawnAgentMenu — grace turns submenu", () => {
+  beforeEach(() => {
+    setupMocks();
   });
 
-  it("allows overriding description", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Description · Do something", undefined],
-      ["Do something", "Custom description"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.input).toHaveBeenCalledWith("Description", "Do something");
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Description"))).toBe("Description · Custom description");
-    }
+  it("shows configured grace turns", async () => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 8 };
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
+    expect(item.label).toBe("Grace turns");
+    expect(item.currentValue).toBe("8");
   });
 
-  it("allows changing model via model selector", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Model · anthropic/claude-sonnet-4-20250514", undefined],
-      ["Do something"],
-      ["openai/gpt-4o"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Model"))).toBe("Model · openai/gpt-4o");
-    }
+  it("grace turns submenu accepts valid number", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
+    const mockDone = vi.fn();
+    item.submenu("6", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("3");
+    expect(mockDone).toHaveBeenCalledWith("3");
   });
 
-  it("allows changing thinking level", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Thinking · medium", "high", undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const thinkingCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Thinking level");
-    expect(thinkingCall).toBeDefined();
-    expect(thinkingCall[1]).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "inherit"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · high");
-    }
+  it("grace turns submenu rejects negative numbers", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
+    const mockDone = vi.fn();
+    item.submenu("6", mockDone);
+    inputInstances[inputInstances.length - 1].onSubmit!("-1");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 0", "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("showSpawnAgentMenu — background toggle", () => {
+  beforeEach(() => {
+    setupMocks();
   });
 
-  it("allows setting thinking to inherit", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Thinking · medium", "inherit", undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Thinking"))).toBe("Thinking · inherit");
-    }
+  it("shows 'OFF' when disabled", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
+    expect(item.label).toBe("Background");
+    expect(item.currentValue).toBe("OFF");
+    expect(item.values).toEqual(["ON", "OFF"]);
   });
 
-  it("allows changing max turns", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Max turns · 25", undefined],
-      ["Do something", "15"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · 15");
-    }
+  it("shows 'ON' when enabled", async () => {
+    mockModules.mockConfig.agent.forceBackground = true;
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
+    expect(item.currentValue).toBe("ON");
+  });
+});
+
+describe("showSpawnAgentMenu — model", () => {
+  beforeEach(() => {
+    setupMocks();
   });
 
-  it("allows setting max turns to unlimited", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Max turns · 25", undefined],
-      ["Do something", "unlimited"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Max turns"))).toBe("Max turns · unlimited");
-    }
-  });
-
-  it("rejects invalid max turns with error", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Max turns · 25", undefined],
-      ["Do something", "abc"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 1 or 'unlimited'", "error");
-  });
-
-  it("allows changing grace turns", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Grace turns · 8", undefined],
-      ["Do something", "3"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Grace turns"))).toBe("Grace turns · 3");
-    }
-  });
-
-  it("rejects invalid grace turns with error", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Grace turns · 8", undefined],
-      ["Do something", "-1"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 0", "error");
-  });
-
-  it("toggles background ON/OFF", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Background · OFF", undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    if (optionsCalls[1]) {
-      expect(optionsCalls[1][1].find((i: string) => i.startsWith("Background"))).toBe("Background · ON");
-    }
-  });
-
-  it("returns to main menu on Escape at options", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(mockModules.mockManager.spawn).not.toHaveBeenCalled();
+  it("shows agent config model", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    expect(item.label).toBe("Model");
+    expect(item.currentValue).toBe("anthropic/claude-sonnet-4-20250514");
+    expect(typeof item.submenu).toBe("function");
   });
 
   it("shows '(inherits parent)' when no model in precedence chain", async () => {
@@ -311,135 +481,29 @@ describe("showSpawnAgentMenu — options sub-menu", () => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false };
     const origModel = mockModules.mockSessionCtx.model;
     mockModules.mockSessionCtx.model = undefined;
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Model"))).toBe("Model · (inherits parent)");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    expect(item.currentValue).toBe("(inherits parent)");
     mockModules.mockSessionCtx.model = origModel;
   });
 });
 
-describe("showSpawnAgentMenu — spawn action", () => {
+describe("showSpawnAgentMenu — worktree submenu", () => {
   beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 6 };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
-    mockModules.mockManager.getRecord.mockReset();
-    vi.clearAllMocks();
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      return undefined;
-    });
+    setupMocks();
   });
-
-  it("calls getManager().spawn() with correct arguments", async () => {
-    const ctx = createMockCtx(["general-purpose", "Spawn"], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1);
-    const [pi, sCtx, type, prompt, options] = mockModules.mockManager.spawn.mock.calls[0];
-    expect(type).toBe("general-purpose");
-    expect(prompt).toBe("Do something");
-    expect(options.description).toBe("Do something");
-    expect(options.isBackground).toBe(false);
-    expect(options.graceTurns).toBe(6);
-    expect(options.thinkingLevel).toBe("medium");
-    expect(options.maxTurns).toBe(25);
-    expect(options.invocation).toBeDefined();
-    expect(options.invocation.thinkingLevel).toBe("medium");
-    expect(options.invocation.maxTurns).toBe(25);
-  });
-
-  it("registers activity in coordinator live view for background spawn", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Background · OFF", "Spawn"],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1);
-    const options = mockModules.mockManager.spawn.mock.calls[0][4];
-    expect(options.isBackground).toBe(true);
-  });
-
-  it("blocks until completion for foreground spawn", async () => {
-    let resolvePromise!: (value: string) => void;
-    const promise = new Promise<string>((r) => { resolvePromise = r; });
-    mockModules.mockManager.getRecord.mockReturnValue({ execution: { promise } });
-    const ctx = createMockCtx(["general-purpose", "Spawn"], ["Do something"]);
-    const spawnPromise = showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    resolvePromise("result");
-    await spawnPromise;
-  });
-
-  it("shows error when model not found in registry and returns to options", async () => {
-    const origFind = mockModules.mockSessionCtx.modelRegistry.find;
-    mockModules.mockSessionCtx.modelRegistry.find = vi.fn(() => undefined);
-    const ctx = createMockCtx(
-      ["general-purpose", "Model · anthropic/claude-sonnet-4-20250514", "Spawn", undefined],
-      ["Do something"],
-      ["unknown/unknown"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Model not found: unknown/unknown", "error");
-    expect(mockModules.mockManager.spawn).not.toHaveBeenCalled();
-    mockModules.mockSessionCtx.modelRegistry.find = origFind;
-  });
-
-  it("shows error when manager spawn throws and returns to main menu", async () => {
-    mockModules.mockManager.spawn.mockImplementation(() => { throw new Error("Spawn failed: internal error"); });
-    const ctx = createMockCtx(["general-purpose", "Spawn"], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Spawn failed: Spawn failed: internal error", "error");
-  });
-
-  it("resolves selected model string to Model object via findModelInRegistry", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Model · anthropic/claude-sonnet-4-20250514", "Spawn"],
-      ["Do something"],
-      ["openai/gpt-4o"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    const options = mockModules.mockManager.spawn.mock.calls[0][4];
-    expect(options.model).toEqual({ provider: "openai", id: "gpt-4o" });
-    expect(options.modelKey).toBe("openai/gpt-4o");
-    expect(options.invocation.modelName).toBe("gpt-4o");
-  });
-
-  it("passes custom description to spawn options", async () => {
-    const ctx = createMockCtx(
-      ["general-purpose", "Description · Do something", "Spawn"],
-      ["Do something", "Custom label"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const options = mockModules.mockManager.spawn.mock.calls[0][4];
-    expect(options.description).toBe("Custom label");
-  });
-});
-
-describe("showSpawnAgentMenu — worktree picker", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
-    mockModules.mockManager.getRecord.mockReset();
-    mockModules.mockPiExec.mockReset();
-    vi.clearAllMocks();
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, extensions: true, skills: true, systemPrompt: "" };
-      return undefined;
-    });
-  });
-
-  function buildPorcelainOutput(worktrees: { path: string; branch?: string; detached?: boolean }[]): string {
-    return worktrees.map(wt => {
-      let block = `worktree ${wt.path}`;
-      if (wt.branch) block += `\nbranch refs/heads/${wt.branch}`;
-      else if (wt.detached) block += "\ndetached";
-      return block;
-    }).join("\n\n");
-  }
 
   function setupExecMock(options: { inGitRepo?: boolean; worktrees?: { path: string; branch?: string; detached?: boolean }[] } = {}) {
     const { inGitRepo = true, worktrees = [] } = options;
+    function buildPorcelainOutput(wts: typeof worktrees): string {
+      return wts.map(wt => {
+        let block = `worktree ${wt.path}`;
+        if (wt.branch) block += `\nbranch refs/heads/${wt.branch}`;
+        else if (wt.detached) block += "\ndetached";
+        return block;
+      }).join("\n\n");
+    }
     mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
       if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
         return inGitRepo ? { code: 0, stdout: "/test/.git", stderr: "" } : { code: 128, stdout: "", stderr: "fatal: not a git repository" };
@@ -452,157 +516,119 @@ describe("showSpawnAgentMenu — worktree picker", () => {
     });
   }
 
-  it("shows 'Worktree · Inherits parent cwd' in options when in a git repo", async () => {
+  it("shows 'Inherits parent cwd' when in git repo", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Worktree"))).toBe("Worktree · Inherits parent cwd");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    expect(item.currentValue).toBe("Inherits parent cwd");
   });
 
-  it("does not show 'Worktree' row when not in a git repo", async () => {
-    setupExecMock({ inGitRepo: false });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Worktree"))).toBeUndefined();
-  });
-
-  it("opens worktree picker with 'Inherits parent cwd' first and worktrees from git", async () => {
+  it("worktree submenu creates SelectList with worktrees", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
-    const ctx = createMockCtx(["general-purpose", "Worktree · Inherits parent cwd", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const pickerCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Select worktree");
-    expect(pickerCall[1][0]).toBe("Inherits parent cwd");
-    expect(pickerCall[1]).toHaveLength(3);
-  });
-
-  it("shows branch name and path in picker rows", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
-    const ctx = createMockCtx(["general-purpose", "Worktree · Inherits parent cwd", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const pickerCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Select worktree");
-    expect(pickerCall[1][1]).toContain("main");
-    expect(pickerCall[1][1]).toContain("/test");
-    expect(pickerCall[1][2]).toContain("feature");
-    expect(pickerCall[1][2]).toContain("/test-feature");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const mockDone = vi.fn();
+    item.submenu("Inherits parent cwd", mockDone);
+    const wtSelectList = selectListInstances[selectListInstances.length - 1];
+    const values = wtSelectList.items.map((i: any) => i.value);
+    expect(values[0]).toBe("Inherits parent cwd");
+    expect(values).toHaveLength(3);
   });
 
   it("shows 'detached' for detached HEAD worktrees", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-detached", detached: true }] });
-    const ctx = createMockCtx(["general-purpose", "Worktree · Inherits parent cwd", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const pickerCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Select worktree");
-    expect(pickerCall[1][1]).toContain("detached");
-    expect(pickerCall[1][1]).toContain("/test-detached");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const mockDone = vi.fn();
+    item.submenu("Inherits parent cwd", mockDone);
+    const labels = selectListInstances[selectListInstances.length - 1].items.map((i: any) => i.label);
+    expect(labels[1]).toContain("detached");
+    expect(labels[1]).toContain("/test-detached");
   });
 
-  it("updates worktree row to selected branch after picking a worktree", async () => {
+  it("selecting a worktree calls done with branch name", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
-    const ctx = createMockCtx(
-      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCalls[optionsCalls.length - 1][1].find((i: string) => i.startsWith("Worktree"))).toBe("Worktree · feature");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const mockDone = vi.fn();
+    item.submenu("Inherits parent cwd", mockDone);
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "/test-feature" });
+    expect(mockDone).toHaveBeenCalledWith("feature");
   });
 
-  it("updates worktree row to 'Inherits parent cwd' when that option is picked", async () => {
+  it("selecting 'Inherits parent cwd' returns that label", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
-    const ctx = createMockCtx(
-      ["general-purpose", "Worktree · Inherits parent cwd", "Inherits parent cwd", undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCalls[optionsCalls.length - 1][1].find((i: string) => i.startsWith("Worktree"))).toBe("Worktree · Inherits parent cwd");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const mockDone = vi.fn();
+    item.submenu("Inherits parent cwd", mockDone);
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "Inherits parent cwd" });
+    expect(mockDone).toHaveBeenCalledWith("Inherits parent cwd");
+  });
+});
+
+describe("showSpawnAgentMenu — spawn action", () => {
+  beforeEach(() => {
+    setupMocks();
   });
 
-  it("returns to options on Escape from picker without committing change", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
-    const ctx = createMockCtx(
-      ["general-purpose", "Worktree · Inherits parent cwd", undefined, undefined],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCalls = ctx.ui.select.mock.calls.filter((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCalls.length).toBe(2);
-    expect(optionsCalls[1][1].find((i: string) => i.startsWith("Worktree"))).toBe("Worktree · Inherits parent cwd");
+  it("spawn item has submenu", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    expect(item.label).toBe("Spawn");
+    expect(typeof item.submenu).toBe("function");
   });
 
-  it("shows notification and returns to options when git worktree list fails", async () => {
+  it("spawn submenu immediately calls done", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    const mockDone = vi.fn();
+    item.submenu("", mockDone);
+    expect(mockDone).toHaveBeenCalled();
+  });
+});
+
+describe("showSpawnAgentMenu — item order", () => {
+  beforeEach(() => {
+    setupMocks();
+  });
+
+  it("items appear in correct order without worktree", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    expect(ids).toEqual(["spawn", "separator", "model", "background", "thinkingLevel", "maxTokens", "maxTurns", "graceTurns", "description", "prompt", "separator", "back"]);
+  });
+
+  it("worktree appears after background when in git repo", async () => {
     mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
       if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return { code: 0, stdout: "/test/.git", stderr: "" };
-      if (args[0] === "worktree" && args[1] === "list") return { code: 128, stdout: "", stderr: "fatal: git unavailable" };
-      return { code: 1, stdout: "", stderr: "unknown" };
+      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") return { code: 0, stdout: "worktree /test\nbranch refs/heads/main", stderr: "" };
+      return { code: 1, stdout: "", stderr: "" };
     });
-    const ctx = createMockCtx(["general-purpose", "Worktree · Inherits parent cwd", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("worktree"), "error");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    const bgIdx = ids.indexOf("background");
+    const wtIdx = ids.indexOf("worktree");
+    expect(wtIdx).toBe(bgIdx + 1);
   });
 
-  it("forwards worktreePath in spawn options when a worktree is picked", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
-    const ctx = createMockCtx(
-      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", "Spawn"],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1);
-    const options = mockModules.mockManager.spawn.mock.calls[0][4];
-    expect(options.worktreePath).toBe("/test-feature");
-    expect(options.worktreeLabel).toBe("feature");
-  });
-
-  it("does not forward worktreePath when 'Inherits parent cwd' is selected", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
-    const ctx = createMockCtx(
-      ["general-purpose", "Worktree · Inherits parent cwd", "Inherits parent cwd", "Spawn"],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const options = mockModules.mockManager.spawn.mock.calls[0][4];
-    expect(options.worktreePath).toBeUndefined();
-    expect(options.worktreeLabel).toBeUndefined();
-  });
-
-  it("calls discoverNewAgents with worktree path before spawn", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
-    const ctx = createMockCtx(
-      ["general-purpose", "Worktree · Inherits parent cwd", "feature  ·  /test-feature", "Spawn"],
-      ["Do something"],
-    );
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const { discoverNewAgents } = await import("../src/agents/agent-types.js");
-    expect(discoverNewAgents).toHaveBeenCalledWith("/test-feature/.pi/agents");
-  });
-
-  it("does not call discoverNewAgents when no worktree is picked", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
-    const ctx = createMockCtx(["general-purpose", "Spawn"], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const { discoverNewAgents } = await import("../src/agents/agent-types.js");
-    expect(discoverNewAgents).not.toHaveBeenCalled();
-  });
-
-  it("does not show 'Worktree' row when git repo check throws", async () => {
-    mockModules.mockPiExec.mockRejectedValue(new Error("ENOENT"));
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    expect(optionsCall[1].find((i: string) => i.startsWith("Worktree"))).toBeUndefined();
-  });
-
-  it("positions 'Worktree' row after 'Description' in the options menu", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
-    const ctx = createMockCtx(["general-purpose", undefined], ["Do something"]);
-    await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const optionsCall = ctx.ui.select.mock.calls.find((c: any[]) => c[0] === "Spawn Options");
-    const items: string[] = optionsCall[1];
-    const descIdx = items.findIndex((i: string) => i.startsWith("Description"));
-    const worktreeIdx = items.findIndex((i: string) => i.startsWith("Worktree"));
-    expect(descIdx).toBeGreaterThanOrEqual(0);
-    expect(worktreeIdx).toBeGreaterThan(descIdx);
+  it("Back item calls done", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const backItem = settingsListCalls[1].items.find((i: any) => i.id === "back");
+    expect(backItem).toBeDefined();
+    expect(backItem.label).toBe("Back");
+    const done = vi.fn();
+    backItem.submenu("", done);
+    expect(done).toHaveBeenCalled();
   });
 });

@@ -3,14 +3,13 @@
 ## Common Patterns
 
 ### Worktrees
-- Clean up worktrees after merge — leave nothing behind. Ensure worktree is clean (commit or discard untracked files) before merge.
-- Slice worktrees must branch from feature branch HEAD, not main.
-- Wave 2+ worktrees need Wave 1 cleanup first (stale branches).
-- Verify worktree path exists before spawning reviewers post-cleanup.
+- Clean up after merge — commit or discard untracked files first. Verify path exists before spawning reviewers post-cleanup.
+- Slice worktrees branch from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
+- Feature worktree per feature, slice worktrees from latest HEAD.
 
 ### Testing
-- ALWAYS run `bun run test` after merging to main — don't assume clean merge means passing tests.
-- Acceptance tests should match planned interface (plan.md), not guessed implementation.
+- ALWAYS run `bun run test` after merging to main — clean merge doesn't mean passing tests.
+- Acceptance tests match planned interface (plan.md), not guessed implementation.
 - When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh.
 - User manual testing result ("all works") → record and proceed, don't insist on automated loop.
 
@@ -18,11 +17,10 @@
 - Delegate immediately without pre-reading files — agent explores itself.
 - For simple tasks, propose 2-3 name/design alternatives upfront instead of iterating.
 - Wave-level arch review catches incomplete feature branches — valuable checkpoint.
-- When spawning parallel sub-agents that each write a design doc, mandate a distinct output path per agent. Two agents writing to the same path silently clobber each other, and gitignored task dirs leave no history.
+- Parallel sub-agents writing design docs: mandate distinct output paths per agent. Gitignored task dirs leave no history.
 
 ### Parallel Execution
 - Parallel slice execution (2+ slices simultaneously) consistently saves time.
-- Feature worktree per feature, slice worktrees from latest HEAD.
 
 ### Verification
 - When merge agent reports success, verify the actual merge commit exists.
@@ -34,6 +32,24 @@
 - `build_issue` workflow requires: builder, code-reviewer, refactor, manual-tester.
 
 ## Task-Specific Lessons
+
+### split-menus-into-concern-modules
+Splitting tests: explicitly enumerate expected test files in builder prompt. Cross-check module count vs test file count before marking complete. Builder skipped `menu-debug.test.ts` since its tests lived in dispatcher's test file.
+
+### skills-extensions-default-config
+When adding config overrides that must respect "explicit vs default" distinction, make source fields optional from the start. Type system enforces precedence contract, not runtime equality checks. Prefer booleans for toggle settings — string enums add complexity without clarity.
+
+### configurable-widget-stats
+When adding new visibility/config alongside existing similar config, trace ALL existing mutation paths for the old config. The old `showCost` had session override support — new visibility sync must cover the same paths.
+
+### add-widget-desc-length-setting
+Check if any WIP branches might land before merge — gives builder context for conflict resolution upfront.
+
+### migrate-more-menus-to-settingslist
+Dispatcher menus that route to submenus: use `ctx.ui.select` with `while(true)` loop. SettingsList is only for menus where cursor persistence matters (actual settings, not dispatchers). SettingsList + async `ctx.ui.select` submenus don't mix — causes escape-from-submenu-to-close-parent bug. Verify test names match what they actually test. The `undefined as any` pattern in submenu callbacks is unavoidable with current library API — document once, don't fight it.
+
+### fix-settings-cursor-position
+SettingsList supports toggles (`values[]`), submenus (`submenu` Component), static display. Does NOT support: multi-step dialogs, action buttons, section separators, dynamic item sets. Design submenu-Component layer before touching complex menus. Never call `ctx.ui.input`/`ctx.ui.select`/`ctx.ui.custom` from within active SettingsList (lose focus/cursor). Numeric inputs must be `submenu` Components wrapping pi-tui `Input`. When migrating to a new abstraction, verify it fits ALL in-scope menus before committing. Include concrete interface signatures when referencing external library APIs. Verify worktree freshness before spawning builder.
 
 ### Unifying code paths
 Diff old paths before merging to ensure all side effects are preserved. Widget lifecycle (ensureTimer, setUICtx) must happen in both paths.
@@ -54,47 +70,12 @@ Move scattered decision logic to a single owner, update callers to delegate. Ver
 Identify the deep concept buried in a god module, extract with all co-located helpers, import shared utilities back. Allow circular dependency when constraints permit — ESM handles it.
 
 ### Mock count reduction
-Module-level singletons still require `vi.mock()`. True reduction needs closure/factory pattern. Accept module singleton as sufficient if the composition root goal is otherwise achieved.
+Module-level singletons still require `vi.mock()`. True reduction needs closure/factory pattern. Accept module singleton as sufficient if composition root goal is otherwise achieved.
 
 ### Builder verification
 Verify builder reads issue.md and plan spec before implementing. Integration gaps between coordinator and widget are high-risk — test data flow end-to-end.
 
-## split-menus-into-concern-modules - 2026-06-17
-**What worked:** Clean split into 7 modules with clear boundaries. Builder handled the full refactor in one pass. Refactor loop caught dead re-exports and empty test files.
-**What failed:** Manual tester caught missing `menu-debug.test.ts` — acceptance criteria said "one test file per menu module" but the builder skipped the debug module's test file since its tests lived in the dispatcher's test file.
-**Next time:** When splitting tests, explicitly enumerate expected test files in the builder prompt to prevent gaps. Cross-check module count vs test file count before marking complete.
-
-## skills-extensions-default-config - 2026-06-17
-**What worked:** Grill phase quickly converged on naming ("implicitly" > "when unset"). Architecture review caught the core design flaw (can't distinguish explicit `true` from defaulted `true`). Fix was scoped and clean.
-**What failed:** Initial implementation couldn't distinguish explicit `skills: true` from `BASE_DEFAULTS` `true` — both collapsed to `true` in `applyGlobalDefaults`. Architecture review blocked, required making `AgentConfig.skills/extensions` optional.
-**Next time:** When adding config overrides that must respect "explicit vs default" distinction, make the source fields optional from the start. The type system should enforce the precedence contract, not rely on runtime equality checks.
-
-**Config value design:** Prefer booleans for toggle settings. String enums ("load-all" | "none") add complexity without clarity. Menu display (ON/OFF) is independent of config representation.
-
-## fix-settings-cursor-position - 2026-06-17
-**What worked:** Architecture review caught critical scope creep and constraint contradictions before implementation.
-**What failed:** Initial issue tried to migrate all 5 settings menus in one go. `SettingsList` only fits simple toggle/numeric menus (Widget, System prompt, Spawn options). Model and Concurrency need submenu-Component layer design first.
-**Next time:** When migrating to a new abstraction, verify the abstraction fits ALL in-scope menus before committing. Check for constraint contradictions ("keep parseNumericInput" vs "persistent ctx.ui.custom").
-
-**SettingsList limitations:** Supports toggles (`values[]`), submenus (`submenu` Component), static display. Does NOT support: multi-step dialogs, action buttons, section separators, dynamic item sets. Design submenu-Component layer before touching complex menus.
-**Constraint pattern:** Never call `ctx.ui.input`/`ctx.ui.select`/`ctx.ui.custom` from within active `SettingsList` (lose focus/cursor). Numeric inputs must be `submenu` Components wrapping pi-tui `Input`.
-
-## configurable-widget-stats - 2026-06-17
-**What worked:** Clean vertical slice. Builder handled 7 config keys, visibility interface, menu toggles, and tests in one pass. Refactor extracted helper for repeated mutate→persist→sync pattern.
-**What failed:** Code reviewer caught missing `syncWidgetStatsVisibility()` in `setShowCost` — the original cost toggle only updated the old property, not the new stats visibility. Three paths needed fixing (permanent, session override, session clear).
-**Next time:** When adding new visibility/config alongside existing similar config, trace ALL existing mutation paths for the old config. The old `showCost` had session override support — new visibility sync must cover the same paths.
-
-## fix-settings-cursor-position - 2026-06-17
-**What worked:** Clean issue spec with library API docs enabled single-builder implementation. Review caught dead code and weak tests early. Refactor inlined numeric submenu to fix stale closure capture.
-**What failed:** Prior worktree had corrupted state; fresh worktree was needed.
-**Next time:** When issue references external library API, include concrete interface signatures. Verify worktree freshness before spawning builder.
-
-## add-widget-desc-length-setting - 2026-06-17
-**What worked:** Settings placed next to related max-lines items in menu. Both widget and menu read directly from ConfigStore. Refactor extracted shared `truncateDesc` helper, eliminating 4 duplicate truncation sites.
-**What failed:** Builder initially added setter methods on AgentWidget — reviewer caught it wasn't needed, but it matched existing pattern so was kept. Merge hit SettingsList migration conflicts but builder resolved cleanly.
-**Next time:** Check if any WIP branches might land before merge — gives builder context for conflict resolution upfront.
-
-## migrate-more-menus-to-settingslist - 2026-06-17
-**What worked:** SettingsList from pi-tui solves the cursor persistence bug cleanly. The `values` array pattern for toggles and `submenu` pattern for input-based settings both work well. Existing `buildSettingsListTheme` and `validateNumeric` helpers reduced boilerplate. Test-first approach with builder agent caught issues early.
-**What failed:** First code review flagged misleading test name for briefing integration test. The test checked structure but claimed to check content. Quick fix: renamed test to match actual behavior.
-**Next time:** When migrating menus, verify test names match what they actually test. The `undefined as any` pattern in submenu callbacks is unavoidable with current library API - document it once, don't fight it.
+## unify-menus-to-pi-style - 2026-06-18
+**What worked:** Proxy pattern (createDelegatingComponent) cleanly chains submenus (SelectList → Input) when SettingsList's single-Component submenu isn't enough. Shared submenu components (createModelSelectSubmenu, createNumericInputSubmenu, createConfirmSubmenu) earned their keep with 2-3 uses each. Builder caught and fixed critical submenu-discarding bugs in concurrency menus.
+**What failed:** Initial builder created Input submenus that called subDone() immediately, discarding the Input before rendering. Tests masked this by calling captured mock handlers directly (unreachable in production). Code review caught all 3 instances.
+**Next time:** When submenu callbacks chain multiple Components (e.g., SelectList → Input), verify the returned Component is renderable, not immediately closed. Tests must interact through the component tree, not captured mock references. The proxy/delegating-component pattern is the safe approach for multi-step submenus.

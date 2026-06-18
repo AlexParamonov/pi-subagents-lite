@@ -55,18 +55,29 @@ describe("showSystemPromptMenu — SettingsList integration", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("creates a SettingsList with 4 items by default (mode != custom)", async () => {
+  it("creates a SettingsList with 5 items by default (mode != custom, including Back)", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    expect(settingsListCalls[0].items.length).toBe(4);
+    expect(settingsListCalls[0].items.length).toBe(5);
   });
 
   it("items have correct ids by default", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly"]);
+    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "back"]);
+  });
+
+  it("Back item has submenu that calls done", async () => {
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+    const backItem = settingsListCalls[0].items.find((i: any) => i.id === "back");
+    expect(backItem).toBeDefined();
+    expect(backItem.label).toBe("Back");
+    const done = vi.fn();
+    backItem.submenu("", done);
+    expect(done).toHaveBeenCalled();
   });
 });
 
@@ -296,7 +307,7 @@ describe("showSystemPromptMenu — item order", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly"]);
+    expect(ids).toEqual(["systemPromptMode", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "back"]);
   });
 
   it("items include createPromptFile at correct position when conditional", async () => {
@@ -305,7 +316,7 @@ describe("showSystemPromptMenu — item order", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["systemPromptMode", "createPromptFile", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly"]);
+    expect(ids).toEqual(["systemPromptMode", "createPromptFile", "includeContextFiles", "loadSkillsImplicitly", "loadExtensionsImplicitly", "back"]);
     vi.restoreAllMocks();
   });
 });

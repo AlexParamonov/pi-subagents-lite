@@ -1,6 +1,10 @@
 /**
  * menu-running-agents.ts — Running agents menu concern.
  *
+ * Uses SelectList from @earendil-works/pi-tui via ctx.ui.custom.
+ * Agent list is a snapshot at construction time (stale until re-entry is acceptable).
+ * Selecting an agent opens an actions submenu (SelectList).
+ *
  * Exports:
  *   - showRunningAgentsMenu: list running/queued/completed agents
  *   - showAgentActions: per-agent action sub-menu (view result, steer, stop)
@@ -11,12 +15,14 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
-import { runMenuLoop, runMenu } from "./menu-helpers.js";
+import { buildSelectListTheme } from "./menu-helpers.js";
+import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import { getManager, getStore } from "../../shell.js";
 
 /**
@@ -38,6 +44,7 @@ async function showResultViewer(
     lifetimeUsage: record.stats.lifetimeUsage,
     turnCount: record.stats.turnCount,
     durationMs: (record.lifecycle.completedAt ?? Date.now()) - record.lifecycle.startedAt,
+    modelName: record.display.invocation?.modelName,
   };
   const refreshCallback =
     kind === "snapshot" && record.execution.session
@@ -82,71 +89,118 @@ async function steerAgentById(
 }
 
 /**
- * Sub-menu with actions for a single agent. Replaces the old showAgentDetail
- * notify popup — clicking an agent in the running agents menu opens actions.
+ * Sub-menu with actions for a single agent.
+ * Returns a SelectList Component for use as a submenu.
  */
-export async function showAgentActions(
+export function buildAgentActionsList(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
-): Promise<void> {
-  const items: string[] = [];
-  const actions: Array<() => Promise<void>> = [];
-
+  theme: any,
+  done: () => void,
+): SelectList {
+  const items: SelectItem[] = [];
+  const shortId = record.id.slice(0, SHORT_ID_LENGTH);
   const isRunning = record.lifecycle.status === "running" || record.lifecycle.status === "queued";
   const hasSession = !!record.execution.session;
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
-  // View actions first
   if (record.lifecycle.status === "running" && hasSession) {
-    items.push("View snapshot");
-    actions.push(async () => {
-      const messages = record.execution.session!.messages;
-      const markdown = buildSnapshotMarkdown(messages);
-      await showResultViewer(ctx, record, "snapshot", markdown);
-    });
+    items.push({ value: "view-snapshot", label: "View snapshot" });
   }
-
   if (hasResult) {
-    items.push("View result");
-    actions.push(async () => {
-      await showResultViewer(ctx, record, "result", record.result!);
-    });
+    items.push({ value: "view-result", label: "View result" });
   }
-
   if (hasError) {
-    items.push("View error");
-    actions.push(async () => {
-      await showResultViewer(ctx, record, "error", record.error!);
-    });
+    items.push({ value: "view-error", label: "View error" });
   }
-
-  // Then control actions
   if (isRunning) {
-    items.push("Steer");
-    actions.push(async () => {
-      await steerAgentById(record.id, ctx);
-    });
-
-    items.push("Stop");
-    actions.push(async () => {
-      getManager()?.abort(record.id);
-      ctx.ui.notify(`Stopped ${record.id.slice(0, SHORT_ID_LENGTH)}`, "info");
-    });
+    items.push({ value: "steer", label: "Steer" });
+    items.push({ value: "stop", label: "Stop" });
   }
 
   if (items.length === 0) {
-    ctx.ui.notify(`Agent ${record.id.slice(0, SHORT_ID_LENGTH)} — no actions available`, "info");
-    return;
+    ctx.ui.notify(`Agent ${shortId} — no actions available`, "info");
+    done();
+    return new SelectList([], 5, buildSelectListTheme(theme));
   }
 
-  // Append blank spacer + "Back" as the last items
-  items.push("");
-  actions.push(async () => {});
-  items.push("Back");
-  actions.push(async () => {});
+  const list = new SelectList(items, 10, buildSelectListTheme(theme));
+  list.onSelect = async (item) => {
+    if (item.value === "view-snapshot") {
+      const messages = record.execution.session!.messages;
+      const markdown = buildSnapshotMarkdown(messages);
+      await showResultViewer(ctx, record, "snapshot", markdown);
+    } else if (item.value === "view-result") {
+      await showResultViewer(ctx, record, "result", record.result!);
+    } else if (item.value === "view-error") {
+      await showResultViewer(ctx, record, "error", record.error!);
+    } else if (item.value === "steer") {
+      await steerAgentById(record.id, ctx);
+    } else if (item.value === "stop") {
+      getManager()?.abort(record.id);
+      ctx.ui.notify(`Stopped ${shortId}`, "info");
+    }
+  };
+  list.onCancel = () => done();
+  return list;
+}
 
-  await runMenu(ctx, `Agent ${record.id.slice(0, SHORT_ID_LENGTH)}`, items, actions);
+/**
+ * Sub-menu with actions for a single agent. Standalone version for direct use.
+ * Opens a ctx.ui.custom with the actions SelectList.
+ */
+export async function showAgentActions(
+  ctx: ExtensionCommandContext,
+  record: AgentRecord,
+): Promise<void> {
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const list = buildAgentActionsList(ctx, record, theme, () => done(undefined));
+    return new SettingsListWrapper(list, { title: `Agent ${record.id.slice(0, SHORT_ID_LENGTH)}`, theme });
+  });
+}
+
+/**
+ * Create a running agents menu Component for use within a parent ctx.ui.custom.
+ */
+export function createRunningAgentsMenuComponent(
+  ctx: ExtensionCommandContext,
+  theme: any,
+  onDone: () => void,
+): SettingsListWrapper | null {
+  const agents = getManager()?.listAgents() ?? [];
+  if (agents.length === 0) {
+    ctx.ui.notify("No agents have been spawned this session", "info");
+    onDone();
+    return null;
+  }
+
+  const items: SelectItem[] = agents.map((record) => {
+    const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
+    const statusIcon = record.lifecycle.status === "running" ? "▶" :
+      record.lifecycle.status === "completed" ? "✓" :
+      record.lifecycle.status === "queued" ? "⏳" :
+      record.lifecycle.status === "error" ? "✗" : "•";
+    const descLen = getStore().agent.widgetDescLengthFull;
+    const headline = record.display.description
+      ? truncateDesc(record.display.description, descLen)
+      : "";
+    const suffix = headline ? ` — ${headline}` : "";
+    return {
+      value: record.id,
+      label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
+    };
+  });
+
+  const list = new SelectList(items, 15, buildSelectListTheme(theme));
+  list.onSelect = async (item) => {
+    const record = agents.find((r) => r.id === item.value);
+    if (record) {
+      await showAgentActions(ctx, record);
+    }
+  };
+  list.onCancel = () => onDone();
+  return new SettingsListWrapper(list, { title: "Running Agents", theme });
 }
 
 export async function showRunningAgentsMenu(
@@ -158,48 +212,7 @@ export async function showRunningAgentsMenu(
     return;
   }
 
-  return runMenuLoop(ctx, "Running Agents", () => {
-    const records = getManager()?.listAgents() ?? [];
-    const running = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
-
-    const items: string[] = [];
-    const actions: Array<() => Promise<void>> = [];
-
-    for (const record of records) {
-      const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
-      const statusIcon = record.lifecycle.status === "running" ? "▶" :
-        record.lifecycle.status === "completed" ? "✓" :
-        record.lifecycle.status === "queued" ? "⏳" :
-        record.lifecycle.status === "error" ? "✗" : "•";
-      const descLen = getStore().agent.widgetDescLengthFull;
-      const headline = record.display.description
-        ? truncateDesc(record.display.description, descLen)
-        : "";
-      const suffix = headline ? ` — ${headline}` : "";
-      items.push(
-        `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
-      );
-
-      actions.push(async () => {
-        await showAgentActions(ctx, record);
-      });
-    }
-
-    if (running.length > 0) {
-      items.push("");
-      actions.push(async () => {});
-      items.push("─── actions ───");
-      actions.push(async () => {}); // separator
-
-      items.push(`Stop ${running.length} running agent(s)`);
-      actions.push(async () => {
-        for (const record of running) {
-          getManager()?.abort(record.id);
-        }
-        ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
-      });
-    }
-
-    return { items, actions };
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    return createRunningAgentsMenuComponent(ctx, theme, () => done(undefined))!;
   });
 }

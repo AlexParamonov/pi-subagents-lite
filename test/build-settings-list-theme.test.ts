@@ -24,9 +24,9 @@ describe("buildSettingsListTheme", () => {
     expect(theme).toHaveProperty("hint");
   });
 
-  it("label applies bold + accent when selected", () => {
+  it("label applies accent when selected", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    expect(theme.label("Test", true)).toBe("**<accent>Test</accent>**");
+    expect(theme.label("Test", true)).toBe("<accent>Test</accent>");
   });
 
   it("label returns plain text when not selected", () => {
@@ -44,14 +44,15 @@ describe("buildSettingsListTheme", () => {
     expect(theme.value("ON", false)).toBe("<muted>ON</muted>");
   });
 
-  it("description uses italic + muted", () => {
+  it("description uses muted", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    expect(theme.description("Some description")).toBe("_<muted>Some description</muted>_");
+    expect(theme.description("Some description")).toBe("<muted>Some description</muted>");
   });
 
   it("cursor uses accent", () => {
     const theme = buildSettingsListTheme(createMockTheme() as any);
-    expect(theme.cursor).toBe("<accent>></accent>");
+    // Cursor includes trailing space to match non-selected prefix width
+    expect(theme.cursor).toBe("<accent>→ </accent>");
   });
 
   it("hint uses dim", () => {

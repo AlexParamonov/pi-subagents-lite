@@ -34,4 +34,9 @@ Thumbs.db
 # Tasks (keep only lessons.md)
 tasks/*
 !tasks/lessons.md
-review-v0.4.0.md
+
+# Review and result files
+arch-review-*.md
+refactor-*.md
+result-*.md
+review-*.md

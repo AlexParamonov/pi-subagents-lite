@@ -11,7 +11,8 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, validateNumeric } from "./menu-helpers.js";
+import { buildSettingsListTheme, validateNumeric, backSubmenuItem } from "./menu-helpers.js";
+import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import type { ThinkingLevel } from "../../types.js";
 import { getStore } from "../../shell.js";
 
@@ -95,7 +96,10 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     }
   };
 
-  await ctx.ui.custom((_tui, theme, _kb, done) =>
-    new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined))
-  );
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    // Back needs access to done to close the menu
+    items.push(backSubmenuItem(() => done(undefined)));
+    const settingsList = new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined));
+    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme });
+  });
 }

@@ -75,6 +75,7 @@ vi.mock("../src/ui/result-viewer.js", () => ({
 
 vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
+  truncateDesc: vi.fn((t: string) => t),
 }));
 
 vi.mock("../src/prompt/context.js", () => ({
