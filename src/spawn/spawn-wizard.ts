@@ -9,12 +9,13 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, SelectList, Input, type SettingItem } from "@earendil-works/pi-tui";
+import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import type { ThinkingLevel } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../agents/agent-types.js";
 import { findModelInRegistry } from "../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme, validateNumeric, backSubmenuItem } from "../ui/menu/menu-helpers.js";
+import { buildSettingsListTheme, buildSelectListTheme, backSubmenuItem } from "../ui/menu/menu-helpers.js";
 import { createModelSelectSubmenu } from "../ui/menu/menu-model-select-submenu.js";
+import { createNumericSubmenu, createInputSubmenu } from "../ui/menu/menu-numeric-input-submenu.js";
 import { SettingsListWrapper } from "../ui/menu/menu-settings-list-wrapper.js";
 import {
   getPiInstance,
@@ -175,17 +176,8 @@ export async function showSpawnAgentMenu(
   let prompt: string;
   {
     const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
-      const input = new Input();
-      input.onSubmit = (value) => {
-        const trimmed = value.trim();
-        if (!trimmed) {
-          ctx.ui.notify("Prompt cannot be empty", "error");
-          return;
-        }
-        done(trimmed);
-      };
-      input.onEscape = () => done(undefined);
-      return new SettingsListWrapper(input, { title: "Agent Prompt", theme, footerText: "Enter to confirm · Esc to cancel" });
+      const input = createInputSubmenu(ctx, { required: true })("", done);
+      return new SettingsListWrapper(input, { title: "Agent Prompt", theme, passthroughKeys: true, footerText: "Enter to confirm \u00b7 Esc to cancel" });
     });
     if (result === undefined) return;
     prompt = result;
@@ -207,13 +199,17 @@ export async function showSpawnAgentMenu(
   let currentThinking: ThinkingLevel | undefined = agentConfig.thinkingLevel ?? store.agent.defaultThinking;
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
   let currentMaxTokens: number | undefined = agentConfig.maxTokens;
-  let currentGraceTurns: number | undefined = store.agent.graceTurns;
+  let currentGraceTurns: number = store.agent.graceTurns ?? 6;
   let currentBackground: boolean = store.agent.forceBackground;
   let currentWorktreePath: string | undefined;
   let currentWorktreeLabel = "Inherits parent cwd";
   let currentDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
 
+
+
+
   const buildItems = (): SettingItem[] => {
+    const fmtNum = (v: number | undefined) => v != null ? String(v) : "unset";
     const displayModel = currentModelStr || "(inherits parent)";
     const items: SettingItem[] = [
       {
@@ -230,9 +226,9 @@ export async function showSpawnAgentMenu(
 
           const thinking = (thinkingItem?.currentValue === "inherit"
             ? undefined : thinkingItem?.currentValue) as ThinkingLevel | undefined;
-          const maxTurns = mtItem?.currentValue === "unlimited"
+          const maxTurns = mtItem?.currentValue === "unset"
             ? undefined : Number(mtItem?.currentValue);
-          const maxTokens = mtkItem?.currentValue === "unlimited"
+          const maxTokens = mtkItem?.currentValue === "unset"
             ? undefined : Number(mtkItem?.currentValue);
           const graceTurns = Number(gtItem?.currentValue ?? "6");
           const background = bgItem?.currentValue === "ON";
@@ -370,104 +366,32 @@ export async function showSpawnAgentMenu(
       {
         id: "maxTokens",
         label: "Max tokens",
-        currentValue: currentMaxTokens != null ? String(currentMaxTokens) : "unlimited",
-        submenu: (currentValue, done) => {
-          const input = new Input();
-          input.setValue(currentValue === "unlimited" ? "" : currentValue);
-          input.onSubmit = (value) => {
-            const trimmed = value.trim().toLowerCase();
-            if (trimmed === "unlimited" || trimmed === "") {
-              done("unlimited");
-              return;
-            }
-            const result = validateNumeric(value, 1);
-            if (result === undefined) {
-              ctx.ui.notify("Must be a number ≥ 1 or 'unlimited'", "error");
-              return;
-            }
-            done(String(result));
-          };
-          input.onEscape = () => done();
-          return input;
-        },
+        currentValue: fmtNum(currentMaxTokens),
+        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }),
       },
       {
         id: "maxTurns",
         label: "Max turns",
-        currentValue: currentMaxTurns != null ? String(currentMaxTurns) : "unlimited",
-        submenu: (currentValue, done) => {
-          const input = new Input();
-          input.setValue(currentValue === "unlimited" ? "" : currentValue);
-          input.onSubmit = (value) => {
-            const trimmed = value.trim().toLowerCase();
-            if (trimmed === "unlimited" || trimmed === "") {
-              done("unlimited");
-              return;
-            }
-            const result = validateNumeric(value, 1);
-            if (result === undefined) {
-              ctx.ui.notify("Must be a number ≥ 1 or 'unlimited'", "error");
-              return;
-            }
-            done(String(result));
-          };
-          input.onEscape = () => done();
-          return input;
-        },
+        currentValue: fmtNum(currentMaxTurns),
+        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }),
       },
       {
         id: "graceTurns",
         label: "Grace turns",
-        currentValue: String(currentGraceTurns ?? 6),
-        submenu: (currentValue, done) => {
-          const input = new Input();
-          input.setValue(currentValue);
-          input.onSubmit = (value) => {
-            const result = validateNumeric(value, 0);
-            if (result === undefined) {
-              ctx.ui.notify("Must be a number ≥ 0", "error");
-              return;
-            }
-            done(String(result));
-          };
-          input.onEscape = () => done();
-          return input;
-        },
+        currentValue: String(currentGraceTurns),
+        submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => { currentGraceTurns = parsed; }),
       },
       {
         id: "description",
         label: "Description",
         currentValue: currentDescription,
-        submenu: (_v, done) => {
-          const input = new Input();
-          input.setValue(currentDescription);
-          input.onSubmit = (value) => {
-            const trimmed = value.trim();
-            if (trimmed) done(trimmed);
-            else done();
-          };
-          input.onEscape = () => done();
-          return input;
-        },
+        submenu: createInputSubmenu(ctx),
       },
       {
         id: "prompt",
         label: "Prompt",
         currentValue: prompt,
-        submenu: (_v, done) => {
-          const input = new Input();
-          input.setValue(prompt);
-          input.onSubmit = (value) => {
-            const trimmed = value.trim();
-            if (!trimmed) {
-              ctx.ui.notify("Prompt cannot be empty", "error");
-              return;
-            }
-            done(trimmed);
-          };
-          input.onEscape = () => done();
-          return input;
-        },
+        submenu: createInputSubmenu(ctx, { required: true }),
       },
       {
         id: "separator",
@@ -486,6 +410,7 @@ export async function showSpawnAgentMenu(
   await ctx.ui.custom((_tui, t, _kb, done) => {
     theme = t;
     doneRef = () => done(undefined);
+
     const items = buildItems();
     const onChange = (id: string, newValue: string) => {
       switch (id) {
@@ -497,7 +422,7 @@ export async function showSpawnAgentMenu(
           break;
         case "prompt":
           prompt = newValue;
-          break;
+        break;
       }
     };
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, doneRef);

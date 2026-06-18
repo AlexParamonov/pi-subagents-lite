@@ -296,7 +296,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
-    expect(item.currentValue).toBe("unlimited");
+    expect(item.currentValue).toBe("unset");
   });
 
   it("pre-populates from config default when agent has no maxTurns", async () => {
@@ -328,7 +328,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("unlimited");
-    expect(mockDone).toHaveBeenCalledWith("unlimited");
+    expect(mockDone).toHaveBeenCalledWith();
   });
 
   it("max turns submenu rejects value < 1", async () => {
@@ -338,7 +338,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("0");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -349,7 +349,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });
@@ -375,7 +375,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
-    expect(item.currentValue).toBe("unlimited");
+    expect(item.currentValue).toBe("unset");
   });
 
   it("max tokens submenu accepts valid number", async () => {
@@ -395,7 +395,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     const mockDone = vi.fn();
     item.submenu("10000", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });
@@ -431,7 +431,7 @@ describe("showSpawnAgentMenu — grace turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("6", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("-1");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 0", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 0", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });

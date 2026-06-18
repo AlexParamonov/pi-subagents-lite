@@ -184,7 +184,7 @@ describe("showSpawnOptionsMenu — grace turns", () => {
 
     inputInstances[0].onSubmit!("-1");
     expect(mockModules.mockConfig.agent.graceTurns).toBe(3);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 0", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 0", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -216,7 +216,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     await showSpawnOptionsMenu(ctx);
     const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
     expect(dmt.label).toBe("Default max turns");
-    expect(dmt.currentValue).toBe("unlimited");
+    expect(dmt.currentValue).toBe("unset");
     expect(typeof dmt.submenu).toBe("function");
   });
 
@@ -253,8 +253,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
 
     inputInstances[0].onSubmit!("unlimited");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Default max turns set to unlimited", "info");
-    expect(mockDone).toHaveBeenCalledWith("unlimited");
+    expect(mockDone).toHaveBeenCalledWith();
   });
 
   it("max turns submenu rejects value < 1", async () => {
@@ -267,7 +266,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
 
     inputInstances[0].onSubmit!("0");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -280,7 +279,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     dmt.submenu("unlimited", mockDone);
 
     inputInstances[0].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Must be a number ≥ 1 or 'unlimited'", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 

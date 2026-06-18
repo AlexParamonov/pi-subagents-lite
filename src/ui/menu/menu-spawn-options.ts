@@ -10,14 +10,16 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, Input, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, validateNumeric, backSubmenuItem } from "./menu-helpers.js";
+import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
+import { buildSettingsListTheme, backSubmenuItem } from "./menu-helpers.js";
+import { createNumericSubmenu } from "./menu-numeric-input-submenu.js";
 import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import type { ThinkingLevel } from "../../types.js";
 import { getStore } from "../../shell.js";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
+  const numericSubmenu = createNumericSubmenu(ctx);
 
   const items: SettingItem[] = [
     {
@@ -30,50 +32,25 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       id: "graceTurns",
       label: "Grace turns",
       currentValue: String(store.agent.graceTurns),
-      submenu: (currentValue, done) => {
-        const input = new Input();
-        input.setValue(currentValue);
-        input.onSubmit = (value) => {
-          const result = validateNumeric(value, 0);
-          if (result === undefined) {
-            ctx.ui.notify("Must be a number ≥ 0", "error");
-            return;
-          }
-          store.mutate.agent.setGraceTurns(result);
-          ctx.ui.notify(`Grace turns set to ${result}`, "info");
-          done(String(result));
-        };
-        input.onEscape = () => done();
-        return input;
-      },
+      submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
+        store.mutate.agent.setGraceTurns(parsed);
+        ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
+      }),
     },
     {
       id: "defaultMaxTurns",
       label: "Default max turns",
-      currentValue: store.agent.defaultMaxTurns != null ? String(store.agent.defaultMaxTurns) : "unlimited",
-      submenu: (currentValue, done) => {
-        const input = new Input();
-        input.setValue(currentValue);
-        input.onSubmit = (value) => {
-          const trimmed = value.trim().toLowerCase();
-          if (trimmed === "unlimited" || trimmed === "") {
-            store.mutate.agent.setDefaultMaxTurns(undefined);
-            ctx.ui.notify("Default max turns set to unlimited", "info");
-            done("unlimited");
-            return;
-          }
-          const result = validateNumeric(value, 1);
-          if (result === undefined) {
-            ctx.ui.notify("Must be a number ≥ 1 or 'unlimited'", "error");
-            return;
-          }
-          store.mutate.agent.setDefaultMaxTurns(result);
-          ctx.ui.notify(`Default max turns set to ${result}`, "info");
-          done(String(result));
-        };
-        input.onEscape = () => done();
-        return input;
-      },
+      currentValue: store.agent.defaultMaxTurns != null ? String(store.agent.defaultMaxTurns) : "unset",
+      submenu: createNumericSubmenu(ctx, { min: 1 },
+        (parsed) => {
+          store.mutate.agent.setDefaultMaxTurns(parsed);
+          ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
+        },
+        () => {
+          store.mutate.agent.setDefaultMaxTurns(undefined);
+          ctx.ui.notify("Default max turns set to unset", "info");
+        },
+      ),
     },
     {
       id: "defaultThinking",

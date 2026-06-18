@@ -12,7 +12,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./menu-helpers.js";
-import { createNumericInputSubmenu } from "./menu-numeric-input-submenu.js";
+import { createNumericSubmenu } from "./menu-numeric-input-submenu.js";
 import { createConfirmSubmenu } from "./menu-confirm-submenu.js";
 import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
@@ -27,14 +27,6 @@ export async function showConcurrencySettingsMenu(
     const store = getStore();
     const items: SettingItem[] = [];
 
-    // Submenu factory for numeric input with validation ≥ 1.
-    const numericSubmenu = (onValid: (parsed: number) => void) =>
-      createNumericInputSubmenu({
-        min: 1,
-        minLabel: "≥ 1",
-        onValid,
-        onError: (msg) => ctx.ui.notify(msg, "error"),
-      });
 
     // Submenu factory: pick Edit (→ value input) or Remove for an existing limit.
     const editOrRemoveSubmenu = (
@@ -49,7 +41,7 @@ export async function showConcurrencySettingsMenu(
       const delegator = createDelegatingComponent(list);
       list.onSelect = (item) => {
         if (item.value === "edit") {
-          delegator.setActive(numericSubmenu(onEdit)(String(currentLimit), subDone));
+          delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, onEdit)(String(currentLimit), subDone));
         } else {
           onRemove();
           subDone();
@@ -70,7 +62,7 @@ export async function showConcurrencySettingsMenu(
       );
       const delegator = createDelegatingComponent(list);
       list.onSelect = (item) => {
-        delegator.setActive(numericSubmenu((parsed) => onPick(item.value, parsed))("1", subDone));
+        delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(item.value, parsed))("1", subDone));
       };
       list.onCancel = () => subDone();
       return delegator;
@@ -81,7 +73,7 @@ export async function showConcurrencySettingsMenu(
       id: "defaultConcurrency",
       label: "Default concurrency limit",
       currentValue: String(store.concurrency.default),
-      submenu: numericSubmenu((parsed) => {
+      submenu: createNumericSubmenu(ctx, (parsed) => {
         store.mutate.concurrency.setDefault(parsed);
         ctx.ui.notify(`Default concurrency set to ${parsed}`, "info");
       }),

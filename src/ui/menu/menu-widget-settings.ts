@@ -16,7 +16,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme } from "./menu-helpers.js";
-import { createNumericInputSubmenu } from "./menu-numeric-input-submenu.js";
+import { createNumericSubmenu } from "./menu-numeric-input-submenu.js";
 import { SettingsListWrapper } from "./menu-settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
 
@@ -58,14 +58,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   };
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const numericSubmenu = (min: number, onValid: (parsed: number) => void) =>
-      createNumericInputSubmenu({
-        min,
-        minLabel: `≥ ${min}`,
-        onValid,
-        onError: (msg) => ctx.ui.notify(msg, "error"),
-      });
-
     const statItems: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
       id,
       label: cfg.label,
@@ -84,7 +76,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         id: "maxLines",
         label: "Max lines (full)",
         currentValue: String(store.agent.widgetMaxLines),
-        submenu: numericSubmenu(2, (parsed) => {
+        submenu: createNumericSubmenu(ctx, { min: 2 }, (parsed) => {
           store.mutate.widget.setMaxLines(parsed);
           ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
         }),
@@ -93,7 +85,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         id: "descLengthFull",
         label: "Description length (full)",
         currentValue: String(store.agent.widgetDescLengthFull),
-        submenu: numericSubmenu(5, (parsed) => {
+        submenu: createNumericSubmenu(ctx, { min: 5 }, (parsed) => {
           store.mutate.widget.setDescLengthFull(parsed);
           ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
         }),
@@ -102,7 +94,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         id: "maxLinesCompact",
         label: "Max lines (compact)",
         currentValue: String(store.agent.widgetMaxLinesCompact),
-        submenu: numericSubmenu(1, (parsed) => {
+        submenu: createNumericSubmenu(ctx, (parsed) => {
           store.mutate.widget.setMaxLinesCompact(parsed);
           ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
         }),
@@ -111,7 +103,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         id: "descLengthCompact",
         label: "Description length (compact)",
         currentValue: String(store.agent.widgetDescLengthCompact),
-        submenu: numericSubmenu(5, (parsed) => {
+        submenu: createNumericSubmenu(ctx, { min: 5 }, (parsed) => {
           store.mutate.widget.setDescLengthCompact(parsed);
           ctx.ui.notify(`Description length (compact) set to ${parsed}`, "info");
         }),

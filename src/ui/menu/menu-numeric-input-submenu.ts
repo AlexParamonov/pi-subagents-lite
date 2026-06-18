@@ -1,43 +1,91 @@
 /**
- * menu-numeric-input-submenu.ts — Shared numeric input submenu Component.
+ * menu-numeric-input-submenu.ts — Shared input submenu Components.
  *
- * Creates a submenu factory for SettingsList items that need numeric input
- * with validation. Returns an Input component that validates on submit.
+ * - createNumericSubmenu: numeric input with validation
+ * - createInputSubmenu: plain text input
  */
 
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Input, type Component } from "@earendil-works/pi-tui";
 
 import { validateNumeric } from "./menu-helpers.js";
 
-export interface NumericInputSubmenuOptions {
-  /** Minimum allowed value (inclusive) */
-  min: number;
-  /** Label for error message, e.g. "≥ 1" */
-  minLabel: string;
-  /** Called with parsed value on valid submit */
-  onValid: (parsed: number) => void;
-  /** Called with error message on invalid submit */
-  onError: (message: string) => void;
+/**
+ * Returns a `(initialValue, done) => submenu` function wired to
+ * `ctx.ui.notify` for errors.
+ *
+ * If `required` is true, empty input errors.
+ * If `required` is false (default), empty input calls `done()` to clear.
+ *
+ * Usage:
+ *   createNumericSubmenu(ctx, onValid)
+ *   createNumericSubmenu(ctx, { min, required? }, onValid, onEmpty?)
+ */
+export function createNumericSubmenu(
+  ctx: ExtensionCommandContext,
+  optionsOrCallback?: { min?: number; required?: boolean } | ((parsed: number) => void),
+  onValid?: (parsed: number) => void,
+  onEmpty?: () => void,
+): (initialValue: string, done: (selectedValue?: string) => void) => Component {
+  const opts = typeof optionsOrCallback === "function"
+    ? { onValid: optionsOrCallback }
+    : { onValid, ...optionsOrCallback };
+  const min = opts.min ?? 1;
+  const required = opts.required ?? false;
+  const fmtLabel = (n: number) => (n === 0 ? "\u2265 0" : `\u2265 ${n}`);
+  const onError = (msg: string) => ctx.ui.notify(msg, "error");
+
+  return (initialValue, done) => {
+    const input = new Input();
+    input.setValue(initialValue);
+    input.onSubmit = (value) => {
+      const trimmed = value.trim();
+      if (!trimmed || /^unlimited$/i.test(trimmed)) {
+        if (required) {
+          onError(`Invalid value \u2014 must be a number ${fmtLabel(min)}`);
+          return;
+        }
+        onEmpty?.();
+        done();
+        return;
+      }
+      const parsed = validateNumeric(trimmed, min);
+      if (parsed === undefined) {
+        onError(`Invalid value \u2014 must be a number ${fmtLabel(min)}`);
+        return;
+      }
+      opts.onValid?.(parsed);
+      done(String(parsed));
+    };
+    input.onEscape = () => done();
+    return input;
+  };
 }
 
 /**
- * Creates a submenu factory function compatible with SettingsList's submenu callback.
- * Usage: submenu: createNumericInputSubmenu({ min, minLabel, onValid, onError })
+ * Returns a `(initialValue, done) => Input` function for plain text submenus.
+ *
+ * If `required` is true, empty input shows an error and does not call `done`.
+ * If `required` is false (default), empty input calls `done()` to clear.
  */
-export function createNumericInputSubmenu(
-  options: NumericInputSubmenuOptions,
-): (currentValue: string, done: (selectedValue?: string) => void) => Component {
-  return (currentValue: string, done: (selectedValue?: string) => void) => {
+export function createInputSubmenu(
+  ctx: ExtensionCommandContext,
+  options?: { required?: boolean },
+): (initialValue: string, done: (value?: string) => void) => Input {
+  return (initialValue, done) => {
     const input = new Input();
-    input.setValue(currentValue);
+    input.setValue(initialValue);
     input.onSubmit = (value) => {
-      const parsed = validateNumeric(value, options.min);
-      if (parsed === undefined) {
-        options.onError(`Invalid value — must be a number ${options.minLabel}`);
+      const trimmed = value.trim();
+      if (!trimmed) {
+        if (options?.required) {
+          ctx.ui.notify("Cannot be empty", "error");
+          return;
+        }
+        done();
         return;
       }
-      options.onValid(parsed);
-      done(String(parsed));
+      done(trimmed);
     };
     input.onEscape = () => done();
     return input;
