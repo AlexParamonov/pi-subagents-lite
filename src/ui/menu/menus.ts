@@ -20,7 +20,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
 import { buildSelectListTheme } from "./helpers.js";
-import { SelectListWrapper } from "./wrappers/select-list.js";
+import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { showModelSettingsMenu } from "./menu-model-settings.js";
 import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
 import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
@@ -50,7 +50,7 @@ export async function showSettingsMenu(
     const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
       const list = new SelectList(items, 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
-      return new SelectListWrapper(list, { title: "Settings", theme, onCancel: () => done(undefined) });
+      return new SettingsListWrapper(list, { title: "Settings", theme, onCancel: () => done(undefined) });
     });
     if (choice === undefined) return;
 
@@ -79,7 +79,7 @@ export async function showAgentsMainMenu(
     const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
       const list = new SelectList(items, 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
-      return new SelectListWrapper(list, { title: "Agents", theme, onCancel: () => done(undefined) });
+      return new SettingsListWrapper(list, { title: "Agents", theme, onCancel: () => done(undefined) });
     });
     if (choice === undefined) return;
 
