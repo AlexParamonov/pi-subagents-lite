@@ -142,83 +142,65 @@ export function buildAgentActionsList(
   return list;
 }
 
-/**
- * Create a running agents menu Component for use within a parent ctx.ui.custom.
- */
-export function createRunningAgentsMenuComponent(
-  ctx: ExtensionCommandContext,
-  theme: any,
-  onDone: () => void,
-): import("@earendil-works/pi-tui").Component | null {
-  const agents = getManager()?.listAgents() ?? [];
-  if (agents.length === 0) {
-    ctx.ui.notify("No agents have been spawned this session", "info");
-    onDone();
-    return null;
-  }
-
-  const buildAgentItems = (): SelectItem[] => agents.map((record) => {
-    const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
-    const statusIcon = record.lifecycle.status === "running" ? "▶" :
-      record.lifecycle.status === "completed" ? "✓" :
-      record.lifecycle.status === "queued" ? "⏳" :
-      record.lifecycle.status === "error" ? "✗" : "•";
-    const descLen = getStore().agent.widgetDescLengthFull;
-    const headline = record.display.description
-      ? truncateDesc(record.display.description, descLen)
-      : "";
-    const suffix = headline ? ` — ${headline}` : "";
-    return {
-      value: record.id,
-      label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
-    };
-  });
-
-  const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
-  const delegator = createDelegatingComponent(agentList);
-
-  agentList.onSelect = async (item) => {
-    const record = agents.find((r) => r.id === item.value);
-    if (record) {
-      const actionsList = buildAgentActionsList(ctx, record, theme, () => {
-        delegator.setActive(agentList);
-      }, delegator.setActive.bind(delegator), onDone);
-      delegator.setActive(actionsList);
-    }
-  };
-  agentList.onCancel = () => onDone();
-
-  // Simple title wrapper — SettingsListWrapper doesn't work with delegators
-  // because it intercepts onSelect on the wrapper target, not on the active child.
-  const sep = "\u2500";
-  const title = theme.bold(theme.fg("accent", "Running Agents"));
-  return {
-    invalidate() { delegator.invalidate(); },
-    render(width: number) {
-      const lines: string[] = [];
-      lines.push(sep.repeat(width));
-      lines.push("");
-      lines.push("  " + title);
-      lines.push("");
-      lines.push(...delegator.render(width));
-      lines.push("");
-      lines.push(sep.repeat(width));
-      return lines;
-    },
-    handleInput(data: string) { delegator.handleInput?.(data); },
-  };
-}
-
 export async function showRunningAgentsMenu(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
-  const records = getManager()?.listAgents() ?? [];
-  if (records.length === 0) {
+  const agents = getManager()?.listAgents() ?? [];
+  if (agents.length === 0) {
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    return createRunningAgentsMenuComponent(ctx, theme, () => done(undefined))!;
+    const buildAgentItems = (): SelectItem[] => agents.map((record) => {
+      const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
+      const statusIcon = record.lifecycle.status === "running" ? "▶" :
+        record.lifecycle.status === "completed" ? "✓" :
+        record.lifecycle.status === "queued" ? "⏳" :
+        record.lifecycle.status === "error" ? "✗" : "•";
+      const descLen = getStore().agent.widgetDescLengthFull;
+      const headline = record.display.description
+        ? truncateDesc(record.display.description, descLen)
+        : "";
+      const suffix = headline ? ` — ${headline}` : "";
+      return {
+        value: record.id,
+        label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
+      };
+    });
+
+    const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
+    const delegator = createDelegatingComponent(agentList);
+
+    agentList.onSelect = async (item) => {
+      const record = agents.find((r) => r.id === item.value);
+      if (record) {
+        const actionsList = buildAgentActionsList(ctx, record, theme, () => {
+          delegator.setActive(agentList);
+        }, delegator.setActive.bind(delegator), () => done(undefined));
+        delegator.setActive(actionsList);
+      }
+    };
+    agentList.onCancel = () => done(undefined);
+
+    // Simple title wrapper — SettingsListWrapper doesn't work with delegators
+    // because it intercepts onSelect on the wrapper target, not on the active child.
+    const sep = "\u2500";
+    const title = theme.bold(theme.fg("accent", "Running Agents"));
+    return {
+      invalidate() { delegator.invalidate(); },
+      render(width: number) {
+        const lines: string[] = [];
+        lines.push(sep.repeat(width));
+        lines.push("");
+        lines.push("  " + title);
+        lines.push("");
+        lines.push(...delegator.render(width));
+        lines.push("");
+        lines.push(sep.repeat(width));
+        return lines;
+      },
+      handleInput(data: string) { delegator.handleInput?.(data); },
+    };
   });
 }
