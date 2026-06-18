@@ -178,7 +178,7 @@ export async function showSpawnAgentMenu(
   {
     const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
       const input = createInputSubmenu(ctx, { required: true })("", done);
-      return new SettingsListWrapper(input, { title: "Agent Prompt", theme, passthroughKeys: true, footerText: "Enter to confirm \u00b7 Esc to cancel" });
+      return new SettingsListWrapper(input, { title: "Agent Prompt", theme, passthroughKeys: true });
     });
     if (result === undefined) return;
     prompt = result;

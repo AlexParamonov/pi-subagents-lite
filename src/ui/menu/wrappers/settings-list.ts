@@ -1,12 +1,11 @@
 /**
- * settings-list-wrapper.ts — Wrapper component that adds header/footer to SettingsList.
+ * settings-list-wrapper.ts — Frames a list component with a title bar and separators.
  *
- * Wraps a SettingsList with:
+ * Wraps a SettingsList or SelectList with:
  * - Top separator line
  * - Header with title
- * - SettingsList content
+ * - List content
  * - Bottom separator line
- * - Footer with navigation hints
  */
 
 import { type Component, isFocusable } from "@earendil-works/pi-tui";
@@ -20,7 +19,6 @@ export interface SettingsListWrapperOptions {
   title: string;
   theme: SettingsListWrapperTheme;
   separatorChar?: string;
-  footerText?: string;
   /** If true, skip j/k→arrow and arrow→enter/escape conversion. Input passes through unchanged. */
   passthroughKeys?: boolean;
   onCancel?: () => void;
@@ -31,7 +29,6 @@ export class SettingsListWrapper implements Component {
   private title: string;
   private theme: SettingsListWrapperTheme;
   private separatorChar: string;
-  private footerText: string;
   private passthroughKeys: boolean;
 
   constructor(settingsList: Component, options: SettingsListWrapperOptions) {
@@ -39,7 +36,6 @@ export class SettingsListWrapper implements Component {
     this.title = options.title;
     this.theme = options.theme;
     this.separatorChar = options.separatorChar ?? "─";
-    this.footerText = options.footerText ?? "Enter/→ to change · Esc to cancel";
     this.passthroughKeys = options.passthroughKeys ?? false;
 
     // Append Back item when onCancel provided
