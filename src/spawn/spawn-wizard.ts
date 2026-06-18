@@ -299,8 +299,8 @@ export async function showSpawnAgentMenu(
         },
       },
       {
-        id: "separator",
-        label: "",
+        id: "__sep__",
+        label: " ",
         currentValue: "",
       },
       {
