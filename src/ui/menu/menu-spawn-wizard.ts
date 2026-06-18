@@ -1,5 +1,5 @@
 /**
- * spawn-wizard.ts — Spawn agent wizard and worktree picker.
+ * menu-spawn-wizard.ts — Spawn agent wizard and worktree picker.
  *
  * Extracted from menus.ts to own the multi-step spawn composition flow:
  * type selection → prompt → options sub-menu → spawn.
@@ -10,21 +10,21 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import type { ThinkingLevel } from "../types.js";
-import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../agents/agent-types.js";
-import { findModelInRegistry } from "../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme } from "../ui/menu/helpers.js";
-import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
-import { createModelSelectSubmenu } from "../ui/menu/submenus/model-select.js";
-import { createNumericSubmenu, createInputSubmenu } from "../ui/menu/submenus/numeric-input.js";
-import { SettingsListWrapper } from "../ui/menu/wrappers/settings-list.js";
+import type { ThinkingLevel } from "../../types.js";
+import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
+import { findModelInRegistry } from "../../utils.js";
+import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
+import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
+import { createModelSelectSubmenu } from "./submenus/model-select.js";
+import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
+import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import {
   getPiInstance,
   getSessionCtx,
   getWidget,
   getStore,
   getCoordinator,
-} from "../shell.js";
+} from "../../shell.js";
 
 // ============================================================================
 // Worktree picker helpers
@@ -206,9 +206,6 @@ export async function showSpawnAgentMenu(
   let currentWorktreeLabel = "Inherits parent cwd";
   let currentDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
 
-
-
-
   const buildItems = (): SettingItem[] => {
     const fmtNum = (v: number | undefined) => v != null ? String(v) : "(not set)";
     const displayModel = currentModelStr || "(inherits parent)";
@@ -253,7 +250,7 @@ export async function showSpawnAgentMenu(
 
             const widget = getWidget();
             if (widget) {
-              widget.setUICtx(ctx.ui as unknown as import("../ui/agent-widget.js").UICtx);
+              widget.setUICtx(ctx.ui as unknown as import("../agent-widget.js").UICtx);
               widget.ensureTimer();
             }
 

@@ -29,8 +29,8 @@ import { showDebugMenu } from "./menu-debug.js";
 import { showSpawnOptionsMenu } from "./menu-spawn-options.js";
 import { showSystemPromptMenu } from "./menu-system-prompt.js";
 
-// Spawn wizard — imported and re-exported so the dispatcher calls it from here.
-import { showSpawnAgentMenu } from "../../spawn/spawn-wizard.js";
+// Spawn wizard — co-located in this folder.
+import { showSpawnAgentMenu } from "./menu-spawn-wizard.js";
 export { showSpawnAgentMenu };
 
 

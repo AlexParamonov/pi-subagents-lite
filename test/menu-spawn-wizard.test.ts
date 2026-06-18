@@ -70,7 +70,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 }));
 
 // Import AFTER mock setup
-import { showSpawnAgentMenu } from "../src/spawn/spawn-wizard.js";
+import { showSpawnAgentMenu } from "../src/ui/menu/menu-spawn-wizard.js";
 
 function setupMocks() {
   mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 6 };
