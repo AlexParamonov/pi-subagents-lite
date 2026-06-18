@@ -15,7 +15,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
+import { Input, SelectList, type SelectItem } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
@@ -92,12 +92,15 @@ async function steerAgentById(
 /**
  * Sub-menu with actions for a single agent.
  * Returns a SelectList Component for use as a submenu.
+ * @param setActive — callback to swap the delegating component's active child.
+ *   Used to swap to the steer input within the menu context.
  */
 export function buildAgentActionsList(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
   theme: any,
   done: () => void,
+  setActive?: (c: import("@earendil-works/pi-tui").Component) => void,
 ): SelectList {
   const items: SelectItem[] = [];
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
@@ -137,7 +140,27 @@ export function buildAgentActionsList(
     } else if (item.value === "view-error") {
       await showResultViewer(ctx, record, "error", record.error!);
     } else if (item.value === "steer") {
-      await steerAgentById(record.id, ctx);
+      if (setActive) {
+        // Swap to steer input within the menu context
+        const input = new Input();
+        input.setValue("");
+        input.onSubmit = async (value) => {
+          const trimmed = value.trim();
+          if (trimmed) {
+            const sent = await getManager()!.steer(record.id, trimmed);
+            if (sent) {
+              ctx.ui.notify(`Steer sent to ${shortId}…`, "info");
+            } else {
+              ctx.ui.notify(`Steer failed for ${shortId}`, "error");
+            }
+          }
+          setActive(list);
+        };
+        input.onEscape = () => setActive(list);
+        setActive(input);
+      } else {
+        await steerAgentById(record.id, ctx);
+      }
     } else if (item.value === "stop") {
       getManager()?.abort(record.id);
       ctx.ui.notify(`Stopped ${shortId}`, "info");
@@ -201,7 +224,7 @@ export function createRunningAgentsMenuComponent(
     if (record) {
       const actionsList = buildAgentActionsList(ctx, record, theme, () => {
         delegator.setActive(agentList);
-      });
+      }, delegator.setActive.bind(delegator));
       delegator.setActive(actionsList);
     }
   };
