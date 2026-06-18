@@ -14,10 +14,10 @@ import type { ThinkingLevel } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../agents/agent-types.js";
 import { findModelInRegistry } from "../utils.js";
 import { buildSettingsListTheme, buildSelectListTheme } from "../ui/menu/helpers.js";
+import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
 import { createModelSelectSubmenu } from "../ui/menu/submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "../ui/menu/submenus/numeric-input.js";
 import { SettingsListWrapper } from "../ui/menu/wrappers/settings-list.js";
-import { SelectListWrapper } from "../ui/menu/wrappers/select-list.js";
 import {
   getPiInstance,
   getSessionCtx,
@@ -200,7 +200,7 @@ export async function showSpawnAgentMenu(
   let currentThinking: ThinkingLevel | undefined = agentConfig.thinkingLevel ?? store.agent.defaultThinking;
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
   let currentMaxTokens: number | undefined = agentConfig.maxTokens;
-  let currentGraceTurns: number = store.agent.graceTurns ?? 6;
+  let currentGraceTurns: number = store.agent.graceTurns ?? DEFAULT_GRACE_TURNS;
   let currentBackground: boolean = store.agent.forceBackground;
   let currentWorktreePath: string | undefined;
   let currentWorktreeLabel = "Inherits parent cwd";
@@ -210,7 +210,7 @@ export async function showSpawnAgentMenu(
 
 
   const buildItems = (): SettingItem[] => {
-    const fmtNum = (v: number | undefined) => v != null ? String(v) : "unset";
+    const fmtNum = (v: number | undefined) => v != null ? String(v) : "(not set)";
     const displayModel = currentModelStr || "(inherits parent)";
     const items: SettingItem[] = [
       {
@@ -218,23 +218,17 @@ export async function showSpawnAgentMenu(
         label: "Spawn",
         currentValue: "",
         submenu: (_v, done) => {
-          const thinkingItem = items.find(i => i.id === "thinkingLevel");
-          const mtItem = items.find(i => i.id === "maxTurns");
-          const mtkItem = items.find(i => i.id === "maxTokens");
           const gtItem = items.find(i => i.id === "graceTurns");
           const bgItem = items.find(i => i.id === "background");
           const descItem = items.find(i => i.id === "description");
+          const promptItem = items.find(i => i.id === "prompt");
 
-          const thinking = (thinkingItem?.currentValue === "inherit"
-            ? undefined : thinkingItem?.currentValue) as ThinkingLevel | undefined;
-          const maxTurns = mtItem?.currentValue === "unset"
-            ? undefined : Number(mtItem?.currentValue);
-          const maxTokens = mtkItem?.currentValue === "unset"
-            ? undefined : Number(mtkItem?.currentValue);
-          const graceTurns = Number(gtItem?.currentValue ?? "6");
+          const thinking = currentThinking;
+          const maxTurns = currentMaxTurns;
+          const maxTokens = currentMaxTokens;
+          const graceTurns = Number(gtItem?.currentValue ?? DEFAULT_GRACE_TURNS);
           const background = bgItem?.currentValue === "ON";
           const description = descItem?.currentValue ?? currentDescription;
-          const promptItem = items.find(i => i.id === "prompt");
           const spawnPrompt = promptItem?.currentValue ?? prompt;
 
           // Resolve model
@@ -353,7 +347,8 @@ export async function showSpawnAgentMenu(
                   done(wt?.branch ?? "detached");
                 }
               };
-              return new SelectListWrapper(list, { title: "Worktree", theme, onCancel: () => done() });
+              list.onCancel = () => done();
+              return list;
             },
           } as SettingItem]
         : []),
@@ -367,19 +362,19 @@ export async function showSpawnAgentMenu(
         id: "maxTokens",
         label: "Max tokens",
         currentValue: fmtNum(currentMaxTokens),
-        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }),
+        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }, () => { currentMaxTokens = undefined; }),
       },
       {
         id: "maxTurns",
         label: "Max turns",
         currentValue: fmtNum(currentMaxTurns),
-        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }),
+        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }, () => { currentMaxTurns = undefined; }),
       },
       {
         id: "graceTurns",
         label: "Grace turns",
         currentValue: String(currentGraceTurns),
-        submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => { currentGraceTurns = parsed; }),
+        submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
       },
       {
         id: "description",

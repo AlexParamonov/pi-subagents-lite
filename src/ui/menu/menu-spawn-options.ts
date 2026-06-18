@@ -15,6 +15,7 @@ import { buildSettingsListTheme } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
+import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { getStore } from "../../shell.js";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
@@ -32,7 +33,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       id: "graceTurns",
       label: "Grace turns",
       currentValue: String(store.agent.graceTurns),
-      submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
+      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => {
         store.mutate.agent.setGraceTurns(parsed);
         ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
       }),
@@ -40,17 +41,14 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     {
       id: "defaultMaxTurns",
       label: "Default max turns",
-      currentValue: store.agent.defaultMaxTurns != null ? String(store.agent.defaultMaxTurns) : "unset",
-      submenu: createNumericSubmenu(ctx, { min: 1 },
-        (parsed) => {
-          store.mutate.agent.setDefaultMaxTurns(parsed);
-          ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
-        },
-        () => {
-          store.mutate.agent.setDefaultMaxTurns(undefined);
-          ctx.ui.notify("Default max turns set to unset", "info");
-        },
-      ),
+      currentValue: String(store.agent.defaultMaxTurns ?? "(not set)"),
+      submenu: createNumericSubmenu(ctx, { min: 1 }, (parsed) => {
+        store.mutate.agent.setDefaultMaxTurns(parsed);
+        ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
+      }, () => {
+        store.mutate.agent.setDefaultMaxTurns(undefined);
+        ctx.ui.notify("Default max turns cleared", "info");
+      }),
     },
     {
       id: "defaultThinking",

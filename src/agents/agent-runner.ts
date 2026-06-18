@@ -27,12 +27,11 @@ import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH, type SubagentType, type SystemPromptMode } from "../types.js";
 import { getStore } from "../shell.js";
+import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
 
 /** Path to custom prompt file. Exported for use in menus.ts. */
 export const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
 
-/** Default grace turns when not specified in config. */
-const DEFAULT_GRACE_TURNS = 6;
 
 /** Timeout for quick git commands (branch detection, repo check). */
 const GIT_EXEC_TIMEOUT_MS = 5000;

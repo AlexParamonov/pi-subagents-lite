@@ -23,7 +23,7 @@ import { validateNumeric } from "../helpers.js";
  */
 export function createNumericSubmenu(
   ctx: ExtensionCommandContext,
-  optionsOrCallback?: { min?: number; required?: boolean } | ((parsed: number) => void),
+  optionsOrCallback?: { min?: number; required?: boolean; default?: number } | ((parsed: number) => void),
   onValid?: (parsed: number) => void,
   onEmpty?: () => void,
 ): (initialValue: string, done: (selectedValue?: string) => void) => Component {
@@ -37,7 +37,7 @@ export function createNumericSubmenu(
 
   return (initialValue, done) => {
     const input = new Input();
-    input.setValue(initialValue);
+    input.setValue(initialValue === "(not set)" ? "" : initialValue);
     input.onSubmit = (value) => {
       const trimmed = value.trim();
       if (!trimmed || /^unlimited$/i.test(trimmed)) {
@@ -45,8 +45,13 @@ export function createNumericSubmenu(
           onError(`Invalid value \u2014 must be a number ${fmtLabel(min)}`);
           return;
         }
-        onEmpty?.();
-        done();
+        if (opts.default != null) {
+          opts.onValid?.(opts.default);
+          done(String(opts.default));
+        } else {
+          onEmpty?.();
+          done("(not set)");
+        }
         return;
       }
       const parsed = validateNumeric(trimmed, min);

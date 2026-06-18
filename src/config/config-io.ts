@@ -12,12 +12,15 @@ import type { SubagentsConfig } from "../models/model-precedence.js";
 const CONFIG_DIR = path.join(process.env.HOME || "", ".pi", "agent");
 const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
 
+/** Default number of grace turns before an agent is force-stopped. */
+export const DEFAULT_GRACE_TURNS = 6;
+
 /** Default configuration — used when config file doesn't exist or is invalid. */
 export const DEFAULT_CONFIG: SubagentsConfig = {
   agent: {
     default: null,
     forceBackground: false,
-    graceTurns: 6,
+    graceTurns: DEFAULT_GRACE_TURNS,
     widgetMaxLines: 12,
     // widgetMaxLinesCompact intentionally omitted — derives from widgetMaxLines
     widgetDescLengthFull: 50,
