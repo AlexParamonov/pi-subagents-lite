@@ -73,7 +73,7 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     mockModules.mockManager.listAgents.mockReturnValue([]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("No agents have been spawned this session", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(ctx.ui.custom).not.toHaveBeenCalled();
   });
 

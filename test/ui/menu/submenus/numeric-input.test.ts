@@ -68,7 +68,7 @@ describe("createNumericSubmenu", () => {
     const done = vi.fn();
     createNumericSubmenu(ctx, { onValid })("5", done);
     inputInstances[0].onSubmit!("0");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(onValid).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
   });

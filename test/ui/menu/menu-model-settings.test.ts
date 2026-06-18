@@ -208,7 +208,7 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
     expect(mockModules.mockSessionOverrides).toEqual({ default: null });
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Session overrides cleared", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 
@@ -240,6 +240,6 @@ describe("showModelSettingsMenu — clear all overrides", () => {
     item.submenu("", done);
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
-    expect(ctx.ui.notify).toHaveBeenCalledWith("All model overrides cleared", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });

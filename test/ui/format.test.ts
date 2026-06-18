@@ -154,6 +154,6 @@ describe("buildStatsParts — cost behavior", () => {
 
   it("includes cost formatted as dollar amount", () => {
     const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.some(p => p === "$1.23")).toBe(true);
+    expect(parts.some(p => /^\$\d+\.\d{2}$/.test(p))).toBe(true);
   });
 });

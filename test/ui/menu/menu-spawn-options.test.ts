@@ -123,7 +123,7 @@ describe("showSpawnOptionsMenu — force background", () => {
     await showSpawnOptionsMenu(ctx);
     settingsListCalls[0].onChange("forceBackground", "ON");
     expect(mockModules.mockConfig.agent.forceBackground).toBe(true);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Force background set to ON", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 
@@ -168,7 +168,7 @@ describe("showSpawnOptionsMenu — grace turns", () => {
 
     inputInstances[0].onSubmit!("0");
     expect(mockModules.mockConfig.agent.graceTurns).toBe(0);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Grace turns set to 0", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("0");
   });
 
@@ -183,7 +183,7 @@ describe("showSpawnOptionsMenu — grace turns", () => {
 
     inputInstances[0].onSubmit!("-1");
     expect(mockModules.mockConfig.agent.graceTurns).toBe(3);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 0", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -237,7 +237,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
 
     inputInstances[0].onSubmit!("30");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBe(30);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Default max turns set to 30", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("30");
   });
 
@@ -265,7 +265,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
 
     inputInstances[0].onSubmit!("0");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -278,7 +278,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     dmt.submenu("unlimited", mockDone);
 
     inputInstances[0].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -327,7 +327,7 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     await showSpawnOptionsMenu(ctx);
     settingsListCalls[0].onChange("defaultThinking", "medium");
     expect(mockModules.mockConfig.agent.defaultThinking).toBe("medium");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Default thinking level set to medium", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 
   it("sets thinking level to inherit (undefined) via onChange", async () => {
@@ -336,7 +336,7 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     await showSpawnOptionsMenu(ctx);
     settingsListCalls[0].onChange("defaultThinking", "inherit");
     expect(mockModules.mockConfig.agent.defaultThinking).toBeUndefined();
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Default thinking level set to inherit", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 

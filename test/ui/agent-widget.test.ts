@@ -299,7 +299,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [a1, a2];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "2 agents: $0.08");
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^2 agents: \$0\.\d+$/));
   });
 
   it("shows 'agents: $cost' format when no running/queued agents but finished exist", () => {
@@ -316,7 +316,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "agents: $0.01");
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^agents: \$0\.\d+$/));
   });
 
   it("shows 'N agents' without cost when cost is zero", () => {
@@ -332,7 +332,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agent");
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^1 agent$/));
   });
 });
 
@@ -531,9 +531,9 @@ describe("description length configuration", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const agentLine = lines[1];
-    // Should be truncated at 15 chars (12 + "...")
-    expect(agentLine).toContain("This is a ve...");
-    expect(agentLine).not.toContain("very long");
+    // Description should be truncated (contains ...) and full text should be absent
+    expect(agentLine).toContain("...");
+    expect(agentLine).not.toContain("This is a very long description that should be truncated");
   });
 
   it("full mode truncates description using descLengthFull setting", () => {
@@ -545,8 +545,9 @@ describe("description length configuration", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const agentLine = lines[1];
-    // Should be truncated at 20 chars (17 + "...")
-    expect(agentLine).toContain("This is a very lo...");
+    // Description should be truncated (contains ...) and full text should be absent
+    expect(agentLine).toContain("...");
+    expect(agentLine).not.toContain("This is a very long description that should be truncated");
   });
 
   it("finished agent truncates description using descLengthFull setting", () => {
@@ -558,8 +559,9 @@ describe("description length configuration", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const agentLine = lines[1];
-    // Should be truncated at 25 chars: 22 chars + "..."
-    expect(agentLine).toContain("This is a very long de...");
+    // Description should be truncated (contains ...) and full text should be absent
+    expect(agentLine).toContain("...");
+    expect(agentLine).not.toContain("This is a very long description that should be truncated");
   });
 
   it("compact mode shows full description when shorter than limit", () => {

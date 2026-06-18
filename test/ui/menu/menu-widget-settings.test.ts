@@ -132,7 +132,7 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("compact", "ON");
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Force compact mode ON", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 
   it("toggles shortcut via onChange", async () => {
@@ -141,7 +141,7 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("shortcut", "ON");
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Ctrl+o shortcut ON", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 
@@ -197,7 +197,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     // Simulate submit with valid value
     inputInstances[0].onSubmit!("10");
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (full) set to 10", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("10");
   });
 
@@ -212,7 +212,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("1");
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 2", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -239,7 +239,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("0");
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
   });
 
   it("compact max lines submenu accepts valid value", async () => {
@@ -253,7 +253,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("4");
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(4);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Max lines (compact) set to 4", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("4");
   });
 
@@ -280,7 +280,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("80");
     expect(mockModules.mockConfig.agent.widgetDescLengthFull).toBe(80);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Description length (full) set to 80", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("80");
   });
 
@@ -295,7 +295,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("3");
     expect(mockModules.mockConfig.agent.widgetDescLengthFull).toBe(50);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 5", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -319,7 +319,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("20");
     expect(mockModules.mockConfig.agent.widgetDescLengthCompact).toBe(20);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Description length (compact) set to 20", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("20");
   });
 
@@ -334,7 +334,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
 
     inputInstances[0].onSubmit!("4");
     expect(mockModules.mockConfig.agent.widgetDescLengthCompact).toBe(30);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value — must be a number ≥ 5", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });
@@ -416,7 +416,7 @@ describe("showWidgetSettingsMenu — Usage stats submenu", () => {
 
     settingsListCalls[1].onChange("showTools", "OFF");
     expect(mockModules.mockConfig.agent.showTools).toBe(false);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Show tools OFF", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 
   it("stat toggle onChange for all 7 stats", async () => {

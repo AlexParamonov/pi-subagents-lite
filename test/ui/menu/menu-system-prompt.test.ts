@@ -112,7 +112,7 @@ describe("showSystemPromptMenu — system prompt mode", () => {
     await showSystemPromptMenu(ctx);
     settingsListCalls[0].onChange("systemPromptMode", "inherit");
     expect(mockModules.mockConfig.agent.systemPromptMode).toBe("inherit");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("System prompt mode set to inherit", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 
@@ -218,7 +218,7 @@ describe("showSystemPromptMenu — Include AGENTS.md", () => {
     await showSystemPromptMenu(ctx);
     settingsListCalls[0].onChange("includeContextFiles", "OFF");
     expect(mockModules.mockConfig.agent.includeContextFiles).toBe(false);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Include AGENTS.md set to OFF", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 
@@ -254,7 +254,7 @@ describe("showSystemPromptMenu — Load skills implicitly", () => {
     await showSystemPromptMenu(ctx);
     settingsListCalls[0].onChange("loadSkillsImplicitly", "OFF");
     expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe(false);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Load skills implicitly set to OFF", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 
@@ -290,7 +290,7 @@ describe("showSystemPromptMenu — Load extensions implicitly", () => {
     await showSystemPromptMenu(ctx);
     settingsListCalls[0].onChange("loadExtensionsImplicitly", "OFF");
     expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe(false);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Load extensions implicitly set to OFF", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
 

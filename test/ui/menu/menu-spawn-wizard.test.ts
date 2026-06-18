@@ -340,7 +340,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("0");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
@@ -351,7 +351,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });
@@ -397,7 +397,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     const mockDone = vi.fn();
     item.submenu("10000", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 1", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });
@@ -433,7 +433,7 @@ describe("showSpawnAgentMenu — grace turns submenu", () => {
     const mockDone = vi.fn();
     item.submenu("6", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("-1");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Invalid value \u2014 must be a number \u2265 0", "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 });

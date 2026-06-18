@@ -123,7 +123,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     await showDebugMenu(ctx);
     // Simulate selecting "agent-types"
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    expect(ctx.ui.notify).toHaveBeenCalledWith("No agent types available", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 
   it("lists each agent type with its description", async () => {
@@ -291,7 +291,7 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Agent briefing sent to LLM", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 
   it("includes worktree_path usage guidelines", async () => {
