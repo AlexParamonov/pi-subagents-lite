@@ -22,7 +22,7 @@ export async function showConcurrencySettingsMenu(
   modelOptions: string[],
 ): Promise<void> {
   // Build menu items from current store state.
-  const buildItems = (store: ReturnType<typeof getStore>, theme: any, modelOptions: string[]): SettingItem[] => {
+  const buildItems = (store: ReturnType<typeof getStore>, theme: any, modelOptions: string[], onRebuild?: () => void): SettingItem[] => {
     const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
     const items: SettingItem[] = [];
 
@@ -45,6 +45,7 @@ export async function showConcurrencySettingsMenu(
         } else {
           onRemove();
           subDone();
+          onRebuild?.();
         }
       };
       list.onCancel = () => subDone();
@@ -81,6 +82,7 @@ export async function showConcurrencySettingsMenu(
 
     // Per-provider limits
     items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: "__sep__", label: "── Per-provider limits ──", currentValue: "────────" });
     const providerLimits = store.concurrency.providers;
     for (const provider of Object.keys(providerLimits)) {
       const limit = providerLimits[provider];
@@ -102,7 +104,7 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
     // Add per-provider limit (submenu: provider selection → numeric input)
     if (providers.length > 0) {
       items.push({
@@ -116,8 +118,9 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Per-model limits
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: "__sep__", label: "── Per-model limits ──", currentValue: "────────" });
     const models = store.concurrency.models;
     for (const modelKey of Object.keys(models)) {
       const limit = models[modelKey];
@@ -139,8 +142,8 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Add per-model limit
+    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
     if (modelOptions.length > 0) {
       items.push({
         id: "addModelLimit",
@@ -153,8 +156,8 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Reset all to defaults
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     items.push({
       id: "resetAll",
       label: "Reset all to defaults",
@@ -175,9 +178,10 @@ export async function showConcurrencySettingsMenu(
   let rebuild: ((items: any[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const triggerRebuild = () => rebuild?.(buildItems(getStore(), theme, modelOptions, triggerRebuild));
     const store = getStore();
-    const items = buildItems(store, theme, modelOptions);
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme, modelOptions)), () => done(undefined));
+    const items = buildItems(store, theme, modelOptions, triggerRebuild);
+    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => triggerRebuild(), () => done(undefined));
     return new SettingsListWrapper(settingsList, {
       title: "Concurrency Settings",
       theme,
