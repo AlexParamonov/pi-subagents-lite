@@ -60,8 +60,8 @@ interface RunResult {
   session: AgentSession;
   /** True if the agent was hard-aborted (max_turns + grace exceeded). */
   aborted: boolean;
-  /** True if the agent was steered to wrap up (hit soft turn limit) but finished in time. */
-  steered: boolean;
+  /** True if the agent hit the soft turn limit and wrapped up within grace turns. */
+  turnLimited: boolean;
 }
 
 /**
@@ -561,5 +561,5 @@ export async function runAgent(
   });
 
   const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
-  return { responseText, session, aborted: getAborted(), steered: getSteered() };
+  return { responseText, session, aborted: getAborted(), turnLimited: getSteered() };
 }

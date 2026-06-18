@@ -1340,7 +1340,7 @@ describe("runAgent — grace turns", () => {
     resolvePrompt();
     const result = await promise;
     expect(result.aborted).toBe(false);
-    expect(result.steered).toBe(true);
+    expect(result.turnLimited).toBe(true);
   });
 });
 
