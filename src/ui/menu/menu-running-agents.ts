@@ -101,6 +101,7 @@ export function buildAgentActionsList(
   theme: any,
   done: () => void,
   setActive?: (c: import("@earendil-works/pi-tui").Component) => void,
+  onClose?: () => void,
 ): SelectList {
   const items: SelectItem[] = [];
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
@@ -164,7 +165,7 @@ export function buildAgentActionsList(
     } else if (item.value === "stop") {
       getManager()?.abort(record.id);
       ctx.ui.notify(`Stopped ${shortId}`, "info");
-      done();
+      onClose?.();
     }
   };
   list.onCancel = () => done();
@@ -225,7 +226,7 @@ export function createRunningAgentsMenuComponent(
     if (record) {
       const actionsList = buildAgentActionsList(ctx, record, theme, () => {
         delegator.setActive(agentList);
-      }, delegator.setActive.bind(delegator));
+      }, delegator.setActive.bind(delegator), onDone);
       delegator.setActive(actionsList);
     }
   };
