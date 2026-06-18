@@ -28,12 +28,12 @@ import {
 // ============================================================================
 
 /** Shortcut for a successful tool result. */
-export function successResult(text: string, details?: Record<string, unknown>) {
+function successResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], details };
 }
 
 /** Shortcut for an error tool result. */
-export function errorResult(text: string, details?: Record<string, unknown>) {
+function errorResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], isError: true as const, details };
 }
 
