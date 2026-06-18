@@ -167,7 +167,7 @@ export function createRunningAgentsMenuComponent(
   ctx: ExtensionCommandContext,
   theme: any,
   onDone: () => void,
-): SettingsListWrapper | null {
+): import("@earendil-works/pi-tui").Component | null {
   const agents = getManager()?.listAgents() ?? [];
   if (agents.length === 0) {
     ctx.ui.notify("No agents have been spawned this session", "info");
@@ -194,20 +194,37 @@ export function createRunningAgentsMenuComponent(
 
   const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
   const delegator = createDelegatingComponent(agentList);
-  const wrapper = new SettingsListWrapper(delegator, { title: "Running Agents", theme, onCancel: () => onDone() });
 
   agentList.onSelect = async (item) => {
     const record = agents.find((r) => r.id === item.value);
     if (record) {
       const actionsList = buildAgentActionsList(ctx, record, theme, () => {
-        // Cancel: swap back to the agents list
         delegator.setActive(agentList);
       });
       delegator.setActive(actionsList);
     }
   };
+  agentList.onCancel = () => onDone();
 
-  return wrapper;
+  // Simple title wrapper — SettingsListWrapper doesn't work with delegators
+  // because it intercepts onSelect on the wrapper target, not on the active child.
+  const sep = "\u2500";
+  const title = theme.bold(theme.fg("accent", "Running Agents"));
+  return {
+    invalidate() { delegator.invalidate(); },
+    render(width: number) {
+      const lines: string[] = [];
+      lines.push(sep.repeat(width));
+      lines.push("");
+      lines.push("  " + title);
+      lines.push("");
+      lines.push(...delegator.render(width));
+      lines.push("");
+      lines.push(sep.repeat(width));
+      return lines;
+    },
+    handleInput(data: string) { delegator.handleInput?.(data); },
+  };
 }
 
 export async function showRunningAgentsMenu(
