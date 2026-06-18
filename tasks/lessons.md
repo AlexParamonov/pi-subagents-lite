@@ -12,6 +12,8 @@
 - Acceptance tests match planned interface (plan.md), not guessed implementation.
 - When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh.
 - User manual testing result ("all works") → record and proceed, don't insist on automated loop.
+- Test public interfaces. Test behaviour, not implementation details.
+- Test the function contract (empty for unknown, wrapped for known), not hardcoded data strings.
 
 ### Delegation
 - Delegate immediately without pre-reading files — agent explores itself.
