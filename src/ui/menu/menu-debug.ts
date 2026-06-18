@@ -127,7 +127,6 @@ export function createDebugMenuComponent(
       await handleAgentBriefing(ctx);
     }
   };
-  selectList.onCancel = () => onDone();
   return new SettingsListWrapper(selectList, { title: "Debug", theme, onCancel: () => onDone() });
 }
 

@@ -50,7 +50,6 @@ export async function showSettingsMenu(
     const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
       const list = new SelectList(items, 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
-      list.onCancel = () => done(undefined);
       return new SelectListWrapper(list, { title: "Settings", theme, onCancel: () => done(undefined) });
     });
     if (choice === undefined) return;
@@ -80,7 +79,6 @@ export async function showAgentsMainMenu(
     const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
       const list = new SelectList(items, 10, buildSelectListTheme(theme));
       list.onSelect = (item) => done(item.value);
-      list.onCancel = () => done(undefined);
       return new SelectListWrapper(list, { title: "Agents", theme, onCancel: () => done(undefined) });
     });
     if (choice === undefined) return;

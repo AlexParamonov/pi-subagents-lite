@@ -199,7 +199,6 @@ export function createRunningAgentsMenuComponent(
       await showAgentActions(ctx, record);
     }
   };
-  list.onCancel = () => onDone();
   return new SettingsListWrapper(list, { title: "Running Agents", theme, onCancel: () => onDone() });
 }
 
