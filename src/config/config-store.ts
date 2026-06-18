@@ -17,7 +17,9 @@ import type { SubagentsConfig, SessionModelOverrides } from "../models/model-pre
 import { resolveModel } from "../models/model-precedence.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
 import type { AgentManager } from "../agents/agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS, type SystemPromptMode, type ThinkingLevel } from "../types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import type { SystemPromptMode } from "../agents/types.js";
+import type { ThinkingLevel } from "../types.js";
 import { DEFAULT_CONFIG, loadConfig, saveConfigAtomic } from "./config-io.js";
 
 /** Valid values for systemPromptMode — checked once at module load. */

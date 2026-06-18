@@ -15,7 +15,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import type { SystemPromptMode } from "../../types.js";
+import type { SystemPromptMode } from "../../agents/types.js";
 import { getStore } from "../../shell.js";
 import { CUSTOM_PROMPT_PATH } from "../../agents/agent-runner.js";
 

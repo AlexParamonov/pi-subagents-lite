@@ -11,7 +11,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentConfig, ThinkingLevel } from "../types.js";
+import type { AgentConfig } from "./types.js";
+import type { ThinkingLevel } from "../types.js";
 import { parseThinkingLevel } from "../utils.js";
 
 /* ------------------------------------------------------------------ */

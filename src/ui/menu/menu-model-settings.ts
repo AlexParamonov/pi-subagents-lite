@@ -12,7 +12,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
 import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";

@@ -9,7 +9,8 @@
  */
 
 import { getConfig } from "../agents/agent-types.js";
-import type { SubagentType, Theme } from "../types.js";
+import type { SubagentType } from "../agents/types.js";
+import type { Theme } from "./types.js";
 import { formatTokens, formatTokensCompact, formatCost } from "../agents/usage.js";
 
 /** Truncate a description string to `maxLen` characters, appending "..." if truncated. */

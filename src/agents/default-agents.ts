@@ -5,7 +5,7 @@
  * Kept: general-purpose + Explore. Plan removed (user can create via .md file).
  */
 
-import type { AgentConfig } from "../types.js";
+import type { AgentConfig } from "./types.js";
 
 const READ_ONLY_TOOLS = ["read", "bash", "grep", "find"];
 

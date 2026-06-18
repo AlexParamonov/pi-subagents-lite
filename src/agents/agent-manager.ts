@@ -15,9 +15,9 @@ import {
   type RunCallbacks,
   SHORT_ID_LENGTH,
   type SpawnConfig,
-  type SubagentType,
   type ToolActivity,
 } from "../types.js";
+import type { SubagentType } from "./types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
 import { errorMessage } from "../utils.js";
 

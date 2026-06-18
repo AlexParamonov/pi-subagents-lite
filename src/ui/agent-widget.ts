@@ -4,7 +4,8 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agents/agent-manager.js";
-import type { AgentRecord, Theme } from "../types.js";
+import type { AgentRecord } from "../types.js";
+import type { Theme } from "./types.js";
 import {
   formatCost,
   getLifetimeTotal,
@@ -14,7 +15,7 @@ import { formatMs, buildStatsParts, getDisplayName, truncateDesc, type StatsVisi
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (model-selector, result-viewer) don't break
-export type { Theme } from "../types.js";
+export type { Theme } from "./types.js";
 
 // ---- Constants ----
 

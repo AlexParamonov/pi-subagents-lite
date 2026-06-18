@@ -6,6 +6,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage } from "./agents/usage.js";
+import type { SubagentType, AgentInvocation } from "./agents/types.js";
 
 /** Thinking level for agent models. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -29,51 +30,6 @@ export interface RunTunables {
   graceTurns?: number;
 }
 
-/** Agent type: any string name (built-in defaults or user-defined). */
-export type SubagentType = string;
-
-/** How the subagent system prompt is constructed. */
-export type SystemPromptMode = "replace" | "inherit" | "custom";
-
-/** Unified agent configuration — used for both default and user-defined agents. */
-export interface AgentConfig {
-  name: string;
-  displayName?: string;
-  description: string;
-  /** Tools to register with the session (controls availability, not LLM visibility). */
-  registeredTools?: string[];
-  /**
-   * Controls which tool schemas the LLM sees. Can reference built-in tools
-   * and extension tools. true = all, string[] = listed, false = none.
-   * Supports ext/* syntax to include all tools from an extension.
-   * Mutually exclusive with excludeTools.
-   */
-  tools?: true | string[] | false;
-  /** Tool blacklist — all tools except these are visible. Mutually exclusive with tools (when tools is string[]). */
-  excludeTools?: string[];
-  /** true = inherit all, string[] = only listed, false = none. undefined = not set (uses global default). Mutually exclusive with excludeExtensions. */
-  extensions?: true | string[] | false;
-  /** Extension blacklist — all extensions except these load. Mutually exclusive with extensions (when extensions is string[]). */
-  excludeExtensions?: string[];
-  /** Whitelist of allowed skills (metadata only in system prompt). true = all, string[] = listed, false = none. undefined = not set (uses global default). */
-  skills?: true | string[] | false;
-  /** Skills to preload with full content into system prompt. string[] = listed, false/undefined = none */
-  preloadSkills?: string[] | false;
-  model?: string;
-  thinkingLevel?: ThinkingLevel;
-  maxTurns?: number;
-  /** Max output tokens per LLM response. Passed to provider as max_tokens or max_completion_tokens. */
-  maxTokens?: number;
-  systemPrompt: string;
-
-  /** true = this is an embedded default agent (informational) */
-  isDefault?: boolean;
-  /** true = agent is hidden from the schema enum but can still be called by name. */
-  hidden?: boolean;
-  /** Where this agent was loaded from */
-  source?: "project" | "global";
-}
-
 export interface AgentRecord {
   id: string;
   result?: string;
@@ -86,14 +42,6 @@ export interface AgentRecord {
   execution: AgentExecutionState;
   /** Accumulated statistics: usage, tool uses, turns. */
   stats: AgentAccumulatedStats;
-}
-
-export interface AgentInvocation {
-  /** Short display name, e.g. "haiku" — only set when different from parent. */
-  modelName?: string;
-  thinkingLevel?: ThinkingLevel;
-  maxTurns?: number;
-  runInBackground?: boolean;
 }
 
 export interface EnvInfo {
@@ -130,44 +78,6 @@ export interface SpawnConfig extends RunTunables {
 
 /** How many characters of agent ID to show in display. */
 export const SHORT_ID_LENGTH = 8;
-
-/**
- * Theme for terminal rendering — used by format.ts, renderer.ts, and UI widgets.
- * Defined here (not in ui/agent-widget.ts) so non-UI modules can import it
- * without depending on the UI layer.
- */
-export type Theme = {
-  fg(color: string, text: string): string;
-  bg(color: string, text: string): string;
-  bold(text: string): string;
-  italic?: (text: string) => string;
-};
-
-/** Non-model keys in config.agent — preserved when clearing all overrides. */
-export const CONFIG_AGENT_NON_MODEL_KEYS = [
-  "default",
-  "forceBackground",
-  "graceTurns",
-  "showCost",
-  "showTools",
-  "showTurns",
-  "showInput",
-  "showOutput",
-  "showContext",
-  "showTime",
-  "widgetMaxLines",
-  "widgetMaxLinesCompact",
-  "widgetDescLengthFull",
-  "widgetDescLengthCompact",
-  "widgetCompact",
-  "widgetShortcut",
-  "systemPromptMode",
-  "includeContextFiles",
-  "defaultThinking",
-  "defaultMaxTurns",
-  "loadSkillsImplicitly",
-  "loadExtensionsImplicitly",
-];
 
 /** Reason for a context compaction event. */
 export type CompactionReason = "manual" | "threshold" | "overflow";

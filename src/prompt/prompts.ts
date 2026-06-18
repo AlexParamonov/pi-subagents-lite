@@ -5,7 +5,8 @@
  * EnvInfo is imported from types.ts — branch is a string (empty when unknown).
  */
 
-import type { AgentConfig, EnvInfo, SystemPromptMode } from "../types.js";
+import type { EnvInfo } from "../types.js";
+import type { AgentConfig, SystemPromptMode } from "../agents/types.js";
 import type { SkillMeta, PreloadedSkill } from "./skill-loader.js";
 import { formatSkillsForPrompt, type Skill } from "@earendil-works/pi-coding-agent";
 
