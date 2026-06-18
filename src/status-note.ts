@@ -8,16 +8,12 @@
  * `stopped` (human abort) is deliberately distinct from `aborted` (turn
  * budget cutoff) — the parent should treat them differently.
  */
+const NOTES: Record<string, string> = {
+  stopped: " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
+  aborted: " (aborted — hit the turn limit before completion; output may be incomplete)",
+  turn_limited: " (wrapped up at the turn limit — output may be partial)",
+};
 
 export function getStatusNote(status: string): string {
-  switch (status) {
-    case "stopped":
-      return " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)";
-    case "aborted":
-      return " (aborted — hit the turn limit before completion; output may be incomplete)";
-    case "turn_limited":
-      return " (wrapped up at the turn limit — output may be partial)";
-    default:
-      return "";
-  }
+  return NOTES[status] ?? "";
 }
