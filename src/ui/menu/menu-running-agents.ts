@@ -61,6 +61,7 @@ async function showResultViewer(
         tui.terminal.rows,
         stats,
       ),
+    { overlay: true },
   );
 }
 
