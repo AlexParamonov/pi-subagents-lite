@@ -48,12 +48,12 @@ describe("inline-stop-agent — module structure", () => {
     expect(typeof mod.executeStopAgentTool).toBe("function");
   });
 
-  it("index.ts imports executeStopAgentTool from tool-execution.ts", () => {
-    const indexSrc = fs.readFileSync("src/index.ts", "utf-8");
-    const hasImportFromToolExecution = indexSrc.includes("executeStopAgentTool") &&
-      (indexSrc.includes('from "./agents/tool-execution.js"') || indexSrc.includes("from './agents/tool-execution.js'"));
-    const hasImportFromStopAgent = indexSrc.includes('from "./stop-agent-tool.js"') ||
-                                    indexSrc.includes("from './stop-agent-tool.js'");
+  it("registration.ts imports executeStopAgentTool from tool-execution.ts", () => {
+    const regSrc = fs.readFileSync("src/registration.ts", "utf-8");
+    const hasImportFromToolExecution = regSrc.includes("executeStopAgentTool") &&
+      (regSrc.includes('from "./agents/tool-execution.js"') || regSrc.includes("from './agents/tool-execution.js'"));
+    const hasImportFromStopAgent = regSrc.includes('from "./stop-agent-tool.js"') ||
+                                    regSrc.includes("from './stop-agent-tool.js'");
     expect(hasImportFromToolExecution).toBe(true);
     expect(hasImportFromStopAgent).toBe(false);
   });
