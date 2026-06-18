@@ -20,7 +20,6 @@ import { getStore } from "../../shell.js";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
-  const numericSubmenu = createNumericSubmenu(ctx);
 
   const items: SettingItem[] = [
     {
