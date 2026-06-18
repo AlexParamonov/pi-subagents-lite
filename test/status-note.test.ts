@@ -26,7 +26,7 @@ describe("getStatusNote", () => {
 
   it("returns explicit note for aborted status", () => {
     expect(getStatusNote("aborted")).toBe(
-      " (aborted — hit the turn limit before completion; output may be incomplete)",
+      " (hit the turn limit before completion; output may be incomplete)",
     );
   });
 
@@ -40,7 +40,7 @@ describe("getStatusNote", () => {
     const result = "Task completed partially.";
     const note = getStatusNote("aborted");
     expect(result + note).toBe(
-      "Task completed partially. (aborted — hit the turn limit before completion; output may be incomplete)",
+      "Task completed partially. (hit the turn limit before completion; output may be incomplete)",
     );
   });
 
