@@ -56,7 +56,7 @@ vi.mock("../src/utils.js", () => ({
   }),
 }));
 
-import { createModelSelectSubmenu } from "../src/ui/menu/model-select-submenu.js";
+import { createModelSelectSubmenu } from "../src/ui/menu/submenus/model-select-submenu.js";
 
 describe("createModelSelectSubmenu", () => {
   beforeEach(() => {

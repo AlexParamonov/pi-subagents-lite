@@ -6,7 +6,7 @@
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
-import { buildSelectListTheme } from "./helpers.js";
+import { buildSelectListTheme } from "../helpers.js";
 
 export interface ConfirmSubmenuOptions {
   /** Message shown to the user */

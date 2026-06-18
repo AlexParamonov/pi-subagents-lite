@@ -14,7 +14,7 @@ import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, backSubmenuItem } from "./helpers.js";
-import { SettingsListWrapper } from "./settings-list-wrapper.js";
+import { SettingsListWrapper } from "./wrappers/settings-list-wrapper.js";
 import type { SystemPromptMode } from "../../types.js";
 import { getStore } from "../../shell.js";
 import { CUSTOM_PROMPT_PATH } from "../../agents/agent-runner.js";

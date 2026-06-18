@@ -8,7 +8,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Input, type Component } from "@earendil-works/pi-tui";
 
-import { validateNumeric } from "./helpers.js";
+import { validateNumeric } from "../helpers.js";
 
 /**
  * Returns a `(initialValue, done) => submenu` function wired to

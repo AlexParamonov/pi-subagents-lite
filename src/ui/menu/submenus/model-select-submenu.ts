@@ -8,8 +8,8 @@
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
-import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
-import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { ModelSelectorDialog, type ModelOption } from "../../../models/model-selector.js";
+import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "../helpers.js";
 
 export interface ModelSelectSubmenuOptions {
   modelOptions: string[];

@@ -32,7 +32,7 @@ vi.mock("../src/ui/menu/helpers.js", () => ({
   buildSelectListTheme: () => ({ selectedPrefix: () => "" }),
 }));
 
-import { createConfirmSubmenu } from "../src/ui/menu/confirm-submenu.js";
+import { createConfirmSubmenu } from "../src/ui/menu/submenus/confirm-submenu.js";
 
 describe("createConfirmSubmenu", () => {
   beforeEach(() => {

@@ -14,9 +14,9 @@ import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-t
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../types.js";
 import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
-import { createModelSelectSubmenu } from "./model-select-submenu.js";
-import { createConfirmSubmenu } from "./confirm-submenu.js";
-import { SettingsListWrapper } from "./settings-list-wrapper.js";
+import { createModelSelectSubmenu } from "./submenus/model-select-submenu.js";
+import { createConfirmSubmenu } from "./submenus/confirm-submenu.js";
+import { SettingsListWrapper } from "./wrappers/settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
 
 export async function showModelSettingsMenu(

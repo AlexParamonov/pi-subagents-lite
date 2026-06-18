@@ -12,9 +12,9 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
-import { createNumericSubmenu } from "./numeric-input-submenu.js";
-import { createConfirmSubmenu } from "./confirm-submenu.js";
-import { SettingsListWrapper } from "./settings-list-wrapper.js";
+import { createNumericSubmenu } from "./submenus/numeric-input-submenu.js";
+import { createConfirmSubmenu } from "./submenus/confirm-submenu.js";
+import { SettingsListWrapper } from "./wrappers/settings-list-wrapper.js";
 import { getStore } from "../../shell.js";
 
 export async function showConcurrencySettingsMenu(

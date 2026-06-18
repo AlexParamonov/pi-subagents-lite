@@ -17,7 +17,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAvailableTypes, getAllTypes } from "../../agents/agent-types.js";
 import { buildSelectListTheme } from "./helpers.js";
-import { SettingsListWrapper } from "./settings-list-wrapper.js";
+import { SettingsListWrapper } from "./wrappers/settings-list-wrapper.js";
 import { getPiInstance } from "../../shell.js";
 
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
