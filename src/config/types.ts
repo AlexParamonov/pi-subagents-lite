@@ -22,4 +22,5 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "defaultMaxTurns",
   "loadSkillsImplicitly",
   "loadExtensionsImplicitly",
+  "disableDefaultAgents",
 ];

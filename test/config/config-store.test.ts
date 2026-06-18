@@ -375,6 +375,7 @@ describe("ConfigStore agent properties", () => {
     expect(store.agent.includeContextFiles).toBe(true);
     expect(store.agent.loadSkillsImplicitly).toBe(true);
     expect(store.agent.loadExtensionsImplicitly).toBe(true);
+    expect(store.agent.disableDefaultAgents).toBe(false);
   });
 
   it("string property defaults to 'replace'", () => {
@@ -396,7 +397,7 @@ describe("ConfigStore agent properties", () => {
 
   it("configured values override defaults", () => {
     const { io } = memIO({
-      agent: { default: null, forceBackground: false, includeContextFiles: false, systemPromptMode: "custom", defaultThinking: "high", defaultMaxTurns: 50, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, loadSkillsImplicitly: false, loadExtensionsImplicitly: false },
+      agent: { default: null, forceBackground: false, includeContextFiles: false, systemPromptMode: "custom", defaultThinking: "high", defaultMaxTurns: 50, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, loadSkillsImplicitly: false, loadExtensionsImplicitly: false, disableDefaultAgents: true },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -408,6 +409,7 @@ describe("ConfigStore agent properties", () => {
     expect(store.agent.widgetDescLengthCompact).toBe(20);
     expect(store.agent.loadSkillsImplicitly).toBe(false);
     expect(store.agent.loadExtensionsImplicitly).toBe(false);
+    expect(store.agent.disableDefaultAgents).toBe(true);
   });
 
   it("setters persist values", () => {
@@ -420,6 +422,7 @@ describe("ConfigStore agent properties", () => {
     store.mutate.agent.setDefaultMaxTurns(30);
     store.mutate.agent.setLoadSkillsImplicitly(false);
     store.mutate.agent.setLoadExtensionsImplicitly(false);
+    store.mutate.agent.setDisableDefaultAgents(true);
 
     expect(store.agent.includeContextFiles).toBe(false);
     expect(store.agent.systemPromptMode).toBe("custom");
@@ -427,7 +430,8 @@ describe("ConfigStore agent properties", () => {
     expect(store.agent.defaultMaxTurns).toBe(30);
     expect(store.agent.loadSkillsImplicitly).toBe(false);
     expect(store.agent.loadExtensionsImplicitly).toBe(false);
-    expect(saves).toHaveLength(6);
+    expect(store.agent.disableDefaultAgents).toBe(true);
+    expect(saves).toHaveLength(7);
   });
 
   it("setDescLengthFull/Compact persist and sync widget", () => {
@@ -464,7 +468,7 @@ describe("ConfigStore agent properties", () => {
 
   it("clearAllModelOverrides preserves all agent properties", () => {
     const { io } = memIO({
-      agent: { default: "keep", forceBackground: true, includeContextFiles: false, systemPromptMode: "custom", defaultThinking: "low", defaultMaxTurns: 25, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, loadSkillsImplicitly: false, loadExtensionsImplicitly: false, showTools: false, Explore: "m1" },
+      agent: { default: "keep", forceBackground: true, includeContextFiles: false, systemPromptMode: "custom", defaultThinking: "low", defaultMaxTurns: 25, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, loadSkillsImplicitly: false, loadExtensionsImplicitly: false, disableDefaultAgents: true, showTools: false, Explore: "m1" },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -478,6 +482,7 @@ describe("ConfigStore agent properties", () => {
     expect(snap.widgetDescLengthCompact).toBe(20);
     expect(snap.loadSkillsImplicitly).toBe(false);
     expect(snap.loadExtensionsImplicitly).toBe(false);
+    expect(snap.disableDefaultAgents).toBe(true);
     expect(snap.showTools).toBe(false);
     expect(snap.Explore).toBeUndefined();
   });

@@ -55,6 +55,12 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       currentValue: store.agent.defaultThinking ?? "inherit",
       values: ["off", "minimal", "low", "medium", "high", "xhigh", "inherit"],
     },
+    {
+      id: "disableDefaultAgents",
+      label: "Disable default agents",
+      currentValue: store.agent.disableDefaultAgents ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+    },
   ];
 
   const onChange = (id: string, newValue: string) => {
@@ -66,6 +72,10 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       case "defaultThinking":
         store.mutate.agent.setDefaultThinking(newValue === "inherit" ? undefined : newValue as ThinkingLevel);
         ctx.ui.notify(`Default thinking level set to ${newValue}`, "info");
+        break;
+      case "disableDefaultAgents":
+        store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
+        ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
         break;
     }
   };

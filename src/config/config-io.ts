@@ -29,6 +29,7 @@ export const DEFAULT_CONFIG: SubagentsConfig = {
     widgetShortcut: false,
     systemPromptMode: "replace",
     includeContextFiles: true,
+    disableDefaultAgents: false,
     showTools: true,
     showTurns: true,
     showInput: true,

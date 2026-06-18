@@ -85,16 +85,19 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
   // Store scan dirs for on-demand discovery (agents added during the session)
   setAgentScanDirs(userAgentDir, projectAgentDir);
 
+  const disableDefaults = getStore().agent.disableDefaultAgents;
+
   const [userAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),
     scanAgentFilesInDir(projectAgentDir, "project"),
   ]);
 
-  // Merge with defaults
-  const merged = mergeAgents(DEFAULT_AGENTS, userAgents, projectAgents);
+  // Merge with defaults (skip defaults when disableDefaultAgents is on)
+  const defaults = disableDefaults ? new Map() : DEFAULT_AGENTS;
+  const merged = mergeAgents(defaults, userAgents, projectAgents);
 
-  // Register into the type registry
-  registerAgents(merged);
+  // Register into the type registry (skip re-adding defaults)
+  registerAgents(merged, { disableDefaultAgents: disableDefaults });
 }
 
 export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {

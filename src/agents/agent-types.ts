@@ -29,17 +29,26 @@ const agents = new Map<string, AgentConfig>();
 let userAgentDir = "";
 let projectAgentDir = "";
 
+/** Options for registerAgents. */
+export interface RegisterAgentsOptions {
+  /** When true, skip built-in DEFAULT_AGENTS. */
+  disableDefaultAgents?: boolean;
+}
+
 /**
  * Register agents into the unified registry.
  * Starts with DEFAULT_AGENTS, then overlays user agents (overrides defaults with same name).
+ * When options.disableDefaultAgents is true, DEFAULT_AGENTS are skipped.
  * Hidden agents (hidden === true) are kept in the registry but excluded from spawning.
  */
-export function registerAgents(userAgents: Map<string, AgentConfig>): void {
+export function registerAgents(userAgents: Map<string, AgentConfig>, options?: RegisterAgentsOptions): void {
   agents.clear();
 
-  // Start with defaults
-  for (const [name, config] of DEFAULT_AGENTS) {
-    agents.set(name, config);
+  // Start with defaults (unless disabled)
+  if (!options?.disableDefaultAgents) {
+    for (const [name, config] of DEFAULT_AGENTS) {
+      agents.set(name, config);
+    }
   }
 
   // Overlay user agents (overrides defaults with same name)
@@ -65,14 +74,16 @@ export function setAgentScanDirs(userDir: string, projectDir: string): void {
  *   When set, agents from this directory are also scanned and added to the registry.
  *   Worktree-local types use "project" source attribution and follow the same
  *   parsing and name-uniqueness rules as the parent's project scan.
+ * @param options - Optional settings. disableDefaultAgents skips DEFAULT_AGENTS in the merge.
  */
-export async function discoverNewAgents(worktreeDir?: string): Promise<number> {
+export async function discoverNewAgents(worktreeDir?: string, options?: { disableDefaultAgents?: boolean }): Promise<number> {
   const [userAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),
     scanAgentFilesInDir(projectAgentDir, "project"),
   ]);
 
-  const merged = mergeAgents(DEFAULT_AGENTS, userAgents, projectAgents);
+  const defaults = options?.disableDefaultAgents ? new Map<string, AgentConfig>() : DEFAULT_AGENTS;
+  const merged = mergeAgents(defaults, userAgents, projectAgents);
 
   let count = 0;
   for (const [name, config] of merged) {

@@ -38,6 +38,8 @@ export interface SubagentsConfig {
     loadSkillsImplicitly?: boolean;
     /** Global default for extensions loading when agent doesn't explicitly set extensions. true (default) or false. */
     loadExtensionsImplicitly?: boolean;
+    /** When true, skip built-in default agents (general-purpose, Explore) at registration. */
+    disableDefaultAgents?: boolean;
     /** Whether to show toolUses count in widget stats line. Default: true. */
     showTools?: boolean;
     /** Whether to show turn count in widget stats line. Default: true. */

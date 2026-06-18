@@ -62,6 +62,8 @@ export interface ResolvedAgentSettings {
   readonly loadSkillsImplicitly: boolean;
   /** Global default for extensions loading: true (load all) or false (none). */
   readonly loadExtensionsImplicitly: boolean;
+  /** Whether to skip built-in default agents at registration. */
+  readonly disableDefaultAgents: boolean;
   /** Whether to show toolUses count in widget stats line. */
   readonly showTools: boolean;
   /** Whether to show turn count in widget stats line. */
@@ -131,6 +133,7 @@ export class ConfigStore {
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+      disableDefaultAgents: a.disableDefaultAgents === true,
       showTools: a.showTools !== false,
       showTurns: a.showTurns !== false,
       showInput: a.showInput !== false,
@@ -256,6 +259,10 @@ export class ConfigStore {
       },
       setLoadExtensionsImplicitly: (value: boolean): void => {
         this.config.agent.loadExtensionsImplicitly = value;
+        this.persist();
+      },
+      setDisableDefaultAgents: (value: boolean): void => {
+        this.config.agent.disableDefaultAgents = value;
         this.persist();
       },
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
