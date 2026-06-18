@@ -22,6 +22,8 @@ export interface SettingsListWrapperOptions {
   /** If true, skip j/k→arrow and arrow→enter/escape conversion. Input passes through unchanged. */
   passthroughKeys?: boolean;
   onCancel?: () => void;
+  /** Called with a rebuild(newItems) function so the caller can trigger in-place updates. */
+  onRebuild?: (rebuild: (items: any[]) => void) => void;
 }
 
 export class SettingsListWrapper implements Component {
@@ -48,7 +50,7 @@ export class SettingsListWrapper implements Component {
         if (isSelectList) {
           // SelectList expects SelectItem shape: { value, label }
           list.items.push(
-            { value: "__sep__", label: "" },
+            { value: "__sep__", label: " " },
             { value: "__back__", label: "Back" },
           );
           // Intercept onSelect so the Back item closes the menu. SelectList
@@ -68,7 +70,7 @@ export class SettingsListWrapper implements Component {
         } else {
           // SettingsList expects SettingItem shape: { id, label, currentValue, submenu }
           list.items.push(
-            { id: "__sep__", label: "", currentValue: "" },
+            { id: "__sep__", label: " ", currentValue: "" },
             {
               id: "__back__",
               label: "Back",
@@ -81,6 +83,64 @@ export class SettingsListWrapper implements Component {
             },
           );
         }
+        }
+
+        // Auto-skip __sep__ items when navigating.
+        const _rawIndex = Symbol("rawIndex");
+        const isSep = (item: any) => item?.value === "__sep__" || item?.id === "__sep__";
+        Object.defineProperty(list, "selectedIndex", {
+          get() { return list[_rawIndex] ?? 0; },
+          set(idx) {
+            const curItems = list.items;
+            const cur = list[_rawIndex] ?? 0;
+            let i = Math.max(0, Math.min(idx, curItems.length - 1));
+            if (isSep(curItems[i])) {
+              const down = idx > cur;
+              if (down) {
+                let next = i + 1;
+                while (next < curItems.length && isSep(curItems[next])) next++;
+                if (next < curItems.length) i = next;
+                else {
+                  next = i - 1;
+                  while (next >= 0 && isSep(curItems[next])) next--;
+                  if (next >= 0) i = next;
+                }
+              } else {
+                let next = i - 1;
+                while (next >= 0 && isSep(curItems[next])) next--;
+                if (next >= 0) i = next;
+                else {
+                  next = i + 1;
+                  while (next < curItems.length && isSep(curItems[next])) next++;
+                  if (next < curItems.length) i = next;
+                }
+              }
+            }
+            list[_rawIndex] = i;
+          },
+          configurable: true,
+        });
+        list[_rawIndex] = list.selectedIndex ?? 0;
+
+      // Expose rebuild callback
+      if (options.onRebuild) {
+        const isSelectList = !!list.onSelect;
+        const rebuild = (newItems: any[]) => {
+          const wrapperItems = [
+            isSelectList
+              ? { value: "__sep__", label: " " }
+              : { id: "__sep__", label: " ", currentValue: "" },
+            isSelectList
+              ? { value: "__back__", label: "Back" }
+              : { id: "__back__", label: "Back", currentValue: "" },
+          ];
+          const fullItems = [...newItems, ...wrapperItems];
+          list.items = fullItems;
+          list.filteredItems = fullItems;
+          list.selectedIndex = 0;
+          list.submenuComponent = null;
+        };
+        options.onRebuild(rebuild);
       }
     }
   }

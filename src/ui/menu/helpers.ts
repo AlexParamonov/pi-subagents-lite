@@ -55,13 +55,17 @@ export function validateNumeric(value: string, min: number): number | undefined 
  * Create a Component that delegates to a swappable inner component.
  * Use in submenus that switch between SelectList → Input (or similar).
  */
-export function createDelegatingComponent(initial: Component): Component & { setActive(c: Component): void } {
+export function createDelegatingComponent(initial: Component): Component & { setActive(c: Component): void; focused?: boolean } {
   let active = initial;
   return {
     invalidate() { active.invalidate?.(); },
     render(width: number) { return active.render(width); },
     handleInput(data: string) { active.handleInput?.(data); },
     setActive(c: Component) { active = c; },
+    // Propagate focused to the active child so isFocusable() returns true,
+    // which tells SettingsListWrapper to passthrough keys instead of converting them.
+    get focused() { return (active as any)?.focused ?? false; },
+    set focused(value: boolean) { if ((active as any)?.focused != null) (active as any).focused = value; },
   };
 }
 

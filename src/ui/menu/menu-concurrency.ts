@@ -21,12 +21,12 @@ export async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
-
-  await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const store = getStore();
+  // Build menu items from current store state.
+  const buildItems = (store: ReturnType<typeof getStore>, theme: any, modelOptions: string[]): SettingItem[] => {
+    const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
     const items: SettingItem[] = [];
 
+    
 
     // Submenu factory: pick Edit (→ value input) or Remove for an existing limit.
     const editOrRemoveSubmenu = (
@@ -80,6 +80,7 @@ export async function showConcurrencySettingsMenu(
     });
 
     // Per-provider limits
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     const providerLimits = store.concurrency.providers;
     for (const provider of Object.keys(providerLimits)) {
       const limit = providerLimits[provider];
@@ -101,6 +102,7 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Add per-provider limit (submenu: provider selection → numeric input)
     if (providers.length > 0) {
       items.push({
@@ -114,6 +116,7 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Per-model limits
     const models = store.concurrency.models;
     for (const modelKey of Object.keys(models)) {
@@ -136,6 +139,7 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Add per-model limit
     if (modelOptions.length > 0) {
       items.push({
@@ -149,6 +153,7 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Reset all to defaults
     items.push({
       id: "resetAll",
@@ -164,10 +169,20 @@ export async function showConcurrencySettingsMenu(
       }),
     });
 
-    // No items use the `values` cycle path; all changes flow through submenus.
-    const onChange = (_id: string, _newValue: string) => {};
+    return items;
+  };
 
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "Concurrency Settings", theme, onCancel: () => done(undefined) });
+  let rebuild: ((items: any[]) => void) | undefined;
+
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const store = getStore();
+    const items = buildItems(store, theme, modelOptions);
+    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme, modelOptions)), () => done(undefined));
+    return new SettingsListWrapper(settingsList, {
+      title: "Concurrency Settings",
+      theme,
+      onCancel: () => done(undefined),
+      onRebuild: (r) => { rebuild = r; },
+    });
   });
 }

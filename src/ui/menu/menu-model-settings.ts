@@ -23,10 +23,10 @@ export async function showModelSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const store = getStore();
+  // Build menu items from current store state.
+  const buildItems = (store: ReturnType<typeof getStore>, theme: any): SettingItem[] => {
     const items: SettingItem[] = [];
-
+    
     // Shared onSelect for model override submenus: applies session/permanent/clear
     // mode to the given config key, with `label` used in notify messages.
     const modelOverrideOnSelect = (
@@ -80,6 +80,7 @@ export async function showModelSettingsMenu(
     });
 
     // Per-type overrides
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     const types = getAllTypes();
     const typeEntries = types.map((typeName) => {
       const cfg = getAgentConfig(typeName);
@@ -112,6 +113,7 @@ export async function showModelSettingsMenu(
       });
     }
 
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Override another type...
     if (nonOverridden.length > 0) {
       items.push({
@@ -141,6 +143,7 @@ export async function showModelSettingsMenu(
       });
     }
 
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Clear session overrides
     const hasSessionOverrides = store.sessionDefaultModel != null ||
       getAllTypes().some(type => store.sessionModelOverride(type) != null);
@@ -183,11 +186,22 @@ export async function showModelSettingsMenu(
       }),
     });
 
-    const onChange = (_id: string, _newValue: string) => {
-      // All changes handled via submenus
-    };
+    return items;
+  };
 
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "Model Settings", theme, onCancel: () => done(undefined) });
+  let rebuild: ((items: any[]) => void) | undefined;
+
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const store = getStore();
+    const items = buildItems(store, theme);
+
+    
+    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme)), () => done(undefined));
+    return new SettingsListWrapper(settingsList, {
+      title: "Model Settings",
+      theme,
+      onCancel: () => done(undefined),
+      onRebuild: (r) => { rebuild = r; },
+    });
   });
 }
