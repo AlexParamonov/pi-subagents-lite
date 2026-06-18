@@ -21,7 +21,7 @@ import { SHORT_ID_LENGTH } from "../../types.js";
 import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
-import { buildSelectListTheme } from "./helpers.js";
+import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getManager, getStore } from "../../shell.js";
 
@@ -175,7 +175,7 @@ export function createRunningAgentsMenuComponent(
     return null;
   }
 
-  const items: SelectItem[] = agents.map((record) => {
+  const buildAgentItems = (): SelectItem[] => agents.map((record) => {
     const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
     const statusIcon = record.lifecycle.status === "running" ? "▶" :
       record.lifecycle.status === "completed" ? "✓" :
@@ -192,14 +192,22 @@ export function createRunningAgentsMenuComponent(
     };
   });
 
-  const list = new SelectList(items, 15, buildSelectListTheme(theme));
-  list.onSelect = async (item) => {
+  const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
+  const delegator = createDelegatingComponent(agentList);
+  const wrapper = new SettingsListWrapper(delegator, { title: "Running Agents", theme, onCancel: () => onDone() });
+
+  agentList.onSelect = async (item) => {
     const record = agents.find((r) => r.id === item.value);
     if (record) {
-      await showAgentActions(ctx, record);
+      const actionsList = buildAgentActionsList(ctx, record, theme, () => {
+        // Cancel: swap back to the agents list
+        delegator.setActive(agentList);
+      });
+      delegator.setActive(actionsList);
     }
   };
-  return new SettingsListWrapper(list, { title: "Running Agents", theme, onCancel: () => onDone() });
+
+  return wrapper;
 }
 
 export async function showRunningAgentsMenu(
