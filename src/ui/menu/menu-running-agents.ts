@@ -7,11 +7,10 @@
  *
  * Exports:
  *   - showRunningAgentsMenu: list running/queued/completed agents
- *   - showAgentActions: per-agent action sub-menu (view result, steer, stop)
+ *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop)
  *
- * Private helpers (single-consumer, co-located):
+ * Private helper (single-consumer, co-located):
  *   - showResultViewer: show ResultViewer for agent result/error/snapshot
- *   - steerAgentById: send steer message to a specific agent
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -22,7 +21,6 @@ import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getManager, getStore } from "../../shell.js";
 
 /**
@@ -66,42 +64,19 @@ async function showResultViewer(
 }
 
 /**
- * Send a steer message to a specific agent. Used by the per-agent action menu.
- */
-async function steerAgentById(
-  agentId: string,
-  ctx: ExtensionCommandContext,
-): Promise<void> {
-  const record = getManager()?.getRecord(agentId);
-  if (!record) {
-    ctx.ui.notify("Agent not found", "error");
-    return;
-  }
-
-  const message = await ctx.ui.input(`Steer ${record.display.type}`);
-  if (!message?.trim()) return;
-
-  const sent = await getManager()!.steer(agentId, message.trim());
-  if (sent) {
-    ctx.ui.notify(`Steer sent to ${record.id.slice(0, SHORT_ID_LENGTH)}…`, "info");
-  } else {
-    ctx.ui.notify(`Steer failed for ${record.id.slice(0, SHORT_ID_LENGTH)}`, "error");
-  }
-}
-
-/**
- * Sub-menu with actions for a single agent.
- * Returns a SelectList Component for use as a submenu.
- * @param setActive — callback to swap the delegating component's active child.
- *   Used to swap to the steer input within the menu context.
+ * Build a SelectList of actions for a single agent (view result/error/snapshot,
+ * steer, stop) for use as a submenu inside a delegating component.
+ * @param done — return to the parent agent list (cancel / no actions).
+ * @param setActive — swap the delegating component's active child (steer input).
+ * @param onClose — close the entire menu (stop).
  */
 export function buildAgentActionsList(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
   theme: any,
   done: () => void,
-  setActive?: (c: import("@earendil-works/pi-tui").Component) => void,
-  onClose?: () => void,
+  setActive: (c: import("@earendil-works/pi-tui").Component) => void,
+  onClose: () => void,
 ): SelectList {
   const items: SelectItem[] = [];
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
@@ -141,49 +116,30 @@ export function buildAgentActionsList(
     } else if (item.value === "view-error") {
       await showResultViewer(ctx, record, "error", record.error!);
     } else if (item.value === "steer") {
-      if (setActive) {
-        // Swap to steer input within the menu context
-        const input = new Input();
-        input.setValue("");
-        input.onSubmit = async (value) => {
-          const trimmed = value.trim();
-          if (trimmed) {
-            const sent = await getManager()!.steer(record.id, trimmed);
-            if (sent) {
-              ctx.ui.notify(`Steer sent to ${shortId}…`, "info");
-            } else {
-              ctx.ui.notify(`Steer failed for ${shortId}`, "error");
-            }
-          }
-          setActive(list);
-        };
-        input.onEscape = () => setActive(list);
-        setActive(input);
-      } else {
-        await steerAgentById(record.id, ctx);
-      }
+      // Swap to an inline steer input within the menu context.
+      const input = new Input();
+      input.setValue("");
+      input.onSubmit = async (value) => {
+        const trimmed = value.trim();
+        if (trimmed) {
+          const sent = await getManager()!.steer(record.id, trimmed);
+          ctx.ui.notify(
+            sent ? `Steer sent to ${shortId}…` : `Steer failed for ${shortId}`,
+            sent ? "info" : "error",
+          );
+        }
+        setActive(list);
+      };
+      input.onEscape = () => setActive(list);
+      setActive(input);
     } else if (item.value === "stop") {
       getManager()?.abort(record.id);
       ctx.ui.notify(`Stopped ${shortId}`, "info");
-      onClose?.();
+      onClose();
     }
   };
   list.onCancel = () => done();
   return list;
-}
-
-/**
- * Sub-menu with actions for a single agent. Standalone version for direct use.
- * Opens a ctx.ui.custom with the actions SelectList.
- */
-export async function showAgentActions(
-  ctx: ExtensionCommandContext,
-  record: AgentRecord,
-): Promise<void> {
-  await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const list = buildAgentActionsList(ctx, record, theme, () => done(undefined));
-    return new SettingsListWrapper(list, { title: `Agent ${record.id.slice(0, SHORT_ID_LENGTH)}`, theme, onCancel: () => done(undefined) });
-  });
 }
 
 /**

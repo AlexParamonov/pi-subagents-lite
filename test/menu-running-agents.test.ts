@@ -13,11 +13,6 @@ import { createMockCtx } from "./menu-test-helpers.js";
 // Capture SelectList constructor calls
 let selectListCalls: Array<any> = [];
 
-let settingsListWrapperCalls: Array<{
-  component: any;
-  options: any;
-}> = [];
-
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList { constructor() {} },
   SelectList: class MockSelectList {
@@ -42,19 +37,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
 }));
 
-vi.mock("../src/ui/menu/wrappers/settings-list.js", () => ({
-  SettingsListWrapper: class MockSettingsListWrapper {
-    constructor(component: any, options: any) {
-      settingsListWrapperCalls.push({ component, options });
-    }
-    render() { return []; }
-    handleInput() {}
-    invalidate() {}
-  },
-}));
-
 // Import AFTER mock setup
-import { showRunningAgentsMenu, showAgentActions } from "../src/ui/menu/menu-running-agents.js";
+import { showRunningAgentsMenu, buildAgentActionsList } from "../src/ui/menu/menu-running-agents.js";
 
 function makeRecord(overrides: any = {}): any {
   return {
@@ -68,11 +52,11 @@ function makeRecord(overrides: any = {}): any {
     ...overrides,
   };
 }
+const noopTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
 
 describe("showRunningAgentsMenu — SelectList migration", () => {
   beforeEach(() => {
     selectListCalls = [];
-    settingsListWrapperCalls = [];
     vi.clearAllMocks();
     mockModules.mockManager.listAgents.mockReset().mockReturnValue([]);
   });
@@ -127,72 +111,56 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
   });
 });
 
-describe("showAgentActions — actions submenu", () => {
+describe("buildAgentActionsList — actions submenu", () => {
   beforeEach(() => {
     selectListCalls = [];
-    settingsListWrapperCalls = [];
     vi.clearAllMocks();
     mockModules.resultViewerCalls.length = 0;
   });
 
-  it("shows View result action for completed agent with result", async () => {
-    const record = makeRecord();
-    const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    expect(ctx.ui.custom).toHaveBeenCalled();
-    // The actions submenu should have been created
-    expect(selectListCalls.length).toBeGreaterThan(0);
-    const lastList = selectListCalls[selectListCalls.length - 1];
-    const values = lastList.items.map((i: any) => i.value);
+  it("shows View result action for completed agent with result", () => {
+    const list = buildAgentActionsList(createMockCtx(), makeRecord(), noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-result");
   });
 
-  it("shows View error action for agent with error", async () => {
+  it("shows View error action for agent with error", () => {
     const record = makeRecord({
       lifecycle: { status: "error", startedAt: Date.now() - 30000 },
       result: "",
       error: "something went wrong",
     });
-    const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    const lastList = selectListCalls[selectListCalls.length - 1];
-    const values = lastList.items.map((i: any) => i.value);
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-error");
   });
 
-  it("shows View snapshot action for running agent with session", async () => {
+  it("shows View snapshot action for running agent with session", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "",
     });
-    const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    const lastList = selectListCalls[selectListCalls.length - 1];
-    const values = lastList.items.map((i: any) => i.value);
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-snapshot");
   });
 
-  it("shows Steer and Stop actions for running agent", async () => {
+  it("shows Steer and Stop actions for running agent", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
       execution: { session: { messages: [] } },
       result: "",
     });
-    const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    const lastList = selectListCalls[selectListCalls.length - 1];
-    const values = lastList.items.map((i: any) => i.value);
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
     expect(values).toContain("steer");
     expect(values).toContain("stop");
   });
 
-  it("does not show Steer/Stop for completed agent", async () => {
-    const record = makeRecord();
-    const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    const lastList = selectListCalls[selectListCalls.length - 1];
-    const values = lastList.items.map((i: any) => i.value);
+  it("does not show Steer/Stop for completed agent", () => {
+    const list = buildAgentActionsList(createMockCtx(), makeRecord(), noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
     expect(values).not.toContain("steer");
     expect(values).not.toContain("stop");
   });
@@ -207,10 +175,8 @@ describe("showAgentActions — actions submenu", () => {
       stats: { lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 }, toolUses: 10, turnCount: 15, compactionCount: 0 },
     } as any;
     const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    // Trigger onSelect on the actions SelectList to simulate selecting "View result"
-    const actionsList = selectListCalls[selectListCalls.length - 1];
-    await actionsList.onSelect!({ value: "view-result", label: "View result" });
+    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    await list.onSelect!({ value: "view-result", label: "View result" });
     const lastCall = mockModules.resultViewerCalls[mockModules.resultViewerCalls.length - 1];
     expect(lastCall[5].modelName).toBe("gpt-4o");
   });
@@ -225,10 +191,8 @@ describe("showAgentActions — actions submenu", () => {
       stats: { lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 }, toolUses: 10, turnCount: 15, compactionCount: 0 },
     } as any;
     const ctx = createMockCtx();
-    await showAgentActions(ctx, record);
-    // Trigger onSelect on the actions SelectList to simulate selecting "View result"
-    const actionsList = selectListCalls[selectListCalls.length - 1];
-    await actionsList.onSelect!({ value: "view-result", label: "View result" });
+    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    await list.onSelect!({ value: "view-result", label: "View result" });
     const lastCall = mockModules.resultViewerCalls[mockModules.resultViewerCalls.length - 1];
     expect(lastCall[5].modelName).toBeUndefined();
   });

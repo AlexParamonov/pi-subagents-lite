@@ -10,7 +10,7 @@
  *   - menu-model-settings.ts: showModelSettingsMenu
  *   - menu-concurrency.ts: showConcurrencySettingsMenu
  *   - menu-widget-settings.ts: showWidgetSettingsMenu
- *   - menu-running-agents.ts: showRunningAgentsMenu, showAgentActions
+ *   - menu-running-agents.ts: showRunningAgentsMenu
  *   - menu-debug.ts: showDebugMenu
  *   - menu-spawn-options.ts: showSpawnOptionsMenu
  *   - menu-system-prompt.ts: showSystemPromptMenu
