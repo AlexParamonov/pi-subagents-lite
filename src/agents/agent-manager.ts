@@ -306,7 +306,7 @@ export class AgentManager {
       .then(({ responseText, session, aborted, steered }) => {
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
-          record.lifecycle.status = aborted ? "aborted" : steered ? "steered" : "completed";
+          record.lifecycle.status = aborted ? "aborted" : steered ? "turn_limited" : "completed";
         }
         record.result = responseText;
         record.execution.session = session;

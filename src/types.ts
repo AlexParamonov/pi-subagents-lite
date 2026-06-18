@@ -93,7 +93,7 @@ export interface CompactionInfo {
 // ---------------------------------------------------------------------------
 
 /** Possible agent lifecycle statuses. */
-export type AgentStatus = "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
+export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
 
 /**
  * Lifecycle state: when the agent started, completed, and its current status.

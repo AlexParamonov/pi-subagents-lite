@@ -26,7 +26,7 @@ const DEFAULT_MAX_WIDGET_LINES = 12;
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /** Non-success statuses — used for linger behavior and icon rendering. */
-const ERROR_STATUSES = new Set(["error", "aborted", "steered", "stopped"]);
+const ERROR_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
 
 /** Tree-drawing connectors used in the widget header/continuation lines. */
 const BRANCH = "├─";
@@ -308,7 +308,7 @@ export class AgentWidget {
     switch (status) {
       case "completed":
         return { icon: theme.fg("success", "✓"), statusText: "" };
-      case "steered":
+      case "turn_limited":
         return { icon: theme.fg("warning", "✓"), statusText: theme.fg("warning", " (turn limit)") };
       case "stopped":
         return { icon: theme.fg("dim", "■"), statusText: theme.fg("dim", " stopped") };

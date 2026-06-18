@@ -348,7 +348,7 @@ describe("SpawnCoordinator", () => {
         { status: "error", expected: "error" },
         { status: "aborted", expected: "aborted" },
         { status: "stopped", expected: "stopped" },
-        { status: "steered", expected: "steered" },
+        { status: "turn_limited", expected: "turn_limited" },
       ];
 
       for (const { status, expected } of statuses) {

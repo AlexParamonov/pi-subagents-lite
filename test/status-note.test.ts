@@ -30,8 +30,8 @@ describe("getStatusNote", () => {
     );
   });
 
-  it("returns explicit note for steered status", () => {
-    expect(getStatusNote("steered")).toBe(
+  it("returns explicit note for turn_limited status", () => {
+    expect(getStatusNote("turn_limited")).toBe(
       " (wrapped up at the turn limit — output may be partial)",
     );
   });
