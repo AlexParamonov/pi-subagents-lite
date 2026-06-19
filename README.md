@@ -134,9 +134,9 @@ description: Review code for security issues
 tools: [read, bash, grep]
 extensions: false
 skills: false
-model: anthropic/claude-sonnet-4-5-20250514
+model: zai/glm-5.2
 thinking: high
-max_turns: 10
+max_turns: 80
 ---
 
 You are a security review specialist. Analyze code for vulnerabilities,
@@ -287,37 +287,38 @@ With **Cost display** ON, stats show dollar cost (`✓ Builder·2🛠 ·5⟳ ·�
 ```json
 {
   "agent": {
-    "default": null,
-    "forceBackground": false,
-    "showCost": true,
+    "default": "zai/glm-5.2",
+    "forceBackground": true,
     "graceTurns": 6,
-    "defaultThinking": "medium",
-    "defaultMaxTurns": 30,
-    "systemPromptMode": "replace",
-    "includeContextFiles": true,
-    "disableDefaultAgents": false,
-    "loadSkillsImplicitly": true,
-    "loadExtensionsImplicitly": true,
-    "widgetMaxLines": 12,
-    "widgetMaxLinesCompact": 6,
-    "widgetDescLengthFull": 50,
-    "widgetDescLengthCompact": 30,
-    "widgetCompact": false,
-    "widgetShortcut": false,
-    "showTools": true,
+    "showCost": true,
+    "showTools": false,
     "showTurns": true,
     "showInput": true,
     "showOutput": true,
     "showContext": true,
     "showTime": true,
-    "Explore": "anthropic/claude-haiku-4-5-20251001"
+    "widgetMaxLines": 12,
+    "widgetMaxLinesCompact": 6,
+    "widgetDescLengthFull": 50,
+    "widgetCompact": true,
+    "widgetShortcut": false,
+    "systemPromptMode": "inherit",
+    "includeContextFiles": true,
+    "loadSkillsImplicitly": false,
+    "loadExtensionsImplicitly": false,
+    "disableDefaultAgents": false,
+    "Explore": "xiaomi/mimo-v2.5",
+    "builder": "xiaomi/mimo-v2-pro",
+    "architecture-reviewer": "zai/glm-5.2",
+    "planner": "zai/glm-5.2"
   },
   "concurrency": {
     "default": 4,
-    "providers": { "ollama": 2 },
-    "models": {
-      "anthropic/claude-sonnet-4-5-20250514": 3
-    }
+    "providers": {
+      "llamacpp": 1,
+      "ai.lan": 2
+    },
+    "models": {}
   }
 }
 ```
