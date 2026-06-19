@@ -202,7 +202,7 @@ export async function showModelSettingsMenu(
     const items = buildItems(store, theme);
 
     
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme)), () => done(undefined));
+    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme)), () => done(undefined), { enableSearch: true });
     return new SettingsListWrapper(settingsList, {
       title: "Model Settings",
       theme,
