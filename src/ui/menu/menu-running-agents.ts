@@ -173,6 +173,7 @@ export async function showRunningAgentsMenu(
         };
       });
       if (running.length > 0) {
+        items.push({ value: "__sep__", label: " " });
         items.push({ value: "__stop-all", label: `Stop ${running.length} running agent(s)` });
       }
       return items;
