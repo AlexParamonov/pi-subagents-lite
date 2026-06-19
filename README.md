@@ -25,22 +25,29 @@ Tool names like `Agent`, `StopAgent`, and `AgentStatus`, and parameter names lik
 ## Features
 
 - **Three tools** — `Agent` (spawn), `StopAgent` (stop), and `AgentStatus` (list agents)
-- **Manual spawn** — spawn agents from the `/agents` menu without asking the LLM. Full control over model, thinking, turns, and background mode.
+- **Manual spawn** — spawn agents from the `/agents` menu without asking the LLM. Full control over model, thinking, turns, max tokens, and background mode.
 - **Foreground & background** — block or fire-and-forget with auto-delivered results
-- **Custom agent types** — define via `.md` files with YAML frontmatter (tools, model, thinking, turn limits)
+- **Custom agent types** — define via `.md` files with YAML frontmatter (tools, model, thinking, turn limits, max tokens)
 - **Smart model resolution** — 6-level precedence: session → config → frontmatter → parent. Set once, forget
 - **Concurrency control** — per-model and per-provider slot limits with automatic queuing
 - **Cost tracking** — input/output/cache tokens and dollar cost per agent
 - **Cost display** — toggle agent cost in stats and status bar (OFF by default)
 - **Live widget** — persistent status bar above the editor showing running/completed agents
-- **Widget settings** — force compact mode, max lines, opt-in ctrl+o sync
+- **Widget settings** — force compact mode, max lines, description length, configurable stats visibility, opt-in ctrl+o sync
 - **Result viewer** — fullscreen markdown viewer with stats
 - **Steer** — inject mid-execution guidance into running agents
 - **Output logs** — human-readable, `tail -f` friendly
 - **Grace turns** — configurable grace turns after `max_turns` before hard abort
+- **Default thinking & max turns** — set defaults for all spawned agents via config or spawn options menu
+- **Max tokens** — set per-agent via frontmatter (`max_tokens`) or spawn wizard; injected into provider requests
+- **System prompt mode** — replace (default), inherit parent (strips scaffolding), or custom file
+- **AGENTS.md context loading** — include project context files in subagent prompts (toggle via `includeContextFiles`)
+- **Compact skills XML** — all skills merged into a single `<available_skills>` block for lower token cost
+- **Status notes** — explanatory notes on agent results for non-normal outcomes (stopped, aborted, turn-limited)
 - **Reload safety** — warns when active agents are killed by session reload
 - **Worktree support** — `worktree_path` parameter runs agents in a git worktree with validated path, worktree agent discovery, and UI label
-
+- **`disableDefaultAgents`** — skip built-in default agents at registration
+- **`loadSkillsImplicitly` / `loadExtensionsImplicitly`** — global defaults for skills and extensions loading
 ## Install
 
 ```bash
@@ -57,13 +64,13 @@ The LLM calls the `Agent` tool like any other tool. A foreground agent returns i
  ⠹ Working...
 
 ● Agents
-├─ ⠙ Agent  Write model precedence unit tests  6🛠 ·3⟳ ·8.1k(6%)·12s
+├─ ⠙ Agent  Write model precedence unit tests  6🛠 ·3⟳ ·↑6.8k↓1.3k 6%·12s
 │  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
 │  └ The file already exists but is ~175 lines. The user wants a …
-├─ ⠙ Agent  Code review of agent-runner.ts  4🛠 ·2⟳ ·8.7k(4%)·12s
+├─ ⠙ Agent  Code review of agent-runner.ts  4🛠 ·2⟳ ·↑7.2k↓1.5k 4%·12s
 │  │ tail -f /tmp/pi-agent-outputs/23689696-3cd3-400.log
 │  └ Now let me check the types and related files for context on …
-└─ ⠙ Explore  Explore codebase architecture  13🛠 ·4⟳ ·19.0k(15%)·12s
+└─ ⠙ Explore  Explore codebase architecture  13🛠 ·4⟳ ·↑16.1k↓2.9k 15%·12s
    │ tail -f /tmp/pi-agent-outputs/4f6b0f08-7a9a-419.log
    └ ## Architecture Summary: pi-subagents-lite
 ```
@@ -72,7 +79,7 @@ Then you are notified like this for async (background) invocation:
 ```
  Subagent Result
 
- ✓ Explore (model-name)·13🛠 ·5⟳ ·30.8k(15%)·21s
+ ✓ Explore (model-name)·13🛠 ·5⟳ ·↑25.9k↓4.9k 15%·21s
    Explore codebase architecture
    tail -f /tmp/pi-agent-outputs/4f6b0f08-7a9a-419.log
 ```
@@ -81,7 +88,7 @@ or inline:
 
 ```
  ▸ Explore
- ✓ 31🛠 ·6⟳ ·57.3k(28%)·39s
+ ✓ 31🛠 ·6⟳ ·↑48.1k↓9.2k 28%·39s
    Explore project directory structure
 ```
 
@@ -89,7 +96,7 @@ Stop a running agent at any time via /agents command
 
 ```
 ○ Agents
-└─ ■ Agent  Code review of agent-runner.ts  12🛠 ·10⟳ ·39.0k(8%)·52s stopped
+└─ ■ Agent  Code review of agent-runner.ts  12🛠 ·10⟳ ·↑32.8k↓6.2k 8%·52s stopped
      tail -f /tmp/pi-agent-outputs/23689696-3cd3-400.log
 ```
 
@@ -103,7 +110,7 @@ Stop a running agent at any time via /agents command
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
 | `worktree_path` | | Absolute path to a git worktree. Agent runs in that worktree's context, discovers agents from its `.pi/agents/` directory, and displays a worktree label in the widget and menus. Path is validated against the parent repo's git common dir. |
 
-> `model`, `max_turns`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`/`thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
+> `model`, `max_turns`, `max_tokens`, and `thinking` are **not visible to the LLM** through tool introspection — the extension injects them at call time from agent config and frontmatter. `model` is resolved via the [Model Resolution](#model-resolution) chain; `max_turns`, `max_tokens`, and `thinking` come from the agent's config. See [Custom Agent Types](#custom-agent-types) to set them.
 
 ## Custom Agent Types
 
@@ -158,7 +165,8 @@ This agent gets everything: all tools, all extensions, all skills. Same as `gene
 | `preload_skills` | `string[]` \| `false` | `false` | **Full skill injection.** Dumps complete SKILL.md content into system prompt instead of metadata-only. `string[]` = list of skills to preload; `false` = none. |
 | `model` | string | inherit parent | Default model as `"provider/model-id"`. Override via `/agents` or `subagents-lite.json`. See [Model Resolution](#model-resolution). |
 | `thinking` | string | inherit parent | Default thinking level. One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
-| `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer message at the limit, then `max_turns + 5` grace turns before hard abort. |
+| `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer message at the limit, then `max_turns + graceTurns` before hard abort. |
+| `max_tokens` | number | unlimited | Max output tokens per LLM response. Injected into provider request payloads as `max_tokens` (or provider-specific field). |
 | `hidden` | `true` \| `false` | `false` | `true` hides the agent type from the tool schema's enum (LLM can't see or invoke it). Agent is still callable by name. Running agents unaffected. |
 
 #### `tools` field values
@@ -268,6 +276,16 @@ exclude_extensions: [quality-monitor]
 
 Project agents override user agents, which override built-ins (`general-purpose`, `Explore`). Agent types discovered from `.md` files automatically appear in the `agent` parameter's enum — no registration required. Files added during a session are discovered on the next call that references them.
 
+## System Prompt Mode
+
+Control how the subagent system prompt is constructed via `systemPromptMode` (default: `replace`):
+
+- **`replace`** (default) — subagent gets a minimal generic prompt plus its own `<agent_instructions>`. Lowest token cost, most isolated.
+- **`inherit`** — subagent inherits the parent's system prompt (with scaffolding stripped to avoid duplication) plus its own `<agent_instructions>`. Best when agents need the parent's context and guidelines.
+- **`custom`** — subagent uses the content of `~/.pi/agent/subagents-lite-prompt.md` as its base prompt plus its own `<agent_instructions>`. Full control over the system prompt.
+
+When `includeContextFiles` is `true` (default), AGENTS.md files from the project root and `~/.pi/agent/` are loaded into the subagent prompt as `<project_context>` sections. This block is placed before agent-specific instructions, so the static project context is shared across requests — improving KV cache prefix hit rates and reducing redundant token costs. Toggle off to reduce token cost.
+
 ## Model Resolution
 
 The extension picks the right model automatically. Precedence (highest first):
@@ -288,12 +306,13 @@ The LLM never passes `model` — it's injected at call time via the `tool_call` 
 Management menu with four sections:
 
 - **Running agents** — list with status and description; per-agent actions: view snapshot, view result, view error, steer, stop; bulk stop all running
-- **Spawn agent** — manually spawn an agent without asking the LLM. Pick a type, enter a prompt, configure options (model, thinking, max turns, grace turns, background), and spawn. Options are pre-filled from agent config and current settings. Spawn immediately or customize first.
-- **Settings** — model, concurrency, and widget settings grouped together
-  - **Model settings** — global default, per-type overrides, force background mode, cost display toggle, grace turns
+- **Spawn agent** — manually spawn an agent without asking the LLM. Pick a type, enter a prompt, configure options (model, thinking, max turns, max tokens, grace turns, background), and spawn. Options are pre-filled from agent config and current settings. Spawn immediately or customize first.
+- **Settings** — model, concurrency, spawn options, system prompt, and widget settings grouped together
+  - **Model settings** — global default, per-type overrides, session overrides, clear all
+  - **Spawn options** — force background, grace turns, default max turns, default thinking level, disable default agents
+  - **System prompt** — mode (replace/inherit/custom), custom prompt file, include AGENTS.md, load skills/extensions implicitly
   - **Concurrency** — default limit, per-provider and per-model slots, reset to defaults
-  - **Widget settings** — force compact mode, max lines (full/compact), ctrl+o shortcut
-- **Debug** — agent types, agent briefing (sends capabilities to the LLM)
+  - **Widget settings** — force compact mode, max lines (full/compact), description length (full/compact), ctrl+o shortcut, usage stats (toggle visibility of tools, turns, input/output tokens, context percent, cost, time)
 
 ## Interface
 
@@ -304,21 +323,21 @@ Persistent bar above the editor showing running and completed agents. Updates li
 - Running agents show a spinner, current tool activity, turn count, token usage (with optional context-fill percent), and elapsed time
 - Completed agents show a check mark with final stats
 - Click `tail -f` path to follow output logs in real time
-- Two display modes: **full** (header + `tail -f` path + activity) and **compact** (single line, description truncated to 30 chars, activity inline)
+- Two display modes: **full** (header + `tail -f` path + activity) and **compact** (single line, description truncated to configured length, activity inline)
 
 **Full mode** (tree structure with branch connectors):
 ```
-├─ ⠙ Explore  description  3🛠 ·5≤30⟳ ·12.0k(45%)·1h 2m 3s
+├─ ⠙ Explore  description  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s
 │  │ tail -f /tmp/pi-agent-outputs/...
 │  └ thinking…
 ```
 
 **Compact mode** (single line, description truncated):
 ```
-├─ ⠙ Explore  description trunc…  3🛠 ·5≤30⟳ ·12.0k(45%)·1h 2m 3s  thinking…
+├─ ⠙ Explore  description trunc…  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s  thinking…
 ```
 
-Turn format uses `≤` and `⟳` glyphs (`5≤30⟳` = 5 of 30 turns). Token count uses compact notation (`12.0k`) with optional context-fill percent in parentheses. No "tokens" label — the glyphs are self-explanatory.
+Turn format uses `≤` and `⟳` glyphs (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal below 80%, warning at 80–99%, error at 100%. Turn max is hidden when well below the limit. Token count shows separate input and output values (`↑10.2k↓1.8k 45%`) with optional context-fill percent. No "tokens" label — the glyphs are self-explanatory.
 
 **Compact mode is active when:**
 - **Force compact mode** is ON (in `/agents > Widget settings`), OR
@@ -334,7 +353,7 @@ Key bindings: `↑↓` navigate · `PgUp/PgDn` · `g`/`G` top/bottom · `f` togg
 
 Stats line: ` ↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`
 
-When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builder·2🛠 ·5⟳ ·12.3k·$0.008·10s`. The status bar shows total agent cost: `agents: $0.008` or `2 agents: $0.008`.
+When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builder·2🛠 ·5⟳ ·↑10.2k↓1.8k $0.008·10s`. The status bar shows total agent cost: `agents: $0.008` or `2 agents: $0.008`. Cost display can also be toggled as a session override (not persisted) via the model settings menu.
 
 ## Configuration
 
@@ -349,8 +368,23 @@ When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builde
     "graceTurns": 6,
     "widgetMaxLines": 12,
     "widgetMaxLinesCompact": 6,
+    "widgetDescLengthFull": 50,
+    "widgetDescLengthCompact": 30,
     "widgetCompact": false,
     "widgetShortcut": false,
+    "defaultThinking": "medium",
+    "defaultMaxTurns": 30,
+    "systemPromptMode": "replace",
+    "includeContextFiles": true,
+    "disableDefaultAgents": false,
+    "loadSkillsImplicitly": true,
+    "loadExtensionsImplicitly": true,
+    "showTools": true,
+    "showTurns": true,
+    "showInput": true,
+    "showOutput": true,
+    "showContext": true,
+    "showTime": true,
     "Explore": "anthropic/claude-haiku-4-5-20251001"
   },
   "concurrency": {
@@ -363,7 +397,7 @@ When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builde
 }
 ```
 
-> **Note:** `agent.default` (global fallback), `agent.forceBackground` (flag), `agent.showCost` (toggle cost display), `agent.graceTurns` (grace turns after `max_turns` before hard abort), widget settings (`widgetMaxLines`, `widgetMaxLinesCompact`, `widgetCompact`, `widgetShortcut`), and per-type overrides like `"Explore"` are peers in the same object. Agent type names become dynamic keys alongside the special fields.
+> **Note:** `agent.default` (global fallback), `agent.forceBackground` (flag), `agent.showCost` (toggle cost display), `agent.graceTurns` (grace turns after `max_turns` before hard abort), `agent.defaultThinking` / `agent.defaultMaxTurns` (defaults for all spawns), `agent.systemPromptMode` (replace/inherit/custom), `agent.includeContextFiles` (load AGENTS.md), `agent.disableDefaultAgents` (skip built-in agents), `agent.loadSkillsImplicitly` / `agent.loadExtensionsImplicitly` (global defaults for skills and extensions loading), widget settings (`widgetMaxLines`, `widgetMaxLinesCompact`, `widgetDescLengthFull`, `widgetDescLengthCompact`, `widgetCompact`, `widgetShortcut`), stats visibility (`showTools`, `showTurns`, `showInput`, `showOutput`, `showContext`, `showTime`), and per-type overrides like `"Explore"` are peers in the same object. Agent type names become dynamic keys alongside the special fields.
 
 ### Widget settings
 
@@ -371,9 +405,22 @@ When **Cost display** is enabled (ON), agent stats show dollar cost: `✓ Builde
 |---|---|---|
 | `widgetMaxLines` | `12` | Maximum body lines in full mode (excluding the heading). |
 | `widgetMaxLinesCompact` | half of `widgetMaxLines` | Maximum body lines in compact mode. |
+| `widgetDescLengthFull` | `50` | Maximum description length in full mode. |
+| `widgetDescLengthCompact` | `30` | Maximum description length in compact mode. |
 | `widgetCompact` | `false` | Force compact mode regardless of ctrl+o state. |
 | `widgetShortcut` | `false` | Opt-in: when ON, ctrl+o (tool expansion toggle) syncs with widget compact mode. When OFF, compact mode is manual-only via `widgetCompact`. |
 
+### Widget stats visibility
+
+| Field | Default | Description |
+|---|---|---|
+| `showTools` | `true` | Show tool count (🛠) in widget stats. |
+| `showTurns` | `true` | Show turn count (⟳) in widget stats. |
+| `showInput` | `true` | Show input tokens (↑) in widget stats. |
+| `showOutput` | `true` | Show output tokens (↓) in widget stats. |
+| `showContext` | `true` | Show context-fill percent (%) in widget stats. |
+| `showCost` | `false` | Show dollar cost ($) in widget stats. |
+| `showTime` | `true` | Show elapsed time in widget stats. |
 > **Reload safety:** if a session reload (e.g. `/reload` or extension reload) kills running agents, the UI notifies you with the count of lost agents. Output logs and completed results are preserved on disk.
 
 ## StopAgent Tool
