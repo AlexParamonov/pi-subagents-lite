@@ -275,7 +275,7 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
     expect(result).toContain("Project guidelines.");
   });
 
-  it("places project_context after agent_instructions and before skill extras", () => {
+  it("places project_context before agent_instructions and after base prompt", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       contextFiles: [
         { path: "/test/cwd/AGENTS.md", content: "Context content." },
@@ -285,14 +285,14 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
       ],
     });
 
-    const agentInstructionsEnd = result.indexOf("</agent_instructions>");
+    const agentInstructionsStart = result.indexOf("<agent_instructions>");
     const projectContextStart = result.indexOf("<project_context>");
     const skillStart = result.indexOf("<available_skills>");
 
-    // project_context should come after agent_instructions
-    expect(projectContextStart).toBeGreaterThan(agentInstructionsEnd);
-    // skill extras should come after project_context
-    expect(skillStart).toBeGreaterThan(projectContextStart);
+    // project_context should come before agent_instructions
+    expect(projectContextStart).toBeLessThan(agentInstructionsStart);
+    // skill extras should come after agent_instructions
+    expect(skillStart).toBeGreaterThan(agentInstructionsStart);
   });
 
   it("does not include project_context when contextFiles is empty", () => {

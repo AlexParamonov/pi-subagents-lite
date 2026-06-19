@@ -168,7 +168,7 @@ export function buildAgentPrompt(
     ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
     : `You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
 
-  return `${basePrompt}${agentInstructions}${contextSuffix}${extrasSuffix}`;
+  return `${basePrompt}${contextSuffix}${agentInstructions}${extrasSuffix}`;
 }
 
 function escapeXml(value: string): string {
