@@ -160,10 +160,9 @@ export function buildAgentPrompt(
   const rawHeader = mode === "inherit" ? extras?.parentSystemPrompt
                  : mode === "custom"  ? extras?.customSystemPrompt
                  : undefined;
-  // Strip scaffolding from inherited parent prompt to avoid duplication
-  const customHeader = mode === "inherit" && rawHeader
-    ? stripScaffolding(rawHeader)
-    : rawHeader;
+  // Strip scaffolding from inherited/custom parent prompt to avoid duplication
+  // Always strip these even in replace mode because pi adds them to its own prompt
+  const customHeader = rawHeader ? stripScaffolding(rawHeader) : rawHeader;
   const basePrompt = customHeader
     ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
     : `You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
