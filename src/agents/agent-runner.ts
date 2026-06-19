@@ -490,7 +490,7 @@ function wireTurnTracking(
     }
   });
 
-  return { unsubscribe, getAborted: () => aborted, getSteered: () => softLimitReached };
+  return { unsubscribe, getAborted: () => aborted, getTurnLimited: () => softLimitReached };
 }
 
 /**
@@ -555,11 +555,11 @@ export async function runAgent(
   const session = await createAndConfigureSession(
     ctx, options, agentConfig, type, effectiveCwd, loader, extResult, notify,
   );
-  const { unsubscribe: unsubTurns, getAborted, getSteered } = wireTurnTracking(session, {
+  const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, {
     ...options,
     maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
   });
 
   const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
-  return { responseText, session, aborted: getAborted(), turnLimited: getSteered() };
+  return { responseText, session, aborted: getAborted(), turnLimited: getTurnLimited() };
 }
