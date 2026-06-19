@@ -76,20 +76,25 @@ export async function showConcurrencySettingsMenu(
       return delegator;
     };
 
-    // Submenu factory: pick a provider from options, then enter a value.
+    // Submenu factory: pick a provider from options (with search), then enter a value.
     const addProviderLimitSubmenu = (
       options: string[],
       onPick: (key: string, parsed: number) => void,
     ): SettingItem["submenu"] => (_currentValue, subDone) => {
-      const list = new SelectList(
-        options.map((o) => ({ value: o, label: o })),
-        10, buildSelectListTheme(theme),
+      const providerOpts = options.map((o) => ({ value: o, label: o, provider: "" }));
+      let delegator: ReturnType<typeof createDelegatingComponent>;
+      const providerSelector = new ModelSelectorDialog(
+        providerOpts,
+        null,
+        {
+          onSelect: (providerValue) => {
+            delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(providerValue, parsed))("1", subDone));
+          },
+          onCancel: () => subDone(),
+        },
+        theme,
       );
-      const delegator = createDelegatingComponent(list);
-      list.onSelect = (item) => {
-        delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(item.value, parsed))("1", subDone));
-      };
-      list.onCancel = () => subDone();
+      delegator = createDelegatingComponent(providerSelector);
       return delegator;
     };
 
