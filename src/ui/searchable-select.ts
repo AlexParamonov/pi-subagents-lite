@@ -1,5 +1,5 @@
 /**
- * model-selector.ts — TUI model selection dialog.
+ * searchable-select.ts — TUI paginated, searchable pick-list dialog.
  *
  * Reuses the same building blocks as pi's ModelSelectorComponent but without
  * the SettingsManager dependency — no side effects, just callbacks.
@@ -15,52 +15,52 @@ import {
   Text,
 } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import type { Theme } from "../ui/agent-widget.js";
+import type { Theme } from "./agent-widget.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export interface ModelOption {
-  /** "provider/model-id" — the value returned on selection */
+export interface SelectOption {
+  /** The value returned on selection (e.g. "provider/model-id"). */
   value: string;
-  /** Display label (model-id without provider prefix) */
+  /** Display label. */
   label: string;
   /** Provider name for badge; omitted when the label already conveys it (e.g. provider/type lists). */
   provider?: string;
 }
 
-interface ModelSelectorCallbacks {
+interface SelectDialogCallbacks {
   onSelect: (value: string) => void;
   onCancel: () => void;
 }
 
 /* ------------------------------------------------------------------ */
-/*  ModelSelectorDialog                                                */
+/*  SearchableSelectDialog                                             */
 /* ------------------------------------------------------------------ */
 
 const MAX_VISIBLE = 10;
 
 /**
- * A paginated, searchable model selector dialog.
+ * A paginated, searchable selection dialog.
  *
  * Rendering mirrors pi's ModelSelectorComponent:
  *   - Top border
  *   - Search input
- *   - Paginated model list (10 at a time, centered on selection)
+ *   - Paginated option list (10 at a time, centered on selection)
  *   - Scroll indicator "(3/47)"
  *   - Bottom border
  *
  * Key bindings: up/down/pageup/pagedown/enter/escape + pass-through to search.
  */
-export class ModelSelectorDialog extends Container implements Focusable {
+export class SearchableSelectDialog extends Container implements Focusable {
   private searchInput: Input;
   private listContainer: Container;
-  private items: ModelOption[];
-  private filteredItems: ModelOption[];
+  private items: SelectOption[];
+  private filteredItems: SelectOption[];
   private selectedIndex: number;
-  private currentModel: string | null;
-  private callbacks: ModelSelectorCallbacks;
+  private currentValue: string | null;
+  private callbacks: SelectDialogCallbacks;
   private theme: Theme;
 
   // Focusable implementation — propagate to searchInput for IME cursor
@@ -76,21 +76,21 @@ export class ModelSelectorDialog extends Container implements Focusable {
   }
 
   constructor(
-    items: ModelOption[],
-    currentModel: string | null,
-    callbacks: ModelSelectorCallbacks,
+    items: SelectOption[],
+    currentValue: string | null,
+    callbacks: SelectDialogCallbacks,
     theme: Theme,
   ) {
     super();
 
     this.items = items;
-    this.currentModel = currentModel;
+    this.currentValue = currentValue;
     this.callbacks = callbacks;
     this.theme = theme;
     this.filteredItems = [...items];
 
-    // Pre-select current model if present
-    const currentIdx = items.findIndex((m) => m.value === currentModel);
+    // Pre-select current value if present
+    const currentIdx = items.findIndex((m) => m.value === currentValue);
     this.selectedIndex = currentIdx >= 0 ? currentIdx : 0;
 
     // Build UI
@@ -185,7 +185,7 @@ export class ModelSelectorDialog extends Container implements Focusable {
 
     // Everything else → search input (triggers fuzzy filter)
     this.searchInput.handleInput(keyData);
-    this.filterModels();
+    this.filterItems();
   }
 
   invalidate(): void {
@@ -196,7 +196,7 @@ export class ModelSelectorDialog extends Container implements Focusable {
   /*  Private helpers                                                    */
   /* ------------------------------------------------------------------ */
 
-  private filterModels(): void {
+  private filterItems(): void {
     const query = this.searchInput.getValue();
     if (!query) {
       this.filteredItems = [...this.items];
@@ -221,7 +221,7 @@ export class ModelSelectorDialog extends Container implements Focusable {
     const { filteredItems } = this;
     if (filteredItems.length === 0) {
       this.listContainer.addChild(
-        new Text(this.theme.fg("muted", "  No matching models"), 0, 0),
+        new Text(this.theme.fg("muted", "  No matching items"), 0, 0),
       );
       return;
     }
@@ -241,14 +241,14 @@ export class ModelSelectorDialog extends Container implements Focusable {
       if (!item) continue;
 
       const isSelected = i === this.selectedIndex;
-      const isCurrent = item.value === this.currentModel;
+      const isCurrent = item.value === this.currentValue;
 
-      const modelText = isSelected
+      const labelText = isSelected
         ? this.theme.fg("accent", "→ ") + this.theme.fg("accent", item.label)
         : `  ${item.label}`;
       const providerBadge = item.provider ? this.theme.fg("muted", `[${item.provider}]`) : "";
       const checkmark = isCurrent ? this.theme.fg("success", " ✓") : "";
-      const line = `${modelText} ${providerBadge}${checkmark}`;
+      const line = `${labelText} ${providerBadge}${checkmark}`;
 
       this.listContainer.addChild(new Text(line, 0, 0));
     }

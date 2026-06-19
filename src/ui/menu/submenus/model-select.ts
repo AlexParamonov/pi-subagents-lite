@@ -2,13 +2,13 @@
  * model-select-submenu.ts — 2-step model override submenu.
  *
  * Step 1: SelectList with override mode (session/permanent/clear)
- * Step 2 (if session/permanent): ModelSelectorDialog for model selection
+ * Step 2 (if session/permanent): SearchableSelectDialog for model selection
  *
  * The submenu factory must be created inside ctx.ui.custom to capture the theme.
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
-import { ModelSelectorDialog, type ModelOption } from "../../../models/model-selector.js";
+import { SearchableSelectDialog, type SelectOption } from "../../../ui/searchable-select.js";
 import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "../helpers.js";
 
 export interface ModelSelectSubmenuOptions {
@@ -52,7 +52,7 @@ export function createModelSelectSubmenu(
     modeList.onCancel = () => done();
 
     const modelOpts = buildModelOptions(options.modelOptions);
-    const modelSelector = new ModelSelectorDialog(
+    const modelSelector = new SearchableSelectDialog(
       modelOpts,
       _currentValue === "(inherits parent)" ? null : _currentValue,
       {

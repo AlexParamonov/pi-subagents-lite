@@ -60,9 +60,9 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
   },
 }));
 
-// Mock ModelSelectorDialog from model-selector
-vi.mock("../../../src/models/model-selector.js", () => ({
-  ModelSelectorDialog: class MockModelSelectorDialog {
+// Mock SearchableSelectDialog from searchable-select
+vi.mock("../../../src/ui/searchable-select.js", () => ({
+  SearchableSelectDialog: class MockSearchableSelectDialog {
     onSelect?: (v: string) => void;
     onCancel?: () => void;
     constructor(_items: any, _current: any, callbacks: any, _theme: any) {

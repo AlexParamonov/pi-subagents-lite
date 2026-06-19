@@ -92,8 +92,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
   }),
 }));
 
-vi.mock("../src/models/model-selector.js", () => ({
-  ModelSelectorDialog: class {},
+vi.mock("../src/ui/searchable-select.js", () => ({
+  SearchableSelectDialog: class {},
 }));
 
 vi.mock("../src/models/model-precedence.js", () => ({

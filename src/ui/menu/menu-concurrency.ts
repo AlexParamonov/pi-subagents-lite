@@ -22,7 +22,7 @@ import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
-import type { ModelOption } from "../../models/model-selector.js";
+import type { SelectOption } from "../searchable-select.js";
 
 export async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
@@ -62,7 +62,7 @@ export async function showConcurrencySettingsMenu(
     // Submenu factory: searchable-pick an option, then enter a numeric value.
     // Used for both per-provider and per-model limits; items differ by caller.
     const addPickThenValueSubmenu = (
-      items: ModelOption[],
+      items: SelectOption[],
       onPick: (key: string, parsed: number) => void,
     ): SettingItem["submenu"] => (_currentValue, subDone) =>
       createSearchableSelect(

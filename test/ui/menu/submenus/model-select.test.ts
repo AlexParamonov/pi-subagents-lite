@@ -39,8 +39,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
   getKeybindings: vi.fn(() => ({ matches: () => false })),
 }));
 
-vi.mock("../../../../src/models/model-selector.js", () => ({
-  ModelSelectorDialog: class MockModelSelectorDialog {
+vi.mock("../../../../src/ui/searchable-select.js", () => ({
+  SearchableSelectDialog: class MockSearchableSelectDialog {
     constructor() {}
     render() { return []; }
     handleInput() {}

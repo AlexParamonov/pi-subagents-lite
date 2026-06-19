@@ -5,15 +5,15 @@
  * searchable pick-list submenu factory.
  */
 import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
-import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
+import { SearchableSelectDialog, type SelectOption } from "../searchable-select.js";
 import { parseModelKey } from "../../utils.js";
 
 /**
- * Build ModelOption[] from raw "provider/model-id" strings.
+ * Build SelectOption[] from raw "provider/model-id" strings.
  * Includes "(inherits parent)" as the first option.
  */
-export function buildModelOptions(rawOptions: string[]): ModelOption[] {
-  const items: ModelOption[] = [
+export function buildModelOptions(rawOptions: string[]): SelectOption[] {
+  const items: SelectOption[] = [
     { value: "(inherits parent)", label: "(inherits parent)", provider: "" },
   ];
 
@@ -92,7 +92,7 @@ export function buildSelectListTheme(theme: { fg(color: string, text: string): s
 }
 
 /**
- * Build a searchable pick-list submenu backed by ModelSelectorDialog.
+ * Build a searchable pick-list submenu backed by SearchableSelectDialog.
  *
  * Hides the delegator-forward-declaration dance shared by every menu that
  * needs "type to filter, Enter to pick" over a flat option list
@@ -101,12 +101,12 @@ export function buildSelectListTheme(theme: { fg(color: string, text: string): s
  * the submenu as-is so the caller can close it via done().
  */
 export function createSearchableSelect(
-  items: ModelOption[],
+  items: SelectOption[],
   callbacks: { onSelect: (value: string) => Component | void; onCancel: () => void },
   theme: any,
 ): Component {
   let delegator: ReturnType<typeof createDelegatingComponent>;
-  const selector = new ModelSelectorDialog(
+  const selector = new SearchableSelectDialog(
     items,
     null,
     {
