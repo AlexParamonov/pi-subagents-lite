@@ -70,6 +70,16 @@ describe("parseExtensions", () => {
     const result = parseExtensions("read");
     expect(result).toEqual(["read"]);
   });
+
+  it("strips brackets from inline YAML array syntax", () => {
+    const result = parseExtensions("[a, b, c]");
+    expect(result).toEqual(["a", "b", "c"]);
+  });
+
+  it("strips brackets from single-element inline array", () => {
+    const result = parseExtensions("[read]");
+    expect(result).toEqual(["read"]);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -158,6 +168,61 @@ body
 `;
     const result = parseAgentFile(content, "agent.md", "user");
     expect(result.tools).toEqual(["read", "bash"]);
+  });
+
+  it("handles inline YAML array syntax for tools", () => {
+    const content = `---
+name: agent
+tools: [read, write, edit, grep, bash]
+---
+body
+`;
+    const result = parseAgentFile(content, "agent.md", "user");
+    expect(result.tools).toEqual(["read", "write", "edit", "grep", "bash"]);
+  });
+
+  it("handles inline YAML array syntax for exclude_tools", () => {
+    const content = `---
+name: agent
+exclude_tools: [agent]
+---
+body
+`;
+    const result = parseAgentFile(content, "agent.md", "user");
+    expect(result.exclude_tools).toEqual(["agent"]);
+  });
+
+  it("handles inline YAML array syntax for exclude_extensions", () => {
+    const content = `---
+name: agent
+exclude_extensions: [rpiv-todo, pi-fff]
+---
+body
+`;
+    const result = parseAgentFile(content, "agent.md", "user");
+    expect(result.exclude_extensions).toEqual(["rpiv-todo", "pi-fff"]);
+  });
+
+  it("handles inline YAML array syntax for extensions", () => {
+    const content = `---
+name: agent
+extensions: [ext-a, ext-b]
+---
+body
+`;
+    const result = parseAgentFile(content, "agent.md", "user");
+    expect(result.extensions).toEqual(["ext-a", "ext-b"]);
+  });
+
+  it("handles inline YAML array syntax for preload_skills", () => {
+    const content = `---
+name: agent
+preload_skills: [skill-a]
+---
+body
+`;
+    const result = parseAgentFile(content, "agent.md", "user");
+    expect(result.preload_skills).toEqual(["skill-a"]);
   });
 
   it("parses extensions as boolean true", () => {

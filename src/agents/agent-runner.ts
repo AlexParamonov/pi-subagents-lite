@@ -530,8 +530,8 @@ export async function runAgent(
 
   // Warn on mutual exclusion violations
   const notify = (msg: string) => {
-    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents] ${msg}`, "warning");
-    else console.warn(`[pi-subagents] ${msg}`);
+    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+    else console.warn(`[pi-subagents-lite] ${msg}`);
   };
   if (agentConfig?.excludeTools && Array.isArray(agentConfig.tools)) {
     notify(`agent "${type}": both tools and exclude_tools set — tools (whitelist) wins`);
