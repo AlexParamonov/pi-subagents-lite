@@ -528,23 +528,23 @@ export async function runAgent(
   const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
   const agentConfig = getAgentConfig(type);
 
-  // Warn on mutual exclusion violations
-  const notify = (msg: string) => {
-    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
-    else console.warn(`[pi-subagents-lite] ${msg}`);
-  };
+  // Buffer warnings during setup to avoid inserting custom_message entries
+  // between tool_use and tool_result in the session tree (causes Anthropic 400).
+  // Flushed after runTurnLoop completes.
+  const warnings: string[] = [];
+  const bufferNotify = (msg: string) => { warnings.push(msg); };
   if (agentConfig?.excludeTools && Array.isArray(agentConfig.tools)) {
-    notify(`agent "${type}": both tools and exclude_tools set — tools (whitelist) wins`);
+    bufferNotify(`agent "${type}": both tools and exclude_tools set — tools (whitelist) wins`);
   }
   if (agentConfig?.excludeExtensions && Array.isArray(agentConfig.extensions)) {
-    notify(`agent "${type}": both extensions and exclude_extensions set — extensions (whitelist) wins`);
+    bufferNotify(`agent "${type}": both extensions and exclude_extensions set — extensions (whitelist) wins`);
   }
 
   const effectiveCwd = options.cwd ?? ctx.cwd;
   const env = await detectEnv(options.pi, effectiveCwd);
 
   // Resolve system prompt mode + source prompts + context files
-  const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, notify);
+  const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify);
 
   const systemPrompt = buildPrompt(
     type, agentConfig, config, effectiveCwd, env,
@@ -553,7 +553,7 @@ export async function runAgent(
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
   const { extResult } = await reloadAndMap();
   const session = await createAndConfigureSession(
-    ctx, options, agentConfig, type, effectiveCwd, loader, extResult, notify,
+    ctx, options, agentConfig, type, effectiveCwd, loader, extResult, bufferNotify,
   );
   const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, {
     ...options,
@@ -561,5 +561,12 @@ export async function runAgent(
   });
 
   const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
+
+  // Flush buffered warnings now that tool_result is in the session tree.
+  for (const msg of warnings) {
+    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+    else console.warn(`[pi-subagents-lite] ${msg}`);
+  }
+
   return { responseText, session, aborted: getAborted(), turnLimited: getTurnLimited() };
 }
