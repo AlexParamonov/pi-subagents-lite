@@ -160,8 +160,9 @@ export function buildAgentPrompt(
   const rawHeader = mode === "inherit" ? extras?.parentSystemPrompt
                  : mode === "custom"  ? extras?.customSystemPrompt
                  : undefined;
-  // Strip scaffolding from inherited/custom parent prompt to avoid duplication
-  // Always strip these even in replace mode because pi adds them to its own prompt
+  // Parent/custom headers carry pi's scaffolding (context, skills, date, cwd);
+  // strip it — we re-add these from the subagent's own config. (rawHeader is
+  // undefined in replace mode, so nothing to strip there.)
   const customHeader = rawHeader ? stripScaffolding(rawHeader) : rawHeader;
   const basePrompt = customHeader
     ? `${customHeader}\n\n${envBlock}`

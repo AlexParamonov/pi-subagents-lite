@@ -27,6 +27,7 @@
 ### Verification
 - When merge agent reports success, verify the actual merge commit exists.
 - Don't assume — verify. Code review catches silent production bugs (e.g., porcelain format mismatches).
+- A trailing `?? N` fallback on `DEFAULT_CONFIG.agent.X` looks dead (the literal always has the value) but is forced by the optional-field type — `SubagentsConfig.agent` marks these `?`, so the static type is `T | undefined`. Run typecheck before removing "redundant" fallbacks.
 
 ### Agent Type Enforcement
 - NEVER use `general-purpose` when workflow specifies a specialized agent type.
