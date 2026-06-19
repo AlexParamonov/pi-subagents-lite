@@ -373,6 +373,7 @@ export async function showSpawnAgentMenu(
         currentValue: String(currentGraceTurns),
         submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
       },
+      { id: "__sep__", label: " ", currentValue: "" },
       {
         id: "description",
         label: "Description",

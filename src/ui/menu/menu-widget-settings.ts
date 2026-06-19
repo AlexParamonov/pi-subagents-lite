@@ -114,6 +114,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
         values: ["ON", "OFF"],
       },
+      { id: "__sep__", label: " ", currentValue: "" },
       {
         id: "usageStats",
         label: "Usage stats",

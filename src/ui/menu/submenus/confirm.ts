@@ -26,8 +26,8 @@ export function createConfirmSubmenu(
 ): (currentValue: string, done: (selectedValue?: string) => void) => Component {
   return (_currentValue: string, done: (selectedValue?: string) => void) => {
     const items = [
-      { value: "Yes", label: "Yes" },
-      { value: "No", label: "No" },
+      { value: "Yes", label: "Yes", description: options.message },
+      { value: "No", label: "No", description: options.message },
     ];
 
     const list = new SelectList(items, 5, buildSelectListTheme(options.theme));
