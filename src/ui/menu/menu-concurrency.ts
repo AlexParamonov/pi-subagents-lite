@@ -187,7 +187,7 @@ export async function showConcurrencySettingsMenu(
     const triggerRebuild = () => rebuild?.(buildItems(getStore(), theme, modelOptions, triggerRebuild));
     const store = getStore();
     const items = buildItems(store, theme, modelOptions, triggerRebuild);
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => triggerRebuild(), () => done(undefined), { enableSearch: true });
+    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => triggerRebuild(), () => done(undefined));
     return new SettingsListWrapper(settingsList, {
       title: "Concurrency Settings",
       theme,
