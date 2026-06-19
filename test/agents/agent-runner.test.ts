@@ -1685,3 +1685,149 @@ describe("runAgent — custom mode", () => {
     );
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — notify buffering (session tree corruption fix)          */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — notify buffering", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  /**
+   * Create a session where prompt doesn't resolve until resolvePrompt() is called.
+   * This lets us check notify call ordering relative to the turn loop.
+   */
+  function createPendingPromptSession() {
+    const session = createMockSession();
+    let resolvePrompt!: () => void;
+    session.prompt = vi.fn(
+      () => new Promise<void>((r) => {
+        resolvePrompt = r;
+      }),
+    );
+    return { session, resolvePrompt: () => resolvePrompt() };
+  }
+
+  it("does NOT call ctx.ui.notify before runTurnLoop completes", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // Trigger mutual exclusion warning (tools + excludeTools both set)
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      tools: ["read", "bash"],
+      excludeTools: ["write"],
+    });
+
+    const ctx = fakeCtx();
+    ctx.ui = {
+      notify: vi.fn(),
+    };
+
+    const promise = runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    // At this point setup is done but prompt is still pending — notify should NOT have been called yet
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+
+    // Complete the turn loop
+    resolvePrompt();
+    await promise;
+
+    // Now notify should have been called (warnings flushed after turn loop)
+    expect(ctx.ui.notify).toHaveBeenCalled();
+  });
+
+  it("flushes buffered warnings after turn loop", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // Trigger mutual exclusion warning (tools + excludeTools)
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      tools: ["read", "bash"],
+      excludeTools: ["write"],
+    });
+
+    const ctx = fakeCtx();
+    ctx.ui = { notify: vi.fn() };
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    // Should have exactly one warning (mutual exclusion)
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('both tools and exclude_tools set'),
+      "warning",
+    );
+  });
+
+  it("uses console.warn fallback when ctx.ui.notify is unavailable", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // Trigger mutual exclusion warning
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      tools: ["read", "bash"],
+      excludeTools: ["write"],
+    });
+
+    const ctx = fakeCtx();
+    // No ctx.ui — should fall back to console.warn
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('both tools and exclude_tools set'),
+    );
+  });
+
+  it("console.warn fallback also waits until after turn loop", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // Trigger mutual exclusion warning
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      tools: ["read", "bash"],
+      excludeTools: ["write"],
+    });
+
+    const ctx = fakeCtx();
+    // No ctx.ui — console.warn fallback
+
+    const promise = runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    // Setup done, prompt pending — console.warn should NOT have been called yet
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    // Complete the turn loop
+    resolvePrompt();
+    await promise;
+
+    // Now console.warn should have been called
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('both tools and exclude_tools set'),
+    );
+  });
+});
