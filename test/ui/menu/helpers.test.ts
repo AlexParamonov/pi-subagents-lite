@@ -71,9 +71,9 @@ describe("buildSettingsListTheme", () => {
     expect(theme.value("val", false)).toBe("[muted:val]");
   });
 
-  it("description uses muted", () => {
+  it("description uses dim", () => {
     const theme = buildSettingsListTheme(mockTheme);
-    expect(theme.description("desc")).toBe("[muted:desc]");
+    expect(theme.description("desc")).toBe("[dim:desc]");
   });
 
   it("cursor uses accent", () => {

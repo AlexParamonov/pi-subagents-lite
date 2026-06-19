@@ -27,6 +27,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Force background",
       currentValue: store.agent.forceBackground ? "ON" : "OFF",
       values: ["ON", "OFF"],
+      description: "Spawn every agent in the background by default (no foreground wait).",
     },
     {
       id: "graceTurns",
@@ -36,6 +37,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         store.mutate.agent.setGraceTurns(parsed);
         ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
       }),
+      description: "Extra turns after the soft turn limit before a hard abort.",
     },
     {
       id: "defaultMaxTurns",
@@ -48,18 +50,21 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         store.mutate.agent.setDefaultMaxTurns(undefined);
         ctx.ui.notify("Default max turns cleared", "info");
       }),
+      description: "Soft turn limit; agent is steered here, then hard-aborts after grace turns. Blank = unlimited.",
     },
     {
       id: "defaultThinking",
       label: "Default thinking level",
       currentValue: store.agent.defaultThinking ?? "inherit",
       values: ["off", "minimal", "low", "medium", "high", "xhigh", "inherit"],
+      description: "Thinking level applied when agent frontmatter omits one.",
     },
     {
       id: "disableDefaultAgents",
       label: "Disable default agents",
       currentValue: store.agent.disableDefaultAgents ? "ON" : "OFF",
       values: ["ON", "OFF"],
+      description: "Skip auto-loading built-in agent types next session; only .pi/agents types load.",
     },
   ];
 

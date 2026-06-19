@@ -71,6 +71,7 @@ export async function showModelSettingsMenu(
       id: "defaultModel",
       label: "Global default model",
       currentValue: globalDisplayValue,
+      description: "Model used when no per-type override or frontmatter model applies.",
       submenu: createModelSelectSubmenu({
         modelOptions,
         showClear: false,
@@ -105,6 +106,7 @@ export async function showModelSettingsMenu(
         id: `type:${typeName}`,
         label: typeName,
         currentValue: `${frontmatterHint}${displayModel}`,
+        description: `Per-type model override for the ${typeName} agent type.`,
         submenu: createModelSelectSubmenu({
           modelOptions,
           showClear: hasPerm,
@@ -121,6 +123,7 @@ export async function showModelSettingsMenu(
         id: "overrideType",
         label: "Override another type...",
         currentValue: "",
+        description: "Add a model override for an agent type that currently inherits.",
         submenu: (_currentValue, subDone) => {
           const typeNames = nonOverridden.map(e => ({ value: e.typeName, label: e.typeName }));
           const typeList = new SelectList(typeNames, 10, buildSelectListTheme(theme));
@@ -153,6 +156,7 @@ export async function showModelSettingsMenu(
         id: "clearSession",
         label: "Clear session overrides",
         currentValue: "",
+        description: "Discard model overrides set only for this session.",
         submenu: createConfirmSubmenu({
           message: "Clear all session overrides?",
           theme,
@@ -169,6 +173,7 @@ export async function showModelSettingsMenu(
       id: "clearAll",
       label: "Clear all overrides",
       currentValue: "",
+      description: "Discard all model overrides (config and session).",
       submenu: createConfirmSubmenu({
         message: "Clear all model overrides?",
         theme,

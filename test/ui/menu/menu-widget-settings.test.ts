@@ -86,7 +86,6 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     expect(ids).toContain("descLengthFull");
     expect(ids).toContain("shortcut");
     expect(ids).toContain("usageStats");
-    expect(ids).toContain("__back__");
   });
 
   it("shows 'Force compact mode' with current value", async () => {
@@ -473,7 +472,6 @@ describe("showWidgetSettingsMenu — item order", () => {
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
     expect(ids).toContain("compact");
     expect(ids).toContain("maxLines");
-    expect(ids).toContain("__back__");
   });
   it("stat items in submenu appear in correct order", async () => {
     const ctx = createMockCtx();

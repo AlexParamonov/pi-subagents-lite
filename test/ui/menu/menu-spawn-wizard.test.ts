@@ -174,7 +174,6 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     expect(ids).toContain("background");
     expect(ids).toContain("model");
     expect(ids).toContain("spawn");
-    expect(ids).toContain("__back__");
   });
 
   it("includes worktree item when in git repo", async () => {
@@ -611,7 +610,6 @@ describe("showSpawnAgentMenu — item order", () => {
     expect(ids).toContain("background");
     expect(ids).toContain("thinkingLevel");
     expect(ids).toContain("prompt");
-    expect(ids).toContain("__back__");
   });
 
   it("worktree appears after background when in git repo", async () => {
@@ -626,16 +624,5 @@ describe("showSpawnAgentMenu — item order", () => {
     const bgIdx = ids.indexOf("background");
     const wtIdx = ids.indexOf("worktree");
     expect(wtIdx).toBe(bgIdx + 1);
-  });
-
-  it("Back item calls done", async () => {
-    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
-    await completeWizard(ctx);
-    const backItem = settingsListCalls[1].items.find((i: any) => i.id === "__back__");
-    expect(backItem).toBeDefined();
-    expect(backItem.label).toBe("Back");
-    const done = vi.fn();
-    backItem.submenu("", done);
-    expect(done).toHaveBeenCalled();
   });
 });

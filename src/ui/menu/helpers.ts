@@ -33,7 +33,7 @@ export function buildSettingsListTheme(theme: { fg(color: string, text: string):
   return {
     label: (text, selected) => selected ? theme.fg("accent", text) : text,
     value: (text, selected) => selected ? theme.fg("accent", text) : theme.fg("muted", text),
-    description: (text) => theme.fg("muted", text),
+    description: (text) => theme.fg("dim", text),
     // Use "→ " (2 chars) to match non-selected prefix "  " (2 spaces)
     // This prevents menu items from shifting left/right when cursor moves
     cursor: theme.fg("accent", "→ "),

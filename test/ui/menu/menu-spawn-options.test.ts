@@ -75,18 +75,6 @@ describe("showSpawnOptionsMenu — SettingsList integration", () => {
     expect(ids).toContain("graceTurns");
     expect(ids).toContain("defaultMaxTurns");
     expect(ids).toContain("defaultThinking");
-    expect(ids).toContain("__back__");
-  });
-
-  it("Back item has submenu that calls done", async () => {
-    const ctx = createMockCtx();
-    await showSpawnOptionsMenu(ctx);
-    const backItem = settingsListCalls[0].items.find((i: any) => i.id === "__back__");
-    expect(backItem).toBeDefined();
-    expect(backItem.label).toBe("Back");
-    const done = vi.fn();
-    backItem.submenu("", done);
-    expect(done).toHaveBeenCalled();
   });
 });
 

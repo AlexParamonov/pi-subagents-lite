@@ -58,11 +58,21 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   };
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const statDescriptions: Record<string, string> = {
+      showTools: "Show tool count (🛠) in the widget.",
+      showTurns: "Show turn count (⟳) in the widget.",
+      showInput: "Show input tokens (↑) in the widget.",
+      showOutput: "Show output tokens (↓) in the widget.",
+      showContext: "Show context-fill percent (%) in the widget.",
+      showCost: "Show dollar cost ($) in the widget.",
+      showTime: "Show elapsed time in the widget.",
+    };
     const statItems: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
       id,
       label: cfg.label,
       currentValue: cfg.get() ? "ON" : "OFF",
       values: ["ON", "OFF"],
+      description: statDescriptions[id],
     }));
 
     const items: SettingItem[] = [
@@ -71,6 +81,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         label: "Force compact mode",
         currentValue: store.agent.widgetCompact ? "ON" : "OFF",
         values: ["ON", "OFF"],
+        description: "Force compact widget mode regardless of ctrl+o state.",
       },
       {
         id: "maxLines",
@@ -80,6 +91,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
           store.mutate.widget.setMaxLines(parsed);
           ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
         }),
+        description: "Max body lines in full widget mode (excluding heading).",
       },
       {
         id: "descLengthFull",
@@ -89,6 +101,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
           store.mutate.widget.setDescLengthFull(parsed);
           ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
         }),
+        description: "Max description length shown in full widget mode.",
       },
       {
         id: "maxLinesCompact",
@@ -98,6 +111,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
           store.mutate.widget.setMaxLinesCompact(parsed);
           ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
         }),
+        description: "Max body lines in compact widget mode.",
       },
       {
         id: "descLengthCompact",
@@ -107,12 +121,14 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
           store.mutate.widget.setDescLengthCompact(parsed);
           ctx.ui.notify(`Description length (compact) set to ${parsed}`, "info");
         }),
+        description: "Max description length shown in compact widget mode.",
       },
       {
         id: "shortcut",
         label: "Ctrl+o shortcut",
         currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
         values: ["ON", "OFF"],
+        description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
       },
       { id: "__sep__", label: " ", currentValue: "" },
       {
@@ -121,6 +137,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: "→",
         submenu: (_currentValue, done2) =>
           new SettingsList(statItems, 7, buildSettingsListTheme(theme), onChange, () => done2()),
+        description: "Toggle which usage stats appear in the widget.",
       },
     ];
 

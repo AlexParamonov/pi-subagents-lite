@@ -29,6 +29,7 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         label: "System prompt mode",
         currentValue: store.agent.systemPromptMode,
         values: ["replace", "inherit", "custom"],
+        description: "How the subagent system prompt is built: replace, inherit, or custom.",
       },
     ];
 
@@ -39,6 +40,7 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         label: "Create prompt file",
         currentValue: CUSTOM_PROMPT_PATH,
         values: ["Create"],
+        description: `Create ${CUSTOM_PROMPT_PATH} with a starter template for custom mode.`,
       });
     }
 
@@ -48,24 +50,26 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         label: "Include AGENTS.md",
         currentValue: store.agent.includeContextFiles ? "ON" : "OFF",
         values: ["ON", "OFF"],
+        description: "Load project and ~/.pi/agent AGENTS.md as shared <project_context>.",
       },
       {
         id: "loadSkillsImplicitly",
         label: "Load skills implicitly",
         currentValue: store.agent.loadSkillsImplicitly ? "ON" : "OFF",
         values: ["ON", "OFF"],
+        description: "Give new agents all skills when frontmatter omits the field.",
       },
       {
         id: "loadExtensionsImplicitly",
         label: "Load extensions implicitly",
         currentValue: store.agent.loadExtensionsImplicitly ? "ON" : "OFF",
         values: ["ON", "OFF"],
+        description: "Give new agents all extensions when frontmatter omits the field.",
       },
     );
 
     return items;
   };
-
   let items = buildItems();
   let rebuild: ((newItems: SettingItem[]) => void) | null = null;
 
