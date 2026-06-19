@@ -146,6 +146,7 @@ export async function showSpawnAgentMenu(
         id: t,
         label: t,
         currentValue: t,
+        description: getAgentConfig(t)?.description ?? "Agent type",
         submenu: (_v: string, _subDone: (value?: string) => void) => {
           done(t);
           return undefined as any;
