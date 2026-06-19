@@ -70,6 +70,16 @@ describe("parseExtensions", () => {
     const result = parseExtensions("read");
     expect(result).toEqual(["read"]);
   });
+
+  it("strips brackets from inline YAML array syntax", () => {
+    const result = parseExtensions("[a, b, c]");
+    expect(result).toEqual(["a", "b", "c"]);
+  });
+
+  it("strips brackets from single-element inline array", () => {
+    const result = parseExtensions("[read]");
+    expect(result).toEqual(["read"]);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -158,6 +168,18 @@ body
 `;
     const result = parseAgentFile(content, "agent.md", "user");
     expect(result.tools).toEqual(["read", "bash"]);
+  });
+
+  it.each([
+    ["tools", "[read, write, edit, grep, bash]", ["read", "write", "edit", "grep", "bash"]],
+    ["exclude_tools", "[agent]", ["agent"]],
+    ["exclude_extensions", "[rpiv-todo, pi-fff]", ["rpiv-todo", "pi-fff"]],
+    ["extensions", "[ext-a, ext-b]", ["ext-a", "ext-b"]],
+    ["preload_skills", "[skill-a]", ["skill-a"]],
+  ] as const)("parses inline YAML array for %s", (field, value, expected) => {
+    const content = `---\nname: agent\n${field}: ${value}\n---\nbody\n`;
+    const result = parseAgentFile(content, "agent.md", "user");
+    expect((result as Record<string, unknown>)[field]).toEqual(expected);
   });
 
   it("parses extensions as boolean true", () => {

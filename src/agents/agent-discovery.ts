@@ -130,11 +130,11 @@ function parseFrontmatter(
 /*  parseExtensions                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Split comma-separated string, trim whitespace, and remove empty entries. */
+/** Split comma-separated string, trim whitespace, strip brackets, and remove empty entries. */
 function splitCommaList(value: string): string[] {
   return value
     .split(",")
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^\[|\]$/g, "").trim())
     .filter((s) => s.length > 0);
 }
 
