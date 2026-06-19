@@ -4,8 +4,14 @@
  * Wraps a SettingsList or SelectList with:
  * - Top separator line
  * - Header with title
- * - List content
+ * - List content (SettingsList renders the highlighted item's description and a
+ *   hint line below the items itself; SelectList renders inline descriptions)
  * - Bottom separator line
+ *
+ * The Back button has been removed. Menus still close via Escape, the
+ * back-arrow key, and Ctrl-C — the underlying list components call their
+ * `onCancel` on those keys, and the wrapper wires that to `closeMenu` for
+ * SelectList (SettingsList receives its own `onCancel` at construction).
  */
 
 import { type Component, isFocusable } from "@earendil-works/pi-tui";
@@ -40,108 +46,63 @@ export class SettingsListWrapper implements Component {
     this.separatorChar = options.separatorChar ?? "─";
     this.passthroughKeys = options.passthroughKeys ?? false;
 
-    // Append Back item when onCancel provided
-    if (options.onCancel) {
-      const list = this.settingsList as any;
-      if (Array.isArray(list.items)) {
-        const closeMenu = options.onCancel;
-        // SelectList has onSelect; SettingsList has onChange. Push correct item shape.
-        const isSelectList = !!list.onSelect;
-        if (isSelectList) {
-          // SelectList expects SelectItem shape: { value, label }
-          list.items.push(
-            { value: "__sep__", label: " " },
-            { value: "__back__", label: "Back" },
-          );
-          // Intercept onSelect so the Back item closes the menu. SelectList
-          // reads its own onSelect property at dispatch time (this.onSelect on
-          // the target), so reassigning it here is what actually works — a Proxy
-          // cannot intercept the dispatch.
-          const prevOnSelect = list.onSelect;
-          list.onSelect = (item: any) => {
-            if (item.value === "__back__") {
-              closeMenu();
-              return;
-            }
-            if (item.value === "__sep__") return;
-            prevOnSelect?.(item);
-          };
-          list.onCancel = () => closeMenu();
-        } else {
-          // SettingsList expects SettingItem shape: { id, label, currentValue, submenu }
-          list.items.push(
-            { id: "__sep__", label: " ", currentValue: "" },
-            {
-              id: "__back__",
-              label: "Back",
-              currentValue: "",
-              submenu: (_v: string, subDone: (v?: string) => void) => {
-                subDone();
-                closeMenu();
-                return undefined as any;
-              },
-            },
-          );
-        }
-        }
+    const list = this.settingsList as any;
 
-        // Auto-skip __sep__ items when navigating.
-        const _rawIndex = Symbol("rawIndex");
-        const isSep = (item: any) => item?.value === "__sep__" || item?.id === "__sep__";
-        Object.defineProperty(list, "selectedIndex", {
-          get() { return list[_rawIndex] ?? 0; },
-          set(idx) {
-            const curItems = list.items;
-            const cur = list[_rawIndex] ?? 0;
-            let i = Math.max(0, Math.min(idx, curItems.length - 1));
-            if (isSep(curItems[i])) {
-              const down = idx > cur;
-              if (down) {
-                let next = i + 1;
-                while (next < curItems.length && isSep(curItems[next])) next++;
-                if (next < curItems.length) i = next;
-                else {
-                  next = i - 1;
-                  while (next >= 0 && isSep(curItems[next])) next--;
-                  if (next >= 0) i = next;
-                }
-              } else {
-                let next = i - 1;
-                while (next >= 0 && isSep(curItems[next])) next--;
-                if (next >= 0) i = next;
-                else {
-                  next = i + 1;
-                  while (next < curItems.length && isSep(curItems[next])) next++;
-                  if (next < curItems.length) i = next;
-                }
-              }
-            }
-            list[_rawIndex] = i;
-          },
-          configurable: true,
-        });
-        list[_rawIndex] = list.selectedIndex ?? 0;
+    // SelectList has no onCancel of its own; wire closeMenu so Escape,
+    // back-arrow (converted to Escape below), and Ctrl-C close the menu.
+    // SettingsList receives its own onCancel at construction, so leave it be.
+    if (options.onCancel && !list.onCancel) {
+      const closeMenu = options.onCancel;
+      list.onCancel = () => closeMenu();
+    }
 
-      // Expose rebuild callback
-      if (options.onRebuild) {
-        const isSelectList = !!list.onSelect;
-        const rebuild = (newItems: any[]) => {
-          const wrapperItems = [
-            isSelectList
-              ? { value: "__sep__", label: " " }
-              : { id: "__sep__", label: " ", currentValue: "" },
-            isSelectList
-              ? { value: "__back__", label: "Back" }
-              : { id: "__back__", label: "Back", currentValue: "" },
-          ];
-          const fullItems = [...newItems, ...wrapperItems];
-          list.items = fullItems;
-          list.filteredItems = fullItems;
-          list.selectedIndex = 0;
-          list.submenuComponent = null;
-        };
-        options.onRebuild(rebuild);
-      }
+    // Auto-skip __sep__ items when navigating, so the cursor never lands on a
+    // separator section header. Menus push their own __sep__ items.
+    if (options.onCancel && Array.isArray(list.items)) {
+      const _rawIndex = Symbol("rawIndex");
+      const isSep = (item: any) => item?.value === "__sep__" || item?.id === "__sep__";
+      // Starting just past `start`, walk in `step` direction and return the
+      // first non-separator index (or an out-of-bounds sentinel if none).
+      const firstNonSepFrom = (start: number, step: number): number => {
+        let next = start + step;
+        while (next >= 0 && next < list.items.length && isSep(list.items[next])) next += step;
+        return next;
+      };
+      const inBounds = (i: number) => i >= 0 && i < list.items.length;
+      Object.defineProperty(list, "selectedIndex", {
+        get() { return list[_rawIndex] ?? 0; },
+        set(idx) {
+          const items = list.items;
+          const cur = list[_rawIndex] ?? 0;
+          const clamped = Math.max(0, Math.min(idx, items.length - 1));
+          if (!isSep(items[clamped])) {
+            list[_rawIndex] = clamped;
+            return;
+          }
+          // Landed on a separator: search in the travel direction first,
+          // fall back to the opposite direction so the cursor always ends on
+          // a real item (or stays put if everything is a separator).
+          const step = idx > cur ? 1 : -1;
+          const fwd = firstNonSepFrom(clamped, step);
+          const back = firstNonSepFrom(clamped, -step);
+          list[_rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
+        },
+        configurable: true,
+      });
+      list[_rawIndex] = list.selectedIndex ?? 0;
+    }
+
+    // Expose rebuild callback. Items are set directly without appending any
+    // wrapper-controlled items: descriptions are read dynamically at render
+    // time, so they remain correct after a rebuild.
+    if (options.onRebuild) {
+      const rebuild = (newItems: any[]) => {
+        list.items = newItems;
+        list.filteredItems = newItems;
+        list.selectedIndex = 0;
+        list.submenuComponent = null;
+      };
+      options.onRebuild(rebuild);
     }
   }
 

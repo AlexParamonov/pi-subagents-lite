@@ -66,18 +66,6 @@ describe("showSystemPromptMenu — SettingsList integration", () => {
     expect(ids).toContain("includeContextFiles");
     expect(ids).toContain("loadSkillsImplicitly");
     expect(ids).toContain("loadExtensionsImplicitly");
-    expect(ids).toContain("__back__");
-  });
-
-  it("Back item has submenu that calls done", async () => {
-    const ctx = createMockCtx();
-    await showSystemPromptMenu(ctx);
-    const backItem = settingsListCalls[0].items.find((i: any) => i.id === "__back__");
-    expect(backItem).toBeDefined();
-    expect(backItem.label).toBe("Back");
-    const done = vi.fn();
-    backItem.submenu("", done);
-    expect(done).toHaveBeenCalled();
   });
 });
 
@@ -309,7 +297,6 @@ describe("showSystemPromptMenu — item order", () => {
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
     expect(ids).toContain("systemPromptMode");
     expect(ids).toContain("includeContextFiles");
-    expect(ids).toContain("__back__");
   });
 
   it("includes createPromptFile when systemPromptMode is custom", async () => {

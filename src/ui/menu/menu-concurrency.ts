@@ -74,6 +74,7 @@ export async function showConcurrencySettingsMenu(
       id: "defaultConcurrency",
       label: "Default concurrency limit",
       currentValue: String(store.concurrency.default),
+      description: "Concurrent agent slots when no per-provider or per-model limit applies.",
       submenu: createNumericSubmenu(ctx, (parsed) => {
         store.mutate.concurrency.setDefault(parsed);
         ctx.ui.notify(`Default concurrency set to ${parsed}`, "info");
@@ -90,6 +91,7 @@ export async function showConcurrencySettingsMenu(
         id: `provider:${provider}`,
         label: provider,
         currentValue: `${limit} slots`,
+        description: `Concurrent slots reserved for agents using the ${provider} provider.`,
         submenu: editOrRemoveSubmenu(
           limit,
           (parsed) => {
@@ -111,6 +113,7 @@ export async function showConcurrencySettingsMenu(
         id: "addProviderLimit",
         label: "Add per-provider limit...",
         currentValue: "",
+        description: "Cap how many agents run at once for a single provider.",
         submenu: addLimitSubmenu(providers, (provider, parsed) => {
           store.mutate.concurrency.setProvider(provider, parsed);
           ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
@@ -128,6 +131,7 @@ export async function showConcurrencySettingsMenu(
         id: `model:${modelKey}`,
         label: modelKey,
         currentValue: `${limit} slots`,
+        description: `Concurrent slots reserved for agents using the ${modelKey} model.`,
         submenu: editOrRemoveSubmenu(
           limit,
           (parsed) => {
@@ -149,6 +153,7 @@ export async function showConcurrencySettingsMenu(
         id: "addModelLimit",
         label: "Add per-model limit...",
         currentValue: "",
+        description: "Cap how many agents run at once for a single model.",
         submenu: addLimitSubmenu(modelOptions, (modelKey, parsed) => {
           store.mutate.concurrency.setModel(modelKey, parsed);
           ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
@@ -162,6 +167,7 @@ export async function showConcurrencySettingsMenu(
       id: "resetAll",
       label: "Reset all to defaults",
       currentValue: "",
+      description: "Restore the default limit and remove all per-provider and per-model limits.",
       submenu: createConfirmSubmenu({
         message: "Reset all concurrency limits to defaults?",
         theme,
