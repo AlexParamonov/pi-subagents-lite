@@ -11,13 +11,18 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import {
+  buildSettingsListTheme,
+  buildSelectListTheme,
+  buildModelOptions,
+  createDelegatingComponent,
+  createSearchableSelect,
+} from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
-import { ModelSelectorDialog } from "../../models/model-selector.js";
-import { buildModelOptions } from "./helpers.js";
+import type { ModelOption } from "../../models/model-selector.js";
 
 export async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
@@ -54,49 +59,21 @@ export async function showConcurrencySettingsMenu(
       return delegator;
     };
 
-    // Submenu factory: pick a model from options (with search), then enter a value.
-    const addModelLimitSubmenu = (
-      options: string[],
+    // Submenu factory: searchable-pick an option, then enter a numeric value.
+    // Used for both per-provider and per-model limits; items differ by caller.
+    const addPickThenValueSubmenu = (
+      items: ModelOption[],
       onPick: (key: string, parsed: number) => void,
-    ): SettingItem["submenu"] => (_currentValue, subDone) => {
-      const modelOpts = buildModelOptions(options);
-      let delegator: ReturnType<typeof createDelegatingComponent>;
-      const modelSelector = new ModelSelectorDialog(
-        modelOpts,
-        null,
+    ): SettingItem["submenu"] => (_currentValue, subDone) =>
+      createSearchableSelect(
+        items,
         {
-          onSelect: (modelValue) => {
-            delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(modelValue, parsed))("1", subDone));
-          },
+          onSelect: (key) =>
+            createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(key, parsed))("1", subDone),
           onCancel: () => subDone(),
         },
         theme,
       );
-      delegator = createDelegatingComponent(modelSelector);
-      return delegator;
-    };
-
-    // Submenu factory: pick a provider from options (with search), then enter a value.
-    const addProviderLimitSubmenu = (
-      options: string[],
-      onPick: (key: string, parsed: number) => void,
-    ): SettingItem["submenu"] => (_currentValue, subDone) => {
-      const providerOpts = options.map((o) => ({ value: o, label: o }));
-      let delegator: ReturnType<typeof createDelegatingComponent>;
-      const providerSelector = new ModelSelectorDialog(
-        providerOpts,
-        null,
-        {
-          onSelect: (providerValue) => {
-            delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(providerValue, parsed))("1", subDone));
-          },
-          onCancel: () => subDone(),
-        },
-        theme,
-      );
-      delegator = createDelegatingComponent(providerSelector);
-      return delegator;
-    };
 
     // Global default
     items.push({
@@ -143,7 +120,7 @@ export async function showConcurrencySettingsMenu(
         label: "Add per-provider limit...",
         currentValue: "",
         description: "Cap how many agents run at once for a single provider.",
-        submenu: addProviderLimitSubmenu(providers, (provider, parsed) => {
+        submenu: addPickThenValueSubmenu(providers.map((o) => ({ value: o, label: o })), (provider, parsed) => {
           store.mutate.concurrency.setProvider(provider, parsed);
           ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
         }),
@@ -183,7 +160,7 @@ export async function showConcurrencySettingsMenu(
         label: "Add per-model limit...",
         currentValue: "",
         description: "Cap how many agents run at once for a single model.",
-        submenu: addModelLimitSubmenu(modelOptions, (modelKey, parsed) => {
+        submenu: addPickThenValueSubmenu(buildModelOptions(modelOptions), (modelKey, parsed) => {
           store.mutate.concurrency.setModel(modelKey, parsed);
           ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
         }),

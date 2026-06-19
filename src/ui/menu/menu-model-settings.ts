@@ -13,12 +13,11 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
-import { buildSettingsListTheme, createDelegatingComponent } from "./helpers.js";
+import { buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
-import { ModelSelectorDialog } from "../../models/model-selector.js";
 
 export async function showModelSettingsMenu(
   ctx: ExtensionCommandContext,
@@ -125,12 +124,9 @@ export async function showModelSettingsMenu(
         label: "Override another type...",
         currentValue: "",
         description: "Add a model override for an agent type that currently inherits.",
-        submenu: (_currentValue, subDone) => {
-          const typeOpts = nonOverridden.map(e => ({ value: e.typeName, label: e.typeName }));
-          let delegator: ReturnType<typeof createDelegatingComponent>;
-          const typeSelector = new ModelSelectorDialog(
-            typeOpts,
-            null,
+        submenu: (_currentValue, subDone) =>
+          createSearchableSelect(
+            nonOverridden.map(e => ({ value: e.typeName, label: e.typeName })),
             {
               onSelect: (typeName) => {
                 const entry = nonOverridden.find(e => e.typeName === typeName)!;
@@ -141,15 +137,12 @@ export async function showModelSettingsMenu(
                   theme,
                   onSelect: modelOverrideOnSelect(entry.typeName, entry.typeName),
                 });
-                delegator.setActive(modelSubmenu(entry.effectiveModel, subDone));
+                return modelSubmenu(entry.effectiveModel, subDone);
               },
               onCancel: () => subDone(),
             },
             theme,
-          );
-          delegator = createDelegatingComponent(typeSelector);
-          return delegator;
-        },
+          ),
       });
     }
 

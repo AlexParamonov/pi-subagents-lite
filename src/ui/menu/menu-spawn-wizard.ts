@@ -13,12 +13,11 @@ import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-t
 import type { ThinkingLevel } from "../../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
+import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { ModelSelectorDialog } from "../../models/model-selector.js";
 import {
   getPiInstance,
   getSessionCtx,
@@ -332,16 +331,15 @@ export async function showSpawnAgentMenu(
             description: "Run in a linked git worktree instead of parent cwd",
             submenu: (_v: string, done: (v?: string) => void) => {
               const pickerItems = [
-                { value: "Inherits parent cwd", label: "Inherits parent cwd", provider: "" },
+                { value: "Inherits parent cwd", label: "Inherits parent cwd" },
                 ...worktrees.map(wt => {
                   const branchLabel = wt.isDetached ? "detached" : (wt.branch ?? "detached");
                   const truncPath = truncatePath(wt.path);
                   return { value: wt.path, label: truncPath, provider: branchLabel };
                 }),
               ];
-              const worktreeSelector = new ModelSelectorDialog(
+              return createSearchableSelect(
                 pickerItems,
-                null,
                 {
                   onSelect: (value) => {
                     if (value === "Inherits parent cwd") {
@@ -357,7 +355,6 @@ export async function showSpawnAgentMenu(
                 },
                 theme,
               );
-              return worktreeSelector;
             },
           } as SettingItem]
         : []),

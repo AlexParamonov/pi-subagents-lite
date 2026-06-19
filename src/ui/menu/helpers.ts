@@ -1,11 +1,11 @@
 /**
  * helpers.ts — Shared helpers for menu modules:
  * theme builders for SettingsList/SelectList, numeric validation,
- * model-option building, and a swappable delegating component.
+ * model-option building, a swappable delegating component, and a
+ * searchable pick-list submenu factory.
  */
-
 import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
-import type { ModelOption } from "../../models/model-selector.js";
+import { ModelSelectorDialog, type ModelOption } from "../../models/model-selector.js";
 import { parseModelKey } from "../../utils.js";
 
 /**
@@ -91,3 +91,33 @@ export function buildSelectListTheme(theme: { fg(color: string, text: string): s
   };
 }
 
+/**
+ * Build a searchable pick-list submenu backed by ModelSelectorDialog.
+ *
+ * Hides the delegator-forward-declaration dance shared by every menu that
+ * needs "type to filter, Enter to pick" over a flat option list
+ * (provider/model/type/worktree selection). onSelect may return a Component
+ * to chain into next (e.g. a numeric-input submenu); returning void leaves
+ * the submenu as-is so the caller can close it via done().
+ */
+export function createSearchableSelect(
+  items: ModelOption[],
+  callbacks: { onSelect: (value: string) => Component | void; onCancel: () => void },
+  theme: any,
+): Component {
+  let delegator: ReturnType<typeof createDelegatingComponent>;
+  const selector = new ModelSelectorDialog(
+    items,
+    null,
+    {
+      onSelect: (value) => {
+        const next = callbacks.onSelect(value);
+        if (next) delegator.setActive(next);
+      },
+      onCancel: callbacks.onCancel,
+    },
+    theme,
+  );
+  delegator = createDelegatingComponent(selector);
+  return delegator;
+}
