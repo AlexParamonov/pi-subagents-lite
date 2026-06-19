@@ -45,7 +45,7 @@ function mockRunResult(overrides?: Partial<ReturnType<typeof mockRunResult>>) {
     responseText: "done",
     session: mockAgentSession(),
     aborted: false,
-    steered: false,
+    turnLimited: false,
     ...overrides,
   };
 }
@@ -395,7 +395,7 @@ describe("AgentManager", () => {
         responseText: "",
         session: mockAgentSession(),
         aborted: true,
-        steered: false,
+        turnLimited: false,
       });
 
       await new Promise(r => setTimeout(r, 10));
