@@ -16,6 +16,8 @@ import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
+import { ModelSelectorDialog } from "../../models/model-selector.js";
+import { buildModelOptions } from "./helpers.js";
 
 export async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
@@ -52,8 +54,30 @@ export async function showConcurrencySettingsMenu(
       return delegator;
     };
 
-    // Submenu factory: pick a key from `options`, then enter a value.
-    const addLimitSubmenu = (
+    // Submenu factory: pick a model from options (with search), then enter a value.
+    const addModelLimitSubmenu = (
+      options: string[],
+      onPick: (key: string, parsed: number) => void,
+    ): SettingItem["submenu"] => (_currentValue, subDone) => {
+      const modelOpts = buildModelOptions(options);
+      let delegator: ReturnType<typeof createDelegatingComponent>;
+      const modelSelector = new ModelSelectorDialog(
+        modelOpts,
+        null,
+        {
+          onSelect: (modelValue) => {
+            delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(modelValue, parsed))("1", subDone));
+          },
+          onCancel: () => subDone(),
+        },
+        theme,
+      );
+      delegator = createDelegatingComponent(modelSelector);
+      return delegator;
+    };
+
+    // Submenu factory: pick a provider from options, then enter a value.
+    const addProviderLimitSubmenu = (
       options: string[],
       onPick: (key: string, parsed: number) => void,
     ): SettingItem["submenu"] => (_currentValue, subDone) => {
@@ -114,7 +138,7 @@ export async function showConcurrencySettingsMenu(
         label: "Add per-provider limit...",
         currentValue: "",
         description: "Cap how many agents run at once for a single provider.",
-        submenu: addLimitSubmenu(providers, (provider, parsed) => {
+        submenu: addProviderLimitSubmenu(providers, (provider, parsed) => {
           store.mutate.concurrency.setProvider(provider, parsed);
           ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
         }),
@@ -154,7 +178,7 @@ export async function showConcurrencySettingsMenu(
         label: "Add per-model limit...",
         currentValue: "",
         description: "Cap how many agents run at once for a single model.",
-        submenu: addLimitSubmenu(modelOptions, (modelKey, parsed) => {
+        submenu: addModelLimitSubmenu(modelOptions, (modelKey, parsed) => {
           store.mutate.concurrency.setModel(modelKey, parsed);
           ctx.ui.notify(`${modelKey} concurrency set to ${parsed}`, "info");
         }),
