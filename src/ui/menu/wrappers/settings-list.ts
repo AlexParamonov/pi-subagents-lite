@@ -153,9 +153,16 @@ export class SettingsListWrapper implements Component {
     lines.push("  " + styledTitle);
     lines.push("");
 
-    // SettingsList content
+    // SettingsList content — strip the hint line that pi-tui always appends
+    // (empty line + "Enter/Space to change · Esc to cancel"). Descriptions
+    // already explain what each item does, so the hint is redundant.
     const settingsLines = this.settingsList.render(width);
-    lines.push(...settingsLines);
+    const hintPattern = /Enter\/Space|Esc to cancel/;
+    if (settingsLines.length >= 2 && hintPattern.test(settingsLines[settingsLines.length - 1] ?? "")) {
+      lines.push(...settingsLines.slice(0, -2));
+    } else {
+      lines.push(...settingsLines);
+    }
 
     // Bottom separator
     lines.push("");
