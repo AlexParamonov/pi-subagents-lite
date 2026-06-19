@@ -61,35 +61,31 @@ export class SettingsListWrapper implements Component {
     if (options.onCancel && Array.isArray(list.items)) {
       const _rawIndex = Symbol("rawIndex");
       const isSep = (item: any) => item?.value === "__sep__" || item?.id === "__sep__";
+      // Starting just past `start`, walk in `step` direction and return the
+      // first non-separator index (or an out-of-bounds sentinel if none).
+      const firstNonSepFrom = (start: number, step: number): number => {
+        let next = start + step;
+        while (next >= 0 && next < list.items.length && isSep(list.items[next])) next += step;
+        return next;
+      };
+      const inBounds = (i: number) => i >= 0 && i < list.items.length;
       Object.defineProperty(list, "selectedIndex", {
         get() { return list[_rawIndex] ?? 0; },
         set(idx) {
-          const curItems = list.items;
+          const items = list.items;
           const cur = list[_rawIndex] ?? 0;
-          let i = Math.max(0, Math.min(idx, curItems.length - 1));
-          if (isSep(curItems[i])) {
-            const down = idx > cur;
-            if (down) {
-              let next = i + 1;
-              while (next < curItems.length && isSep(curItems[next])) next++;
-              if (next < curItems.length) i = next;
-              else {
-                next = i - 1;
-                while (next >= 0 && isSep(curItems[next])) next--;
-                if (next >= 0) i = next;
-              }
-            } else {
-              let next = i - 1;
-              while (next >= 0 && isSep(curItems[next])) next--;
-              if (next >= 0) i = next;
-              else {
-                next = i + 1;
-                while (next < curItems.length && isSep(curItems[next])) next++;
-                if (next < curItems.length) i = next;
-              }
-            }
+          const clamped = Math.max(0, Math.min(idx, items.length - 1));
+          if (!isSep(items[clamped])) {
+            list[_rawIndex] = clamped;
+            return;
           }
-          list[_rawIndex] = i;
+          // Landed on a separator: search in the travel direction first,
+          // fall back to the opposite direction so the cursor always ends on
+          // a real item (or stays put if everything is a separator).
+          const step = idx > cur ? 1 : -1;
+          const fwd = firstNonSepFrom(clamped, step);
+          const back = firstNonSepFrom(clamped, -step);
+          list[_rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
         },
         configurable: true,
       });
