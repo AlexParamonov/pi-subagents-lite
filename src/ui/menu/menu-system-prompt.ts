@@ -22,51 +22,61 @@ import { CUSTOM_PROMPT_PATH } from "../../agents/agent-runner.js";
 export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
 
-  const items: SettingItem[] = [
-    {
-      id: "systemPromptMode",
-      label: "System prompt mode",
-      currentValue: store.agent.systemPromptMode,
-      values: ["replace", "inherit", "custom"],
-    },
-  ];
+  const buildItems = (): SettingItem[] => {
+    const items: SettingItem[] = [
+      {
+        id: "systemPromptMode",
+        label: "System prompt mode",
+        currentValue: store.agent.systemPromptMode,
+        values: ["replace", "inherit", "custom"],
+      },
+    ];
 
-  // Create prompt file (only when mode is custom and file doesn't exist)
-  if (store.agent.systemPromptMode === "custom" && !fs.existsSync(CUSTOM_PROMPT_PATH)) {
-    items.push({
-      id: "createPromptFile",
-      label: "Create prompt file",
-      currentValue: CUSTOM_PROMPT_PATH,
-      values: ["Create"],
-    });
-  }
+    // Create prompt file (only when mode is custom and file doesn't exist)
+    if (store.agent.systemPromptMode === "custom" && !fs.existsSync(CUSTOM_PROMPT_PATH)) {
+      items.push({
+        id: "createPromptFile",
+        label: "Create prompt file",
+        currentValue: CUSTOM_PROMPT_PATH,
+        values: ["Create"],
+      });
+    }
 
-  items.push(
-    {
-      id: "includeContextFiles",
-      label: "Include AGENTS.md",
-      currentValue: store.agent.includeContextFiles ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-    },
-    {
-      id: "loadSkillsImplicitly",
-      label: "Load skills implicitly",
-      currentValue: store.agent.loadSkillsImplicitly ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-    },
-    {
-      id: "loadExtensionsImplicitly",
-      label: "Load extensions implicitly",
-      currentValue: store.agent.loadExtensionsImplicitly ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-    },
-  );
+    items.push(
+      {
+        id: "includeContextFiles",
+        label: "Include AGENTS.md",
+        currentValue: store.agent.includeContextFiles ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+      },
+      {
+        id: "loadSkillsImplicitly",
+        label: "Load skills implicitly",
+        currentValue: store.agent.loadSkillsImplicitly ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+      },
+      {
+        id: "loadExtensionsImplicitly",
+        label: "Load extensions implicitly",
+        currentValue: store.agent.loadExtensionsImplicitly ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+      },
+    );
+
+    return items;
+  };
+
+  let items = buildItems();
+  let rebuild: ((newItems: SettingItem[]) => void) | null = null;
 
   const onChange = (id: string, newValue: string) => {
     switch (id) {
       case "systemPromptMode":
         store.mutate.agent.setSystemPromptMode(newValue as SystemPromptMode);
         ctx.ui.notify(`System prompt mode set to ${newValue}`, "info");
+        // Rebuild: "custom" adds the create prompt file item, other modes remove it.
+        items = buildItems();
+        rebuild?.(items);
         break;
       case "createPromptFile":
         try {
@@ -94,6 +104,6 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const settingsList = new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "System Prompt", theme, onCancel: () => done(undefined) });
+    return new SettingsListWrapper(settingsList, { title: "System Prompt", theme, onCancel: () => done(undefined), onRebuild: (r) => { rebuild = r; } });
   });
 }
