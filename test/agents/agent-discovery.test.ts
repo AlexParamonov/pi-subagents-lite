@@ -170,59 +170,16 @@ body
     expect(result.tools).toEqual(["read", "bash"]);
   });
 
-  it("handles inline YAML array syntax for tools", () => {
-    const content = `---
-name: agent
-tools: [read, write, edit, grep, bash]
----
-body
-`;
+  it.each([
+    ["tools", "[read, write, edit, grep, bash]", ["read", "write", "edit", "grep", "bash"]],
+    ["exclude_tools", "[agent]", ["agent"]],
+    ["exclude_extensions", "[rpiv-todo, pi-fff]", ["rpiv-todo", "pi-fff"]],
+    ["extensions", "[ext-a, ext-b]", ["ext-a", "ext-b"]],
+    ["preload_skills", "[skill-a]", ["skill-a"]],
+  ] as const)("parses inline YAML array for %s", (field, value, expected) => {
+    const content = `---\nname: agent\n${field}: ${value}\n---\nbody\n`;
     const result = parseAgentFile(content, "agent.md", "user");
-    expect(result.tools).toEqual(["read", "write", "edit", "grep", "bash"]);
-  });
-
-  it("handles inline YAML array syntax for exclude_tools", () => {
-    const content = `---
-name: agent
-exclude_tools: [agent]
----
-body
-`;
-    const result = parseAgentFile(content, "agent.md", "user");
-    expect(result.exclude_tools).toEqual(["agent"]);
-  });
-
-  it("handles inline YAML array syntax for exclude_extensions", () => {
-    const content = `---
-name: agent
-exclude_extensions: [rpiv-todo, pi-fff]
----
-body
-`;
-    const result = parseAgentFile(content, "agent.md", "user");
-    expect(result.exclude_extensions).toEqual(["rpiv-todo", "pi-fff"]);
-  });
-
-  it("handles inline YAML array syntax for extensions", () => {
-    const content = `---
-name: agent
-extensions: [ext-a, ext-b]
----
-body
-`;
-    const result = parseAgentFile(content, "agent.md", "user");
-    expect(result.extensions).toEqual(["ext-a", "ext-b"]);
-  });
-
-  it("handles inline YAML array syntax for preload_skills", () => {
-    const content = `---
-name: agent
-preload_skills: [skill-a]
----
-body
-`;
-    const result = parseAgentFile(content, "agent.md", "user");
-    expect(result.preload_skills).toEqual(["skill-a"]);
+    expect((result as Record<string, unknown>)[field]).toEqual(expected);
   });
 
   it("parses extensions as boolean true", () => {

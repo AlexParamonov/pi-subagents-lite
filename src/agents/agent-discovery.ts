@@ -134,9 +134,7 @@ function parseFrontmatter(
 function splitCommaList(value: string): string[] {
   return value
     .split(",")
-    .map((s) => s.trim())
-    .map((s) => s.replace(/^\[|\]$/g, ""))
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^\[|\]$/g, "").trim())
     .filter((s) => s.length > 0);
 }
 
