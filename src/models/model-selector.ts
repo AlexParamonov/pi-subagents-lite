@@ -26,8 +26,8 @@ export interface ModelOption {
   value: string;
   /** Display label (model-id without provider prefix) */
   label: string;
-  /** Provider name for badge */
-  provider: string;
+  /** Provider name for badge; omitted when the label already conveys it (e.g. provider/type lists). */
+  provider?: string;
 }
 
 interface ModelSelectorCallbacks {
