@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { mockModules, modelSelectorInstances, resetModelSelectorInstances } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 
@@ -82,6 +82,7 @@ function setupMocks() {
   settingsListCalls = [];
   inputInstances = [];
   selectListInstances = [];
+  resetModelSelectorInstances();
   (getAgentConfig as any).mockImplementation((name: string) => {
     if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, maxTokens: 10000, extensions: true, skills: true, systemPrompt: "" };
     if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
@@ -532,8 +533,8 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
-    const wtSelectList = selectListInstances[selectListInstances.length - 1];
-    const values = wtSelectList.items.map((i: any) => i.value);
+    const wtSelector = modelSelectorInstances[modelSelectorInstances.length - 1];
+    const values = wtSelector.items.map((i: any) => i.value);
     expect(values[0]).toBe("Inherits parent cwd");
     expect(values).toHaveLength(3);
   });
@@ -545,7 +546,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
-    const labels = selectListInstances[selectListInstances.length - 1].items.map((i: any) => i.label);
+    const labels = modelSelectorInstances[modelSelectorInstances.length - 1].items.map((i: any) => i.label);
     expect(labels[1]).toContain("detached");
     expect(labels[1]).toContain("/test-detached");
   });
@@ -557,7 +558,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
-    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "/test-feature" });
+    modelSelectorInstances[modelSelectorInstances.length - 1].callbacks.onSelect("/test-feature");
     expect(mockDone).toHaveBeenCalledWith("feature");
   });
 
@@ -568,7 +569,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
-    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "Inherits parent cwd" });
+    modelSelectorInstances[modelSelectorInstances.length - 1].callbacks.onSelect("Inherits parent cwd");
     expect(mockDone).toHaveBeenCalledWith("Inherits parent cwd");
   });
 });

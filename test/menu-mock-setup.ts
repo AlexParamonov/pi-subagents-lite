@@ -61,8 +61,22 @@ vi.mock("../src/agents/agent-types.js", () => ({
   discoverNewAgents: vi.fn(async () => 0),
 }));
 
+// Capture ModelSelectorDialog instances for tests that need them
+export let modelSelectorInstances: Array<{ items: any[]; callbacks: any }> = [];
+export function resetModelSelectorInstances() { modelSelectorInstances = []; }
+
 vi.mock("../src/models/model-selector.js", () => ({
-  ModelSelectorDialog: class {},
+  ModelSelectorDialog: class MockModelSelectorDialog {
+    items: any[];
+    callbacks: any;
+    constructor(items: any[], _currentModel: any, callbacks: any, _theme: any) {
+      this.items = items;
+      this.callbacks = callbacks;
+      modelSelectorInstances.push(this as any);
+    }
+    handleInput(_data: string) {}
+    invalidate() {}
+  },
 }));
 
 vi.mock("../src/ui/result-viewer.js", () => ({

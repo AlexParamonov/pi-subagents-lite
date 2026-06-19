@@ -10,14 +10,15 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
+import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
-import { buildSettingsListTheme, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { buildSettingsListTheme, createDelegatingComponent } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
+import { ModelSelectorDialog } from "../../models/model-selector.js";
 
 export async function showModelSettingsMenu(
   ctx: ExtensionCommandContext,
@@ -125,23 +126,28 @@ export async function showModelSettingsMenu(
         currentValue: "",
         description: "Add a model override for an agent type that currently inherits.",
         submenu: (_currentValue, subDone) => {
-          const typeNames = nonOverridden.map(e => ({ value: e.typeName, label: e.typeName }));
-          const typeList = new SelectList(typeNames, 10, buildSelectListTheme(theme));
-          const delegator = createDelegatingComponent(typeList);
-
-          typeList.onSelect = (item) => {
-            const entry = nonOverridden.find(e => e.typeName === item.value)!;
-            // Delegate to createModelSelectSubmenu for the 2-step model flow
-            const modelSubmenu = createModelSelectSubmenu({
-              modelOptions,
-              showClear: false,
-              theme,
-              onSelect: modelOverrideOnSelect(entry.typeName, entry.typeName),
-            });
-            delegator.setActive(modelSubmenu(entry.effectiveModel, subDone));
-          };
-          typeList.onCancel = () => subDone();
-
+          const typeOpts = nonOverridden.map(e => ({ value: e.typeName, label: e.typeName, provider: "" }));
+          let delegator: ReturnType<typeof createDelegatingComponent>;
+          const typeSelector = new ModelSelectorDialog(
+            typeOpts,
+            null,
+            {
+              onSelect: (typeName) => {
+                const entry = nonOverridden.find(e => e.typeName === typeName)!;
+                // Delegate to createModelSelectSubmenu for the 2-step model flow
+                const modelSubmenu = createModelSelectSubmenu({
+                  modelOptions,
+                  showClear: false,
+                  theme,
+                  onSelect: modelOverrideOnSelect(entry.typeName, entry.typeName),
+                });
+                delegator.setActive(modelSubmenu(entry.effectiveModel, subDone));
+              },
+              onCancel: () => subDone(),
+            },
+            theme,
+          );
+          delegator = createDelegatingComponent(typeSelector);
           return delegator;
         },
       });

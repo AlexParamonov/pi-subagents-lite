@@ -18,6 +18,7 @@ import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
+import { ModelSelectorDialog } from "../../models/model-selector.js";
 import {
   getPiInstance,
   getSessionCtx,
@@ -331,26 +332,32 @@ export async function showSpawnAgentMenu(
             description: "Run in a linked git worktree instead of parent cwd",
             submenu: (_v: string, done: (v?: string) => void) => {
               const pickerItems = [
-                { value: "Inherits parent cwd", label: "Inherits parent cwd" },
+                { value: "Inherits parent cwd", label: "Inherits parent cwd", provider: "" },
                 ...worktrees.map(wt => {
                   const branchLabel = wt.isDetached ? "detached" : (wt.branch ?? "detached");
                   const truncPath = truncatePath(wt.path);
-                  return { value: wt.path, label: `${branchLabel}  ·  ${truncPath}` };
+                  return { value: wt.path, label: `${branchLabel}  ·  ${truncPath}`, provider: "" };
                 }),
               ];
-              const list = new SelectList(pickerItems, 10, buildSelectListTheme(theme));
-              list.onSelect = (item) => {
-                if (item.value === "Inherits parent cwd") {
-                  currentWorktreePath = undefined;
-                  done("Inherits parent cwd");
-                } else {
-                  const wt = worktrees.find(w => w.path === item.value);
-                  currentWorktreePath = wt?.path;
-                  done(wt?.branch ?? "detached");
-                }
-              };
-              list.onCancel = () => done();
-              return list;
+              const worktreeSelector = new ModelSelectorDialog(
+                pickerItems,
+                null,
+                {
+                  onSelect: (value) => {
+                    if (value === "Inherits parent cwd") {
+                      currentWorktreePath = undefined;
+                      done("Inherits parent cwd");
+                    } else {
+                      const wt = worktrees.find(w => w.path === value);
+                      currentWorktreePath = wt?.path;
+                      done(wt?.branch ?? "detached");
+                    }
+                  },
+                  onCancel: () => done(),
+                },
+                theme,
+              );
+              return worktreeSelector;
             },
           } as SettingItem]
         : []),
