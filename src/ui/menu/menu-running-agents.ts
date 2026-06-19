@@ -150,29 +150,46 @@ export async function showRunningAgentsMenu(
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
+  const running = agents.filter(
+    (r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued",
+  );
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const buildAgentItems = (): SelectItem[] => agents.map((record) => {
-      const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
-      const statusIcon = record.lifecycle.status === "running" ? "▶" :
-        record.lifecycle.status === "completed" ? "✓" :
-        record.lifecycle.status === "queued" ? "⏳" :
-        record.lifecycle.status === "error" ? "✗" : "•";
-      const descLen = getStore().agent.widgetDescLengthFull;
-      const headline = record.display.description
-        ? truncateDesc(record.display.description, descLen)
-        : "";
-      const suffix = headline ? ` — ${headline}` : "";
-      return {
-        value: record.id,
-        label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
-      };
-    });
+    const buildAgentItems = (): SelectItem[] => {
+      const items: SelectItem[] = agents.map((record) => {
+        const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
+        const statusIcon = record.lifecycle.status === "running" ? "\u25B6" :
+          record.lifecycle.status === "completed" ? "\u2713" :
+          record.lifecycle.status === "queued" ? "\u23F3" :
+          record.lifecycle.status === "error" ? "\u2717" : "\u2022";
+        const descLen = getStore().agent.widgetDescLengthFull;
+        const headline = record.display.description
+          ? truncateDesc(record.display.description, descLen)
+          : "";
+        const suffix = headline ? ` \u2014 ${headline}` : "";
+        return {
+          value: record.id,
+          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
+        };
+      });
+      if (running.length > 0) {
+        items.push({ value: "__stop-all", label: `Stop ${running.length} running agent(s)` });
+      }
+      return items;
+    };
 
     const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
     const delegator = createDelegatingComponent(agentList);
 
     agentList.onSelect = async (item) => {
+      if (item.value === "__stop-all") {
+        for (const r of running) {
+          getManager()?.abort(r.id);
+        }
+        ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
+        done(undefined);
+        return;
+      }
       const record = agents.find((r) => r.id === item.value);
       if (record) {
         const actionsList = buildAgentActionsList(ctx, record, theme, () => {

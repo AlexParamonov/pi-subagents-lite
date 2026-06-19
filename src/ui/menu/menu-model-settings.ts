@@ -81,6 +81,7 @@ export async function showModelSettingsMenu(
 
     // Per-type overrides
     items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: "__sep__", label: "── Per-type overrides ──", currentValue: "────────" });
     const types = getAllTypes();
     const typeEntries = types.map((typeName) => {
       const cfg = getAgentConfig(typeName);
@@ -113,7 +114,7 @@ export async function showModelSettingsMenu(
       });
     }
 
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
     // Override another type...
     if (nonOverridden.length > 0) {
       items.push({
