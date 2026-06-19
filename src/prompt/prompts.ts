@@ -164,10 +164,11 @@ export function buildAgentPrompt(
   // Always strip these even in replace mode because pi adds them to its own prompt
   const customHeader = rawHeader ? stripScaffolding(rawHeader) : rawHeader;
   const basePrompt = customHeader
-    ? `${customHeader}\n${activeAgentTag}\n\n${envBlock}`
-    : `You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${activeAgentTag}\n\n${envBlock}`;
+    ? `${customHeader}\n\n${envBlock}`
+    : `You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${envBlock}`;
 
-  return `${basePrompt}${contextSuffix}${agentInstructions}${extrasSuffix}`;
+  // active_agent goes AFTER shared prefix (header + env + context) for KV cache
+  return `${basePrompt}${contextSuffix}\n${activeAgentTag}\n${agentInstructions}${extrasSuffix}`;
 }
 
 function escapeXml(value: string): string {
