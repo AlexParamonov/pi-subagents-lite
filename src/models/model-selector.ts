@@ -246,7 +246,7 @@ export class ModelSelectorDialog extends Container implements Focusable {
       const modelText = isSelected
         ? this.theme.fg("accent", "→ ") + this.theme.fg("accent", item.label)
         : `  ${item.label}`;
-      const providerBadge = this.theme.fg("muted", `[${item.provider}]`);
+      const providerBadge = item.provider ? this.theme.fg("muted", `[${item.provider}]`) : "";
       const checkmark = isCurrent ? this.theme.fg("success", " ✓") : "";
       const line = `${modelText} ${providerBadge}${checkmark}`;
 

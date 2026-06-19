@@ -126,7 +126,7 @@ export async function showModelSettingsMenu(
         currentValue: "",
         description: "Add a model override for an agent type that currently inherits.",
         submenu: (_currentValue, subDone) => {
-          const typeOpts = nonOverridden.map(e => ({ value: e.typeName, label: e.typeName, provider: "" }));
+          const typeOpts = nonOverridden.map(e => ({ value: e.typeName, label: e.typeName, provider: e.typeName }));
           let delegator: ReturnType<typeof createDelegatingComponent>;
           const typeSelector = new ModelSelectorDialog(
             typeOpts,

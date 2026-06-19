@@ -336,7 +336,7 @@ export async function showSpawnAgentMenu(
                 ...worktrees.map(wt => {
                   const branchLabel = wt.isDetached ? "detached" : (wt.branch ?? "detached");
                   const truncPath = truncatePath(wt.path);
-                  return { value: wt.path, label: `${branchLabel}  ·  ${truncPath}`, provider: "" };
+                  return { value: wt.path, label: truncPath, provider: branchLabel };
                 }),
               ];
               const worktreeSelector = new ModelSelectorDialog(
