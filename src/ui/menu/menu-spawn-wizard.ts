@@ -214,6 +214,7 @@ export async function showSpawnAgentMenu(
         id: "spawn",
         label: "Spawn",
         currentValue: "",
+        description: "Spawn the agent with current settings",
         submenu: (_v, done) => {
           const gtItem = items.find(i => i.id === "graceTurns");
           const bgItem = items.find(i => i.id === "background");
@@ -304,6 +305,7 @@ export async function showSpawnAgentMenu(
         id: "model",
         label: "Model",
         currentValue: displayModel,
+        description: "Override the default model for this agent",
         submenu: createModelSelectSubmenu({
           modelOptions,
           showClear: false,
@@ -317,6 +319,7 @@ export async function showSpawnAgentMenu(
         id: "background",
         label: "Background",
         currentValue: currentBackground ? "ON" : "OFF",
+        description: "Run the agent in the background",
         values: ["ON", "OFF"],
       },
       ...(inGitRepo
@@ -324,6 +327,7 @@ export async function showSpawnAgentMenu(
             id: "worktree",
             label: "Worktree",
             currentValue: currentWorktreeLabel,
+            description: "Run in a linked git worktree instead of parent cwd",
             submenu: (_v: string, done: (v?: string) => void) => {
               const pickerItems = [
                 { value: "Inherits parent cwd", label: "Inherits parent cwd" },
@@ -353,24 +357,28 @@ export async function showSpawnAgentMenu(
         id: "thinkingLevel",
         label: "Thinking level",
         currentValue: currentThinking ?? "inherit",
+        description: "Set the reasoning effort level",
         values: [...THINKING_LEVELS, "inherit"],
       },
       {
         id: "maxTokens",
         label: "Max tokens",
         currentValue: fmtNum(currentMaxTokens),
+        description: "Maximum tokens the agent can consume",
         submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }, () => { currentMaxTokens = undefined; }),
       },
       {
         id: "maxTurns",
         label: "Max turns",
         currentValue: fmtNum(currentMaxTurns),
+        description: "Maximum conversation turns before hard stop",
         submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }, () => { currentMaxTurns = undefined; }),
       },
       {
         id: "graceTurns",
         label: "Grace turns",
         currentValue: String(currentGraceTurns),
+        description: "Extra turns after soft limit before abort",
         submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
       },
       { id: "__sep__", label: " ", currentValue: "" },
@@ -378,12 +386,14 @@ export async function showSpawnAgentMenu(
         id: "description",
         label: "Description",
         currentValue: currentDescription,
+        description: "Short label shown in the agents list",
         submenu: createInputSubmenu(ctx),
       },
       {
         id: "prompt",
         label: "Prompt",
         currentValue: prompt,
+        description: "The user message sent to the agent",
         submenu: createInputSubmenu(ctx, { required: true }),
       }
     ];
