@@ -81,7 +81,7 @@ export async function showConcurrencySettingsMenu(
       options: string[],
       onPick: (key: string, parsed: number) => void,
     ): SettingItem["submenu"] => (_currentValue, subDone) => {
-      const providerOpts = options.map((o) => ({ value: o, label: o, provider: o }));
+      const providerOpts = options.map((o) => ({ value: o, label: o }));
       let delegator: ReturnType<typeof createDelegatingComponent>;
       const providerSelector = new ModelSelectorDialog(
         providerOpts,
