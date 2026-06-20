@@ -317,10 +317,10 @@ export class ResultViewer extends Container implements Component {
     // Pad AFTER content to keep viewport at fixed height so the footer
     // stays at a consistent screen row. Spacer renders real empty lines
     // (Text("") short-circuits to zero lines).
-    // const padding = this._viewportSize - visibleLines;
-    // if (padding > 0) {
-    //   this.viewport.addChild(new Spacer(padding));
-    // }
+    const padding = this._viewportSize - visibleLines;
+    if (padding > 0) {
+      this.viewport.addChild(new Spacer(padding));
+    }
 
     // Scroll position indicator (outside viewport)
     this.scrollIndicator.clear();
