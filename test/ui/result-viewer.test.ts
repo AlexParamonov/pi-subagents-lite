@@ -41,13 +41,12 @@ const mockClasses = vi.hoisted(() => {
       this.text = text;
     }
   }
-
   class MockSpacer {}
-  class MockDynamicBorder {}
 
   const markdownRender = vi.fn((_width: number) => []);
+  const visibleWidthFn = vi.fn((s: string) => s.length);
 
-  return { MockContainer, MockText, MockSpacer, MockDynamicBorder, markdownRender };
+  return { MockContainer, MockText, MockSpacer, markdownRender, visibleWidthFn };
 });
 
 vi.mock("@earendil-works/pi-tui", () => ({
@@ -77,10 +76,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
       return expected.includes(key);
     },
   }),
-}));
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  DynamicBorder: mockClasses.MockDynamicBorder,
+  visibleWidth: mockClasses.visibleWidthFn,
 }));
 
 // ---------------------------------------------------------------------------
@@ -90,7 +86,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 import { ResultViewer, type ResultViewerStats } from "../../src/ui/result-viewer.js";
 
 // Destructure hoisted mock classes for use in test helpers (not vi.mock factories).
-const { MockContainer, MockText, markdownRender } = mockClasses;
+const { MockText, markdownRender } = mockClasses;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -389,6 +385,56 @@ describe("ResultViewer constructor", () => {
     expect(viewer).toBeDefined();
 
     expect(markdownRender).toHaveBeenCalled();
+  });
+});
+
+describe("ResultViewer render (box border)", () => {
+  beforeEach(() => {
+    dummyCallbacks.onClose.mockReset();
+    markdownRender.mockReset();
+    markdownRender.mockReturnValue([]);
+  });
+
+  it("wraps child output in an aligned box: every row matches the requested width", () => {
+    const viewer = new ResultViewer(
+      "t", "c", dummyCallbacks, noopTheme, 40, undefined,
+    );
+
+    // Representative child lines: a short line, a full-width line, and an empty
+    // line (spacers render as ""). noopTheme makes fg/bold identity, so
+    // line.length === visibleWidth(line) under the visibleWidth mock.
+    const innerLines = ["short", "x".repeat(36), ""];
+    // Spy on the prototype ResultViewer actually extends, so super.render is
+    // intercepted regardless of how the mock module is resolved.
+    const superProto = Object.getPrototypeOf(ResultViewer.prototype) as Record<
+      string,
+      (width: number) => string[]
+    >;
+    const superRender = vi
+      .spyOn(superProto, "render")
+      .mockReturnValue(innerLines);
+
+    const out = viewer.render(40);
+
+    // Children must render at contentWidth = 40 - 2 (borders) - 2 (side padding) = 36,
+    // so wrapped lines align with the side borders instead of overflowing them.
+    expect(superRender).toHaveBeenCalledWith(36);
+    superRender.mockRestore();
+
+    // top border, 3 content rows, bottom border
+    expect(out).toHaveLength(5);
+    expect(out[0]).toMatch(/^┌─*┐$/);
+    expect(out[4]).toMatch(/^└─*┘$/);
+
+    // Every row is exactly the requested width: border rows align with content
+    // rows, and the right │ on content rows is not truncated away.
+    for (const line of out) {
+      expect(line.length).toBe(40);
+    }
+    for (let i = 1; i <= 3; i++) {
+      expect(out[i][0]).toBe("│");
+      expect(out[i][out[i].length - 1]).toBe("│");
+    }
   });
 });
 

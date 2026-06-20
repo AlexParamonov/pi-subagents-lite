@@ -14,8 +14,8 @@ import {
   Spacer,
   Text,
   type MarkdownTheme,
+  visibleWidth,
 } from "@earendil-works/pi-tui";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { type LifetimeUsage, formatTokens } from "../agents/usage.js";
 import type { Theme } from "./agent-widget.js";
 import { formatMs } from "./format.js";
@@ -44,8 +44,14 @@ export interface ResultViewerStats {
 /** Lines scrolled per PageUp/PageDown (kept at a fixed, comfortable amount). */
 const PAGE_STEP = 14;
 
-/** Render width for markdown content and separator line. */
+/** Total outer render width including side borders. */
 const RENDER_WIDTH = 78;
+
+/** Horizontal margin (spaces) on each side of content. */
+const MARGIN = 2;
+
+/** Width available for content: outer width − side borders (2) − margins (2×MARGIN). */
+const CONTENT_WIDTH = RENDER_WIDTH - 2 - MARGIN * 2;
 
 /** Fixed non-viewport lines in the component (borders, title, spacers, hints, etc.). */
 const BASE_OVERHEAD = 10;
@@ -143,15 +149,14 @@ export class ResultViewer extends Container implements Component {
     // Build markdown renderer (pre-render to get total lines)
     const mdTheme = buildMarkdownTheme(theme);
     this.markdown = new Markdown(text, 0, 0, mdTheme);
-    this.renderedLines = this.markdown.render(RENDER_WIDTH);
+    this.renderedLines = this.markdown.render(CONTENT_WIDTH);
 
     this.buildUI(title, stats);
     this.updateViewport();
   }
 
-  /** Build the full UI tree — borders, title, stats, viewport, hints. */
+  /** Build the full UI tree — title, stats, viewport, hints. Borders drawn by render(). */
   private buildUI(title: string, stats?: ResultViewerStats): void {
-    this.addChild(new DynamicBorder());
     this.addChild(new Spacer(1));
 
     // Title bar
@@ -171,7 +176,7 @@ export class ResultViewer extends Container implements Component {
 
     // Separator
     this.addChild(
-      new Text(this.theme.fg("muted", "─".repeat(RENDER_WIDTH)), 0, 0),
+      new Text(this.theme.fg("muted", "─".repeat(CONTENT_WIDTH)), 0, 0),
     );
     this.addChild(new Spacer(1));
 
@@ -183,7 +188,7 @@ export class ResultViewer extends Container implements Component {
     this.scrollIndicator = new Container();
     this.addChild(this.scrollIndicator);
 
-    // Bottom spacer + key hints + border
+    // Bottom spacer + key hints
     this.addChild(new Spacer(1));
     const refreshHint = this.callbacks.onRefresh ? " · r refresh" : "";
     const hints = this.theme.fg(
@@ -192,7 +197,6 @@ export class ResultViewer extends Container implements Component {
     );
     this.addChild(new Text(hints, 0, 0));
     this.addChild(new Spacer(1));
-    this.addChild(new DynamicBorder());
   }
 
   /**
@@ -278,7 +282,7 @@ export class ResultViewer extends Container implements Component {
         this.textRef.text = newText;
         const mdTheme = buildMarkdownTheme(this.theme);
         this.markdown = new Markdown(newText, 0, 0, mdTheme);
-        this.renderedLines = this.markdown.render(RENDER_WIDTH);
+        this.renderedLines = this.markdown.render(CONTENT_WIDTH);
         // Preserve scroll position, clamped to new content bounds
         this.scrollOffset = Math.min(oldOffset, this.renderedLines.length - 1);
         this.updateViewport();
@@ -294,6 +298,31 @@ export class ResultViewer extends Container implements Component {
   }
 
   invalidate(): void {}
+
+  /**
+   * Wrap all child output with box-drawing borders (┌─┐/│/└─┘).
+   *
+   * Children render at contentWidth so wrapped lines align with the side
+   * borders: innerWidth (between the two │) must equal the dash row width,
+   * and the 1-space padding on each side of the line is reserved inside it,
+   * otherwise content rows end up 2 columns wider than the borders and the
+   * TUI overlay compositor truncates the right │ away.
+   */
+  override render(width: number): string[] {
+    const innerWidth = Math.max(1, width - 2);
+    const contentWidth = Math.max(0, innerWidth - 2);
+    const innerLines = super.render(contentWidth);
+    const result: string[] = [];
+    const borderInner = "─".repeat(innerWidth);
+    result.push(this.theme.fg("muted", `┌${borderInner}┐`));
+    for (const line of innerLines) {
+      const vline = this.theme.fg("muted", "│");
+      const pad = Math.max(0, contentWidth - visibleWidth(line));
+      result.push(`${vline} ${line}${" ".repeat(pad)} ${vline}`);
+    }
+    result.push(this.theme.fg("muted", `└${borderInner}┘`));
+    return result;
+  }
 
   private scrollTo(offset: number): void {
     this.scrollOffset = Math.max(0, Math.min(this.renderedLines.length - 1, offset));
@@ -311,7 +340,8 @@ export class ResultViewer extends Container implements Component {
     for (let i = 0; i < visibleLines; i++) {
       const lineIdx = this.scrollOffset + i;
       const line = this.renderedLines[lineIdx] ?? "";
-      this.viewport.addChild(new Text(line, 0, 0));
+      const pad = " ".repeat(MARGIN);
+      this.viewport.addChild(new Text(pad + line, 0, 0));
     }
 
     // Pad AFTER content to keep viewport at fixed height so the footer
