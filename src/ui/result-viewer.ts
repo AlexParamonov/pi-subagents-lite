@@ -312,15 +312,17 @@ export class ResultViewer extends Container implements Component {
     const innerWidth = Math.max(1, width - 2);
     const contentWidth = Math.max(0, innerWidth - 2);
     const innerLines = super.render(contentWidth);
-    const result: string[] = [];
-    const borderInner = "─".repeat(innerWidth);
-    result.push(this.theme.fg("muted", `┌${borderInner}┐`));
+
+    const border = (str: string) => this.theme.fg("muted", str);
+    const vline = border("│");
+    const hbar = "─".repeat(innerWidth);
+
+    const result: string[] = [border(`┌${hbar}┐`)];
     for (const line of innerLines) {
-      const vline = this.theme.fg("muted", "│");
       const pad = Math.max(0, contentWidth - visibleWidth(line));
       result.push(`${vline} ${line}${" ".repeat(pad)} ${vline}`);
     }
-    result.push(this.theme.fg("muted", `└${borderInner}┘`));
+    result.push(border(`└${hbar}┘`));
     return result;
   }
 
