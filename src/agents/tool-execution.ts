@@ -113,8 +113,13 @@ export async function executeAgentTool(
   if (rawWorktreePath && rawWorktreePath.trim() !== "") {
     try {
       const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
-      const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd);
+      const warnings: string[] = [];
+      const onWarning = (msg: string) => { warnings.push(msg); };
+      const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
       if (!validation.ok) {
+        for (const msg of warnings) {
+          if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+        }
         return errorResult(validation.error);
       }
       validatedWorktreePath = validation.resolvedPath;
