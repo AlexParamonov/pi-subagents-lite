@@ -1,8 +1,8 @@
 /**
  * spawn-coordinator.test.ts — Tests for SpawnCoordinator.
- *
+
  * Verifies: spawn (foreground/background), nudge batching, live-view lifecycle,
- * onAgentComplete, dispose.
+ * onAgentComplete, dispose, stale pi protection.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -31,6 +31,16 @@ vi.mock("../../src/config/config-io.js", () => ({
   loadConfig: vi.fn(() => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } })),
   saveConfigAtomic: vi.fn(),
   DEFAULT_CONFIG: { agent: { default: null, forceBackground: false }, concurrency: { default: 4 } },
+}));
+
+// Hoist mock pi so shell mock can return it
+const { mockPi } = vi.hoisted(() => ({
+  mockPi: { sendMessage: vi.fn(), sendUserMessage: vi.fn(), exec: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as unknown as ExtensionAPI,
+}));
+
+vi.mock("../../src/shell.js", () => ({
+  getPiInstance: () => mockPi,
+  getWidget: () => null,
 }));
 
 function makeMockManager() {
@@ -66,17 +76,6 @@ function makeMockManager() {
   };
 }
 
-function makeMockPi() {
-  return {
-    sendMessage: vi.fn(),
-    sendUserMessage: vi.fn(),
-    exec: vi.fn(),
-    registerTool: vi.fn(),
-    registerCommand: vi.fn(),
-    on: vi.fn(),
-  } as unknown as ExtensionAPI;
-}
-
 function makeMockCtx() {
   return { cwd: "/test", model: undefined, modelRegistry: {} } as unknown as ExtensionContext;
 }
@@ -87,25 +86,21 @@ describe("SpawnCoordinator", () => {
   // Dynamically import after mocks are set up
   let SpawnCoordinator: typeof import("../../src/spawn/spawn-coordinator.js").SpawnCoordinator;
   let manager: ReturnType<typeof makeMockManager>;
-  let pi: ExtensionAPI;
   let ctx: ExtensionContext;
 
   beforeEach(async () => {
     vi.useFakeTimers();
     manager = makeMockManager();
-    pi = makeMockPi();
     ctx = makeMockCtx();
+    mockPi.sendMessage.mockClear();
     const mod = await import("../../src/spawn/spawn-coordinator.js");
     SpawnCoordinator = mod.SpawnCoordinator;
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
 
   it("spawns a background agent and returns result", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
-    const result = await coordinator.spawn(pi, ctx, {
+    const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
       prompt: "do something",
       description: "Test spawn",
@@ -122,7 +117,7 @@ describe("SpawnCoordinator", () => {
 
   it("spawns a foreground agent and awaits its promise", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
-    const result = await coordinator.spawn(pi, ctx, {
+    const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
       prompt: "do something",
       description: "Test foreground",
@@ -137,7 +132,7 @@ describe("SpawnCoordinator", () => {
 
   it("creates a live view on spawn", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
-    const result = await coordinator.spawn(pi, ctx, {
+    const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
       prompt: "do something",
       description: "Test",
@@ -153,7 +148,7 @@ describe("SpawnCoordinator", () => {
 
   it("cleans up live view on foreground completion", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
-    const result = await coordinator.spawn(pi, ctx, {
+    const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
       prompt: "do something",
       description: "Test",
@@ -168,7 +163,7 @@ describe("SpawnCoordinator", () => {
 
   it("registers background agent in backgroundAgentIds", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
-    const result = await coordinator.spawn(pi, ctx, {
+    const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
       prompt: "do something",
       description: "Test bg",
@@ -181,7 +176,7 @@ describe("SpawnCoordinator", () => {
 
   it("does not register foreground agent in backgroundAgentIds", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
-    const result = await coordinator.spawn(pi, ctx, {
+    const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
       prompt: "do something",
       description: "Test fg",
@@ -194,10 +189,9 @@ describe("SpawnCoordinator", () => {
 
   describe("nudge scheduling", () => {
     it("emits individual nudge after delay window", async () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
 
-      // Spawn a background agent first to get a valid record
-      const result = await coordinator.spawn(pi, ctx, {
+      const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder",
         prompt: "do something",
         description: "Test",
@@ -208,23 +202,22 @@ describe("SpawnCoordinator", () => {
       coordinator.scheduleNudge(result.agentId);
 
       // Not yet emitted — timer pending
-      expect(pi.sendMessage).not.toHaveBeenCalled();
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
 
       // Advance past the 200ms batch window
       vi.advanceTimersByTime(200);
 
       // Now the nudge should have been emitted
-      expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
     });
 
     it("batches multiple nudges within the delay window", async () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
 
-      // Spawn two background agents
-      const r1 = await coordinator.spawn(pi, ctx, {
+      const r1 = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task 1", description: "Test 1", graceTurns: 6, runInBackground: true,
       });
-      const r2 = await coordinator.spawn(pi, ctx, {
+      const r2 = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task 2", description: "Test 2", graceTurns: 6, runInBackground: true,
       });
 
@@ -235,42 +228,42 @@ describe("SpawnCoordinator", () => {
       vi.advanceTimersByTime(200);
 
       // Both should be emitted as individual messages
-      expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(2);
     });
 
     it("does not emit nudge for agent without record", () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
       // agent-999 doesn't exist in the mock manager
       coordinator.scheduleNudge("agent-999");
 
       vi.advanceTimersByTime(200);
 
-      expect(pi.sendMessage).not.toHaveBeenCalled();
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
     it("starts new batch window for nudges arriving after the previous window", async () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
 
-      const r1 = await coordinator.spawn(pi, ctx, {
+      const r1 = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task 1", description: "Test 1", graceTurns: 6, runInBackground: true,
       });
-      const r2 = await coordinator.spawn(pi, ctx, {
+      const r2 = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task 2", description: "Test 2", graceTurns: 6, runInBackground: true,
       });
 
       coordinator.scheduleNudge(r1.agentId);
 
       vi.advanceTimersByTime(200);
-      expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
       // New nudge after the window
       coordinator.scheduleNudge(r2.agentId);
 
       // Not yet emitted
-      expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(200);
-      expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -286,10 +279,9 @@ describe("SpawnCoordinator", () => {
     });
 
     it("schedules nudge for background agents", async () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
 
-      // Spawn a background agent
-      const result = await coordinator.spawn(pi, ctx, {
+      const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
       });
 
@@ -298,29 +290,70 @@ describe("SpawnCoordinator", () => {
 
       // Nudge should be scheduled
       vi.advanceTimersByTime(200);
-      expect(pi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
       // Should be removed from background set
       expect(coordinator.isBackground(result.agentId)).toBe(false);
     });
 
     it("does not schedule nudge for foreground agents", () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
       // Not in backgroundAgentIds
 
       coordinator.onAgentComplete({ id: "agent-1" } as AgentRecord);
 
       vi.advanceTimersByTime(200);
-      expect(pi.sendMessage).not.toHaveBeenCalled();
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("catches sendMessage errors and logs warning", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+
+      // Make sendMessage throw (simulates stale pi)
+      mockPi.sendMessage.mockImplementation(() => { throw new Error("stale context"); });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      // sendMessage was attempted
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      // Error was caught and logged
+      expect(warnSpy).toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain("subagent nudge");
+
+      warnSpy.mockRestore();
+    });
+
+    it("skips nudge emission when disposed", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+
+      coordinator.scheduleNudge(result.agentId);
+
+      // Dispose before timer fires — should prevent emission
+      coordinator.dispose();
+
+      vi.advanceTimersByTime(500);
+
+      // No sendMessage because disposed
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
   });
 
   describe("dispose", () => {
     it("clears nudge timer", async () => {
-      const coordinator = new SpawnCoordinator(manager as any, pi);
+      const coordinator = new SpawnCoordinator(manager as any);
 
-      // Spawn a background agent
-      const result = await coordinator.spawn(pi, ctx, {
+      const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
       });
       coordinator.scheduleNudge(result.agentId);
@@ -329,7 +362,7 @@ describe("SpawnCoordinator", () => {
 
       // Timer should be cleared — advancing time should not emit
       vi.advanceTimersByTime(500);
-      expect(pi.sendMessage).not.toHaveBeenCalled();
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
     it("clears live views", () => {
@@ -341,6 +374,32 @@ describe("SpawnCoordinator", () => {
       expect(coordinator.liveView("agent-1")).toBeUndefined();
     });
   });
+
+  describe("stale pi protection", () => {
+    it("does not cache pi — resolves via getPiInstance at call time", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+
+      // Verify no pi field exists on coordinator
+      expect((coordinator as any).pi).toBeUndefined();
+
+      // Nudge should still work — pi resolved from shell at call time
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("constructor does not accept pi parameter", () => {
+      // Constructor should only take manager
+      const coordinator = new SpawnCoordinator(manager as any);
+      expect(coordinator).toBeDefined();
+      expect((coordinator as any).pi).toBeUndefined();
+    });
+  });
+
   describe("nudge message status", () => {
     it("uses lifecycle status in the nudge message", async () => {
       const statuses: Array<{ status: string; expected: string }> = [
@@ -352,10 +411,10 @@ describe("SpawnCoordinator", () => {
       ];
 
       for (const { status, expected } of statuses) {
-        vi.clearAllMocks();
-        const coordinator = new SpawnCoordinator(manager as any, pi);
+        mockPi.sendMessage.mockClear();
+        const coordinator = new SpawnCoordinator(manager as any);
 
-        const result = await coordinator.spawn(pi, ctx, {
+        const result = await coordinator.spawn(mockPi, ctx, {
           type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
         });
 
@@ -365,8 +424,8 @@ describe("SpawnCoordinator", () => {
         coordinator.scheduleNudge(result.agentId);
         vi.advanceTimersByTime(200);
 
-        expect(pi.sendMessage).toHaveBeenCalledTimes(1);
-        const content = pi.sendMessage.mock.calls[0][0].content;
+        expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+        const content = mockPi.sendMessage.mock.calls[0][0].content;
         expect(content).toContain(`[Subagent "builder" ${expected}]`);
       }
     });
