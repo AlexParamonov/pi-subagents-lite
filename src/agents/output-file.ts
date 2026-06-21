@@ -111,12 +111,14 @@ function formatToolResult(toolName: string, content: ReadonlyArray<Record<string
 function formatMessageLine(
   role: "ASSISTANT" | "TOOL" | "USER",
   content: string | ReadonlyArray<Record<string, unknown>> | undefined,
+  skipThinkingCount: number = 0,
 ): string {
   if (typeof content === "string") {
     return splitAndPrefix(content, role);
   }
 
   if (Array.isArray(content)) {
+    let thinkingSkipped = 0;
     return content
       .map((item) => {
         if (item.type === "text" && typeof item.text === "string") {
@@ -126,6 +128,10 @@ function formatMessageLine(
           return formatToolItem(item);
         }
         if (item.type === "thinking" && typeof item.thinking === "string") {
+          if (thinkingSkipped < skipThinkingCount) {
+            thinkingSkipped++;
+            return ""; // Already streamed, skip
+          }
           const text = item.redacted ? "[redacted]" : item.thinking;
           return splitAndPrefix(text, "THINKING");
         }
@@ -136,7 +142,6 @@ function formatMessageLine(
 
   return "";
 }
-
 /**
  * Subscribe to session events and flush new messages to the output file
  * on each turn_end. Returns a cleanup function that writes the DONE line
@@ -148,15 +153,26 @@ export function streamToOutputFile(
   session: AgentSession,
   path: string,
   stats?: { turnCount: number; toolUseCount: number; totalTokens: number; cost: number },
+  bufferSize: number = 0,
 ): () => void {
   let writtenCount = 1; // initial user prompt already written
+  let thinkingBuffer = "";
+  let streamedExceptionCount = 0; // track how many thinking blocks were streamed
+  let streamedThinkingChars = 0; // track total chars streamed for deduplication
+
+  const flushThinkingBuffer = () => {
+    if (thinkingBuffer.length > 0) {
+      safeAppend(path, `${timestamp()} [THINKING] ${thinkingBuffer}\n`);
+      thinkingBuffer = "";
+    }
+  };
 
   const flush = () => {
     const messages = session.messages;
     while (writtenCount < messages.length) {
       const msg = messages[writtenCount];
       if (msg.role === "assistant") {
-        const lines = formatMessageLine("ASSISTANT", msg.content as any);
+        const lines = formatMessageLine("ASSISTANT", msg.content as any, streamedExceptionCount);
         if (lines) safeAppend(path, lines);
       } else if (msg.role === "user") {
         const text = extractUserText(msg.content as any);
@@ -176,11 +192,41 @@ export function streamToOutputFile(
   };
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-    if (event.type === "turn_end") flush();
+    if (event.type === "turn_end") {
+      flushThinkingBuffer();
+      flush();
+    }
+
+    if (bufferSize > 0 && event.type === "message_update") {
+      const assistantEvent = event.assistantMessageEvent;
+      if (assistantEvent.type === "thinking_start") {
+        // Reset counter for new thinking block
+        streamedThinkingChars = 0;
+      }
+      if (assistantEvent.type === "thinking_delta") {
+        thinkingBuffer += assistantEvent.delta;
+        if (thinkingBuffer.length >= bufferSize || thinkingBuffer.includes("\n")) {
+          flushThinkingBuffer();
+        }
+      } else if (assistantEvent.type === "thinking_end") {
+        // thinking_end has the full content, flush it
+        thinkingBuffer = ""; // clear any partial buffer
+        if (assistantEvent.content && assistantEvent.content.length > streamedThinkingChars) {
+          // Only stream the new part that wasn't already streamed
+          const newContent = assistantEvent.content.slice(streamedThinkingChars);
+          if (newContent.length > 0) {
+            safeAppend(path, `${timestamp()} [THINKING] ${newContent}\n`);
+          }
+          streamedThinkingChars = assistantEvent.content.length;
+        }
+        streamedExceptionCount++;
+      }
+    }
   });
 
   return () => {
     // Final flush
+    flushThinkingBuffer();
     flush();
 
     // Write DONE line
@@ -219,10 +265,12 @@ export class AgentOutputLog {
   readonly path: string;
   private cleanup?: () => void;
   private statsRef?: OutputFinalStats;
+  private bufferSize: number;
 
-  constructor(agentId: string, prompt: string, baseDir?: string) {
+  constructor(agentId: string, prompt: string, baseDir?: string, bufferSize: number = 0) {
     this.path = createOutputFilePath(agentId, baseDir);
     writeInitialEntry(this.path, prompt);
+    this.bufferSize = bufferSize;
   }
 
   /**
@@ -232,7 +280,7 @@ export class AgentOutputLog {
    */
   attach(session: AgentSession): void {
     this.statsRef = { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
-    this.cleanup = streamToOutputFile(session, this.path, this.statsRef);
+    this.cleanup = streamToOutputFile(session, this.path, this.statsRef, this.bufferSize);
   }
 
   /**

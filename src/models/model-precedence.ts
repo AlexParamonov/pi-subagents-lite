@@ -56,6 +56,8 @@ export interface SubagentsConfig {
     widgetDescLengthFull?: number;
     /** Max description length in widget compact mode. Default: 30. */
     widgetDescLengthCompact?: number;
+    /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
+    outputThinkingBufferSize?: number;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

@@ -76,6 +76,8 @@ export interface ResolvedAgentSettings {
   readonly showContext: boolean;
   /** Whether to show elapsed time in widget stats line. */
   readonly showTime: boolean;
+  /** Buffer size for streaming thinking blocks to output file. 0 = disabled. */
+  readonly outputThinkingBufferSize: number;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -140,6 +142,7 @@ export class ConfigStore {
       showOutput: a.showOutput !== false,
       showContext: a.showContext !== false,
       showTime: a.showTime !== false,
+      outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
     };
   }
 
