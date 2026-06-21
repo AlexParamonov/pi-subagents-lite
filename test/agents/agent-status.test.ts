@@ -51,7 +51,7 @@ describe("AgentStatus tool execute behavior", () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it("formats each agent as {type}·{shortId}·{status}", async () => {
+  it("formats each agent as {shortId} ({type}) {status}", async () => {
     mockListAgents.mockReturnValue([
       { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running" } },
     ]);
@@ -68,8 +68,8 @@ describe("AgentStatus tool execute behavior", () => {
     );
 
     const text = result.content[0].text;
-    // Contract: agent entries use · separator, short ID is 8 chars
-    expect(text).toMatch(/builder·[a-z0-9]{8}·running/);
+    // Contract: agent entries use "id (type) status" format, short ID is 8 chars
+    expect(text).toMatch(/[a-z0-9]{8} \(builder\) running/);
     expect(text).toContain("Don't poll");
   });
 
@@ -92,7 +92,7 @@ describe("AgentStatus tool execute behavior", () => {
 
     const text = result.content[0].text;
     // Contract: multiple agents comma-separated, each matching the format
-    expect(text).toMatch(/builder·[a-z0-9]{8}·running, reviewer·[a-z0-9]{8}·completed/);
+    expect(text).toMatch(/[a-z0-9]{8} \(builder\) running, [a-z0-9]{8} \(reviewer\) completed/);
     expect(text).toContain("Don't poll");
   });
 
@@ -118,11 +118,11 @@ describe("AgentStatus tool execute behavior", () => {
 
     const text = result.content[0].text;
     // Contract: each agent entry matches the format pattern with its status
-    expect(text).toMatch(/a·id1·running/);
-    expect(text).toMatch(/b·id2·queued/);
-    expect(text).toMatch(/c·id3·completed/);
-    expect(text).toMatch(/d·id4·stopped/);
-    expect(text).toMatch(/e·id5·error/);
+    expect(text).toMatch(/id1 \(a\) running/);
+    expect(text).toMatch(/id2 \(b\) queued/);
+    expect(text).toMatch(/id3 \(c\) completed/);
+    expect(text).toMatch(/id4 \(d\) stopped/);
+    expect(text).toMatch(/id5 \(e\) error/);
     expect(text).toContain("Don't poll");
   });
 
@@ -159,7 +159,7 @@ describe("AgentStatus tool execute behavior", () => {
     );
 
     // Contract: short ID is always 8 characters
-    expect(result.content[0].text).toMatch(/reviewer·[a-z0-9-]{8}·completed/);
+    expect(result.content[0].text).toMatch(/[a-z0-9-]{8} \(reviewer\) completed/);
   });
 
   it("returns no error flag on success", async () => {

@@ -203,7 +203,7 @@ export async function executeAgentTool(
 
 /**
  * Build a compact list of running (or queued) agents.
- * Format: "type·short_id, type·short_id" — one line, easy for LLM to parse.
+ * Format: "short_id (type), short_id (type)" — one line, easy for LLM to parse.
  */
 function formatRunningAgents(): string {
   const agents = getManager()!.listAgents().filter(
@@ -213,7 +213,7 @@ function formatRunningAgents(): string {
   if (agents.length === 0) return "none";
 
   return agents
-    .map((a) => `${a.display.type}·${a.id.slice(0, SHORT_ID_LENGTH)}`)
+    .map((a) => `${a.id.slice(0, SHORT_ID_LENGTH)} (${a.display.type})`)
     .join(", ");
 }
 

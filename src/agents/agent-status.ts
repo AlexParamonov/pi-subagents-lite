@@ -12,11 +12,11 @@ import { SHORT_ID_LENGTH } from "../types.js";
 import { getManager } from "../shell.js";
 
 /**
- * Format a single agent record as "type·short_id·status".
+ * Format a single agent record as "short_id (type) status".
  */
 function formatAgent(record: AgentRecord): string {
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  return `${record.display.type}·${shortId}·${record.lifecycle.status}`;
+  return `${shortId} (${record.display.type}) ${record.lifecycle.status}`;
 }
 
 /**

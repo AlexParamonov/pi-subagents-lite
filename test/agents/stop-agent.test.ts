@@ -66,7 +66,7 @@ describe("executeStopAgentTool", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("nonexistent-id not found");
     expect(result.content[0].text).toContain("Running agents:");
-    expect(result.content[0].text).toContain("builder·aaa111bb");
+    expect(result.content[0].text).toContain("aaa111bb (builder)");
   });
 
   it("returns info when agent already completed", async () => {
@@ -112,9 +112,9 @@ describe("executeStopAgentTool", () => {
 
     const result = await executeStopAgentTool("call_8", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
 
-    expect(result.content[0].text).toContain("builder·r1");
-    expect(result.content[0].text).toContain("reviewer·r2");
-    expect(result.content[0].text).not.toContain("explore·r3");
-    expect(result.content[0].text).not.toContain("code·r4");
+    expect(result.content[0].text).toContain("r1 (builder)");
+    expect(result.content[0].text).toContain("r2 (reviewer)");
+    expect(result.content[0].text).not.toContain("r3 (explore)");
+    expect(result.content[0].text).not.toContain("r4 (code)");
   });
 });
