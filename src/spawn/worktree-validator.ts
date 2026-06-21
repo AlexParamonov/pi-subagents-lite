@@ -60,6 +60,7 @@ async function getGitCommonDir(
   pi: PiExec,
   cwd: string,
   notInRepoError: string,
+  onWarning?: (msg: string) => void,
 ): Promise<{ ok: true; commonDir: string } | { ok: false; error: string }> {
   try {
     const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
@@ -72,7 +73,11 @@ async function getGitCommonDir(
     if (msg.includes("ENOENT") || msg.includes("not found")) {
       return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_NOT_FOUND };
     }
-    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
+    if (msg.includes("timed out") || msg.includes("timeout")) {
+      return { ok: false, error: WORKTREE_VALIDATION_ERRORS.GIT_TIMEOUT };
+    }
+    onWarning?.(`git rev-parse --git-common-dir failed in ${cwd}: ${msg}`);
+    return { ok: false, error: `worktree_path validation failed: git rev-parse failed: ${msg}` };
   }
 }
 
@@ -97,6 +102,7 @@ export async function validateWorktreePath(
   pi: PiExec,
   worktreePath: string,
   parentCwd: string,
+  onWarning?: (msg: string) => void,
 ): Promise<WorktreeValidationResult> {
   // Step 1: Empty / whitespace → treat as omitted
   if (!worktreePath || worktreePath.trim() === "") {
@@ -128,10 +134,10 @@ export async function validateWorktreePath(
   }
 
   // Step 5: Get and compare git-common-dir for parent and target
-  const parentResult = await getGitCommonDir(pi, parentCwd, WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO);
+  const parentResult = await getGitCommonDir(pi, parentCwd, WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO, onWarning);
   if (!parentResult.ok) return parentResult;
 
-  const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO);
+  const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO, onWarning);
   if (!targetResult.ok) return targetResult;
 
   // Compare common dirs — must share the same repo

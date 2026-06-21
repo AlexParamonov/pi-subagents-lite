@@ -170,6 +170,7 @@ describe("executeAgentTool — worktree_path validation", () => {
       expect.anything(), // pi
       "/wt/feature",
       expect.any(String), // parent cwd
+      expect.any(Function), // onWarning
     );
   });
 
@@ -192,6 +193,30 @@ describe("executeAgentTool — worktree_path validation", () => {
     // Should NOT have spawned
     expect(mockSpawn).not.toHaveBeenCalled();
   });
+  it("flushes validator warnings via ctx.ui.notify on validation failure", async () => {
+    // Mock validateWorktreePath to invoke the onWarning callback before returning failure
+    mockValidateWorktreePath.mockImplementation((_pi, _path, _cwd, onWarning) => {
+      onWarning?.("git rev-parse --git-common-dir failed in /etc: EACCES permission denied");
+      return Promise.resolve({ ok: false, error: "worktree_path validation failed: git rev-parse failed: EACCES permission denied" });
+    });
+
+    ctx.ui = { notify: vi.fn() };
+    const result = await executeAgentTool(
+      "tc-warn",
+      makeParams({ worktree_path: "/etc" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "[pi-subagents-lite] git rev-parse --git-common-dir failed in /etc: EACCES permission denied",
+      "warning",
+    );
+  });
+
 
   it("does not call the validator when worktree_path is omitted", async () => {
     await executeAgentTool("tc-3", makeParams(), undefined, undefined, ctx);
