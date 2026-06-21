@@ -210,8 +210,7 @@ export function streamToOutputFile(
         // Reset counter for new thinking block
         streamedThinkingChars = 0;
         thinkingBlockInProgress = true;
-      }
-      if (assistantEvent.type === "thinking_delta") {
+      } else if (assistantEvent.type === "thinking_delta") {
         thinkingBuffer += assistantEvent.delta;
         if (thinkingBuffer.length >= bufferSize || thinkingBuffer.includes("\n")) {
           flushThinkingBuffer();
