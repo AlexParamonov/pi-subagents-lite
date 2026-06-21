@@ -209,12 +209,15 @@ describe("streamToOutputFile with thinking streaming", () => {
       // Fire thinking_delta that reaches buffer limit
       session._fireThinkingDelta("Full thinki");  // 10 chars, should flush
       
+      // Fire thinking_end with full content
+      session._fireThinkingEnd("Full thinking");
+      
       // Fire turn_end
       session._fireTurnEnd();
       
-      // Count occurrences of "Full thinking"
+      // Count occurrences of thinking content
       const content = readFileSync(path, "utf-8");
-      const matches = content.match(/\[THINKING\] Full thinking/g);
+      const matches = content.match(/\[THINKING\] Full think/g);
       expect(matches?.length).toBe(1);  // Should appear only once
       
       cleanup();
