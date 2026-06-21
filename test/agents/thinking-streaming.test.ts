@@ -150,20 +150,20 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       const cleanup = streamToOutputFile(session, path, undefined, 100);
       
-      // Add some content to buffer
+      // Add content below the 100-char flush threshold so it buffers
       session._fireThinkingDelta("Partial thought");
       
-      // Buffer should not be flushed yet (15 chars < 100)
+      // Buffer should not be flushed yet
       const contentBefore = readFileSync(path, "utf-8");
       expect(contentBefore).not.toContain("Partial thought");
       
-      // Fire thinking_end event
-      session._fireThinkingEnd("Complete thought");
+      // Fire thinking_end with the full block content (matches the buffered delta)
+      session._fireThinkingEnd("Partial thought");
       
-      // Buffer should be flushed
+      // Buffer should be flushed exactly once, with no duplication
       const contentAfter = readFileSync(path, "utf-8");
-      expect(contentAfter).toContain("[THINKING]");
-      expect(contentAfter).toContain("Complete thought");
+      const matches = contentAfter.match(/\[THINKING\] Partial thought/g);
+      expect(matches?.length).toBe(1);
       
       cleanup();
     });

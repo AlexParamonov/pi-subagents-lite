@@ -164,6 +164,7 @@ export function streamToOutputFile(
   const flushThinkingBuffer = () => {
     if (thinkingBuffer.length > 0) {
       safeAppend(path, splitAndPrefix(thinkingBuffer, "THINKING"));
+      streamedThinkingChars += thinkingBuffer.length;
       thinkingBuffer = "";
     }
   };
@@ -213,18 +214,15 @@ export function streamToOutputFile(
       if (assistantEvent.type === "thinking_delta") {
         thinkingBuffer += assistantEvent.delta;
         if (thinkingBuffer.length >= bufferSize || thinkingBuffer.includes("\n")) {
-          streamedThinkingChars += thinkingBuffer.length;
           flushThinkingBuffer();
         }
       } else if (assistantEvent.type === "thinking_end") {
-        // thinking_end has the full content, flush any remaining buffer first
+        // thinking_end carries the full block. Flush the buffered tail first
+        // (counted in streamedThinkingChars), then stream whatever remains.
         flushThinkingBuffer();
         if (assistantEvent.content && assistantEvent.content.length > streamedThinkingChars) {
-          // Only stream the new part that wasn't already streamed
-          const newContent = assistantEvent.content.slice(streamedThinkingChars);
-          if (newContent.length > 0) {
-            safeAppend(path, splitAndPrefix(newContent, "THINKING"));
-          }
+          const remaining = assistantEvent.content.slice(streamedThinkingChars);
+          safeAppend(path, splitAndPrefix(remaining, "THINKING"));
           streamedThinkingChars = assistantEvent.content.length;
         }
         streamedExceptionCount++;
