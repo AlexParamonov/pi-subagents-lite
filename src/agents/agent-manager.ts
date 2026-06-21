@@ -98,6 +98,7 @@ export class AgentManager {
     onComplete?: OnAgentComplete,
     concurrency?: ConcurrencyConfig,
     onStart?: OnAgentStart,
+    private bufferSize: number = 0,
   ) {
     this.onComplete = onComplete;
     this.onStart = onStart;
@@ -258,7 +259,7 @@ export class AgentManager {
     record.lifecycle.startedAt = Date.now();
 
     // Create output log for this agent (creates file + writes [USER] entry)
-    record.execution.outputLog = new AgentOutputLog(id, prompt);
+    record.execution.outputLog = new AgentOutputLog(id, prompt, undefined, this.bufferSize);
     record.display.outputFile = record.execution.outputLog.path;
 
     this.onStart?.(record);
