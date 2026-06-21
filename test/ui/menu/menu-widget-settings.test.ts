@@ -484,3 +484,66 @@ describe("showWidgetSettingsMenu — item order", () => {
     expect(statIds).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime"]);
   });
 });
+
+describe("showWidgetSettingsMenu — thinking buffer", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null, forceBackground: false,
+      widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
+      widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
+      showTools: true, showTurns: true, showInput: true, showOutput: true,
+      showContext: true, showCost: false, showTime: true,
+      outputThinkingBufferSize: 0,
+    };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    settingsListCalls = [];
+    inputInstances = [];
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("has thinkingBuffer item with ring values", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "thinkingBuffer");
+    expect(item).toBeDefined();
+    expect(item.label).toBe("Thinking buffer");
+    expect(item.values).toEqual(["OFF", "80", "200", "500", "1000"]);
+    expect(item.description).toContain("OFF = only at turn end");
+  });
+
+  it("shows OFF when outputThinkingBufferSize is 0", async () => {
+    mockModules.mockConfig.agent.outputThinkingBufferSize = 0;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "thinkingBuffer");
+    expect(item.currentValue).toBe("OFF");
+  });
+
+  it("shows number when outputThinkingBufferSize is nonzero", async () => {
+    mockModules.mockConfig.agent.outputThinkingBufferSize = 200;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "thinkingBuffer");
+    expect(item.currentValue).toBe("200");
+  });
+
+  it("onChange updates store with numeric value", async () => {
+    mockModules.mockConfig.agent.outputThinkingBufferSize = 0;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("thinkingBuffer", "500");
+    expect(mockModules.mockConfig.agent.outputThinkingBufferSize).toBe(500);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("onChange OFF sets value to 0", async () => {
+    mockModules.mockConfig.agent.outputThinkingBufferSize = 200;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("thinkingBuffer", "OFF");
+    expect(mockModules.mockConfig.agent.outputThinkingBufferSize).toBe(0);
+  });
+});

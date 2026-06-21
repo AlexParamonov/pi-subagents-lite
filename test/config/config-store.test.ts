@@ -645,3 +645,59 @@ describe("ConfigStore show* stats visibility", () => {
     expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  outputThinkingBufferSize                                            */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore outputThinkingBufferSize", () => {
+  it("defaults to 0 when absent", () => {
+    const store = new ConfigStore(memIO().io);
+    expect(store.agent.outputThinkingBufferSize).toBe(0);
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, outputThinkingBufferSize: 80 },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.outputThinkingBufferSize).toBe(80);
+  });
+
+  it("setOutputThinkingBufferSize persists value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+
+    store.mutate.agent.setOutputThinkingBufferSize(200);
+    expect(store.agent.outputThinkingBufferSize).toBe(200);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.outputThinkingBufferSize).toBe(200);
+  });
+
+  it("setOutputThinkingBufferSize(0) persists and clears the setting", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, outputThinkingBufferSize: 80 },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.outputThinkingBufferSize).toBe(80);
+
+    store.mutate.agent.setOutputThinkingBufferSize(0);
+    expect(store.agent.outputThinkingBufferSize).toBe(0);
+    expect(store.agentConfigSnapshot().outputThinkingBufferSize).toBe(0);
+  });
+
+  it("clearAllModelOverrides preserves outputThinkingBufferSize", () => {
+    const { io } = memIO({
+      agent: { default: "keep", forceBackground: true, outputThinkingBufferSize: 500, Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    const snap = store.agentConfigSnapshot();
+    expect(snap.outputThinkingBufferSize).toBe(500);
+    expect(snap.Explore).toBeUndefined();
+  });
+});
