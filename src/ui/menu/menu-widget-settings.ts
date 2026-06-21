@@ -54,6 +54,10 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
+      case "thinkingBuffer":
+        store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
+        ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
+        break;
     }
   };
 
@@ -129,6 +133,13 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+      },
+      {
+        id: "thinkingBuffer",
+        label: "Thinking buffer",
+        currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
+        values: ["OFF", "80", "200", "500", "1000"],
+        description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
       },
       { id: "__sep__", label: " ", currentValue: "" },
       {

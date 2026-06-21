@@ -274,6 +274,10 @@ export class ConfigStore {
       setShowOutput: (enabled: boolean) => this.setAgentVisibility("showOutput", enabled),
       setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
       setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
+      setOutputThinkingBufferSize: (size: number): void => {
+        this.config.agent.outputThinkingBufferSize = size;
+        this.persist();
+      },
     },
     widget: {
       setCompact: (enabled: boolean): void => {

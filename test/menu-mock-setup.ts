@@ -139,6 +139,7 @@ vi.mock("../src/shell.js", () => {
         showOutput: a.showOutput !== false,
         showContext: a.showContext !== false,
         showTime: a.showTime !== false,
+        outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       };
     },
     get concurrency() {
@@ -202,6 +203,7 @@ vi.mock("../src/shell.js", () => {
         setShowOutput(enabled: boolean) { mockModules.mockConfig.agent.showOutput = enabled; },
         setShowContext(enabled: boolean) { mockModules.mockConfig.agent.showContext = enabled; },
         setShowTime(enabled: boolean) { mockModules.mockConfig.agent.showTime = enabled; },
+        setOutputThinkingBufferSize(size: number) { mockModules.mockConfig.agent.outputThinkingBufferSize = size; },
       },
       widget: {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
