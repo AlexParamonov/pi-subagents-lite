@@ -47,7 +47,7 @@ export function ensureManagerAndWidget(): void {
     getStore().setDeps({ manager: newManager });
 
     // Now create coordinator with the real manager
-    const coordinator = new SpawnCoordinator(newManager, getPiInstance());
+    const coordinator = new SpawnCoordinator(newManager);
     setCoordinator(coordinator);
 
     // Wire the manager's onComplete to the coordinator

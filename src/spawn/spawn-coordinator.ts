@@ -1,4 +1,5 @@
 import { getStatusNote } from "../status-note.js";
+import { getPiInstance, getWidget } from "../shell.js";
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
@@ -14,7 +15,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { AgentRecord, SpawnConfig, ToolActivity } from "../types.js";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.js";
 import { buildAgentDetails } from "../agents/tool-execution.js";
-import { getWidget } from "../shell.js";
 
 // ============================================================================
 // Types
@@ -64,12 +64,10 @@ export class SpawnCoordinator {
   /** Active nudge timer. */
   private nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** The pi API reference for sending messages. */
-  private pi: ExtensionAPI | null = null;
+  /** Set during dispose to prevent nudge emission after session replacement. */
+  private disposed = false;
 
-  constructor(private manager: AgentManager, pi?: ExtensionAPI) {
-    if (pi) this.pi = pi;
-  }
+  constructor(private manager: AgentManager) {}
 
   /**
    * Spawn + wire tracking + (foreground) await.
@@ -80,9 +78,6 @@ export class SpawnCoordinator {
     ctx: ExtensionContext,
     intent: SpawnIntent,
   ): Promise<SpawnResult> {
-    // Store pi for nudge emission
-    this.pi = pi;
-
     // Create live view BEFORE spawn so callbacks can close over it
     const liveView: LiveView = {
       activeTools: new Map(),
@@ -183,7 +178,7 @@ export class SpawnCoordinator {
     this.pendingNudges.clear();
     this.liveViews.clear();
     this.backgroundAgentIds.clear();
-    this.pi = null;
+    this.disposed = true;
   }
 
   // ── Private ──
@@ -208,25 +203,34 @@ export class SpawnCoordinator {
 
   /** Emit an individual nudge for a completed background agent. */
   private emitIndividualNudge(agentId: string): void {
+    // Skip if disposed — prevents stale pi usage after session replacement
+    if (this.disposed) return;
+
     const record = this.manager.getRecord(agentId);
-    if (!record || !this.pi) return;
+    if (!record) return;
 
     const details = buildAgentDetails(record, {
       includeStats: true,
       includeStatus: true,
     });
 
-    this.pi.sendMessage(
-      {
-        customType: "subagent-result",
-        content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""} ${getStatusNote(record.lifecycle.status)}`,
-        details,
-        display: true,
-      },
-      {
-        deliverAs: "steer",
-        triggerTurn: true,
-      },
-    );
+    const pi = getPiInstance();
+    try {
+      pi.sendMessage(
+        {
+          customType: "subagent-result",
+          content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""} ${getStatusNote(record.lifecycle.status)}`,
+          details,
+          display: true,
+        },
+        {
+          deliverAs: "steer",
+          triggerTurn: true,
+        },
+      );
+    } catch (error) {
+      // Defense-in-depth: pi may be stale after session replacement/reload.
+      console.warn(`subagent nudge failed for ${agentId}:`, error);
+    }
   }
 }
