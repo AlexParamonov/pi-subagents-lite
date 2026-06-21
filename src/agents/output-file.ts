@@ -157,7 +157,7 @@ export function streamToOutputFile(
 ): () => void {
   let writtenCount = 1; // initial user prompt already written
   let thinkingBuffer = "";
-  let streamedExceptionCount = 0; // track how many thinking blocks were streamed
+  let streamedThinkingBlocks = 0; // thinking blocks written live; skipped in the final flush
   let streamedThinkingChars = 0; // track total chars streamed for deduplication
   let thinkingBlockInProgress = false; // true between thinking_start and thinking_end
 
@@ -174,7 +174,7 @@ export function streamToOutputFile(
     while (writtenCount < messages.length) {
       const msg = messages[writtenCount];
       if (msg.role === "assistant") {
-        const lines = formatMessageLine("ASSISTANT", msg.content as any, streamedExceptionCount);
+        const lines = formatMessageLine("ASSISTANT", msg.content as any, streamedThinkingBlocks);
         if (lines) safeAppend(path, lines);
       } else if (msg.role === "user") {
         const text = extractUserText(msg.content as any);
@@ -198,7 +198,7 @@ export function streamToOutputFile(
       flushThinkingBuffer();
       // If thinking_end never fired, treat this as if it did to avoid duplicates
       if (thinkingBlockInProgress) {
-        streamedExceptionCount++;
+        streamedThinkingBlocks++;
         thinkingBlockInProgress = false;
       }
       flush();
@@ -225,7 +225,7 @@ export function streamToOutputFile(
           safeAppend(path, splitAndPrefix(remaining, "THINKING"));
           streamedThinkingChars = assistantEvent.content.length;
         }
-        streamedExceptionCount++;
+        streamedThinkingBlocks++;
         thinkingBlockInProgress = false;
       }
     }
