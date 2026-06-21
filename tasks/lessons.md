@@ -86,3 +86,13 @@ Verify builder reads issue.md and plan spec before implementing. Integration gap
 **What worked:** Buffer-then-flush pattern is the simplest fix for session tree corruption. No API changes, no new abstractions. Tests verified temporal ordering (no notify before turn loop completes).
 **What failed:** Initial review caught that warnings would be silently lost if runTurnLoop throws. Builder addressed dead code in tests but missed the try/finally concern on first pass — review R2 approved after cleanup.
 **Next time:** When deferring side effects, always consider error paths. try/finally guarantees flush even on exceptions.
+
+### stream-thinking-to-output - 2026-06-21
+**What worked:** Single config knob (`outputThinkingBufferSize`) keeps API clean. Buffer-then-flush pattern with deduplication via `thinkingBlockInProgress` flag handles both normal and missing `thinking_end` paths. Review loop caught real bugs (buffer clear without flush, flawed test assertions).
+**What failed:** Builder committed to main instead of worktree branch (my fault for not checking worktree state before spawning). Had to cherry-pick commits and reset main. Nudge notifications stopped working in session after git state corruption — unclear root cause, harness restart fixed it.
+**Next time:** Always verify worktree branch exists and is checked out before spawning builder. If nudges stop working mid-session, restart harness rather than debugging live state corruption.
+
+### fix-stale-pi-context - 2026-06-21
+**What worked:** Fast, focused fix. Removed pi caching entirely, resolved at call time via `getPiInstance()`. Defense-in-depth try-catch as safety net. 822 tests pass.
+**What failed:** Nothing significant. Clean single-pass implementation.
+**Next time:** Never cache `ExtensionAPI` or `ExtensionContext` instances. Session replacement/reload invalidates them. Always resolve fresh at call time (e.g., `getPiInstance()` from shell). Add try-catch around sendMessage for defense-in-depth. The pi reference becomes stale silently — no signal, just a throw on next use.
