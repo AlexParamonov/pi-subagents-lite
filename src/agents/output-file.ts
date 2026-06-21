@@ -159,6 +159,7 @@ export function streamToOutputFile(
   let thinkingBuffer = "";
   let streamedExceptionCount = 0; // track how many thinking blocks were streamed
   let streamedThinkingChars = 0; // track total chars streamed for deduplication
+  let thinkingBlockInProgress = false; // true between thinking_start and thinking_end
 
   const flushThinkingBuffer = () => {
     if (thinkingBuffer.length > 0) {
@@ -194,6 +195,11 @@ export function streamToOutputFile(
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (event.type === "turn_end") {
       flushThinkingBuffer();
+      // If thinking_end never fired, treat this as if it did to avoid duplicates
+      if (thinkingBlockInProgress) {
+        streamedExceptionCount++;
+        thinkingBlockInProgress = false;
+      }
       flush();
     }
 
@@ -202,6 +208,7 @@ export function streamToOutputFile(
       if (assistantEvent.type === "thinking_start") {
         // Reset counter for new thinking block
         streamedThinkingChars = 0;
+        thinkingBlockInProgress = true;
       }
       if (assistantEvent.type === "thinking_delta") {
         thinkingBuffer += assistantEvent.delta;
@@ -221,6 +228,7 @@ export function streamToOutputFile(
           streamedThinkingChars = assistantEvent.content.length;
         }
         streamedExceptionCount++;
+        thinkingBlockInProgress = false;
       }
     }
   });

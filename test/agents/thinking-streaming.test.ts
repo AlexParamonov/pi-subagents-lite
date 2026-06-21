@@ -252,5 +252,34 @@ describe("streamToOutputFile with thinking streaming", () => {
       
       cleanup();
     });
+
+    it("deduplicates when thinking_end never fires before turn_end", () => {
+      const dir = fixture.getDir();
+      const path = createOutputFilePath(testAgentId, dir);
+      writeInitialEntry(path, "test");
+
+      const session = setupSession([
+        { role: "user", content: "test" },
+        { role: "assistant", content: [{ type: "thinking", thinking: "Partial thinking" }] },
+      ]);
+
+      const cleanup = streamToOutputFile(session, path, undefined, 10);
+      
+      // Fire thinking_start to indicate a thinking block is in progress
+      session._fireThinkingStart();
+      
+      // Fire thinking_delta that reaches buffer limit
+      session._fireThinkingDelta("Partial thi");  // 10 chars, should flush
+      
+      // Fire turn_end WITHOUT thinking_end (simulating missing thinking_end)
+      session._fireTurnEnd();
+      
+      // Count occurrences of [THINKING] lines with this content
+      const content = readFileSync(path, "utf-8");
+      const thinkingLines = content.match(/\[THINKING\] Partial thi/g);
+      expect(thinkingLines?.length).toBe(1);  // Should appear only once, no duplicates
+      
+      cleanup();
+    });
   });
 });

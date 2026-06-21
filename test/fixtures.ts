@@ -192,6 +192,7 @@ export interface MockSession {
   _addMessage: (role: string, content: string) => void;
   _fireTurnEnd: () => void;
   _fireMessageStart: () => void;
+  _fireThinkingStart: () => void;
   _fireThinkingDelta: (delta: string) => void;
   _fireThinkingEnd: (content: string) => void;
   _getListeners: () => Array<(event: any) => void>;
@@ -226,6 +227,12 @@ export function createMockSession(): MockSession {
     },
     _fireMessageStart: () => {
       for (const fn of listeners) fn({ type: "message_start" });
+    },
+    _fireThinkingStart: () => {
+      for (const fn of listeners) fn({
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_start" },
+      });
     },
     _fireThinkingDelta: (delta: string) => {
       for (const fn of listeners) fn({
