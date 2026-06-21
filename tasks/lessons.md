@@ -96,3 +96,8 @@ Verify builder reads issue.md and plan spec before implementing. Integration gap
 **What worked:** Fast, focused fix. Removed pi caching entirely, resolved at call time via `getPiInstance()`. Defense-in-depth try-catch as safety net. 822 tests pass.
 **What failed:** Nothing significant. Clean single-pass implementation.
 **Next time:** Never cache `ExtensionAPI` or `ExtensionContext` instances. Session replacement/reload invalidates them. Always resolve fresh at call time (e.g., `getPiInstance()` from shell). Add try-catch around sendMessage for defense-in-depth. The pi reference becomes stale silently — no signal, just a throw on next use.
+
+### thinking-buffer-setting - 2026-06-21
+**What worked:** Simple ring toggle added cleanly to widget settings. Followed existing `setGraceTurns` mutation pattern. Builder nailed it on first pass — no issues.
+**What failed:** `worktree_path` validation timed out on first two builder spawns. Workaround: spawned without it (prompt had absolute paths). Third spawn with it succeeded — likely transient.
+**Next time:** When `worktree_path` validation fails, spawn without it. The prompt already tells the agent where to work. Don't retry the same failed call.

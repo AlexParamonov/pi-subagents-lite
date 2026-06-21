@@ -136,7 +136,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       },
       {
         id: "thinkingBuffer",
-        label: "Thinking buffer",
+        label: "Log file thinking buffer",
         currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
         values: ["OFF", "80", "200", "500", "1000"],
         description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
