@@ -163,7 +163,7 @@ export function streamToOutputFile(
 
   const flushThinkingBuffer = () => {
     if (thinkingBuffer.length > 0) {
-      safeAppend(path, `${timestamp()} [THINKING] ${thinkingBuffer}\n`);
+      safeAppend(path, splitAndPrefix(thinkingBuffer, "THINKING"));
       thinkingBuffer = "";
     }
   };
@@ -223,7 +223,7 @@ export function streamToOutputFile(
           // Only stream the new part that wasn't already streamed
           const newContent = assistantEvent.content.slice(streamedThinkingChars);
           if (newContent.length > 0) {
-            safeAppend(path, `${timestamp()} [THINKING] ${newContent}\n`);
+            safeAppend(path, splitAndPrefix(newContent, "THINKING"));
           }
           streamedThinkingChars = assistantEvent.content.length;
         }
