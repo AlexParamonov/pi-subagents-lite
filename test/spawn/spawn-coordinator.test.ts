@@ -376,27 +376,56 @@ describe("SpawnCoordinator", () => {
   });
 
   describe("stale pi protection", () => {
-    it("does not cache pi — resolves via getPiInstance at call time", async () => {
+    it("stores pi from spawn and uses it for nudges", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
       });
 
-      // Verify no pi field exists on coordinator
-      expect((coordinator as any).pi).toBeUndefined();
+      // pi should be stored on the coordinator from spawn()
+      expect((coordinator as any).pi).toBe(mockPi);
 
-      // Nudge should still work — pi resolved from shell at call time
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
     });
 
-    it("constructor does not accept pi parameter", () => {
-      // Constructor should only take manager
+    it("refreshes pi on each spawn call", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const pi1 = { ...mockPi, _id: 1 } as unknown as ExtensionAPI;
+      const pi2 = { ...mockPi, _id: 2 } as unknown as ExtensionAPI;
+
+      await coordinator.spawn(pi1, ctx, {
+        type: "builder", prompt: "task 1", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+      expect((coordinator as any).pi).toBe(pi1);
+
+      await coordinator.spawn(pi2, ctx, {
+        type: "builder", prompt: "task 2", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+      expect((coordinator as any).pi).toBe(pi2);
+    });
+
+    it("skips nudge with warning when pi is null (no spawn yet)", () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // pi should be null initially
+      expect((coordinator as any).pi).toBeNull();
+
+      coordinator.scheduleNudge("agent-999");
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no pi instance"));
+      warnSpy.mockRestore();
+    });
+
+    it("constructor does not store pi (starts null)", () => {
       const coordinator = new SpawnCoordinator(manager as any);
       expect(coordinator).toBeDefined();
-      expect((coordinator as any).pi).toBeUndefined();
+      expect((coordinator as any).pi).toBeNull();
     });
   });
 
