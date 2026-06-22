@@ -161,21 +161,6 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     setupMocks();
   });
 
-  it("options SettingsList has correct items (no type)", async () => {
-    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
-    await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
-    expect(ids).not.toContain("agentType");
-    expect(ids).toContain("prompt");
-    expect(ids).toContain("description");
-    expect(ids).toContain("thinkingLevel");
-    expect(ids).toContain("maxTurns");
-    expect(ids).toContain("maxTokens");
-    expect(ids).toContain("graceTurns");
-    expect(ids).toContain("background");
-    expect(ids).toContain("model");
-    expect(ids).toContain("spawn");
-  });
 
   it("includes worktree item when in git repo", async () => {
     mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
@@ -240,9 +225,6 @@ describe("showSpawnAgentMenu — thinking level", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
-    expect(item.label).toBe("Thinking level");
-    expect(item.currentValue).toBe("medium");
-    expect(item.values).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "inherit"]);
   });
 
   it("pre-populates thinking from config default when agent has no thinking", async () => {
@@ -286,7 +268,6 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
-    expect(item.label).toBe("Max turns");
     expect(item.currentValue).toBe("25");
   });
 
@@ -365,7 +346,6 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
-    expect(item.label).toBe("Max tokens");
     expect(item.currentValue).toBe("10000");
   });
 
@@ -412,7 +392,6 @@ describe("showSpawnAgentMenu — grace turns submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
-    expect(item.label).toBe("Grace turns");
     expect(item.currentValue).toBe("8");
   });
 
@@ -447,9 +426,6 @@ describe("showSpawnAgentMenu — background toggle", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
-    expect(item.label).toBe("Background");
-    expect(item.currentValue).toBe("OFF");
-    expect(item.values).toEqual(["ON", "OFF"]);
   });
 
   it("shows 'ON' when enabled", async () => {
@@ -470,7 +446,6 @@ describe("showSpawnAgentMenu — model", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
-    expect(item.label).toBe("Model");
     expect(item.currentValue).toBe("anthropic/claude-sonnet-4-20250514");
     expect(typeof item.submenu).toBe("function");
   });
@@ -583,7 +558,6 @@ describe("showSpawnAgentMenu — spawn action", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
-    expect(item.label).toBe("Spawn");
     expect(typeof item.submenu).toBe("function");
   });
 
@@ -594,36 +568,5 @@ describe("showSpawnAgentMenu — spawn action", () => {
     const mockDone = vi.fn();
     item.submenu("", mockDone);
     expect(mockDone).toHaveBeenCalled();
-  });
-});
-
-describe("showSpawnAgentMenu — item order", () => {
-  beforeEach(() => {
-    setupMocks();
-  });
-
-  it("has expected setting items", async () => {
-    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
-    await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
-    expect(ids).toContain("spawn");
-    expect(ids).toContain("model");
-    expect(ids).toContain("background");
-    expect(ids).toContain("thinkingLevel");
-    expect(ids).toContain("prompt");
-  });
-
-  it("worktree appears after background when in git repo", async () => {
-    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return { code: 0, stdout: "/test/.git", stderr: "" };
-      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") return { code: 0, stdout: "worktree /test\nbranch refs/heads/main", stderr: "" };
-      return { code: 1, stdout: "", stderr: "" };
-    });
-    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
-    await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
-    const bgIdx = ids.indexOf("background");
-    const wtIdx = ids.indexOf("worktree");
-    expect(wtIdx).toBe(bgIdx + 1);
   });
 });

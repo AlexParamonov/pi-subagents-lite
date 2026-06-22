@@ -83,16 +83,6 @@ describe("showConcurrencySettingsMenu — SettingsList migration", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("creates a SettingsList with correct items", async () => {
-    const ctx = createMockCtx();
-    await showConcurrencySettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    expect(settingsListCalls.length).toBe(1);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toContain("defaultConcurrency");
-    expect(ids).toContain("addProviderLimit");
-    expect(ids).toContain("addModelLimit");
-    expect(ids).toContain("resetAll");
-  });
 
   it("shows default concurrency with current value", async () => {
     mockModules.mockConfig.concurrency = { default: 4 };

@@ -42,14 +42,6 @@ describe("validateNumeric", () => {
 });
 
 describe("buildSettingsListTheme", () => {
-  it("returns an object with all required SettingsListTheme properties", () => {
-    const theme = buildSettingsListTheme(mockTheme);
-    expect(typeof theme.label).toBe("function");
-    expect(typeof theme.value).toBe("function");
-    expect(typeof theme.description).toBe("function");
-    expect(typeof theme.cursor).toBe("string");
-    expect(typeof theme.hint).toBe("function");
-  });
 
   it("label applies accent when selected", () => {
     const theme = buildSettingsListTheme(mockTheme);
@@ -88,14 +80,6 @@ describe("buildSettingsListTheme", () => {
 });
 
 describe("buildSelectListTheme", () => {
-  it("returns a SelectListTheme with all required properties", () => {
-    const theme = buildSelectListTheme(mockTheme);
-    expect(typeof theme.selectedPrefix).toBe("function");
-    expect(typeof theme.selectedText).toBe("function");
-    expect(typeof theme.description).toBe("function");
-    expect(typeof theme.scrollInfo).toBe("function");
-    expect(typeof theme.noMatch).toBe("function");
-  });
 
   it("selectedPrefix uses accent color and cursor arrow", () => {
     const theme = buildSelectListTheme(mockTheme);

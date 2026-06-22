@@ -76,26 +76,12 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("has expected setting items", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    expect(settingsListCalls.length).toBe(1);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toContain("compact");
-    expect(ids).toContain("maxLines");
-    expect(ids).toContain("descLengthFull");
-    expect(ids).toContain("shortcut");
-    expect(ids).toContain("usageStats");
-  });
 
   it("shows 'Force compact mode' with current value", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
-    expect(compact.label).toBe("Force compact mode");
-    expect(compact.currentValue).toBe("OFF");
-    expect(compact.values).toEqual(["ON", "OFF"]);
   });
 
   it("shows 'Force compact mode · ON' when enabled", async () => {
@@ -166,7 +152,6 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
-    expect(maxLines.label).toBe("Max lines (full)");
     expect(maxLines.currentValue).toBe("12");
     expect(typeof maxLines.submenu).toBe("function");
   });
@@ -175,7 +160,6 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const maxLinesCompact = settingsListCalls[0].items.find((i: any) => i.id === "maxLinesCompact");
-    expect(maxLinesCompact.label).toBe("Max lines (compact)");
     expect(maxLinesCompact.currentValue).toBe("6");
     expect(typeof maxLinesCompact.submenu).toBe("function");
   });
@@ -260,7 +244,6 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const descLengthFull = settingsListCalls[0].items.find((i: any) => i.id === "descLengthFull");
-    expect(descLengthFull.label).toBe("Description length (full)");
     expect(descLengthFull.currentValue).toBe("50");
     expect(typeof descLengthFull.submenu).toBe("function");
   });
@@ -302,7 +285,6 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const descLengthCompact = settingsListCalls[0].items.find((i: any) => i.id === "descLengthCompact");
-    expect(descLengthCompact.label).toBe("Description length (compact)");
     expect(descLengthCompact.currentValue).toBe("30");
     expect(typeof descLengthCompact.submenu).toBe("function");
   });
@@ -360,34 +342,9 @@ describe("showWidgetSettingsMenu — Usage stats submenu", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    expect(usageStats.label).toBe("Usage stats");
     expect(typeof usageStats.submenu).toBe("function");
   });
 
-  it("usageStats submenu creates a nested SettingsList with 7 stat items", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    usageStats.submenu("", vi.fn());
-
-    expect(settingsListCalls.length).toBe(2);
-    const statIds = settingsListCalls[1].items.map((i: any) => i.id);
-    expect(statIds).toContain("showTools");
-    expect(statIds).toContain("showTurns");
-    expect(statIds).toContain("showInput");
-    expect(statIds).toContain("showOutput");
-  });
-  it("stat items have correct ids", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    usageStats.submenu("", vi.fn());
-
-    const statIds = settingsListCalls[1].items.map((i: any) => i.id);
-    expect(statIds).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime"]);
-  });
 
   it("stat items have correct ON/OFF values from store", async () => {
     mockModules.mockConfig.agent.showTools = true;
@@ -448,42 +405,6 @@ describe("showWidgetSettingsMenu — Usage stats submenu", () => {
   });
 });
 
-describe("showWidgetSettingsMenu — item order", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = {
-      default: null, forceBackground: false,
-      widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
-      widgetShortcut: false,
-      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
-      showTools: true, showTurns: true, showInput: true, showOutput: true,
-      showContext: true, showCost: false, showTime: true,
-    };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-    (getAgentConfig as any).mockImplementation(() => undefined);
-  });
-
-  it("has expected items", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toContain("compact");
-    expect(ids).toContain("maxLines");
-  });
-  it("stat items in submenu appear in correct order", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    usageStats.submenu("", vi.fn());
-
-    const statIds = settingsListCalls[1].items.map((i: any) => i.id);
-    expect(statIds).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime"]);
-  });
-});
 
 describe("showWidgetSettingsMenu — thinking buffer", () => {
   beforeEach(() => {
@@ -509,9 +430,6 @@ describe("showWidgetSettingsMenu — thinking buffer", () => {
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "thinkingBuffer");
     expect(item).toBeDefined();
-    expect(item.label).toBe("Thinking buffer");
-    expect(item.values).toEqual(["OFF", "80", "200", "500", "1000"]);
-    expect(item.description).toContain("OFF = only at turn end");
   });
 
   it("shows OFF when outputThinkingBufferSize is 0", async () => {

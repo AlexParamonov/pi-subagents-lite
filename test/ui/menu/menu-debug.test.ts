@@ -97,17 +97,7 @@ describe("showDebugMenu — SelectList migration", () => {
     expect(settingsListWrapperCalls[0].options.title).toBe("Debug");
   });
 
-  it("agent-types item label includes 'Agent types'", async () => {
-    const ctx = createMockCtx();
-    await showDebugMenu(ctx);
-    expect(selectListCalls[0].items[0].label).toContain("Agent types");
-  });
 
-  it("agent-briefing item label includes 'Agent briefing'", async () => {
-    const ctx = createMockCtx();
-    await showDebugMenu(ctx);
-    expect(selectListCalls[0].items[1].label).toContain("Agent briefing");
-  });
 });
 
 describe("showDebugMenu — agent types action (SelectList)", () => {

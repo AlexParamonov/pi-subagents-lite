@@ -12,6 +12,19 @@ import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-
 import { formatTokens } from "./usage.js";
 import { summarizeToolArgs } from "../ui/format.js";
 
+
+/** Find the last sentence boundary in text. Returns the index of the
+ * terminal punctuation character, or -1 if none found. */
+function findLastSentenceBoundary(text: string): number {
+  // Search backward for the most recent sentence-ending punctuation
+  for (let i = text.length - 1; i >= 0; i--) {
+    const ch = text[i];
+    if ([".", "!", "?", ","].includes(ch)) {
+      return i;
+    }
+  }
+  return -1;
+}
 /** Max content length for full tool result display — longer results get a summary line. */
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 500;
 
@@ -213,7 +226,22 @@ export function streamToOutputFile(
       } else if (assistantEvent.type === "thinking_delta") {
         thinkingBuffer += assistantEvent.delta;
         if (thinkingBuffer.length >= bufferSize || thinkingBuffer.includes("\n")) {
-          flushThinkingBuffer();
+          // Round down to nearest sentence boundary when possible
+          if (thinkingBuffer.length >= bufferSize) {
+            const boundary = findLastSentenceBoundary(thinkingBuffer);
+            if (boundary >= 0) {
+              const flushText = thinkingBuffer.slice(0, boundary + 1);
+              thinkingBuffer = thinkingBuffer.slice(boundary + 1);
+              safeAppend(path, splitAndPrefix(flushText, "THINKING"));
+              streamedThinkingChars += flushText.length;
+            } else {
+              // No sentence boundary found, flush at buffer limit
+              flushThinkingBuffer();
+            }
+          } else {
+            // Newline found before buffer limit
+            flushThinkingBuffer();
+          }
         }
       } else if (assistantEvent.type === "thinking_end") {
         // thinking_end carries the full block. Flush the buffered tail first

@@ -281,5 +281,27 @@ describe("streamToOutputFile with thinking streaming", () => {
       
       cleanup();
     });
+    it("flushes at sentence boundary when buffer exceeds size", () => {
+      const dir = fixture.getDir();
+      const path = createOutputFilePath(testAgentId, dir);
+      writeInitialEntry(path, "test");
+
+      const session = setupSession([
+        { role: "user", content: "test" },
+        { role: "assistant", content: [{ type: "thinking", thinking: "" }] },
+      ]);
+
+      const cleanup = streamToOutputFile(session, path, undefined, 20);
+      
+      // Fire delta that exceeds buffer size with a sentence boundary
+      session._fireThinkingDelta("First sentence. Second");
+      
+      const content = readFileSync(path, "utf-8");
+      // Should flush up to the sentence boundary, not mid-sentence
+      expect(content).toContain("[THINKING] First sentence.");
+      expect(content).not.toContain("Second");
+      
+      cleanup();
+    });
   });
 });
