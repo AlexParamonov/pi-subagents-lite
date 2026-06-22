@@ -1,5 +1,5 @@
 import { getStatusNote } from "../status-note.js";
-import { getPiInstance, getWidget } from "../shell.js";
+import { getWidget } from "../shell.js";
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
@@ -64,6 +64,9 @@ export class SpawnCoordinator {
   /** Active nudge timer. */
   private nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Latest ExtensionAPI reference, refreshed on each spawn() call. */
+  private pi: ExtensionAPI | null = null;
+
   /** Set during dispose to prevent nudge emission after session replacement. */
   private disposed = false;
 
@@ -110,6 +113,9 @@ export class SpawnCoordinator {
     if (intent.runInBackground) {
       this.backgroundAgentIds.add(agentId);
     }
+
+    // Store latest pi reference for nudge delivery
+    this.pi = pi;
 
     const record = this.manager.getRecord(agentId)!;
 
@@ -206,6 +212,12 @@ export class SpawnCoordinator {
     // Skip if disposed — prevents stale pi usage after session replacement
     if (this.disposed) return;
 
+    // Skip if no pi instance yet (no spawn has occurred)
+    if (!this.pi) {
+      console.warn(`subagent nudge skipped for ${agentId}: no pi instance available (no spawn has occurred yet)`);
+      return;
+    }
+
     const record = this.manager.getRecord(agentId);
     if (!record) return;
 
@@ -214,9 +226,8 @@ export class SpawnCoordinator {
       includeStatus: true,
     });
 
-    const pi = getPiInstance();
     try {
-      pi.sendMessage(
+      this.pi.sendMessage(
         {
           customType: "subagent-result",
           content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""} ${getStatusNote(record.lifecycle.status)}`,
