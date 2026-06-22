@@ -92,6 +92,11 @@ Verify builder reads issue.md and plan spec before implementing. Integration gap
 **What failed:** Builder committed to main instead of worktree branch (my fault for not checking worktree state before spawning). Had to cherry-pick commits and reset main. Nudge notifications stopped working in session after git state corruption — unclear root cause, harness restart fixed it.
 **Next time:** Always verify worktree branch exists and is checked out before spawning builder. If nudges stop working mid-session, restart harness rather than debugging live state corruption.
 
+### fix-nudge-stale-pi - 2026-06-22
+**What worked:** Focused single-file fix. Stored `pi` reference on `SpawnCoordinator`, refreshed on each `spawn()` call, used in `emitIndividualNudge()` instead of stale `getPiInstance()` singleton. Review and refactor passed quickly.
+**What failed:** Nothing significant. Clean single-pass implementation.
+**Next time:** The `ExtensionAPI` (`pi`) reference becomes stale silently after session lifecycle events (compaction, model changes, internal reloads) within ~15-20 minutes. Never cache `pi` in module-level singletons. Always obtain a fresh reference — either via getter or by threading through the call chain from the most recent SDK callback. The SDK docs are explicit: `pi` is session-bound and must be used fresh.
+
 ### fix-stale-pi-context - 2026-06-21
 **What worked:** Fast, focused fix. Removed pi caching entirely, resolved at call time via `getPiInstance()`. Defense-in-depth try-catch as safety net. 822 tests pass.
 **What failed:** Nothing significant. Clean single-pass implementation.
