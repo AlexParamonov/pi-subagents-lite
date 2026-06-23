@@ -6,7 +6,7 @@
  */
 
 import { lstatSync, readFileSync } from "node:fs";
-import type { Model } from "@earendil-works/pi-ai/compat";
+import type { Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "./types.js";
 
 /**
