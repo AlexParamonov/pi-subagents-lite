@@ -28,11 +28,12 @@
     "url": "https://github.com/AlexParamonov/pi-subagents-lite/issues"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.74.0",
-    "@earendil-works/pi-coding-agent": ">=0.74.0",
-    "@earendil-works/pi-tui": ">=0.74.0"
+    "@earendil-works/pi-ai": "^0.80.1",
+    "@earendil-works/pi-coding-agent": "^0.80.1",
+    "@earendil-works/pi-tui": "^0.80.1"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.80.1",
     "@sinclair/typebox": "^0.34.49"
   },
   "files": [

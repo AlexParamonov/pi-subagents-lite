@@ -2,7 +2,7 @@
  * Type definitions for the subagent system.
  */
 
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai/compat";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage } from "./agents/usage.js";
