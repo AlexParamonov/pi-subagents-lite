@@ -35,7 +35,7 @@ Names like `Agent`, `StopAgent`, `AgentStatus`, `run_in_background`, `worktree_p
 - **Live widget** — persistent status bar with running/completed agents, full and compact modes
 - **Result viewer** — fullscreen markdown with stats
 - **Worktrees** — run agents in a git worktree via `worktree_path`
-- **Output logs** — `tail -f` friendly, ISO-timestamped
+- **Output logs** — `tail -f` friendly, ISO-timestamped with configurable thinking buffer (OFF, 80, 200, 500, 1000 chars). Flush rounds to sentence boundaries.
 
 ## Install
 
@@ -112,7 +112,7 @@ Stop a running agent by ID.
 |---|---|---|
 | `agent_id` | ✅ | The agent ID returned by `Agent` at spawn |
 
-IDs come from the `Agent` result, the `StopAgent` error (lists all running IDs), or `/agents` → **Running agents**.
+IDs come from the `Agent` result, the `StopAgent` error (lists all running IDs), or `/agents` → **Running agents**. Display format is `id (type)` (e.g. `a1b2c3 (Explore)`).
 
 ### `AgentStatus`
 
@@ -244,13 +244,13 @@ When `includeContextFiles` is `true` (default), AGENTS.md files from the project
 Management menu with four sections:
 
 - **Running agents** — status and description; per-agent actions (view snapshot, result, error; steer; stop) and bulk stop
-- **Spawn agent** — manually spawn without the LLM. Pick a type, enter a prompt, tune options (model, thinking, max turns, max tokens, grace turns, background), then spawn. Options pre-fill from agent config.
+- **Spawn agent** — manually spawn without the LLM. Pick a type (with search), enter a prompt, tune options (model, thinking, max turns, max tokens, grace turns, background), then spawn. Options pre-fill from agent config.
 - **Settings**
   - **Model settings** — global default, per-type overrides, session overrides, clear all
   - **Spawn options** — force background, grace turns, default max turns, default thinking, disable default agents
   - **System prompt** — mode, custom prompt file, include AGENTS.md, load skills/extensions implicitly
-  - **Concurrency** — default limit, per-provider and per-model slots, reset to defaults
-  - **Widget settings** — force compact, max lines, description length, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time)
+  - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
+  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time)
 
 ## Interface
 
@@ -333,6 +333,7 @@ With **Cost display** ON, stats show dollar cost (`✓ Builder·2🛠 ·5⟳ ·�
 | `widgetDescLengthCompact` | `30` | Max description length in compact mode. |
 | `widgetCompact` | `false` | Force compact mode regardless of ctrl+o state. |
 | `widgetShortcut` | `false` | When ON, ctrl+o (tool expansion toggle) syncs with widget compact mode. When OFF, compact is manual via `widgetCompact`. |
+| `outputThinkingBufferSize` | `200` | Thinking buffer ring size in chars. `0` = OFF. Flushes to output log at sentence boundaries. |
 
 ### Stats visibility
 
