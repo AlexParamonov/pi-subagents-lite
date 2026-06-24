@@ -183,7 +183,7 @@ export function streamToOutputFile(
 
   const flushThinkingBuffer = () => {
     if (thinkingBuffer.length > 0) {
-      safeAppend(path, splitAndPrefix(thinkingBuffer, "THINKING"));
+      safeAppend(path, `${timestamp()} [THINKING] ${thinkingBuffer}\n`);
       streamedThinkingChars += thinkingBuffer.length;
       thinkingBuffer = "";
     }
@@ -232,21 +232,16 @@ export function streamToOutputFile(
         thinkingBlockInProgress = true;
       } else if (assistantEvent.type === "thinking_delta") {
         thinkingBuffer += assistantEvent.delta;
-        if (thinkingBuffer.length >= bufferSize || thinkingBuffer.includes("\n")) {
+        if (thinkingBuffer.length >= bufferSize) {
           // Round down to nearest sentence boundary when possible
-          if (thinkingBuffer.length >= bufferSize) {
-            const boundary = findLastSentenceBoundary(thinkingBuffer);
-            if (boundary >= 0) {
-              const flushText = thinkingBuffer.slice(0, boundary + 1);
-              thinkingBuffer = thinkingBuffer.slice(boundary + 1);
-              safeAppend(path, splitAndPrefix(flushText, "THINKING"));
-              streamedThinkingChars += flushText.length;
-            } else {
-              // No sentence boundary found, flush at buffer limit
-              flushThinkingBuffer();
-            }
+          const boundary = findLastSentenceBoundary(thinkingBuffer);
+          if (boundary >= 0) {
+            const flushText = thinkingBuffer.slice(0, boundary + 1);
+            thinkingBuffer = thinkingBuffer.slice(boundary + 1);
+            safeAppend(path, `${timestamp()} [THINKING] ${flushText}\n`);
+            streamedThinkingChars += flushText.length;
           } else {
-            // Newline found before buffer limit
+            // No sentence boundary found, flush at buffer limit
             flushThinkingBuffer();
           }
         }
@@ -256,7 +251,7 @@ export function streamToOutputFile(
         flushThinkingBuffer();
         if (assistantEvent.content && assistantEvent.content.length > streamedThinkingChars) {
           const remaining = assistantEvent.content.slice(streamedThinkingChars);
-          safeAppend(path, splitAndPrefix(remaining, "THINKING"));
+          safeAppend(path, `${timestamp()} [THINKING] ${remaining}\n`);
           streamedThinkingChars = assistantEvent.content.length;
         }
         streamedThinkingBlocks++;
