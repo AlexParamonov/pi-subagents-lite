@@ -10,18 +10,42 @@ import { ConfigStore, type ConfigIO } from "../../src/config/config-store.ts";
 import type { AgentWidget } from "../../src/ui/agent-widget.ts";
 import type { AgentManager } from "../../src/agents/agent-manager.ts";
 import type { SubagentsConfig } from "../../src/models/model-precedence.ts";
-import { DEFAULT_CONFIG } from "../../src/config/config-io.ts";
 
 function defaultConfig(): SubagentsConfig {
+  // Matches the defaults merged by loadConfig when no config file exists
   return {
-    agent: { ...DEFAULT_CONFIG.agent },
-    concurrency: { ...DEFAULT_CONFIG.concurrency },
+    agent: {
+      default: null,
+      forceBackground: false,
+      graceTurns: 6,
+      widgetMaxLines: 12,
+      widgetDescLengthFull: 50,
+      widgetDescLengthCompact: 30,
+      widgetCompact: false,
+      widgetShortcut: false,
+      systemPromptMode: "replace",
+      includeContextFiles: true,
+      disableDefaultAgents: false,
+      showTools: true,
+      showTurns: true,
+      showInput: true,
+      showOutput: true,
+      showContext: true,
+      showCost: false,
+      showTime: true,
+    },
+    concurrency: { default: 4 },
   };
 }
 
-/** In-memory ConfigIO. load() returns a fresh clone; save() records snapshots. */
-function memIO(initial: SubagentsConfig = defaultConfig()): { io: ConfigIO; saves: SubagentsConfig[]; current: () => SubagentsConfig } {
-  let cur = structuredClone(initial);
+/** In-memory ConfigIO. Merges initial config with defaults (matches loadConfig behavior). */
+function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): { io: ConfigIO; saves: SubagentsConfig[]; current: () => SubagentsConfig } {
+  // Merge with defaults like loadConfig does
+  const merged: SubagentsConfig = {
+    agent: { ...(defaultConfig().agent), ...(initial.agent ?? {}) },
+    concurrency: { default: 4, ...(initial.concurrency ?? {}) },
+  };
+  let cur = structuredClone(merged);
   const saves: SubagentsConfig[] = [];
   return {
     io: {

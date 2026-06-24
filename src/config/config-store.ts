@@ -20,10 +20,8 @@ import type { AgentManager } from "../agents/agent-manager.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
-import { DEFAULT_CONFIG, loadConfig, saveConfigAtomic } from "./config-io.js";
+import { VALID_SYSTEM_PROMPT_MODES, DEFAULT_CONCURRENCY, loadConfig, saveConfigAtomic } from "./config-io.js";
 
-/** Valid values for systemPromptMode — checked once at module load. */
-const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
 
 /** Injected persistence adapter. Swap for an in-memory adapter in tests. */
 export interface ConfigIO {
@@ -108,29 +106,22 @@ export class ConfigStore {
 
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
-    const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_CONFIG.agent.widgetMaxLines ?? 12;
+    const widgetMaxLines = a.widgetMaxLines!; // guaranteed by loadConfig default merge
     const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
-    const widgetCompact = a.widgetCompact === true;
-    const widgetShortcut = a.widgetShortcut === true;
-    const widgetDescLengthFull = a.widgetDescLengthFull ?? DEFAULT_CONFIG.agent.widgetDescLengthFull ?? 50;
-    const widgetDescLengthCompact = a.widgetDescLengthCompact ?? DEFAULT_CONFIG.agent.widgetDescLengthCompact ?? 30;
-    const rawMode = a.systemPromptMode;
-    const systemPromptMode = VALID_SYSTEM_PROMPT_MODES.has(rawMode as string) ? rawMode as SystemPromptMode : "replace";
-    const includeContextFiles = a.includeContextFiles ?? DEFAULT_CONFIG.agent.includeContextFiles ?? true;
 
     return {
       defaultModel: a.default ?? null,
       forceBackground: a.forceBackground === true,
       showCost: this.sessionShowCost ?? (a.showCost === true),
-      graceTurns: a.graceTurns ?? DEFAULT_CONFIG.agent.graceTurns ?? 6,
+      graceTurns: a.graceTurns ?? 6,
       widgetMaxLines,
       widgetMaxLinesCompact,
-      widgetCompact,
-      widgetShortcut,
-      widgetDescLengthFull,
-      widgetDescLengthCompact,
-      systemPromptMode,
-      includeContextFiles,
+      widgetCompact: a.widgetCompact === true,
+      widgetShortcut: a.widgetShortcut === true,
+      widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
+      widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
+      systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string) ? (a.systemPromptMode as SystemPromptMode) : "replace",
+      includeContextFiles: a.includeContextFiles ?? true,
       defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
@@ -344,7 +335,7 @@ export class ConfigStore {
         this.applyConcurrency();
       },
       reset: (): void => {
-        this.config.concurrency = { ...DEFAULT_CONFIG.concurrency };
+        this.config.concurrency = { ...DEFAULT_CONCURRENCY };
         this.persist();
         this.applyConcurrency();
       },
