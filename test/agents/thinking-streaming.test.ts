@@ -116,7 +116,7 @@ describe("streamToOutputFile with thinking streaming", () => {
       cleanup();
     });
 
-    it("flushes buffer when it contains a newline", () => {
+    it("does not flush on newline alone (only at buffer limit)", () => {
       const dir = fixture.getDir();
       const path = createOutputFilePath(testAgentId, dir);
       writeInitialEntry(path, "test");
@@ -128,12 +128,12 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       const cleanup = streamToOutputFile(session, path, undefined, 100);
       
-      // Fire delta with newline (should flush even if buffer < size limit)
+      // Fire delta with newline — should NOT flush yet (buffer < size limit)
       session._fireThinkingDelta("Line 1\n");
       
       const contentAfterNewline = readFileSync(path, "utf-8");
-      expect(contentAfterNewline).toContain("[THINKING]");
-      expect(contentAfterNewline).toContain("Line 1");
+      expect(contentAfterNewline).not.toContain("[THINKING]");
+      expect(contentAfterNewline).not.toContain("Line 1");
       
       cleanup();
     });
