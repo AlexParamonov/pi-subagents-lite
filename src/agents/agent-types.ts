@@ -302,22 +302,23 @@ function applyGlobalDefaults(
   };
 }
 
+/** Find the first non-hidden config: resolved type, then general-purpose, then undefined. */
+function findActiveConfig(type: string): AgentConfig | undefined {
+  const key = resolveType(type);
+  const config = key ? agents.get(key) : undefined;
+  if (config?.hidden !== true) return config;
+  return agents.get("general-purpose");
+}
+
 /** Get config for a type (case-insensitive). Falls back to general-purpose. */
 export function getConfig(
   type: string,
   loadSkillsImplicitly: boolean = true,
   loadExtensionsImplicitly: boolean = true,
 ): ResolvedAgentConfig {
-  const resolvedKey = resolveType(type);
-  const config = resolvedKey ? agents.get(resolvedKey) : undefined;
-
-  // If config exists and is not hidden, use it; otherwise fall back to general-purpose
-  const activeConfig = config?.hidden !== true
-    ? config
-    : agents.get("general-purpose");
-
-  if (activeConfig && activeConfig.hidden !== true) {
-    const { skills, extensions, ...rest } = activeConfig;
+  const config = findActiveConfig(type);
+  if (config) {
+    const { skills, extensions, ...rest } = config;
     const defaults = applyGlobalDefaults(skills, extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
     return {
       displayName: rest.displayName ?? rest.name,
@@ -328,7 +329,7 @@ export function getConfig(
     };
   }
 
-  // Absolute fallback — general-purpose was hidden or missing
+  // Absolute fallback — no config found at all
   const defaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
   return {
     displayName: "Agent",
