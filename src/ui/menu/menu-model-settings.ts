@@ -12,6 +12,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
+import type { Theme } from "../types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
 import { buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
@@ -24,7 +25,7 @@ export async function showModelSettingsMenu(
   modelOptions: string[],
 ): Promise<void> {
   // Build menu items from current store state.
-  const buildItems = (store: ReturnType<typeof getStore>, theme: any): SettingItem[] => {
+  const buildItems = (store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] => {
     const items: SettingItem[] = [];
     
     // Shared onSelect for model override submenus: applies session/permanent/clear

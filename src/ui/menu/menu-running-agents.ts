@@ -22,6 +22,7 @@ import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
+import type { Theme } from "../types.js";
 
 /**
  * Show a ResultViewer for an agent's result, error, or snapshot.
@@ -73,7 +74,7 @@ async function showResultViewer(
 export function buildAgentActionsList(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
-  theme: any,
+  theme: Theme,
   done: () => void,
   setActive: (c: import("@earendil-works/pi-tui").Component) => void,
   onClose: () => void,

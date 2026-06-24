@@ -88,5 +88,3 @@ export function findModelInRegistry(
 }
 /** Timeout for git commands (ms). Shared by agent-runner and worktree-validator. */
 export const GIT_EXEC_TIMEOUT_MS = 5000;
-
-

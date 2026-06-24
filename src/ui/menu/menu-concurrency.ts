@@ -23,13 +23,14 @@ import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 import type { SelectOption } from "../searchable-select.js";
+import type { Theme } from "../types.js";
 
 export async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
   // Build menu items from current store state.
-  const buildItems = (store: ReturnType<typeof getStore>, theme: any, modelOptions: string[], onRebuild?: () => void): SettingItem[] => {
+  const buildItems = (store: ReturnType<typeof getStore>, theme: Theme, modelOptions: string[], onRebuild?: () => void): SettingItem[] => {
     const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
     const items: SettingItem[] = [];
 
