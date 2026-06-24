@@ -19,7 +19,7 @@ function findLastSentenceBoundary(text: string): number {
   // Search backward for the most recent sentence-ending punctuation
   for (let i = text.length - 1; i >= 0; i--) {
     const ch = text[i];
-    if ([".", "!", "?", "\n"].includes(ch)) {
+    if ([".", "!", "?", ",", "\n"].includes(ch)) {
       return i;
     }
   }
