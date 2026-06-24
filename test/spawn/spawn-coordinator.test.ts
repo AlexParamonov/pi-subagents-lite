@@ -319,15 +319,11 @@ describe("SpawnCoordinator", () => {
       // Make sendMessage throw (simulates stale pi)
       mockPi.sendMessage.mockImplementation(() => { throw new Error("stale context"); });
 
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 
       // sendMessage was attempted
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-
-      warnSpy.mockRestore();
     });
 
     it("skips nudge emission when disposed", async () => {
