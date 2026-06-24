@@ -58,3 +58,8 @@
 - Only extract mock factories with ≥1 consumer in the current slice. Speculative extraction is waste.
 - Diff old paths before merging to ensure all side effects are preserved.
 - Module-level singletons still require vi.mock(). Accept module singleton as sufficient if composition root goal is otherwise achieved.
+
+### pi-ai API
+- `deliverAs: "steer"` only queues while the parent agent is running. If the agent is idle when the message arrives, pi drops it silently.
+- `deliverAs: "followUp"` waits for the agent to finish, then delivers. Use this for notifications that must arrive regardless of agent state.
+- Check `ctx.isIdle()` at call time to pick the right delivery mode. Don't assume agent state from caller context.
