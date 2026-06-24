@@ -86,3 +86,7 @@ export function findModelInRegistry(
   if (!parsed) return fallback;
   return registry.find(parsed.provider, parsed.modelId) ?? fallback;
 }
+/** Timeout for git commands (ms). Shared by agent-runner and worktree-validator. */
+export const GIT_EXEC_TIMEOUT_MS = 5000;
+
+

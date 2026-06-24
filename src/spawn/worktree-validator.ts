@@ -10,10 +10,7 @@
 
 import * as path from "node:path";
 import { existsSync, statSync, realpathSync } from "node:fs";
-
-/** Timeout for git commands (ms). */
-const GIT_EXEC_TIMEOUT_MS = 5000;
-
+import { GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 /** Specific error messages returned to the LLM for self-correction. */
 export const WORKTREE_VALIDATION_ERRORS = {
   PATH_DOES_NOT_EXIST: "worktree_path does not exist: the specified path was not found on disk",

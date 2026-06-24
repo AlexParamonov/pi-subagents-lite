@@ -11,7 +11,8 @@ import type { SubagentsConfig } from "../models/model-precedence.js";
 
 const CONFIG_DIR = path.join(process.env.HOME || "", ".pi", "agent");
 const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
-
+/** Path to custom prompt file for subagent system prompts. */
+export const CUSTOM_PROMPT_PATH = path.join(CONFIG_DIR, "subagents-lite-prompt.md");
 /** Default number of grace turns before an agent is force-stopped. */
 export const DEFAULT_GRACE_TURNS = 6;
 

@@ -21,22 +21,17 @@ import {
 import { getAgentConfig, getConfig, getToolNamesForType, resolveVisibleTools } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
 import type { LifetimeUsage } from "./usage.js";
-import { findModelInRegistry } from "../utils.js";
+import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
 import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore } from "../shell.js";
-import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
+import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
-/** Path to custom prompt file. Exported for use in menus.ts. */
-export const CUSTOM_PROMPT_PATH = path.join(process.env.HOME || "", ".pi", "agent", "subagents-lite-prompt.md");
-
-
-/** Timeout for quick git commands (branch detection, repo check). */
-const GIT_EXEC_TIMEOUT_MS = 5000;
-
+/** Re-exported for backward compatibility — defined in config-io.ts. */
+export { CUSTOM_PROMPT_PATH };
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
 function normalizeMaxTurns(n: number | undefined): number | undefined {
   if (n == null || n === 0) return undefined;

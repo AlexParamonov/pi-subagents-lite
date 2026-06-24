@@ -6,13 +6,14 @@
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
+import type { Theme } from "../../types.js";
 import { buildSelectListTheme } from "../helpers.js";
 
 export interface ConfirmSubmenuOptions {
   /** Message shown to the user */
   message: string;
   /** Theme from pi-coding-agent (fg, bold, italic) */
-  theme: any;
+  theme: Theme;
   /** Called when user confirms (selects Yes) */
   onConfirm: () => void;
 }

@@ -11,7 +11,7 @@
 import { getConfig } from "../agents/agent-types.js";
 import type { SubagentType } from "../agents/types.js";
 import type { Theme } from "./types.js";
-import { formatTokens, formatTokensCompact, formatCost } from "../agents/usage.js";
+import { formatTokens, formatCost } from "../agents/usage.js";
 
 /** Truncate a description string to `maxLen` characters, appending "..." if truncated. */
 export function truncateDesc(text: string, maxLen: number): string {
@@ -44,8 +44,8 @@ function formatSessionTokens(
   compactions = 0,
 ): string {
   const tokenParts: string[] = [];
-  if (inputTokens > 0) tokenParts.push(`↑${formatTokensCompact(inputTokens)}`);
-  if (outputTokens > 0) tokenParts.push(`↓${formatTokensCompact(outputTokens)}`);
+  if (inputTokens > 0) tokenParts.push(`↑${formatTokens(inputTokens, true)}`);
+  if (outputTokens > 0) tokenParts.push(`↓${formatTokens(outputTokens, true)}`);
   const tokenStr = tokenParts.join("");
   const annot: string[] = [];
   if (percent !== null) {

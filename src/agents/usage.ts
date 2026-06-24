@@ -29,17 +29,10 @@ type SessionStatsLike = {
 };
 export type SessionLike = { getSessionStats(): SessionStatsLike };
 
-/** Format a token count compactly: "12.3k", "1.2M", or raw number. */
-export function formatTokens(count: number): string {
+/** Format a token count compactly: "12.3k", "1.2M", or raw number. When compact is true, thousands round to whole numbers. */
+export function formatTokens(count: number, compact = false): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
-  return `${count}`;
-}
-
-/** Format token count for widget display: rounded to whole number for k. */
-export function formatTokensCompact(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${Math.round(count / 1_000)}k`;
+  if (count >= 1_000) return compact ? `${Math.round(count / 1_000)}k` : `${(count / 1_000).toFixed(1)}k`;
   return `${count}`;
 }
 

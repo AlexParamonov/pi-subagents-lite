@@ -56,7 +56,6 @@ const TOOL_DISPLAY: Record<string, string> = {
   write: "writing",
   grep: "searching",
   find: "finding files",
-  ls: "listing",
 };
 
 // ---- Types ----

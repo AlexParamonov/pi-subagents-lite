@@ -17,7 +17,7 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { type LifetimeUsage, formatTokens } from "../agents/usage.js";
-import type { Theme } from "./agent-widget.js";
+import type { Theme } from "./types.js";
 import { formatMs } from "./format.js";
 
 /* ------------------------------------------------------------------ */

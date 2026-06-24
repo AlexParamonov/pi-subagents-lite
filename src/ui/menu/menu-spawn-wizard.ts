@@ -11,8 +11,9 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import type { ThinkingLevel } from "../../types.js";
+import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
-import { findModelInRegistry } from "../../utils.js";
+import { findModelInRegistry, VALID_THINKING_LEVELS } from "../../utils.js";
 import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
@@ -120,7 +121,6 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
 // Spawn agent wizard
 // ============================================================================
 
-const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
 /**
  * Show the spawn agent flow as a multi-step wizard:
@@ -363,7 +363,7 @@ export async function showSpawnAgentMenu(
         label: "Thinking level",
         currentValue: currentThinking ?? "inherit",
         description: "Set the reasoning effort level",
-        values: [...THINKING_LEVELS, "inherit"],
+        values: [...VALID_THINKING_LEVELS, "inherit"],
       },
       {
         id: "maxTokens",
@@ -406,7 +406,7 @@ export async function showSpawnAgentMenu(
     return items;
   };
 
-  let theme: any;
+  let theme: Theme;
   let doneRef: () => void;
 
   await ctx.ui.custom((_tui, t, _kb, done) => {

@@ -8,13 +8,14 @@
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
+import type { Theme } from "../../types.js";
 import { SearchableSelectDialog, type SelectOption } from "../../../ui/searchable-select.js";
 import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "../helpers.js";
 
 export interface ModelSelectSubmenuOptions {
   modelOptions: string[];
   showClear: boolean;
-  theme: any; // Theme from pi-coding-agent (fg, bold, italic)
+  theme: Theme;
   onSelect: (mode: "session" | "permanent" | "clear", model: string | null) => void;
 }
 
