@@ -30,8 +30,6 @@ import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
-/** Re-exported for backward compatibility — defined in config-io.ts. */
-export { CUSTOM_PROMPT_PATH };
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
 function normalizeMaxTurns(n: number | undefined): number | undefined {
   if (n == null || n === 0) return undefined;
