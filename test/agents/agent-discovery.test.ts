@@ -104,7 +104,7 @@ hidden: "false"
 
 This is the system prompt body.
 `;
-    const result = parseAgentFile(content, "explorer.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.name).toBe("explorer");
     expect(result.display_name).toBe("Explorer Agent");
     expect(result.description).toBe("A fast exploration agent");
@@ -126,7 +126,7 @@ name: minimal
 ---
 Just a body.
 `;
-    const result = parseAgentFile(content, "minimal.md", "project");
+    const result = parseAgentFile(content, "project");
     expect(result.name).toBe("minimal");
     expect(result.display_name).toBeUndefined();
     expect(result.description).toBeUndefined();
@@ -144,14 +144,14 @@ Just a body.
 
   it("parses content with no frontmatter", () => {
     const content = "# Just a markdown file\n\nNo frontmatter here.";
-    const result = parseAgentFile(content, "bare.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.name).toBeUndefined();
     expect(result.systemPrompt).toBe(content);
     expect(result.source).toBe("user");
   });
 
   it("parses empty content", () => {
-    const result = parseAgentFile("", "empty.md", "user");
+    const result = parseAgentFile("", "user");
     expect(result.name).toBeUndefined();
     expect(result.systemPrompt).toBe("");
     expect(result.source).toBe("user");
@@ -166,7 +166,7 @@ tools:
 ---
 body
 `;
-    const result = parseAgentFile(content, "agent.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.tools).toEqual(["read", "bash"]);
   });
 
@@ -178,43 +178,43 @@ body
     ["preload_skills", "[skill-a]", ["skill-a"]],
   ] as const)("parses inline YAML array for %s", (field, value, expected) => {
     const content = `---\nname: agent\n${field}: ${value}\n---\nbody\n`;
-    const result = parseAgentFile(content, "agent.md", "user");
+    const result = parseAgentFile(content, "user");
     expect((result as Record<string, unknown>)[field]).toEqual(expected);
   });
 
   it("parses extensions as boolean true", () => {
     const content = makeAgentMd({ extensions: "true" });
-    const result = parseAgentFile(content, "test.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.extensions).toBe(true);
   });
 
   it("parses extensions as 'all'", () => {
     const content = makeAgentMd({ extensions: "all" });
-    const result = parseAgentFile(content, "test.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.extensions).toBe(true);
   });
 
   it("parses extensions as comma list", () => {
     const content = makeAgentMd({ extensions: "read, bash, write" });
-    const result = parseAgentFile(content, "test.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.extensions).toEqual(["read", "bash", "write"]);
   });
 
   it("parses hidden as boolean false from 'false' string", () => {
     const content = makeAgentMd({ hidden: "false" });
-    const result = parseAgentFile(content, "test.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.hidden).toBe(false);
   });
 
   it("parses max_turns as number", () => {
     const content = makeAgentMd({ max_turns: "10" });
-    const result = parseAgentFile(content, "test.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.max_turns).toBe(10);
   });
 
   it("parses max_tokens as number", () => {
     const content = makeAgentMd({ max_tokens: "1024" });
-    const result = parseAgentFile(content, "test.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.max_tokens).toBe(1024);
   });
 
@@ -226,7 +226,7 @@ another_unknown: 42
 ---
 body
 `;
-    const result = parseAgentFile(content, "agent.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.name).toBe("agent");
     // Should not error on unknown fields
   });
@@ -238,7 +238,7 @@ thinking: ultra
 ---
 body
 `;
-    const result = parseAgentFile(content, "agent.md", "user");
+    const result = parseAgentFile(content, "user");
     expect(result.thinking).toBeUndefined();
   });
 

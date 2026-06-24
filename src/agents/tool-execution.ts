@@ -52,16 +52,9 @@ function errorResult(text: string, details?: Record<string, unknown>) {
  * Consolidates the identical field-selection logic previously duplicated
  * across emitIndividualNudge, executeSpawnForeground, and executeSpawnBackground.
  */
-interface AgentDetailsOptions {
-  /** Include full stats (turns, tokens, context%, compactions, cost). Default: false. */
-  includeStats?: boolean;
-  /** Include status and outputFile. Default: false. */
-  includeStatus?: boolean;
-}
-
 export function buildAgentDetails(
   record: AgentRecord,
-  options?: AgentDetailsOptions,
+  opts?: { includeStats?: boolean; includeStatus?: boolean },
 ): Record<string, unknown> {
   const details: Record<string, unknown> = {
     type: record.display.type,
@@ -72,12 +65,12 @@ export function buildAgentDetails(
     details.worktreePath = record.display.worktreePath;
   }
 
-  if (options?.includeStatus) {
+  if (opts?.includeStatus) {
     details.status = record.lifecycle.status;
     details.outputFile = record.display.outputFile;
   }
 
-  if (options?.includeStats) {
+  if (opts?.includeStats) {
     const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
 
     details.turnCount = record.stats.turnCount;

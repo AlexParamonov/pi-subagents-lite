@@ -257,7 +257,6 @@ function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
  */
 export function parseAgentFile(
   content: string,
-  _filename: string,
   source: "user" | "project",
 ): AgentConfigFromMd {
   const { frontmatter, body } = parseFrontmatter(content);
@@ -310,7 +309,7 @@ export async function scanAgentFilesInDir(
     const filePath = path.join(dirPath, entry.name);
     try {
       const content = await fs.promises.readFile(filePath, "utf-8");
-      const info = parseAgentFile(content, entry.name, source);
+      const info = parseAgentFile(content, source);
       if (info.name) {
         agents.push(info);
       }
