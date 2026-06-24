@@ -574,15 +574,14 @@ export class AgentWidget {
     }
 
     // Overflow summary line
-    const overflowLine = hiddenRunning + hiddenFinished > 0
-      ? (() => {
-          const parts: string[] = [];
-          if (hiddenRunning > 0) parts.push(`${hiddenRunning} running`);
-          if (hiddenFinished > 0) parts.push(`${hiddenFinished} finished`);
-          const summary = `+${hiddenRunning + hiddenFinished} more (${parts.join(", ")})`;
-          return `${theme.fg("dim", CORNER)} ${theme.fg("dim", summary)}`;
-        })()
-      : undefined;
+    let overflowLine: string | undefined;
+    if (hiddenRunning + hiddenFinished > 0) {
+      const parts: string[] = [];
+      if (hiddenRunning > 0) parts.push(`${hiddenRunning} running`);
+      if (hiddenFinished > 0) parts.push(`${hiddenFinished} finished`);
+      const summary = `+${hiddenRunning + hiddenFinished} more (${parts.join(", ")})`;
+      overflowLine = `${theme.fg("dim", CORNER)} ${theme.fg("dim", summary)}`;
+    }
 
     return { visible, overflowLine };
   }
