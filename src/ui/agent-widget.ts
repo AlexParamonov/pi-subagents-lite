@@ -135,6 +135,14 @@ function describeActivity(activeTools: Map<string, string>, responseText?: strin
   return THINKING_TEXT;
 }
 
+/** Build the worktree/output continuation line parts for an agent record. */
+function buildWorktreeOutputParts(a: AgentRecord): string[] {
+  const parts: string[] = [];
+  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
+  if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
+  return parts;
+}
+
 // ---- Widget manager ----
 
 export class AgentWidget {
@@ -374,10 +382,8 @@ export class AgentWidget {
     for (const a of finished) {
       const continuations: string[] = [];
       if (!this.isCompact()) {
-        if (a.display.outputFile || a.display.worktreeLabel) {
-          const parts: string[] = [];
-          if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
-          if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
+        const parts = buildWorktreeOutputParts(a);
+        if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", `${VLINE}    ${parts.join("  ")}`)));
         }
       }
@@ -417,10 +423,8 @@ export class AgentWidget {
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
         const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
-        if (a.display.outputFile || a.display.worktreeLabel) {
-          const parts: string[] = [];
-          if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
-          if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
+        const parts = buildWorktreeOutputParts(a);
+        if (parts.length > 0) {
           continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} ${parts.join("  ")}`)));
         }
         continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)));
