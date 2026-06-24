@@ -66,6 +66,15 @@ export function setAgentScanDirs(userDir: string, projectDir: string): void {
   projectAgentDir = projectDir;
 }
 
+/** Scan user and project agent directories, merge with defaults. Returns the merged Map. */
+export async function scanAndMerge(options?: { disableDefaultAgents?: boolean }): Promise<Map<string, AgentConfig>> {
+  const [userAgents, projectAgents] = await Promise.all([
+    scanAgentFilesInDir(userAgentDir, "user"),
+    scanAgentFilesInDir(projectAgentDir, "project"),
+  ]);
+  const defaults = options?.disableDefaultAgents ? new Map<string, AgentConfig>() : DEFAULT_AGENTS;
+  return mergeAgents(defaults, userAgents, projectAgents);
+}
 /**
  * Scan the known agent directories and register any newly discovered agents
  * that aren't already in the registry. Returns the number of new agents added.
@@ -77,13 +86,7 @@ export function setAgentScanDirs(userDir: string, projectDir: string): void {
  * @param options - Optional settings. disableDefaultAgents skips DEFAULT_AGENTS in the merge.
  */
 export async function discoverNewAgents(worktreeDir?: string, options?: { disableDefaultAgents?: boolean }): Promise<number> {
-  const [userAgents, projectAgents] = await Promise.all([
-    scanAgentFilesInDir(userAgentDir, "user"),
-    scanAgentFilesInDir(projectAgentDir, "project"),
-  ]);
-
-  const defaults = options?.disableDefaultAgents ? new Map<string, AgentConfig>() : DEFAULT_AGENTS;
-  const merged = mergeAgents(defaults, userAgents, projectAgents);
+  const merged = await scanAndMerge(options);
 
   let count = 0;
   for (const [name, config] of merged) {
@@ -96,8 +99,6 @@ export async function discoverNewAgents(worktreeDir?: string, options?: { disabl
   // Scan worktree-local agents (only when worktreeDir is provided)
   if (worktreeDir) {
     const worktreeAgents = await scanAgentFilesInDir(worktreeDir, "project");
-    // Use mergeAgents to convert AgentConfigFromMd to AgentConfig (applies fromMd
-    // and BASE_DEFAULTS), then add only names not already in the registry.
     const wtMerged = mergeAgents(new Map(), [], worktreeAgents);
     for (const [name, config] of wtMerged) {
       if (!agents.has(name)) {

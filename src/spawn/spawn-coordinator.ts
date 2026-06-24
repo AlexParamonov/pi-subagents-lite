@@ -1,5 +1,5 @@
 import { getStatusNote } from "../status-note.js";
-import { getPiInstance, getWidget } from "../shell.js";
+import { getPiInstance, getSessionCtx, getWidget } from "../shell.js";
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
@@ -210,13 +210,8 @@ export class SpawnCoordinator {
     if (this.disposed) return;
 
     // Read pi from shell at call time so we get a fresh reference after reload.
-    // On session replacement (newSession/fork/switchSession) the shell's pi is
-    // also stale — PI doesn't refresh extension APIs without reloading the
-    // extension. The try-catch below handles that case gracefully.
     const pi = getPiInstance();
-    if (!pi) {
-      return;
-    }
+    if (!pi) return;
 
     const record = this.manager.getRecord(agentId);
     if (!record) return;
@@ -227,6 +222,13 @@ export class SpawnCoordinator {
     });
 
     try {
+      // Pick delivery mode based on parent session state:
+      // - steer: queues while running, delivers before next LLM call
+      // - followUp: waits for agent to finish, then delivers
+      const ctx = getSessionCtx();
+      const parentIdle = ctx?.isIdle?.() ?? true;
+      const deliverAs = parentIdle ? "followUp" : "steer";
+
       pi.sendMessage(
         {
           customType: "subagent-result",
@@ -235,7 +237,7 @@ export class SpawnCoordinator {
           display: true,
         },
         {
-          deliverAs: "steer",
+          deliverAs,
           triggerTurn: true,
         },
       );
@@ -244,5 +246,5 @@ export class SpawnCoordinator {
       // PI invalidates the extension runner on session.dispose() and never
       // clears the stale flag for non-reload replacements. Nothing we can do.
     }
-}
+  }
 }

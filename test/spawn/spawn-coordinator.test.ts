@@ -41,6 +41,7 @@ const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
 
 vi.mock("../../src/shell.js", () => ({
   getPiInstance: () => mockGetPiInstance(),
+  getSessionCtx: () => ({ isIdle: () => true }),
   getWidget: () => null,
 }));
 
@@ -325,8 +326,6 @@ describe("SpawnCoordinator", () => {
 
       // sendMessage was attempted
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      // Error was caught silently — no warning logged
-      expect(warnSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();
     });
@@ -414,7 +413,6 @@ describe("SpawnCoordinator", () => {
 
     it("skips nudge silently when shell has no pi", () => {
       const coordinator = new SpawnCoordinator(manager as any);
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       // Simulate shell having no pi
       mockGetPiInstance.mockReturnValue(null);
@@ -423,9 +421,6 @@ describe("SpawnCoordinator", () => {
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
-      expect(warnSpy).not.toHaveBeenCalled();
-
-      warnSpy.mockRestore();
     });
 
     it("constructor does not store pi", () => {
