@@ -25,6 +25,13 @@ function findLastSentenceBoundary(text: string): number {
   }
   return -1;
 }
+
+/** Format the [DONE] summary line with final stats. */
+function formatDoneLine(stats: { turnCount: number; toolUseCount: number; totalTokens: number; cost: number }): string {
+  const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
+  const costStr = `$${stats.cost.toFixed(3)}`;
+  return `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`;
+}
 /** Max content length for full tool result display — longer results get a summary line. */
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 500;
 
@@ -264,10 +271,8 @@ export function streamToOutputFile(
     flush();
 
     // Write DONE line
-    const { turnCount = 0, toolUseCount = 0, totalTokens = 0, cost = 0 } = stats ?? {};
-    const tokensStr = `${formatTokens(totalTokens)} tokens`;
-    const costStr = `$${cost.toFixed(3)}`;
-    safeAppend(path, `${timestamp()} [DONE] ${turnCount} turns, ${toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`);
+    const doneStats = stats ?? { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
+    safeAppend(path, formatDoneLine(doneStats));
 
     // Unsubscribe from session events
     unsubscribe();
@@ -336,9 +341,7 @@ export class AgentOutputLog {
       this.statsRef = undefined;
     } else {
       // No attach was called — write DONE directly
-      const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
-      const costStr = `$${stats.cost.toFixed(3)}`;
-      safeAppend(this.path, `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`);
+      safeAppend(this.path, formatDoneLine(stats));
     }
   }
 }
