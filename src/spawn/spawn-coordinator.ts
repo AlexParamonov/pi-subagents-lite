@@ -1,5 +1,5 @@
 import { getStatusNote } from "../status-note.js";
-import { getWidget } from "../shell.js";
+import { getPiInstance, getWidget } from "../shell.js";
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
@@ -64,9 +64,6 @@ export class SpawnCoordinator {
   /** Active nudge timer. */
   private nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Latest ExtensionAPI reference, refreshed on each spawn() call. */
-  private pi: ExtensionAPI | null = null;
-
   /** Set during dispose to prevent nudge emission after session replacement. */
   private disposed = false;
 
@@ -114,8 +111,8 @@ export class SpawnCoordinator {
       this.backgroundAgentIds.add(agentId);
     }
 
-    // Store latest pi reference for nudge delivery
-    this.pi = pi;
+    // pi is read from shell at nudge time, not stored here
+    // (avoids stale ctx after session replacement or reload)
 
     const record = this.manager.getRecord(agentId)!;
 
@@ -212,9 +209,12 @@ export class SpawnCoordinator {
     // Skip if disposed — prevents stale pi usage after session replacement
     if (this.disposed) return;
 
-    // Skip if no pi instance yet (no spawn has occurred)
-    if (!this.pi) {
-      console.warn(`subagent nudge skipped for ${agentId}: no pi instance available (no spawn has occurred yet)`);
+    // Read pi from shell at call time so we get a fresh reference after reload.
+    // On session replacement (newSession/fork/switchSession) the shell's pi is
+    // also stale — PI doesn't refresh extension APIs without reloading the
+    // extension. The try-catch below handles that case gracefully.
+    const pi = getPiInstance();
+    if (!pi) {
       return;
     }
 
@@ -227,7 +227,7 @@ export class SpawnCoordinator {
     });
 
     try {
-      this.pi.sendMessage(
+      pi.sendMessage(
         {
           customType: "subagent-result",
           content: `[Subagent "${record.display.type}" ${record.lifecycle.status}]\n\n${record.result ?? ""} ${getStatusNote(record.lifecycle.status)}`,
@@ -240,8 +240,9 @@ export class SpawnCoordinator {
         },
       );
     } catch (error) {
-      // Defense-in-depth: pi may be stale after session replacement/reload.
-      console.warn(`subagent nudge failed for ${agentId}:`, error);
+      // pi may be stale after session replacement (newSession/fork/switchSession).
+      // PI invalidates the extension runner on session.dispose() and never
+      // clears the stale flag for non-reload replacements. Nothing we can do.
     }
-  }
+}
 }

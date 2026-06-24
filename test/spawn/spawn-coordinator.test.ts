@@ -34,12 +34,13 @@ vi.mock("../../src/config/config-io.js", () => ({
 }));
 
 // Hoist mock pi so shell mock can return it
-const { mockPi } = vi.hoisted(() => ({
+const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
   mockPi: { sendMessage: vi.fn(), sendUserMessage: vi.fn(), exec: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as unknown as ExtensionAPI,
+  mockGetPiInstance: vi.fn(() => null as unknown as ExtensionAPI),
 }));
 
 vi.mock("../../src/shell.js", () => ({
-  getPiInstance: () => mockPi,
+  getPiInstance: () => mockGetPiInstance(),
   getWidget: () => null,
 }));
 
@@ -93,6 +94,7 @@ describe("SpawnCoordinator", () => {
     manager = makeMockManager();
     ctx = makeMockCtx();
     mockPi.sendMessage.mockClear();
+    mockGetPiInstance.mockReturnValue(mockPi);
     const mod = await import("../../src/spawn/spawn-coordinator.js");
     SpawnCoordinator = mod.SpawnCoordinator;
   });
@@ -306,7 +308,7 @@ describe("SpawnCoordinator", () => {
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
-    it("catches sendMessage errors and logs warning", async () => {
+    it("catches sendMessage errors silently (stale pi)", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
@@ -323,9 +325,8 @@ describe("SpawnCoordinator", () => {
 
       // sendMessage was attempted
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      // Error was caught and logged
-      expect(warnSpy).toHaveBeenCalled();
-      expect(warnSpy.mock.calls[0][0]).toContain("subagent nudge");
+      // Error was caught silently — no warning logged
+      expect(warnSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();
     });
@@ -376,56 +377,61 @@ describe("SpawnCoordinator", () => {
   });
 
   describe("stale pi protection", () => {
-    it("stores pi from spawn and uses it for nudges", async () => {
+    it("reads pi from shell at nudge time, not from spawn", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
       });
 
-      // pi should be stored on the coordinator from spawn()
-      expect((coordinator as any).pi).toBe(mockPi);
+      // Coordinator no longer stores pi
+      expect((coordinator as any).pi).toBeUndefined();
 
+      // Nudge still works because it reads from shell at call time
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
     });
 
-    it("refreshes pi on each spawn call", async () => {
+    it("uses fresh shell pi when shell is updated between spawn and nudge", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
-      const pi1 = { ...mockPi, _id: 1 } as unknown as ExtensionAPI;
-      const pi2 = { ...mockPi, _id: 2 } as unknown as ExtensionAPI;
 
-      await coordinator.spawn(pi1, ctx, {
-        type: "builder", prompt: "task 1", description: "Test", graceTurns: 6, runInBackground: true,
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
       });
-      expect((coordinator as any).pi).toBe(pi1);
 
-      await coordinator.spawn(pi2, ctx, {
-        type: "builder", prompt: "task 2", description: "Test", graceTurns: 6, runInBackground: true,
-      });
-      expect((coordinator as any).pi).toBe(pi2);
+      // Simulate shell being updated (e.g. after reload)
+      const freshPi = { ...mockPi, sendMessage: vi.fn() } as unknown as ExtensionAPI;
+      mockGetPiInstance.mockReturnValue(freshPi);
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      // Fresh pi was used, not the original mockPi
+      expect(freshPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
-    it("skips nudge with warning when pi is null (no spawn yet)", () => {
+    it("skips nudge silently when shell has no pi", () => {
       const coordinator = new SpawnCoordinator(manager as any);
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      // pi should be null initially
-      expect((coordinator as any).pi).toBeNull();
+      // Simulate shell having no pi
+      mockGetPiInstance.mockReturnValue(null);
 
       coordinator.scheduleNudge("agent-999");
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no pi instance"));
+      expect(warnSpy).not.toHaveBeenCalled();
+
       warnSpy.mockRestore();
     });
 
-    it("constructor does not store pi (starts null)", () => {
+    it("constructor does not store pi", () => {
       const coordinator = new SpawnCoordinator(manager as any);
       expect(coordinator).toBeDefined();
-      expect((coordinator as any).pi).toBeNull();
+      expect((coordinator as any).pi).toBeUndefined();
     });
   });
 
