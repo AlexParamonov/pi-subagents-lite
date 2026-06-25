@@ -20,7 +20,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getConfig, getToolNamesForType, resolveVisibleTools } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
-import type { LifetimeUsage } from "./usage.js";
+import type { AgentUsage } from "./usage.js";
 import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
@@ -106,7 +106,7 @@ function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => 
  * assistant messages at runtime, but this shape isn't reflected in the
  * AgentSessionEvent public types.
  */
-function usageFromAssistantMessage(msg: Record<string, unknown>): LifetimeUsage & { cacheRead: number } | undefined {
+function usageFromAssistantMessage(msg: Record<string, unknown>): AgentUsage | undefined {
   const usage = msg.usage as Record<string, unknown> | undefined;
   if (!usage) return undefined;
   return {

@@ -5,7 +5,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
-import type { LifetimeUsage } from "./agents/usage.js";
+import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
 import type { SubagentType, AgentInvocation } from "./agents/types.js";
 
 /** Thinking level for agent models. */
@@ -59,7 +59,7 @@ export interface RunCallbacks {
   onTextDelta?: (delta: string, fullText: string) => void;
   onSessionCreated?: (session: AgentSession) => void;
   onTurnEnd?: (turnCount: number) => void;
-  onAssistantUsage?: (usage: LifetimeUsage) => void;
+  onAssistantUsage?: (usage: AgentUsage) => void;
   onCompaction?: (info: CompactionInfo) => void;
 }
 

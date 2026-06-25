@@ -19,7 +19,7 @@ import {
   type ToolActivity,
 } from "../types.js";
 import type { SubagentType } from "./types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "./usage.js";
+import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
 import { errorMessage } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
@@ -374,7 +374,7 @@ export class AgentManager {
     options?: Pick<SpawnOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
   ): {
     onToolActivity: (activity: ToolActivity) => void;
-    onAssistantUsage: (usage: LifetimeUsage) => void;
+    onAssistantUsage: (usage: AgentUsage) => void;
     onCompaction: (info: CompactionInfo) => void;
   } {
     return {
@@ -386,7 +386,7 @@ export class AgentManager {
         // vLLM doesn't report cache hits, so usage.input is full prompt_tokens.
         // Estimate new tokens as delta from previous message's input.
         const deltaEnabled = getStore().agent.deltaInputTokens;
-        const cacheRead = (usage as any).cacheRead || 0;
+        const cacheRead = usage.cacheRead;
         let inputDelta = usage.input;
         if (deltaEnabled && cacheRead === 0 && record.stats.prevInputTokens != null && usage.input > record.stats.prevInputTokens) {
           inputDelta = usage.input - record.stats.prevInputTokens;
