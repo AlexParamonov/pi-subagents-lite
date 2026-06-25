@@ -444,6 +444,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
       input: 100,
       output: 50,
       cacheWrite: 10,
+      cacheRead: 0,
       cost: 2.5,
     });
 
@@ -472,6 +473,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
       input: 100,
       output: 50,
       cacheWrite: 10,
+      cacheRead: 0,
       cost: 0,
     });
 
@@ -499,7 +501,36 @@ describe("subscribeToSessionEvents — cost extraction", () => {
       input: 100,
       output: 50,
       cacheWrite: 10,
+      cacheRead: 0,
       cost: 0,
+    });
+
+    unsub();
+  });
+
+  it("extracts nonzero cacheRead from usage", () => {
+    const onAssistantUsage = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+
+    const listeners = session._getListeners();
+
+    listeners[0]({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: "Hello",
+        usage: { input: 100, output: 50, cacheWrite: 10, cacheRead: 200, cost: { total: 1.5 } },
+      },
+    });
+
+    expect(onAssistantUsage).toHaveBeenCalledWith({
+      input: 100,
+      output: 50,
+      cacheWrite: 10,
+      cacheRead: 200,
+      cost: 1.5,
     });
 
     unsub();
