@@ -63,3 +63,9 @@
 - `deliverAs: "steer"` only queues while the parent agent is running. If the agent is idle when the message arrives, pi drops it silently.
 - `deliverAs: "followUp"` waits for the agent to finish, then delivers. Use this for notifications that must arrive regardless of agent state.
 - Check `ctx.isIdle()` at call time to pick the right delivery mode. Don't assume agent state from caller context.
+
+### Subagent session lifecycle
+- Subagents are built with `createAgentSession`, which runs its own `DefaultResourceLoader.reload()` and `session.bindExtensions()`. That re-executes EVERY extension factory and re-fires `session_start`/`session_shutdown` in the subagent's context, NOT just the parent's.
+- An extension that writes parent-owned state in its factory or `session_start` handler (module-level shell singletons like `pi`/`ctx`) will have that state clobbered by every subagent spawn. The last subagent to load wins, so later reads (e.g. a completion nudge firing via `setTimeout`) route to a dead/wrong session. Failures are silent because the misrouted `sendMessage` swallows internally and does not throw.
+- Fix: bracket the subagent entry point (`runAgent`) with a nesting-depth flag and make the factory + `session_start`/`session_shutdown` handlers a no-op while a subagent is in flight. Parent reload still refreshes the shell (flag is false outside `runAgent`). `dispose()` gates deferred work after `session_shutdown`.
+- `AgentSession.dispose()` does NOT emit `session_shutdown` (only the interactive runtime's `teardownCurrent` does). So subagent cleanup won't dispose parent state, but subagent `bindExtensions` WILL fire the parent's `session_start` handler.

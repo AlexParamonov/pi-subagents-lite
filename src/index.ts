@@ -24,11 +24,15 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { setPiInstance } from "./shell.js";
+import { setPiInstance, isInsideSubagentSpawn } from "./shell.js";
 import { registerTools } from "./registration.js";
 import { setupEventListeners } from "./events.js";
 
 export default function (pi: ExtensionAPI) {
+  // Subagents re-load this extension under their own pi/runtime. Stay inert so
+  // we never overwrite the parent-owned shell (pi, sessionCtx, manager, ...).
+  // The completion nudge relies on those still pointing at the parent session.
+  if (isInsideSubagentSpawn()) return;
   setPiInstance(pi);
   registerTools(pi);
   setupEventListeners(pi);

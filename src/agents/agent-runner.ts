@@ -27,7 +27,7 @@ import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
 import type { SubagentType, SystemPromptMode } from "./types.js";
-import { getStore } from "../shell.js";
+import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
@@ -512,6 +512,22 @@ async function runTurnLoop(
 // ── main entry ─────────────────────────────────────────────────────
 
 export async function runAgent(
+  ctx: ExtensionContext,
+  type: SubagentType,
+  prompt: string,
+  options: RunOptions,
+): Promise<RunResult> {
+  // Bracket the whole subagent lifecycle so the extension factory can detect
+  // it's being re-loaded inside a subagent and avoid clobbering the parent shell.
+  enterSubagentSpawn();
+  try {
+    return await runAgentImpl(ctx, type, prompt, options);
+  } finally {
+    exitSubagentSpawn();
+  }
+}
+
+async function runAgentImpl(
   ctx: ExtensionContext,
   type: SubagentType,
   prompt: string,

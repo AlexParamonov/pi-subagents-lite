@@ -99,3 +99,31 @@ export function setWidget(w: AgentWidget | null): void {
 export function setCoordinator(c: SpawnCoordinator | null): void {
   shell.coordinator = c;
 }
+
+// ============================================================================
+// Subagent spawn context
+// ============================================================================
+
+/**
+ * Nesting depth of in-flight subagent spawns.
+ *
+ * Subagents are created via runAgent(), which re-loads this extension fresh
+ * (new runtime, new pi/ctx). Without protection those re-loads clobber the
+ * parent-owned shell singletons below, so the nudge would later route to a
+ * dead subagent session instead of the parent. The factory checks this flag
+ * and stays inert while a subagent is spawning.
+ */
+let subagentSpawnDepth = 0;
+
+export function enterSubagentSpawn(): void {
+  subagentSpawnDepth++;
+}
+
+export function exitSubagentSpawn(): void {
+  if (subagentSpawnDepth > 0) subagentSpawnDepth--;
+}
+
+/** True while a subagent is being spawned (factory/session_start run in subagent context). */
+export function isInsideSubagentSpawn(): boolean {
+  return subagentSpawnDepth > 0;
+}
