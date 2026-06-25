@@ -74,6 +74,8 @@ export interface ResolvedAgentSettings {
   readonly showContext: boolean;
   /** Whether to show elapsed time in widget stats line. */
   readonly showTime: boolean;
+  /** Whether to estimate input token delta for vLLM (no cache reporting). */
+  readonly deltaInputTokens: boolean;
   /** Buffer size for streaming thinking blocks to output file. 0 = disabled. */
   readonly outputThinkingBufferSize: number;
 }
@@ -133,6 +135,7 @@ export class ConfigStore {
       showOutput: a.showOutput !== false,
       showContext: a.showContext !== false,
       showTime: a.showTime !== false,
+      deltaInputTokens: a.deltaInputTokens !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
     };
   }
@@ -265,6 +268,7 @@ export class ConfigStore {
       setShowOutput: (enabled: boolean) => this.setAgentVisibility("showOutput", enabled),
       setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
       setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
+      setDeltaInputTokens: (enabled: boolean) => this.setAgentVisibility("deltaInputTokens", enabled),
       setOutputThinkingBufferSize: (size: number): void => {
         this.config.agent.outputThinkingBufferSize = size;
         this.persist();
@@ -448,7 +452,7 @@ export class ConfigStore {
   }
 
   /** Update a widget stats visibility flag: mutate config → persist → sync widget. */
-  private setAgentVisibility(key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime", value: boolean): void {
+  private setAgentVisibility(key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime" | "deltaInputTokens", value: boolean): void {
     this.config.agent[key] = value;
     this.persist();
     this.syncWidgetStatsVisibility();

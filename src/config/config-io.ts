@@ -42,6 +42,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showContext: true,
   showCost: false,
   showTime: true,
+  deltaInputTokens: true,
 };
 
 /**
