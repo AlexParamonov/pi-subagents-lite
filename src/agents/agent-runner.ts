@@ -106,13 +106,14 @@ function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => 
  * assistant messages at runtime, but this shape isn't reflected in the
  * AgentSessionEvent public types.
  */
-function usageFromAssistantMessage(msg: Record<string, unknown>): LifetimeUsage | undefined {
+function usageFromAssistantMessage(msg: Record<string, unknown>): LifetimeUsage & { cacheRead: number } | undefined {
   const usage = msg.usage as Record<string, unknown> | undefined;
   if (!usage) return undefined;
   return {
     input: (usage.input as number) ?? 0,
     output: (usage.output as number) ?? 0,
     cacheWrite: (usage.cacheWrite as number) ?? 0,
+    cacheRead: (usage.cacheRead as number) ?? 0,
     cost: ((usage.cost as Record<string, unknown>)?.total as number) ?? 0,
   };
 }

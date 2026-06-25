@@ -156,6 +156,8 @@ export interface AgentAccumulatedStats {
   maxTurns?: number;
   /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
   compactionCount: number;
+  /** Previous input token count for delta estimation (vLLM doesn't report cache hits). */
+  prevInputTokens?: number;
   /** Last-known context usage percentage (0–100), captured at completion. */
   contextPercent?: number | null;
 }
