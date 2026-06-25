@@ -58,6 +58,9 @@ export class SpawnCoordinator {
   /** Agent IDs spawned as background — only these trigger a nudge on completion. */
   private backgroundAgentIds = new Set<string>();
 
+  /** Captured ExtensionContext per background agent, bound to the spawning session. */
+  private backgroundContexts = new Map<string, ExtensionContext>();
+
   /** Pending nudge agent IDs, batched within the delay window. */
   private pendingNudges = new Set<string>();
 
@@ -106,13 +109,11 @@ export class SpawnCoordinator {
       widget.ensureTimer();
     }
 
-    // Track background agents
+    // Track background agents + capture ctx for fallback notification
     if (intent.runInBackground) {
       this.backgroundAgentIds.add(agentId);
+      this.backgroundContexts.set(agentId, ctx);
     }
-
-    // pi is read from shell at nudge time, not stored here
-    // (avoids stale ctx after session replacement or reload)
 
     const record = this.manager.getRecord(agentId)!;
 
@@ -181,6 +182,7 @@ export class SpawnCoordinator {
     this.pendingNudges.clear();
     this.liveViews.clear();
     this.backgroundAgentIds.clear();
+    this.backgroundContexts.clear();
     this.disposed = true;
   }
 
@@ -242,9 +244,21 @@ export class SpawnCoordinator {
         },
       );
     } catch (error) {
-      // pi may be stale after session replacement (newSession/fork/switchSession).
-      // PI invalidates the extension runner on session.dispose() and never
-      // clears the stale flag for non-reload replacements. Nothing we can do.
+      // sendMessage failed (shared runtime overwritten by subagent bindCore).
+      // Fall back to UI notification using the captured spawning-session context.
+      const spawnCtx = this.backgroundContexts.get(agentId);
+      if (spawnCtx?.ui?.notify) {
+        try {
+          spawnCtx.ui.notify(
+            `[Subagent "${record.display.type}" ${record.lifecycle.status}] Result available`,
+            "info",
+          );
+        } catch {
+          // ctx may also be stale if session was replaced
+        }
+      }
+    } finally {
+      this.backgroundContexts.delete(agentId);
     }
   }
 }
