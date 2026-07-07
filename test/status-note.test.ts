@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getStatusNote } from "../src/status-note.js";
 
 describe("getStatusNote", () => {
-  it("returns empty string for unknown status", () => {
-    expect(getStatusNote({ status: "foo", startedAt: 0 })).toBe("");
+  it("returns empty string for status without a note", () => {
+    expect(getStatusNote({ status: "completed", startedAt: 0 })).toBe("");
   });
 
   it("returns user stop message when stoppedBy is user", () => {
