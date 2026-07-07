@@ -236,7 +236,7 @@ export class SpawnCoordinator {
       pi.sendMessage(
         {
           customType: "subagent-result",
-          content: `[Subagent "${record.display.type}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${record.lifecycle.status}]\n\n${record.result ?? ""} ${getStatusNote(record.lifecycle)}`,
+          content: `[Subagent "${record.display.type}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${record.lifecycle.status}]\n\n${(record.result ?? "") + getStatusNote(record.lifecycle)}`,
           details,
           display: true,
         },
