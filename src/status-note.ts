@@ -8,10 +8,11 @@ const NOTES: Record<string, string> = {
 };
 
 export function getStatusNote(lifecycle: AgentLifecycle): string {
-  let noteKey = lifecycle.status as string;
-  if (noteKey === "stopped") {
-    noteKey = lifecycle.stoppedBy === "user" ? "stoppedByUser" : "stoppedByAgent";
-  }
-  const note = NOTES[noteKey];
+  const note =
+    lifecycle.status === "stopped"
+      ? lifecycle.stoppedBy === "user"
+        ? NOTES.stoppedByUser
+        : NOTES.stoppedByAgent
+      : NOTES[lifecycle.status];
   return note ? ` (${note})` : "";
 }
