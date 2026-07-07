@@ -103,6 +103,8 @@ export interface AgentLifecycle {
   status: AgentStatus;
   startedAt: number;
   completedAt?: number;
+  /** Who initiated the stop: "user" (UI menu) or "agent" (StopAgent tool). */
+  stoppedBy?: "user" | "agent";
 }
 
 /**

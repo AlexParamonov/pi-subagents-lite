@@ -134,7 +134,7 @@ export function buildAgentActionsList(
       input.onEscape = () => setActive(list);
       setActive(input);
     } else if (item.value === "stop") {
-      getManager()?.abort(record.id);
+      getManager()?.abort(record.id, "user");
       ctx.ui.notify(`Stopped ${shortId}`, "info");
       onClose();
     }
@@ -186,7 +186,7 @@ export async function showRunningAgentsMenu(
     agentList.onSelect = async (item) => {
       if (item.value === "__stop-all") {
         for (const r of running) {
-          getManager()?.abort(r.id);
+          getManager()?.abort(r.id, "user");
         }
         ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
         done(undefined);

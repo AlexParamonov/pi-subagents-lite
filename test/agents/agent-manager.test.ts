@@ -400,7 +400,7 @@ describe("AgentManager", () => {
       const id = manager.spawn(pi, ctx, "general-purpose", "task", { description: "stoppable", modelKey: "test/model" });
       manager.getRecord(id)!.stats.lifetimeUsage.cost = 0.04;
 
-      manager.abort(id);
+      manager.abort(id, "agent");
 
       deferred.resolve({
         responseText: "",

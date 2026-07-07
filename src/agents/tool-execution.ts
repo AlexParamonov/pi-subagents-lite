@@ -186,7 +186,7 @@ export async function executeAgentTool(
     return errorResult(`Agent failed: ${record.error || "unknown error"}`, details);
   }
 
-  const statusNote = getStatusNote(record.lifecycle.status);
+  const statusNote = getStatusNote(record.lifecycle);
   return successResult((record.result ?? "") + statusNote, details);
 }
 
@@ -244,7 +244,7 @@ export async function executeStopAgentTool(
   }
 
   // Attempt to stop the running/queued agent
-  if (getManager()!.abort(agentId)) {
+  if (getManager()!.abort(agentId, "agent")) {
     return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
   }
 

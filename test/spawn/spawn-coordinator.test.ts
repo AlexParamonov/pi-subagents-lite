@@ -452,7 +452,8 @@ describe("SpawnCoordinator", () => {
 
         expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
         const content = mockPi.sendMessage.mock.calls[0][0].content;
-        expect(content).toContain(`[Subagent "builder" ${expected}]`);
+        const shortId = result.agentId.slice(0, 8);
+        expect(content).toContain(`[Subagent "builder" ${shortId} ${expected}]`);
       }
     });
   });

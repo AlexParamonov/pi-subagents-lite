@@ -267,7 +267,7 @@ export class AgentManager {
 
     // Wire parent abort signal to stop the subagent when the parent is interrupted
     if (options.signal) {
-      options.signal.addEventListener("abort", () => this.abort(id), { once: true });
+      options.signal.addEventListener("abort", () => this.abort(id, "agent"), { once: true });
     }
 
     const promise = runAgent(ctx, type, prompt, {
@@ -465,18 +465,18 @@ export class AgentManager {
     );
   }
 
-  abort(id: string): boolean {
+  abort(id: string, stoppedBy?: "user" | "agent"): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
 
-    return this.stopAgent(record);
+    return this.stopAgent(record, stoppedBy);
   }
 
   /**
    * Stop an agent by aborting its session or removing it from the queue.
    * Returns true if the agent was stopped, false if it wasn't running/queued.
    */
-  private stopAgent(record: AgentRecord): boolean {
+  private stopAgent(record: AgentRecord, stoppedBy?: "user" | "agent"): boolean {
     if (record.lifecycle.status === "queued") {
       this.queue = this.queue.filter(q => q.id !== record.id);
     } else if (record.lifecycle.status !== "running") {
@@ -485,6 +485,7 @@ export class AgentManager {
       record.execution.abortController?.abort();
     }
     record.lifecycle.status = "stopped";
+    record.lifecycle.stoppedBy = stoppedBy;
     record.lifecycle.completedAt = Date.now();
     return true;
   }
