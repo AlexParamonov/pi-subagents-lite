@@ -1,6 +1,6 @@
-import type { AgentLifecycle } from "./types.js";
+import type { AgentLifecycle, AgentStatus } from "./types.js";
 
-const NOTES: Record<string, string> = {
+const NOTES: Partial<Record<AgentStatus | "stoppedByUser" | "stoppedByAgent", string>> = {
   stoppedByUser: "STOPPED BY THE USER before completion — output is partial; the task was NOT finished",
   stoppedByAgent: "stopped before completion — output is partial; the task was NOT finished",
   aborted: "hit the turn limit before completion; output may be incomplete",
