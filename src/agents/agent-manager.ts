@@ -14,6 +14,7 @@ import {
   type AgentStatus,
   type CompactionInfo,
   type RunCallbacks,
+  type StopInitiator,
   SHORT_ID_LENGTH,
   type SpawnConfig,
   type ToolActivity,
@@ -465,7 +466,7 @@ export class AgentManager {
     );
   }
 
-  abort(id: string, stoppedBy?: "user" | "agent"): boolean {
+  abort(id: string, stoppedBy?: StopInitiator): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
 
@@ -476,7 +477,7 @@ export class AgentManager {
    * Stop an agent by aborting its session or removing it from the queue.
    * Returns true if the agent was stopped, false if it wasn't running/queued.
    */
-  private stopAgent(record: AgentRecord, stoppedBy?: "user" | "agent"): boolean {
+  private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator): boolean {
     if (record.lifecycle.status === "queued") {
       this.queue = this.queue.filter(q => q.id !== record.id);
     } else if (record.lifecycle.status !== "running") {

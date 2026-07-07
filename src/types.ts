@@ -95,6 +95,9 @@ export interface CompactionInfo {
 /** Possible agent lifecycle statuses. */
 export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
 
+/** Who initiated an agent stop: "user" via UI menu, or "agent" via StopAgent tool. */
+export type StopInitiator = "user" | "agent";
+
 /**
  * Lifecycle state: when the agent started, completed, and its current status.
  * Used by agent-manager (lifecycle control), menus (status display), widget (linger logic).
@@ -103,8 +106,7 @@ export interface AgentLifecycle {
   status: AgentStatus;
   startedAt: number;
   completedAt?: number;
-  /** Who initiated the stop: "user" (UI menu) or "agent" (StopAgent tool). */
-  stoppedBy?: "user" | "agent";
+  stoppedBy?: StopInitiator;
 }
 
 /**
