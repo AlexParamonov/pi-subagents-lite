@@ -88,6 +88,17 @@ export function buildAgentDetails(
   return details;
 }
 
+/**
+ * Result text plus status note, for display.
+ *
+ * Shared by the foreground tool result and the subagent-result nudge so both
+ * callers stay in sync on the nullish default and separator handling — they
+ * have diverged before. getStatusNote owns the leading separator.
+ */
+export function formatResultContent(record: AgentRecord): string {
+  return (record.result ?? "") + getStatusNote(record.lifecycle);
+}
+
 // ============================================================================
 // Tool execute handlers
 // ============================================================================
@@ -186,8 +197,7 @@ export async function executeAgentTool(
     return errorResult(`Agent failed: ${record.error || "unknown error"}`, details);
   }
 
-  const statusNote = getStatusNote(record.lifecycle);
-  return successResult((record.result ?? "") + statusNote, details);
+  return successResult(formatResultContent(record), details);
 }
 
 // ============================================================================

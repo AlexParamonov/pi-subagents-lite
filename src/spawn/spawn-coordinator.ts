@@ -1,11 +1,10 @@
-import { getStatusNote } from "../status-note.js";
 import { getPiInstance, getSessionCtx, getWidget } from "../shell.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord, SpawnConfig, ToolActivity } from "../types.js";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.js";
-import { buildAgentDetails } from "../agents/tool-execution.js";
+import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.js";
 
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
@@ -236,7 +235,7 @@ export class SpawnCoordinator {
       pi.sendMessage(
         {
           customType: "subagent-result",
-          content: `[Subagent "${record.display.type}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${record.lifecycle.status}]\n\n${(record.result ?? "") + getStatusNote(record.lifecycle)}`,
+          content: `[Subagent "${record.display.type}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${record.lifecycle.status}]\n\n${formatResultContent(record)}`,
           details,
           display: true,
         },
