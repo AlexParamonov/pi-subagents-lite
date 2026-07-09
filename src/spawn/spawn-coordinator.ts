@@ -122,6 +122,10 @@ export class SpawnCoordinator {
       // Foreground: await completion
       await record.execution.promise;
 
+      // Foreground tool handler reads the result inline on return — mark it
+      // consumed so the cleanup timer may evict the record once it ages out.
+      record.lifecycle.resultConsumed = true;
+
       // Clean up live view (foreground completion handled inline)
       this.liveViews.delete(agentId);
     }
@@ -244,6 +248,10 @@ export class SpawnCoordinator {
           triggerTurn: true,
         },
       );
+
+      // Full result delivered to the LLM — record is now safe for the cleanup
+      // timer to evict once it ages out.
+      record.lifecycle.resultConsumed = true;
     } catch (error) {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.

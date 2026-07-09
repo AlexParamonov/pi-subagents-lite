@@ -457,4 +457,52 @@ describe("SpawnCoordinator", () => {
       }
     });
   });
+
+  describe("result consumption", () => {
+    it("foreground spawn marks the result as consumed before returning", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "do something", description: "Test fg", graceTurns: 6, runInBackground: false,
+      });
+
+      expect(result.record.lifecycle.resultConsumed).toBe(true);
+    });
+
+    it("background nudge emission marks the result as consumed", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test bg", graceTurns: 6, runInBackground: true,
+      });
+      const record = manager.getRecord(result.agentId);
+      // Reset any sendMessage impl leaked from other tests so this test exercises
+      // the success path (default: returns without throwing).
+      mockPi.sendMessage.mockReset();
+
+      expect(record.lifecycle.resultConsumed).toBeUndefined();
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      // sendMessage delivered the full result to the LLM — record is safe to evict.
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(record.lifecycle.resultConsumed).toBe(true);
+    });
+
+    it("does not mark consumed when nudge delivery fails", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test bg", graceTurns: 6, runInBackground: true,
+      });
+      const record = manager.getRecord(result.agentId);
+
+      // sendMessage throws — LLM never received the result. The record must stay
+      // unconsumed so cleanup() keeps it around rather than wiping it silently.
+      mockPi.sendMessage.mockImplementation(() => { throw new Error("stale context"); });
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(record.lifecycle.resultConsumed).toBeUndefined();
+    });
+  });
 });
