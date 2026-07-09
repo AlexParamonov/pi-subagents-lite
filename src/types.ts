@@ -107,6 +107,12 @@ export interface AgentLifecycle {
   startedAt: number;
   completedAt?: number;
   stoppedBy?: StopInitiator;
+  /**
+   * Whether the result has been read by the LLM (foreground return or background nudge).
+   * cleanup() preserves terminal records until this is set, so a completed background
+   * agent whose nudge hasn't fired yet isn't evicted before the LLM reads the result.
+   */
+  resultConsumed?: boolean;
 }
 
 /**

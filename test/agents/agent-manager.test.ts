@@ -348,6 +348,8 @@ describe("AgentManager", () => {
 
       expect(manager.getTotalAgentCost()).toBe(0.03);
 
+      // Record is consumed (result read) — eligible for eviction when old.
+      record.lifecycle.resultConsumed = true;
       record.lifecycle.completedAt = Date.now() - 20 * 60_000;
       (manager as any).cleanup();
 
@@ -414,6 +416,55 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.04);
     });
   });
+  // ── Cleanup eviction ──
+
+  describe("cleanup", () => {
+    it("preserves unconsumed completed records older than the cutoff", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      // Result never consumed by the LLM — must not be evicted, even when old.
+      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeDefined();
+    });
+
+    it("evicts consumed completed records older than the cutoff", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      // Once the LLM has read the result, the record is safe to evict when old.
+      record.lifecycle.resultConsumed = true;
+      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeUndefined();
+    });
+
+    it("does not evict records younger than the cutoff", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+      record.lifecycle.resultConsumed = true;
+      // Just completed — well within the 10-minute retention window.
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeDefined();
+    });
+  });
+
 describe("delta estimation", () => {
   /**
    * Helper: capture the onAssistantUsage callback passed to runAgent,

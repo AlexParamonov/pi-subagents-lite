@@ -503,6 +503,10 @@ export class AgentManager {
     for (const [id, record] of this.agents) {
       if (!isTerminalStatus(record.lifecycle.status)) continue;
       if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
+      // Keep the record until the LLM has read the result (foreground return or
+      // background nudge). Otherwise a completed background agent can be wiped
+      // before its nudge is emitted.
+      if (!record.lifecycle.resultConsumed) continue;
       this.removeRecord(id, record);
     }
   }
