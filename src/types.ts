@@ -9,7 +9,7 @@ import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
 import type { SubagentType, AgentInvocation } from "./agents/types.js";
 
 /** Thinking level for agent models. */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /** Tool activity event: start/end of a tool invocation. */
 export interface ToolActivity {

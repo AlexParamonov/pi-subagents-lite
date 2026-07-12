@@ -402,7 +402,10 @@ async function initSession(
     modelRegistry: ctx.modelRegistry, model,
     tools: getToolNamesForType(type), resourceLoader: loader,
   };
-  if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
+  if (thinkingLevel) {
+    // pi-coding-agent < 0.80.6 does not include "max" in its ThinkingLevel type.
+    sessionOpts.thinkingLevel = thinkingLevel as typeof sessionOpts.thinkingLevel;
+  }
   const result = await createAgentSession(sessionOpts);
 
   // Inject max_tokens into provider request payloads.

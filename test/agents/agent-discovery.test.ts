@@ -96,7 +96,7 @@ model: anthropic/claude-haiku-4-5-20251001
 tools: read, bash, grep
 extensions: none
 skills: all
-thinking: high
+thinking: max
 max_turns: "50"
 max_tokens: "2048"
 hidden: "false"
@@ -112,7 +112,7 @@ This is the system prompt body.
     expect(result.tools).toEqual(["read", "bash", "grep"]);
     expect(result.extensions).toBe(false); // "none" → false
     expect(result.skills).toBe(true); // "all" → true
-    expect(result.thinking).toBe("high");
+    expect(result.thinking).toBe("max");
     expect(result.max_turns).toBe(50);
     expect(result.max_tokens).toBe(2048);
     expect(result.hidden).toBe(false);

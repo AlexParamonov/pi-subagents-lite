@@ -159,7 +159,7 @@ A minimal agent — just `name` and `description` — gets everything: all tools
 | `skills` | `true` \| `string[]` \| `false` | `true` | **Skill whitelist** — which skills are available (metadata in system prompt). |
 | `preload_skills` | `string[]` \| `false` | `false` | **Full skill injection** — dump complete SKILL.md content into the system prompt instead of metadata-only. |
 | `model` | string | inherit parent | Default model as `"provider/model-id"`. See [Model Resolution](#model-resolution). |
-| `thinking` | string | inherit parent | One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
+| `thinking` | string | inherit parent | One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |
 | `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer at the limit, then `max_turns + graceTurns` before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. Injected into provider request payloads. |
 | `hidden` | `true` \| `false` | `false` | `true` hides the type from the enum (LLM can't see or invoke it). Still callable by name. |
