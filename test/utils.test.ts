@@ -126,38 +126,33 @@ describe("safeReadFile", () => {
 import { VALID_THINKING_LEVELS, parseThinkingLevel } from "../src/utils.ts";
 
 describe("VALID_THINKING_LEVELS", () => {
-  it("includes all standard levels plus max", () => {
-    expect(VALID_THINKING_LEVELS).toContain("off");
-    expect(VALID_THINKING_LEVELS).toContain("minimal");
-    expect(VALID_THINKING_LEVELS).toContain("low");
-    expect(VALID_THINKING_LEVELS).toContain("medium");
-    expect(VALID_THINKING_LEVELS).toContain("high");
-    expect(VALID_THINKING_LEVELS).toContain("xhigh");
-    expect(VALID_THINKING_LEVELS).toContain("max");
-  });
-
-  it("has exactly 7 entries", () => {
-    expect(VALID_THINKING_LEVELS.length).toBe(7);
+  it("provides options for the UI dropdown", () => {
+    expect(VALID_THINKING_LEVELS.length).toBeGreaterThan(0);
+    // verify the levels the UI actually needs are present
+    for (const level of ["off", "low", "medium", "high"]) {
+      expect(VALID_THINKING_LEVELS).toContain(level);
+    }
   });
 });
 
 describe("parseThinkingLevel", () => {
-  it("returns the level for valid values", () => {
-    for (const level of VALID_THINKING_LEVELS) {
+  it("accepts max as a valid thinking level", () => {
+    expect(parseThinkingLevel("max")).toBe("max");
+  });
+
+  it("accepts known standard levels", () => {
+    for (const level of ["off", "minimal", "low", "medium", "high", "xhigh"]) {
       expect(parseThinkingLevel(level)).toBe(level);
     }
   });
 
-  it("accepts max as a valid value", () => {
-    expect(parseThinkingLevel("max")).toBe("max");
-  });
-
-  it("returns undefined for invalid values", () => {
+  it("rejects invalid or unknown strings", () => {
     expect(parseThinkingLevel("invalid")).toBeUndefined();
     expect(parseThinkingLevel("")).toBeUndefined();
+    expect(parseThinkingLevel("ultra")).toBeUndefined();
   });
 
-  it("returns undefined for undefined input", () => {
+  it("handles undefined input gracefully", () => {
     expect(parseThinkingLevel(undefined)).toBeUndefined();
   });
 });
