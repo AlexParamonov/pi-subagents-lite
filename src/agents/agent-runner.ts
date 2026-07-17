@@ -399,7 +399,7 @@ async function initSession(
     cwd, agentDir,
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager: SettingsManager.create(cwd, agentDir),
-    modelRegistry: ctx.modelRegistry, model,
+    model,
     tools: getToolNamesForType(type), resourceLoader: loader,
   };
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
