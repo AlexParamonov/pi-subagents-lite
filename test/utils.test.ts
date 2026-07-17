@@ -118,3 +118,46 @@ describe("safeReadFile", () => {
     expect(safeReadFile(getDir())).toBeUndefined();
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  VALID_THINKING_LEVELS & parseThinkingLevel                        */
+/* ------------------------------------------------------------------ */
+
+import { VALID_THINKING_LEVELS, parseThinkingLevel } from "../src/utils.ts";
+
+describe("VALID_THINKING_LEVELS", () => {
+  it("includes all standard levels plus max", () => {
+    expect(VALID_THINKING_LEVELS).toContain("off");
+    expect(VALID_THINKING_LEVELS).toContain("minimal");
+    expect(VALID_THINKING_LEVELS).toContain("low");
+    expect(VALID_THINKING_LEVELS).toContain("medium");
+    expect(VALID_THINKING_LEVELS).toContain("high");
+    expect(VALID_THINKING_LEVELS).toContain("xhigh");
+    expect(VALID_THINKING_LEVELS).toContain("max");
+  });
+
+  it("has exactly 7 entries", () => {
+    expect(VALID_THINKING_LEVELS.length).toBe(7);
+  });
+});
+
+describe("parseThinkingLevel", () => {
+  it("returns the level for valid values", () => {
+    for (const level of VALID_THINKING_LEVELS) {
+      expect(parseThinkingLevel(level)).toBe(level);
+    }
+  });
+
+  it("accepts max as a valid value", () => {
+    expect(parseThinkingLevel("max")).toBe("max");
+  });
+
+  it("returns undefined for invalid values", () => {
+    expect(parseThinkingLevel("invalid")).toBeUndefined();
+    expect(parseThinkingLevel("")).toBeUndefined();
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(parseThinkingLevel(undefined)).toBeUndefined();
+  });
+});
