@@ -118,3 +118,4 @@ describe("safeReadFile", () => {
     expect(safeReadFile(getDir())).toBeUndefined();
   });
 });
+

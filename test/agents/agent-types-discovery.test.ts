@@ -168,6 +168,26 @@ describe("discoverNewAgents — worktree-local agent types", () => {
     }
   });
 
+  it("parses thinking level max from frontmatter", async () => {
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
+      { name: "max-thinker.md", content: makeAgentMd({ name: "max-thinker", thinking: "max" }) },
+    ], "worktree-agents");
+
+    try {
+      setAgentScanDirs("", projectDir);
+      registerAgents(new Map());
+
+      await discoverNewAgents(worktreeDir);
+      const config = getAgentConfig("max-thinker");
+      expect(config).toBeDefined();
+      expect(config!.thinkingLevel).toBe("max");
+    } finally {
+      cleanupProject();
+      cleanupWt();
+    }
+  });
+
   it("returns 0 when worktreeDir is empty string (treated as omitted)", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
     const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([

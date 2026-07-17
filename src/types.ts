@@ -2,14 +2,14 @@
  * Type definitions for the subagent system.
  */
 
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
 import type { SubagentType, AgentInvocation } from "./agents/types.js";
 
-/** Thinking level for agent models. */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+/** Thinking level for agent models (sourced from @earendil-works/pi-ai). */
+export type ThinkingLevel = ModelThinkingLevel;
 
 /** Tool activity event: start/end of a tool invocation. */
 export interface ToolActivity {
