@@ -1,13 +1,19 @@
+import type { AgentRecord } from "./types.js";
+
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
 import { DEFAULT_AGENTS } from "./agents/default-agents.js";
 import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agents/agent-types.js";
 import { scanAgentFilesInDir, mergeAgents } from "./agents/agent-discovery.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
+import { ResultViewer, type ResultViewerStats } from "./ui/result-viewer.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { toolCallListener } from "./agents/tool-execution.js";
 import { registerAgentTool } from "./registration.js";
+import { buildSnapshotMarkdown } from "./prompt/context.js";
+import { getDisplayName } from "./ui/format.js";
 import {
   getPiInstance,
   getManager,
@@ -114,6 +120,118 @@ export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promis
 // Event listener setup
 // ============================================================================
 
+/**
+ * Open a ResultViewer overlay for the given agent record.
+ * Sets viewerOpen flag on the widget to prevent nav deactivation while open.
+ */
+async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Promise<void> {
+  if (!record) return; // main or queued — no-op
+  if (!record.execution?.session) return; // queued — no session yet
+  const widget = getWidget();
+  if (!widget) return;
+
+  try {
+    widget.setViewerOpen(true);
+
+    const markdown = buildSnapshotMarkdown(record.execution.session.messages);
+    const stats: ResultViewerStats = {
+      lifetimeUsage: record.stats.lifetimeUsage,
+      turnCount: record.stats.turnCount,
+      durationMs: (record.lifecycle.completedAt ?? Date.now()) - record.lifecycle.startedAt,
+      modelName: record.display.invocation?.modelName,
+    };
+
+    await ctx.ui.custom<void>(
+      (tui, theme, _kb, done) =>
+        new ResultViewer(
+          `${getDisplayName(record.display.type)} · ${record.id.slice(0, 8)}`,
+          markdown,
+          { onClose: () => done(), onRefresh: () => buildSnapshotMarkdown(record.execution.session?.messages ?? []) },
+          theme,
+          tui.terminal.rows,
+          stats,
+        ),
+      { overlay: true },
+    );
+  } finally {
+    widget.setViewerOpen(false);
+  }
+}
+
+/**
+ * Return type for terminal input listeners.
+ */
+type InputListenerResult = { consume: true } | undefined;
+
+/**
+ * Factory for the navigation + ctrl+o terminal input handler.
+ * Exposed so tests can drive the real handler with a stubbed ctx.
+ */
+export function createNavInputHandler(ctx: ExtensionContext): (data: string) => InputListenerResult {
+  return (data: string) => {
+    const widget = getWidget();
+
+    // Only fire on key press (not release).
+    if (isKeyRelease(data)) return undefined;
+
+    // Viewer overlay open — don't consume, don't deactivate.
+    if (widget?.isViewerOpen()) { return undefined; }
+
+    // Editor lost focus (dialog, menu, etc.) — deactivate.
+    if (widget && !widget.isEditorFocused()) {
+      if (widget.isNavActive()) widget.navDeactivate();
+      return undefined;
+    }
+
+    if (widget) {
+      if (!widget.isNavActive()) {
+        // ↓ + empty editor + agents exist → activate
+        const agents = getManager()?.listAgents() ?? [];
+        const hasAgents = agents.length > 0;
+        const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
+        if (matchesKey(data, "down") && hasAgents && editorEmpty) {
+          widget.navActivate();
+          return { consume: true };
+        }
+      } else {
+        // Nav active
+        if (matchesKey(data, "down")) { widget.navDown(); return { consume: true }; }
+        if (matchesKey(data, "up")) {
+          if (widget.highlightedIndex() === 0) { widget.navDeactivate(); return { consume: true }; }
+          widget.navUp();
+          return { consume: true };
+        }
+        if (matchesKey(data, "escape")) { widget.navDeactivate(); return { consume: true }; }
+        if (matchesKey(data, "enter")) {
+          const record = widget.navSelect();
+          openViewer(ctx, record).catch(err => {
+            ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
+          });
+          return { consume: true };
+        }
+        // Any other key → deactivate, pass through.
+        widget.navDeactivate();
+      }
+    }
+
+    // ctrl+o = 0x0F (15) — toggles tool expansion
+    if (data === "\u000f") {
+      // Read state after a tick to let the built-in handler process it first
+      setTimeout(() => {
+        const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
+        const expanded = ui.getToolsExpanded?.();
+        if (expanded !== undefined) {
+          // Widget render hint (tool row state), then config-gated compact toggle.
+          getWidget()?.notifyToolsExpansionChanged(expanded);
+          getStore().notifyToolsExpanded(expanded);
+        }
+      }, 0);
+    }
+
+    return undefined; // Don't consume the input
+  };
+}
+
 /** Register all pi.on() event listeners. */
 export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("tool_call", toolCallListener);
@@ -140,22 +258,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     registerAgentTool(pi);
     // Register ctrl+o listener
     if (ctx.hasUI && !unregisterTerminalInput) {
-      unregisterTerminalInput = ctx.ui.onTerminalInput((data: string) => {
-        // ctrl+o = 0x0F (15) — toggles tool expansion
-        if (data === "\u000f") {
-          // Read state after a tick to let the built-in handler process it first
-          setTimeout(() => {
-            const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
-            const expanded = ui.getToolsExpanded?.();
-            if (expanded !== undefined) {
-              // Widget render hint (tool row state), then config-gated compact toggle.
-              getWidget()?.notifyToolsExpansionChanged(expanded);
-              getStore().notifyToolsExpanded(expanded);
-            }
-          }, 0);
-        }
-        return undefined; // Don't consume the input
-      });
+      unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));
     }
     // Sync compact mode with initial tool expansion state
     getStore().notifyToolsExpanded(false);
