@@ -9,57 +9,152 @@
  *   - showRunningAgentsMenu: list running/queued/completed agents
  *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop)
  *
- * Private helper (single-consumer, co-located):
- *   - showResultViewer: show ResultViewer for agent result/error/snapshot
+ * Private helpers (single-consumer, co-located):
+ *   - showConversationViewer: show ConversationViewer for agent snapshot
+ *   - showTextViewer: show simple text viewer for result/error
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Input, SelectList, type SelectItem } from "@earendil-works/pi-tui";
+import { Input, matchesKey, SelectList, truncateToWidth, visibleWidth, type Component, type SelectItem } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
-import { ResultViewer, type ResultViewerStats } from "../result-viewer.js";
+import { ConversationViewer } from "../conversation-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
-import { buildSnapshotMarkdown } from "../../prompt/context.js";
 import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
-import { getManager, getStore } from "../../shell.js";
+import { getCoordinator, getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
 
 /**
- * Show a ResultViewer for an agent's result, error, or snapshot.
- * @param kind — "result", "error", or "snapshot" — used for the title suffix
+ * Show a ConversationViewer for an agent's session snapshot.
  */
-async function showResultViewer(
+async function showConversationViewer(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
-  kind: "result" | "error" | "snapshot",
+): Promise<void> {
+  if (!record.execution?.session) return;
+  const manager = getManager();
+  const coordinator = getCoordinator();
+
+  await ctx.ui.custom<void>(
+    (tui, theme, kb, done) =>
+      new ConversationViewer(
+        tui,
+        record.execution.session!,
+        record,
+        coordinator?.liveView(record.id),
+        theme,
+        done,
+        () => manager?.abort(record.id, "user"),
+        kb,
+        (msg: string) => manager?.steer(record.id, msg),
+      ),
+    { overlay: true },
+  );
+}
+
+/**
+ * Show a simple bordered text viewer for static result/error text.
+ * Scrollable with up/down, PgUp/PgDn, g/G. Escape-safe rendering.
+ */
+async function showTextViewer(
+  ctx: ExtensionCommandContext,
+  record: AgentRecord,
+  kind: "result" | "error",
   text: string,
 ): Promise<void> {
   const titleSuffix = kind === "result"
     ? record.id.slice(0, SHORT_ID_LENGTH)
-    : kind === "snapshot"
-    ? `snapshot · ${record.id.slice(0, SHORT_ID_LENGTH)}`
     : "Error";
-  const stats: ResultViewerStats = {
-    lifetimeUsage: record.stats.lifetimeUsage,
-    turnCount: record.stats.turnCount,
-    durationMs: (record.lifecycle.completedAt ?? Date.now()) - record.lifecycle.startedAt,
-    modelName: record.display.invocation?.modelName,
-  };
-  const refreshCallback =
-    kind === "snapshot" && record.execution.session
-      ? () => buildSnapshotMarkdown(record.execution.session!.messages)
-      : undefined;
+  const textLines = text.split("\n");
+  const displayName = getDisplayName(record.display.type);
+  const chromeLines = 5; // top border + title + sep + footer + bottom border
+  const MIN_VIEWPORT = 3;
+  const VIEWPORT_HEIGHT_PCT = 70;
+  let scrollOffset = 0;
+  let autoScroll = true;
 
   await ctx.ui.custom<void>(
-    (tui, theme, _kb, done) =>
-      new ResultViewer(
-        `${getDisplayName(record.display.type)} · ${titleSuffix}`,
-        text,
-        { onClose: () => done(), onRefresh: refreshCallback },
-        theme,
-        tui.terminal.rows,
-        stats,
-      ),
+    (tui, theme, _kb, done) => {
+      const border = theme.fg("border", "│");
+
+      const viewportHeight = () => {
+        const maxRows = Math.floor((tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
+        return Math.max(MIN_VIEWPORT, maxRows - chromeLines);
+      };
+
+      return {
+        invalidate() {},
+        render(width: number) {
+          const innerW = width - 4;
+          const out: string[] = [
+            theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`),
+          ];
+
+          // Title row: │ name · suffix pad │
+          const titleStr = theme.bold(theme.fg("accent", `${displayName} \u00b7 ${titleSuffix}`));
+          const titlePad = Math.max(0, innerW - visibleWidth(titleStr));
+          out.push(`${border} ${truncateToWidth(titleStr + " ".repeat(titlePad), innerW, "...", true)} ${border}`);
+
+          // Separator
+          out.push(`${border} ${theme.fg("dim", "\u2500".repeat(innerW))} ${border}`);
+
+          // Content with scrolling
+          const vp = viewportHeight();
+          const maxScroll = Math.max(0, textLines.length - vp);
+          if (autoScroll) scrollOffset = maxScroll;
+          const vs = Math.min(scrollOffset, maxScroll);
+          const visible = textLines.slice(vs, vs + vp);
+
+          for (let i = 0; i < vp; i++) {
+            const line = visible[i] ?? "";
+            const truncated = truncateToWidth(line, innerW, "...", true);
+            const padLen = Math.max(0, innerW - visibleWidth(truncated));
+            out.push(`${border} ${truncated}${" ".repeat(padLen)} ${border}`);
+          }
+
+          // Footer
+          const scrollPct = textLines.length <= vp
+            ? "100%"
+            : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
+          const count = theme.fg("dim", `${textLines.length} lines \u00b7 ${scrollPct}`);
+          const footerText = theme.fg("dim", "q/Esc close");
+          const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
+          out.push(`${border} ${count}${" ".repeat(gap)}${footerText} ${border}`);
+
+          out.push(theme.fg("border", `\u256f${"\u2500".repeat(width - 2)}\u2570`));
+          return out;
+        },
+        handleInput(data: string) {
+          if (matchesKey(data, "q") || matchesKey(data, "escape")) {
+            done();
+            return;
+          }
+
+          const vp = viewportHeight();
+          const maxScroll = Math.max(0, textLines.length - vp);
+
+          if (matchesKey(data, "up")) {
+            scrollOffset = Math.max(0, scrollOffset - 1);
+            autoScroll = scrollOffset >= maxScroll;
+          } else if (matchesKey(data, "down")) {
+            scrollOffset = Math.min(maxScroll, scrollOffset + 1);
+            autoScroll = scrollOffset >= maxScroll;
+          } else if (matchesKey(data, "pageUp")) {
+            scrollOffset = Math.max(0, scrollOffset - vp);
+            autoScroll = false;
+          } else if (matchesKey(data, "pageDown")) {
+            scrollOffset = Math.min(maxScroll, scrollOffset + vp);
+            autoScroll = scrollOffset >= maxScroll;
+          } else if (matchesKey(data, "home") || data === "g") {
+            scrollOffset = 0;
+            autoScroll = false;
+          } else if (data === "G") {
+            scrollOffset = maxScroll;
+            autoScroll = true;
+          }
+        },
+      };
+    },
     { overlay: true },
   );
 }
@@ -76,7 +171,7 @@ export function buildAgentActionsList(
   record: AgentRecord,
   theme: Theme,
   done: () => void,
-  setActive: (c: import("@earendil-works/pi-tui").Component) => void,
+  setActive: (c: Component) => void,
   onClose: () => void,
 ): SelectList {
   const items: SelectItem[] = [];
@@ -109,13 +204,11 @@ export function buildAgentActionsList(
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
     if (item.value === "view-snapshot") {
-      const messages = record.execution.session!.messages;
-      const markdown = buildSnapshotMarkdown(messages);
-      await showResultViewer(ctx, record, "snapshot", markdown);
+      await showConversationViewer(ctx, record);
     } else if (item.value === "view-result") {
-      await showResultViewer(ctx, record, "result", record.result!);
+      await showTextViewer(ctx, record, "result", record.result!);
     } else if (item.value === "view-error") {
-      await showResultViewer(ctx, record, "error", record.error!);
+      await showTextViewer(ctx, record, "error", record.error!);
     } else if (item.value === "steer") {
       // Swap to an inline steer input within the menu context.
       const input = new Input();

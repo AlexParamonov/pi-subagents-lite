@@ -11,7 +11,7 @@ import {
   getLifetimeTotal,
   getSessionContextPercent,
 } from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName, truncateDesc, type StatsVisibility } from "./format.js";
+import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -40,18 +40,6 @@ const WIDGET_REFRESH_INTERVAL = 80;
 /** How many extra turns errors/aborted agents linger (completed agents clear after 1 turn). */
 const ERROR_LINGER_TURNS = 2;
 
-/** Default activity text when no tools are active and no response text. */
-const THINKING_TEXT = "thinking…";
-
-/** Tool name → human-readable action for activity descriptions. */
-const TOOL_DISPLAY: Record<string, string> = {
-  read: "reading",
-  bash: "running command",
-  edit: "editing",
-  write: "writing",
-  grep: "searching",
-  find: "finding files",
-};
 
 // ---- Types ----
 
@@ -95,40 +83,6 @@ function wrapInDim(theme: Theme, text: string): string {
   return dimOn + text.replaceAll(dimOff, dimOff + dimOn) + dimOff;
 }
 
-/** Truncate text to a single line, max `len` chars. */
-function truncateLine(text: string, len = 60): string {
-  const line = text.split("\n").find(l => l.trim())?.trim() ?? "";
-  if (line.length <= len) return line;
-  return line.slice(0, len) + "…";
-}
-
-/** Build a human-readable activity string from currently-running tools or response text. */
-function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
-  if (activeTools.size > 0) {
-    const groups = new Map<string, number>();
-    for (const toolName of activeTools.values()) {
-      const action = TOOL_DISPLAY[toolName] ?? toolName;
-      groups.set(action, (groups.get(action) ?? 0) + 1);
-    }
-
-    const parts: string[] = [];
-    for (const [action, count] of groups) {
-      if (count > 1) {
-        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
-      } else {
-        parts.push(action);
-      }
-    }
-    return parts.join(", ") + "…";
-  }
-
-  // No tools active — show truncated response text if available
-  if (responseText && responseText.trim().length > 0) {
-    return truncateLine(responseText);
-  }
-
-  return THINKING_TEXT;
-}
 
 /** Build the worktree/output continuation line parts for an agent record. */
 function buildWorktreeOutputParts(a: AgentRecord): string[] {
@@ -498,7 +452,7 @@ export class AgentWidget {
       const name = getDisplayName(a.display.type);
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
-      const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : THINKING_TEXT;
+      const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description

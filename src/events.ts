@@ -8,12 +8,10 @@ import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agents/ag
 import { scanAgentFilesInDir, mergeAgents } from "./agents/agent-discovery.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
-import { ResultViewer, type ResultViewerStats } from "./ui/result-viewer.js";
+import { ConversationViewer } from "./ui/conversation-viewer.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { toolCallListener } from "./agents/tool-execution.js";
 import { registerAgentTool } from "./registration.js";
-import { buildSnapshotMarkdown } from "./prompt/context.js";
-import { getDisplayName } from "./ui/format.js";
 import {
   getPiInstance,
   getManager,
@@ -121,35 +119,32 @@ export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promis
 // ============================================================================
 
 /**
- * Open a ResultViewer overlay for the given agent record.
+ * Open a ConversationViewer overlay for the given agent record.
  * Sets viewerOpen flag on the widget to prevent nav deactivation while open.
  */
 async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Promise<void> {
-  if (!record) return; // main or queued — no-op
-  if (!record.execution?.session) return; // queued — no session yet
+  if (!record) return;
+  if (!record.execution?.session) return;
   const widget = getWidget();
   if (!widget) return;
+  const manager = getManager();
+  const coordinator = getCoordinator();
 
   try {
     widget.setViewerOpen(true);
 
-    const markdown = buildSnapshotMarkdown(record.execution.session.messages);
-    const stats: ResultViewerStats = {
-      lifetimeUsage: record.stats.lifetimeUsage,
-      turnCount: record.stats.turnCount,
-      durationMs: (record.lifecycle.completedAt ?? Date.now()) - record.lifecycle.startedAt,
-      modelName: record.display.invocation?.modelName,
-    };
-
     await ctx.ui.custom<void>(
-      (tui, theme, _kb, done) =>
-        new ResultViewer(
-          `${getDisplayName(record.display.type)} · ${record.id.slice(0, 8)}`,
-          markdown,
-          { onClose: () => done(), onRefresh: () => buildSnapshotMarkdown(record.execution.session?.messages ?? []) },
+      (tui, theme, kb, done) =>
+        new ConversationViewer(
+          tui,
+          record.execution.session!,
+          record,
+          coordinator?.liveView(record.id),
           theme,
-          tui.terminal.rows,
-          stats,
+          done,
+          () => manager?.abort(record.id, "user"),
+          kb,
+          (msg: string) => manager?.steer(record.id, msg),
         ),
       { overlay: true },
     );

@@ -9,7 +9,7 @@
  */
 
 import { getConfig } from "../agents/agent-types.js";
-import type { SubagentType } from "../agents/types.js";
+import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 
@@ -36,7 +36,7 @@ const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 200;
  *   "↑12k↓8k ↻ 2"                 — compactions only (e.g. right after compact)
  *   "↑12k↓8k 45% ↻ 2"             — both
  */
-function formatSessionTokens(
+export function formatSessionTokens(
   inputTokens: number,
   outputTokens: number,
   percent: number | null,
@@ -208,4 +208,73 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       return ` ${JSON.stringify(rawArgs)}`;
     }
   }
+}
+
+/** Tool name to human-readable action for activity descriptions. */
+const TOOL_DISPLAY: Record<string, string> = {
+  read: "reading",
+  bash: "running command",
+  edit: "editing",
+  write: "writing",
+  grep: "searching",
+  rg: "searching",
+  find: "searching",
+};
+
+/** Truncate text to a single line, max len chars. */
+function truncateLine(text: string, len = 60): string {
+  const line = text.split("\n").find((l) => l.trim())?.trim() ?? "";
+  if (line.length <= len) return line;
+  return line.slice(0, len) + "\u2026";
+}
+
+/** Build a human-readable activity string from currently-running tools or response text. */
+export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+  if (activeTools.size > 0) {
+    const groups = new Map<string, number>();
+    for (const toolName of activeTools.values()) {
+      const action = TOOL_DISPLAY[toolName] ?? toolName;
+      groups.set(action, (groups.get(action) ?? 0) + 1);
+    }
+
+    const parts: string[] = [];
+    for (const [action, count] of groups) {
+      if (count > 1) {
+        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
+      } else {
+        parts.push(action);
+      }
+    }
+    return parts.join(", ") + "\u2026";
+  }
+
+  // No tools active — show truncated response text if available
+  if (responseText && responseText.trim().length > 0) {
+    return truncateLine(responseText);
+  }
+
+  return "thinking\u2026";
+}
+
+/** Apply foreground styling while restoring it after nested ANSI resets. */
+export function fgPreservingNestedStyles(theme: Theme, color: string, text: string): string {
+  const styledEmpty = theme.fg(color, "");
+  const styleStart = styledEmpty.replace(/\u001b\[(?:0|39)m/g, "");
+  return theme.fg(color, text.replace(/\u001b\[(?:0|39)m/g, (reset) => `${reset}${styleStart}`));
+}
+
+/** Format duration from start/completed timestamps. */
+export function formatDuration(startedAt: number, completedAt?: number): string {
+  if (completedAt) return formatMs(completedAt - startedAt);
+  return `${formatMs(Date.now() - startedAt)} (running)`;
+}
+
+/** Build invocation display tags from an AgentInvocation. */
+export function buildInvocationTags(invocation: AgentInvocation | undefined): { modelName?: string; tags: string[] } {
+  const tags: string[] = [];
+  if (!invocation) return { tags };
+  if (invocation.thinkingLevel) tags.push(`thinking: ${invocation.thinkingLevel}`);
+  if (invocation.runInBackground) tags.push("background");
+  if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
+  return { modelName: invocation.modelName, tags };
 }
