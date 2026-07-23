@@ -55,6 +55,8 @@ export class ConversationViewer implements Component {
   private keys: ViewerKeys;
   /** Steering composer -- present while the user is typing a message to the agent. */
   private composer: Input | undefined;
+  /** Accumulated thinking text from streaming deltas, cleared on thinking_end. */
+  private _streamingThinking = "";
 
   constructor(
     private tui: TUI,
@@ -84,9 +86,6 @@ export class ConversationViewer implements Component {
           this._streamingThinking = "";
         }
       }
-      this.tui.requestRender();
-    });
-      if (this.closed) return;
       this.tui.requestRender();
     });
   }
@@ -445,6 +444,15 @@ export class ConversationViewer implements Component {
       } else {
         continue;
       }
+    }
+
+    // Streaming thinking text — rendered live as deltas arrive
+    if (this._streamingThinking.trim()) {
+      const md = new Markdown(this._streamingThinking.trim(), 1, 0, makeMarkdownTheme(th), {
+        color: (text: string) => th.fg("thinkingText", text),
+        italic: true,
+      });
+      lines.push(...md.render(width));
     }
 
     // Streaming indicator for running agents
