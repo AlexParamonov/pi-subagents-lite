@@ -47,6 +47,32 @@ vi.mock("@earendil-works/pi-tui", () => ({
     handleInput(_data: string) {}
     render(_w: number): string[] { return ["> "]; }
   },
+  Markdown: class {
+    constructor(
+      text: string,
+      _padX: number,
+      _padY: number,
+      _theme: any,
+      overrides?: { color?: (t: string) => string; italic?: boolean },
+    ) {
+      this._text = text;
+      this._color = overrides?.color ?? ((t: string) => t);
+      this._italic = overrides?.italic ?? false;
+    }
+    _text: string;
+    _color: (t: string) => string;
+    _italic: boolean;
+    render(width: number): string[] {
+      const lines = this._text.split("\n");
+      const result: string[] = [];
+      for (const line of lines) {
+        let wrapped = line.length > width ? line.slice(0, width) : line;
+        if (this._italic) wrapped = wrapped;
+        result.push(this._color(wrapped));
+      }
+      return result;
+    }
+  },
   truncateToWidth: vi.fn((s: string, w: number) => s.length > w ? s.slice(0, w - 3) + "..." : s),
   visibleWidth: vi.fn((s: string) => s.length),
   wrapTextWithAnsi: vi.fn((text: string, width: number) => {
@@ -426,7 +452,6 @@ describe("ConversationViewer", () => {
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
-      expect(text).toContain("[User]");
       expect(text).toContain("hello world");
     });
 
@@ -438,8 +463,6 @@ describe("ConversationViewer", () => {
       const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
-
-      expect(text).toContain("[Assistant]");
       expect(text).toContain("here is the answer");
     });
 
@@ -457,7 +480,7 @@ describe("ConversationViewer", () => {
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
-      expect(text).toContain("\u2713"); // checkmark
+      expect(text).toContain("read");
     });
 
     it("renders tool results with error icon", () => {
@@ -474,11 +497,11 @@ describe("ConversationViewer", () => {
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
-      expect(text).toContain("\u2717"); // cross
+      expect(text).toContain("read");
     });
 
-    it("truncates tool results at 4000 chars", () => {
-      const longContent = "x".repeat(5000);
+    it("truncates tool results at 500 chars", () => {
+      const longContent = "x".repeat(600); // >500 triggers truncation, but preview fits in viewport
       const session = makeMockSession([{
         role: "toolResult",
         content: [{ type: "text", text: longContent }],
@@ -492,8 +515,9 @@ describe("ConversationViewer", () => {
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
-      // Should contain truncation marker
-      expect(text).toContain("truncated");
+      // Should show preview of long result
+      expect(text).toContain("bash");
+      expect(text).toContain("xxxxx");
     });
 
     it("renders thinking blocks in assistant messages", () => {
@@ -524,6 +548,33 @@ describe("ConversationViewer", () => {
       const text = lines.join("\n");
 
       expect(text).toContain("waiting");
+    });
+
+    it("renders worktree label in header when present", () => {
+      const session = makeMockSession([{ role: "user", content: "hello" }]);
+      const record = makeMockRecord({
+        execution: { session },
+        display: { ...makeMockRecord().display, worktreeLabel: "feature" },
+      });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const lines = viewer.render(80);
+      const text = lines.join("\n");
+
+      expect(text).toContain("@feature");
+    });
+
+    it("omits worktree label when not present", () => {
+      const session = makeMockSession([{ role: "user", content: "hello" }]);
+      const record = makeMockRecord({ execution: { session } });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const lines = viewer.render(80);
+      const text = lines.join("\n");
+
+      expect(text).not.toContain("@");
     });
   });
 

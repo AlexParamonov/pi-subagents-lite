@@ -7,11 +7,12 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { type Component, Input, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
+import { makeMarkdownTheme } from "./markdown-theme.js";
 import {
   buildInvocationTags,
   describeActivity,
@@ -19,6 +20,7 @@ import {
   formatDuration,
   formatSessionTokens,
   getDisplayName,
+  summarizeToolArgs,
 } from "./format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
@@ -27,9 +29,9 @@ import type { LiveView } from "../spawn/spawn-coordinator.js";
 const CHROME_LINES_BASE = 6;
 const MIN_VIEWPORT = 3;
 /** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
-const VIEWPORT_HEIGHT_PCT = 70;
+export const VIEWPORT_HEIGHT_PCT = 70;
 /** Maximum characters for a single tool result before truncation. */
-const TOOL_RESULT_MAX_CHARS = 4000;
+const TOOL_RESULT_MAX_CHARS = 500;
 
 /** Header status icon and its theme color, per lifecycle status. */
 const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
@@ -69,7 +71,21 @@ export class ConversationViewer implements Component {
     private onSteer?: (message: string) => void,
   ) {
     this.keys = createViewerKeys(keybindings);
-    this.unsubscribe = session.subscribe(() => {
+    this.unsubscribe = session.subscribe((event) => {
+      if (this.closed) return;
+      // Accumulate streaming thinking text for live display
+      if (event?.type === "message_update") {
+        const me = event.assistantMessageEvent;
+        if (me?.type === "thinking_start") {
+          this._streamingThinking = "";
+        } else if (me?.type === "thinking_delta") {
+          this._streamingThinking += me.delta;
+        } else if (me?.type === "thinking_end") {
+          this._streamingThinking = "";
+        }
+      }
+      this.tui.requestRender();
+    });
       if (this.closed) return;
       this.tui.requestRender();
     });
@@ -188,8 +204,10 @@ export class ConversationViewer implements Component {
       ));
     }
 
+    const worktreeTag = this.record.display.worktreeLabel ? th.fg("muted", ` @${this.record.display.worktreeLabel}`) : "";
+
     lines.push(row(
-      `${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`,
+      `${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`,
     ));
     const invocationLine = this.invocationLine();
     if (invocationLine) lines.push(row(invocationLine));
@@ -319,65 +337,114 @@ export class ConversationViewer implements Component {
       return lines;
     }
 
-    let needsSeparator = false;
+    // First pass: collect tool results by toolCallId
+    const toolResults = new Map<string, { content: unknown[]; isError: boolean; toolName?: string }>();
+    for (const msg of messages) {
+      if (msg.role === "toolResult" && msg.toolCallId) {
+        toolResults.set(msg.toolCallId, msg);
+      }
+    }
+
+    // Track which tool results have been rendered
+    const renderedToolResults = new Set<string>();
+
+    // Second pass: render messages
     for (const msg of messages) {
       if (msg.role === "user") {
         const text = typeof msg.content === "string"
           ? msg.content
           : extractText(msg.content);
         if (!text.trim()) continue;
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        lines.push(th.fg("accent", "[User]"));
-        for (const line of wrapTextWithAnsi(text.trim(), width)) {
-          lines.push(line);
+        const bgLines = wrapTextWithAnsi(text.trim(), width - 2);
+        lines.push(th.bg("userMessageBg", " ".repeat(width)));
+        for (const line of bgLines) {
+          const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
+          lines.push(th.bg("userMessageBg", th.fg("userMessageText", ` ${line}${" ".repeat(padNeeded)} `)));
         }
+        lines.push(th.bg("userMessageBg", " ".repeat(width)));
       } else if (msg.role === "assistant") {
         const textParts: string[] = [];
         const thinkingParts: string[] = [];
-        const toolCalls: Array<{ name: string; args?: Record<string, unknown> }> = [];
+        const toolCalls: Array<{ id?: string; name: string; args?: Record<string, unknown> }> = [];
         for (const c of msg.content) {
           if (c.type === "text" && c.text) textParts.push(c.text);
           else if (c.type === "thinking" && c.thinking) thinkingParts.push(c.thinking);
           else if (c.type === "toolCall") {
-            toolCalls.push({ name: c.name, args: c.arguments });
+            toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
           }
         }
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        lines.push(th.bold("[Assistant]"));
-        // Thinking blocks (dimmed)
+        // Spacer before assistant content, matching Pi's AssistantMessageComponent
+        if (thinkingParts.length > 0 || textParts.length > 0) lines.push("");
+        // Thinking blocks — render via Markdown with italic, matching Pi's assistant-message.ts
         if (thinkingParts.length > 0) {
-          for (const line of wrapTextWithAnsi(thinkingParts.join("\n").trim(), width)) {
-            lines.push(th.fg("dim", `  ↝ ${line}`));
-          }
+          const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
+            color: (text: string) => th.fg("thinkingText", text),
+            italic: true,
+          });
+          lines.push(...md.render(width));
+          // Spacer between thinking and following text, matching Pi's hasVisibleContentAfter
+          if (textParts.length > 0) lines.push("");
         }
+        // Assistant text — paddingX=1, paddingY=0 to avoid extra spacing before tools
         if (textParts.length > 0) {
-          for (const line of wrapTextWithAnsi(textParts.join("\n").trim(), width)) {
-            lines.push(line);
-          }
+          const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
+          lines.push(...md.render(width));
         }
-        // Tool calls with summarized arguments
+        // Tool calls — no icons, bold name, matching Pi's ToolExecutionComponent
         for (const tc of toolCalls) {
-          const argsSummary = tc.args ? summarizeToolArgsLite(tc.name, tc.args) : "";
-          const label = argsSummary ? `  [Tool: ${tc.name}${argsSummary}]` : `  [Tool: ${tc.name}]`;
-          lines.push(truncateToWidth(th.fg("muted", label), width));
+          // Spacer before each tool, matching Pi's Spacer(1)
+          lines.push("");
+          const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
+          const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
+          const result = tc.id ? toolResults.get(tc.id) : undefined;
+          const bg = result
+            ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
+            : "toolPendingBg";
+
+          // Tool call line: bold name with args, no icon
+          const toolLine = ` ${th.bold(label)} `;
+          const padNeeded = Math.max(0, width - visibleWidth(toolLine));
+          lines.push(th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(padNeeded)}`)));
+
+          if (result) {
+            renderedToolResults.add(tc.id!);
+            const resultText = extractText(result.content);
+            if (resultText.trim()) {
+              if (resultText.length > TOOL_RESULT_MAX_CHARS) {
+                const firstLine = resultText.split("\n")[0] ?? "";
+                if (firstLine.trim()) {
+                  const preview = firstLine.length > width - 4 ? firstLine.slice(0, width - 5) + "…" : firstLine;
+                  const previewPad = Math.max(0, width - visibleWidth(`  ${preview} `));
+                  lines.push(th.bg(bg, th.fg("toolOutput", `  ${preview}${" ".repeat(previewPad)}`)));
+                }
+              } else {
+                for (const line of wrapTextWithAnsi(resultText.trim(), width - 4)) {
+                  const linePad = Math.max(0, width - visibleWidth(`  ${line} `));
+                  lines.push(th.bg(bg, th.fg("toolOutput", `  ${line}${" ".repeat(linePad)}`)));
+                }
+              }
+            }
+          }
         }
       } else if (msg.role === "toolResult") {
+        // Skip if already rendered with its tool call
+        if (msg.toolCallId && renderedToolResults.has(msg.toolCallId)) continue;
+        // Standalone tool result (orphaned) — Spacer + bold name + result
+        lines.push("");
         const text = extractText(msg.content);
-        const truncated = text.length > TOOL_RESULT_MAX_CHARS
-          ? text.slice(0, TOOL_RESULT_MAX_CHARS) + "... (truncated)"
-          : text;
-        if (!truncated.trim()) continue;
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        const icon = msg.isError ? "✗" : "✓";
+        if (!text.trim()) continue;
+        const bg = msg.isError ? "toolErrorBg" : "toolSuccessBg";
         const name = msg.toolName ?? "tool";
-        lines.push(th.fg(msg.isError ? "error" : "success", `[Result ${icon}] ${name.charAt(0).toUpperCase() + name.slice(1)}`));
-        for (const line of wrapTextWithAnsi(truncated.trim(), width)) {
-          lines.push(th.fg("dim", line));
+        const toolLine = ` ${th.bold(name)} `;
+        const titlePad = Math.max(0, width - visibleWidth(toolLine));
+        lines.push(th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`)));
+        for (const line of wrapTextWithAnsi(text.trim(), width - 4)) {
+          const linePad = Math.max(0, width - visibleWidth(`  ${line} `));
+          lines.push(th.bg(bg, th.fg("toolOutput", `  ${line}${" ".repeat(linePad)}`)));
         }
       } else {
         continue;
       }
-      needsSeparator = true;
     }
 
     // Streaming indicator for running agents
@@ -388,19 +455,5 @@ export class ConversationViewer implements Component {
     }
 
     return lines.map((l) => truncateToWidth(l, width));
-  }
-}
-
-/** Compact tool arg summary for the live overlay. Bare format (no parens, no JSON) to save space in the bordered viewport. Separate from summarizeToolArgs in format.ts which produces parenthesized, JSON-quoted output for markdown transcripts. */
-function summarizeToolArgsLite(name: string, args: Record<string, unknown>): string {
-  const s = (v: unknown): string => typeof v === "string" ? v.slice(0, 80) : String(v ?? "");
-  switch (name) {
-    case "read": return ` ${s(args.path)}`;
-    case "write": return ` ${s(args.file_path)} (${typeof args.content === "string" ? args.content.length : 0} chars)`;
-    case "edit": return ` ${s(args.path)} (${Array.isArray(args.edits) ? args.edits.length : 0} edits)`;
-    case "bash": return ` ${s(args.command).slice(0, 60)}`;
-    case "grep":
-    case "rg": return ` ${s(args.pattern)} ${s(args.path)}`;
-    default: return "";
   }
 }
