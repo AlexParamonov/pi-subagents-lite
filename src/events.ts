@@ -183,35 +183,35 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
       return undefined;
     }
 
-    if (!widget) {
-      // Fall through to ctrl+o handling below.
-    } else if (!widget.isNavActive()) {
-      // ↓ + empty editor + agents exist → activate
-      const agents = getManager()?.listAgents() ?? [];
-      const hasAgents = agents.length > 0;
-      const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
-      if (matchesKey(data, "down") && hasAgents && editorEmpty) {
-        widget.navActivate();
-        return { consume: true };
+    if (widget) {
+      if (!widget.isNavActive()) {
+        // ↓ + empty editor + agents exist → activate
+        const agents = getManager()?.listAgents() ?? [];
+        const hasAgents = agents.length > 0;
+        const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
+        if (matchesKey(data, "down") && hasAgents && editorEmpty) {
+          widget.navActivate();
+          return { consume: true };
+        }
+      } else {
+        // Nav active
+        if (matchesKey(data, "down")) { widget.navDown(); return { consume: true }; }
+        if (matchesKey(data, "up")) {
+          if (widget.highlightedIndex() === 0) { widget.navDeactivate(); return { consume: true }; }
+          widget.navUp();
+          return { consume: true };
+        }
+        if (matchesKey(data, "escape")) { widget.navDeactivate(); return { consume: true }; }
+        if (matchesKey(data, "enter")) {
+          const record = widget.navSelect();
+          openViewer(ctx, record).catch(err => {
+            ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
+          });
+          return { consume: true };
+        }
+        // Any other key → deactivate, pass through.
+        widget.navDeactivate();
       }
-    } else {
-      // Nav active
-      if (matchesKey(data, "down")) { widget.navDown(); return { consume: true }; }
-      if (matchesKey(data, "up")) {
-        if (widget.highlightedIndex() === 0) { widget.navDeactivate(); return { consume: true }; }
-        widget.navUp();
-        return { consume: true };
-      }
-      if (matchesKey(data, "escape")) { widget.navDeactivate(); return { consume: true }; }
-      if (matchesKey(data, "enter")) {
-        const record = widget.navSelect();
-        openViewer(ctx, record).catch(err => {
-          ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
-        });
-        return { consume: true };
-      }
-      // Any other key → deactivate, pass through.
-      widget.navDeactivate();
     }
 
     // ctrl+o = 0x0F (15) — toggles tool expansion
