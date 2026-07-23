@@ -315,18 +315,6 @@ export class ConversationViewer implements Component {
       return lines;
     }
 
-    // Build toolCallId -> arguments map from assistant messages
-    const argsMap = new Map<string, Record<string, unknown>>();
-    for (const msg of messages) {
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === "toolCall" && block.id && block.arguments) {
-            argsMap.set(block.id, block.arguments);
-          }
-        }
-      }
-    }
-
     let needsSeparator = false;
     for (const msg of messages) {
       if (msg.role === "user") {
@@ -347,9 +335,7 @@ export class ConversationViewer implements Component {
           if (c.type === "text" && c.text) textParts.push(c.text);
           else if (c.type === "thinking" && c.thinking) thinkingParts.push(c.thinking);
           else if (c.type === "toolCall") {
-            const name = (c as any).name ?? (c as any).toolName ?? "unknown";
-            const args = (c as any).arguments ?? undefined;
-            toolCalls.push({ name, args });
+            toolCalls.push({ name: c.name, args: c.arguments });
           }
         }
         if (needsSeparator) lines.push(th.fg("dim", "───"));
