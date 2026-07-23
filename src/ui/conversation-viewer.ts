@@ -8,7 +8,7 @@
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../types.js";
+import type { AgentRecord, AgentStatus } from "../types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
@@ -30,6 +30,17 @@ const MIN_VIEWPORT = 3;
 export const VIEWPORT_HEIGHT_PCT = 70;
 /** Maximum characters for a single tool result before truncation. */
 const TOOL_RESULT_MAX_CHARS = 4000;
+
+/** Header status icon and its theme color, per lifecycle status. */
+const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
+  running: { icon: "●", color: "accent" },
+  completed: { icon: "✓", color: "success" },
+  turn_limited: { icon: "✓", color: "warning" },
+  error: { icon: "✗", color: "error" },
+  aborted: { icon: "✗", color: "error" },
+  stopped: { icon: "✗", color: "error" },
+  queued: { icon: "○", color: "dim" },
+};
 
 export class ConversationViewer implements Component {
   private scrollOffset = 0;
@@ -157,15 +168,8 @@ export class ConversationViewer implements Component {
     const name = getDisplayName(this.record.display.type);
 
     const status = this.record.lifecycle.status;
-    const statusIcon = status === "running"
-      ? th.fg("accent", "●")
-      : status === "completed"
-        ? th.fg("success", "✓")
-        : status === "turn_limited"
-          ? th.fg("warning", "✓")
-          : ["error", "aborted", "stopped"].includes(status)
-            ? th.fg("error", "✗")
-            : th.fg("dim", "○");
+    const { icon, color } = STATUS_ICON[status];
+    const statusIcon = th.fg(color, icon);
     const duration = formatDuration(this.record.lifecycle.startedAt, this.record.lifecycle.completedAt);
 
     // Build header stats from record.stats (lite doesn't have activity.lifetimeUsage)
