@@ -8,7 +8,7 @@ import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agents/ag
 import { scanAgentFilesInDir, mergeAgents } from "./agents/agent-discovery.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
-import { ConversationViewer } from "./ui/conversation-viewer.js";
+import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./ui/conversation-viewer.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { toolCallListener } from "./agents/tool-execution.js";
 import { registerAgentTool } from "./registration.js";
@@ -146,7 +146,7 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
           kb,
           (msg: string) => manager?.steer(record.id, msg),
         ),
-      { overlay: true },
+      { overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` } },
     );
   } finally {
     widget.setViewerOpen(false);
