@@ -14,7 +14,6 @@ import { toolCallListener } from "./agents/tool-execution.js";
 import { registerAgentTool } from "./registration.js";
 import { buildSnapshotMarkdown } from "./prompt/context.js";
 import { getDisplayName } from "./ui/format.js";
-import type { Theme } from "./ui/types.js";
 import {
   getPiInstance,
   getManager,
