@@ -46,6 +46,7 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  readonly widgetNavHint: boolean;
   readonly widgetDescLengthFull: number;
   readonly widgetDescLengthCompact: number;
   /** System prompt mode: replace (default), inherit parent, or custom file. */
@@ -120,6 +121,7 @@ export class ConfigStore {
       widgetMaxLinesCompact,
       widgetCompact: a.widgetCompact === true,
       widgetShortcut: a.widgetShortcut === true,
+      widgetNavHint: a.widgetNavHint !== false,
       widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
       systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string) ? (a.systemPromptMode as SystemPromptMode) : "replace",
@@ -314,6 +316,11 @@ export class ConfigStore {
         this.config.agent.widgetShortcut = enabled;
         this.persist();
       },
+      setNavHint: (enabled: boolean): void => {
+        this.config.agent.widgetNavHint = enabled;
+        this.persist();
+        this.syncWidgetSettings();
+      },
     },
     concurrency: {
       setDefault: (n: number): void => {
@@ -436,6 +443,7 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
     w.setDescLengthFull(a.widgetDescLengthFull);
     w.setDescLengthCompact(a.widgetDescLengthCompact);
+    w.setNavHint(a.widgetNavHint);
   }
 
   /** Push stats visibility flags to the widget. */

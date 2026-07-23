@@ -59,6 +59,10 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
+      case "navHint":
+        store.mutate.widget.setNavHint(newValue === "ON");
+        ctx.ui.notify(`Navigation hint ${newValue}`, "info");
+        break;
     }
   };
 
@@ -135,6 +139,13 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+      },
+      {
+        id: "navHint",
+        label: "Navigation hint",
+        currentValue: store.agent.widgetNavHint ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Show navigation tip (↓ to navigate) in the widget heading.",
       },
       {
         id: "thinkingBuffer",

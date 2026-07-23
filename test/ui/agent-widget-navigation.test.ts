@@ -3,7 +3,7 @@
  *
  * Covers:
  *   - Navigation state machine (activate, up, down, select, deactivate)
- *   - Roster building (main, finished, running, queued)
+ *   - Roster building (finished, running, queued)
  *   - Rendering with `>` marker and heading hint text
  *   - Queued agent expansion during navigation
  *   - Editor focus detection
@@ -151,8 +151,8 @@ describe("navigation state machine", () => {
 
       widget.navActivate();
       expect(widget.isNavActive()).toBe(true);
-      // Index 0 = main, index 1 = first finished agent
-      expect(widget.highlightedIndex()).toBe(1);
+      // Index 0 = first finished agent
+      expect(widget.highlightedIndex()).toBe(0);
     });
 
     it("is idempotent", () => {
@@ -171,21 +171,21 @@ describe("navigation state machine", () => {
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [finished, running];
 
-      widget.navActivate(); // highlights index 1 (first finished)
-      expect(widget.highlightedIndex()).toBe(1);
+      widget.navActivate(); // highlights index 0 (first finished)
+      expect(widget.highlightedIndex()).toBe(0);
 
       widget.navDown(); // moves to running agent
-      expect(widget.highlightedIndex()).toBe(2);
+      expect(widget.highlightedIndex()).toBe(1);
     });
 
-    it("stops at the last agent (no wrap)", () => {
+    it("wraps from last agent to first", () => {
       const finished = makeFinishedAgent("f1");
       widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
 
-      widget.navActivate(); // index 1
-      widget.navDown(); // should stay at 1 (last item)
-      expect(widget.highlightedIndex()).toBe(1);
+      widget.navActivate(); // index 0
+      widget.navDown(); // wraps to first (index 0)
+      expect(widget.highlightedIndex()).toBe(0);
     });
   });
 
@@ -198,32 +198,32 @@ describe("navigation state machine", () => {
       (manager as any).listAgents = () => [finished, running];
 
       widget.navActivate();
-      widget.navDown(); // index 2 (running)
-      expect(widget.highlightedIndex()).toBe(2);
+      widget.navDown(); // index 1 (running)
+      expect(widget.highlightedIndex()).toBe(1);
 
       widget.navUp(); // back to finished
-      expect(widget.highlightedIndex()).toBe(1);
+      expect(widget.highlightedIndex()).toBe(0);
     });
 
-    it("deactivates when at index 0 (main)", () => {
+    it("wraps from first to last agent", () => {
       const finished = makeFinishedAgent("f1");
       widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
 
-      widget.navActivate(); // index 1
-      widget.navUp(); // to index 0 (main)
-      widget.navUp(); // past main -> deactivate
-      expect(widget.isNavActive()).toBe(false);
+      widget.navActivate(); // index 0
+      widget.navUp(); // wraps to last agent (index 1)
+      widget.navUp(); // to first agent (index 0)
+      expect(widget.highlightedIndex()).toBe(0);
+      expect(widget.isNavActive()).toBe(true);
     });
   });
 
   describe("navSelect", () => {
-    it("returns null when highlighting main (index 0)", () => {
+    it("returns the first agent when no agents beyond the highlighted one", () => {
       widget.navActivate();
       expect(widget.highlightedIndex()).toBe(0);
       expect(widget.navSelect()).toBeNull();
     });
-
     it("returns the agent record when highlighting an agent", () => {
       const finished = makeFinishedAgent("f1");
       widget.markFinished("f1");
@@ -235,7 +235,7 @@ describe("navigation state machine", () => {
 
     it("returns null when no agent at highlighted index", () => {
       widget.navActivate();
-      // No agents, so index 0 = main only
+      // No agents, so roster is empty
       expect(widget.navSelect()).toBeNull();
     });
   });
@@ -288,7 +288,7 @@ describe("navigation roster", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
-  it("includes main at index 0, then finished, running, queued", () => {
+  it("includes finished at index 0, then running, queued", () => {
     const finished = makeFinishedAgent("f1");
     widget.markFinished("f1");
     const running = makeRunningAgent("r1");
@@ -298,12 +298,12 @@ describe("navigation roster", () => {
 
     widget.navActivate();
 
-    // Roster: main(0), finished(1), running(2), queued(3)
-    expect(widget.highlightedIndex()).toBe(1); // first agent after main
+    // Roster: finished(0), running(1), queued(2)
+    expect(widget.highlightedIndex()).toBe(0); // first agent
     widget.navDown(); // running
-    expect(widget.highlightedIndex()).toBe(2);
+    expect(widget.highlightedIndex()).toBe(1);
     widget.navDown(); // queued
-    expect(widget.highlightedIndex()).toBe(3);
+    expect(widget.highlightedIndex()).toBe(2);
   });
 
   it("queued agents expand to individual rows during navigation", () => {
@@ -312,10 +312,10 @@ describe("navigation roster", () => {
     (manager as any).listAgents = () => [q1, q2];
 
     widget.navActivate();
-    // Roster: main(0), q1(1), q2(2)
-    expect(widget.highlightedIndex()).toBe(1);
+    // Roster: q1(0), q2(1)
+    expect(widget.highlightedIndex()).toBe(0);
     widget.navDown();
-    expect(widget.highlightedIndex()).toBe(2);
+    expect(widget.highlightedIndex()).toBe(1);
   });
 
   it("queued agents aggregate when navigation is inactive", () => {
@@ -368,19 +368,19 @@ describe("navigation rendering", () => {
   });
 
   describe("highlight marker", () => {
-    it("renders '>' marker on the highlighted running agent", () => {
+    it("renders '→' marker on the highlighted running agent", () => {
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [running];
       widget.navActivate(); // highlights index 1 = the running agent
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // The agent line (after heading) should contain '>'
+      // The agent line (after heading) should contain '→'
       const agentLine = lines[1];
-      expect(agentLine).toContain(">");
+      expect(agentLine).toContain("→");
     });
 
-    it("renders '>' marker on the highlighted finished agent", () => {
+    it("renders '→' marker on the highlighted finished agent", () => {
       const finished = makeFinishedAgent("f1");
       widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
@@ -388,18 +388,18 @@ describe("navigation rendering", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       const agentLine = lines[1];
-      expect(agentLine).toContain(">");
+      expect(agentLine).toContain("→");
     });
 
-    it("does not render '>' marker when navigation is inactive", () => {
+    it("does not render '→' marker when navigation is inactive", () => {
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [running];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // No '>' marker in agent lines
+      // No '→' marker in agent lines
       const agentLine = lines[1];
-      expect(agentLine).not.toContain("> ");
+      expect(agentLine).not.toContain("→");
     });
   });
 });
@@ -433,5 +433,51 @@ describe("auto-deactivation", () => {
     (manager as any).listAgents = () => [];
     widget.update(); // triggers clearWidget path
     expect(widget.isNavActive()).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Overflow + navigation tests                                       */
+/* ------------------------------------------------------------------ */
+
+describe("overflow with navigation", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("pinned block appears when navigating to a hidden agent", () => {
+    // Create 15 finished agents — body budget is maxLines-1 = 11,
+    // so 4 agents are hidden by overflow without pinning.
+    const agents = Array.from({ length: 15 }, (_, i) => {
+      const agent = makeFinishedAgent(`f${i}`);
+      agent.display.description = `Finished agent ${i}`;
+      return agent;
+    });
+    agents.forEach(a => widget.markFinished(a.id));
+    (manager as any).listAgents = () => agents;
+
+    // Activate nav — highlights index 0 (agent 0)
+    widget.navActivate();
+
+    // Navigate down to index 12 -> agent 12 (would be hidden by overflow)
+    for (let i = 0; i < 12; i++) widget.navDown();
+    expect(widget.highlightedIndex()).toBe(12);
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    // The pinned (highlighted) block must appear in the output
+    const highlightedLine = lines.find((line: string) => line.includes("Finished agent 12"));
+    expect(highlightedLine).toBeDefined();
+    expect(highlightedLine).toContain("→");
+
+    // Overflow summary line must be present (some agents are hidden)
+    const overflowLine = lines.find((line: string) => line.includes("more"));
+    expect(overflowLine).toBeDefined();
   });
 });

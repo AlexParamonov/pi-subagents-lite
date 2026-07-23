@@ -28,10 +28,6 @@ const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", 
 /** Non-success statuses — used for linger behavior and icon rendering. */
 const ERROR_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
 
-/** Tree-drawing connectors used in the widget header/continuation lines. */
-const BRANCH = "├─";
-const CORNER = "└─";
-const VLINE = "│";
 
 /** Widget key used with setWidget(). */
 const WIDGET_KEY = "agents";
@@ -188,6 +184,9 @@ export class AgentWidget {
   /** Max description length in compact mode. */
   private descLengthCompact = 30;
 
+  /** Whether to show navigation hint text in the heading. */
+  private navHint = true;
+
   /** Navigation mode active. */
   private navActive = false;
 
@@ -255,9 +254,14 @@ export class AgentWidget {
     this.descLengthCompact = len;
   }
 
+  /** Set whether to show navigation hint text in the heading. */
+  setNavHint(enabled: boolean) {
+    this.navHint = enabled;
+  }
+
   // ---- Navigation state machine ----
 
-  /** Build the navigation roster: main, finished, running, queued. */
+  /** Build the navigation roster: finished, running, queued. */
   private buildRoster(): AgentRecord[] {
     const { finished, running, queued } = this.categorizeAgents();
     return [...finished, ...running, ...queued];
@@ -267,39 +271,30 @@ export class AgentWidget {
   navActivate(): void {
     if (this.navActive) return;
     this.navActive = true;
-    const roster = this.buildRoster();
-    this._highlightedIndex = roster.length > 0 ? 1 : 0;
+    this._highlightedIndex = 0;
     this.update();
   }
 
-  /** Move highlight down one position. Stops at the last agent (no wrap). */
+  /** Move highlight down one position. Wraps from last agent to main. */
   navDown(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
-    const maxIndex = roster.length;
-    if (this._highlightedIndex < maxIndex) {
-      this._highlightedIndex++;
-      this.update();
-    }
+    if (roster.length === 0) return;
+    this._highlightedIndex = (this._highlightedIndex + 1) % roster.length;
+    this.update();
   }
-
-  /** Move highlight up one position. At index 0 (main), deactivates. */
+  /** Move highlight up one position. Wraps from main to last agent. */
   navUp(): void {
     if (!this.navActive) return;
-    if (this._highlightedIndex === 0) {
-      this.navDeactivate();
-      return;
-    }
-    this._highlightedIndex--;
+    const roster = this.buildRoster();
+    if (roster.length === 0) return;
+    this._highlightedIndex = (this._highlightedIndex - 1 + roster.length) % roster.length;
     this.update();
   }
 
-  /** Return the AgentRecord for the highlighted agent, or null if main (index 0) or no agent. */
   navSelect(): AgentRecord | null {
-    if (this._highlightedIndex === 0) return null;
     const roster = this.buildRoster();
-    const record = roster[this._highlightedIndex - 1];
-    return record ?? null;
+    return roster[this._highlightedIndex] ?? null;
   }
 
   /** Exit navigation mode, reset highlight. Triggers re-render. */
@@ -332,10 +327,15 @@ export class AgentWidget {
 
   /** Check if the editor currently has focus (no dialog/menu open). */
   isEditorFocused(): boolean {
-    // hasOverlay() covers all focus-stealing overlays (ResultViewer, menus, model picker).
-    // The nav handler already guards against the viewer via viewerOpen, so this
-    // catches the remaining cases without reaching into private TUI state.
-    return !this.tui?.hasOverlay?.();
+    // Overlays (ResultViewer, model picker) → not focused.
+    if (this.tui?.hasOverlay?.()) return false;
+    // Menus (ctx.ui.select/confirm) replace the editor in editorContainer.
+    // Check if the focused component is the Editor via duck-typing:
+    // Editor is the only component with getText() + setText().
+    const focused = (this.tui as { focusedComponent?: unknown })?.focusedComponent;
+    if (focused == null) return true;
+    return typeof (focused as { getText?: unknown })?.getText === "function"
+      && typeof (focused as { setText?: unknown })?.setText === "function";
   }
   /** Set the UI context (grabbed from first tool execution). */
   setUICtx(ctx: UICtx) {
@@ -475,11 +475,11 @@ export class AgentWidget {
       if (!this.isCompact()) {
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {
-          continuations.push(truncate(theme.fg("dim", `${VLINE}    ${parts.join("  ")}`)));
+          continuations.push(truncate(theme.fg("dim", `    ${parts.join("  ")}`)));
         }
       }
       blocks.push({
-        header: truncate(`${theme.fg("dim", BRANCH)} ${this.renderFinishedLine(a, theme)}`),
+        header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
         continuations,
       });
     }
@@ -504,7 +504,7 @@ export class AgentWidget {
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = truncateDesc(a.display.description, this.descLengthCompact);
-        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
@@ -512,13 +512,13 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `${BRANCH} ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {
-          continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `${VLINE} ${parts.join("  ")}`)));
+          continuations.push(truncate("    " + theme.fg("dim", parts.join("  "))));
         }
-        continuations.push(truncate(`${VLINE}  ` + theme.fg("dim", `└ ${activity}`)));
+        continuations.push(truncate("    " + theme.fg("dim", activity)));
         blocks.push({
           header: truncate(headerLine),
           continuations,
@@ -536,18 +536,13 @@ export class AgentWidget {
   ): RenderBlock | undefined {
     if (queued.length === 0) return undefined;
     const truncate = (line: string) => truncateToWidth(line, w);
-    const header = `${theme.fg("dim", BRANCH)} ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`;
+    const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`;
     return { header: truncate(header), continuations: [] };
   }
 
   /**
    * Render the widget content. Called from the registered widget's render() callback,
    * reading live state each time instead of capturing it in a closure.
-   *
-   * Strategy: build a list of RenderBlocks with placeholder connectors (BRANCH / VLINE),
-   * determine which blocks are visible (overflow logic), then render with correct
-   * connectors in a single pass. Last visible block gets CORNER + spaces, all others
-   * keep BRANCH + VLINE.
    */
   /** Whether the widget should render in compact mode. */
   private isCompact(): boolean {
@@ -566,11 +561,10 @@ export class AgentWidget {
     const w = tui.terminal.columns;
     const truncate = (line: string) => truncateToWidth(line, w);
     const headingColor = hasActive ? "accent" : "dim";
-    const headingIcon = hasActive ? "●" : "○";
+    const headingIcon = hasActive ? "◈" : "◇";
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
-    // Build blocks with placeholder connectors (BRANCH for headers, VLINE for continuations)
-    // Separate arrays so overflow logic can apply priority: running > queued > finished.
+    // Build blocks — separate arrays so overflow logic can apply priority: running > queued > finished.
     const finishedBlocks = this.buildFinishedBlocks(finished, theme, w);
     const runningBlocks = this.buildRunningBlocks(running, theme, w, frame);
 
@@ -601,12 +595,12 @@ export class AgentWidget {
     const lines: string[] = [truncate(heading)];
 
     // Determine highlighted block index for rendering the '>' marker.
-    // highlightedIndex 0 = main (no block), 1+ = agent blocks.
-    const highlightedBlockIndex = this.navActive ? this._highlightedIndex - 1 : -1;
+    // highlightedIndex maps directly to block index.
+    const highlightedBlockIndex = this.navActive ? this._highlightedIndex : -1;
 
     if (totalBody <= maxBody) {
       // Everything fits — render all blocks with correct connectors.
-      lines.push(...this.renderBlocks(blocks, highlightedBlockIndex));
+      lines.push(...this.renderBlocks(blocks, highlightedBlockIndex, theme));
     } else {
       // Pin the highlighted block so it's always visible during navigation.
       // blocks is already [...finishedBlocks, ...runningBlocks, ...queuedBlocks].
@@ -619,7 +613,7 @@ export class AgentWidget {
       // The pinned block is the highlighted one; find it among the visible blocks
       // (it won't appear if it failed to fit).
       const visIndex = pinnedBlock ? visible.indexOf(pinnedBlock) : -1;
-      lines.push(...this.renderBlocks(visible, visIndex));
+      lines.push(...this.renderBlocks(visible, visIndex, theme));
       if (overflowLine) lines.push(truncate(overflowLine));
     }
 
@@ -628,10 +622,12 @@ export class AgentWidget {
 
   /** Build the heading line with navigation hint text. */
   private buildHeading(theme: Theme, color: string, icon: string): string {
-    const hint = this.navActive
-      ? theme.fg("dim", "↑↓ navigate · enter view · esc back")
-      : theme.fg("dim", "↓ to navigate");
-    return `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}  ${hint}`;
+    const iconText = `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}`;
+    if (this.navActive) {
+      return `${iconText}  ${theme.fg("dim", "↑↓ navigate · enter view · esc back")}`;
+    }
+    if (!this.navHint) return iconText;
+    return `${iconText}  ${theme.fg("dim", "↓ to navigate")}`;
   }
 
   /** Build individual RenderBlocks for each queued agent (used during navigation). */
@@ -641,54 +637,25 @@ export class AgentWidget {
     for (const a of queued) {
       const name = getDisplayName(a.display.type);
       const desc = truncateDesc(a.display.description, this.descLengthFull);
-      const header = `${BRANCH} ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
+      const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), continuations: [] });
     }
     return blocks;
   }
 
-  /**
-   * Render a single block: replace placeholder BRANCH→CORNER and VLINE→space on the last block.
-   * Add '>' marker when the block is highlighted during navigation.
-   */
-  private renderBlock(block: RenderBlock, isLast: boolean, isHighlighted: boolean): string[] {
-    let header = isLast ? block.header.replace(BRANCH, CORNER) : block.header;
+  private renderBlock(block: RenderBlock, _isLast: boolean, isHighlighted: boolean, theme: Theme): string[] {
+    let header = block.header;
     if (isHighlighted) {
-      // Insert '>' marker after the tree connector.
-      // The connector chars (├─ or └─) may be wrapped in ANSI codes (finished blocks use
-      // theme.fg("dim", BRANCH)), so scan for the connector by its first character.
-      const connector = isLast ? CORNER : BRANCH;
-      const connectorPos = header.indexOf(connector[0]);
-      if (connectorPos >= 0) {
-        const afterConnector = connectorPos + connector.length;
-        // Strip the single space after the connector (or after any ANSI reset that follows it)
-        // and replace with '> '.
-        let insertPos = afterConnector;
-        // Skip ANSI reset sequences that follow the connector
-        while (insertPos < header.length && header[insertPos] === "\x1b") {
-          const semicolonIdx = header.indexOf("m", insertPos);
-          if (semicolonIdx >= 0) {
-            insertPos = semicolonIdx + 1;
-          } else {
-            break;
-          }
-        }
-        // Now replace the space (or insert if no space)
-        if (insertPos < header.length && header[insertPos] === " ") {
-          header = header.slice(0, insertPos) + ">" + header.slice(insertPos);
-        } else {
-          header = header.slice(0, insertPos) + " > " + header.slice(insertPos);
-        }
+      // Replace both leading spaces with '→' (visually 2 columns)
+      if (header.startsWith("  ")) {
+        header = "→ " + header.slice(2);
       }
     }
-    const continuations = isLast
-      ? block.continuations.map(c => c.replace(VLINE, " "))
-      : block.continuations;
-    return [header, ...continuations];
+    return [header, ...block.continuations];
   }
-  /** Render a list of blocks with correct last-block connectors. */
-  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number): string[] {
-    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex));
+  /** Render a list of blocks. */
+  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number, theme: Theme): string[] {
+    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex, theme));
   }
 
   /**
@@ -767,7 +734,7 @@ export class AgentWidget {
       if (hiddenQueued > 0) parts.push(`${hiddenQueued} queued`);
       if (hiddenFinished > 0) parts.push(`${hiddenFinished} finished`);
       const summary = `+${hiddenRunning + hiddenQueued + hiddenFinished} more (${parts.join(", ")})`;
-      overflowLine = `${theme.fg("dim", CORNER)} ${theme.fg("dim", summary)}`;
+      overflowLine = `  ${theme.fg("dim", summary)}`;
     }
 
     return { visible, overflowLine };

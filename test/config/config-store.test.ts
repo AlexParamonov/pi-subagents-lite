@@ -70,6 +70,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
     setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
     setDescLengthCompact: (n: number) => calls.push(`setDescLengthCompact:${n}`),
+    setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
   };

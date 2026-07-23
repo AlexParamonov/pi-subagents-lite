@@ -196,11 +196,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
       } else {
         // Nav active
         if (matchesKey(data, "down")) { widget.navDown(); return { consume: true }; }
-        if (matchesKey(data, "up")) {
-          if (widget.highlightedIndex() === 0) { widget.navDeactivate(); return { consume: true }; }
-          widget.navUp();
-          return { consume: true };
-        }
+        if (matchesKey(data, "up")) { widget.navUp(); return { consume: true }; }
         if (matchesKey(data, "escape")) { widget.navDeactivate(); return { consume: true }; }
         if (matchesKey(data, "enter")) {
           const record = widget.navSelect();

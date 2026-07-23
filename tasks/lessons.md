@@ -69,3 +69,18 @@
 - An extension that writes parent-owned state in its factory or `session_start` handler (module-level shell singletons like `pi`/`ctx`) will have that state clobbered by every subagent spawn. The last subagent to load wins, so later reads (e.g. a completion nudge firing via `setTimeout`) route to a dead/wrong session. Failures are silent because the misrouted `sendMessage` swallows internally and does not throw.
 - Fix: bracket the subagent entry point (`runAgent`) with a nesting-depth flag and make the factory + `session_start`/`session_shutdown` handlers a no-op while a subagent is in flight. Parent reload still refreshes the shell (flag is false outside `runAgent`). `dispose()` gates deferred work after `session_shutdown`.
 - `AgentSession.dispose()` does NOT emit `session_shutdown` (only the interactive runtime's `teardownCurrent` does). So subagent cleanup won't dispose parent state, but subagent `bindExtensions` WILL fire the parent's `session_start` handler.
+
+## import-thinking-level-from-pi-ai — 2025-07-17
+**What worked:** Single meaningful behavior test in agent-types-discovery (frontmatter→config flow) beats multiple implementation tests on a one-liner.
+**What failed:** Builder wrote implementation tests twice (array contents, exact count) before we caught it. Review loop caught it but cost two extra builder cycles.
+**Next time:** Specify test location and approach in the issue or builder prompt. "Test frontmatter parsing of max" not "cover max in tests".
+
+## package-name-extension-matching — 2025-07-17
+**What worked:** Breaking `extensionPackageName` into memoizing wrapper + pure resolver clarified concerns. `.has()` presence check solved the negative caching bug cleanly.
+**What failed:** First review caught critical `path.dirname(extPath)` bug and case-insensitive behavior mismatch. Second review found test structure issues (duplicated mock setup, testing via runAgent ceremony). Third review found node_modules test gap. Fourth review passed.
+**Next time:** Export test-facing functions early to avoid mock ceremony. Test node_modules paths from the start — it's the primary real-world scenario. Use `.has()` for nullable caches, not value-guard patterns.
+
+## agent-widget-navigation — 2025-07-17
+**What worked:** Issue.md prototype code blocks (state machine, key handler) gave builder a clear contract. The `matchesKey`/`isKeyRelease` pattern from pi-tui avoided reinventing key parsing. `viewerOpen` flag cleanly separated overlay lifecycle from nav deactivation.
+**What failed:** Builder wrote tests against a hand-copied handler instead of the real exported function. Overflow scrolling was described in the AC but not implemented. Focus detection used private pi-tui field instead of public `hasOverlay()` API.
+**Next time:** Export testable functions early (`createNavInputHandler`). Call out overflow behavior as a hard gate in the AC. Prefer public API for cross-package access — private fields break silently on upstream changes.

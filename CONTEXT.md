@@ -68,3 +68,20 @@ _Avoid_: Callback, notification
 - A **Worktree path** is the absolute resolved path passed via `worktree_path`
 - A **Worktree label** is derived from a **Worktree path** for compact display
 - The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
+
+### Navigation
+
+**Navigation mode**:
+Keyboard-driven browsing of agents in the widget (`↑↓` move, `Enter` view, `Esc` back).
+State lives on AgentWidget. Key handler in events.ts delegates via public API.
+_Avoid_: Nav menu, agent selector
+
+**Roster**:
+Ordered list of navigable entries during navigation mode: `main` (virtual) + agents
+in widget render order (finished → running → queued, newest-first within each).
+_Avoid_: Agent list, nav list
+
+**ResultViewer overlay**:
+Read-only markdown viewer showing an agent's conversation snapshot via `buildSnapshotMarkdown`.
+Opened on `Enter` in navigation mode. Overlay owns input while open.
+_Avoid_: Agent viewer, conversation viewer
