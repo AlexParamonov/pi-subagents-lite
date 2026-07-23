@@ -605,15 +605,16 @@ export class AgentWidget {
       lines.push(...this.renderBlocks(blocks, highlightedBlockIndex));
     } else {
       // Pin the highlighted block so it's always visible during navigation.
-      const allBlocks = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
-      const pinnedBlock = highlightedBlockIndex >= 0 && highlightedBlockIndex < allBlocks.length
-        ? allBlocks[highlightedBlockIndex]
+      // blocks is already [...finishedBlocks, ...runningBlocks, ...queuedBlocks].
+      const pinnedBlock = highlightedBlockIndex >= 0 && highlightedBlockIndex < blocks.length
+        ? blocks[highlightedBlockIndex]
         : undefined;
       const { visible, overflowLine } = this.applyOverflow(
         runningBlocks, queuedBlocks, finishedBlocks, maxBody, theme, pinnedBlock,
       );
-      // Remap highlighted index to visible blocks
-      const visIndex = this.mapHighlightToVisible(highlightedBlockIndex, visible, finishedBlocks, runningBlocks, queuedBlocks);
+      // The pinned block is the highlighted one; find it among the visible blocks
+      // (it won't appear if it failed to fit).
+      const visIndex = pinnedBlock ? visible.indexOf(pinnedBlock) : -1;
       lines.push(...this.renderBlocks(visible, visIndex));
       if (overflowLine) lines.push(truncate(overflowLine));
     }
@@ -642,23 +643,6 @@ export class AgentWidget {
       blocks.push({ header: truncate(header), continuations: [] });
     }
     return blocks;
-  }
-
-  /** Map the highlighted block index to the visible blocks array after overflow. */
-  private mapHighlightToVisible(
-    highlightedBlockIndex: number,
-    visible: RenderBlock[],
-    finishedBlocks: RenderBlock[],
-    runningBlocks: RenderBlock[],
-    queuedBlocks: RenderBlock[],
-  ): number {
-    if (highlightedBlockIndex < 0) return -1;
-    // Rebuild the full block order and find the visible index
-    const allBlocks = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
-    if (highlightedBlockIndex >= allBlocks.length) return -1;
-    const targetBlock = allBlocks[highlightedBlockIndex];
-    const visIdx = visible.indexOf(targetBlock);
-    return visIdx >= 0 ? visIdx : -1;
   }
 
   /**
