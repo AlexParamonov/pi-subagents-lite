@@ -407,6 +407,26 @@ function filterExtensions(
   return { filtered, matched };
 }
 
+/**
+ * Override closure: keeps matching extensions (`invert=false`) or removes them
+ * (`invert=true`), warning via `notify` for any requested name that matched nothing.
+ */
+function filterOverride(
+  names: Set<string>,
+  invert: boolean,
+  notify?: (msg: string) => void,
+) {
+  return (result: any) => {
+    const { filtered, matched } = filterExtensions(result.extensions, names, invert);
+    for (const name of names) {
+      if (!matched.has(name)) {
+        notify?.(`extension "${name}" not found in loaded extensions`);
+      }
+    }
+    return { ...result, extensions: filtered };
+  };
+}
+
 /** Build extension override for whitelist or blacklist filtering. */
 export function buildExtOverride(
   extensions: true | string[] | false | undefined,
@@ -414,39 +434,17 @@ export function buildExtOverride(
   notify?: (msg: string) => void,
 ) {
   if (Array.isArray(extensions)) {
-    // Normalize frontmatter entries: strip ext/tool syntax, lowercase
+    // Whitelist entries may carry a /tool suffix; match on the extension name only.
     const allowedNames = new Set(extensions.map((ext) => {
       const slashIdx = ext.indexOf("/");
       return (slashIdx !== -1 ? ext.slice(0, slashIdx) : ext).toLowerCase();
     }));
-
-    return (result: any) => {
-      const { filtered, matched } = filterExtensions(result.extensions, allowedNames, false);
-
-      for (const name of allowedNames) {
-        if (!matched.has(name)) {
-          notify?.(`extension "${name}" not found in loaded extensions`);
-        }
-      }
-
-      return { ...result, extensions: filtered };
-    };
+    return filterOverride(allowedNames, false, notify);
   }
 
   if (excludeExtensions) {
     const excludeSet = new Set(excludeExtensions.map((n) => n.toLowerCase()));
-
-    return (result: any) => {
-      const { filtered, matched } = filterExtensions(result.extensions, excludeSet, true);
-
-      for (const name of excludeSet) {
-        if (!matched.has(name)) {
-          notify?.(`extension "${name}" not found in loaded extensions`);
-        }
-      }
-
-      return { ...result, extensions: filtered };
-    };
+    return filterOverride(excludeSet, true, notify);
   }
 
   return undefined;
