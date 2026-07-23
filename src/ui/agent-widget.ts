@@ -2,7 +2,7 @@
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, Editor } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
@@ -188,6 +188,15 @@ export class AgentWidget {
   /** Max description length in compact mode. */
   private descLengthCompact = 30;
 
+  /** Navigation mode active. */
+  private navActive = false;
+
+  /** Current highlight position in the roster (0 = main). */
+  private _highlightedIndex = 0;
+
+  /** Viewer overlay open — prevents deactivation while ResultViewer is displayed. */
+  private viewerOpen = false;
+
   constructor(
     private manager: AgentManager,
     private getLiveView: (id: string) => LiveView | undefined,
@@ -244,6 +253,87 @@ export class AgentWidget {
   /** Set max description length for compact mode. */
   setDescLengthCompact(len: number) {
     this.descLengthCompact = len;
+  }
+
+  // ---- Navigation state machine ----
+
+  /** Build the navigation roster: main, finished, running, queued. */
+  private buildRoster(): AgentRecord[] {
+    const { finished, running, queued } = this.categorizeAgents();
+    return [...finished, ...running, ...queued];
+  }
+
+  /** Enter navigation mode. Highlights the first agent (index 1) if agents exist, else main (index 0). */
+  navActivate(): void {
+    if (this.navActive) return;
+    this.navActive = true;
+    const roster = this.buildRoster();
+    this._highlightedIndex = roster.length > 0 ? 1 : 0;
+    this.update();
+  }
+
+  /** Move highlight down one position. Stops at the last agent (no wrap). */
+  navDown(): void {
+    if (!this.navActive) return;
+    const roster = this.buildRoster();
+    const maxIndex = roster.length;
+    if (this._highlightedIndex < maxIndex) {
+      this._highlightedIndex++;
+      this.update();
+    }
+  }
+
+  /** Move highlight up one position. At index 0 (main), deactivates. */
+  navUp(): void {
+    if (!this.navActive) return;
+    if (this._highlightedIndex === 0) {
+      this.navDeactivate();
+      return;
+    }
+    this._highlightedIndex--;
+    this.update();
+  }
+
+  /** Return the AgentRecord for the highlighted agent, or null if main (index 0) or no agent. */
+  navSelect(): AgentRecord | null {
+    if (this._highlightedIndex === 0) return null;
+    const roster = this.buildRoster();
+    const record = roster[this._highlightedIndex - 1];
+    return record ?? null;
+  }
+
+  /** Exit navigation mode, reset highlight. Triggers re-render. */
+  navDeactivate(): void {
+    if (!this.navActive) return;
+    this.navActive = false;
+    this._highlightedIndex = 0;
+    this.update();
+  }
+
+  /** Query whether navigation mode is active. */
+  isNavActive(): boolean {
+    return this.navActive;
+  }
+
+  /** Current highlight position (0 = main). */
+  highlightedIndex(): number {
+    return this._highlightedIndex;
+  }
+
+  /** Whether the ResultViewer overlay is currently open. */
+  isViewerOpen(): boolean {
+    return this.viewerOpen;
+  }
+
+  /** Set whether the ResultViewer overlay is open. */
+  setViewerOpen(open: boolean): void {
+    this.viewerOpen = open;
+  }
+
+  /** Check if the editor currently has focus (no dialog/menu open). */
+  isEditorFocused(): boolean {
+    const focused = (this.tui as { focusedComponent?: unknown })?.focusedComponent;
+    return focused == null || focused instanceof Editor;
   }
 
   /** Set the UI context (grabbed from first tool execution). */
@@ -482,13 +572,17 @@ export class AgentWidget {
     // Separate arrays so overflow logic can apply priority: running > queued > finished.
     const finishedBlocks = this.buildFinishedBlocks(finished, theme, w);
     const runningBlocks = this.buildRunningBlocks(running, theme, w, frame);
-    const queuedBlock = this.buildQueuedBlock(queued, theme, w);
+
+    // Queued: individual rows during nav, aggregated block otherwise.
+    const queuedBlocks = this.navActive
+      ? this.buildQueuedIndividualBlocks(queued, theme, w)
+      : this.buildQueuedBlock(queued, theme, w) ? [this.buildQueuedBlock(queued, theme, w)!] : [];
 
     // All blocks in display order: finished → running → queued.
     const blocks: RenderBlock[] = [
       ...finishedBlocks,
       ...runningBlocks,
-      ...(queuedBlock ? [queuedBlock] : []),
+      ...queuedBlocks,
     ];
 
     // ---- Overflow logic (works with blocks, not lines) ----
@@ -497,28 +591,91 @@ export class AgentWidget {
     const maxBody = maxBodyLines - 1; // heading takes 1 line
     const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
 
-    const heading = `${theme.fg(headingColor, headingIcon)} ${theme.fg(headingColor, "Agents")}`;
+    // Heading with navigation hint
+    const heading = this.buildHeading(theme, headingColor, headingIcon);
     const lines: string[] = [truncate(heading)];
+
+    // Determine highlighted block index for rendering the '>' marker.
+    // highlightedIndex 0 = main (no block), 1+ = agent blocks.
+    const highlightedBlockIndex = this.navActive ? this._highlightedIndex - 1 : -1;
 
     if (totalBody <= maxBody) {
       // Everything fits — render all blocks with correct connectors.
-      lines.push(...this.renderBlocks(blocks));
+      lines.push(...this.renderBlocks(blocks, highlightedBlockIndex, theme));
     } else {
       const { visible, overflowLine } = this.applyOverflow(
-        runningBlocks, queuedBlock, finishedBlocks, maxBody, theme,
+        runningBlocks, queuedBlocks, finishedBlocks, maxBody, theme,
       );
-      lines.push(...this.renderBlocks(visible));
+      // Remap highlighted index to visible blocks
+      const visIndex = this.mapHighlightToVisible(highlightedBlockIndex, visible, finishedBlocks, runningBlocks, queuedBlocks);
+      lines.push(...this.renderBlocks(visible, visIndex, theme));
       if (overflowLine) lines.push(truncate(overflowLine));
     }
 
     return lines;
   }
 
+  /** Build the heading line with navigation hint text. */
+  private buildHeading(theme: Theme, color: string, icon: string): string {
+    if (this.navActive) {
+      const hint = theme.fg("dim", "↑↓ navigate · enter view · esc back");
+      return `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}  ${hint}`;
+    }
+    const hint = theme.fg("dim", "↓ to navigate");
+    return `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}  ${hint}`;
+  }
+
+  /** Build individual RenderBlocks for each queued agent (used during navigation). */
+  private buildQueuedIndividualBlocks(queued: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
+    const truncate = (line: string) => truncateToWidth(line, w);
+    const blocks: RenderBlock[] = [];
+    for (const a of queued) {
+      const name = getDisplayName(a.display.type);
+      const desc = truncateDesc(a.display.description, this.descLengthFull);
+      const header = `${BRANCH} ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
+      blocks.push({ header: truncate(header), continuations: [] });
+    }
+    return blocks;
+  }
+
+  /** Map the highlighted block index to the visible blocks array after overflow. */
+  private mapHighlightToVisible(
+    highlightedBlockIndex: number,
+    visible: RenderBlock[],
+    finishedBlocks: RenderBlock[],
+    runningBlocks: RenderBlock[],
+    queuedBlocks: RenderBlock[],
+  ): number {
+    if (highlightedBlockIndex < 0) return -1;
+    // Rebuild the full block order and find the visible index
+    const allBlocks = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
+    if (highlightedBlockIndex >= allBlocks.length) return -1;
+    const targetBlock = allBlocks[highlightedBlockIndex];
+    const visIdx = visible.indexOf(targetBlock);
+    return visIdx >= 0 ? visIdx : -1;
+  }
+
   /**
    * Render a single block: replace placeholder BRANCH→CORNER and VLINE→space on the last block.
+   * Add '>' marker when the block is highlighted during navigation.
    */
-  private renderBlock(block: RenderBlock, isLast: boolean): string[] {
-    const header = isLast ? block.header.replace(BRANCH, CORNER) : block.header;
+  private renderBlock(block: RenderBlock, isLast: boolean, isHighlighted: boolean, theme: Theme): string[] {
+    let header = isLast ? block.header.replace(BRANCH, CORNER) : block.header;
+    if (isHighlighted) {
+      // Insert '>' marker after the tree connector.
+      // The connector (├─ or └─) may be wrapped in ANSI codes, so find it by char.
+      const connector = isLast ? CORNER : BRANCH;
+      const connectorPos = header.indexOf(connector[0]);
+      if (connectorPos >= 0) {
+        const afterConnector = connectorPos + connector.length;
+        // Replace the space after connector with '> ', or insert if no space.
+        if (header[afterConnector] === " ") {
+          header = header.slice(0, afterConnector) + ">" + header.slice(afterConnector);
+        } else {
+          header = header.slice(0, afterConnector) + " > " + header.slice(afterConnector);
+        }
+      }
+    }
     const continuations = isLast
       ? block.continuations.map(c => c.replace(VLINE, " "))
       : block.continuations;
@@ -526,8 +683,8 @@ export class AgentWidget {
   }
 
   /** Render a list of blocks with correct last-block connectors. */
-  private renderBlocks(blocks: RenderBlock[]): string[] {
-    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1));
+  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number, theme: Theme): string[] {
+    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex, theme));
   }
 
   /**
@@ -536,13 +693,14 @@ export class AgentWidget {
    */
   private applyOverflow(
     runningBlocks: RenderBlock[],
-    queuedBlock: RenderBlock | undefined,
+    queuedBlocks: RenderBlock[],
     finishedBlocks: RenderBlock[],
     maxBody: number,
     theme: Theme,
   ): { visible: RenderBlock[]; overflowLine?: string } {
     let budget = maxBody - 1;
     let hiddenRunning = 0;
+    let hiddenQueued = 0;
     let hiddenFinished = 0;
     const visible: RenderBlock[] = [];
 
@@ -557,10 +715,14 @@ export class AgentWidget {
       }
     }
 
-    // 2. Queued block
-    if (queuedBlock && budget >= 1) {
-      visible.push(queuedBlock);
-      budget--;
+    // 2. Queued blocks
+    for (const b of queuedBlocks) {
+      if (budget >= 1) {
+        visible.push(b);
+        budget--;
+      } else {
+        hiddenQueued++;
+      }
     }
 
     // 3. Finished blocks (lowest priority)
@@ -575,11 +737,12 @@ export class AgentWidget {
 
     // Overflow summary line
     let overflowLine: string | undefined;
-    if (hiddenRunning + hiddenFinished > 0) {
+    if (hiddenRunning + hiddenQueued + hiddenFinished > 0) {
       const parts: string[] = [];
       if (hiddenRunning > 0) parts.push(`${hiddenRunning} running`);
+      if (hiddenQueued > 0) parts.push(`${hiddenQueued} queued`);
       if (hiddenFinished > 0) parts.push(`${hiddenFinished} finished`);
-      const summary = `+${hiddenRunning + hiddenFinished} more (${parts.join(", ")})`;
+      const summary = `+${hiddenRunning + hiddenQueued + hiddenFinished} more (${parts.join(", ")})`;
       overflowLine = `${theme.fg("dim", CORNER)} ${theme.fg("dim", summary)}`;
     }
 
@@ -588,6 +751,11 @@ export class AgentWidget {
 
   /** Clear widget, status bar, timer, and stale finished-turn-age entries. */
   private clearWidget() {
+    // Deactivate navigation when agents clear
+    if (this.navActive) {
+      this.navActive = false;
+      this._highlightedIndex = 0;
+    }
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
