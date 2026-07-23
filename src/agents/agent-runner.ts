@@ -33,6 +33,16 @@ import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js"
 // Cache: extension path → unscoped package name (lowercased), or undefined if not found
 const packageNameCache = new Map<string, string | undefined>();
 
+/** Memoized wrapper around resolvePackageShortName. */
+function extensionPackageName(extPath: string): string | undefined {
+  const cached = packageNameCache.get(extPath);
+  if (cached !== undefined) return cached;
+
+  const result = resolvePackageShortName(extPath);
+  packageNameCache.set(extPath, result);
+  return result;
+}
+
 /**
  * The unscoped, lowercased npm short name of the pi package that declares
  * `extPath` as an extension entry — or undefined if the entry doesn't belong
@@ -40,32 +50,24 @@ const packageNameCache = new Map<string, string | undefined>();
  *
  * Climbs from the entry's directory looking for package.json, stopping at
  * node_modules boundaries. The name is taken only when that package's
- * `pi.extensions` manifest actually lists this entry.
+ * `pi.extensions` manifest actually lists this entry. Returns at the first
+ * package.json (whether or not it declares the entry) so a loose extension
+ * is never misattributed to a co-located project's name.
  */
-function extensionPackageName(extPath: string): string | undefined {
-  const cached = packageNameCache.get(extPath);
-  if (cached !== undefined) return cached;
-
+function resolvePackageShortName(extPath: string): string | undefined {
   const entry = path.resolve(extPath);
   let dir = path.dirname(entry);
 
   for (;;) {
     // Climbing into node_modules means we've left the owning package's tree.
-    if (path.basename(dir) === "node_modules") {
-      packageNameCache.set(extPath, undefined);
-      return undefined;
-    }
+    if (path.basename(dir) === "node_modules") return undefined;
 
     let pkg: { name?: unknown; pi?: { extensions?: unknown } };
     try {
       pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8"));
     } catch {
       const parent = path.dirname(dir);
-      if (parent === dir) {
-        // walked to the filesystem root
-        packageNameCache.set(extPath, undefined);
-        return undefined;
-      }
+      if (parent === dir) return undefined; // walked to the filesystem root
       dir = parent;
       continue;
     }
@@ -80,12 +82,8 @@ function extensionPackageName(extPath: string): string | undefined {
       const short = pkg.name.startsWith("@")
         ? pkg.name.slice(pkg.name.indexOf("/") + 1)
         : pkg.name;
-      const result = short.toLowerCase();
-      packageNameCache.set(extPath, result);
-      return result;
+      return short.toLowerCase();
     }
-
-    packageNameCache.set(extPath, undefined);
     return undefined;
   }
 }
