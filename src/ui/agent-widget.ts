@@ -575,9 +575,13 @@ export class AgentWidget {
     const runningBlocks = this.buildRunningBlocks(running, theme, w, frame);
 
     // Queued: individual rows during nav, aggregated block otherwise.
-    const queuedBlocks = this.navActive
-      ? this.buildQueuedIndividualBlocks(queued, theme, w)
-      : this.buildQueuedBlock(queued, theme, w) ? [this.buildQueuedBlock(queued, theme, w)!] : [];
+    let queuedBlocks: RenderBlock[];
+    if (this.navActive) {
+      queuedBlocks = this.buildQueuedIndividualBlocks(queued, theme, w);
+    } else {
+      const aggregated = this.buildQueuedBlock(queued, theme, w);
+      queuedBlocks = aggregated ? [aggregated] : [];
+    }
 
     // All blocks in display order: finished → running → queued.
     const blocks: RenderBlock[] = [
