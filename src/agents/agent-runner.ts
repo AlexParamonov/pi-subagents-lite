@@ -35,9 +35,9 @@ const packageNameCache = new Map<string, string | undefined>();
 
 /** Memoized wrapper around resolvePackageShortName. */
 function extensionPackageName(extPath: string): string | undefined {
-  const cached = packageNameCache.get(extPath);
-  if (cached !== undefined) return cached;
-
+  // Presence check distinguishes a cached undefined (not-found) from a miss,
+  // so each path's package.json is read at most once per process.
+  if (packageNameCache.has(extPath)) return packageNameCache.get(extPath);
   const result = resolvePackageShortName(extPath);
   packageNameCache.set(extPath, result);
   return result;
