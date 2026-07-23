@@ -165,8 +165,8 @@ function createPkgDir(pkgName: string, entry: string, piExtensions: string[]): {
   const dir = mkdtempSync(join(tmpdir(), "pkg-name-test-"));
   const manifest: Record<string, unknown> = { name: pkgName, pi: { extensions: piExtensions } };
   writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
-  const entryDir = join(dir, entry.replace(/\/[^/]+$/, ""));
-  if (entryDir && entryDir !== ".") mkdirSync(entryDir, { recursive: true });
+  const dirPart = entry.includes("/") ? entry.replace(/\/[^/]+$/, "") : "";
+  if (dirPart) mkdirSync(join(dir, dirPart), { recursive: true });
   writeFileSync(join(dir, entry), "export default () => {};");
   return { dir, extPath: join(dir, entry) };
 }
@@ -311,6 +311,31 @@ describe("extension matching by package name — whitelist", () => {
       runtime: {},
     });
     expect(result.extensions).toHaveLength(0);
+  });
+
+  it("matches extension at package root (no subdirectory)", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["my-pkg"],
+    });
+
+    const { dir, extPath } = createPkgDir("my-pkg", "index.ts", ["./index.ts"]);
+    tmpDirs.push(dir);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const override = mockModules.getLoaderOpts().extensionsOverride;
+    const result = override({
+      extensions: [
+        { path: extPath, tools: new Map([["my_tool", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
   });
 });
 

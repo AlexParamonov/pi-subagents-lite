@@ -47,7 +47,7 @@ function extensionPackageName(extPath: string): string | undefined {
   if (cached !== undefined) return cached;
 
   const entry = path.resolve(extPath);
-  let dir = path.dirname(extPath);
+  let dir = path.dirname(entry);
 
   for (;;) {
     // Climbing into node_modules means we've left the owning package's tree.
