@@ -30,8 +30,8 @@ import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
-// Cache: extension path → unscoped package name (lowercased)
-const packageNameCache = new Map<string, string>();
+// Cache: extension path → unscoped package name (lowercased), or undefined if not found
+const packageNameCache = new Map<string, string | undefined>();
 
 /**
  * The unscoped, lowercased npm short name of the pi package that declares
@@ -52,7 +52,7 @@ function extensionPackageName(extPath: string): string | undefined {
   for (;;) {
     // Climbing into node_modules means we've left the owning package's tree.
     if (path.basename(dir) === "node_modules") {
-      packageNameCache.set(extPath, "");
+      packageNameCache.set(extPath, undefined);
       return undefined;
     }
 
@@ -63,7 +63,7 @@ function extensionPackageName(extPath: string): string | undefined {
       const parent = path.dirname(dir);
       if (parent === dir) {
         // walked to the filesystem root
-        packageNameCache.set(extPath, "");
+        packageNameCache.set(extPath, undefined);
         return undefined;
       }
       dir = parent;
@@ -85,9 +85,14 @@ function extensionPackageName(extPath: string): string | undefined {
       return result;
     }
 
-    packageNameCache.set(extPath, "");
+    packageNameCache.set(extPath, undefined);
     return undefined;
   }
+}
+
+/** Clear the package name cache. Exposed for test isolation. */
+export function resetPackageNameCache() {
+  packageNameCache.clear();
 }
 
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
@@ -379,7 +384,7 @@ function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, un
 }
 
 /** Build extension override for whitelist or blacklist filtering. */
-function buildExtOverride(
+export function buildExtOverride(
   extensions: true | string[] | false | undefined,
   excludeExtensions?: string[],
   notify?: (msg: string) => void,
