@@ -30,6 +30,66 @@ import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
+// Cache: extension path → unscoped package name (lowercased)
+const packageNameCache = new Map<string, string>();
+
+/**
+ * The unscoped, lowercased npm short name of the pi package that declares
+ * `extPath` as an extension entry — or undefined if the entry doesn't belong
+ * to such a package.
+ *
+ * Climbs from the entry's directory looking for package.json, stopping at
+ * node_modules boundaries. The name is taken only when that package's
+ * `pi.extensions` manifest actually lists this entry.
+ */
+function extensionPackageName(extPath: string): string | undefined {
+  const cached = packageNameCache.get(extPath);
+  if (cached !== undefined) return cached;
+
+  const entry = path.resolve(extPath);
+  let dir = path.dirname(extPath);
+
+  for (;;) {
+    // Climbing into node_modules means we've left the owning package's tree.
+    if (path.basename(dir) === "node_modules") {
+      packageNameCache.set(extPath, "");
+      return undefined;
+    }
+
+    let pkg: { name?: unknown; pi?: { extensions?: unknown } };
+    try {
+      pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8"));
+    } catch {
+      const parent = path.dirname(dir);
+      if (parent === dir) {
+        // walked to the filesystem root
+        packageNameCache.set(extPath, "");
+        return undefined;
+      }
+      dir = parent;
+      continue;
+    }
+
+    // First package.json found — it's the package root; decide here.
+    const entries = pkg.pi?.extensions;
+    if (
+      typeof pkg.name === "string" &&
+      Array.isArray(entries) &&
+      entries.some((e) => typeof e === "string" && path.resolve(dir, e) === entry)
+    ) {
+      const short = pkg.name.startsWith("@")
+        ? pkg.name.slice(pkg.name.indexOf("/") + 1)
+        : pkg.name;
+      const result = short.toLowerCase();
+      packageNameCache.set(extPath, result);
+      return result;
+    }
+
+    packageNameCache.set(extPath, "");
+    return undefined;
+  }
+}
+
 /** Normalize max turns. undefined or 0 = unlimited, otherwise minimum 1. */
 function normalizeMaxTurns(n: number | undefined): number | undefined {
   if (n == null || n === 0) return undefined;
@@ -322,28 +382,67 @@ function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, un
 function buildExtOverride(
   extensions: true | string[] | false | undefined,
   excludeExtensions?: string[],
+  notify?: (msg: string) => void,
 ) {
   if (Array.isArray(extensions)) {
+    // Normalize frontmatter entries: strip ext/tool syntax, lowercase
     const allowedNames = new Set(extensions.map(ext => {
       const slashIdx = ext.indexOf("/");
-      return slashIdx !== -1 ? ext.slice(0, slashIdx) : ext;
+      return (slashIdx !== -1 ? ext.slice(0, slashIdx) : ext).toLowerCase();
     }));
-    return (result: any) => ({
-      ...result,
-      extensions: result.extensions.filter((ext: { path: string }) =>
-        allowedNames.has(extractExtensionName(ext.path)),
-      ),
-    });
+
+    return (result: any) => {
+      const matched = new Set<string>();
+      const filtered = result.extensions.filter((ext: { path: string }) => {
+        const pathName = extractExtensionName(ext.path).toLowerCase();
+        const pkgName = extensionPackageName(ext.path) ?? "";
+        const isAllowed = allowedNames.has(pathName) || (pkgName && allowedNames.has(pkgName));
+        if (isAllowed) {
+          matched.add(pathName);
+          if (pkgName) matched.add(pkgName);
+        }
+        return isAllowed;
+      });
+
+      // Warn about names that didn't match any loaded extension
+      for (const name of allowedNames) {
+        if (!matched.has(name)) {
+          notify?.(`extension "${name}" not found in loaded extensions`);
+        }
+      }
+
+      return { ...result, extensions: filtered };
+    };
   }
+
   if (excludeExtensions) {
-    const excludeSet = new Set(excludeExtensions);
-    return (result: any) => ({
-      ...result,
-      extensions: result.extensions.filter((ext: { path: string }) =>
-        !excludeSet.has(extractExtensionName(ext.path)),
-      ),
-    });
+    // Normalize excluded names to lowercase
+    const excludeSet = new Set(excludeExtensions.map(n => n.toLowerCase()));
+
+    return (result: any) => {
+      const matched = new Set<string>();
+      const filtered = result.extensions.filter((ext: { path: string }) => {
+        const pathName = extractExtensionName(ext.path).toLowerCase();
+        const pkgName = extensionPackageName(ext.path) ?? "";
+        const isExcluded = excludeSet.has(pathName) || (pkgName && excludeSet.has(pkgName));
+        if (isExcluded) {
+          matched.add(pathName);
+          if (pkgName) matched.add(pkgName);
+        }
+        return !isExcluded;
+      });
+
+      // Warn about names that didn't match any loaded extension
+      for (const name of excludeSet) {
+        if (!matched.has(name)) {
+          notify?.(`extension "${name}" not found in loaded extensions`);
+        }
+      }
+
+      return { ...result, extensions: filtered };
+    };
   }
+
   return undefined;
 }
 
@@ -356,6 +455,7 @@ function createResourceLoader(
   agentConfig: ReturnType<typeof getAgentConfig>,
   cwd: string,
   systemPrompt: string,
+  notify?: (msg: string) => void,
 ) {
   const extensions = config.extensions;
   const noSkills = config.skills === false
@@ -368,7 +468,7 @@ function createResourceLoader(
     noPromptTemplates: true, noThemes: true, noContextFiles: true,
     systemPromptOverride: () => systemPrompt,
     appendSystemPromptOverride: () => [],
-    extensionsOverride: buildExtOverride(extensions, agentConfig?.excludeExtensions),
+    extensionsOverride: buildExtOverride(extensions, agentConfig?.excludeExtensions, notify),
   };
   const loader = new DefaultResourceLoader(loaderOpts);
   return {
@@ -560,7 +660,7 @@ async function runAgentImpl(
     type, agentConfig, config, effectiveCwd, env,
     mode, promptExtras,
   );
-  const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt);
+  const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt, bufferNotify);
   const { extResult } = await reloadAndMap();
   const session = await createAndConfigureSession(
     ctx, options, agentConfig, type, effectiveCwd, loader, extResult, bufferNotify,
