@@ -602,7 +602,7 @@ export class AgentWidget {
 
     if (totalBody <= maxBody) {
       // Everything fits — render all blocks with correct connectors.
-      lines.push(...this.renderBlocks(blocks, highlightedBlockIndex, theme));
+      lines.push(...this.renderBlocks(blocks, highlightedBlockIndex));
     } else {
       // Pin the highlighted block so it's always visible during navigation.
       const allBlocks = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
@@ -614,7 +614,7 @@ export class AgentWidget {
       );
       // Remap highlighted index to visible blocks
       const visIndex = this.mapHighlightToVisible(highlightedBlockIndex, visible, finishedBlocks, runningBlocks, queuedBlocks);
-      lines.push(...this.renderBlocks(visible, visIndex, theme));
+      lines.push(...this.renderBlocks(visible, visIndex));
       if (overflowLine) lines.push(truncate(overflowLine));
     }
 
@@ -665,7 +665,7 @@ export class AgentWidget {
    * Render a single block: replace placeholder BRANCH→CORNER and VLINE→space on the last block.
    * Add '>' marker when the block is highlighted during navigation.
    */
-  private renderBlock(block: RenderBlock, isLast: boolean, isHighlighted: boolean, theme: Theme): string[] {
+  private renderBlock(block: RenderBlock, isLast: boolean, isHighlighted: boolean): string[] {
     let header = isLast ? block.header.replace(BRANCH, CORNER) : block.header;
     if (isHighlighted) {
       // Insert '>' marker after the tree connector.
@@ -701,8 +701,8 @@ export class AgentWidget {
     return [header, ...continuations];
   }
   /** Render a list of blocks with correct last-block connectors. */
-  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number, theme: Theme): string[] {
-    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex, theme));
+  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number): string[] {
+    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex));
   }
 
   /**
