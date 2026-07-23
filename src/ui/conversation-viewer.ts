@@ -26,8 +26,8 @@ import type { LiveView } from "../spawn/spawn-coordinator.js";
 /** Base lines consumed by chrome: top border + header + header sep + footer sep + footer + bottom border. */
 const CHROME_LINES_BASE = 6;
 const MIN_VIEWPORT = 3;
-/** Height ceiling shared by the overlay's `maxHeight` and the viewer's internal viewport cap. */
-export const VIEWPORT_HEIGHT_PCT = 70;
+/** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
+const VIEWPORT_HEIGHT_PCT = 70;
 /** Maximum characters for a single tool result before truncation. */
 const TOOL_RESULT_MAX_CHARS = 4000;
 
