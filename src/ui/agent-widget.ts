@@ -628,11 +628,9 @@ export class AgentWidget {
 
   /** Build the heading line with navigation hint text. */
   private buildHeading(theme: Theme, color: string, icon: string): string {
-    if (this.navActive) {
-      const hint = theme.fg("dim", "↑↓ navigate · enter view · esc back");
-      return `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}  ${hint}`;
-    }
-    const hint = theme.fg("dim", "↓ to navigate");
+    const hint = this.navActive
+      ? theme.fg("dim", "↑↓ navigate · enter view · esc back")
+      : theme.fg("dim", "↓ to navigate");
     return `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}  ${hint}`;
   }
 
