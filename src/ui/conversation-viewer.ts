@@ -428,25 +428,6 @@ export class ConversationViewer implements Component {
               lines.push(th.bg(bg, " ".repeat(width)));
             }
           }
-          if (result) {
-            renderedToolResults.add(tc.id!);
-            const resultText = extractText(result.content);
-            if (resultText.trim()) {
-              if (resultText.length > TOOL_RESULT_MAX_CHARS) {
-                const firstLine = resultText.split("\n")[0] ?? "";
-                if (firstLine.trim()) {
-                  const preview = firstLine.length > width - 4 ? firstLine.slice(0, width - 5) + "…" : firstLine;
-                  const previewPad = Math.max(0, width - visibleWidth(`  ${preview} `));
-                  lines.push(th.bg(bg, th.fg("toolOutput", `  ${preview}${" ".repeat(previewPad)}`)));
-                }
-              } else {
-                for (const line of wrapTextWithAnsi(resultText.trim(), width - 4)) {
-                  const linePad = Math.max(0, width - visibleWidth(`  ${line} `));
-                  lines.push(th.bg(bg, th.fg("toolOutput", `  ${line}${" ".repeat(linePad)}`)));
-                }
-              }
-            }
-          }
         }
       } else if (msg.role === "toolResult") {
         // Skip if already rendered with its tool call
