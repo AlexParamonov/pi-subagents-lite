@@ -396,13 +396,13 @@ function filterExtensions(
   const matched = new Set<string>();
   const filtered = extensions.filter((ext) => {
     const pathName = extractExtensionName(ext.path).toLowerCase();
-    const pkgName = extensionPackageName(ext.path) ?? "";
-    const hit = names.has(pathName) || (pkgName && names.has(pkgName));
+    const pkgName = extensionPackageName(ext.path);
+    const hit = names.has(pathName) || (pkgName !== undefined && names.has(pkgName));
     if (hit) {
       matched.add(pathName);
       if (pkgName) matched.add(pkgName);
     }
-    return !!hit !== invert;
+    return hit !== invert;
   });
   return { filtered, matched };
 }
