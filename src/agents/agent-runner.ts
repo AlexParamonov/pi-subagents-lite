@@ -383,6 +383,30 @@ function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, un
   return map;
 }
 
+/**
+ * Filter extensions by name, tracking which names matched.
+ * @param names  Set of names to match against (lowercased).
+ * @param invert  When true, removes matching extensions (blacklist). When false, keeps them (whitelist).
+ */
+function filterExtensions(
+  extensions: Array<{ path: string }>,
+  names: Set<string>,
+  invert: boolean,
+): { filtered: Array<{ path: string }>; matched: Set<string> } {
+  const matched = new Set<string>();
+  const filtered = extensions.filter((ext) => {
+    const pathName = extractExtensionName(ext.path).toLowerCase();
+    const pkgName = extensionPackageName(ext.path) ?? "";
+    const hit = names.has(pathName) || (pkgName && names.has(pkgName));
+    if (hit) {
+      matched.add(pathName);
+      if (pkgName) matched.add(pkgName);
+    }
+    return !!hit !== invert;
+  });
+  return { filtered, matched };
+}
+
 /** Build extension override for whitelist or blacklist filtering. */
 export function buildExtOverride(
   extensions: true | string[] | false | undefined,
@@ -391,25 +415,14 @@ export function buildExtOverride(
 ) {
   if (Array.isArray(extensions)) {
     // Normalize frontmatter entries: strip ext/tool syntax, lowercase
-    const allowedNames = new Set(extensions.map(ext => {
+    const allowedNames = new Set(extensions.map((ext) => {
       const slashIdx = ext.indexOf("/");
       return (slashIdx !== -1 ? ext.slice(0, slashIdx) : ext).toLowerCase();
     }));
 
     return (result: any) => {
-      const matched = new Set<string>();
-      const filtered = result.extensions.filter((ext: { path: string }) => {
-        const pathName = extractExtensionName(ext.path).toLowerCase();
-        const pkgName = extensionPackageName(ext.path) ?? "";
-        const isAllowed = allowedNames.has(pathName) || (pkgName && allowedNames.has(pkgName));
-        if (isAllowed) {
-          matched.add(pathName);
-          if (pkgName) matched.add(pkgName);
-        }
-        return isAllowed;
-      });
+      const { filtered, matched } = filterExtensions(result.extensions, allowedNames, false);
 
-      // Warn about names that didn't match any loaded extension
       for (const name of allowedNames) {
         if (!matched.has(name)) {
           notify?.(`extension "${name}" not found in loaded extensions`);
@@ -421,23 +434,11 @@ export function buildExtOverride(
   }
 
   if (excludeExtensions) {
-    // Normalize excluded names to lowercase
-    const excludeSet = new Set(excludeExtensions.map(n => n.toLowerCase()));
+    const excludeSet = new Set(excludeExtensions.map((n) => n.toLowerCase()));
 
     return (result: any) => {
-      const matched = new Set<string>();
-      const filtered = result.extensions.filter((ext: { path: string }) => {
-        const pathName = extractExtensionName(ext.path).toLowerCase();
-        const pkgName = extensionPackageName(ext.path) ?? "";
-        const isExcluded = excludeSet.has(pathName) || (pkgName && excludeSet.has(pkgName));
-        if (isExcluded) {
-          matched.add(pathName);
-          if (pkgName) matched.add(pkgName);
-        }
-        return !isExcluded;
-      });
+      const { filtered, matched } = filterExtensions(result.extensions, excludeSet, true);
 
-      // Warn about names that didn't match any loaded extension
       for (const name of excludeSet) {
         if (!matched.has(name)) {
           notify?.(`extension "${name}" not found in loaded extensions`);

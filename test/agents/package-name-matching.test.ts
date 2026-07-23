@@ -133,6 +133,26 @@ describe("extension matching by package name — whitelist", () => {
     });
     expect(result.extensions).toHaveLength(1);
   });
+
+  it("matches extension by package name when installed inside node_modules", () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "pkg-name-test-"));
+    tmpDirs.push(baseDir);
+    const nmDir = join(baseDir, "node_modules", "@scope", "pi-subagents");
+    mkdirSync(nmDir, { recursive: true });
+    const manifest = { name: "@scope/pi-subagents", pi: { extensions: ["./dist/index.js"] } };
+    writeFileSync(join(nmDir, "package.json"), JSON.stringify(manifest));
+    mkdirSync(join(nmDir, "dist"), { recursive: true });
+    writeFileSync(join(nmDir, "dist", "index.js"), "export default () => {};" );
+    const extPath = join(nmDir, "dist", "index.js");
+
+    const override = buildExtOverride(["pi-subagents"], undefined, undefined);
+    const result = override!({
+      extensions: [{ path: extPath, tools: new Map([["my_tool", {}]]) }],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
+  });
 });
 
 /* ------------------------------------------------------------------ */
