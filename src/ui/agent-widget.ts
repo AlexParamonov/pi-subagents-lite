@@ -28,7 +28,6 @@ const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", 
 /** Non-success statuses — used for linger behavior and icon rendering. */
 const ERROR_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
 
-
 /** Widget key used with setWidget(). */
 const WIDGET_KEY = "agents";
 
@@ -516,9 +515,9 @@ export class AgentWidget {
         const continuations: string[] = [];
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {
-          continuations.push(truncate("    " + theme.fg("dim", parts.join("  "))));
+          continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
         }
-        continuations.push(truncate("    " + theme.fg("dim", activity)));
+        continuations.push(truncate(theme.fg("dim", "  └ " + activity)));
         blocks.push({
           header: truncate(headerLine),
           continuations,
@@ -646,7 +645,6 @@ export class AgentWidget {
   private renderBlock(block: RenderBlock, _isLast: boolean, isHighlighted: boolean, theme: Theme): string[] {
     let header = block.header;
     if (isHighlighted) {
-      // Replace both leading spaces with '→' (visually 2 columns)
       if (header.startsWith("  ")) {
         header = "→ " + header.slice(2);
       }

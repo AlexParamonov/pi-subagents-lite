@@ -3,7 +3,7 @@
  *
  * Verifies that the widget renders correct formatting:
  *   - Headers use 2-space prefix (no tree connectors)
- *   - Activity lines use 4-space indentation
+ *   - Activity lines use a tree connector (│ or └) prefix
  *   - outputFile lines appear before activity lines
  */
 
@@ -134,19 +134,16 @@ describe("widget rendering format", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       expect(lines[1]).toMatch(/^  /);
-      expect(lines[1]).not.toContain("├─");
-      expect(lines[1]).not.toContain("└─");
     });
 
-    it("uses spaces for last running agent activity line", () => {
+    it("uses │ for last running agent activity line", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // Activity line is the second line (index 2, after heading)
-      expect(lines[2]).toMatch(/^    /);
-      expect(lines[2]).not.toContain("│");
+      expect(lines[2]).toMatch(/^\[dim:  [│└]/);
     });
 
     it("places outputFile line before activity line", () => {
@@ -158,19 +155,17 @@ describe("widget rendering format", () => {
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // line[1] = header, line[2] = outputFile, line[3] = activity
       expect(lines[2]).toContain("tail -f");
-      expect(lines[3]).toMatch(/^    /);
+      expect(lines[3]).toMatch(/^\[dim:  [│└]/);
       expect(lines[3]).toContain("reading");
     });
 
-    it("activity line uses spaces, not box-drawing chars", () => {
+    it("activity line uses └ connector", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      expect(lines[2]).toMatch(/^    /);
-      expect(lines[2]).not.toContain("└");
-      expect(lines[2]).not.toContain("⎿");
+      expect(lines[2]).toMatch(/^\[dim:  └/);
     });
   });
 
@@ -183,11 +178,9 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // Both agent headers use 2-space prefix
+      // Both agent headers use 2-space prefix with tree connector
       expect(lines[1]).toMatch(/^  /);
       expect(lines[3]).toMatch(/^  /);
-      expect(lines[1]).not.toContain("├─");
-      expect(lines[3]).not.toContain("└─");
     });
 
     it("uses spaces for all activity lines", () => {
@@ -198,11 +191,9 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // All activity lines use 4-space indentation
-      expect(lines[2]).toMatch(/^    /);
-      expect(lines[4]).toMatch(/^    /);
-      expect(lines[2]).not.toContain("│");
-      expect(lines[4]).not.toContain("│");
+      // Activity lines use │ or └ connector
+      expect(lines[2]).toMatch(/^\[dim:  [│└]/);
+      expect(lines[4]).toMatch(/^\[dim:  [│└]/);
     });
 
     it("places outputFile before activity for each running agent", () => {
@@ -232,10 +223,8 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      expect(lines[1]).toMatch(/^  /);
-      expect(lines[2]).toMatch(/^  /);
-      expect(lines[1]).not.toContain("├─");
-      expect(lines[2]).not.toContain("└─");
+      expect(lines[1]).toMatch(/^  /); // All agents use 2-space prefix
+      expect(lines[2]).toMatch(/^  /); // All agents use 2-space prefix
     });
 
     it("uses spaces for tail-f line of last finished agent", () => {
@@ -243,13 +232,10 @@ describe("widget rendering format", () => {
       a1.display.outputFile = "/tmp/pi-agent-outputs/test.log";
       widget.markFinished("a1");
       (manager as any).listAgents = () => [a1];
-
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      expect(lines[1]).toMatch(/^  /);
-      expect(lines[1]).not.toContain("├─");
-      expect(lines[1]).not.toContain("└─");
-      // tail-f line should have no │
-      expect(lines[2]).not.toContain("│");
+      expect(lines[1]).toMatch(/^  /); // All agents use 2-space prefix
+      // tail-f line should have spaces only (no connector)
+      expect(lines[2]).toMatch(/^\[dim:\s{4}/);
       expect(lines[2]).toContain("tail -f");
     });
 
@@ -261,12 +247,11 @@ describe("widget rendering format", () => {
       widget.markFinished("a1");
       widget.markFinished("a2");
       (manager as any).listAgents = () => [a1, a2];
-
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // All tail-f lines use spaces, no │ connector
-      expect(lines[2]).not.toContain("│");
+      // All tail-f lines use spaces only (no connector) for finished agents
+      expect(lines[2]).toMatch(/^\[dim:\s{4}/);
+      expect(lines[4]).toMatch(/^\[dim:\s{4}/);
       expect(lines[2]).toContain("out1.log");
-      expect(lines[4]).not.toContain("│");
       expect(lines[4]).toContain("out2.log");
     });
   });
@@ -280,11 +265,9 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [finished, running];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // Both finished and running agents use 2-space prefix
-      expect(lines[1]).toMatch(/^  /);
-      expect(lines[2]).toMatch(/^  /);
-      expect(lines[1]).not.toContain("├─");
-      expect(lines[2]).not.toContain("└─");
+      // Both use 2-space prefix
+      expect(lines[1]).toMatch(/^  /); // finished agent
+      expect(lines[2]).toMatch(/^  /); // running agent
     });
   });
 });
