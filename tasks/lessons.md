@@ -84,3 +84,8 @@
 **What worked:** Issue.md prototype code blocks (state machine, key handler) gave builder a clear contract. The `matchesKey`/`isKeyRelease` pattern from pi-tui avoided reinventing key parsing. `viewerOpen` flag cleanly separated overlay lifecycle from nav deactivation.
 **What failed:** Builder wrote tests against a hand-copied handler instead of the real exported function. Overflow scrolling was described in the AC but not implemented. Focus detection used private pi-tui field instead of public `hasOverlay()` API.
 **Next time:** Export testable functions early (`createNavInputHandler`). Call out overflow behavior as a hard gate in the AC. Prefer public API for cross-package access — private fields break silently on upstream changes.
+
+## constrained-tool-sampling — 2025-07-21
+**What worked:** Trivial mechanical issue. Voice-of-reason correctly identified no design choice needed. Refactor inlined `as any` mutations into object literals with a shared const — cleaner construction, no indirection.
+**What failed:** Builder manually edited bun.lock instead of running `bun install`. Dropped caret ranges on peerDeps. Also added a redundant comment suffix on `@ts-expect-error`.
+**Next time:** When bumping versions, always run the package manager to regenerate lockfiles. Never hand-edit bun.lock. Keep `@ts-expect-error` comments focused — one error per directive.
