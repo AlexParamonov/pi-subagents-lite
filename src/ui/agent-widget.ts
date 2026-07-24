@@ -340,7 +340,7 @@ export class AgentWidget {
   private shouldShowFinished(agentId: string, status: string): boolean {
     const age = this.finishedTurnAge.get(agentId) ?? 0;
     const maxAge = ERROR_STATUSES.has(status) ? ERROR_LINGER_TURNS : 1;
-    return age < maxAge;
+    return age <= maxAge;
   }
 
   /** Record an agent as finished (call when agent completes). */
