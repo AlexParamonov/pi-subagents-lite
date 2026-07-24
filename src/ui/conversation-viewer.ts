@@ -650,13 +650,6 @@ export class ConversationViewer implements Component {
       lines.push(...this.ensureTextMd().render(width));
     }
 
-    // Streaming indicator for running agents
-    if (this.record.lifecycle.status === "running" && this.activity) {
-      const act = describeActivity(this.activity.activeTools, this.activity.responseText);
-      lines.push("");
-      lines.push(truncateToWidth(this.theme.fg("accent", "▍ ") + this.theme.fg("dim", act), width));
-    }
-
     return lines;
   }
 }
