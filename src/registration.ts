@@ -7,6 +7,11 @@ import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from
 import { showAgentsMainMenu } from "./ui/menu/menus.js";
 import { getPiInstance, getStore } from "./shell.js";
 
+// Provider-side json_schema enforcement; "prefer" falls back gracefully on
+// providers without strict mode (e.g. local Ollama). Runtime-supported field,
+// not yet declared in pi's ToolDefinition type.
+const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
+
 // ============================================================================
 // Agent tool registration helper — dynamic enum for agent types
 // ============================================================================
@@ -34,6 +39,7 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       worktree_path: Type.Optional(Type.String()),
     }, { additionalProperties: false }),
     execute: executeAgentTool,
+    constrainedSampling: CONSTRAINED_SAMPLING,
 
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
 
@@ -47,8 +53,6 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       );
     },
   };
-  // constrainedSampling not yet in ToolDefinition type
-  (tool as any).constrainedSampling = { type: 'json_schema', strict: 'prefer' };
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(tool);
 }
@@ -70,9 +74,8 @@ export function registerTools(pi: ExtensionAPI): void {
       agent_id: Type.String(),
     }, { additionalProperties: false }),
     execute: executeStopAgentTool,
+    constrainedSampling: CONSTRAINED_SAMPLING,
   };
-  // constrainedSampling not yet in ToolDefinition type
-  (stopAgentTool as any).constrainedSampling = { type: 'json_schema', strict: 'prefer' };
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(stopAgentTool);
 
@@ -82,9 +85,8 @@ export function registerTools(pi: ExtensionAPI): void {
     label: "AgentStatus",
     parameters: Type.Object({}, { additionalProperties: false }),
     execute: executeAgentStatusTool,
+    constrainedSampling: CONSTRAINED_SAMPLING,
   };
-  // constrainedSampling not yet in ToolDefinition type
-  (agentStatusTool as any).constrainedSampling = { type: 'json_schema', strict: 'prefer' };
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(agentStatusTool);
 
