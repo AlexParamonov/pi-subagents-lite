@@ -276,7 +276,7 @@ export class ConversationViewer implements Component {
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
     if (modelName) {
       const parts = [statsLine, ...tags].filter(Boolean);
-      lines.push(row(th.fg("dim", `  ↳ ${modelName} · ${parts.join(" · ")}`)));
+      lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));
     } else {
       lines.push(row(statsLine));
     }
@@ -372,6 +372,7 @@ export class ConversationViewer implements Component {
   invalidate(): void {
     this._messageCache.clear();
     this._cachedContentLines = undefined;
+    this._cacheMeta = { count: 0, width: 0 };
   }
 
   dispose(): void {
@@ -387,8 +388,6 @@ export class ConversationViewer implements Component {
       this.unsubscribe = undefined;
     }
   }
-
-  // ---- Private ----
 
   private viewportHeight(): number {
     // Cap mirrors the overlay's maxHeight -- otherwise the viewer would render
@@ -591,26 +590,8 @@ export class ConversationViewer implements Component {
       this._cachedContentLines = undefined;
     } else if (messages.length !== this._cacheMeta.count) {
       // Message count changed — only invalidate entries affected by new messages.
-      // If a new toolResult arrived, invalidate the assistant message with the matching toolCall.
       const newMsgs = messages.slice(this._cacheMeta.count);
-      for (const m of newMsgs) {
-        if (m.role === "toolResult" && m.toolCallId) {
-          for (let i = 0; i < this._cacheMeta.count; i++) {
-            const cached = this._messageCache.get(i);
-            if (cached) {
-              const candidate = messages[i];
-              if (candidate?.role === "assistant") {
-                for (const c of candidate.content) {
-                  if (c.type === "toolCall" && c.id === m.toolCallId) {
-                    this._messageCache.delete(i);
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      this.invalidateCacheForNewMessages(newMsgs, this._cacheMeta.count, messages);
       this._cacheMeta.count = messages.length;
       this._cachedContentLines = undefined; // new messages → full rebuild
     }
