@@ -101,18 +101,20 @@ export class ConversationViewer implements Component {
           const prevText = this._streamingText;
           switch (me?.type) {
             case "thinking_start":
-            case "thinking_end":
               this._streamingThinking = "";
               this._streamingThinkingMd?.setText("");
+              break;
+            case "thinking_end":
               break;
             case "thinking_delta":
               this._streamingThinking += me.delta;
               this.ensureThinkingMd().setText(this._streamingThinking);
               break;
             case "text_start":
-            case "text_end":
               this._streamingText = "";
               this._streamingTextMd?.setText("");
+              break;
+            case "text_end":
               break;
             case "text_delta":
               this._streamingText += me.delta;
