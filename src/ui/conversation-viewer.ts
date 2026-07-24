@@ -356,118 +356,123 @@ export class ConversationViewer implements Component {
     }
   }
 
-  /** Render a single message's lines. Extracted so the result can be cached per index. */
+  /** Route message rendering by role. */
   private renderMessage(
     msg: any,
     width: number,
     toolResults: Map<string, { content: unknown[]; isError: boolean; toolName?: string }>,
     renderedToolResults: Set<string>,
   ): string[] {
+    if (msg.role === "user") return this.renderUserMessage(msg, width);
+    if (msg.role === "assistant") return this.renderAssistantMessage(msg, width, toolResults, renderedToolResults);
+    if (msg.role === "toolResult") return this.renderToolResult(msg, width, renderedToolResults);
+    return [];
+  }
+
+  private renderUserMessage(msg: any, width: number): string[] {
     const th = this.theme;
-    const msgLines: string[] = [];
-
-    if (msg.role === "user") {
-      const text = typeof msg.content === "string"
-        ? msg.content
-        : extractText(msg.content);
-      if (!text.trim()) return msgLines;
-      const bgLines = wrapTextWithAnsi(text.trim(), width - 2);
-      msgLines.push(th.bg("userMessageBg", " ".repeat(width)));
-      for (const line of bgLines) {
-        const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
-        msgLines.push(th.bg("userMessageBg", th.fg("userMessageText", ` ${line}${" ".repeat(padNeeded)} `)));
-      }
-      msgLines.push(th.bg("userMessageBg", " ".repeat(width)));
-
-    } else if (msg.role === "assistant") {
-      const textParts: string[] = [];
-      const thinkingParts: string[] = [];
-      const toolCalls: Array<{ id?: string; name: string; args?: Record<string, unknown> }> = [];
-      for (const c of msg.content) {
-        if (c.type === "text" && c.text) textParts.push(c.text);
-        else if (c.type === "thinking" && c.thinking) thinkingParts.push(c.thinking);
-        else if (c.type === "toolCall") {
-          toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
-        }
-      }
-      // Spacer before assistant content, matching Pi's AssistantMessageComponent
-      if (thinkingParts.length > 0 || textParts.length > 0) msgLines.push("");
-      // Thinking blocks — render via Markdown with italic, matching Pi's assistant-message.ts
-      if (thinkingParts.length > 0) {
-        const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
-          color: (text: string) => th.fg("thinkingText", text),
-          italic: true,
-        });
-        msgLines.push(...md.render(width));
-        // Spacer between thinking and following text, matching Pi's hasVisibleContentAfter
-        if (textParts.length > 0) msgLines.push("");
-      }
-      // Assistant text — paddingX=1, paddingY=0 to avoid extra spacing before tools
-      if (textParts.length > 0) {
-        const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
-        msgLines.push(...md.render(width));
-      }
-      // Tool calls — no icons, bold name, matching Pi's ToolExecutionComponent
-      for (const tc of toolCalls) {
-        // Spacer before each tool, matching Pi's Spacer(1)
-        msgLines.push("");
-        const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
-        const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
-        const result = tc.id ? toolResults.get(tc.id) : undefined;
-        const bg = result
-          ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
-          : "toolPendingBg";
-
-        // Tool call line: bold name with args, wrapping if long
-        const toolLine = ` ${th.bold(label)} `;
-        const toolLines = wrapTextWithAnsi(toolLine, width - 2);
-        msgLines.push(th.bg(bg, " ".repeat(width)));
-        for (const tl of toolLines) {
-          const padNeeded = Math.max(0, width - visibleWidth(tl));
-          msgLines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
-        }
-
-        if (result) {
-          renderedToolResults.add(tc.id!);
-          const resultText = extractText(result.content);
-          if (resultText.trim()) {
-            // paddingY top: blank line between call and result, matching Pi's Box(1,1)
-            msgLines.push(th.bg(bg, " ".repeat(width)));
-            if (resultText.length > TOOL_RESULT_MAX_CHARS) {
-              const resultLines = resultText.split("\n");
-              const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
-              for (let i = 0; i < linesToShow; i++) {
-                this.pushToolOutput(msgLines, bg, resultLines[i] || " ", width);
-              }
-              if (resultLines.length > linesToShow) {
-                const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
-                msgLines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
-              }
-            } else {
-              this.pushToolOutput(msgLines, bg, resultText.trim(), width);
-            }
-            // paddingY bottom: blank line after result
-            msgLines.push(th.bg(bg, " ".repeat(width)));
-          }
-        }
-      }
-
-    } else if (msg.role === "toolResult") {
-      // Skip if already rendered with its tool call
-      if (msg.toolCallId && renderedToolResults.has(msg.toolCallId)) return msgLines;
-      // Standalone tool result (orphaned) — Spacer + bold name + result
-      msgLines.push("");
-      const text = extractText(msg.content);
-      if (!text.trim()) return msgLines;
-      const bg = msg.isError ? "toolErrorBg" : "toolSuccessBg";
-      const name = msg.toolName ?? "tool";
-      const toolLine = ` ${th.bold(name)} `;
-      const titlePad = Math.max(0, width - visibleWidth(toolLine));
-      msgLines.push(th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`)));
-      this.pushToolOutput(msgLines, bg, text.trim(), width);
+    const text = typeof msg.content === "string"
+      ? msg.content
+      : extractText(msg.content);
+    if (!text.trim()) return [];
+    const bgLines = wrapTextWithAnsi(text.trim(), width - 2);
+    const lines = [th.bg("userMessageBg", " ".repeat(width))];
+    for (const line of bgLines) {
+      const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
+      lines.push(th.bg("userMessageBg", th.fg("userMessageText", ` ${line}${" ".repeat(padNeeded)} `)));
     }
+    lines.push(th.bg("userMessageBg", " ".repeat(width)));
+    return lines;
+  }
 
-    return msgLines;
+  private renderAssistantMessage(
+    msg: any,
+    width: number,
+    toolResults: Map<string, { content: unknown[]; isError: boolean; toolName?: string }>,
+    renderedToolResults: Set<string>,
+  ): string[] {
+    const th = this.theme;
+    const lines: string[] = [];
+    const textParts: string[] = [];
+    const thinkingParts: string[] = [];
+    const toolCalls: Array<{ id?: string; name: string; args?: Record<string, unknown> }> = [];
+    for (const c of msg.content) {
+      if (c.type === "text" && c.text) textParts.push(c.text);
+      else if (c.type === "thinking" && c.thinking) thinkingParts.push(c.thinking);
+      else if (c.type === "toolCall") {
+        toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
+      }
+    }
+    // Spacer before assistant content
+    if (thinkingParts.length > 0 || textParts.length > 0) lines.push("");
+    // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
+    if (thinkingParts.length > 0) {
+      const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
+        color: (text: string) => th.fg("thinkingText", text),
+        italic: true,
+      });
+      lines.push(...md.render(width));
+      if (textParts.length > 0) lines.push("");
+    }
+    // Assistant text
+    if (textParts.length > 0) {
+      const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
+      lines.push(...md.render(width));
+    }
+    // Tool calls — bold name with args, matching Pi's ToolExecutionComponent
+    for (const tc of toolCalls) {
+      lines.push("");
+      const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
+      const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
+      const result = tc.id ? toolResults.get(tc.id) : undefined;
+      const bg = result
+        ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
+        : "toolPendingBg";
+      const toolLine = ` ${th.bold(label)} `;
+      for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
+        const padNeeded = Math.max(0, width - visibleWidth(tl));
+        lines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
+      }
+      if (result) {
+        renderedToolResults.add(tc.id!);
+        const resultText = extractText(result.content);
+        if (resultText.trim()) {
+          lines.push(th.bg(bg, " ".repeat(width)));
+          if (resultText.length > TOOL_RESULT_MAX_CHARS) {
+            const resultLines = resultText.split("\n");
+            const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
+            for (let i = 0; i < linesToShow; i++) {
+              this.pushToolOutput(lines, bg, resultLines[i] || " ", width);
+            }
+            if (resultLines.length > linesToShow) {
+              const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
+              lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
+            }
+          } else {
+            this.pushToolOutput(lines, bg, resultText.trim(), width);
+          }
+          lines.push(th.bg(bg, " ".repeat(width)));
+        }
+      }
+    }
+    return lines;
+  }
+
+  private renderToolResult(msg: any, width: number, renderedToolResults: Set<string>): string[] {
+    if (msg.toolCallId && renderedToolResults.has(msg.toolCallId)) return [];
+    const th = this.theme;
+    const text = extractText(msg.content);
+    if (!text.trim()) return [];
+    const bg = msg.isError ? "toolErrorBg" : "toolSuccessBg";
+    const name = msg.toolName ?? "tool";
+    const toolLine = ` ${th.bold(name)} `;
+    const titlePad = Math.max(0, width - visibleWidth(toolLine));
+    const lines = [
+      "",
+      th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`)),
+    ];
+    this.pushToolOutput(lines, bg, text.trim(), width);
+    return lines;
   }
 
   private buildContentLines(width: number): string[] {
