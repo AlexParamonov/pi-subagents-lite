@@ -397,7 +397,10 @@ export class ConversationViewer implements Component {
 
   /** Maximum scroll offset for the current content and viewport. */
   private scrollMax(): number {
-    const totalLines = this.cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
+    // Derive from a fresh build, not cachedContentLines.length: that cache holds
+    // the last slow-path result and goes stale while streaming grows the suffix.
+    // buildContentLines takes its fast path when the cache is warm, so this is cheap.
+    const totalLines = this.buildContentLines(this.lastInnerW).length;
     return Math.max(0, totalLines - this.viewportHeight());
   }
   /** When a new toolResult arrives, invalidate the cached assistant message that references it. */

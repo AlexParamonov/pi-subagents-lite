@@ -632,6 +632,26 @@ describe("ConversationViewer", () => {
       expect(count(text, "UNIQRESULT")).toBe(1);
       expect(count(text, "uniqtool")).toBe(1);
     });
+
+    it("scrolls to the true bottom when streaming adds lines (scrollMax not stale)", () => {
+      const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      // Populates the cache; autoScroll parks scrollOffset at the bottom of the
+      // non-streaming content.
+      viewer.render(80);
+      const baseline = (viewer as any).scrollOffset;
+      expect(baseline).toBeGreaterThan(0);
+
+      // Streaming text arrives (5 rendered lines) without a new session message,
+      // so only the streaming suffix changes.
+      (viewer as any).streamingText = "a\nb\nc\nd\ne";
+      (viewer as any).ensureTextMd().setText("a\nb\nc\nd\ne");
+
+      viewer.handleInput("G"); // jump to bottom
+      expect((viewer as any).scrollOffset).toBe(baseline + 5);
+    });
   });
 
   describe("dispose", () => {
