@@ -276,8 +276,7 @@ export class ConversationViewer implements Component {
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
     const invocationParts = [modelName, ...tags].filter(Boolean);
     if (invocationParts.length > 0) {
-      invocationParts.push(statsLine);
-      lines.push(row(th.fg("dim", `  ↳ ${invocationParts.join(" · ")}`)));
+      lines.push(row(th.fg("dim", `  ↳ ${statsLine} · ${invocationParts.join(" · ")}`)));
     } else {
       lines.push(row(statsLine));
     }
