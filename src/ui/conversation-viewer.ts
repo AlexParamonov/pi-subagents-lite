@@ -52,6 +52,8 @@ export class ConversationViewer implements Component {
   private unsubscribe: (() => void) | undefined;
   private lastInnerW = 0;
   private closed = false;
+  /** Rendered lines per message index — avoids re-rendering unchanged messages. */
+  private messageCache = new Map<number, string[]>();
   /** Message count and width of the last cache population. Mismatch → stale. */
   private cacheMeta = { count: 0, width: 0 };
   /** Full content lines from the last build — avoids re-iterating cached messages. */
@@ -363,12 +365,14 @@ export class ConversationViewer implements Component {
   }
 
   invalidate(): void {
+    this.messageCache.clear();
     this.cachedContentLines = undefined;
     this.cacheMeta = { count: 0, width: 0 };
   }
 
   dispose(): void {
     this.closed = true;
+    this.messageCache.clear();
     this.cachedContentLines = undefined;
     if (this.renderTimer !== undefined) {
       clearTimeout(this.renderTimer);
@@ -397,6 +401,32 @@ export class ConversationViewer implements Component {
     const totalLines = this.cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
     return Math.max(0, totalLines - this.viewportHeight());
   }
+  /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
+  private invalidateCacheForNewMessages(newMsgs: any[], oldCount: number, allMessages: any[]): void {
+    // Collect toolCallIds from new tool results
+    const newToolCallIds = new Set<string>();
+    for (const m of newMsgs) {
+      if (m.role === "toolResult" && m.toolCallId) {
+        newToolCallIds.add(m.toolCallId);
+      }
+    }
+    if (newToolCallIds.size === 0) return;
+
+    // Invalidate cached assistant messages that reference any of the new toolCallIds
+    for (let i = 0; i < oldCount; i++) {
+      if (!this.messageCache.has(i)) continue;
+      const msg = allMessages[i];
+      if (msg?.role !== "assistant") continue;
+      for (const c of msg.content) {
+        if (c.type === "toolCall" && newToolCallIds.has(c.id)) {
+          this.messageCache.delete(i);
+          break;
+        }
+      }
+    }
+  }
+
+
 
   /** Wrap text to the inner width and return each line as a tool-output row with bg padding. */
   private wrapToolOutput(bg: string, text: string, width: number): string[] {
@@ -465,9 +495,6 @@ export class ConversationViewer implements Component {
       const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
       lines.push(...md.render(width));
     }
-    // Spacer before tool calls so they don't blend into preceding text
-    // (thinking already provides its own trailing blank from Markdown rendering)
-    if (toolCalls.length > 0 && textParts.length > 0) lines.push("");
     // Tool calls
     for (const tc of toolCalls) {
       lines.push(...this.renderToolCall(tc, width, toolResults, renderedToolResults));
@@ -563,10 +590,17 @@ export class ConversationViewer implements Component {
     // Track which tool results have been rendered
     const renderedToolResults = new Set<string>();
 
-    // Invalidate cache if width or message count changed (Markdown wrapping depends on width).
-    if (width !== this.cacheMeta.width || messages.length !== this.cacheMeta.count) {
+    // Invalidate cache if width changed (Markdown wrapping depends on it)
+    if (width !== this.cacheMeta.width) {
+      this.messageCache.clear();
       this.cacheMeta = { count: messages.length, width };
       this.cachedContentLines = undefined;
+    } else if (messages.length !== this.cacheMeta.count) {
+      // Message count changed — only invalidate entries affected by new messages.
+      const newMsgs = messages.slice(this.cacheMeta.count);
+      this.invalidateCacheForNewMessages(newMsgs, this.cacheMeta.count, messages);
+      this.cacheMeta.count = messages.length;
+      this.cachedContentLines = undefined; // new messages → full rebuild
     }
 
     // Fast path: if we have cached content and only streaming text changed,
@@ -581,13 +615,21 @@ export class ConversationViewer implements Component {
     // Slow path: full rebuild
     const lines: string[] = [];
 
-    // Render all messages
+    // Render all messages with per-message caching
     for (let i = 0; i < messages.length; i++) {
-      switch (messages[i].role) {
-        case "user": lines.push(...this.renderUserMessage(messages[i], width)); break;
-        case "assistant": lines.push(...this.renderAssistantMessage(messages[i], width, toolResults, renderedToolResults)); break;
-        case "toolResult": lines.push(...this.renderToolResult(messages[i], width, renderedToolResults)); break;
-        default: break;
+      const cached = this.messageCache.get(i);
+      if (cached) {
+        lines.push(...cached);
+      } else {
+        let msgLines: string[];
+        switch (messages[i].role) {
+          case "user": msgLines = this.renderUserMessage(messages[i], width); break;
+          case "assistant": msgLines = this.renderAssistantMessage(messages[i], width, toolResults, renderedToolResults); break;
+          case "toolResult": msgLines = this.renderToolResult(messages[i], width, renderedToolResults); break;
+          default: msgLines = [];
+        }
+        this.messageCache.set(i, msgLines);
+        lines.push(...msgLines);
       }
     }
 
