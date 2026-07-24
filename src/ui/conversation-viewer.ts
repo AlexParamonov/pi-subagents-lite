@@ -466,7 +466,7 @@ export class ConversationViewer implements Component {
       const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
       inner.push(th.bg("userMessageBg", th.fg("userMessageText", ` ${line}${" ".repeat(padNeeded)} `)));
     }
-    return this.wrapInBg("userMessageBg", inner, width);
+    return [...this.wrapInBg("userMessageBg", inner, width), ""];
   }
 
   private renderAssistantMessage(
@@ -487,8 +487,6 @@ export class ConversationViewer implements Component {
         toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
       }
     }
-    // Spacer before assistant content
-    if (thinkingParts.length > 0 || textParts.length > 0) lines.push("");
     // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
     if (thinkingParts.length > 0) {
       const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
@@ -496,16 +494,21 @@ export class ConversationViewer implements Component {
         italic: true,
       });
       lines.push(...md.render(width));
-      if (textParts.length > 0) lines.push("");
+      lines.push("");
     }
     // Assistant text
     if (textParts.length > 0) {
       const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
-      lines.push(...md.render(width));
+      const textLines = md.render(width);
+      if (textLines.length > 0) {
+        lines.push(...textLines);
+        lines.push("");
+      }
     }
     // Tool calls
     for (const tc of toolCalls) {
       lines.push(...this.renderToolCall(tc, width, toolResults, renderedToolResults));
+      lines.push("");
     }
     return lines;
   }
@@ -521,7 +524,7 @@ export class ConversationViewer implements Component {
     const titlePad = Math.max(0, width - visibleWidth(toolLine));
     const inner = [th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`))];
     inner.push(...this.wrapToolOutput(bg, text.trim(), width));
-    return this.wrapInBg(bg, inner, width);
+    return [...this.wrapInBg(bg, inner, width), ""];
   }
 
   private renderToolCall(
@@ -544,6 +547,7 @@ export class ConversationViewer implements Component {
       inner.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
     }
     if (result && tc.id) {
+      inner.push(th.bg(bg, " ".repeat(width)));
       renderedToolResults.add(tc.id);
       inner.push(...this.renderToolCallResult(result, bg, width));
     }
@@ -657,7 +661,6 @@ export class ConversationViewer implements Component {
 
     // Streaming thinking text — rendered before text, matching assistant message order
     if (this.streamingThinking.trim()) {
-      lines.push("");
       lines.push(...this.ensureThinkingMd().render(width));
     }
 
@@ -667,5 +670,5 @@ export class ConversationViewer implements Component {
     }
 
     return lines;
-  }
+}
 }
