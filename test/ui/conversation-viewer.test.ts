@@ -149,6 +149,10 @@ function makeTui() {
   } as any;
 }
 
+function count(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -595,6 +599,38 @@ describe("ConversationViewer", () => {
       const text = lines.join("\n");
 
       expect(text).not.toContain("@");
+    });
+  });
+
+  describe("caching", () => {
+    it("renders a tool result once, inline under its call (no standalone duplicate)", () => {
+      const session = makeMockSession([
+        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
+        { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: [{ type: "text", text: "UNIQRESULT" }] },
+      ]);
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      const text = viewer.render(80).join("\n");
+      expect(count(text, "UNIQRESULT")).toBe(1);
+      expect(count(text, "uniqtool")).toBe(1);
+    });
+
+    it("re-renders a cached assistant tool call when its result arrives (no duplicate title)", () => {
+      const session = makeMockSession([
+        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
+      ]);
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      // First render caches the assistant message as a pending tool call.
+      viewer.render(80);
+      // The tool result then arrives as a new message.
+      session.messages.push({ role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: [{ type: "text", text: "UNIQRESULT" }] });
+
+      const text = viewer.render(80).join("\n");
+      expect(count(text, "UNIQRESULT")).toBe(1);
+      expect(count(text, "uniqtool")).toBe(1);
     });
   });
 
