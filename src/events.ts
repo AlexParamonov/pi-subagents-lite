@@ -3,9 +3,7 @@ import type { AgentRecord } from "./types.js";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
-import { DEFAULT_AGENTS } from "./agents/default-agents.js";
-import { registerAgents, getAvailableTypes, setAgentScanDirs } from "./agents/agent-types.js";
-import { scanAgentFilesInDir, mergeAgents } from "./agents/agent-discovery.js";
+import { registerAgents, getAvailableTypes, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./ui/conversation-viewer.js";
@@ -94,17 +92,10 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
 
   const disableDefaults = getStore().agent.disableDefaultAgents;
 
-  const [userAgents, sharedAgents, projectAgents] = await Promise.all([
-    scanAgentFilesInDir(userAgentDir, "user"),
-    scanAgentFilesInDir(sharedAgentDir, "project"),
-    scanAgentFilesInDir(projectAgentDir, "project"),
-  ]);
+  // Scan user/shared/project layers and merge with defaults
+  // (skip defaults when disableDefaultAgents is on)
+  const merged = await scanAndMerge({ disableDefaultAgents: disableDefaults });
 
-  // Merge with defaults (skip defaults when disableDefaultAgents is on)
-  const defaults = disableDefaults ? new Map() : DEFAULT_AGENTS;
-  const merged = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
-
-  // Register into the type registry (skip re-adding defaults)
   registerAgents(merged, { disableDefaultAgents: disableDefaults });
 }
 

@@ -69,7 +69,7 @@ export function setAgentScanDirs(userDir: string, projectDir: string, sharedDir?
 }
 
 /** Scan user, shared, and project agent directories, merge with defaults. Returns the merged Map. */
-async function scanAndMerge(options?: { disableDefaultAgents?: boolean }): Promise<Map<string, AgentConfig>> {
+export async function scanAndMerge(options?: { disableDefaultAgents?: boolean }): Promise<Map<string, AgentConfig>> {
   const [userAgents, sharedAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),
     scanAgentFilesInDir(sharedAgentDir, "project"),
