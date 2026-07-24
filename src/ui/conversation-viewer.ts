@@ -82,37 +82,42 @@ export class ConversationViewer implements Component {
   ) {
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
-      if (this.closed) return;
-      // Only request render when streaming text state changes
-      if (event?.type === "message_update") {
-        const me = event.assistantMessageEvent;
-        const prevThinking = this._streamingThinking;
-        const prevText = this._streamingText;
-        switch (me?.type) {
-          case "thinking_start":
-          case "thinking_end":
-            this._streamingThinking = "";
-            break;
-          case "thinking_delta":
-            this._streamingThinking += me.delta;
-            break;
-          case "text_start":
-          case "text_end":
-            this._streamingText = "";
-            break;
-          case "text_delta":
-            this._streamingText += me.delta;
-            break;
+      try {
+        if (this.closed) return;
+        // Only request render when streaming text state changes
+        if (event?.type === "message_update") {
+          const me = event.assistantMessageEvent;
+          const prevThinking = this._streamingThinking;
+          const prevText = this._streamingText;
+          switch (me?.type) {
+            case "thinking_start":
+            case "thinking_end":
+              this._streamingThinking = "";
+              break;
+            case "thinking_delta":
+              this._streamingThinking += me.delta;
+              break;
+            case "text_start":
+            case "text_end":
+              this._streamingText = "";
+              break;
+            case "text_delta":
+              this._streamingText += me.delta;
+              break;
+          }
+          // Only render if streaming state actually changed
+          if (this._streamingThinking !== prevThinking || this._streamingText !== prevText) {
+            this.tui.requestRender();
+          }
         }
-        // Only render if streaming state actually changed
-        if (this._streamingThinking !== prevThinking || this._streamingText !== prevText) {
-          this.tui.requestRender();
-        }
+      } catch (err) {
+        // Swallow — session events after viewer closure must not crash the menu
       }
     });
   }
 
   handleInput(data: string): void {
+    if (this.closed) return; // already closing, ignore stray keys
     // While composing a steer message, the input owns all keys (Enter sends,
     // Esc cancels -- both wired in openComposer()). Editing keys flow through.
     if (this.composer) {
@@ -184,6 +189,7 @@ export class ConversationViewer implements Component {
   }
 
   render(width: number): string[] {
+    if (this.closed) return []; // closing — framework may still call render after done()
     if (width < 6) return []; // too narrow for any meaningful rendering
     const th = this.theme;
     const innerW = width - 4; // border + padding
@@ -471,7 +477,7 @@ export class ConversationViewer implements Component {
     if (width <= 0) return [];
 
     const th = this.theme;
-    const messages = this.session.messages;
+    const messages = this.session.messages ?? [];
     const lines: string[] = [];
 
     if (messages.length === 0) {
