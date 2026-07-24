@@ -263,7 +263,7 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
-      const footerRight = th.fg("dim", `↑↓ scroll · f fullscreen · Esc close`);
+      const footerRight = th.fg("dim", `↑↓ scroll · PgUp/PgDn · f fullscreen · Esc close`);
 
       // Prepend the line-count/scroll-% readout only when there's spare width
       const scrollPct = contentLines.length <= viewportHeight
