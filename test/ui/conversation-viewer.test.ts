@@ -170,6 +170,7 @@ describe("ConversationViewer", () => {
     });
 
     it("requests render on session events", () => {
+      vi.useFakeTimers();
       let subscriber: (event?: unknown) => void;
       mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
         subscriber = cb;
@@ -184,19 +185,24 @@ describe("ConversationViewer", () => {
 
       // Non-message_update events should not trigger render
       subscriber!({ type: "other" });
+      vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(0);
 
-      // message_update with text_delta should trigger render
+      // message_update with text_delta should trigger render (debounced)
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hello" } });
+      vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(1);
 
-      // Same text_delta again should not trigger render (no state change)
+      // Rapid deltas only trigger one render (debounce coalesces)
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
-      expect(mockRequestRender).toHaveBeenCalledTimes(2); // still changes because text changed
+      vi.runAllTimers();
+      expect(mockRequestRender).toHaveBeenCalledTimes(2);
 
       // Clearing text should trigger render
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
+      vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(3);
+      vi.useRealTimers();
     });
 
     it("stops processing events after close", () => {

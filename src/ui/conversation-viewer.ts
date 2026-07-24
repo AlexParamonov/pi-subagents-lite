@@ -33,6 +33,8 @@ export const VIEWPORT_HEIGHT_PCT = 70;
 const TOOL_RESULT_MAX_CHARS = 500;
 /** Maximum lines to show from a large tool result. */
 const TOOL_RESULT_MAX_LINES = 5;
+/** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
+const STREAM_RENDER_DEBOUNCE_MS = 100;
 
 /** Header status icon and its theme color, per lifecycle status. */
 const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
@@ -69,6 +71,8 @@ export class ConversationViewer implements Component {
   private _streamingThinkingMd: Markdown | undefined;
   /** Persistent Markdown instance for streaming text — lazily initialized. */
   private _streamingTextMd: Markdown | undefined;
+  /** Debounce timer for streaming renders — avoids fighting the TUI's 16ms loop. */
+  private _renderTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private tui: TUI,
@@ -115,7 +119,7 @@ export class ConversationViewer implements Component {
           }
           // Only render if streaming state actually changed
           if (this._streamingThinking !== prevThinking || this._streamingText !== prevText) {
-            this.tui.requestRender();
+            this._scheduleRender();
           }
         }
       } catch (err) {
@@ -141,6 +145,15 @@ export class ConversationViewer implements Component {
     }
     return this._streamingTextMd;
   }
+  /** Schedule a debounced render for streaming updates. */
+  private _scheduleRender(): void {
+    if (this._renderTimer !== undefined) return; // already scheduled
+    this._renderTimer = setTimeout(() => {
+      this._renderTimer = undefined;
+      if (!this.closed) this.tui.requestRender();
+    }, STREAM_RENDER_DEBOUNCE_MS);
+  }
+
 
 
   handleInput(data: string): void {
@@ -357,6 +370,10 @@ export class ConversationViewer implements Component {
   dispose(): void {
     this.closed = true;
     this._messageCache.clear();
+    if (this._renderTimer !== undefined) {
+      clearTimeout(this._renderTimer);
+      this._renderTimer = undefined;
+    }
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = undefined;
@@ -378,6 +395,24 @@ export class ConversationViewer implements Component {
   }
 
 
+  /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
+  private invalidateCacheForNewMessages(newMsgs: any[], allMessages: any[]): void {
+    const oldCount = allMessages.length - newMsgs.length;
+    for (const m of newMsgs) {
+      if (m.role !== "toolResult" || !m.toolCallId) continue;
+      for (let i = 0; i < oldCount; i++) {
+        const candidate = allMessages[i];
+        if (candidate?.role !== "assistant") continue;
+        for (const c of candidate.content) {
+          if (c.type === "toolCall" && c.id === m.toolCallId) {
+            this._messageCache.delete(i);
+            break;
+          }
+        }
+      }
+    }
+  }
+
   /** Wrap `text` to the inner width and push each line as a tool-output row, padded and bg-filled. */
   private pushToolOutput(lines: string[], bg: string, text: string, width: number): void {
     const th = this.theme;
@@ -387,18 +422,6 @@ export class ConversationViewer implements Component {
     }
   }
 
-  /** Route message rendering by role. */
-  private renderMessage(
-    msg: any,
-    width: number,
-    toolResults: Map<string, { content: unknown[]; isError: boolean; toolName?: string }>,
-    renderedToolResults: Set<string>,
-  ): string[] {
-    if (msg.role === "user") return this.renderUserMessage(msg, width);
-    if (msg.role === "assistant") return this.renderAssistantMessage(msg, width, toolResults, renderedToolResults);
-    if (msg.role === "toolResult") return this.renderToolResult(msg, width, renderedToolResults);
-    return [];
-  }
 
   private renderUserMessage(msg: any, width: number): string[] {
     const th = this.theme;
@@ -545,27 +568,8 @@ export class ConversationViewer implements Component {
       this._messageCache.clear();
       this._cacheMeta = { count: messages.length, width };
     } else if (messages.length !== this._cacheMeta.count) {
-      // Message count changed — only invalidate entries affected by new messages.
-      // If a new toolResult arrived, invalidate the assistant message with the matching toolCall.
       const newMsgs = messages.slice(this._cacheMeta.count);
-      for (const m of newMsgs) {
-        if (m.role === "toolResult" && m.toolCallId) {
-          for (let i = 0; i < this._cacheMeta.count; i++) {
-            const cached = this._messageCache.get(i);
-            if (cached) {
-              const candidate = messages[i];
-              if (candidate?.role === "assistant") {
-                for (const c of candidate.content) {
-                  if (c.type === "toolCall" && c.id === m.toolCallId) {
-                    this._messageCache.delete(i);
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      this.invalidateCacheForNewMessages(newMsgs, messages);
       this._cacheMeta.count = messages.length;
     }
 
@@ -575,7 +579,13 @@ export class ConversationViewer implements Component {
       if (cached) {
         lines.push(...cached);
       } else {
-        const msgLines = this.renderMessage(messages[i], width, toolResults, renderedToolResults);
+        let msgLines: string[];
+        switch (messages[i].role) {
+          case "user": msgLines = this.renderUserMessage(messages[i], width); break;
+          case "assistant": msgLines = this.renderAssistantMessage(messages[i], width, toolResults, renderedToolResults); break;
+          case "toolResult": msgLines = this.renderToolResult(messages[i], width, renderedToolResults); break;
+          default: msgLines = [];
+        }
         this._messageCache.set(i, msgLines);
         lines.push(...msgLines);
       }
