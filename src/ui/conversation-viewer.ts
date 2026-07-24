@@ -488,6 +488,8 @@ export class ConversationViewer implements Component {
       const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
       lines.push(...md.render(width));
     }
+    // Spacer before tool calls so they don't blend into preceding text
+    if (toolCalls.length > 0) lines.push("");
     // Tool calls
     for (const tc of toolCalls) {
       lines.push(...this.renderToolCall(tc, width, toolResults, renderedToolResults));
@@ -648,6 +650,7 @@ export class ConversationViewer implements Component {
 
     // Streaming thinking text — rendered before text, matching assistant message order
     if (this._streamingThinking.trim()) {
+      lines.push("");
       lines.push(...this.ensureThinkingMd().render(width));
     }
 
