@@ -41,7 +41,6 @@ async function showConversationViewer(
         tui,
         record.execution.session!,
         record,
-        coordinator?.liveView(record.id),
         theme,
         done,
         () => manager?.abort(record.id, "user"),

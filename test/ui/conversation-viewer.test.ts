@@ -164,7 +164,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
       expect(session.subscribe).toHaveBeenCalledTimes(1);
     });
@@ -181,7 +181,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
       // Non-message_update events should not trigger render
       subscriber!({ type: "other" });
@@ -217,7 +217,7 @@ describe("ConversationViewer", () => {
       const tui = makeTui();
       const done = vi.fn();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
 
       // Close the viewer (via q key)
       viewer.handleInput("q");
@@ -234,7 +234,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
       viewer.handleInput("q");
       expect(done).toHaveBeenCalledTimes(1);
     });
@@ -245,7 +245,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
       viewer.handleInput("\x1b");
       expect(done).toHaveBeenCalledTimes(1);
     });
@@ -262,7 +262,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, onStop);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, onStop);
 
       // First 's' — arms the stop
       viewer.handleInput("s");
@@ -283,7 +283,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, onStop);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, onStop);
 
       viewer.handleInput("s"); // arm
       viewer.handleInput("g"); // disarm (jump to top)
@@ -301,7 +301,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, onStop);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, onStop);
 
       viewer.handleInput("s");
       viewer.handleInput("s");
@@ -320,7 +320,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, undefined, undefined, onSteer);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
       // Composer should be open (internal state)
@@ -338,7 +338,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, undefined, undefined, onSteer);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r"); // open composer
 
       // Simulate submit
@@ -358,7 +358,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, undefined, undefined, onSteer);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
       const composer = (viewer as any).composer;
@@ -375,7 +375,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, done, undefined, undefined, onSteer);
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r"); // open composer
 
       const composer = (viewer as any).composer;
@@ -391,7 +391,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       (viewer as any).lastInnerW = 116; // normally set by render()
       const initialOffset = (viewer as any).scrollOffset;
       (viewer as any).autoScroll = false; // disable auto-scroll to test raw scroll
@@ -405,7 +405,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       (viewer as any).scrollOffset = 5;
 
       viewer.handleInput("\x1b[A");
@@ -417,7 +417,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       (viewer as any).scrollOffset = 10;
 
       viewer.handleInput("g");
@@ -429,7 +429,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
       viewer.handleInput("G");
       // Should be at max scroll
@@ -444,7 +444,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       viewer.handleInput("\x1b[A");
       expect((viewer as any).scrollOffset).toBe(0);
     });
@@ -456,7 +456,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
 
       expect(lines[0]).toMatch(/[╭]/);
@@ -468,7 +468,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -480,7 +480,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
       expect(text).toContain("here is the answer");
@@ -496,7 +496,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -513,7 +513,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -531,7 +531,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -551,7 +551,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -563,7 +563,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -578,7 +578,7 @@ describe("ConversationViewer", () => {
       });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -590,7 +590,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -607,7 +607,7 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
       viewer.dispose();
 
       expect(unsubscribe).toHaveBeenCalledTimes(1);

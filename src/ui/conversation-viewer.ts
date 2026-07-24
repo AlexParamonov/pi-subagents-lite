@@ -22,7 +22,6 @@ import {
   summarizeToolArgs,
 } from "./format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
-import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;
@@ -82,7 +81,6 @@ export class ConversationViewer implements Component {
     private tui: TUI,
     private session: AgentSession,
     private record: AgentRecord,
-    private activity: LiveView | undefined,
     private theme: Theme,
     private done: (result: undefined) => void,
     /** Abort the agent shown here. Omitted -> no stop affordance (e.g. read-only history). */
