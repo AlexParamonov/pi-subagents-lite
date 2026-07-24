@@ -428,13 +428,21 @@ export class ConversationViewer implements Component {
       }
     }
   }
-  /** Wrap `text` to the inner width and push each line as a tool-output row, padded and bg-filled. */
-  private pushToolOutput(lines: string[], bg: string, text: string, width: number): void {
+  /** Wrap text to the inner width and return each line as a tool-output row with bg padding. */
+  private wrapToolOutput(bg: string, text: string, width: number): string[] {
     const th = this.theme;
+    const lines: string[] = [];
     for (const wl of wrapTextWithAnsi(text, width - 4)) {
       const pad = Math.max(0, width - visibleWidth(`  ${wl} `));
       lines.push(th.bg(bg, th.fg("toolOutput", `  ${wl}${" ".repeat(pad)}`)));
     }
+    return lines;
+  }
+
+  /** Wrap inner lines with bg-filled top and bottom padding. */
+  private wrapInBg(bg: string, inner: string[], width: number): string[] {
+    const fill = this.theme.bg(bg, " ".repeat(width));
+    return [fill, ...inner, fill];
   }
 
 
@@ -444,14 +452,13 @@ export class ConversationViewer implements Component {
       ? msg.content
       : extractText(msg.content);
     if (!text.trim()) return [];
-    const bgLines = wrapTextWithAnsi(text.trim(), width - 2);
-    const lines = [th.bg("userMessageBg", " ".repeat(width))];
-    for (const line of bgLines) {
+    const wrapped = wrapTextWithAnsi(text.trim(), width - 2);
+    const inner: string[] = [];
+    for (const line of wrapped) {
       const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
-      lines.push(th.bg("userMessageBg", th.fg("userMessageText", ` ${line}${" ".repeat(padNeeded)} `)));
+      inner.push(th.bg("userMessageBg", th.fg("userMessageText", ` ${line}${" ".repeat(padNeeded)} `)));
     }
-    lines.push(th.bg("userMessageBg", " ".repeat(width)));
-    return lines;
+    return this.wrapInBg("userMessageBg", inner, width);
   }
 
   private renderAssistantMessage(
@@ -507,13 +514,9 @@ export class ConversationViewer implements Component {
     const name = msg.toolName ?? "tool";
     const toolLine = ` ${th.bold(name)} `;
     const titlePad = Math.max(0, width - visibleWidth(toolLine));
-    const lines = [
-      th.bg(bg, " ".repeat(width)),
-      th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`)),
-    ];
-    this.pushToolOutput(lines, bg, text.trim(), width);
-    lines.push(th.bg(bg, " ".repeat(width)));
-    return lines;
+    const inner = [th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`))];
+    inner.push(...this.wrapToolOutput(bg, text.trim(), width));
+    return this.wrapInBg(bg, inner, width);
   }
 
   private renderToolCall(
@@ -529,18 +532,17 @@ export class ConversationViewer implements Component {
     const bg = result
       ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
       : "toolPendingBg";
-    const lines: string[] = [th.bg(bg, " ".repeat(width))];
+    const inner: string[] = [];
     const toolLine = ` ${th.bold(label)} `;
     for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
       const padNeeded = Math.max(0, width - visibleWidth(tl));
-      lines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
+      inner.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
     }
     if (result && tc.id) {
       renderedToolResults.add(tc.id);
-      lines.push(...this.renderToolCallResult(result, bg, width));
+      inner.push(...this.renderToolCallResult(result, bg, width));
     }
-    lines.push(th.bg(bg, " ".repeat(width)));
-    return lines;
+    return this.wrapInBg(bg, inner, width);
   }
 
   /** Render the output of a tool call result, with truncation for large outputs. */
@@ -553,21 +555,20 @@ export class ConversationViewer implements Component {
     const resultText = extractText(result.content);
     if (!resultText.trim()) return [];
 
-    const lines: string[] = [];
     if (resultText.length > TOOL_RESULT_MAX_CHARS) {
       const resultLines = resultText.split("\n");
       const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
+      const lines: string[] = [];
       for (let i = 0; i < linesToShow; i++) {
-        this.pushToolOutput(lines, bg, resultLines[i] || " ", width);
+        lines.push(...this.wrapToolOutput(bg, resultLines[i] || " ", width));
       }
       if (resultLines.length > linesToShow) {
         const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
         lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
       }
-    } else {
-      this.pushToolOutput(lines, bg, resultText.trim(), width);
+      return lines;
     }
-    return lines;
+    return this.wrapToolOutput(bg, resultText.trim(), width);
   }
 
   private buildContentLines(width: number): string[] {
