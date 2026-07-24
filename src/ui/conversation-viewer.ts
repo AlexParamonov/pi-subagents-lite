@@ -156,8 +156,6 @@ export class ConversationViewer implements Component {
     }, STREAM_RENDER_DEBOUNCE_MS);
   }
 
-
-
   handleInput(data: string): void {
     if (this.closed) return; // already closing, ignore stray keys
     // While composing a steer message, the input owns all keys (Enter sends,
@@ -368,6 +366,7 @@ export class ConversationViewer implements Component {
     this.messageCache.clear();
     this.cachedContentLines = undefined;
     this.cacheMeta = { count: 0, width: 0 };
+    this.cachedNonStreamingCount = 0;
   }
 
   dispose(): void {
@@ -403,7 +402,17 @@ export class ConversationViewer implements Component {
     const totalLines = this.buildContentLines(this.lastInnerW).length;
     return Math.max(0, totalLines - this.viewportHeight());
   }
-  /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
+  /**
+   * Drop cached assistant messages whose tool calls just received a result.
+   *
+   * A tool result is rendered inline under its assistant's tool call, and the
+   * standalone toolResult message is suppressed via `renderedToolResults`. That
+   * suppression only holds when the assistant is re-rendered in the same pass as
+   * the fresh toolResult, repopulating `renderedToolResults`. A newly arrived
+   * toolResult must therefore invalidate the cached assistant that references it,
+   * or the result would render twice (cached inline + standalone) or the inline
+   * copy would stay stuck in its pending state.
+   */
   private invalidateCacheForNewMessages(newMsgs: any[], oldCount: number, allMessages: any[]): void {
     // Collect toolCallIds from new tool results
     const newToolCallIds = new Set<string>();
@@ -444,7 +453,6 @@ export class ConversationViewer implements Component {
     const fill = this.theme.bg(bg, " ".repeat(width));
     return [fill, ...inner, fill];
   }
-
 
   private renderUserMessage(msg: any, width: number): string[] {
     const th = this.theme;
