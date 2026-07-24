@@ -62,6 +62,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
     _text: string;
     _color: (t: string) => string;
     _italic: boolean;
+    setText(text: string) { this._text = text; }
     render(width: number): string[] {
       const lines = this._text.split("\n");
       const result: string[] = [];

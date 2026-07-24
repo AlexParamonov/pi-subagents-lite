@@ -65,6 +65,10 @@ export class ConversationViewer implements Component {
   private _streamingThinking = "";
   /** Accumulated response text from streaming deltas, cleared on text_end. */
   private _streamingText = "";
+  /** Persistent Markdown instance for streaming thinking — lazily initialized. */
+  private _streamingThinkingMd: Markdown | undefined;
+  /** Persistent Markdown instance for streaming text — lazily initialized. */
+  private _streamingTextMd: Markdown | undefined;
 
   constructor(
     private tui: TUI,
@@ -93,16 +97,20 @@ export class ConversationViewer implements Component {
             case "thinking_start":
             case "thinking_end":
               this._streamingThinking = "";
+              this._streamingThinkingMd?.setText("");
               break;
             case "thinking_delta":
               this._streamingThinking += me.delta;
+              this.ensureThinkingMd().setText(this._streamingThinking);
               break;
             case "text_start":
             case "text_end":
               this._streamingText = "";
+              this._streamingTextMd?.setText("");
               break;
             case "text_delta":
               this._streamingText += me.delta;
+              this.ensureTextMd().setText(this._streamingText);
               break;
           }
           // Only render if streaming state actually changed
@@ -115,6 +123,25 @@ export class ConversationViewer implements Component {
       }
     });
   }
+  /** Lazily initialize the Markdown instance for streaming thinking text. */
+  private ensureThinkingMd(): Markdown {
+    if (!this._streamingThinkingMd) {
+      this._streamingThinkingMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme), {
+        color: (text: string) => this.theme.fg("thinkingText", text),
+        italic: true,
+      });
+    }
+    return this._streamingThinkingMd;
+  }
+
+  /** Lazily initialize the Markdown instance for streaming response text. */
+  private ensureTextMd(): Markdown {
+    if (!this._streamingTextMd) {
+      this._streamingTextMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme));
+    }
+    return this._streamingTextMd;
+  }
+
 
   handleInput(data: string): void {
     if (this.closed) return; // already closing, ignore stray keys
@@ -556,17 +583,12 @@ export class ConversationViewer implements Component {
 
     // Streaming thinking text — rendered before text, matching assistant message order
     if (this._streamingThinking.trim()) {
-      const md = new Markdown(this._streamingThinking.trim(), 1, 0, makeMarkdownTheme(th), {
-        color: (text: string) => th.fg("thinkingText", text),
-        italic: true,
-      });
-      lines.push(...md.render(width));
+      lines.push(...this.ensureThinkingMd().render(width));
     }
 
     // Streaming text — rendered live as deltas arrive
     if (this._streamingText.trim()) {
-      const md = new Markdown(this._streamingText.trim(), 1, 0, makeMarkdownTheme(th));
-      lines.push(...md.render(width));
+      lines.push(...this.ensureTextMd().render(width));
     }
 
     // Streaming indicator for running agents
