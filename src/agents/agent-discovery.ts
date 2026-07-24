@@ -2,11 +2,12 @@
  * agent-discovery.ts — Agent file discovery, parsing, and config merging.
  *
  * Scans:
- *   ~/.pi/agent/agents/*.md   (user agents)
- *   <project>/.pi/agents/*.md (project agents)
+ *   ~/.pi/agent/agents/*.md     (user agents)
+ *   <project>/.agents/agents/*.md (shared workspace agents)
+ *   <project>/.pi/agents/*.md   (project agents)
  *
  * Parses YAML frontmatter, extracts all fields, produces AgentConfig objects.
- * Merges with per-field precedence: default < user < project.
+ * Merges with per-field precedence: default < user < shared < project.
  */
 
 import * as fs from "node:fs";
@@ -325,24 +326,27 @@ export async function scanAgentFilesInDir(
 /* ------------------------------------------------------------------ */
 
 /**
- * Merge default agents with user and project overrides.
+ * Merge default agents with user, shared, and project overrides.
  *
  * Per-field merge precedence (highest to lowest):
- *   1. project agents
- *   2. user agents
- *   3. default agents
+ *   1. project agents (.pi/agents/)
+ *   2. shared agents (.agents/agents/)
+ *   3. user agents (~/.pi/agent/agents/)
+ *   4. default agents
  *
  * For each field, if a higher-precedence layer sets the field (not undefined),
  * it wins. Otherwise, the lower layer's value is preserved.
  *
  * @param defaults - Map of default agent configs
  * @param userAgents - User-defined agent configs
- * @param projectAgents - Project-specific agent configs
+ * @param sharedAgents - Shared workspace agent configs (.agents/agents/)
+ * @param projectAgents - Project-specific agent configs (.pi/agents/)
  * @returns Merged Map<string, AgentConfig> keyed by agent name
  */
 export function mergeAgents(
   defaults: Map<string, AgentConfig>,
   userAgents: AgentConfigFromMd[],
+  sharedAgents: AgentConfigFromMd[],
   projectAgents: AgentConfigFromMd[],
 ): Map<string, AgentConfig> {
   const result = new Map<string, AgentConfig>();
@@ -352,8 +356,9 @@ export function mergeAgents(
     result.set(name, { ...config });
   }
 
-  // Apply user overrides (middle priority), then project (highest priority)
+  // Apply overrides in precedence order: user, then shared, then project
   mergeAgentOverrides(result, userAgents);
+  mergeAgentOverrides(result, sharedAgents);
   mergeAgentOverrides(result, projectAgents);
 
   return result;

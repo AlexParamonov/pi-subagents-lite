@@ -28,6 +28,7 @@ const agents = new Map<string, AgentConfig>();
  */
 let userAgentDir = "";
 let projectAgentDir = "";
+let sharedAgentDir = "";
 
 /** Options for registerAgents. */
 export interface RegisterAgentsOptions {
@@ -61,19 +62,21 @@ export function registerAgents(userAgents: Map<string, AgentConfig>, options?: R
  * Set the agent scan directories for on-demand discovery.
  * Called during session_start alongside scanAndRegisterAgents.
  */
-export function setAgentScanDirs(userDir: string, projectDir: string): void {
+export function setAgentScanDirs(userDir: string, projectDir: string, sharedDir?: string): void {
   userAgentDir = userDir;
   projectAgentDir = projectDir;
+  sharedAgentDir = sharedDir ?? "";
 }
 
-/** Scan user and project agent directories, merge with defaults. Returns the merged Map. */
+/** Scan user, shared, and project agent directories, merge with defaults. Returns the merged Map. */
 async function scanAndMerge(options?: { disableDefaultAgents?: boolean }): Promise<Map<string, AgentConfig>> {
-  const [userAgents, projectAgents] = await Promise.all([
+  const [userAgents, sharedAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),
+    scanAgentFilesInDir(sharedAgentDir, "project"),
     scanAgentFilesInDir(projectAgentDir, "project"),
   ]);
   const defaults = options?.disableDefaultAgents ? new Map<string, AgentConfig>() : DEFAULT_AGENTS;
-  return mergeAgents(defaults, userAgents, projectAgents);
+  return mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
 }
 /**
  * Scan the known agent directories and register any newly discovered agents
@@ -99,7 +102,7 @@ export async function discoverNewAgents(worktreeDir?: string, options?: { disabl
   // Scan worktree-local agents (only when worktreeDir is provided)
   if (worktreeDir) {
     const worktreeAgents = await scanAgentFilesInDir(worktreeDir, "project");
-    const wtMerged = mergeAgents(new Map(), [], worktreeAgents);
+    const wtMerged = mergeAgents(new Map(), [], [], worktreeAgents);
     for (const [name, config] of wtMerged) {
       if (!agents.has(name)) {
         agents.set(name, config);
