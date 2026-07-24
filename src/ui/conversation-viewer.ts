@@ -32,6 +32,8 @@ const MIN_VIEWPORT = 3;
 export const VIEWPORT_HEIGHT_PCT = 70;
 /** Maximum characters for a single tool result before truncation. */
 const TOOL_RESULT_MAX_CHARS = 500;
+/** Maximum lines to show from a large tool result. */
+const TOOL_RESULT_MAX_LINES = 5;
 
 /** Header status icon and its theme color, per lifecycle status. */
 const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
@@ -400,11 +402,14 @@ export class ConversationViewer implements Component {
             ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
             : "toolPendingBg";
 
-          // Tool call line: bold name with args, no icon
+          // Tool call line: bold name with args, wrapping if long
           const toolLine = ` ${th.bold(label)} `;
-          const padNeeded = Math.max(0, width - visibleWidth(toolLine));
+          const toolLines = wrapTextWithAnsi(toolLine, width - 2);
           lines.push(th.bg(bg, " ".repeat(width)));
-          lines.push(th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(padNeeded)}`)));
+          for (const tl of toolLines) {
+            const padNeeded = Math.max(0, width - visibleWidth(tl));
+            lines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
+          }
 
           if (result) {
             renderedToolResults.add(tc.id!);
@@ -413,11 +418,20 @@ export class ConversationViewer implements Component {
               // paddingY top: blank line between call and result, matching Pi's Box(1,1)
               lines.push(th.bg(bg, " ".repeat(width)));
               if (resultText.length > TOOL_RESULT_MAX_CHARS) {
-                const firstLine = resultText.split("\n")[0] ?? "";
-                if (firstLine.trim()) {
-                  const preview = firstLine.length > width - 4 ? firstLine.slice(0, width - 5) + "…" : firstLine;
-                  const previewPad = Math.max(0, width - visibleWidth(`  ${preview}`));
-                  lines.push(th.bg(bg, th.fg("toolOutput", `  ${preview}${" ".repeat(previewPad)}`)));
+                const resultLines = resultText.split("\n");
+                const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
+                for (let i = 0; i < linesToShow; i++) {
+                  const rl = resultLines[i] ?? "";
+                  if (!rl.trim() && i >= TOOL_RESULT_MAX_LINES) break;
+                  const wrapped = wrapTextWithAnsi(rl || " ", width - 4);
+                  for (const wl of wrapped) {
+                    const linePad = Math.max(0, width - visibleWidth(`  ${wl} `));
+                    lines.push(th.bg(bg, th.fg("toolOutput", `  ${wl}${" ".repeat(linePad)}`)));
+                  }
+                }
+                if (resultLines.length > linesToShow) {
+                  const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
+                  lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
                 }
               } else {
                 for (const line of wrapTextWithAnsi(resultText.trim(), width - 4)) {
