@@ -420,41 +420,9 @@ export class ConversationViewer implements Component {
       const md = new Markdown(textParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th));
       lines.push(...md.render(width));
     }
-    // Tool calls — bold name with args, matching Pi's ToolExecutionComponent
+    // Tool calls
     for (const tc of toolCalls) {
-      lines.push("");
-      const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
-      const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
-      const result = tc.id ? toolResults.get(tc.id) : undefined;
-      const bg = result
-        ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
-        : "toolPendingBg";
-      const toolLine = ` ${th.bold(label)} `;
-      for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
-        const padNeeded = Math.max(0, width - visibleWidth(tl));
-        lines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
-      }
-      if (result) {
-        renderedToolResults.add(tc.id!);
-        const resultText = extractText(result.content);
-        if (resultText.trim()) {
-          lines.push(th.bg(bg, " ".repeat(width)));
-          if (resultText.length > TOOL_RESULT_MAX_CHARS) {
-            const resultLines = resultText.split("\n");
-            const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
-            for (let i = 0; i < linesToShow; i++) {
-              this.pushToolOutput(lines, bg, resultLines[i] || " ", width);
-            }
-            if (resultLines.length > linesToShow) {
-              const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
-              lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
-            }
-          } else {
-            this.pushToolOutput(lines, bg, resultText.trim(), width);
-          }
-          lines.push(th.bg(bg, " ".repeat(width)));
-        }
-      }
+      lines.push(...this.renderToolCall(tc, width, toolResults, renderedToolResults));
     }
     return lines;
   }
@@ -473,6 +441,49 @@ export class ConversationViewer implements Component {
       th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`)),
     ];
     this.pushToolOutput(lines, bg, text.trim(), width);
+    return lines;
+  }
+
+  private renderToolCall(
+    tc: { id?: string; name: string; args?: Record<string, unknown> },
+    width: number,
+    toolResults: Map<string, { content: unknown[]; isError: boolean; toolName?: string }>,
+    renderedToolResults: Set<string>,
+  ): string[] {
+    const th = this.theme;
+    const lines: string[] = [""];
+    const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
+    const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
+    const result = tc.id ? toolResults.get(tc.id) : undefined;
+    const bg = result
+      ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
+      : "toolPendingBg";
+    const toolLine = ` ${th.bold(label)} `;
+    for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
+      const padNeeded = Math.max(0, width - visibleWidth(tl));
+      lines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
+    }
+    if (result) {
+      renderedToolResults.add(tc.id!);
+      const resultText = extractText(result.content);
+      if (resultText.trim()) {
+        lines.push(th.bg(bg, " ".repeat(width)));
+        if (resultText.length > TOOL_RESULT_MAX_CHARS) {
+          const resultLines = resultText.split("\n");
+          const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
+          for (let i = 0; i < linesToShow; i++) {
+            this.pushToolOutput(lines, bg, resultLines[i] || " ", width);
+          }
+          if (resultLines.length > linesToShow) {
+            const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
+            lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
+          }
+        } else {
+          this.pushToolOutput(lines, bg, resultText.trim(), width);
+        }
+        lines.push(th.bg(bg, " ".repeat(width)));
+      }
+    }
     return lines;
   }
 
