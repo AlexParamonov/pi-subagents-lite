@@ -183,6 +183,9 @@ export function buildAgentActionsList(
   if (record.lifecycle.status === "running" && hasSession) {
     items.push({ value: "view-snapshot", label: "View snapshot" });
   }
+  if (hasSession && !isRunning) {
+    items.push({ value: "view-conversation", label: "View conversation" });
+  }
   if (hasResult) {
     items.push({ value: "view-result", label: "View result" });
   }
@@ -203,6 +206,8 @@ export function buildAgentActionsList(
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
     if (item.value === "view-snapshot") {
+      await showConversationViewer(ctx, record);
+    } else if (item.value === "view-conversation") {
       await showConversationViewer(ctx, record);
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);
