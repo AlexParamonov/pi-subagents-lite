@@ -439,3 +439,85 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
   });
 });
 
+describe("buildAgentActionsList — completed agent with session", () => {
+  beforeEach(() => {
+    selectListCalls = [];
+    vi.clearAllMocks();
+  });
+
+  it("shows View conversation action for completed agent with session", () => {
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      result: "done",
+    });
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
+    expect(values).toContain("view-conversation");
+  });
+
+  it("shows View conversation for completed agent without result", () => {
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      result: "",
+    });
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
+    expect(values).toContain("view-conversation");
+  });
+
+  it("does not show View conversation for completed agent without session", () => {
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: {},
+      result: "done",
+    });
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
+    expect(values).not.toContain("view-conversation");
+  });
+
+  it("does not show View conversation for running agent (still View snapshot)", () => {
+    const record = makeRecord({
+      lifecycle: { status: "running", startedAt: Date.now() - 20000 },
+      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      result: "",
+    });
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
+    expect(values).not.toContain("view-conversation");
+    expect(values).toContain("view-snapshot");
+  });
+
+  it("opens ConversationViewer when selecting view-conversation", async () => {
+    let capturedFactory: any = null;
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: { messages: [{ role: "user", content: "hi" }], subscribe: vi.fn(() => () => {}) } },
+      result: "done",
+    });
+    const ctx = createMockCtx();
+    ctx.ui.custom = vi.fn(async (factory: any) => {
+      capturedFactory = factory;
+      return undefined;
+    });
+
+    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    await list.onSelect!({ value: "view-conversation" });
+
+    expect(capturedFactory).toBeDefined();
+  });
+
+  it("shows both View conversation and View result for completed agent with session and result", () => {
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      result: "done",
+    });
+    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const values = list.items.map((i: any) => i.value);
+    expect(values).toContain("view-conversation");
+    expect(values).toContain("view-result");
+  });
+});
