@@ -198,11 +198,10 @@ describe("ConversationViewer", () => {
       vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(2);
 
-      // text_end no longer triggers render (streaming stays visible until
-      // next text_start clears it or the message arrives in the session)
+      // Clearing text should trigger render
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
       vi.runAllTimers();
-      expect(mockRequestRender).toHaveBeenCalledTimes(2);
+      expect(mockRequestRender).toHaveBeenCalledTimes(3);
       vi.useRealTimers();
     });
 
