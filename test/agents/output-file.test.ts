@@ -294,7 +294,7 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "long command" },
-      { role: "assistant", content: [{ type: "toolCall", name: "bash", arguments: { command: "a".repeat(150) } }] },
+      { role: "assistant", content: [{ type: "toolCall", name: "bash", arguments: { command: "a".repeat(400) } }] },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();

@@ -19,10 +19,10 @@ export function truncateDesc(text: string, maxLen: number): string {
 }
 
 /** Max length for a truncated command in tool arg summaries. */
-const MAX_COMMAND_DISPLAY_LENGTH = 100;
+const MAX_COMMAND_DISPLAY_LENGTH = 350;
 
 /** Max length for a truncated string value in default tool arg summaries. */
-const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 200;
+const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 350;
 
 // ---- Internal helpers (used by buildStatsParts) ----
 
