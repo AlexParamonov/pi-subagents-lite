@@ -281,7 +281,7 @@ export class ConversationViewer implements Component {
     const contentLines = this.buildContentLines(innerW);
     const totalContentLines = contentLines.length;
     const viewportHeight = this.viewportHeight();
-    const maxScroll = this.scrollMax();
+    const maxScroll = Math.max(0, totalContentLines - viewportHeight);
 
     if (this.autoScroll) {
       this.scrollOffset = maxScroll;
