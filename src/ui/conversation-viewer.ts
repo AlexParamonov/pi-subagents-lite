@@ -403,6 +403,7 @@ export class ConversationViewer implements Component {
           // Tool call line: bold name with args, no icon
           const toolLine = ` ${th.bold(label)} `;
           const padNeeded = Math.max(0, width - visibleWidth(toolLine));
+          lines.push(th.bg(bg, " ".repeat(width)));
           lines.push(th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(padNeeded)}`)));
 
           if (result) {
@@ -415,7 +416,7 @@ export class ConversationViewer implements Component {
                 const firstLine = resultText.split("\n")[0] ?? "";
                 if (firstLine.trim()) {
                   const preview = firstLine.length > width - 4 ? firstLine.slice(0, width - 5) + "…" : firstLine;
-                  const previewPad = Math.max(0, width - visibleWidth(`  ${preview} `));
+                  const previewPad = Math.max(0, width - visibleWidth(`  ${preview}`));
                   lines.push(th.bg(bg, th.fg("toolOutput", `  ${preview}${" ".repeat(previewPad)}`)));
                 }
               } else {
