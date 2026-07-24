@@ -53,13 +53,13 @@ export class ConversationViewer implements Component {
   private lastInnerW = 0;
   private closed = false;
   /** Rendered lines per message index — avoids re-running Markdown on every render. */
-  private _messageCache = new Map<number, string[]>();
+  private messageCache = new Map<number, string[]>();
   /** Message count and width used for the last cache population. Mismatch → stale. */
-  private _cacheMeta = { count: 0, width: 0 };
+  private cacheMeta = { count: 0, width: 0 };
   /** Full content lines from the last build — avoids re-iterating cached messages. */
-  private _cachedContentLines: string[] | undefined;
-  /** Number of non-streaming lines in _cachedContentLines. */
-  private _cachedNonStreamingCount = 0;
+  private cachedContentLines: string[] | undefined;
+  /** Number of non-streaming lines in cachedContentLines. */
+  private cachedNonStreamingCount = 0;
 
   /** Two-press confirm guard for the stop key, so a stray key can't kill the agent. */
   private stopArmed = false;
@@ -67,15 +67,15 @@ export class ConversationViewer implements Component {
   /** Steering composer -- present while the user is typing a message to the agent. */
   private composer: Input | undefined;
   /** Accumulated thinking text from streaming deltas, cleared on thinking_end. */
-  private _streamingThinking = "";
+  private streamingThinking = "";
   /** Accumulated response text from streaming deltas, cleared on text_end. */
-  private _streamingText = "";
+  private streamingText = "";
   /** Persistent Markdown instance for streaming thinking — lazily initialized. */
-  private _streamingThinkingMd: Markdown | undefined;
+  private streamingThinkingMd: Markdown | undefined;
   /** Persistent Markdown instance for streaming text — lazily initialized. */
-  private _streamingTextMd: Markdown | undefined;
+  private streamingTextMd: Markdown | undefined;
   /** Debounce timer for streaming renders — avoids fighting the TUI's 16ms loop. */
-  private _renderTimer: ReturnType<typeof setTimeout> | undefined;
+  private renderTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private tui: TUI,
@@ -97,33 +97,33 @@ export class ConversationViewer implements Component {
         // Only request render when streaming text state changes
         if (event?.type === "message_update") {
           const me = event.assistantMessageEvent;
-          const prevThinking = this._streamingThinking;
-          const prevText = this._streamingText;
+          const prevThinking = this.streamingThinking;
+          const prevText = this.streamingText;
           switch (me?.type) {
             case "thinking_start":
-              this._streamingThinking = "";
-              this._streamingThinkingMd?.setText("");
+              this.streamingThinking = "";
+              this.streamingThinkingMd?.setText("");
               break;
             case "thinking_end":
               break;
             case "thinking_delta":
-              this._streamingThinking += me.delta;
-              this.ensureThinkingMd().setText(this._streamingThinking);
+              this.streamingThinking += me.delta;
+              this.ensureThinkingMd().setText(this.streamingThinking);
               break;
             case "text_start":
-              this._streamingText = "";
-              this._streamingTextMd?.setText("");
+              this.streamingText = "";
+              this.streamingTextMd?.setText("");
               break;
             case "text_end":
               break;
             case "text_delta":
-              this._streamingText += me.delta;
-              this.ensureTextMd().setText(this._streamingText);
+              this.streamingText += me.delta;
+              this.ensureTextMd().setText(this.streamingText);
               break;
           }
           // Only render if streaming state actually changed
-          if (this._streamingThinking !== prevThinking || this._streamingText !== prevText) {
-            this._scheduleRender();
+          if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
+            this.scheduleRender();
           }
         }
       } catch (err) {
@@ -133,27 +133,27 @@ export class ConversationViewer implements Component {
   }
   /** Lazily initialize the Markdown instance for streaming thinking text. */
   private ensureThinkingMd(): Markdown {
-    if (!this._streamingThinkingMd) {
-      this._streamingThinkingMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme), {
+    if (!this.streamingThinkingMd) {
+      this.streamingThinkingMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme), {
         color: (text: string) => this.theme.fg("thinkingText", text),
         italic: true,
       });
     }
-    return this._streamingThinkingMd;
+    return this.streamingThinkingMd;
   }
 
   /** Lazily initialize the Markdown instance for streaming response text. */
   private ensureTextMd(): Markdown {
-    if (!this._streamingTextMd) {
-      this._streamingTextMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme));
+    if (!this.streamingTextMd) {
+      this.streamingTextMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme));
     }
-    return this._streamingTextMd;
+    return this.streamingTextMd;
   }
   /** Schedule a debounced render for streaming updates. */
-  private _scheduleRender(): void {
-    if (this._renderTimer !== undefined) return; // already scheduled
-    this._renderTimer = setTimeout(() => {
-      this._renderTimer = undefined;
+  private scheduleRender(): void {
+    if (this.renderTimer !== undefined) return; // already scheduled
+    this.renderTimer = setTimeout(() => {
+      this.renderTimer = undefined;
       if (!this.closed) this.tui.requestRender();
     }, STREAM_RENDER_DEBOUNCE_MS);
   }
@@ -367,18 +367,18 @@ export class ConversationViewer implements Component {
   }
 
   invalidate(): void {
-    this._messageCache.clear();
-    this._cachedContentLines = undefined;
-    this._cacheMeta = { count: 0, width: 0 };
+    this.messageCache.clear();
+    this.cachedContentLines = undefined;
+    this.cacheMeta = { count: 0, width: 0 };
   }
 
   dispose(): void {
     this.closed = true;
-    this._messageCache.clear();
-    this._cachedContentLines = undefined;
-    if (this._renderTimer !== undefined) {
-      clearTimeout(this._renderTimer);
-      this._renderTimer = undefined;
+    this.messageCache.clear();
+    this.cachedContentLines = undefined;
+    if (this.renderTimer !== undefined) {
+      clearTimeout(this.renderTimer);
+      this.renderTimer = undefined;
     }
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -400,7 +400,7 @@ export class ConversationViewer implements Component {
 
   /** Maximum scroll offset for the current content and viewport. */
   private scrollMax(): number {
-    const totalLines = this._cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
+    const totalLines = this.cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
     return Math.max(0, totalLines - this.viewportHeight());
   }
 
@@ -417,12 +417,12 @@ export class ConversationViewer implements Component {
 
     // Invalidate cached assistant messages that reference any of the new toolCallIds
     for (let i = 0; i < oldCount; i++) {
-      if (!this._messageCache.has(i)) continue;
+      if (!this.messageCache.has(i)) continue;
       const msg = allMessages[i];
       if (msg?.role !== "assistant") continue;
       for (const c of msg.content) {
         if (c.type === "toolCall" && newToolCallIds.has(c.id)) {
-          this._messageCache.delete(i);
+          this.messageCache.delete(i);
           break;
         }
       }
@@ -578,7 +578,7 @@ export class ConversationViewer implements Component {
     const messages = this.session.messages ?? [];
 
     if (messages.length === 0) {
-      this._cachedContentLines = undefined;
+      this.cachedContentLines = undefined;
       return [th.fg("dim", "(waiting for first message...)")];
     }
 
@@ -594,23 +594,23 @@ export class ConversationViewer implements Component {
     const renderedToolResults = new Set<string>();
 
     // Invalidate cache if width changed (Markdown wrapping depends on it)
-    if (width !== this._cacheMeta.width) {
-      this._messageCache.clear();
-      this._cacheMeta = { count: messages.length, width };
-      this._cachedContentLines = undefined;
-    } else if (messages.length !== this._cacheMeta.count) {
+    if (width !== this.cacheMeta.width) {
+      this.messageCache.clear();
+      this.cacheMeta = { count: messages.length, width };
+      this.cachedContentLines = undefined;
+    } else if (messages.length !== this.cacheMeta.count) {
       // Message count changed — only invalidate entries affected by new messages.
-      const newMsgs = messages.slice(this._cacheMeta.count);
-      this.invalidateCacheForNewMessages(newMsgs, this._cacheMeta.count, messages);
-      this._cacheMeta.count = messages.length;
-      this._cachedContentLines = undefined; // new messages → full rebuild
+      const newMsgs = messages.slice(this.cacheMeta.count);
+      this.invalidateCacheForNewMessages(newMsgs, this.cacheMeta.count, messages);
+      this.cacheMeta.count = messages.length;
+      this.cachedContentLines = undefined; // new messages → full rebuild
     }
 
     // Fast path: if we have cached content and only streaming text changed,
     // splice new streaming lines into the cached result.
-    if (this._cachedContentLines) {
+    if (this.cachedContentLines) {
       const streamingLines = this.buildStreamingLines(width);
-      const result = this._cachedContentLines.slice(0, this._cachedNonStreamingCount);
+      const result = this.cachedContentLines.slice(0, this.cachedNonStreamingCount);
       result.push(...streamingLines);
       return result;
     }
@@ -620,7 +620,7 @@ export class ConversationViewer implements Component {
 
     // Second pass: render messages with per-message caching
     for (let i = 0; i < messages.length; i++) {
-      const cached = this._messageCache.get(i);
+      const cached = this.messageCache.get(i);
       if (cached) {
         lines.push(...cached);
       } else {
@@ -631,17 +631,17 @@ export class ConversationViewer implements Component {
           case "toolResult": msgLines = this.renderToolResult(messages[i], width, renderedToolResults); break;
           default: msgLines = [];
         }
-        this._messageCache.set(i, msgLines);
+        this.messageCache.set(i, msgLines);
         lines.push(...msgLines);
       }
     }
 
     const streamingLines = this.buildStreamingLines(width);
-    this._cachedNonStreamingCount = lines.length;
+    this.cachedNonStreamingCount = lines.length;
     lines.push(...streamingLines);
 
     // Cache the full result for next time
-    this._cachedContentLines = lines;
+    this.cachedContentLines = lines;
 
     return lines;
   }
@@ -651,13 +651,13 @@ export class ConversationViewer implements Component {
     const lines: string[] = [];
 
     // Streaming thinking text — rendered before text, matching assistant message order
-    if (this._streamingThinking.trim()) {
+    if (this.streamingThinking.trim()) {
       lines.push("");
       lines.push(...this.ensureThinkingMd().render(width));
     }
 
     // Streaming text — rendered live as deltas arrive
-    if (this._streamingText.trim()) {
+    if (this.streamingText.trim()) {
       lines.push(...this.ensureTextMd().render(width));
     }
 
