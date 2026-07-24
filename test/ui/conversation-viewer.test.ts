@@ -169,8 +169,8 @@ describe("ConversationViewer", () => {
     });
 
     it("requests render on session events", () => {
-      let subscriber: () => void;
-      mockSubscribe.mockImplementation((cb: () => void) => {
+      let subscriber: (event?: unknown) => void;
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
         subscriber = cb;
         return () => {};
       });
@@ -181,8 +181,21 @@ describe("ConversationViewer", () => {
 
       new ConversationViewer(tui, session, record, undefined, noopTheme, vi.fn());
 
-      subscriber!();
+      // Non-message_update events should not trigger render
+      subscriber!({ type: "other" });
+      expect(mockRequestRender).toHaveBeenCalledTimes(0);
+
+      // message_update with text_delta should trigger render
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hello" } });
       expect(mockRequestRender).toHaveBeenCalledTimes(1);
+
+      // Same text_delta again should not trigger render (no state change)
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
+      expect(mockRequestRender).toHaveBeenCalledTimes(2); // still changes because text changed
+
+      // Clearing text should trigger render
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
+      expect(mockRequestRender).toHaveBeenCalledTimes(3);
     });
 
     it("stops processing events after close", () => {
