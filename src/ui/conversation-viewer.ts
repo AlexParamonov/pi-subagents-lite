@@ -477,8 +477,9 @@ export class ConversationViewer implements Component {
         toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
       }
     }
-    // Spacer before assistant content
-    if (thinkingParts.length > 0 || textParts.length > 0) lines.push("");
+    // Spacer before assistant content (not needed before thinking — tool calls
+    // have their own bg padding, and thinking→text has its own spacer below)
+    if (textParts.length > 0 && thinkingParts.length === 0) lines.push("");
     // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
     if (thinkingParts.length > 0) {
       const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
