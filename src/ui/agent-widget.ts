@@ -691,7 +691,7 @@ export class AgentWidget {
 
     return { visible, overflowLine };
   }
-  /** Clear widget, status bar, timer, and stale finished-turn-age entries. */
+  /** Clear widget, status bar, and stale finished-turn-age entries. */
   private clearWidget() {
     // Deactivate navigation when agents clear
     if (this.navActive) {
@@ -707,10 +707,10 @@ export class AgentWidget {
       this.uiCtx?.setStatus(STATUS_KEY, undefined);
       this.lastStatusText = undefined;
     }
-    if (this.widgetInterval) {
-      clearInterval(this.widgetInterval);
-      this.widgetInterval = undefined;
-    }
+    // Note: timer is NOT cleared here. It keeps running so the widget
+    // can re-register when agents appear again (e.g., after a steer
+    // message triggers a new turn). The timer's update() call early-returns
+    // when there are no agents, so there's no cost to keeping it alive.
     // Clean up stale entries
     const allAgents = this.manager.listAgents();
     for (const [id] of this.finishedTurnAge) {
