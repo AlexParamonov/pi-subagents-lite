@@ -497,10 +497,11 @@ export class ConversationViewer implements Component {
     const toolLine = ` ${th.bold(name)} `;
     const titlePad = Math.max(0, width - visibleWidth(toolLine));
     const lines = [
-      "",
+      th.bg(bg, " ".repeat(width)),
       th.bg(bg, th.fg("toolTitle", `${toolLine}${" ".repeat(titlePad)}`)),
     ];
     this.pushToolOutput(lines, bg, text.trim(), width);
+    lines.push(th.bg(bg, " ".repeat(width)));
     return lines;
   }
 
@@ -511,13 +512,13 @@ export class ConversationViewer implements Component {
     renderedToolResults: Set<string>,
   ): string[] {
     const th = this.theme;
-    const lines: string[] = [""];
     const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
     const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
     const result = tc.id ? toolResults.get(tc.id) : undefined;
     const bg = result
       ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
       : "toolPendingBg";
+    const lines: string[] = [th.bg(bg, " ".repeat(width))];
     const toolLine = ` ${th.bold(label)} `;
     for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
       const padNeeded = Math.max(0, width - visibleWidth(tl));
@@ -527,6 +528,7 @@ export class ConversationViewer implements Component {
       renderedToolResults.add(tc.id);
       lines.push(...this.renderToolCallResult(result, bg, width));
     }
+    lines.push(th.bg(bg, " ".repeat(width)));
     return lines;
   }
 
@@ -540,7 +542,7 @@ export class ConversationViewer implements Component {
     const resultText = extractText(result.content);
     if (!resultText.trim()) return [];
 
-    const lines: string[] = [th.bg(bg, " ".repeat(width))];
+    const lines: string[] = [];
     if (resultText.length > TOOL_RESULT_MAX_CHARS) {
       const resultLines = resultText.split("\n");
       const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
@@ -554,7 +556,6 @@ export class ConversationViewer implements Component {
     } else {
       this.pushToolOutput(lines, bg, resultText.trim(), width);
     }
-    lines.push(th.bg(bg, " ".repeat(width)));
     return lines;
   }
 
