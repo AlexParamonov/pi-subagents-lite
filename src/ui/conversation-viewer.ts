@@ -59,6 +59,8 @@ export class ConversationViewer implements Component {
   private composer: Input | undefined;
   /** Accumulated thinking text from streaming deltas, cleared on thinking_end. */
   private _streamingThinking = "";
+  /** Accumulated response text from streaming deltas, cleared on text_end. */
+  private _streamingText = "";
 
   constructor(
     private tui: TUI,
@@ -77,7 +79,7 @@ export class ConversationViewer implements Component {
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
       if (this.closed) return;
-      // Accumulate streaming thinking text for live display
+      // Accumulate streaming text for live display
       if (event?.type === "message_update") {
         const me = event.assistantMessageEvent;
         if (me?.type === "thinking_start") {
@@ -86,6 +88,12 @@ export class ConversationViewer implements Component {
           this._streamingThinking += me.delta;
         } else if (me?.type === "thinking_end") {
           this._streamingThinking = "";
+        } else if (me?.type === "text_start") {
+          this._streamingText = "";
+        } else if (me?.type === "text_delta") {
+          this._streamingText += me.delta;
+        } else if (me?.type === "text_end") {
+          this._streamingText = "";
         }
       }
       this.tui.requestRender();
@@ -463,6 +471,12 @@ export class ConversationViewer implements Component {
       } else {
         continue;
       }
+    }
+
+    // Streaming text — rendered live as deltas arrive
+    if (this._streamingText.trim()) {
+      const md = new Markdown(this._streamingText.trim(), 1, 0, makeMarkdownTheme(th));
+      lines.push(...md.render(width));
     }
 
     // Streaming thinking text — rendered live as deltas arrive
