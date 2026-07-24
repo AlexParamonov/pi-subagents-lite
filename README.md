@@ -52,7 +52,7 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
 Running agents appear in the live widget:
 
 ```
-● Agents
+◈ Agents
 ├─ ⠙ Agent  Write model precedence unit tests  6🛠 ·3⟳ ·↑6.8k↓1.3k 6%·12s
 │  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
 │  └ The file already exists but is ~175 lines. The user wants a …

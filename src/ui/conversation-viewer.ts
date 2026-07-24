@@ -37,13 +37,13 @@ const STREAM_RENDER_DEBOUNCE_MS = 100;
 
 /** Header status icon and its theme color, per lifecycle status. */
 const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
-  running: { icon: "●", color: "accent" },
+  running: { icon: "◈", color: "accent" },
   completed: { icon: "✓", color: "success" },
   turn_limited: { icon: "✓", color: "warning" },
   error: { icon: "✗", color: "error" },
   aborted: { icon: "✗", color: "error" },
   stopped: { icon: "✗", color: "error" },
-  queued: { icon: "○", color: "dim" },
+  queued: { icon: "◇", color: "dim" },
 };
 
 export class ConversationViewer implements Component {
