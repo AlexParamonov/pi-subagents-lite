@@ -308,7 +308,7 @@ describe("scanAgentFilesInDir", () => {
 
 describe("mergeAgents", () => {
   it("returns empty map when no agents", () => {
-    const result = mergeAgents(new Map(), [], []);
+    const result = mergeAgents(new Map(), [], [], []);
     expect(result instanceof Map).toBe(true);
     expect(result.size).toBe(0);
   });
@@ -327,7 +327,7 @@ describe("mergeAgents", () => {
         },
       ],
     ]);
-    const result = mergeAgents(defaults, [], []);
+    const result = mergeAgents(defaults, [], [], []);
     expect(result.size).toBe(1);
     expect(result.get("explorer")?.model).toBe("model/a");
   });
@@ -355,7 +355,7 @@ describe("mergeAgents", () => {
         systemPrompt: "user prompt",
       },
     ];
-    const result = mergeAgents(defaults, userAgents, []);
+    const result = mergeAgents(defaults, userAgents, [], []);
     const agent = result.get("explorer")!;
     // User fields override defaults
     expect(agent.description).toBe("User explorer");
@@ -396,7 +396,7 @@ describe("mergeAgents", () => {
         systemPrompt: "project prompt",
       },
     ];
-    const result = mergeAgents(defaults, userAgents, projectAgents);
+    const result = mergeAgents(defaults, userAgents, [], projectAgents);
     const agent = result.get("explorer")!;
     // Project overrides
     expect(agent.model).toBe("model/project");
@@ -418,13 +418,13 @@ describe("mergeAgents", () => {
         systemPrompt: "custom",
       },
     ];
-    const result = mergeAgents(defaults, userAgents, []);
+    const result = mergeAgents(defaults, userAgents, [], []);
     expect(result.size).toBe(1);
     expect(result.get("custom-agent")?.description).toBe("A custom agent");
   });
 
   it("handles empty inputs gracefully", () => {
-    const result = mergeAgents(new Map(), [], []);
+    const result = mergeAgents(new Map(), [], [], []);
     expect(result.size).toBe(0);
   });
 
@@ -442,9 +442,167 @@ describe("mergeAgents", () => {
         },
       ],
     ]);
-    const result = mergeAgents(defaults, [], []);
+    const result = mergeAgents(defaults, [], [], []);
     expect(result.has("agent1")).toBe(true);
     expect(typeof [...result.keys()][0]).toBe("string");
   });
+  it("shared agents override user and default, project overrides shared", () => {
+    const defaults = new Map([
+      [
+        "explorer",
+        {
+          name: "explorer",
+          description: "Default explorer",
+          model: "model/a",
+          extensions: true,
+          skills: true,
+          systemPrompt: "default prompt",
+        },
+      ],
+    ]);
+    const userAgents: AgentConfigFromMd[] = [
+      {
+        name: "explorer",
+        description: "User explorer",
+        source: "user",
+        systemPrompt: "user prompt",
+      },
+    ];
+    const sharedAgents: AgentConfigFromMd[] = [
+      {
+        name: "explorer",
+        model: "model/shared",
+        source: "project",
+        systemPrompt: "shared prompt",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [
+      {
+        name: "explorer",
+        description: "Project explorer",
+        source: "project",
+      },
+    ];
+    const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
+    const agent = result.get("explorer")!;
+    // Project overrides shared and user
+    expect(agent.description).toBe("Project explorer");
+    // Shared overrides user and default
+    expect(agent.model).toBe("model/shared");
+    expect(agent.systemPrompt).toBe("shared prompt"); // project didn't override this
+    // Default preserved where nothing overrides
+    expect(agent.extensions).toBe(true);
+    expect(agent.skills).toBe(true);
+  });
+
+  it("shared-only agents are discovered when not in defaults/user/project", () => {
+    const defaults = new Map();
+    const userAgents: AgentConfigFromMd[] = [];
+    const sharedAgents: AgentConfigFromMd[] = [
+      {
+        name: "shared-only",
+        description: "Only in shared",
+        source: "project",
+        systemPrompt: "shared body",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [];
+    const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
+    expect(result.size).toBe(1);
+    expect(result.get("shared-only")?.description).toBe("Only in shared");
+  });
+
+  it("shared agents get source 'project' in merged result", () => {
+    const defaults = new Map();
+    const userAgents: AgentConfigFromMd[] = [];
+    const sharedAgents: AgentConfigFromMd[] = [
+      {
+        name: "shared-agent",
+        description: "Shared",
+        source: "project",
+        systemPrompt: "shared",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [];
+    const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
+    expect(result.get("shared-agent")?.source).toBe("project");
+  });
+
+  it("backward compat: works without shared agents argument (empty shared)", () => {
+    const defaults = new Map([
+      [
+        "agent1",
+        {
+          name: "agent1",
+          description: "Default",
+          extensions: true,
+          skills: false,
+          systemPrompt: "",
+        },
+      ],
+    ]);
+    const result = mergeAgents(defaults, [], [], []);
+    expect(result.size).toBe(1);
+    expect(result.get("agent1")?.description).toBe("Default");
+  });
+
+  it("name clash between shared and project resolves in favor of project", () => {
+    const defaults = new Map();
+    const userAgents: AgentConfigFromMd[] = [];
+    const sharedAgents: AgentConfigFromMd[] = [
+      {
+        name: "clash",
+        description: "From shared",
+        model: "model/shared",
+        source: "project",
+        systemPrompt: "shared prompt",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [
+      {
+        name: "clash",
+        description: "From project",
+        model: "model/project",
+        source: "project",
+        systemPrompt: "project prompt",
+      },
+    ];
+    const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
+    const agent = result.get("clash")!;
+    // All project fields win over shared
+    expect(agent.description).toBe("From project");
+    expect(agent.model).toBe("model/project");
+    expect(agent.systemPrompt).toBe("project prompt");
+  });
+
+  it("name clash between shared and user resolves in favor of shared", () => {
+    const defaults = new Map();
+    const userAgents: AgentConfigFromMd[] = [
+      {
+        name: "clash",
+        description: "From user",
+        model: "model/user",
+        source: "user",
+        systemPrompt: "user prompt",
+      },
+    ];
+    const sharedAgents: AgentConfigFromMd[] = [
+      {
+        name: "clash",
+        description: "From shared",
+        model: "model/shared",
+        source: "project",
+        systemPrompt: "shared prompt",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [];
+    const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
+    const agent = result.get("clash")!;
+    // Shared wins over user
+    expect(agent.description).toBe("From shared");
+    expect(agent.model).toBe("model/shared");
+    expect(agent.systemPrompt).toBe("shared prompt");
+  });
+
 });
 
