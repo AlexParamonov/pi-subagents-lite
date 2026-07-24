@@ -173,16 +173,10 @@ export class ConversationViewer implements Component {
     } else if (this.keys.pageDown(data)) {
       this.scrollOffset = Math.min(maxScroll, this.scrollOffset + viewportHeight);
       this.autoScroll = this.scrollOffset >= maxScroll;
-    } else if (matchesKey(data, "home")) {
+    } else if (matchesKey(data, "home") || data === "g") {
       this.scrollOffset = 0;
       this.autoScroll = false;
-    } else if (matchesKey(data, "end")) {
-      this.scrollOffset = maxScroll;
-      this.autoScroll = true;
-    } else if (data === "g") {
-      this.scrollOffset = 0;
-      this.autoScroll = false;
-    } else if (data === "G") {
+    } else if (matchesKey(data, "end") || data === "G") {
       this.scrollOffset = maxScroll;
       this.autoScroll = true;
     }
@@ -228,12 +222,21 @@ export class ConversationViewer implements Component {
     }, th);
 
     const worktreeTag = this.record.display.worktreeLabel ? th.fg("muted", ` @${this.record.display.worktreeLabel}`) : "";
-
+    // Row 1: status icon, name, description, worktree
     lines.push(row(
-      `${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", statsParts.join(" · "))}`,
+      `${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag}`
     ));
-    const invocationLine = this.invocationLine();
-    if (invocationLine) lines.push(row(invocationLine));
+
+    // Row 2: model name + compact usage stats
+    const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
+    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
+    const invocationParts = [modelName, ...tags].filter(Boolean);
+    if (invocationParts.length > 0) {
+      invocationParts.push(statsLine);
+      lines.push(row(th.fg("dim", `  ↳ ${invocationParts.join(" · ")}`)));
+    } else {
+      lines.push(row(statsLine));
+    }
     lines.push(hrMid);
 
     // Content area -- rebuild every render (live data, no cache needed)
@@ -339,16 +342,10 @@ export class ConversationViewer implements Component {
   }
 
   private chromeLines(): number {
-    // The composer adds one row above the footer hint while it's open.
-    return CHROME_LINES_BASE + (this.invocationLine() ? 1 : 0) + (this.composer ? 1 : 0);
+    // Stats row always present. Composer adds one row above footer when open.
+    return CHROME_LINES_BASE + 1 + (this.composer ? 1 : 0);
   }
 
-  private invocationLine(): string | undefined {
-    const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
-    const parts = modelName ? [modelName, ...tags] : tags;
-    if (parts.length === 0) return undefined;
-    return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
-  }
 
   /** Wrap `text` to the inner width and push each line as a tool-output row, padded and bg-filled. */
   private pushToolOutput(lines: string[], bg: string, text: string, width: number): void {
