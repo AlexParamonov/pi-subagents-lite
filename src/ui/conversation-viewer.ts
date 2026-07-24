@@ -372,8 +372,7 @@ export class ConversationViewer implements Component {
 
   dispose(): void {
     this.closed = true;
-    this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.invalidate();
     if (this.renderTimer !== undefined) {
       clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
@@ -425,8 +424,6 @@ export class ConversationViewer implements Component {
       }
     }
   }
-
-
 
   /** Wrap text to the inner width and return each line as a tool-output row with bg padding. */
   private wrapToolOutput(bg: string, text: string, width: number): string[] {
