@@ -525,8 +525,20 @@ export class ConversationViewer implements Component {
       this._cacheMeta.count = messages.length;
     }
 
+    // Skip the last assistant message while streaming — its thinking/text is
+    // rendered by the streaming section below, so rendering it here would
+    // duplicate content in the wrong order (text in-place, thinking at bottom).
+    const isStreaming = this._streamingThinking.trim().length > 0 || this._streamingText.trim().length > 0;
+    let lastAssistantIdx = -1;
+    if (isStreaming) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "assistant") { lastAssistantIdx = i; break; }
+      }
+    }
+
     // Second pass: render messages with per-message caching
     for (let i = 0; i < messages.length; i++) {
+      if (i === lastAssistantIdx) continue;
       const cached = this._messageCache.get(i);
       if (cached) {
         lines.push(...cached);
@@ -537,13 +549,7 @@ export class ConversationViewer implements Component {
       }
     }
 
-    // Streaming text — rendered live as deltas arrive
-    if (this._streamingText.trim()) {
-      const md = new Markdown(this._streamingText.trim(), 1, 0, makeMarkdownTheme(th));
-      lines.push(...md.render(width));
-    }
-
-    // Streaming thinking text — rendered live as deltas arrive
+    // Streaming thinking text — rendered before text, matching assistant message order
     if (this._streamingThinking.trim()) {
       const md = new Markdown(this._streamingThinking.trim(), 1, 0, makeMarkdownTheme(th), {
         color: (text: string) => th.fg("thinkingText", text),
@@ -551,6 +557,13 @@ export class ConversationViewer implements Component {
       });
       lines.push(...md.render(width));
     }
+
+    // Streaming text — rendered live as deltas arrive
+    if (this._streamingText.trim()) {
+      const md = new Markdown(this._streamingText.trim(), 1, 0, makeMarkdownTheme(th));
+      lines.push(...md.render(width));
+    }
+
 
     // Streaming indicator for running agents
     if (this.record.lifecycle.status === "running" && this.activity) {
