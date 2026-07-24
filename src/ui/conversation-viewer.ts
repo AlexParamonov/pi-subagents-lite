@@ -49,7 +49,6 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
 export class ConversationViewer implements Component {
   private scrollOffset = 0;
   private autoScroll = true;
-  private fullscreen = false;
   private unsubscribe: (() => void) | undefined;
   private lastInnerW = 0;
   private closed = false;
@@ -113,13 +112,6 @@ export class ConversationViewer implements Component {
     if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.closed = true;
       this.done(undefined);
-      return;
-    }
-
-    // Toggle fullscreen
-    if (data === "f") {
-      this.fullscreen = !this.fullscreen;
-      this.tui.requestRender();
       return;
     }
 
@@ -263,7 +255,7 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
-      const footerRight = th.fg("dim", `↑↓ scroll · f fullscreen · Esc close`);
+      const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn or Shift+↑↓ · Esc close");
 
       // Prepend the line-count/scroll-% readout only when there's spare width
       const scrollPct = contentLines.length <= viewportHeight
@@ -324,10 +316,9 @@ export class ConversationViewer implements Component {
   // ---- Private ----
 
   private viewportHeight(): number {
-    // Fullscreen uses 100% of terminal; otherwise cap at VIEWPORT_HEIGHT_PCT
-    // so the bordered box fits without clipping.
-    const heightPct = this.fullscreen ? 100 : VIEWPORT_HEIGHT_PCT;
-    const maxRows = Math.floor((this.tui.terminal.rows * heightPct) / 100);
+    // Cap mirrors the overlay's maxHeight -- otherwise the viewer would render
+    // more lines than the overlay shows and clip the footer.
+    const maxRows = Math.floor((this.tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
     return Math.max(MIN_VIEWPORT, maxRows - this.chromeLines());
   }
 
