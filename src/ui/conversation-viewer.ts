@@ -524,27 +524,38 @@ export class ConversationViewer implements Component {
       const padNeeded = Math.max(0, width - visibleWidth(tl));
       lines.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
     }
-    if (result) {
-      renderedToolResults.add(tc.id!);
-      const resultText = extractText(result.content);
-      if (resultText.trim()) {
-        lines.push(th.bg(bg, " ".repeat(width)));
-        if (resultText.length > TOOL_RESULT_MAX_CHARS) {
-          const resultLines = resultText.split("\n");
-          const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
-          for (let i = 0; i < linesToShow; i++) {
-            this.pushToolOutput(lines, bg, resultLines[i] || " ", width);
-          }
-          if (resultLines.length > linesToShow) {
-            const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
-            lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
-          }
-        } else {
-          this.pushToolOutput(lines, bg, resultText.trim(), width);
-        }
-        lines.push(th.bg(bg, " ".repeat(width)));
-      }
+    if (result && tc.id) {
+      renderedToolResults.add(tc.id);
+      lines.push(...this.renderToolCallResult(result, bg, width));
     }
+    return lines;
+  }
+
+  /** Render the output of a tool call result, with truncation for large outputs. */
+  private renderToolCallResult(
+    result: { content: unknown[]; isError: boolean },
+    bg: string,
+    width: number,
+  ): string[] {
+    const th = this.theme;
+    const resultText = extractText(result.content);
+    if (!resultText.trim()) return [];
+
+    const lines: string[] = [th.bg(bg, " ".repeat(width))];
+    if (resultText.length > TOOL_RESULT_MAX_CHARS) {
+      const resultLines = resultText.split("\n");
+      const linesToShow = Math.min(TOOL_RESULT_MAX_LINES, resultLines.length);
+      for (let i = 0; i < linesToShow; i++) {
+        this.pushToolOutput(lines, bg, resultLines[i] || " ", width);
+      }
+      if (resultLines.length > linesToShow) {
+        const more = th.fg("dim", `  … ${resultLines.length - linesToShow} more lines`);
+        lines.push(th.bg(bg, more + " ".repeat(Math.max(0, width - visibleWidth(more)))));
+      }
+    } else {
+      this.pushToolOutput(lines, bg, resultText.trim(), width);
+    }
+    lines.push(th.bg(bg, " ".repeat(width)));
     return lines;
   }
 
