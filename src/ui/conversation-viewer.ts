@@ -24,8 +24,8 @@ import {
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
-/** Base lines consumed by chrome: top border + header + header sep + footer sep + footer + bottom border. */
-const CHROME_LINES_BASE = 6;
+/** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
+const CHROME_LINES_BASE = 7;
 const MIN_VIEWPORT = 3;
 /** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
 export const VIEWPORT_HEIGHT_PCT = 70;
@@ -397,10 +397,9 @@ export class ConversationViewer implements Component {
   }
 
   private chromeLines(): number {
-    // Stats row always present. Composer adds one row above footer when open.
-    return CHROME_LINES_BASE + 1 + (this.composer ? 1 : 0);
+    // Composer adds one extra row (input + hint instead of single footer).
+    return CHROME_LINES_BASE + (this.composer ? 1 : 0);
   }
-
 
   /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
   private invalidateCacheForNewMessages(newMsgs: any[], oldCount: number, allMessages: any[]): void {
