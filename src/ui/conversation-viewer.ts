@@ -406,21 +406,24 @@ export class ConversationViewer implements Component {
 
   /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
   private invalidateCacheForNewMessages(newMsgs: any[], oldCount: number, allMessages: any[]): void {
+    // Collect toolCallIds from new tool results
+    const newToolCallIds = new Set<string>();
     for (const m of newMsgs) {
       if (m.role === "toolResult" && m.toolCallId) {
-        for (let i = 0; i < oldCount; i++) {
-          const cached = this._messageCache.get(i);
-          if (cached) {
-            const candidate = allMessages[i];
-            if (candidate?.role === "assistant") {
-              for (const c of candidate.content) {
-                if (c.type === "toolCall" && c.id === m.toolCallId) {
-                  this._messageCache.delete(i);
-                  break;
-                }
-              }
-            }
-          }
+        newToolCallIds.add(m.toolCallId);
+      }
+    }
+    if (newToolCallIds.size === 0) return;
+
+    // Invalidate cached assistant messages that reference any of the new toolCallIds
+    for (let i = 0; i < oldCount; i++) {
+      if (!this._messageCache.has(i)) continue;
+      const msg = allMessages[i];
+      if (msg?.role !== "assistant") continue;
+      for (const c of msg.content) {
+        if (c.type === "toolCall" && newToolCallIds.has(c.id)) {
+          this._messageCache.delete(i);
+          break;
         }
       }
     }
