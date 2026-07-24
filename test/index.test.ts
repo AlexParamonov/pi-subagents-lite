@@ -444,3 +444,33 @@ describe("subagent spawn guard", () => {
     expect(api.tools.length).toBeGreaterThan(0);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Constrained Sampling                                              */
+/* ------------------------------------------------------------------ */
+
+describe("constrained sampling", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
+    it(`${toolName} has constrainedSampling with json_schema and strict: prefer`, () => {
+      const tool = findTool(api, toolName);
+      expect(tool).toBeDefined();
+      expect(tool!.constrainedSampling).toEqual({
+        type: "json_schema",
+        strict: "prefer",
+      });
+    });
+
+    it(`${toolName} schema has additionalProperties: false`, () => {
+      const tool = findTool(api, toolName);
+      expect(tool).toBeDefined();
+      expect(tool!.parameters.additionalProperties).toBe(false);
+    });
+  }
+});
