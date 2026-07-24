@@ -1,4 +1,4 @@
-import { getPiInstance, getWidget } from "../shell.js";
+import { getPiInstance, getSessionCtx, getWidget } from "../shell.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -229,9 +229,12 @@ export class SpawnCoordinator {
     });
 
     try {
-      // Always deliver as followUp: it queues the message to be processed
-      // after the current turn completes, which is safe for widget state.
-      const deliverAs = "followUp";
+      // Pick delivery mode based on parent session state:
+      // - steer: queues while running, delivers before next LLM call
+      // - followUp: waits for agent to finish, then delivers
+      const ctx = getSessionCtx();
+      const parentIdle = ctx?.isIdle?.() ?? true;
+      const deliverAs = parentIdle ? "followUp" : "steer";
 
       pi.sendMessage(
         {

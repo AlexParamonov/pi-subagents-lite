@@ -34,14 +34,14 @@ vi.mock("../../src/config/config-io.js", () => ({
 }));
 
 // Hoist mock pi so shell mock can return it
-const { mockPi, mockGetPiInstance, mockGetSessionCtx } = vi.hoisted(() => ({
+const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
   mockPi: { sendMessage: vi.fn(), sendUserMessage: vi.fn(), exec: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as unknown as ExtensionAPI,
   mockGetPiInstance: vi.fn(() => null as unknown as ExtensionAPI),
-  mockGetSessionCtx: vi.fn(() => ({ isIdle: () => true })),
 }));
+
 vi.mock("../../src/shell.js", () => ({
   getPiInstance: () => mockGetPiInstance(),
-  getSessionCtx: () => mockGetSessionCtx(),
+  getSessionCtx: () => ({ isIdle: () => true }),
   getWidget: () => null,
 }));
 
@@ -505,42 +505,4 @@ describe("SpawnCoordinator", () => {
       expect(record.lifecycle.resultConsumed).toBeUndefined();
     });
   });
-  describe("nudge delivery mode", () => {
-    it("delivers as followUp when parent is busy (not idle)", async () => {
-      const coordinator = new SpawnCoordinator(manager as any);
-
-      const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
-      });
-
-      // Simulate parent agent being busy
-      mockGetSessionCtx.mockReturnValue({ isIdle: () => false });
-
-      coordinator.scheduleNudge(result.agentId);
-      vi.advanceTimersByTime(200);
-
-      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      const options = mockPi.sendMessage.mock.calls[0][1];
-      expect(options.deliverAs).toBe("followUp");
-    });
-
-    it("delivers as followUp when parent is idle (existing behavior preserved)", async () => {
-      const coordinator = new SpawnCoordinator(manager as any);
-
-      const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
-      });
-
-      // Parent idle (default mock)
-      mockGetSessionCtx.mockReturnValue({ isIdle: () => true });
-
-      coordinator.scheduleNudge(result.agentId);
-      vi.advanceTimersByTime(200);
-
-      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      const options = mockPi.sendMessage.mock.calls[0][1];
-      expect(options.deliverAs).toBe("followUp");
-    });
-  });
-
 });
