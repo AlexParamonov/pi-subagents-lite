@@ -57,6 +57,10 @@ export class ConversationViewer implements Component {
   private _messageCache = new Map<number, string[]>();
   /** Message count and width used for the last cache population. Mismatch → stale. */
   private _cacheMeta = { count: 0, width: 0 };
+  /** Full content lines from the last build — avoids re-iterating cached messages. */
+  private _cachedContentLines: string[] | undefined;
+  /** Number of non-streaming lines in _cachedContentLines. */
+  private _cachedNonStreamingCount = 0;
 
   /** Two-press confirm guard for the stop key, so a stray key can't kill the agent. */
   private stopArmed = false;
@@ -365,11 +369,15 @@ export class ConversationViewer implements Component {
     this.tui.requestRender();
   }
 
-  invalidate(): void { this._messageCache.clear(); }
+  invalidate(): void {
+    this._messageCache.clear();
+    this._cachedContentLines = undefined;
+  }
 
   dispose(): void {
     this.closed = true;
     this._messageCache.clear();
+    this._cachedContentLines = undefined;
     if (this._renderTimer !== undefined) {
       clearTimeout(this._renderTimer);
       this._renderTimer = undefined;
@@ -545,11 +553,10 @@ export class ConversationViewer implements Component {
 
     const th = this.theme;
     const messages = this.session.messages ?? [];
-    const lines: string[] = [];
 
     if (messages.length === 0) {
-      lines.push(th.fg("dim", "(waiting for first message...)"));
-      return lines;
+      this._cachedContentLines = undefined;
+      return [th.fg("dim", "(waiting for first message...)")];
     }
 
     // First pass: collect tool results by toolCallId
@@ -567,11 +574,44 @@ export class ConversationViewer implements Component {
     if (width !== this._cacheMeta.width) {
       this._messageCache.clear();
       this._cacheMeta = { count: messages.length, width };
+      this._cachedContentLines = undefined;
     } else if (messages.length !== this._cacheMeta.count) {
+      // Message count changed — only invalidate entries affected by new messages.
+      // If a new toolResult arrived, invalidate the assistant message with the matching toolCall.
       const newMsgs = messages.slice(this._cacheMeta.count);
-      this.invalidateCacheForNewMessages(newMsgs, messages);
+      for (const m of newMsgs) {
+        if (m.role === "toolResult" && m.toolCallId) {
+          for (let i = 0; i < this._cacheMeta.count; i++) {
+            const cached = this._messageCache.get(i);
+            if (cached) {
+              const candidate = messages[i];
+              if (candidate?.role === "assistant") {
+                for (const c of candidate.content) {
+                  if (c.type === "toolCall" && c.id === m.toolCallId) {
+                    this._messageCache.delete(i);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
       this._cacheMeta.count = messages.length;
+      this._cachedContentLines = undefined; // new messages → full rebuild
     }
+
+    // Fast path: if we have cached content and only streaming text changed,
+    // splice new streaming lines into the cached result.
+    if (this._cachedContentLines) {
+      const streamingLines = this.buildStreamingLines(width, th);
+      const result = this._cachedContentLines.slice(0, this._cachedNonStreamingCount);
+      result.push(...streamingLines);
+      return result;
+    }
+
+    // Slow path: full rebuild
+    const lines: string[] = [];
 
     // Second pass: render messages with per-message caching
     for (let i = 0; i < messages.length; i++) {
@@ -591,6 +631,20 @@ export class ConversationViewer implements Component {
       }
     }
 
+    const streamingLines = this.buildStreamingLines(width, th);
+    this._cachedNonStreamingCount = lines.length;
+    lines.push(...streamingLines);
+
+    // Cache the full result for next time
+    this._cachedContentLines = lines;
+
+    return lines;
+  }
+
+  /** Build just the streaming portion (thinking + text + indicator). */
+  private buildStreamingLines(width: number, th: Theme): string[] {
+    const lines: string[] = [];
+
     // Streaming thinking text — rendered before text, matching assistant message order
     if (this._streamingThinking.trim()) {
       lines.push(...this.ensureThinkingMd().render(width));
@@ -608,6 +662,6 @@ export class ConversationViewer implements Component {
       lines.push(truncateToWidth(th.fg("accent", "▍ ") + th.fg("dim", act), width));
     }
 
-    return lines.map((l) => truncateToWidth(l, width));
+    return lines;
   }
 }
