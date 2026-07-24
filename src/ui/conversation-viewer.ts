@@ -293,15 +293,16 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  /** Stoppable only when a stop handler exists and the agent is still active. */
-  private isStoppable(): boolean {
-    return !!this.onStop && (this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued");
+  /** Agent is still active (running or queued). */
+  private isActive(): boolean {
+    return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
   }
 
+  /** Stoppable only when a stop handler exists and the agent is still active. */
+  private isStoppable(): boolean { return !!this.onStop && this.isActive(); }
+
   /** Steerable only when a steer handler exists and the agent is still active. */
-  private canSteer(): boolean {
-    return !!this.onSteer && (this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued");
-  }
+  private canSteer(): boolean { return !!this.onSteer && this.isActive(); }
 
   /** Open the inline steering composer and route subsequent input to it. */
   private openComposer(): void {
