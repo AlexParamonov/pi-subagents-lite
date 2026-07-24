@@ -310,15 +310,18 @@ export class ConversationViewer implements Component {
     input.focused = true;
     input.onSubmit = (value: string) => {
       const message = value.trim();
-      this.composer = undefined;
       if (message) this.onSteer?.(message);
-      this.tui.requestRender();
+      this.closeComposer();
     };
     input.onEscape = () => {
-      this.composer = undefined;
-      this.tui.requestRender();
+      this.closeComposer();
     };
     this.composer = input;
+    this.tui.requestRender();
+  }
+
+  private closeComposer(): void {
+    this.composer = undefined;
     this.tui.requestRender();
   }
 
