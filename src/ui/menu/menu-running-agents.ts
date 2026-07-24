@@ -205,9 +205,7 @@ export function buildAgentActionsList(
 
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
-    if (item.value === "view-snapshot") {
-      await showConversationViewer(ctx, record);
-    } else if (item.value === "view-conversation") {
+    if (item.value === "view-snapshot" || item.value === "view-conversation") {
       await showConversationViewer(ctx, record);
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);
