@@ -274,9 +274,9 @@ export class ConversationViewer implements Component {
     // Row 2: model name + compact usage stats
     const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
-    const invocationParts = [modelName, ...tags].filter(Boolean);
-    if (invocationParts.length > 0) {
-      lines.push(row(th.fg("dim", `  ↳ ${statsLine} · ${invocationParts.join(" · ")}`)));
+    if (modelName) {
+      const parts = [statsLine, ...tags].filter(Boolean);
+      lines.push(row(th.fg("dim", `  ↳ ${modelName} · ${parts.join(" · ")}`)));
     } else {
       lines.push(row(statsLine));
     }
@@ -403,6 +403,27 @@ export class ConversationViewer implements Component {
   }
 
 
+  /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
+  private invalidateCacheForNewMessages(newMsgs: any[], oldCount: number, allMessages: any[]): void {
+    for (const m of newMsgs) {
+      if (m.role === "toolResult" && m.toolCallId) {
+        for (let i = 0; i < oldCount; i++) {
+          const cached = this._messageCache.get(i);
+          if (cached) {
+            const candidate = allMessages[i];
+            if (candidate?.role === "assistant") {
+              for (const c of candidate.content) {
+                if (c.type === "toolCall" && c.id === m.toolCallId) {
+                  this._messageCache.delete(i);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   /** Wrap `text` to the inner width and push each line as a tool-output row, padded and bg-filled. */
   private pushToolOutput(lines: string[], bg: string, text: string, width: number): void {
     const th = this.theme;
