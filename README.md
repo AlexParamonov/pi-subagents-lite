@@ -33,9 +33,10 @@ Names like `Agent`, `StopAgent`, `AgentStatus`, `run_in_background`, `worktree_p
 - **Steering** — inject mid-execution guidance into running agents
 - **Cost & usage tracking** — input/output/cache tokens and dollar cost per agent (toggle in stats)
 - **Live widget** — persistent status bar with running/completed agents, full and compact modes
-- **Result viewer** — fullscreen markdown with stats
+- **Conversation viewer** — fullscreen transcript with live streaming, markdown rendering, and keyboard navigation
 - **Worktrees** — run agents in a git worktree via `worktree_path`
 - **Output logs** — `tail -f` friendly, ISO-timestamped with configurable thinking buffer (OFF, 80, 200, 500, 1000 chars). Flush rounds to sentence boundaries.
+- **Constrained tool sampling** — provider-side strict JSON schema validation reduces malformed tool calls and retry loops (graceful fallback on unsupported providers)
 
 ## Install
 
@@ -122,9 +123,9 @@ The result nudges the LLM to wait for automatic notifications instead of polling
 
 ## Custom Agent Types
 
-Drop a `.md` file into `.pi/agents/` (project) or `~/.pi/agent/agents/` (global). Frontmatter configures the agent; the body is its system prompt. The `name` field (or filename) becomes the agent type and **auto-populates the `agent` parameter's enum** — no registration. Files added mid-session are picked up on the next call that references them.
+Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared workspace), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent; the body is its system prompt. The `name` field (or filename) becomes the agent type and **auto-populates the `agent` parameter's enum** — no registration. Files added mid-session are picked up on the next call that references them.
 
-Built-ins `general-purpose` and `Explore` are always available. **Project agents override user agents, which override built-ins.**
+Built-ins `general-purpose` and `Explore` are always available. **Precedence:** project (`.pi/agents/`) > shared (`.agents/agents/`) > user (`~/.pi/agent/agents/`) > built-ins. On name clash, higher precedence wins.
 
 ```markdown
 ---
@@ -150,7 +151,7 @@ A minimal agent — just `name` and `description` — gets everything: all tools
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `name` | string | filename | Agent type name (the `agent` enum value). Must be unique. |
-| `display_name` | string | `name` | Label in the widget, `/agents` menu, and result viewer. |
+| `display_name` | string | `name` | Label in the widget, `/agents` menu, and conversation viewer. |
 | `description` | string | `""` | One-sentence description in the `/agents` list and tool rendering. |
 | `tools` | `true` \| `string[]` \| `false` | `true` | **Tool whitelist** — which tool schemas the LLM sees. Accepts built-in names and extension tool references (see below). Mutually exclusive with `exclude_tools`. |
 | `exclude_tools` | `string[]` | none | **Tool blacklist** — all tools except these are visible. Supports `ext/*` syntax. Mutually exclusive with `tools` (when `tools` is `string[]`). |
@@ -274,11 +275,13 @@ Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is co
 
 Compact mode is active when **Force compact** is ON, or **ctrl+o shortcut** is ON and the user has collapsed tool expansion. Force compact always wins.
 
-### Result viewer
+### Conversation viewer
 
-Fullscreen markdown viewer for completed agent results — opens automatically from `/agents`. Keys: `↑↓` / `PgUp/PgDn` navigate · `g`/`G` top/bottom · `f` fullscreen · `r` refresh · `q`/`Esc` close. Stats line: `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`.
+Fullscreen transcript viewer for agent sessions — opens automatically from `/agents`. Streams thinking and response text live as deltas arrive. Tool calls display matching pi's style with collapsible output.
 
-With **Cost display** ON, stats show dollar cost (`✓ Builder·2🛠 ·5⟳ ·↑10.2k↓1.8k $0.008·10s`) and the status bar totals it (`agents: $0.008`). Toggle as a session override from Model settings.
+**Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
+
+**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Cost display** ON, shows dollar cost. Toggle as a session override from Model settings.
 
 ## Configuration
 
@@ -364,7 +367,7 @@ With **Cost display** ON, stats show dollar cost (`✓ Builder·2🛠 ·5⟳ ·�
 ## Requirements
 
 - Node.js >= 18
-- pi >= 0.74.0
+- pi >= 0.82.0
 
 ## License
 
