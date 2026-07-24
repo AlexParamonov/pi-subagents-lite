@@ -201,9 +201,8 @@ export class ConversationViewer implements Component {
     }
     if (this.stopArmed) this.stopArmed = false;
 
-    const totalLines = this._cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
     const viewportHeight = this.viewportHeight();
-    const maxScroll = Math.max(0, totalLines - viewportHeight);
+    const maxScroll = this.scrollMax();
 
     if (this.keys.scrollUp(data)) {
       this.scrollOffset = Math.max(0, this.scrollOffset - 1);
@@ -284,7 +283,7 @@ export class ConversationViewer implements Component {
     const contentLines = this.buildContentLines(innerW);
     const totalContentLines = contentLines.length;
     const viewportHeight = this.viewportHeight();
-    const maxScroll = Math.max(0, totalContentLines - viewportHeight);
+    const maxScroll = this.scrollMax();
 
     if (this.autoScroll) {
       this.scrollOffset = maxScroll;
@@ -397,6 +396,12 @@ export class ConversationViewer implements Component {
   private chromeLines(): number {
     // Composer adds one extra row (input + hint instead of single footer).
     return CHROME_LINES_BASE + (this.composer ? 1 : 0);
+  }
+
+  /** Maximum scroll offset for the current content and viewport. */
+  private scrollMax(): number {
+    const totalLines = this._cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
+    return Math.max(0, totalLines - this.viewportHeight());
   }
 
   /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
