@@ -49,7 +49,7 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   };
   // constrainedSampling not yet in ToolDefinition type
   (tool as any).constrainedSampling = { type: 'json_schema', strict: 'prefer' };
-  // @ts-expect-error — description removed to save prompt tokens; constrainedSampling not yet in type
+  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(tool);
 }
 
@@ -73,7 +73,7 @@ export function registerTools(pi: ExtensionAPI): void {
   };
   // constrainedSampling not yet in ToolDefinition type
   (stopAgentTool as any).constrainedSampling = { type: 'json_schema', strict: 'prefer' };
-  // @ts-expect-error — description removed to save prompt tokens; constrainedSampling not yet in type
+  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(stopAgentTool);
 
   // AgentStatus tool — stealth schema, list all agents and their statuses
@@ -85,7 +85,7 @@ export function registerTools(pi: ExtensionAPI): void {
   };
   // constrainedSampling not yet in ToolDefinition type
   (agentStatusTool as any).constrainedSampling = { type: 'json_schema', strict: 'prefer' };
-  // @ts-expect-error — description removed to save prompt tokens; constrainedSampling not yet in type
+  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(agentStatusTool);
 
   // Message renderer — subagent-result (background agent completion)
