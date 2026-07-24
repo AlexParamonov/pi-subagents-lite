@@ -487,7 +487,8 @@ export class ConversationViewer implements Component {
       lines.push(...md.render(width));
     }
     // Spacer before tool calls so they don't blend into preceding text
-    if (toolCalls.length > 0) lines.push("");
+    // (thinking already provides its own trailing blank from Markdown rendering)
+    if (toolCalls.length > 0 && textParts.length > 0) lines.push("");
     // Tool calls
     for (const tc of toolCalls) {
       lines.push(...this.renderToolCall(tc, width, toolResults, renderedToolResults));
