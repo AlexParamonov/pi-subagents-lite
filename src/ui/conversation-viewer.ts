@@ -201,7 +201,7 @@ export class ConversationViewer implements Component {
     }
     if (this.stopArmed) this.stopArmed = false;
 
-    const totalLines = this.buildContentLines(this.lastInnerW).length;
+    const totalLines = this._cachedContentLines?.length ?? this.buildContentLines(this.lastInnerW).length;
     const viewportHeight = this.viewportHeight();
     const maxScroll = Math.max(0, totalLines - viewportHeight);
 
@@ -283,10 +283,11 @@ export class ConversationViewer implements Component {
     }
     lines.push(hrMid);
 
-    // Content area -- rebuild every render (live data, no cache needed)
+    // Content area
     const contentLines = this.buildContentLines(innerW);
+    const totalContentLines = contentLines.length;
     const viewportHeight = this.viewportHeight();
-    const maxScroll = Math.max(0, contentLines.length - viewportHeight);
+    const maxScroll = Math.max(0, totalContentLines - viewportHeight);
 
     if (this.autoScroll) {
       this.scrollOffset = maxScroll;
@@ -319,11 +320,11 @@ export class ConversationViewer implements Component {
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
-      const currentLine = Math.min(visibleStart + viewportHeight, contentLines.length);
-      const scrollPct = contentLines.length <= viewportHeight
+      const currentLine = Math.min(visibleStart + viewportHeight, totalContentLines);
+      const scrollPct = totalContentLines <= viewportHeight
         ? 100
-        : Math.round((currentLine / contentLines.length) * 100);
-      const count = th.fg("dim", `(${currentLine}/${contentLines.length} · ${scrollPct}%)`);
+        : Math.round((currentLine / totalContentLines) * 100);
+      const count = th.fg("dim", `(${currentLine}/${totalContentLines} · ${scrollPct}%)`);
       const withCount = [count, ...actions].join(sep);
       const footerLeft = visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
         ? withCount
@@ -402,24 +403,6 @@ export class ConversationViewer implements Component {
     return CHROME_LINES_BASE + 1 + (this.composer ? 1 : 0);
   }
 
-
-  /** When a new toolResult arrives, invalidate the cached assistant message that references it. */
-  private invalidateCacheForNewMessages(newMsgs: any[], allMessages: any[]): void {
-    const oldCount = allMessages.length - newMsgs.length;
-    for (const m of newMsgs) {
-      if (m.role !== "toolResult" || !m.toolCallId) continue;
-      for (let i = 0; i < oldCount; i++) {
-        const candidate = allMessages[i];
-        if (candidate?.role !== "assistant") continue;
-        for (const c of candidate.content) {
-          if (c.type === "toolCall" && c.id === m.toolCallId) {
-            this._messageCache.delete(i);
-            break;
-          }
-        }
-      }
-    }
-  }
 
   /** Wrap `text` to the inner width and push each line as a tool-output row, padded and bg-filled. */
   private pushToolOutput(lines: string[], bg: string, text: string, width: number): void {
@@ -615,7 +598,7 @@ export class ConversationViewer implements Component {
     // Fast path: if we have cached content and only streaming text changed,
     // splice new streaming lines into the cached result.
     if (this._cachedContentLines) {
-      const streamingLines = this.buildStreamingLines(width, th);
+      const streamingLines = this.buildStreamingLines(width);
       const result = this._cachedContentLines.slice(0, this._cachedNonStreamingCount);
       result.push(...streamingLines);
       return result;
@@ -642,7 +625,7 @@ export class ConversationViewer implements Component {
       }
     }
 
-    const streamingLines = this.buildStreamingLines(width, th);
+    const streamingLines = this.buildStreamingLines(width);
     this._cachedNonStreamingCount = lines.length;
     lines.push(...streamingLines);
 
@@ -653,7 +636,7 @@ export class ConversationViewer implements Component {
   }
 
   /** Build just the streaming portion (thinking + text + indicator). */
-  private buildStreamingLines(width: number, th: Theme): string[] {
+  private buildStreamingLines(width: number): string[] {
     const lines: string[] = [];
 
     // Streaming thinking text — rendered before text, matching assistant message order
@@ -670,7 +653,7 @@ export class ConversationViewer implements Component {
     if (this.record.lifecycle.status === "running" && this.activity) {
       const act = describeActivity(this.activity.activeTools, this.activity.responseText);
       lines.push("");
-      lines.push(truncateToWidth(th.fg("accent", "▍ ") + th.fg("dim", act), width));
+      lines.push(truncateToWidth(this.theme.fg("accent", "▍ ") + this.theme.fg("dim", act), width));
     }
 
     return lines;
