@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Import the module under test
 import {
   resolveVisibleTools,
+  resolveSessionAllowedTools,
   EXCLUDED_TOOL_NAMES,
   BUILTIN_TOOL_NAMES,
   getConfig,
@@ -453,5 +454,110 @@ describe("getConfig — global implicit defaults", () => {
     const result = getConfig("nonexistent", true, true);
     expect(result.skills).toBe(true);
     expect(result.extensions).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  resolveSessionAllowedTools                                         */
+/* ------------------------------------------------------------------ */
+
+describe("resolveSessionAllowedTools", () => {
+  const builtins = ["read", "bash", "edit"];
+  const extToolMap = new Map<string, string[]>([
+    ["tavily", ["web_search", "web_extract", "web_crawl"]],
+    ["exa", ["exa_search"]],
+  ]);
+
+  it("tools: false — no tools allowed", () => {
+    expect(resolveSessionAllowedTools({ registeredTools: builtins, tools: false, extToolMap }))
+      .toEqual([]);
+  });
+
+  it("tools: string[] — only whitelisted builtins and extension tools register (no leak)", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: ["read", "tavily/*", "exa_search"],
+      extToolMap,
+    });
+    expect(result).toEqual(expect.arrayContaining([
+      "read", "web_search", "web_extract", "web_crawl", "exa_search",
+    ]));
+    expect(result).toHaveLength(5);
+    // Builtins not in the whitelist must NOT leak into the registry gate.
+    expect(result).not.toContain("bash");
+    expect(result).not.toContain("edit");
+  });
+
+  it("tools: string[] with ext/tool entry — expands to the bare tool name", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: ["read", "tavily/web_search"],
+      extToolMap,
+    });
+    expect(result).toContain("web_search");
+    expect(result).not.toContain("web_extract");
+  });
+
+  it("tools: string[] with ext/* for an unloaded extension — resolves to nothing (silent)", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: ["read", "ghost/*"],
+      extToolMap,
+    });
+    // Only the bare "read" survives; "ghost/*" finds no extension.
+    expect(result).toEqual(["read"]);
+  });
+
+  it("tools: true — builtins plus every loaded extension tool", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: true,
+      extToolMap,
+    });
+    expect(result).toEqual(expect.arrayContaining([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search",
+    ]));
+    expect(result).toHaveLength(7);
+  });
+
+  it("tools: undefined — behaves like tools: true", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: undefined,
+      extToolMap,
+    });
+    expect(result).toEqual(expect.arrayContaining([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search",
+    ]));
+  });
+
+  it("excludes EXCLUDED_TOOL_NAMES so the Agent tool never enters the registry", () => {
+    const withAgent = new Map(extToolMap);
+    withAgent.set("subagents", ["Agent"]);
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: true,
+      extToolMap: withAgent,
+    });
+    expect(result).not.toContain("Agent");
+  });
+
+  it("tools: string[] with no extToolMap — bare whitelisted builtins only", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: builtins,
+      tools: ["read", "tavily/*"],
+    });
+    // No extToolMap means "tavily/*" can't expand; only the bare "read" registers.
+    expect(result).toEqual(["read"]);
+  });
+
+  it("raw wildcard literals never reach pi as bogus allowedToolNames", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: ["read", "tavily/*"],
+      tools: ["read", "tavily/*"],
+      extToolMap,
+    });
+    expect(result).not.toContain("tavily/*");
+    expect(result).toContain("web_search");
   });
 });

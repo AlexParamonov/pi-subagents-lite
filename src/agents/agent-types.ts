@@ -270,6 +270,42 @@ export function resolveVisibleTools(opts: {
   return activeTools.filter(t => !EXCLUDED_TOOL_NAMES.includes(t));
 }
 
+/**
+ * Resolve the concrete tool names that may enter the session's tool registry.
+ *
+ * Pi's createAgentSession treats `tools` as an allowlist gate: any tool not
+ * listed is filtered out of the registry AND the active set, so a whitelist of
+ * built-in names alone silently drops every extension tool. This expands the
+ * agent's tool config into concrete names (builtins + referenced extension
+ * tools) so pi registers them. Final visibility is still owned by
+ * resolveVisibleTools; this only seeds the registry gate.
+ */
+export function resolveSessionAllowedTools(opts: {
+  registeredTools: string[];
+  tools?: true | string[] | false;
+  extToolMap?: Map<string, string[]>;
+}): string[] {
+  if (opts.tools === false) return [];
+
+  // tools is a whitelist: the gate is exactly its expansion. Builtins and
+  // extension tools are gated alike (a builtin not listed is NOT registered),
+  // and raw wildcard entries ("tavily/*") never leak as bogus allowedToolNames.
+  // registeredTools is not a base here.
+  if (Array.isArray(opts.tools)) {
+    return [...resolveToolEntries(opts.tools, opts.extToolMap)]
+      .filter(t => !EXCLUDED_TOOL_NAMES.includes(t));
+  }
+
+  // No whitelist (true | undefined): register everything available so
+  // resolveVisibleTools can select freely.
+  const extTools = opts.extToolMap ? [...opts.extToolMap.values()].flat() : [];
+  const names = new Set(opts.registeredTools);
+  for (const t of extTools) {
+    if (!EXCLUDED_TOOL_NAMES.includes(t)) names.add(t);
+  }
+  return [...names];
+}
+
 /** Get built-in tool names for a type (case-insensitive). */
 export function getToolNamesForType(type: string): string[] {
   const config = getAgentConfig(type);

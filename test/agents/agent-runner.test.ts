@@ -937,6 +937,51 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     expect(activeTools).not.toContain("bash");
   });
 
+  it("seeds createAgentSession tools allowlist with expanded extension tools", async () => {
+    // Regression: pi treats createAgentSession({ tools }) as a registry gate.
+    // A builtins-only allowlist silently drops every extension tool, so the
+    // agent never sees web_search/web_extract/web_crawl even though the
+    // extension is loaded. The allowlist must contain the concrete names.
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue([
+      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
+    ]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      extensions: ["tavily"],
+      tools: ["read", "tavily/*"],
+    });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily"],
+      tools: ["read", "tavily/*"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+          ["web_crawl", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    const sessionOpts = mockModules.mockCreateAgentSession.mock.calls[0][0];
+    // Whitelist semantics: only "read" + the expanded tavily tools register.
+    // bash/edit are NOT in the whitelist, so they must not leak into the gate.
+    expect(sessionOpts.tools).toEqual(expect.arrayContaining([
+      "read", "web_search", "web_extract", "web_crawl",
+    ]));
+    expect(sessionOpts.tools).not.toContain("bash");
+    expect(sessionOpts.tools).not.toContain("edit");
+    expect(sessionOpts.tools).not.toContain("tavily/*");
+    expect(sessionOpts.tools).not.toContain("Agent");
+  });
+
   it("warning: tool name not found in any loaded extension", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
