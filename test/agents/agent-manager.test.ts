@@ -462,7 +462,7 @@ describe("AgentManager", () => {
       (manager as any).cleanup();
 
       expect(manager.getRecord(id)).toBeDefined();
-  });
+    });
 
     it("uses configurable retention via setRetentionMinutes", async () => {
       manager = new AgentManager(onComplete);
