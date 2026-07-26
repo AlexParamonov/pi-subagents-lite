@@ -56,9 +56,6 @@ export function ensureManagerAndWidget(): void {
     newManager.setOnComplete((record) => {
       // Delegate completion side-effects to coordinator
       coordinator.onAgentComplete(record);
-
-      // Mark finished and update widget
-      getWidget()?.markFinished(record.id);
       getWidget()?.update();
     });
   }

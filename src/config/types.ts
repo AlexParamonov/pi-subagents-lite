@@ -26,4 +26,5 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "loadExtensionsImplicitly",
   "disableDefaultAgents",
   "outputThinkingBufferSize",
+  "finishedRetentionMinutes",
 ];

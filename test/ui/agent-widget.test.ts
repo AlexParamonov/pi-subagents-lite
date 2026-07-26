@@ -218,8 +218,6 @@ describe("widget rendering format", () => {
     it("uses 2-space prefix for finished agent headers", () => {
       const a1 = makeFinishedAgent("a1");
       const a2 = makeFinishedAgent("a2");
-      widget.markFinished("a1");
-      widget.markFinished("a2");
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
@@ -230,7 +228,6 @@ describe("widget rendering format", () => {
     it("uses spaces for tail-f line of last finished agent", () => {
       const a1 = makeFinishedAgent("a1");
       a1.display.outputFile = "/tmp/pi-agent-outputs/test.log";
-      widget.markFinished("a1");
       (manager as any).listAgents = () => [a1];
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       expect(lines[1]).toMatch(/^  /); // All agents use 2-space prefix
@@ -244,8 +241,6 @@ describe("widget rendering format", () => {
       a1.display.outputFile = "/tmp/out1.log";
       const a2 = makeFinishedAgent("a2");
       a2.display.outputFile = "/tmp/out2.log";
-      widget.markFinished("a1");
-      widget.markFinished("a2");
       (manager as any).listAgents = () => [a1, a2];
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // All tail-f lines use spaces only (no connector) for finished agents
@@ -261,7 +256,6 @@ describe("widget rendering format", () => {
       const running = makeRunningAgent("r1");
       const finished = makeFinishedAgent("f1");
       activity.set("r1", makeActivity("r1"));
-      widget.markFinished("f1");
       (manager as any).listAgents = () => [finished, running];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
@@ -301,7 +295,6 @@ describe("status bar format", () => {
 
     // Only finished agents, no running/queued
     const finished = makeFinishedAgent("f1");
-    widget.markFinished("f1");
     (manager as any).listAgents = () => [finished];
     widget.update();
 
@@ -543,7 +536,6 @@ describe("description length configuration", () => {
     widget.setDescLengthFull(25);
     const agent = makeFinishedAgent("a1");
     agent.display.description = "This is a very long description that should be truncated";
-    widget.markFinished("a1");
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
@@ -733,7 +725,6 @@ describe("renderFinishedLine context percent", () => {
     finished.stats.contextPercent = 72;
     // No session on execution — the display code must NOT reach here
     finished.execution = {};
-    widget.markFinished("f1");
     (manager as any).listAgents = () => [finished];
 
     // Track what buildStatsParts receives by mocking getSessionContextPercent
@@ -841,7 +832,6 @@ describe("stats visibility integration", () => {
     widget.setStatsVisibility({ showTools: false });
     const agent = makeFinishedAgent("a1");
     agent.stats.toolUses = 15;
-    widget.markFinished("a1");
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());

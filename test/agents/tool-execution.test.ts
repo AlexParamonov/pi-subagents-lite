@@ -76,7 +76,6 @@ vi.mock("../../src/shell.js", () => ({
   getWidget: () => ({
     ensureTimer: vi.fn(),
     update: vi.fn(),
-    markFinished: vi.fn(),
   }),
   getCoordinator: () => ({
     spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {

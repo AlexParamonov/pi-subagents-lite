@@ -145,7 +145,6 @@ describe("navigation state machine", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
-      widget.markFinished("f1");
       const finished = makeFinishedAgent("f1");
       (manager as any).listAgents = () => [finished, agent];
 
@@ -166,7 +165,6 @@ describe("navigation state machine", () => {
   describe("navDown", () => {
     it("moves highlight down one position", () => {
       const finished = makeFinishedAgent("f1");
-      widget.markFinished("f1");
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [finished, running];
@@ -180,7 +178,6 @@ describe("navigation state machine", () => {
 
     it("wraps from last agent to first", () => {
       const finished = makeFinishedAgent("f1");
-      widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
 
       widget.navActivate(); // index 0
@@ -192,7 +189,6 @@ describe("navigation state machine", () => {
   describe("navUp", () => {
     it("moves highlight up one position", () => {
       const finished = makeFinishedAgent("f1");
-      widget.markFinished("f1");
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [finished, running];
@@ -207,7 +203,6 @@ describe("navigation state machine", () => {
 
     it("wraps from first to last agent", () => {
       const finished = makeFinishedAgent("f1");
-      widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
 
       widget.navActivate(); // index 0
@@ -226,7 +221,6 @@ describe("navigation state machine", () => {
     });
     it("returns the agent record when highlighting an agent", () => {
       const finished = makeFinishedAgent("f1");
-      widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
 
       widget.navActivate();
@@ -290,7 +284,6 @@ describe("navigation roster", () => {
 
   it("includes finished at index 0, then running, queued", () => {
     const finished = makeFinishedAgent("f1");
-    widget.markFinished("f1");
     const running = makeRunningAgent("r1");
     activity.set("r1", makeActivity("r1"));
     const queued = makeQueuedAgent("q1");
@@ -382,7 +375,6 @@ describe("navigation rendering", () => {
 
     it("renders '→' marker on the highlighted finished agent", () => {
       const finished = makeFinishedAgent("f1");
-      widget.markFinished("f1");
       (manager as any).listAgents = () => [finished];
       widget.navActivate();
 
@@ -459,7 +451,6 @@ describe("overflow with navigation", () => {
       agent.display.description = `Finished agent ${i}`;
       return agent;
     });
-    agents.forEach(a => widget.markFinished(a.id));
     (manager as any).listAgents = () => agents;
 
     // Activate nav — highlights index 0 (agent 0)
@@ -481,3 +472,67 @@ describe("overflow with navigation", () => {
     expect(overflowLine).toBeDefined();
   });
 });
+
+describe("navigation highlight clamp on roster shrink", () => {
+  let manager: AgentManager;
+  let widget: AgentWidget;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    widget = new AgentWidget(manager, () => undefined);
+  });
+
+  it("clamps highlight when roster shrinks during navDown", () => {
+    // Start with 5 agents, navigate to index 4
+    const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
+    (manager as any).listAgents = () => agents;
+
+    widget.navActivate();
+    for (let i = 0; i < 4; i++) widget.navDown();
+    expect(widget.highlightedIndex()).toBe(4);
+
+    // Roster shrinks to 2 agents (eviction)
+    (manager as any).listAgents = () => agents.slice(0, 2);
+
+    // navDown should clamp and then advance
+    widget.navDown();
+    // clamp: 4 -> 1, then +1 % 2 = 0
+    expect(widget.highlightedIndex()).toBe(0);
+  });
+
+  it("clamps highlight when roster shrinks during navUp", () => {
+    const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
+    (manager as any).listAgents = () => agents;
+
+    widget.navActivate();
+    for (let i = 0; i < 4; i++) widget.navDown();
+    expect(widget.highlightedIndex()).toBe(4);
+
+    // Roster shrinks to 2 agents
+    (manager as any).listAgents = () => agents.slice(0, 2);
+
+    // navUp should clamp and then go up
+    widget.navUp();
+    // clamp: 4 -> 1, then (1-1+2) % 2 = 0
+    expect(widget.highlightedIndex()).toBe(0);
+  });
+
+  it("clamps highlight when roster shrinks during navSelect", () => {
+    const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
+    (manager as any).listAgents = () => agents;
+
+    widget.navActivate();
+    for (let i = 0; i < 4; i++) widget.navDown();
+    expect(widget.highlightedIndex()).toBe(4);
+
+    // Roster shrinks to 2 agents
+    (manager as any).listAgents = () => agents.slice(0, 2);
+
+    // navSelect should clamp and return a valid agent
+    const selected = widget.navSelect();
+    expect(selected).not.toBeNull();
+    expect(selected!.id).toBe("a1");
+    expect(widget.highlightedIndex()).toBe(1);
+  });
+});
+

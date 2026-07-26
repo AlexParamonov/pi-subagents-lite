@@ -462,6 +462,45 @@ describe("AgentManager", () => {
       (manager as any).cleanup();
 
       expect(manager.getRecord(id)).toBeDefined();
+  });
+
+    it("uses configurable retention via setRetentionMinutes", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      // Set retention to 1 minute
+      manager.setRetentionMinutes(1);
+
+      // Record completed 2 minutes ago — should be evicted
+      record.lifecycle.resultConsumed = true;
+      record.lifecycle.completedAt = Date.now() - 2 * 60_000;
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeUndefined();
+    });
+
+    it("retention update takes effect at next cleanup", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      // Record completed 15 minutes ago — would be evicted with default 10-min retention
+      record.lifecycle.resultConsumed = true;
+      record.lifecycle.completedAt = Date.now() - 15 * 60_000;
+
+      // But bump retention to 20 minutes before cleanup
+      manager.setRetentionMinutes(20);
+      (manager as any).cleanup();
+
+      // Should survive because retention was raised
+      expect(manager.getRecord(id)).toBeDefined();
     });
   });
 

@@ -59,6 +59,10 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
+      case "finishedRetention":
+        store.mutate.agent.setFinishedRetentionMinutes(Number(newValue));
+        ctx.ui.notify(`Finished agent retention ${newValue} min`, "info");
+        break;
       case "navHint":
         store.mutate.widget.setNavHint(newValue === "ON");
         ctx.ui.notify(`Navigation hint ${newValue}`, "info");
@@ -153,6 +157,16 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
         values: ["OFF", "80", "200", "500", "1000"],
         description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
+      },
+      {
+        id: "finishedRetention",
+        label: "Finished agent retention",
+        currentValue: String(store.agent.finishedRetentionMinutes),
+        submenu: createNumericSubmenu(ctx, { min: 1 }, (parsed) => {
+          store.mutate.agent.setFinishedRetentionMinutes(parsed);
+          ctx.ui.notify(`Finished agent retention set to ${parsed} min`, "info");
+        }),
+        description: "Minutes to keep finished agents visible in the widget before cleanup.",
       },
       { id: "__sep__", label: " ", currentValue: "" },
       {

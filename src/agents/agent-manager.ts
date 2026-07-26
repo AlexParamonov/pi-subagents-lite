@@ -26,8 +26,8 @@ import { errorMessage } from "../utils.js";
 /** How often to check for expired agent records (milliseconds). */
 const CLEANUP_INTERVAL_MS = 60_000;
 
-/** Age after which a completed agent record is evicted (milliseconds). */
-const CLEANUP_AGE_CUTOFF_MS = 10 * 60_000;
+/** Age after which a completed agent record is evicted (milliseconds). Default: 10 min. */
+const DEFAULT_RETENTION_MINUTES = 10;
 
 /** UUID prefix length for agent IDs stored in the agents map (uniqueness). */
 const AGENT_ID_PREFIX_LENGTH = 17;
@@ -84,6 +84,9 @@ export class AgentManager {
   /** Session-level cumulative agent cost. Survives agent eviction. */
   private totalAgentCost = 0;
 
+  /** Retention cutoff in minutes for finished agents. Updated at runtime via setRetentionMinutes. */
+  private retentionMinutes = DEFAULT_RETENTION_MINUTES;
+
   /** Per-model concurrency slots keyed by "provider/modelId". */
   private concurrencySlots = new Map<string, ConcurrencySlot>();
 
@@ -118,6 +121,11 @@ export class AgentManager {
 
     this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
     this.cleanupInterval.unref();
+  }
+
+  /** Update the age cutoff for finished agent retention (minutes). Takes effect at the next cleanup tick. */
+  setRetentionMinutes(minutes: number): void {
+    this.retentionMinutes = Math.max(1, minutes);
   }
 
   /**
@@ -499,7 +507,7 @@ export class AgentManager {
   }
 
   private cleanup() {
-    const cutoff = Date.now() - CLEANUP_AGE_CUTOFF_MS;
+    const cutoff = Date.now() - this.retentionMinutes * 60_000;
     for (const [id, record] of this.agents) {
       if (!isTerminalStatus(record.lifecycle.status)) continue;
       if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
