@@ -3,6 +3,7 @@
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
+import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
@@ -111,6 +112,8 @@ export class AgentWidget {
   private widgetRegistered = false;
   /** Cached TUI reference from widget factory callback, used for requestRender(). */
   private tui: TUI | undefined;
+  /** Cached theme reference from widget factory callback. */
+  private theme: Theme | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
   /** Pending tool expansion state from onTerminalInput (push-based, no polling). */
@@ -298,6 +301,7 @@ export class AgentWidget {
       this.uiCtx = ctx;
       this.widgetRegistered = false;
       this.tui = undefined;
+      this.theme = undefined;
       this.lastStatusText = undefined;
     }
   }
@@ -307,18 +311,22 @@ export class AgentWidget {
    * Ages finished agents and clears those that have lingered long enough.
    */
   onTurnStart() {
-    // Age all finished agents
-    for (const [id, age] of this.finishedTurnAge) {
-      this.finishedTurnAge.set(id, age + 1);
+    try {
+      // Age all finished agents
+      for (const [id, age] of this.finishedTurnAge) {
+        this.finishedTurnAge.set(id, age + 1);
+      }
+      // Trigger a widget refresh (will filter out expired agents)
+      this.update();
+    } catch (err) {
+      getSessionCtx()?.ui?.notify(`[subagents] onTurnStart error: ${err}`, "warning");
     }
-    // Trigger a widget refresh (will filter out expired agents)
-    this.update();
   }
 
   /** Ensure the widget update timer is running. */
   ensureTimer() {
     if (!this.widgetInterval) {
-      this.widgetInterval = setInterval(() => this.update(), WIDGET_REFRESH_INTERVAL);
+      this.widgetInterval = setInterval(() => { try { this.update(); } catch (err) { getSessionCtx()?.ui?.notify(`[subagents] Widget timer error: ${err}`, "warning"); } }, WIDGET_REFRESH_INTERVAL);
     }
   }
 
@@ -502,7 +510,8 @@ export class AgentWidget {
     return this.forceCompact || (this.widgetShortcut && this.compactMode);
   }
 
-  private renderWidget(tui: TUI, theme: Theme): string[] {
+  private renderWidget(tui: TUI | undefined, theme: Theme): string[] {
+    if (!tui) return [];
     const { running, queued, finished } = this.categorizeAgents();
 
     const hasActive = running.length > 0 || queued.length > 0;
@@ -758,9 +767,11 @@ export class AgentWidget {
     const hasActive = running.length > 0 || queued.length > 0;
     const hasFinished = finished.length > 0;
 
-    // Nothing to show — clear widget
+    // Nothing to show — clear widget if registered, then early-return
     if (!hasActive && !hasFinished) {
-      this.clearWidget();
+      if (this.widgetRegistered || this.lastStatusText !== undefined) {
+        this.clearWidget();
+      }
       return;
     }
 
@@ -774,12 +785,21 @@ export class AgentWidget {
     if (!this.widgetRegistered) {
       this.uiCtx.setWidget(WIDGET_KEY, (tui, theme) => {
         this.tui = tui;
+        this.theme = theme;
         return {
-          render: () => this.renderWidget(tui, theme),
+          render: (_width?: number) => {
+            try {
+              return (this.tui && this.theme) ? this.renderWidget(this.tui, this.theme) : [];
+            } catch (err) {
+              getSessionCtx()?.ui?.notify(`[subagents] Widget render error: ${err}`, "warning");
+              return [];
+            }
+          },
           invalidate: () => {
             // Theme changed — force re-registration so factory captures fresh theme.
             this.widgetRegistered = false;
             this.tui = undefined;
+            this.theme = undefined;
           },
         };
       }, { placement: "aboveEditor" });
@@ -802,6 +822,7 @@ export class AgentWidget {
     }
     this.widgetRegistered = false;
     this.tui = undefined;
+    this.theme = undefined;
     this.lastStatusText = undefined;
   }
 }
