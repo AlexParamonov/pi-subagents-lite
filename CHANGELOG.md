@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Finished agents no longer vanish mid-navigation.** Widget eviction unified with manager retention — one configurable clock instead of two conflicting ones.
+
+### Added
+- **`finishedRetentionMinutes` setting** (Widget Settings, default 10, min 1). Controls how long finished agents stay visible.
+- **Navigation highlight clamps** when roster shrinks from agent eviction.
+
 ## [1.5.1] - 2026-07-26
 
 ### Fixed
