@@ -164,6 +164,16 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         }),
         description: "Minutes to keep finished agents visible in the widget before cleanup.",
       },
+      {
+        id: "finishedEvictTurns",
+        label: "Finished agent evict turns",
+        currentValue: String(store.agent.finishedEvictTurns),
+        submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
+          store.mutate.agent.setFinishedEvictTurns(parsed);
+          ctx.ui.notify(`Finished agent evict turns set to ${parsed}`, "info");
+        }),
+        description: "Turns to keep finished agents visible. 0 = disabled (only timer applies). Error agents linger +2 extra turns.",
+      },
       { id: "__sep__", label: " ", currentValue: "" },
       {
         id: "usageStats",

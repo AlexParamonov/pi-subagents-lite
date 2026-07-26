@@ -45,6 +45,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showTime: true,
   deltaInputTokens: false,
   finishedRetentionMinutes: 10,
+  finishedEvictTurns: 0,
 };
 
 /**

@@ -71,6 +71,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
     setDescLengthCompact: (n: number) => calls.push(`setDescLengthCompact:${n}`),
     setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
+    setFinishedEvictTurns: (n: number) => calls.push(`setFinishedEvictTurns:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
   };

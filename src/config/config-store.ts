@@ -81,6 +81,8 @@ export interface ResolvedAgentSettings {
   readonly outputThinkingBufferSize: number;
   /** Minutes to retain finished agents before cleanup eviction. */
   readonly finishedRetentionMinutes: number;
+  /** Turns to keep finished agents visible. 0 = disabled. */
+  readonly finishedEvictTurns: number;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -142,6 +144,7 @@ export class ConfigStore {
       deltaInputTokens: a.deltaInputTokens !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
+      finishedEvictTurns: a.finishedEvictTurns ?? 0,
     };
   }
 
@@ -286,6 +289,11 @@ export class ConfigStore {
         this.config.agent.finishedRetentionMinutes = n;
         this.persist();
         this.manager?.setRetentionMinutes(n);
+      },
+      setFinishedEvictTurns: (turns: number): void => {
+        this.config.agent.finishedEvictTurns = turns;
+        this.persist();
+        this.syncWidgetSettings();
       },
     },
     widget: {
@@ -453,6 +461,7 @@ export class ConfigStore {
     w.setDescLengthFull(a.widgetDescLengthFull);
     w.setDescLengthCompact(a.widgetDescLengthCompact);
     w.setNavHint(a.widgetNavHint);
+    w.setFinishedEvictTurns(a.finishedEvictTurns);
   }
 
   /** Push stats visibility flags to the widget. */
