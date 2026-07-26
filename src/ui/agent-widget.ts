@@ -34,6 +34,8 @@ const STATUS_KEY = "subagents";
 
 /** Widget refresh interval in milliseconds. */
 const WIDGET_REFRESH_INTERVAL = 80;
+/** Bonus linger turns for error/aborted/turn_limited/stopped agents. */
+const ERROR_LINGER_TURNS = 2;
 
 
 // ---- Types ----
@@ -134,6 +136,11 @@ export class AgentWidget {
 
   /** Whether to show navigation hint text in the heading. */
   private navHint = true;
+  /** Turn age for finished agents: agent id → turns since completion. */
+  private finishedTurnAge = new Map<string, number>();
+
+  /** Configurable turn threshold for evicting finished agents. 0 = disabled. */
+  private finishedEvictTurns = 0;
 
   /** Navigation mode active. */
   private navActive = false;
@@ -205,6 +212,17 @@ export class AgentWidget {
   /** Set whether to show navigation hint text in the heading. */
   setNavHint(enabled: boolean) {
     this.navHint = enabled;
+  }
+  /** Set the turn threshold for evicting finished agents. 0 = disabled. */
+  setFinishedEvictTurns(turns: number) {
+    this.finishedEvictTurns = turns;
+  }
+
+  /** Register a finished agent for turn-based tracking. No-op when evict turns is 0. */
+  markFinished(id: string) {
+    if (this.finishedEvictTurns > 0) {
+      this.finishedTurnAge.set(id, 0);
+    }
   }
 
   // ---- Navigation state machine ----
@@ -313,9 +331,12 @@ export class AgentWidget {
 
   /**
    * Called on each new turn (tool_execution_start).
-   * No-op: finished-agent aging is handled by the manager's timer-based cleanup.
+   * Increments turn age for all tracked finished agents.
    */
   onTurnStart() {
+    for (const [id, age] of this.finishedTurnAge) {
+      this.finishedTurnAge.set(id, age + 1);
+    }
     try {
       this.update();
     } catch (err) {
@@ -336,12 +357,31 @@ export class AgentWidget {
     const running: AgentRecord[] = [];
     const queued: AgentRecord[] = [];
     const finished: AgentRecord[] = [];
+    const agentIds = new Set(allAgents.map((a) => a.id));
+
+    // Prune finishedTurnAge entries for agents no longer in the manager
+    if (this.finishedEvictTurns > 0) {
+      for (const id of this.finishedTurnAge.keys()) {
+        if (!agentIds.has(id)) this.finishedTurnAge.delete(id);
+      }
+    }
+
     for (const a of allAgents) {
       if (a.lifecycle.status === "running") running.push(a);
       else if (a.lifecycle.status === "queued") queued.push(a);
-      else if (a.lifecycle.completedAt) finished.push(a);
+      else if (a.lifecycle.completedAt && this.shouldShowFinished(a)) finished.push(a);
     }
     return { running, queued, finished };
+  }
+
+  /** Whether a finished agent should still be shown (not yet evicted by turn age). */
+  private shouldShowFinished(a: AgentRecord): boolean {
+    if (this.finishedEvictTurns === 0) return true;
+    const age = this.finishedTurnAge.get(a.id);
+    if (age === undefined) return true; // not tracked (e.g. finished before setting was enabled)
+    const isLingerStatus = ["error", "aborted", "turn_limited", "stopped"].includes(a.lifecycle.status);
+    const maxAge = this.finishedEvictTurns + (isLingerStatus ? ERROR_LINGER_TURNS : 0);
+    return isLingerStatus ? age <= maxAge : age < maxAge;
   }
 
   /** Build the icon and status suffix for a finished agent. */

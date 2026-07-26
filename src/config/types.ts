@@ -27,4 +27,5 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "disableDefaultAgents",
   "outputThinkingBufferSize",
   "finishedRetentionMinutes",
+  "finishedEvictTurns",
 ];
