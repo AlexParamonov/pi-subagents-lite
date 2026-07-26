@@ -357,10 +357,11 @@ export class AgentWidget {
     const running: AgentRecord[] = [];
     const queued: AgentRecord[] = [];
     const finished: AgentRecord[] = [];
-    const agentIds = new Set(allAgents.map((a) => a.id));
 
-    // Prune finishedTurnAge entries for agents no longer in the manager
-    if (this.finishedEvictTurns > 0) {
+    // Prune finishedTurnAge entries for agents no longer in the manager.
+    // Only build the id set when eviction is active — the default (0) skips it.
+    if (this.finishedEvictTurns > 0 && this.finishedTurnAge.size > 0) {
+      const agentIds = new Set(allAgents.map((a) => a.id));
       for (const id of this.finishedTurnAge.keys()) {
         if (!agentIds.has(id)) this.finishedTurnAge.delete(id);
       }
