@@ -59,10 +59,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
-      case "finishedRetention":
-        store.mutate.agent.setFinishedRetentionMinutes(Number(newValue));
-        ctx.ui.notify(`Finished agent retention ${newValue} min`, "info");
-        break;
       case "navHint":
         store.mutate.widget.setNavHint(newValue === "ON");
         ctx.ui.notify(`Navigation hint ${newValue}`, "info");

@@ -493,4 +493,3 @@ export class ConfigStore {
     this.manager?.setRetentionMinutes(this.agent.finishedRetentionMinutes);
   }
 }
-
