@@ -927,78 +927,39 @@ describe("turn-based eviction for finished agents", () => {
     expect(finished).toHaveLength(1);
   });
 
-  it("error agents get +2 bonus linger turns", () => {
-    widget.setFinishedEvictTurns(1);
-    const errorAgent = makeFinishedAgent("a1");
-    errorAgent.lifecycle.status = "error";
-    (manager as any).listAgents = () => [errorAgent];
+  for (const status of ["error", "aborted", "turn_limited", "stopped"] as const) {
+    it(`${status} agents get +2 bonus linger turns`, () => {
+      widget.setFinishedEvictTurns(1);
+      const agent = makeFinishedAgent("a1");
+      agent.lifecycle.status = status;
+      (manager as any).listAgents = () => [agent];
 
-    widget.markFinished("a1");
-    // Age 1 turn: normal agent would be hidden (age 1 > evictTurns 1), but error gets +2 bonus
-    widget.onTurnStart(); // age → 1
+      widget.markFinished("a1");
 
-    const { finished } = (widget as any).categorizeAgents();
-    expect(finished).toHaveLength(1); // still visible (maxAge = 1 + 2 = 3)
+      // Age 1: visible (maxAge = 1 + 2 = 3, age 1 < 3)
+      widget.onTurnStart(); // age -> 1
+      expect((widget as any).categorizeAgents().finished).toHaveLength(1);
 
-    // Advance 2 more turns: age 3 still ≤ maxAge 3
-    widget.onTurnStart(); // age → 2
-    widget.onTurnStart(); // age → 3
+      // Age 2: visible (2 < 3)
+      widget.onTurnStart(); // age -> 2
+      expect((widget as any).categorizeAgents().finished).toHaveLength(1);
 
-    const { finished: f2 } = (widget as any).categorizeAgents();
-    expect(f2).toHaveLength(1); // still visible (age 3 <= maxAge 3)
-
-    // One more turn: age 4 > maxAge 3 → hidden
-    widget.onTurnStart(); // age → 4
-    const { finished: f3 } = (widget as any).categorizeAgents();
-    expect(f3).toHaveLength(0);
-  });
-
-  it("aborted agents get +2 bonus linger turns", () => {
-    widget.setFinishedEvictTurns(1);
-    const aborted = makeFinishedAgent("a1");
-    aborted.lifecycle.status = "aborted";
-    (manager as any).listAgents = () => [aborted];
-
-    widget.markFinished("a1");
-    widget.onTurnStart(); // age → 1
-
-    const { finished } = (widget as any).categorizeAgents();
-    expect(finished).toHaveLength(1); // still visible with bonus
-  });
-
-  it("turn_limited agents get +2 bonus linger turns", () => {
-    widget.setFinishedEvictTurns(1);
-    const tl = makeFinishedAgent("a1");
-    tl.lifecycle.status = "turn_limited";
-    (manager as any).listAgents = () => [tl];
-
-    widget.markFinished("a1");
-    widget.onTurnStart(); // age → 1
-
-    const { finished } = (widget as any).categorizeAgents();
-    expect(finished).toHaveLength(1);
-  });
-
-  it("stopped agents get +2 bonus linger turns", () => {
-    widget.setFinishedEvictTurns(1);
-    const stopped = makeFinishedAgent("a1");
-    stopped.lifecycle.status = "stopped";
-    (manager as any).listAgents = () => [stopped];
-
-    widget.markFinished("a1");
-    widget.onTurnStart(); // age → 1
-
-    const { finished } = (widget as any).categorizeAgents();
-    expect(finished).toHaveLength(1);
-  });
+      // Age 3: hidden (3 < 3 is false)
+      widget.onTurnStart(); // age -> 3
+      expect((widget as any).categorizeAgents().finished).toHaveLength(0);
+    });
+  }
 
   it("setting 0 shows all finished agents (disabled)", () => {
-    widget.setFinishedEvictTurns(0);
+    // Enable eviction first so markFinished actually registers
+    widget.setFinishedEvictTurns(2);
     const agent = makeFinishedAgent("a1");
     (manager as any).listAgents = () => [agent];
+    widget.markFinished("a1");
+    // Then disable eviction
+    widget.setFinishedEvictTurns(0);
 
     // Even after many turns, agent is visible when evictTurns = 0
-    widget.markFinished("a1");
     for (let i = 0; i < 20; i++) widget.onTurnStart();
 
     const { finished } = (widget as any).categorizeAgents();

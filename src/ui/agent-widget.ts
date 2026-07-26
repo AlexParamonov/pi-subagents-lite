@@ -381,7 +381,7 @@ export class AgentWidget {
     if (age === undefined) return true; // not tracked (e.g. finished before setting was enabled)
     const isLingerStatus = ["error", "aborted", "turn_limited", "stopped"].includes(a.lifecycle.status);
     const maxAge = this.finishedEvictTurns + (isLingerStatus ? ERROR_LINGER_TURNS : 0);
-    return isLingerStatus ? age <= maxAge : age < maxAge;
+    return age < maxAge;
   }
 
   /** Build the icon and status suffix for a finished agent. */
