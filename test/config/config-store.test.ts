@@ -587,6 +587,16 @@ describe("ConfigStore lifecycle", () => {
     expect(calls).toContain("setForceCompact:true");
   });
 
+  it("reload re-syncs retention to manager", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, finishedRetentionMinutes: 20 } });
+    const { m, retentions } = managerStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ manager: m });
+    retentions.length = 0;
+    store.reload();
+    expect(retentions).toContain(20);
+  });
+
   it("setDeps re-syncs widget settings from current config", () => {
     const { io } = memIO({ agent: { default: null, forceBackground: false, widgetMaxLines: 30, showCost: true }, concurrency: { default: 4 } });
     const { w, calls } = widgetStub();

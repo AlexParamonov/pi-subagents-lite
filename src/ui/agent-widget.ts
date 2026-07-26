@@ -686,7 +686,7 @@ export class AgentWidget {
 
     return { visible, overflowLine };
   }
-  /** Clear widget, status bar, and stale finished-turn-age entries. */
+  /** Clear widget and status bar. */
   private clearWidget() {
     // Deactivate navigation when agents clear
     if (this.navActive) {
