@@ -44,6 +44,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showCost: false,
   showTime: true,
   deltaInputTokens: false,
+  finishedRetentionMinutes: 10,
 };
 
 /**

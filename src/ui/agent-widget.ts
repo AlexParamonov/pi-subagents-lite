@@ -26,9 +26,6 @@ const DEFAULT_MAX_WIDGET_LINES = 12;
 /** Braille spinner frames for animated running indicator. */
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/** Non-success statuses — used for linger behavior and icon rendering. */
-const ERROR_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
-
 /** Widget key used with setWidget(). */
 const WIDGET_KEY = "agents";
 
@@ -37,9 +34,6 @@ const STATUS_KEY = "subagents";
 
 /** Widget refresh interval in milliseconds. */
 const WIDGET_REFRESH_INTERVAL = 80;
-
-/** How many extra turns errors/aborted agents linger (completed agents clear after 1 turn). */
-const ERROR_LINGER_TURNS = 2;
 
 
 // ---- Types ----
@@ -99,8 +93,6 @@ export class AgentWidget {
   private uiCtx: UICtx | undefined;
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
-  /** Finished agents: agent ID → turns since finished. */
-  private finishedTurnAge = new Map<string, number>();
 
   /** Whether to show cost in stats and status bar. */
   private showCost = false;
@@ -217,6 +209,16 @@ export class AgentWidget {
 
   // ---- Navigation state machine ----
 
+  /** Clamp the navigation highlight to valid roster bounds. */
+  private clampHighlight(): void {
+    const roster = this.buildRoster();
+    if (roster.length === 0) {
+      this._highlightedIndex = 0;
+    } else if (this._highlightedIndex >= roster.length) {
+      this._highlightedIndex = roster.length - 1;
+    }
+  }
+
   /** Build the navigation roster: finished, running, queued. */
   private buildRoster(): AgentRecord[] {
     const { finished, running, queued } = this.categorizeAgents();
@@ -236,6 +238,7 @@ export class AgentWidget {
     if (!this.navActive) return;
     const roster = this.buildRoster();
     if (roster.length === 0) return;
+    this.clampHighlight();
     this._highlightedIndex = (this._highlightedIndex + 1) % roster.length;
     this.update();
   }
@@ -244,12 +247,14 @@ export class AgentWidget {
     if (!this.navActive) return;
     const roster = this.buildRoster();
     if (roster.length === 0) return;
+    this.clampHighlight();
     this._highlightedIndex = (this._highlightedIndex - 1 + roster.length) % roster.length;
     this.update();
   }
 
   navSelect(): AgentRecord | null {
     const roster = this.buildRoster();
+    this.clampHighlight();
     return roster[this._highlightedIndex] ?? null;
   }
 
@@ -308,15 +313,10 @@ export class AgentWidget {
 
   /**
    * Called on each new turn (tool_execution_start).
-   * Ages finished agents and clears those that have lingered long enough.
+   * No-op: finished-agent aging is handled by the manager's timer-based cleanup.
    */
   onTurnStart() {
     try {
-      // Age all finished agents
-      for (const [id, age] of this.finishedTurnAge) {
-        this.finishedTurnAge.set(id, age + 1);
-      }
-      // Trigger a widget refresh (will filter out expired agents)
       this.update();
     } catch (err) {
       getSessionCtx()?.ui?.notify(`[subagents] onTurnStart error: ${err}`, "warning");
@@ -330,7 +330,7 @@ export class AgentWidget {
     }
   }
 
-  /** Categorize all agents into running, queued, and visible finished groups. */
+  /** Categorize all agents into running, queued, and finished groups. */
   private categorizeAgents() {
     const allAgents = this.manager.listAgents();
     const running: AgentRecord[] = [];
@@ -339,23 +339,9 @@ export class AgentWidget {
     for (const a of allAgents) {
       if (a.lifecycle.status === "running") running.push(a);
       else if (a.lifecycle.status === "queued") queued.push(a);
-      else if (a.lifecycle.completedAt && this.shouldShowFinished(a.id, a.lifecycle.status)) finished.push(a);
+      else if (a.lifecycle.completedAt) finished.push(a);
     }
     return { running, queued, finished };
-  }
-
-  /** Check if a finished agent should still be shown in the widget. */
-  private shouldShowFinished(agentId: string, status: string): boolean {
-    const age = this.finishedTurnAge.get(agentId) ?? 0;
-    const maxAge = ERROR_STATUSES.has(status) ? ERROR_LINGER_TURNS : 1;
-    return age <= maxAge;
-  }
-
-  /** Record an agent as finished (call when agent completes). */
-  markFinished(agentId: string) {
-    if (!this.finishedTurnAge.has(agentId)) {
-      this.finishedTurnAge.set(agentId, 0);
-    }
   }
 
   /** Build the icon and status suffix for a finished agent. */
@@ -700,7 +686,7 @@ export class AgentWidget {
 
     return { visible, overflowLine };
   }
-  /** Clear widget, status bar, and stale finished-turn-age entries. */
+  /** Clear widget and status bar. */
   private clearWidget() {
     // Deactivate navigation when agents clear
     if (this.navActive) {
@@ -720,11 +706,6 @@ export class AgentWidget {
     // can re-register when agents appear again (e.g., after a steer
     // message triggers a new turn). The timer's update() call early-returns
     // when there are no agents, so there's no cost to keeping it alive.
-    // Clean up stale entries
-    const allAgents = this.manager.listAgents();
-    for (const [id] of this.finishedTurnAge) {
-      if (!allAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
-    }
   }
 
   /** Update the status bar text, only if it changed. */

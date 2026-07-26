@@ -134,6 +134,7 @@ vi.mock("../src/shell.js", () => {
         showTime: a.showTime !== false,
         deltaInputTokens: a.deltaInputTokens !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
+        finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
       };
     },
     get concurrency() {
@@ -198,7 +199,8 @@ vi.mock("../src/shell.js", () => {
         setShowContext(enabled: boolean) { mockModules.mockConfig.agent.showContext = enabled; },
         setShowTime(enabled: boolean) { mockModules.mockConfig.agent.showTime = enabled; },
         setDeltaInputTokens(enabled: boolean) { mockModules.mockConfig.agent.deltaInputTokens = enabled; },
-        setOutputThinkingBufferSize(size: number) { mockModules.mockConfig.agent.outputThinkingBufferSize = size; }
+        setOutputThinkingBufferSize(size: number) { mockModules.mockConfig.agent.outputThinkingBufferSize = size; },
+        setFinishedRetentionMinutes(n: number) { mockModules.mockConfig.agent.finishedRetentionMinutes = n; },
       },
       widget: {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },

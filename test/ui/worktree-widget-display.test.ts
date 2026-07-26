@@ -141,7 +141,6 @@ describe("widget worktree label — full mode", () => {
 
   it("shows worktreeLabel for a finished agent", () => {
     const agent = makeFinishedAgent("a1", "builder", "feature");
-    widget.markFinished("a1");
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
@@ -224,7 +223,6 @@ describe("widget worktree label — compact mode", () => {
 
   it("does NOT show worktreeLabel in compact mode for a finished agent", () => {
     const agent = makeFinishedAgent("a1", "builder", "feature");
-    widget.markFinished("a1");
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());

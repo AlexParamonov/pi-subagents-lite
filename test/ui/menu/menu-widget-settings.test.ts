@@ -465,3 +465,63 @@ describe("showWidgetSettingsMenu — thinking buffer", () => {
     expect(mockModules.mockConfig.agent.outputThinkingBufferSize).toBe(0);
   });
 });
+
+describe("showWidgetSettingsMenu — finished agent retention", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null, forceBackground: false,
+      widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
+      widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
+      showTools: true, showTurns: true, showInput: true, showOutput: true,
+      showContext: true, showCost: false, showTime: true,
+      finishedRetentionMinutes: 10,
+    };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    settingsListCalls = [];
+    inputInstances = [];
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows current retention minutes", async () => {
+    mockModules.mockConfig.agent.finishedRetentionMinutes = 7;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedRetention");
+    expect(item.currentValue).toBe("7");
+    expect(typeof item.submenu).toBe("function");
+  });
+
+  it("submenu applies value, notifies, and closes with the value", async () => {
+    mockModules.mockConfig.agent.finishedRetentionMinutes = 10;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedRetention");
+    const mockDone = vi.fn();
+    item.submenu("10", mockDone);
+
+    expect(inputInstances[0].value).toBe("10");
+    inputInstances[0].onSubmit!("15");
+
+    expect(mockModules.mockConfig.agent.finishedRetentionMinutes).toBe(15);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("15"), "info");
+    expect(mockDone).toHaveBeenCalledWith("15");
+  });
+
+  it("submenu rejects value below minimum 1", async () => {
+    mockModules.mockConfig.agent.finishedRetentionMinutes = 10;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedRetention");
+    const mockDone = vi.fn();
+    item.submenu("10", mockDone);
+
+    inputInstances[0].onSubmit!("0");
+
+    expect(mockModules.mockConfig.agent.finishedRetentionMinutes).toBe(10);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+});

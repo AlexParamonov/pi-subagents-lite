@@ -58,6 +58,8 @@ export interface SubagentsConfig {
     widgetDescLengthCompact?: number;
     /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
     outputThinkingBufferSize?: number;
+    /** Minutes to retain finished agents in the widget. Default: 10. */
+    finishedRetentionMinutes?: number;
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

@@ -79,6 +79,8 @@ export interface ResolvedAgentSettings {
   readonly deltaInputTokens: boolean;
   /** Buffer size for streaming thinking blocks to output file. 0 = disabled. */
   readonly outputThinkingBufferSize: number;
+  /** Minutes to retain finished agents before cleanup eviction. */
+  readonly finishedRetentionMinutes: number;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -139,6 +141,7 @@ export class ConfigStore {
       showTime: a.showTime !== false,
       deltaInputTokens: a.deltaInputTokens !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
+      finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
     };
   }
 
@@ -277,6 +280,12 @@ export class ConfigStore {
       setOutputThinkingBufferSize: (size: number): void => {
         this.config.agent.outputThinkingBufferSize = size;
         this.persist();
+      },
+      setFinishedRetentionMinutes: (minutes: number): void => {
+        const n = Math.max(1, minutes);
+        this.config.agent.finishedRetentionMinutes = n;
+        this.persist();
+        this.manager?.setRetentionMinutes(n);
       },
     },
     widget: {
@@ -481,5 +490,6 @@ export class ConfigStore {
       this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();
+    this.manager?.setRetentionMinutes(this.agent.finishedRetentionMinutes);
   }
 }
