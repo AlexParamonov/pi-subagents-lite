@@ -39,7 +39,6 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       worktree_path: Type.Optional(Type.String()),
     }, { additionalProperties: false }),
     execute: executeAgentTool,
-    constrainedSampling: CONSTRAINED_SAMPLING,
 
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
 

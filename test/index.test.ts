@@ -228,6 +228,12 @@ describe("Agent tool schema — stealth", () => {
     expect(wtSchema?.description).toBeUndefined();
   });
 
+  it("keeps non-prompt arguments optional", () => {
+    const properties = agentTool()!.parameters.properties;
+    for (const name of ["description", "agent", "run_in_background", "worktree_path"]) {
+      expect(properties[name].optional).toBe(true);
+    }
+  });
 
   it("excludes isolated from schema (config-only, not LLM-controlled)", () => {
     expect(hasParam(agentTool()!.parameters, "isolated")).toBe(false);
@@ -458,7 +464,11 @@ describe("constrained sampling", () => {
     await loadExtension(api.api);
   });
 
-  for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
+  it("omits constrainedSampling from Agent so providers can accept its optional arguments", () => {
+    expect(findTool(api, "Agent")!.constrainedSampling).toBeUndefined();
+  });
+
+  for (const toolName of ["StopAgent", "AgentStatus"]) {
     it(`${toolName} has constrainedSampling with json_schema and strict: prefer`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
@@ -467,7 +477,9 @@ describe("constrained sampling", () => {
         strict: "prefer",
       });
     });
+  }
 
+  for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
     it(`${toolName} schema has additionalProperties: false`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
