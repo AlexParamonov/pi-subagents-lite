@@ -39,11 +39,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
 vi.mock("../../src/ui/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
+  formatThinkingTag: vi.fn((value: unknown) => value === "high" ? "thinking: high" : undefined),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
 }));
 
 // Import after mocks are set up
-import { renderSubagentResult } from "../../src/ui/renderer.js";
+import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "../../src/ui/renderer.js";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -61,9 +62,47 @@ const SHOW_COST = false;
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
 
-describe("renderSubagentResult — worktree path display", () => {
+describe("renderer", () => {
   beforeEach(() => {
     textInstances.length = 0;
+  });
+
+  it("shows thinking level directly after the model in a normal tool call", () => {
+    renderAgentToolCall({ agent: "builder", _modelOverride: "sonnet", thinking: "high" }, noopTheme);
+
+    expect(textInstances.at(-1)?.text).toBe("▸ Builder (sonnet · thinking: high)");
+  });
+
+  it("shows concrete thinking without a model override in a tool call", () => {
+    renderAgentToolCall({ agent: "agent", thinking: "high" }, noopTheme);
+
+    expect(textInstances.at(-1)?.text).toBe("▸ Agent (thinking: high)");
+  });
+
+  it("keeps the normal tool call unchanged without a concrete thinking level", () => {
+    renderAgentToolCall({ agent: "builder", _modelOverride: "sonnet", thinking: "inherit" }, noopTheme);
+
+    expect(textInstances.at(-1)?.text).toBe("▸ Builder (sonnet)");
+  });
+
+  it("shows thinking level directly after the model in an agent result card", () => {
+    renderAgentToolResult({
+      content: [{ type: "text", text: "Agent output" }],
+      details: { type: "builder", description: "Build something", modelName: "sonnet", thinkingLevel: "high", turnCount: 5 },
+    }, { expanded: false }, noopTheme, SHOW_COST);
+
+    expect(textInstances.map((t) => t.text).join("\n")).toContain("Builder (sonnet · thinking: high)");
+  });
+
+  it("shows concrete thinking without inventing a model in a foreground result card", () => {
+    renderAgentToolResult({
+      content: [{ type: "text", text: "Agent output" }],
+      details: { type: "builder", description: "Build something", thinkingLevel: "high", turnCount: 5 },
+    }, { expanded: false }, noopTheme, SHOW_COST);
+
+    const text = textInstances.map((t) => t.text).join("\n");
+    expect(text).toContain("Builder (thinking: high)");
+    expect(text).not.toContain("undefined");
   });
 
   it("shows worktree path in details pane for a completed agent with stats", () => {
@@ -82,6 +121,35 @@ describe("renderSubagentResult — worktree path display", () => {
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature");
+  });
+
+  it("shows thinking level directly after the model in a subagent result card", () => {
+    const message = {
+      content: "Agent output",
+      details: {
+        type: "builder",
+        description: "Build something",
+        modelName: "sonnet",
+        thinkingLevel: "high",
+        turnCount: 5,
+        status: "completed",
+      },
+    };
+
+    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
+
+    expect(textInstances.map((t) => t.text).join("\n")).toContain("Builder (sonnet · thinking: high)");
+  });
+
+  it("shows concrete thinking without inventing a model in a background result card", () => {
+    renderSubagentResult({
+      content: "Agent output",
+      details: { type: "builder", description: "Build something", thinkingLevel: "high", turnCount: 5, status: "completed" },
+    }, { expanded: false }, noopTheme, SHOW_COST);
+
+    const text = textInstances.map((t) => t.text).join("\n");
+    expect(text).toContain("Builder (thinking: high)");
+    expect(text).not.toContain("undefined");
   });
 
   it("shows worktree path in fallback result line (no turnCount)", () => {

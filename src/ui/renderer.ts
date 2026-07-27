@@ -6,17 +6,19 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
-import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
+import { buildStatsParts, formatMs, formatThinkingTag, getDisplayName } from "./format.js";
 
 // ============================================================================
 // Stats rendering helpers
 // ============================================================================
 
-/** Format agent display name with optional model: "Agent (mimo-v2.5-pro)" or "Agent". */
+/** Format agent display name with optional model and thinking level. */
 export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
   const typeName = getDisplayName((d.type as string) || "");
-  const modelName = d.modelName as string | undefined;
-  return modelName ? `${theme.bold(typeName)} (${modelName})` : theme.bold(typeName);
+  const modelName = typeof d.modelName === "string" && d.modelName.trim() ? d.modelName.trim() : undefined;
+  const thinkingTag = formatThinkingTag(d.thinkingLevel);
+  const label = [modelName, thinkingTag].filter((part): part is string => part !== undefined).join(" · ");
+  return label ? `${theme.bold(typeName)} (${label})` : theme.bold(typeName);
 }
 
 /** Build the stats line for an agent result card. */
@@ -27,12 +29,17 @@ export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCos
     maxTurns: d.maxTurns as number | undefined,
     input: (d.input as number) ?? 0,
     output: (d.output as number) ?? 0,
+    cacheRead: d.cacheRead as number | undefined,
+    cacheWrite: d.cacheWrite as number | undefined,
+    latestCacheHitRate: d.latestCacheHitRate as number | undefined,
     contextPercent: d.contextPercent as number | null,
-    compactions: (d.compactions as number) ?? 0,
+    contextWindow: d.contextWindow as number | undefined,
+    autoCompactionEnabled: d.autoCompactionEnabled as boolean | undefined,
     cost: showCost ? (d.cost as number | undefined) : undefined,
+    usingSubscription: showCost ? (d.usingSubscription as boolean | undefined) : undefined,
   }, theme);
   parts.push(formatMs(d.durationMs as number));
-  return parts.join("·");
+  return parts.join(" · ");
 }
 
 // ============================================================================
@@ -48,10 +55,12 @@ export function renderAgentToolCall(
   const label = typeName || "Agent";
   let text = `▸ ${theme.fg("accent", theme.bold(label))}`;
 
-  const modelOverride = args._modelOverride as string | undefined;
-  if (modelOverride) {
-    text += ` (${modelOverride})`;
-  }
+  const modelOverride = typeof args._modelOverride === "string" && args._modelOverride.trim()
+    ? args._modelOverride.trim()
+    : undefined;
+  const thinkingTag = formatThinkingTag(args.thinking);
+  const details = [modelOverride, thinkingTag].filter((part): part is string => part !== undefined).join(" · ");
+  if (details) text += ` (${details})`;
 
   return new Text(text, 0, 0);
 }
@@ -72,7 +81,7 @@ export function renderAgentToolResult(
   if (d && d.turnCount != null) {
     const namePart = agentNameLabel(d, theme);
     const statsLine = buildStatsLine(d, theme, showCost);
-    let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
+    let lines = `${icon} ${namePart} · ${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
       lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
     }
@@ -114,7 +123,7 @@ export function renderSubagentResult(
 
     const namePart = agentNameLabel(d, theme);
     const statsLine = buildStatsLine(d, theme, showCost);
-    let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
+    let headerLine = `${icon} ${namePart} · ${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
     if (d.outputFile as string) {
       headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
     }

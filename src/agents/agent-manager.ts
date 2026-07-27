@@ -20,7 +20,7 @@ import {
   type ToolActivity,
 } from "../types.js";
 import type { SubagentType } from "./types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
+import { addUsage, getLifetimeTotal, getSessionUsageSnapshot, type AgentUsage } from "./usage.js";
 import { errorMessage } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
@@ -235,6 +235,7 @@ export class AgentManager {
         toolUses: 0,
         turnCount: 1,
         compactionCount: 0,
+        cacheRead: 0,
         maxTurns: options.maxTurns,
       },
     };
@@ -321,7 +322,6 @@ export class AgentManager {
         }
         record.result = responseText;
         record.execution.session = session;
-        record.stats.contextPercent = getSessionContextPercent(session);
         record.lifecycle.completedAt ??= Date.now();
         return responseText;
       })
@@ -335,6 +335,16 @@ export class AgentManager {
         return "";
       })
       .finally(() => {
+        // Session handles are not guaranteed to remain usable after completion,
+        // so retain the footer values that terminal cards need before cleanup.
+        const snapshot = getSessionUsageSnapshot(record.execution.session);
+        if (snapshot) {
+          record.stats.contextPercent = snapshot.contextPercent;
+          record.stats.contextWindow = snapshot.contextWindow;
+          record.stats.autoCompactionEnabled = snapshot.autoCompactionEnabled;
+          record.stats.usingSubscription = snapshot.usingSubscription;
+        }
+
         // Finalize output log with final stats
         if (record.execution.outputLog) {
           try {
@@ -403,6 +413,11 @@ export class AgentManager {
         record.stats.prevInputTokens = usage.input;
 
         addUsage(record.stats.lifetimeUsage, { ...usage, input: inputDelta });
+        record.stats.cacheRead += usage.cacheRead;
+        const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+        record.stats.latestCacheHitRate = promptTokens > 0
+          ? (usage.cacheRead / promptTokens) * 100
+          : undefined;
         options?.onAssistantUsage?.(usage);
       },
       onCompaction: (info) => {

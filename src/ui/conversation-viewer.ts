@@ -9,7 +9,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
-import { getSessionContextPercent } from "../agents/usage.js";
+import { getSessionUsageSnapshot } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
 import { makeMarkdownTheme } from "./markdown-theme.js";
@@ -244,17 +244,31 @@ export class ConversationViewer implements Component {
     const status = this.record.lifecycle.status;
     const { icon, color } = STATUS_ICON[status];
     const statusIcon = th.fg(color, icon);
-    // Build stats line like the widget
+    // Build stats line like the widget, retaining the final snapshot after a
+    // completed session has no longer-live context information.
     const durationMs = (this.record.lifecycle.completedAt ?? Date.now()) - this.record.lifecycle.startedAt;
+    const liveSnapshot = getSessionUsageSnapshot(this.session);
+    const persistedSnapshot = {
+      contextPercent: this.record.stats.contextPercent,
+      contextWindow: this.record.stats.contextWindow,
+      autoCompactionEnabled: this.record.stats.autoCompactionEnabled,
+      usingSubscription: this.record.stats.usingSubscription,
+    };
+    const usageSnapshot = this.record.lifecycle.completedAt != null
+      && (persistedSnapshot.contextPercent != null || persistedSnapshot.contextWindow != null)
+      ? persistedSnapshot
+      : (liveSnapshot ?? persistedSnapshot);
     const statsParts = buildStatsParts({
       toolUses: this.record.stats.toolUses,
       turnCount: this.record.stats.turnCount,
       maxTurns: this.record.stats.maxTurns,
       input: this.record.stats.lifetimeUsage.input,
       output: this.record.stats.lifetimeUsage.output,
-      contextPercent: getSessionContextPercent(this.session),
-      compactions: this.record.stats.compactionCount,
+      cacheRead: this.record.stats.cacheRead,
+      cacheWrite: this.record.stats.lifetimeUsage.cacheWrite,
+      latestCacheHitRate: this.record.stats.latestCacheHitRate,
       cost: this.record.stats.lifetimeUsage.cost,
+      ...usageSnapshot,
       durationMs,
     }, th);
 
@@ -265,13 +279,14 @@ export class ConversationViewer implements Component {
     ));
 
     // Row 2: model name + compact usage stats
-    const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
-    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
+    const { modelName, thinkingTag, tags } = buildInvocationTags(this.record.display.invocation);
+    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join(" · "));
     if (modelName) {
-      const parts = [statsLine, ...tags].filter(Boolean);
+      const parts = [thinkingTag, statsLine, ...tags].filter(Boolean);
       lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));
     } else {
-      lines.push(row(statsLine));
+      const parts = [thinkingTag, statsLine].filter(Boolean);
+      lines.push(row(parts.join(" · ")));
     }
     lines.push(hrMid);
 

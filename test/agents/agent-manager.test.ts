@@ -607,5 +607,40 @@ describe("delta estimation", () => {
     onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
     expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
   });
+
+  it("accumulates cache reads and retains only the newest cache-hit rate", () => {
+    manager = new AgentManager(onComplete);
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+    const onUsage = getOnAssistantUsage();
+
+    onUsage({ input: 100, output: 10, cacheRead: 80, cacheWrite: 20, cost: 0 });
+    onUsage({ input: 200, output: 10, cacheRead: 150, cacheWrite: 50, cost: 0 });
+
+    const stats = manager.getRecord(id)!.stats;
+    expect(stats.cacheRead).toBe(230);
+    expect(stats.latestCacheHitRate).toBeCloseTo((150 / 400) * 100);
+    expect(stats.lifetimeUsage.cacheWrite).toBe(70);
+  });
+
+  it("persists final context, auto-compaction, and subscription snapshots", async () => {
+    manager = new AgentManager(onComplete);
+    const session = {
+      ...mockAgentSession(),
+      getContextUsage: () => ({ percent: 23.4, contextWindow: 272_000 }),
+      autoCompactionEnabled: true,
+      model: { provider: "kimi-coding" },
+    };
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session }));
+    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+    await manager.getRecord(id)!.execution.promise;
+
+    expect(manager.getRecord(id)!.stats).toMatchObject({
+      contextPercent: 23.4,
+      contextWindow: 272_000,
+      autoCompactionEnabled: true,
+      usingSubscription: true,
+    });
+  });
 });
 }); // end describe AgentManager

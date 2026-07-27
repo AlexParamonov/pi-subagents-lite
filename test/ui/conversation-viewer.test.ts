@@ -467,6 +467,39 @@ describe("ConversationViewer", () => {
       expect(lines[lines.length - 1]).toMatch(/[╰]/);
     });
 
+    it("renders the thinking level immediately after the model", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      record.display.invocation = { modelName: "sonnet", thinkingLevel: "high", runInBackground: true };
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      const modelLine = viewer.render(120).find(line => line.includes("sonnet"));
+
+      expect(modelLine).toContain("sonnet · thinking: high · 5🛠");
+      expect(modelLine).toContain("background");
+    });
+
+    it("renders concrete thinking without inventing a model", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      record.display.invocation = { thinkingLevel: "high" };
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      const statsLine = viewer.render(120).find(line => line.includes("thinking: high"));
+
+      expect(statsLine).toContain("thinking: high · 5🛠");
+      expect(statsLine).not.toContain("undefined");
+    });
+
+    it("does not render an inherited thinking level", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      record.display.invocation = { modelName: "sonnet", thinkingLevel: "inherit" };
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      expect(viewer.render(120).join("\n")).not.toContain("thinking:");
+    });
+
     it("renders user messages", () => {
       const session = makeMockSession([{ role: "user", content: "hello world" }]);
       const record = makeMockRecord({ execution: { session } });
@@ -599,6 +632,29 @@ describe("ConversationViewer", () => {
       const text = lines.join("\n");
 
       expect(text).not.toContain("@");
+    });
+
+    it("uses the persisted Pi usage snapshot after completion", () => {
+      const session = makeMockSession([{ role: "user", content: "hello" }]);
+      const record = makeMockRecord({
+        lifecycle: { status: "completed", startedAt: 0, completedAt: 1000 },
+        execution: { session },
+        stats: {
+          lifetimeUsage: { input: 83000, output: 7100, cacheWrite: 12000, cost: 1.262 },
+          cacheRead: 1300000,
+          latestCacheHitRate: 99.1,
+          contextPercent: 23.4,
+          contextWindow: 272000,
+          autoCompactionEnabled: true,
+          usingSubscription: true,
+          toolUses: 5,
+          turnCount: 10,
+          compactionCount: 7,
+        },
+      });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+      expect(viewer.render(200).join("\n"))
+        .toContain("↑83k ↓7.1k R1.3M W12k CH99.1% $1.262 (sub) 23.4%/272k (auto)");
     });
   });
 

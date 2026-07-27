@@ -12,6 +12,7 @@ import { getConfig } from "../agents/agent-types.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
+import { parseThinkingLevel } from "../utils.js";
 
 /** Truncate a description string to `maxLen` characters, appending "..." if truncated. */
 export function truncateDesc(text: string, maxLen: number): string {
@@ -24,46 +25,57 @@ const MAX_COMMAND_DISPLAY_LENGTH = 350;
 /** Max length for a truncated string value in default tool arg summaries. */
 const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 350;
 
-// ---- Internal helpers (used by buildStatsParts) ----
+// ---- Usage formatting -----------------------------------------------------
+
+/** Fields for Pi's contiguous usage block. */
+export interface UsageDisplay {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  latestCacheHitRate?: number;
+  cost?: number;
+  usingSubscription?: boolean;
+  contextPercent?: number | null;
+  contextWindow?: number;
+  autoCompactionEnabled?: boolean;
+}
 
 /**
- * Token count with optional context-fill % and compaction-count annotations.
- * Thresholds for percent: <70% dim, 70–85% warning, ≥85% error.
- * Compaction count rendered as `↻ N` in dim.
- *
- *   "↑12k↓8k"                    — no annotations
- *   "↑12k↓8k 45%"                — percent only
- *   "↑12k↓8k ↻ 2"                 — compactions only (e.g. right after compact)
- *   "↑12k↓8k 45% ↻ 2"             — both
+ * Format the exact Pi footer usage sequence. This intentionally keeps one
+ * contiguous group: callers may put tools, turns, and duration around it using
+ * their quieter ` · ` separators without splitting its space-separated fields.
  */
-export function formatSessionTokens(
-  inputTokens: number,
-  outputTokens: number,
-  percent: number | null,
-  theme: Theme,
-  compactions = 0,
-): string {
-  const tokenParts: string[] = [];
-  if (inputTokens > 0) tokenParts.push(`↑${formatTokens(inputTokens, true)}`);
-  if (outputTokens > 0) tokenParts.push(`↓${formatTokens(outputTokens, true)}`);
-  const tokenStr = tokenParts.join("");
-  const annot: string[] = [];
-  if (percent !== null) {
-    const color = percent >= 85 ? "error" : percent >= 70 ? "warning" : "dim";
-    annot.push(theme.fg(color, `${Math.round(percent)}%`));
+export function formatUsageBlock(args: UsageDisplay, visible?: StatsVisibility, theme?: Theme): string | undefined {
+  const parts: string[] = [];
+  if (visible?.showInput !== false && args.input > 0) parts.push(`↑${formatTokens(args.input)}`);
+  if (visible?.showOutput !== false && args.output > 0) parts.push(`↓${formatTokens(args.output)}`);
+  if (visible?.showInput !== false) {
+    if ((args.cacheRead ?? 0) > 0) parts.push(`R${formatTokens(args.cacheRead!)}`);
+    if ((args.cacheWrite ?? 0) > 0) parts.push(`W${formatTokens(args.cacheWrite!)}`);
+    if (((args.cacheRead ?? 0) > 0 || (args.cacheWrite ?? 0) > 0) && args.latestCacheHitRate != null) {
+      parts.push(`CH${args.latestCacheHitRate.toFixed(1)}%`);
+    }
   }
-  if (compactions > 0) {
-    annot.push(theme.fg("dim", `↻ ${compactions}`));
+  if (visible?.showCost !== false && (args.cost != null && (args.cost > 0 || args.usingSubscription))) {
+    parts.push(`${formatCost(args.cost)}${args.usingSubscription ? " (sub)" : ""}`);
   }
-  if (annot.length === 0) return tokenStr;
-  return `${tokenStr} ${annot.join(" ")}`;
+  if (visible?.showContext !== false && (args.contextPercent != null || args.contextWindow != null)) {
+    const context = args.contextPercent == null ? "?" : `${args.contextPercent.toFixed(1)}%`;
+    const contextDisplay = `${context}/${formatTokens(args.contextWindow ?? 0)}${args.autoCompactionEnabled ? " (auto)" : ""}`;
+    const contextColor = args.contextPercent != null && args.contextPercent > 90
+      ? "error"
+      : args.contextPercent != null && args.contextPercent > 70 ? "warning" : undefined;
+    parts.push(contextColor && theme ? theme.fg(contextColor, contextDisplay) : contextDisplay);
+  }
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 /** Format turn count with optional max limit. Shows max when >= 80% of limit. */
 function formatTurns(turnCount: number, maxTurns: number | null | undefined, theme: Theme): string {
-  if (maxTurns == null) return `${turnCount}⟳ `;
+  if (maxTurns == null) return `${turnCount}⟳`;
   const ratio = turnCount / maxTurns;
-  const text = ratio >= 0.8 ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
+  const text = ratio >= 0.8 ? `${turnCount}≤${maxTurns}⟳` : `${turnCount}⟳`;
   if (ratio >= 1) return theme.fg("error", text);
   if (ratio >= 0.8) return theme.fg("warning", text);
   return text;
@@ -100,45 +112,24 @@ export interface StatsVisibility {
 }
 
 /**
- * Build common stats parts: toolUses · turns · input↓ output with context % · cost · time.
- * Shared by AgentWidget and index.ts for consistent stats display.
- *
- * @param visible - Optional visibility flags. All default to true for backward compatibility.
- * @param durationMs - Optional duration in ms. When provided and showTime is not false, appends formatted time.
+ * Build common stats groups. Tools, turns, Pi usage, and duration are kept
+ * separate so every caller can join the groups with ` · ` consistently.
  */
 export function buildStatsParts(
-  args: {
+  args: UsageDisplay & {
     toolUses: number;
     turnCount?: number;
     maxTurns?: number;
-    input: number;
-    output: number;
-    contextPercent: number | null;
-    compactions: number;
-    cost?: number;
     durationMs?: number;
   },
   theme: Theme,
   visible?: StatsVisibility,
 ): string[] {
   const parts: string[] = [];
-  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
+  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠`);
   if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
-  if (visible?.showInput !== false || visible?.showOutput !== false) {
-    const showIn = visible?.showInput !== false;
-    const showOut = visible?.showOutput !== false;
-    const inputTokens = showIn ? args.input : 0;
-    const outputTokens = showOut ? args.output : 0;
-    if (inputTokens > 0 || outputTokens > 0) {
-      parts.push(formatSessionTokens(
-        inputTokens, outputTokens,
-        visible?.showContext !== false ? args.contextPercent : null,
-        theme,
-        visible?.showContext !== false ? args.compactions : 0,
-      ));
-    }
-  }
-  if (visible?.showCost !== false && args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
+  const usage = formatUsageBlock(args, visible, theme);
+  if (usage) parts.push(usage);
   if (visible?.showTime !== false && args.durationMs != null) parts.push(formatMs(args.durationMs));
   return parts;
 }
@@ -269,12 +260,21 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
   return `${formatMs(Date.now() - startedAt)} (running)`;
 }
 
+/** Format a concrete thinking level for display; omitted or inherited values have no tag. */
+export function formatThinkingTag(value: unknown): string | undefined {
+  const thinkingLevel = typeof value === "string" ? parseThinkingLevel(value) : undefined;
+  return thinkingLevel ? `thinking: ${thinkingLevel}` : undefined;
+}
+
 /** Build invocation display tags from an AgentInvocation. */
-export function buildInvocationTags(invocation: AgentInvocation | undefined): { modelName?: string; tags: string[] } {
+export function buildInvocationTags(invocation: AgentInvocation | undefined): { modelName?: string; thinkingTag?: string; tags: string[] } {
   const tags: string[] = [];
   if (!invocation) return { tags };
-  if (invocation.thinkingLevel) tags.push(`thinking: ${invocation.thinkingLevel}`);
   if (invocation.runInBackground) tags.push("background");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
-  return { modelName: invocation.modelName, tags };
+  return {
+    modelName: invocation.modelName,
+    thinkingTag: formatThinkingTag(invocation.thinkingLevel),
+    tags,
+  };
 }

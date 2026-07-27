@@ -2,17 +2,13 @@
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
-import {
-  formatCost,
-  getLifetimeTotal,
-  getSessionContextPercent,
-} from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
+import { formatCost, getSessionUsageSnapshot } from "../agents/usage.js";
+import { formatMs, buildStatsParts, formatThinkingTag, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -35,6 +31,12 @@ const STATUS_KEY = "subagents";
 /** Widget refresh interval in milliseconds. */
 const WIDGET_REFRESH_INTERVAL = 80;
 
+/** Fixed horizontal gaps between the aligned agent columns. */
+const NAME_COLUMN_GAP = "   ";
+const MODEL_THINKING_COLUMN_GAP = "    ";
+const ROW_PREFIX_WIDTH = 4; // two-space indent, status icon, and following space
+const STATS_COLUMN_GAP_WIDTH = 2;
+const ACTIVITY_COLUMN_GAP_WIDTH = 2;
 
 // ---- Types ----
 
@@ -60,6 +62,13 @@ interface RenderBlock {
   continuations: string[];
 }
 
+/** Visible terminal column widths shared by agent rows in a single render pass. */
+interface AgentColumnLayout {
+  nameWidth: number;
+  modelThinkingWidth: number;
+  descriptionWidth: number;
+}
+
 // ---- Re-exports from format.ts (backward compatibility) ----
 export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.js";
 export type { LiveView as AgentActivity } from "../spawn/spawn-coordinator.js";
@@ -78,6 +87,10 @@ function wrapInDim(theme: Theme, text: string): string {
   return dimOn + text.replaceAll(dimOff, dimOff + dimOn) + dimOff;
 }
 
+/** Pad an unstyled string to a target terminal width. */
+function padToVisibleWidth(text: string, width: number): string {
+  return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+}
 
 /** Build the worktree/output continuation line parts for an agent record. */
 function buildWorktreeOutputParts(a: AgentRecord): string[] {
@@ -367,10 +380,98 @@ export class AgentWidget {
     }
   }
 
+  /** Build the optional parenthesized model/thinking label for an agent. */
+  private modelThinkingLabel(a: AgentRecord): string {
+    const invocation = a.display.invocation;
+    const modelName = typeof invocation?.modelName === "string" && invocation.modelName.trim()
+      ? invocation.modelName.trim()
+      : undefined;
+    const thinkingTag = formatThinkingTag(invocation?.thinkingLevel);
+    const parts = [modelName, thinkingTag].filter((part): part is string => part !== undefined);
+    return parts.length > 0 ? `(${parts.join(" · ")})` : "";
+  }
+
+  /** Get an agent description at the display length and, when needed, terminal width. */
+  private displayDescription(a: AgentRecord, maxWidth?: number): string {
+    const description = truncateDesc(a.display.description, this.isCompact() ? this.descLengthCompact : this.descLengthFull);
+    return maxWidth == null ? description : truncateToWidth(description, maxWidth);
+  }
+
+  /** Get a model/thinking label at the available terminal width before applying styling. */
+  private displayModelThinking(a: AgentRecord, maxWidth?: number): string {
+    const label = this.modelThinkingLabel(a);
+    return maxWidth == null ? label : truncateToWidth(label, maxWidth);
+  }
+
+  /** Build shared terminal-width columns for visible individual agent rows. */
+  private buildAgentColumnLayout(agents: AgentRecord[], theme: Theme, terminalWidth: number): AgentColumnLayout {
+    const naturalLayout = agents.reduce<AgentColumnLayout>((layout, a) => ({
+      nameWidth: Math.max(layout.nameWidth, visibleWidth(getDisplayName(a.display.type))),
+      modelThinkingWidth: Math.max(layout.modelThinkingWidth, visibleWidth(this.displayModelThinking(a))),
+      descriptionWidth: Math.max(layout.descriptionWidth, visibleWidth(this.displayDescription(a))),
+    }), { nameWidth: 0, modelThinkingWidth: 0, descriptionWidth: 0 });
+    const statsWidth = Math.max(0, ...agents
+      .filter((a) => a.lifecycle.status !== "queued")
+      .map((a) => visibleWidth(this.buildStatsLine(a, theme))));
+    const activityWidth = this.isCompact()
+      ? Math.max(0, ...agents
+        .filter((a) => a.lifecycle.status === "running")
+        .map((a) => {
+          const live = this.getLiveView(a.id);
+          return visibleWidth(live ? describeActivity(live.activeTools, live.responseText) : "thinking…");
+        }))
+      : 0;
+    const reservedWidth = ROW_PREFIX_WIDTH
+      + naturalLayout.nameWidth
+      + visibleWidth(NAME_COLUMN_GAP)
+      + STATS_COLUMN_GAP_WIDTH
+      + statsWidth
+      + (this.isCompact() ? ACTIVITY_COLUMN_GAP_WIDTH + activityWidth : 0);
+    const modelThinkingWidth = naturalLayout.modelThinkingWidth > 0
+      ? Math.min(naturalLayout.modelThinkingWidth, Math.max(0, terminalWidth - reservedWidth - visibleWidth(MODEL_THINKING_COLUMN_GAP)))
+      : 0;
+    const modelColumnWidth = modelThinkingWidth > 0
+      ? modelThinkingWidth + visibleWidth(MODEL_THINKING_COLUMN_GAP)
+      : 0;
+
+    return {
+      ...naturalLayout,
+      modelThinkingWidth,
+      descriptionWidth: Math.min(naturalLayout.descriptionWidth, Math.max(0, terminalWidth - reservedWidth - modelColumnWidth)),
+    };
+  }
+
+  /** Render the optional, shared-width model/thinking column and its trailing gap. */
+  private renderModelThinkingColumn(
+    modelThinking: string,
+    theme: Theme,
+    layout: AgentColumnLayout,
+  ): string {
+    return layout.modelThinkingWidth > 0
+      ? `${theme.fg("dim", modelThinking)}${MODEL_THINKING_COLUMN_GAP}`
+      : "";
+  }
+
+  /** Return live context/auth values, or the terminal snapshot when appropriate. */
+  private usageSnapshot(agent: AgentRecord) {
+    const live = getSessionUsageSnapshot(agent.execution.session);
+    const persisted = {
+      contextPercent: agent.stats.contextPercent,
+      contextWindow: agent.stats.contextWindow,
+      autoCompactionEnabled: agent.stats.autoCompactionEnabled,
+      usingSubscription: agent.stats.usingSubscription,
+    };
+    const terminal = agent.lifecycle.completedAt != null;
+    return terminal
+      ? (persisted.contextPercent != null || persisted.contextWindow != null ? persisted : live)
+      : (live ?? persisted);
+  }
+
   /** Render a finished agent line. */
-  private renderFinishedLine(a: AgentRecord, theme: Theme): string {
-    const name = getDisplayName(a.display.type);
-    const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
+  private renderFinishedLine(a: AgentRecord, theme: Theme, layout: AgentColumnLayout): string {
+    const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
+    const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
+    const description = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -380,14 +481,16 @@ export class AgentWidget {
       maxTurns: a.stats.maxTurns,
       input: a.stats.lifetimeUsage.input,
       output: a.stats.lifetimeUsage.output,
-      contextPercent: a.stats.contextPercent ?? null,
-      compactions: a.stats.compactionCount,
+      cacheRead: a.stats.cacheRead,
+      cacheWrite: a.stats.lifetimeUsage.cacheWrite,
+      latestCacheHitRate: a.stats.latestCacheHitRate,
       cost: a.stats.lifetimeUsage.cost,
+      ...this.usageSnapshot(a),
       durationMs,
     }, theme, this.statsVisibility);
 
-    const statsLine = statsParts.join("·");
-    return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+    const statsLine = statsParts.join(" · ");
+    return `${icon} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
@@ -401,12 +504,14 @@ export class AgentWidget {
       maxTurns: agent.stats.maxTurns,
       input: agent.stats.lifetimeUsage.input,
       output: agent.stats.lifetimeUsage.output,
-      contextPercent: agent.execution.session ? getSessionContextPercent(agent.execution.session) : agent.stats.contextPercent ?? null,
-      compactions: agent.stats.compactionCount,
+      cacheRead: agent.stats.cacheRead,
+      cacheWrite: agent.stats.lifetimeUsage.cacheWrite,
+      latestCacheHitRate: agent.stats.latestCacheHitRate,
       cost: agent.stats.lifetimeUsage.cost,
+      ...this.usageSnapshot(agent),
       durationMs: Date.now() - agent.lifecycle.startedAt,
     }, theme, this.statsVisibility);
-    return parts.join("·");
+    return parts.join(" · ");
   }
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
@@ -414,6 +519,7 @@ export class AgentWidget {
     finished: AgentRecord[],
     theme: Theme,
     w: number,
+    layout: AgentColumnLayout,
   ): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -426,7 +532,7 @@ export class AgentWidget {
         }
       }
       blocks.push({
-        header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
+        header: truncate(`  ${this.renderFinishedLine(a, theme, layout)}`),
         continuations,
       });
     }
@@ -439,27 +545,30 @@ export class AgentWidget {
     theme: Theme,
     w: number,
     frame: string,
+    layout: AgentColumnLayout,
   ): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of running) {
-      const name = getDisplayName(a.display.type);
+      const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
+      const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
+      const modelThinkingColumn = this.renderModelThinkingColumn(modelThinking, theme, layout);
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
-        const desc = truncateDesc(a.display.description, this.descLengthCompact);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const desc = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${NAME_COLUMN_GAP}${modelThinkingColumn}${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
         });
       } else {
         // Full: header + continuation lines
-        const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
+        const description = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${NAME_COLUMN_GAP}${modelThinkingColumn}${description}  ${statsLine}`;
         const continuations: string[] = [];
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {
@@ -513,13 +622,20 @@ export class AgentWidget {
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
     // Build blocks — separate arrays so overflow logic can apply priority: running > queued > finished.
-    const finishedBlocks = this.buildFinishedBlocks(finished, theme, w);
-    const runningBlocks = this.buildRunningBlocks(running, theme, w, frame);
+    // Align all individually rendered agent rows. The aggregate queued row deliberately
+    // remains unchanged outside navigation mode.
+    const layout = this.buildAgentColumnLayout([
+      ...finished,
+      ...running,
+      ...(this.navActive ? queued : []),
+    ], theme, w);
+    const finishedBlocks = this.buildFinishedBlocks(finished, theme, w, layout);
+    const runningBlocks = this.buildRunningBlocks(running, theme, w, frame, layout);
 
     // Queued: individual rows during nav, aggregated block otherwise.
     let queuedBlocks: RenderBlock[];
     if (this.navActive) {
-      queuedBlocks = this.buildQueuedIndividualBlocks(queued, theme, w);
+      queuedBlocks = this.buildQueuedIndividualBlocks(queued, theme, w, layout);
     } else {
       const aggregated = this.buildQueuedBlock(queued, theme, w);
       queuedBlocks = aggregated ? [aggregated] : [];
@@ -579,13 +695,16 @@ export class AgentWidget {
   }
 
   /** Build individual RenderBlocks for each queued agent (used during navigation). */
-  private buildQueuedIndividualBlocks(queued: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
+  private buildQueuedIndividualBlocks(
+    queued: AgentRecord[], theme: Theme, w: number, layout: AgentColumnLayout,
+  ): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of queued) {
-      const name = getDisplayName(a.display.type);
-      const desc = truncateDesc(a.display.description, this.descLengthFull);
-      const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
+      const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
+      const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
+      const desc = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
+      const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), continuations: [] });
     }
     return blocks;

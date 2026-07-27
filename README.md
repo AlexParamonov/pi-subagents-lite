@@ -54,12 +54,12 @@ Running agents appear in the live widget:
 
 ```
 ◈ Agents
-├─ ⠙ Agent  Write model precedence unit tests  6🛠 ·3⟳ ·↑6.8k↓1.3k 6%·12s
+├─ ⠙ Agent  Write model precedence unit tests  6🛠 · 3⟳ · ↑6.8k ↓1.3k 6.0%/128k (auto) · 12s
 │  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
 │  └ The file already exists but is ~175 lines. The user wants a …
-├─ ⠙ Agent  Code review of agent-runner.ts  4🛠 ·2⟳ ·↑7.2k↓1.5k 4%·12s
+├─ ⠙ Agent  Code review of agent-runner.ts  4🛠 · 2⟳ · ↑7.2k ↓1.5k 4.0%/128k (auto) · 12s
 │  └ Now let me check the types and related files for context on …
-└─ ⠙ Explore  Explore codebase architecture  13🛠 ·4⟳ ·↑16.1k↓2.9k 15%·12s
+└─ ⠙ Explore  Explore codebase architecture  13🛠 · 4⟳ · ↑16k ↓2.9k 15.0%/128k (auto) · 12s
    └ ## Architecture Summary: pi-subagents-lite
 ```
 
@@ -257,21 +257,21 @@ Management menu with four sections:
 
 ### Live widget
 
-Persistent bar above the editor showing running and completed agents, updating live. Running agents show a spinner, current tool activity, turn count, token usage (with optional context-fill %), and elapsed time. Completed agents show a check mark with final stats. Click the `tail -f` path to follow output logs.
+Persistent bar above the editor showing running and completed agents, updating live. Running agents show a spinner, current tool activity, turn count, Pi-compatible token/cache/cost usage, context window utilization, and elapsed time. Completed agents retain their final context and subscription snapshot. Click the `tail -f` path to follow output logs.
 
 **Full mode** (tree, header + `tail -f` path + activity):
 ```
-├─ ⠙ Explore  description  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s
+├─ ⠙ Explore  description  3🛠 · 5≤30⟳ · ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto) · 1h 2m 3s
 │  │ tail -f /tmp/pi-agent-outputs/...
 │  └ thinking…
 ```
 
 **Compact mode** (single line, description truncated, activity inline):
 ```
-├─ ⠙ Explore  description trunc…  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s  thinking…
+├─ ⠙ Explore  description trunc…  3🛠 · 5≤30⟳ · ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto) · 1h 2m 3s  thinking…
 ```
 
-Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal < 80%, warning 80–99%, error at 100%. The max is hidden when well below the limit. Token glyphs (`↑` input, `↓` output) are self-explanatory — no "tokens" label.
+Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal < 80%, warning 80–99%, error at 100%. The max is hidden when well below the limit. The contiguous usage group follows Pi: `↑input ↓output Rcache-read Wcache-write CHhit-rate $cost context/window (auto)`. Input visibility also controls cache fields; output, context, and cost remain independently configurable.
 
 Compact mode is active when **Force compact** is ON, or **ctrl+o shortcut** is ON and the user has collapsed tool expansion. Force compact always wins.
 
@@ -281,7 +281,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Cost display** ON, shows dollar cost. Toggle as a session override from Model settings.
+**Stats line:** `15⟳ · ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto) · 47s`. The same Pi-compatible usage group is used by foreground and background result cards; cost remains controlled by **Cost display**.
 
 ## Configuration
 

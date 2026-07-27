@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/spawn/spawn-coordinator.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
 
 /* ------------------------------------------------------------------ */
@@ -25,9 +26,13 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   }),
 }));
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  truncateToWidth: (text: string, width: number) => text,
-}));
+vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@earendil-works/pi-tui")>();
+  return {
+    truncateToWidth: actual.truncateToWidth,
+    visibleWidth: actual.visibleWidth,
+  };
+});
 
 function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
   return {
@@ -54,8 +59,15 @@ function makeMockTheme(): any {
   };
 }
 
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
+function makePlainTheme(): any {
+  return {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+}
+
+function makeMockTUI(columns = 200): any {
+  return { terminal: { columns } };
 }
 
 function makeRunningAgent(id: string, type: string = "builder"): any {
@@ -438,6 +450,273 @@ describe("compact mode", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     // Heading + 1 header + 1 activity continuation
     expect(lines.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps running stats and activity visible beside a long finished description",  () => {
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    widget.setDescLengthCompact(12);
+    const finished = makeFinishedAgent("finished");
+    finished.display.description = "A finished description that is much too long for the compact row";
+    const running = makeRunningAgent("running");
+    running.display.description = "Run task";
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [finished, running];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(90), makePlainTheme());
+    const runningLine = lines.find((line: string) => line.includes("Run task"))!;
+
+    expect(runningLine).toContain("5🛠");
+    expect(runningLine).toContain("reading");
+  });
+});
+
+describe("full mode narrow layout", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("keeps a short running agent's usage visible beside a long finished description", () => {
+    const finished = makeFinishedAgent("finished");
+    finished.display.description = "A finished description that consumes the entire shared description column";
+    const running = makeRunningAgent("running");
+    running.display.description = "Run task";
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [finished, running];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(70), makePlainTheme());
+    const runningLine = lines.find((line: string) => line.includes("Run task"))!;
+
+    expect(runningLine).toContain("5🛠");
+    expect(runningLine).toContain("↑1.0k");
+  });
+});
+
+describe("narrow model and thinking labels", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("keeps running stats visible at 70 columns with a long model and thinking label", () => {
+    const agent = makeRunningAgent("a1");
+    agent.display.description = "A description that may use only the remaining space";
+    agent.display.invocation = {
+      modelName: "a-very-long-model-name-that-must-be-truncated",
+      thinkingLevel: "high",
+    };
+    activity.set(agent.id, makeActivity(agent.id));
+    (manager as any).listAgents = () => [agent];
+
+    const fullLine = (widget as any).renderWidget(makeMockTUI(70), makePlainTheme())[1];
+    expect(fullLine).toContain("5🛠");
+    expect(fullLine).toContain("↑1.0k");
+    expect(fullLine).not.toContain("undefined");
+    expect(visibleWidth(fullLine)).toBeLessThanOrEqual(70);
+
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    const compactLine = (widget as any).renderWidget(makeMockTUI(70), makePlainTheme())[1];
+    expect(compactLine).toContain("5🛠");
+    expect(compactLine).toContain("↑1.0k");
+    expect(compactLine).toContain("reading");
+    expect(compactLine).not.toContain("undefined");
+    expect(visibleWidth(compactLine)).toBeLessThanOrEqual(70);
+  });
+});
+
+describe("Pi usage display", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("uses the same complete Pi block for live and completed records", () => {
+    const usage = {
+      input: 83000, output: 7100, cacheWrite: 12000, cost: 1.262,
+    };
+    const live = makeRunningAgent("live");
+    live.stats = {
+      ...live.stats, lifetimeUsage: usage, cacheRead: 1300000, latestCacheHitRate: 99.1,
+    };
+    live.execution.session = {
+      getContextUsage: () => ({ percent: 23.4, contextWindow: 272000 }),
+      autoCompactionEnabled: true,
+      model: { provider: "kimi-coding" },
+    };
+    const finished = makeFinishedAgent("finished");
+    finished.stats = {
+      ...finished.stats, lifetimeUsage: usage, cacheRead: 1300000, latestCacheHitRate: 99.1,
+      contextPercent: 23.4, contextWindow: 272000, autoCompactionEnabled: true, usingSubscription: true,
+    };
+    (manager as any).listAgents = () => [live, finished];
+
+    widget.setShowCost(true);
+    const lines = (widget as any).renderWidget(makeMockTUI(), makePlainTheme()).join("\n");
+    const expected = "↑83k ↓7.1k R1.3M W12k CH99.1% $1.262 (sub) 23.4%/272k (auto)";
+    expect(lines.split(expected)).toHaveLength(3);
+  });
+});
+
+describe("model and thinking labels", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+  });
+
+  it("shows model and concrete thinking level for a running agent in full mode", () => {
+    const agent = makeRunningAgent("a1");
+    agent.display.invocation = { modelName: "sonnet", thinkingLevel: "high" };
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines[1]).toContain("(sonnet · thinking: high)");
+  });
+
+  it("shows model and concrete thinking level for a running agent in compact mode", () => {
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    const agent = makeRunningAgent("a1");
+    agent.display.invocation = { modelName: "sonnet", thinkingLevel: "high" };
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("(sonnet · thinking: high)");
+  });
+
+  it("shows model and concrete thinking level for a finished agent", () => {
+    const agent = makeFinishedAgent("a1");
+    agent.display.invocation = { modelName: "sonnet", thinkingLevel: "high" };
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines[1]).toContain("(sonnet · thinking: high)");
+  });
+
+  it("does not invent a model when none was captured", () => {
+    const agent = makeRunningAgent("a1");
+    agent.display.invocation = { thinkingLevel: "high" };
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines[1]).toContain("(thinking: high)");
+    expect(lines[1]).not.toContain("undefined");
+  });
+
+  it("shows a model without a missing, inherited, or invalid thinking level", () => {
+    const agents = ["missing", "inherit", "invalid"].map((id) => {
+      const agent = makeRunningAgent(id);
+      agent.display.invocation = {
+        modelName: "sonnet",
+        thinkingLevel: id === "missing" ? undefined : id === "inherit" ? "inherit" : "invalid",
+      };
+      activity.set(id, makeActivity(id));
+      return agent;
+    });
+    (manager as any).listAgents = () => agents;
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    for (const line of [lines[1], lines[3], lines[5]]) {
+      expect(line).toContain("(sonnet)");
+      expect(line).not.toContain("thinking:");
+    }
+  });
+
+  it("uses fixed column gaps for full, compact, finished, and individual queued rows", () => {
+    const finished = makeFinishedAgent("finished", "explore");
+    finished.display.description = "Finished description";
+    finished.display.invocation = { modelName: "haiku" };
+    const running = makeRunningAgent("running", "builder");
+    running.display.description = "Running description";
+    running.display.invocation = { modelName: "very-long-model", thinkingLevel: "high" };
+    const queued = makeRunningAgent("queued", "queue");
+    queued.lifecycle.status = "queued";
+    queued.display.description = "Queued description";
+    queued.display.invocation = { modelName: "sonnet" };
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [finished, running, queued];
+    widget.navActivate();
+
+    const stripMockStyling = (line: string) => line
+      .replace(/\[(?:accent|dim|success|error|warning|muted):/g, "")
+      .replaceAll("]", "")
+      .replaceAll("**", "");
+    const labelWidth = "(very-long-model · thinking: high)".length;
+    const nameWidth = "Explore".length;
+    const assertColumnGaps = (line: string, name: string, label: string, description: string) => {
+      const plain = stripMockStyling(line);
+      const nameStart = plain.indexOf(name);
+      const labelStart = plain.indexOf(label);
+      expect(labelStart).toBe(nameStart + nameWidth + 3);
+      expect(plain.indexOf(description)).toBe(labelStart + labelWidth + 4);
+      return plain;
+    };
+    const findHeader = (lines: string[], description: string) =>
+      lines.find((line) => line.includes(description))!;
+
+    const fullLines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const finishedHeader = assertColumnGaps(findHeader(fullLines, "Finished description"), "Explore", "(haiku)", "Finished description");
+    const runningHeader = assertColumnGaps(findHeader(fullLines, "Running description"), "Builder", "(very-long-model · thinking: high)", "Running description");
+    assertColumnGaps(findHeader(fullLines, "Queued description"), "Queue", "(sonnet)", "Queued description");
+    expect(finishedHeader.indexOf("Finished description")).toBe(runningHeader.indexOf("Running description"));
+    expect(finishedHeader.indexOf("10🛠")).toBe(runningHeader.indexOf("5🛠"));
+
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    const compactLines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    assertColumnGaps(findHeader(compactLines, "Running description"), "Builder", "(very-long-model · thinking: high)", "Running description");
+
+    finished.display.invocation = undefined;
+    running.display.invocation = undefined;
+    queued.display.invocation = undefined;
+    const noModelLines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const noModelRunningHeader = stripMockStyling(findHeader(noModelLines, "Running description"));
+    expect(noModelRunningHeader).toContain("Builder   Running description");
+  });
+
+  it("aligns columns by terminal width for CJK names, models, and descriptions", () => {
+    const cjk = makeRunningAgent("cjk", "研究");
+    cjk.display.description = "解析";
+    cjk.display.invocation = { modelName: "模型" };
+    cjk.stats.toolUses = 1;
+    const ascii = makeRunningAgent("ascii", "builder");
+    ascii.display.description = "abcdef";
+    ascii.display.invocation = { modelName: "sonnet" };
+    ascii.stats.toolUses = 2;
+    (manager as any).listAgents = () => [cjk, ascii];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makePlainTheme());
+    const cjkHeader = lines.find((line: string) => line.includes("解析"))!;
+    const asciiHeader = lines.find((line: string) => line.includes("abcdef"))!;
+    const columnStart = (line: string, text: string) => visibleWidth(line.slice(0, line.indexOf(text)));
+
+    expect(columnStart(cjkHeader, "解析")).toBe(columnStart(asciiHeader, "abcdef"));
+    expect(columnStart(cjkHeader, "1🛠")).toBe(columnStart(asciiHeader, "2🛠"));
   });
 });
 

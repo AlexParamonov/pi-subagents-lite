@@ -12,7 +12,7 @@ import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
-import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
+import { getSessionUsageSnapshot } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
@@ -76,12 +76,31 @@ export function buildAgentDetails(
     details.turnCount = record.stats.turnCount;
     details.maxTurns = record.stats.maxTurns;
     details.toolUses = record.stats.toolUses;
+    const liveSnapshot = getSessionUsageSnapshot(record.execution.session);
+    const terminalSnapshot = {
+      contextPercent: record.stats.contextPercent,
+      contextWindow: record.stats.contextWindow,
+      autoCompactionEnabled: record.stats.autoCompactionEnabled,
+      usingSubscription: record.stats.usingSubscription,
+    };
+    const usageSnapshot = record.lifecycle.completedAt != null
+      && (terminalSnapshot.contextPercent != null || terminalSnapshot.contextWindow != null)
+      ? terminalSnapshot
+      : (liveSnapshot ?? terminalSnapshot);
+
     details.input = record.stats.lifetimeUsage.input;
     details.output = record.stats.lifetimeUsage.output;
-    details.contextPercent = getSessionContextPercent(record.execution.session);
+    details.cacheRead = record.stats.cacheRead;
+    details.cacheWrite = record.stats.lifetimeUsage.cacheWrite;
+    details.latestCacheHitRate = record.stats.latestCacheHitRate;
+    details.contextPercent = usageSnapshot.contextPercent ?? null;
+    details.contextWindow = usageSnapshot.contextWindow;
+    details.autoCompactionEnabled = usageSnapshot.autoCompactionEnabled;
+    details.usingSubscription = usageSnapshot.usingSubscription;
     details.durationMs = elapsedMs;
     details.compactions = record.stats.compactionCount;
     details.modelName = record.display.invocation?.modelName;
+    details.thinkingLevel = record.display.invocation?.thinkingLevel;
     details.cost = record.stats.lifetimeUsage.cost;
   }
 
@@ -176,7 +195,7 @@ export async function executeAgentTool(
     graceTurns: getStore().agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
-    invocation: { modelName },
+    invocation: { modelName, thinkingLevel },
     runInBackground: runInBackground || getStore().agent.forceBackground,
   });
 
