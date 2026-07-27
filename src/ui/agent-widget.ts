@@ -217,12 +217,9 @@ export class AgentWidget {
   setFinishedEvictTurns(turns: number) {
     this.finishedEvictTurns = turns;
   }
-
-  /** Register a finished agent for turn-based tracking. No-op when evict turns is 0. */
+  /** Register a finished agent for turn-based tracking. Always registers; shouldShowFinished gates on config. */
   markFinished(id: string) {
-    if (this.finishedEvictTurns > 0) {
-      this.finishedTurnAge.set(id, 0);
-    }
+    this.finishedTurnAge.set(id, 0);
   }
 
   // ---- Navigation state machine ----
@@ -255,7 +252,7 @@ export class AgentWidget {
   navDown(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
-    if (roster.length === 0) return;
+    if (roster.length === 0) { this.navDeactivate(); return; }
     this.clampHighlight();
     this._highlightedIndex = (this._highlightedIndex + 1) % roster.length;
     this.update();
@@ -264,7 +261,7 @@ export class AgentWidget {
   navUp(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
-    if (roster.length === 0) return;
+    if (roster.length === 0) { this.navDeactivate(); return; }
     this.clampHighlight();
     this._highlightedIndex = (this._highlightedIndex - 1 + roster.length) % roster.length;
     this.update();
@@ -292,6 +289,11 @@ export class AgentWidget {
   /** Current highlight position (0 = main). */
   highlightedIndex(): number {
     return this._highlightedIndex;
+  }
+
+  /** Whether the widget has any visible agents (after turn eviction filtering). */
+  hasVisibleAgents(): boolean {
+    return this.buildRoster().length > 0;
   }
 
   /** Whether the ResultViewer overlay is currently open. */
@@ -378,11 +380,10 @@ export class AgentWidget {
   /** Whether a finished agent should still be shown (not yet evicted by turn age). */
   private shouldShowFinished(a: AgentRecord): boolean {
     if (this.finishedEvictTurns === 0) return true;
-    const age = this.finishedTurnAge.get(a.id);
-    if (age === undefined) return true; // not tracked (e.g. finished before setting was enabled)
+    const age = this.finishedTurnAge.get(a.id) ?? 0;
     const isLingerStatus = ["error", "aborted", "turn_limited", "stopped"].includes(a.lifecycle.status);
     const maxAge = this.finishedEvictTurns + (isLingerStatus ? ERROR_LINGER_TURNS : 0);
-    return age < maxAge;
+    return isLingerStatus ? age <= maxAge : age < maxAge;
   }
 
   /** Build the icon and status suffix for a finished agent. */

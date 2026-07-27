@@ -112,6 +112,7 @@ const mockWidget: any = {
   navDeactivate: vi.fn(),
   setViewerOpen: vi.fn(),
   highlightedIndex: vi.fn(() => 0),
+  hasVisibleAgents: vi.fn(() => true),
   update: vi.fn(),
 };
 
@@ -218,9 +219,9 @@ describe("navigation key handler (createNavInputHandler)", () => {
       expect(mockWidget.navActivate).not.toHaveBeenCalled();
     });
 
-    it("does not activate when no agents", () => {
+    it("does not activate when no visible agents", () => {
       mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
-      mockManager.listAgents.mockReturnValue([]);
+      mockWidget.hasVisibleAgents.mockReturnValue(false);
       (ctx.ui.getEditorText as any).mockReturnValue("");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
@@ -230,7 +231,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
     it("does not activate on non-down key", () => {
       mockMatchesKey.mockReturnValue(false);
-      mockManager.listAgents.mockReturnValue([{ id: "a1" }]);
+      mockWidget.hasVisibleAgents.mockReturnValue(true);
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toBeUndefined();

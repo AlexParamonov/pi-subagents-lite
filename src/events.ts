@@ -170,16 +170,14 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
     }
 
     if (widget) {
-      if (!widget.isNavActive()) {
-        // ↓ + empty editor + agents exist → activate
-        const agents = getManager()?.listAgents() ?? [];
-        const hasAgents = agents.length > 0;
-        const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
-        if (matchesKey(data, "down") && hasAgents && editorEmpty) {
-          widget.navActivate();
-          return { consume: true };
-        }
-      } else {
+        if (!widget.isNavActive()) {
+          // ↓ + empty editor + visible agents exist → activate
+          const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
+          if (matchesKey(data, "down") && widget.hasVisibleAgents() && editorEmpty) {
+            widget.navActivate();
+            return { consume: true };
+          }
+        } else {
         // Nav active
         if (matchesKey(data, "down")) { widget.navDown(); return { consume: true }; }
         if (matchesKey(data, "up")) { widget.navUp(); return { consume: true }; }

@@ -879,11 +879,12 @@ describe("turn-based eviction for finished agents", () => {
     expect(ages.get("a1")).toBe(0);
   });
 
-  it("markFinished does nothing when finishedEvictTurns is 0", () => {
+  it("markFinished always registers regardless of finishedEvictTurns setting", () => {
     widget.setFinishedEvictTurns(0);
     widget.markFinished("a1");
     const ages = (widget as any).finishedTurnAge as Map<string, number>;
-    expect(ages.has("a1")).toBe(false);
+    expect(ages.has("a1")).toBe(true);
+    expect(ages.get("a1")).toBe(0);
   });
 
   it("onTurnStart increments ages for all finished agents", () => {
@@ -936,16 +937,19 @@ describe("turn-based eviction for finished agents", () => {
 
       widget.markFinished("a1");
 
-      // Age 1: visible (maxAge = 1 + 2 = 3, age 1 < 3)
+      // Age 1: visible (maxAge = 1 + 2 = 3, age 1 <= 3)
       widget.onTurnStart(); // age -> 1
       expect((widget as any).categorizeAgents().finished).toHaveLength(1);
 
-      // Age 2: visible (2 < 3)
+      // Age 2: visible (2 <= 3)
       widget.onTurnStart(); // age -> 2
       expect((widget as any).categorizeAgents().finished).toHaveLength(1);
-
-      // Age 3: hidden (3 < 3 is false)
+      // Age 3: visible (3 <= 3)
       widget.onTurnStart(); // age -> 3
+      expect((widget as any).categorizeAgents().finished).toHaveLength(1);
+
+      // Age 4: hidden (4 <= 3 is false)
+      widget.onTurnStart(); // age -> 4
       expect((widget as any).categorizeAgents().finished).toHaveLength(0);
     });
   }
