@@ -51,6 +51,7 @@ vi.mock("@sinclair/typebox", () => {
 });
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   DynamicBorder: class {},
+  getAgentDir: vi.fn(() => "/home/test/.pi/agent"),
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({

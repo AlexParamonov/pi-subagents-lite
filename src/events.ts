@@ -1,7 +1,7 @@
 import type { AgentRecord } from "./types.js";
 
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
 import { registerAgents, getAvailableTypes, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
 import { AgentManager } from "./agents/agent-manager.js";
@@ -79,8 +79,7 @@ export function ensureManagerAndWidget(): void {
  * and register into the type registry.
  */
 export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
-  const homeDir = process.env.HOME || "";
-  const userAgentDir = path.join(homeDir, ".pi", "agent", "agents");
+  const userAgentDir = path.join(getAgentDir(), "agents");
   const sharedAgentDir = path.join(ctx.cwd, ".agents", "agents");
   const projectAgentDir = path.join(ctx.cwd, ".pi", "agents");
 

@@ -21,17 +21,18 @@ import type { AgentConfig, EnvInfo } from "../../src/types.ts";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { createSkillDir, createFlatSkill } from "../fixtures.ts";
 
-const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt } = vi.hoisted(() => ({
+const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt, mockGetAgentDir } = vi.hoisted(() => ({
   mockLoadSkills: vi.fn(),
   mockLoadSkillsFromDir: vi.fn(),
   mockFormatSkillsForPrompt: vi.fn(),
+  mockGetAgentDir: vi.fn(() => "C:\\Users\\Pi User\\.pi\\agent"),
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   loadSkills: mockLoadSkills,
   loadSkillsFromDir: mockLoadSkillsFromDir,
   formatSkillsForPrompt: mockFormatSkillsForPrompt,
-  getAgentDir: vi.fn(() => "/fake/.pi/agent"),
+  getAgentDir: mockGetAgentDir,
 }));
 
 let tmpDir: string;
@@ -61,6 +62,7 @@ beforeEach(() => {
   mockLoadSkills.mockReturnValue({ skills: [], diagnostics: [] });
   mockLoadSkillsFromDir.mockReturnValue({ skills: [], diagnostics: [] });
   mockFormatSkillsForPrompt.mockReturnValue("");
+  mockGetAgentDir.mockReturnValue("C:\\Users\\Pi User\\.pi\\agent");
 });
 
 afterEach(() => {
@@ -85,6 +87,20 @@ describe("loadAllSkills", () => {
       cwd: tmpDir,
       includeDefaults: true,
     }));
+  });
+
+  it("uses Pi's agent directory for default skills when HOME is unset", () => {
+    vi.stubEnv("HOME", "");
+    const agentDir = "C:\\Users\\Pi User\\.pi\\agent";
+
+    try {
+      loadAllSkills(tmpDir);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(mockGetAgentDir).toHaveBeenCalledOnce();
+    expect(mockLoadSkills).toHaveBeenCalledWith(expect.objectContaining({ agentDir }));
   });
 
   it("loads ancestor .agents/skills via loadSkillsFromDir", () => {

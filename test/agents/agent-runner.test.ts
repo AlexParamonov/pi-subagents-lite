@@ -36,7 +36,7 @@ const mockModules = vi.hoisted(() => ({
   mockLoadSkillMeta: vi.fn().mockReturnValue([]),
   mockCreateAgentSession: vi.fn(),
   mockDefaultResourceLoader: MockDefaultResourceLoader,
-  mockGetAgentDir: vi.fn(),
+  mockGetAgentDir: vi.fn(() => "/home/test/.pi/agent"),
   mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
   mockIncludeContextFiles: true as boolean,
   mockSystemPromptMode: "replace" as string,

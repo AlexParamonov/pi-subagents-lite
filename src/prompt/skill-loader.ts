@@ -6,7 +6,7 @@
  * Roots, in precedence order (first match wins by name):
  *   1. Ancestor .agents/skills (cwd → git root, root .md files filtered out)
  *   2. ~/.agents/skills (root .md files filtered out)
- *   3. ~/.pi/agent/skills (Pi's user default)
+ *   3. Pi's user agent directory skills (Pi's user default)
  *   4. <cwd>/.pi/skills (Pi's project default)
  *
  * Pi's loadSkills handles: .gitignore/.ignore/.fdignore, symlinks (follow +
@@ -21,6 +21,7 @@ import { readFileSync, realpathSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  getAgentDir,
   loadSkills,
   loadSkillsFromDir,
   type Skill,
@@ -69,10 +70,10 @@ export function loadAllSkills(cwd: string): Skill[] {
     join(homedir(), ".agents", "skills"),
   );
 
-  // Pi defaults: ~/.pi/agent/skills and <cwd>/.pi/skills
+  // Pi defaults: Pi's user agent directory and <cwd>/.pi/skills
   const defaultsResult = loadSkills({
     cwd: resolvedCwd,
-    agentDir: join(homedir(), ".pi", "agent"),
+    agentDir: getAgentDir(),
     skillPaths: [],
     includeDefaults: true,
   });

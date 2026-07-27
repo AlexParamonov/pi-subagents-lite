@@ -6,8 +6,19 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createNavInputHandler } from "../src/events.js";
+import { createNavInputHandler, scanAndRegisterAgents } from "../src/events.js";
+
+const { mockGetAgentDir, mockSetAgentScanDirs, mockScanAndMerge } = vi.hoisted(() => ({
+  mockGetAgentDir: vi.fn(() => "C:\\Users\\Pi User\\.pi\\agent"),
+  mockSetAgentScanDirs: vi.fn(),
+  mockScanAndMerge: vi.fn(async () => new Map()),
+}));
+
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+  getAgentDir: mockGetAgentDir,
+}));
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -38,7 +49,8 @@ vi.mock("../src/agents/agent-types.js", () => ({
   }),
   registerAgents: vi.fn(),
   getAvailableTypes: vi.fn(() => []),
-  setAgentScanDirs: vi.fn(),
+  setAgentScanDirs: mockSetAgentScanDirs,
+  scanAndMerge: mockScanAndMerge,
 }));
 
 vi.mock("../src/agents/default-agents.js", () => ({
@@ -116,6 +128,7 @@ const mockWidget: any = {
 };
 
 const mockStore: any = {
+  agent: { disableDefaultAgents: false },
   notifyToolsExpanded: vi.fn(),
 };
 
@@ -148,12 +161,28 @@ describe("navigation key handler (createNavInputHandler)", () => {
     mockManager.listAgents.mockReturnValue([]);
     mockMatchesKey.mockReturnValue(false);
     mockIsKeyRelease.mockReturnValue(false);
+    mockGetAgentDir.mockReturnValue("C:\\Users\\Pi User\\.pi\\agent");
     ctx = {
       ui: {
         getEditorText: vi.fn(() => ""),
         notify: vi.fn(),
       },
     } as unknown as ExtensionContext;
+  });
+
+  it("uses Pi's agent directory for global agents when HOME is unset", async () => {
+    vi.stubEnv("HOME", "");
+    const agentDir = "C:\\Users\\Pi User\\.pi\\agent";
+
+    try {
+      await scanAndRegisterAgents({ cwd: "C:\\work\\project" } as ExtensionContext);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(mockGetAgentDir).toHaveBeenCalledOnce();
+    expect(mockSetAgentScanDirs)
+      .toHaveBeenCalledWith(join(agentDir, "agents"), join("C:\\work\\project", ".pi", "agents"), join("C:\\work\\project", ".agents", "agents"));
   });
 
   describe("key release ignored", () => {
