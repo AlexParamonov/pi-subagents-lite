@@ -68,7 +68,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const statDescriptions: Record<string, string> = {
-      showTools: "Show tool count (🛠 ) in the widget.",
+      showTools: "Show tool count (⚙︎) in the widget.",
       showTurns: "Show turn count (⟳ ) in the widget.",
       showInput: "Show input tokens (↑) in the widget.",
       deltaInputTokens: "Estimate input token delta for vLLM (no cache reporting).",

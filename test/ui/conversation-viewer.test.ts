@@ -475,7 +475,7 @@ describe("ConversationViewer", () => {
 
       const modelLine = viewer.render(120).find(line => line.includes("sonnet"));
 
-      expect(modelLine).toContain("sonnet · thinking: high · 5🛠");
+      expect(modelLine).toContain("sonnet · thinking: high · 5⚙︎");
       expect(modelLine).toContain("background");
     });
 
@@ -487,7 +487,7 @@ describe("ConversationViewer", () => {
 
       const statsLine = viewer.render(120).find(line => line.includes("thinking: high"));
 
-      expect(statsLine).toContain("thinking: high · 5🛠");
+      expect(statsLine).toContain("thinking: high · 5⚙︎");
       expect(statsLine).not.toContain("undefined");
     });
 

@@ -126,7 +126,7 @@ export function buildStatsParts(
   visible?: StatsVisibility,
 ): string[] {
   const parts: string[] = [];
-  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠`);
+  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}⚙︎`);
   if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
   const usage = formatUsageBlock(args, visible, theme);
   if (usage) parts.push(usage);

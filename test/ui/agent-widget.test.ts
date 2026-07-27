@@ -466,7 +466,7 @@ describe("compact mode", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(90), makePlainTheme());
     const runningLine = lines.find((line: string) => line.includes("Run task"))!;
 
-    expect(runningLine).toContain("5🛠");
+    expect(runningLine).toContain("5⚙︎");
     expect(runningLine).toContain("reading");
   });
 });
@@ -493,7 +493,7 @@ describe("full mode narrow layout", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(70), makePlainTheme());
     const runningLine = lines.find((line: string) => line.includes("Run task"))!;
 
-    expect(runningLine).toContain("5🛠");
+    expect(runningLine).toContain("5⚙︎");
     expect(runningLine).toContain("↑1.0k");
   });
 });
@@ -520,7 +520,7 @@ describe("narrow model and thinking labels", () => {
     (manager as any).listAgents = () => [agent];
 
     const fullLine = (widget as any).renderWidget(makeMockTUI(70), makePlainTheme())[1];
-    expect(fullLine).toContain("5🛠");
+    expect(fullLine).toContain("5⚙︎");
     expect(fullLine).toContain("↑1.0k");
     expect(fullLine).not.toContain("undefined");
     expect(visibleWidth(fullLine)).toBeLessThanOrEqual(70);
@@ -528,7 +528,7 @@ describe("narrow model and thinking labels", () => {
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
     const compactLine = (widget as any).renderWidget(makeMockTUI(70), makePlainTheme())[1];
-    expect(compactLine).toContain("5🛠");
+    expect(compactLine).toContain("5⚙︎");
     expect(compactLine).toContain("↑1.0k");
     expect(compactLine).toContain("reading");
     expect(compactLine).not.toContain("undefined");
@@ -684,7 +684,7 @@ describe("model and thinking labels", () => {
     const runningHeader = assertColumnGaps(findHeader(fullLines, "Running description"), "Builder", "(very-long-model · thinking: high)", "Running description");
     assertColumnGaps(findHeader(fullLines, "Queued description"), "Queue", "(sonnet)", "Queued description");
     expect(finishedHeader.indexOf("Finished description")).toBe(runningHeader.indexOf("Running description"));
-    expect(finishedHeader.indexOf("10🛠")).toBe(runningHeader.indexOf("5🛠"));
+    expect(finishedHeader.indexOf("10⚙︎")).toBe(runningHeader.indexOf("5⚙︎"));
 
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
@@ -716,7 +716,7 @@ describe("model and thinking labels", () => {
     const columnStart = (line: string, text: string) => visibleWidth(line.slice(0, line.indexOf(text)));
 
     expect(columnStart(cjkHeader, "解析")).toBe(columnStart(asciiHeader, "abcdef"));
-    expect(columnStart(cjkHeader, "1🛠")).toBe(columnStart(asciiHeader, "2🛠"));
+    expect(columnStart(cjkHeader, "1⚙︎")).toBe(columnStart(asciiHeader, "2⚙︎"));
   });
 });
 
@@ -1062,7 +1062,7 @@ describe("stats visibility integration", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const allText = lines.join(" ");
-    expect(allText).not.toContain("🛠");
+    expect(allText).not.toContain("⚙︎");
   });
 
   it("hides time when showTime is false", () => {
@@ -1115,7 +1115,7 @@ describe("stats visibility integration", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const allText = lines.join(" ");
-    expect(allText).not.toContain("🛠");
+    expect(allText).not.toContain("⚙︎");
   });
 
   it("shows all stats when visibility flags are all true (default)", () => {
@@ -1133,7 +1133,7 @@ describe("stats visibility integration", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const allText = lines.join(" ");
-    expect(allText).toContain("🛠");
+    expect(allText).toContain("⚙︎");
     expect(allText).toContain("⟳");
     expect(allText).toContain("↑");
     expect(allText).toContain("$");

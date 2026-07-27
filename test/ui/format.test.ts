@@ -33,12 +33,12 @@ const allStats = {
 describe("buildStatsParts — visible flag: showTools", () => {
   it("excludes toolUses when showTools is false", () => {
     const parts = buildStatsParts(allStats, mockTheme, { showTools: false });
-    expect(parts.some(p => p.includes("🛠"))).toBe(false);
+    expect(parts.some(p => p.includes("⚙︎"))).toBe(false);
   });
 
   it("includes toolUses when showTools is true (default)", () => {
     const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.some(p => p.includes("🛠"))).toBe(true);
+    expect(parts.some(p => p.includes("⚙︎"))).toBe(true);
   });
 });
 
@@ -76,12 +76,12 @@ describe("buildStatsParts — visible flag: showInput/showOutput", () => {
 describe("buildStatsParts — visible flag: showContext", () => {
   it("excludes context/window/auto when showContext is false", () => {
     expect(buildStatsParts(allStats, mockTheme, { showContext: false }).join(" · "))
-      .toBe("5🛠 · 3⟳ · ↑1.0k ↓500 R1.3M W12k CH99.1% $1.230 · 1m 5s");
+      .toBe("5⚙︎ · 3⟳ · ↑1.0k ↓500 R1.3M W12k CH99.1% $1.230 · 1m 5s");
   });
 
   it("includes Pi context/window/auto but keeps compaction tracking out of usage", () => {
     expect(buildStatsParts(allStats, mockTheme).join(" · "))
-      .toBe("5🛠 · 3⟳ · ↑1.0k ↓500 R1.3M W12k CH99.1% $1.230 50.0%/272k (auto) · 1m 5s");
+      .toBe("5⚙︎ · 3⟳ · ↑1.0k ↓500 R1.3M W12k CH99.1% $1.230 50.0%/272k (auto) · 1m 5s");
   });
 });
 
@@ -163,7 +163,7 @@ describe("buildStatsParts — backward compatibility", () => {
   it("without visible parameter, behaves the same as before", () => {
     const parts = buildStatsParts(allStats, mockTheme);
     expect(parts.length).toBeGreaterThan(0);
-    expect(parts.some(p => p.includes("🛠"))).toBe(true);
+    expect(parts.some(p => p.includes("⚙︎"))).toBe(true);
     expect(parts.some(p => p.includes("⟳"))).toBe(true);
     expect(parts.some(p => p.includes("↑"))).toBe(true);
     expect(parts.some(p => p.includes("$"))).toBe(true);
