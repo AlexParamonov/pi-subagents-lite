@@ -216,8 +216,8 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
 export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("tool_call", toolCallListener);
 
-  pi.on("tool_execution_start", async (_event, ctx) => {
-    // Set UI context on first tool execution
+  pi.on("turn_start", async (_event, ctx) => {
+    // Set UI context on first turn
     if (!getWidget()) {
       ensureManagerAndWidget();
     }

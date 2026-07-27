@@ -332,7 +332,7 @@ export class AgentWidget {
   }
 
   /**
-   * Called on each new turn (tool_execution_start).
+   * Called on each new LLM turn (turn_start event).
    * Increments turn age for all tracked finished agents.
    */
   onTurnStart() {
