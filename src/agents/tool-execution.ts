@@ -184,7 +184,7 @@ export async function executeAgentTool(
 
   if (runInBackground || getStore().agent.forceBackground) {
     // Background: return immediately
-    const suffix = `A notification will arrive when done - User asks you not to poll, check status or duplicate the delegated work.\n\nAgent ID: ${agentId}`;
+    const suffix = `Success! You delegated to an agent. A notification will arrive when done - USER: do not poll, don't check status and don't duplicate the delegated work!\n\nAgent ID: ${agentId}`;
     const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
     const details = buildAgentDetails(record);
     return successResult(`[${label}] ${suffix}`, details);
