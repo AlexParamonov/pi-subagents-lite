@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { isUnsafeName, isSymlink, safeReadFile } from "../src/utils.ts";
-import { tempDirFixture } from "./fixtures";
+import { canCreateSymlinks, tempDirFixture } from "./fixtures";
+
+const itWithSymlinkSupport = it.skipIf(!canCreateSymlinks());
 
 /* ------------------------------------------------------------------ */
 /*  isUnsafeName                                                      */
@@ -69,7 +71,7 @@ describe("isSymlink", () => {
     expect(isSymlink(file)).toBe(false);
   });
 
-  it("returns true for a symlink", () => {
+  itWithSymlinkSupport("returns true for a symlink", () => {
     const target = join(getDir(), "target.txt");
     writeFileSync(target, "target content", "utf-8");
     const link = join(getDir(), "link.txt");
@@ -102,7 +104,7 @@ describe("safeReadFile", () => {
     expect(safeReadFile(file)).toBe("file content");
   });
 
-  it("returns undefined for a symlink", () => {
+  itWithSymlinkSupport("returns undefined for a symlink", () => {
     const target = join(getDir(), "target.txt");
     writeFileSync(target, "secret", "utf-8");
     const link = join(getDir(), "link.txt");

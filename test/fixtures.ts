@@ -7,6 +7,8 @@
  *   - loadExtension: import and invoke the extension factory
  *   - createMockSession: mock agent session for output-file tests
  *   - tempDirFixture: temp directory setup/teardown for filesystem tests
+ *   - canCreateSymlinks: detect whether the current host permits file symlink creation
+ *   - createDirectoryLink / canCreateDirectoryLinks: portable directory-link fixtures
  *   - makeAgentMd: build agent .md content from frontmatter fields
  *   - tempDirWithFiles: create a temp dir with files for scanAgentFilesInDir tests
  *
@@ -79,7 +81,9 @@ export function shellMock(fns: ShellMockFns = {}) {
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -277,6 +281,44 @@ export function tempDirFixture(prefix = "subagents-test") {
       }
     },
   };
+}
+
+/** Create a directory link, using a junction on Windows to avoid the symlink privilege. */
+export function createDirectoryLink(target: string, link: string): void {
+  symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+}
+
+/** Return whether this host currently permits creating file symlinks. */
+export function canCreateSymlinks(): boolean {
+  return canCreateLink("file");
+}
+
+/** Return whether this host currently permits creating directory links. */
+export function canCreateDirectoryLinks(): boolean {
+  return canCreateLink("dir");
+}
+
+function canCreateLink(type: "dir" | "file"): boolean {
+  const dir = mkdtempSync(join(tmpdir(), "pi-symlink-capability-"));
+  try {
+    const target = join(dir, "target");
+    if (type === "dir") {
+      mkdirSync(target);
+      createDirectoryLink(target, join(dir, "link"));
+    } else {
+      writeFileSync(target, "target");
+      symlinkSync(target, join(dir, "link"), "file");
+    }
+    return true;
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (["EACCES", "ENOSYS", "ENOTSUP", "EPERM"].includes(code ?? "")) {
+      return false;
+    }
+    throw error;
+  } finally {
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
 }
 
 /* ------------------------------------------------------------------ */

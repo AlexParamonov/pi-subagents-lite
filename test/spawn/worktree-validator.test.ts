@@ -14,12 +14,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   existsSync,
   mkdirSync,
-  symlinkSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { canCreateDirectoryLinks, createDirectoryLink } from "../fixtures.ts";
 import {
   validateWorktreePath,
   WORKTREE_VALIDATION_ERRORS,
@@ -28,6 +28,9 @@ import {
 } from "../../src/spawn/worktree-validator.js";
 
 // ── helpers ──────────────────────────────────────────────────────
+
+const itWithDirectoryLinkSupport = it.skipIf(!canCreateDirectoryLinks());
+const toForwardSlashPath = (filePath: string) => filePath.replace(/\\/g, "/");
 
 function makePi(
   gitCommonDirResults: Map<string, string | null>,
@@ -109,8 +112,8 @@ describe("validateWorktreePath", () => {
 
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
-    expect(success.resolvedPath).toBe(worktreePath);
-    expect(success.worktreeRoot).toBe(worktreePath);
+    expect(success.resolvedPath).toBe(toForwardSlashPath(worktreePath));
+    expect(success.worktreeRoot).toBe(toForwardSlashPath(worktreePath));
     expect(success.label).toBe("feature");
   });
 
@@ -130,7 +133,7 @@ describe("validateWorktreePath", () => {
 
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
-    expect(success.resolvedPath).toBe(mainCheckout);
+    expect(success.resolvedPath).toBe(toForwardSlashPath(mainCheckout));
   });
 
   it("returns worktree root and non-empty label on success", async () => {
@@ -172,7 +175,7 @@ describe("validateWorktreePath", () => {
 
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
-    expect(success.resolvedPath).toBe(absolutePath);
+    expect(success.resolvedPath).toBe(toForwardSlashPath(absolutePath));
   });
 
   it("resolves ./wt/feature style relative path", async () => {
@@ -192,7 +195,7 @@ describe("validateWorktreePath", () => {
 
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
-    expect(success.resolvedPath).toBe(absolutePath);
+    expect(success.resolvedPath).toBe(toForwardSlashPath(absolutePath));
   });
 
   it("resolves parent-relative paths (../wt/feature)", async () => {
@@ -212,7 +215,7 @@ describe("validateWorktreePath", () => {
 
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
-    expect(success.resolvedPath).toBe(absolutePath);
+    expect(success.resolvedPath).toBe(toForwardSlashPath(absolutePath));
   });
 
   // ── label computation ─────────────────────────────────────────
@@ -259,7 +262,7 @@ describe("validateWorktreePath", () => {
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
     expect(success.label).toBe("feature/packages/web");
-    expect(success.worktreeRoot).toBe(worktreeRoot);
+    expect(success.worktreeRoot).toBe(toForwardSlashPath(worktreeRoot));
   });
 
   it("label uses forward slashes even for Windows-style relative paths", async () => {
@@ -445,13 +448,13 @@ describe("validateWorktreePath", () => {
 
   // ── symlink resolution ────────────────────────────────────────
 
-  it("resolves symlinks before validation", async () => {
+  itWithDirectoryLinkSupport("resolves symlinks before validation", async () => {
     const parentCwd = join(tmpDir, "parent");
     const realPath = join(tmpDir, "real-feature");
     const symlinkPath = join(tmpDir, "link-to-feature");
     mkdirSync(parentCwd, { recursive: true });
     mkdirSync(realPath, { recursive: true });
-    symlinkSync(realPath, symlinkPath);
+    createDirectoryLink(realPath, symlinkPath);
 
     const commonDir = join(tmpDir, "shared.git");
     const gitResults = new Map<string, string | null>([
@@ -463,16 +466,16 @@ describe("validateWorktreePath", () => {
 
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
-    expect(success.resolvedPath).toBe(realPath);
+    expect(success.resolvedPath).toBe(toForwardSlashPath(realPath));
   });
 
-  it("rejects a symlink whose target is in a different repo", async () => {
+  itWithDirectoryLinkSupport("rejects a symlink whose target is in a different repo", async () => {
     const parentCwd = join(tmpDir, "parent");
     const otherRepoPath = join(tmpDir, "other-repo-dir");
     const symlinkPath = join(tmpDir, "sneaky-link");
     mkdirSync(parentCwd, { recursive: true });
     mkdirSync(otherRepoPath, { recursive: true });
-    symlinkSync(otherRepoPath, symlinkPath);
+    createDirectoryLink(otherRepoPath, symlinkPath);
 
     const gitResults = new Map<string, string | null>([
       [parentCwd, join(tmpDir, "repo-a", ".git")],
