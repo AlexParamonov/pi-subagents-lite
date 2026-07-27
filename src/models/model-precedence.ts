@@ -60,7 +60,7 @@ export interface SubagentsConfig {
     outputThinkingBufferSize?: number;
     /** Minutes to retain finished agents in the widget. Default: 10. */
     finishedRetentionMinutes?: number;
-    /** Turns to keep finished agents visible in the widget. 0 = disabled. Default: 0. */
+    /** Turns to keep finished agents visible in the widget. 0 = disabled. Default: 4. */
     finishedEvictTurns?: number;
     [agentType: string]: string | null | undefined | boolean | number;
   };

@@ -82,6 +82,3 @@
 - When bumping versions, always run the package manager to regenerate lockfiles. Never hand-edit bun.lock.
 - Keep `@ts-expect-error` comments focused — one error per directive.
 
-### Dual-Clock Eviction
-- When two independent systems govern the same resource's lifetime (widget turn-based vs manager timer-based), the contradiction becomes a bug as soon as new features (navigation) depend on one clock. Make the authoritative source (manager retention) the single clock; the widget shows exactly what the manager holds.
-- A refactor that removes a tracking structure (finishedTurnAge + markFinished) touches callers across files (events.ts, menu-spawn-wizard.ts) and test assertions that relied on the removed entry point. Grep for all callers before planning the change surface.

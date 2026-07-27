@@ -874,32 +874,44 @@ describe("turn-based eviction for finished agents", () => {
 
   it("markFinished registers agent for turn-based tracking", () => {
     widget.setFinishedEvictTurns(2);
+    const agent = makeFinishedAgent("a1");
+    (manager as any).listAgents = () => [agent];
     widget.markFinished("a1");
-    const ages = (widget as any).finishedTurnAge as Map<string, number>;
-    expect(ages.get("a1")).toBe(0);
+
+    // Agent is visible right after marking finished (age 0 < threshold 2)
+    const { finished } = (widget as any).categorizeAgents();
+    expect(finished).toHaveLength(1);
   });
 
-  it("markFinished always registers regardless of finishedEvictTurns setting", () => {
+  it("markFinished is a no-op when eviction is disabled", () => {
     widget.setFinishedEvictTurns(0);
     widget.markFinished("a1");
-    const ages = (widget as any).finishedTurnAge as Map<string, number>;
-    expect(ages.has("a1")).toBe(true);
-    expect(ages.get("a1")).toBe(0);
+
+    // With eviction disabled, markFinished doesn't track (no wasted memory)
+    const ages = (widget as any).finishedTurnAge as Map<string, number>; 
+    expect(ages.has("a1")).toBe(false);
   });
 
-  it("onTurnStart increments ages for all finished agents", () => {
+  it("finished agents age correctly across multiple turns", () => {
     widget.setFinishedEvictTurns(3);
+    const agent = makeFinishedAgent("a1");
+    (manager as any).listAgents = () => [agent];
     widget.markFinished("a1");
-    widget.markFinished("a2");
-    const ages = (widget as any).finishedTurnAge as Map<string, number>;
 
+    // Age 1: still visible (1 < 3)
     widget.onTurnStart();
-    expect(ages.get("a1")).toBe(1);
-    expect(ages.get("a2")).toBe(1);
+    let finished = (widget as any).categorizeAgents().finished;
+    expect(finished).toHaveLength(1);
 
+    // Age 2: still visible (2 < 3)
     widget.onTurnStart();
-    expect(ages.get("a1")).toBe(2);
-    expect(ages.get("a2")).toBe(2);
+    finished = (widget as any).categorizeAgents().finished;
+    expect(finished).toHaveLength(1);
+
+    // Age 3: evicted (3 >= 3)
+    widget.onTurnStart();
+    finished = (widget as any).categorizeAgents().finished;
+    expect(finished).toHaveLength(0);
   });
 
   it("finished agents are hidden after finishedEvictTurns turns", () => {
@@ -986,21 +998,20 @@ describe("turn-based eviction for finished agents", () => {
     expect(manager.listAgents()).toHaveLength(1);
   });
 
-  it("clearWidget prunes finishedTurnAge entries for removed agents", () => {
+  it("categorizeAgents prunes stale finishedTurnAge entries", () => {
     widget.setFinishedEvictTurns(5);
     const agent = makeFinishedAgent("a1");
     (manager as any).listAgents = () => [agent];
     widget.markFinished("a1");
-    widget.markFinished("removed-agent");
+    widget.markFinished("removed-agent"); // Not in manager
 
-    const ages = (widget as any).finishedTurnAge as Map<string, number>;
-    expect(ages.has("a1")).toBe(true);
-    expect(ages.has("removed-agent")).toBe(true);
-
-    // Simulate clearWidget: only a1 remains in manager
-    // We can't call clearWidget directly without uiCtx, so test the pruning logic directly
-    // The pruning happens inside clearWidget; verify the method exists and works via categorizeAgents
+    // Pruning happens inside categorizeAgents — removed-agent should be gone after call
     const { finished } = (widget as any).categorizeAgents();
     expect(finished).toHaveLength(1);
+
+    // Verify the stale entry was actually pruned from the tracking map
+    const ages = (widget as any).finishedTurnAge as Map<string, number>;
+    expect(ages.has("removed-agent")).toBe(false);
+    expect(ages.has("a1")).toBe(true);
   });
 });

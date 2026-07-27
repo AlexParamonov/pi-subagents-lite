@@ -34,7 +34,7 @@ const STATUS_KEY = "subagents";
 
 /** Widget refresh interval in milliseconds. */
 const WIDGET_REFRESH_INTERVAL = 80;
-/** Bonus linger turns for error/aborted/turn_limited/stopped agents. */
+const LINGER_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
 const ERROR_LINGER_TURNS = 2;
 
 
@@ -217,9 +217,9 @@ export class AgentWidget {
   setFinishedEvictTurns(turns: number) {
     this.finishedEvictTurns = turns;
   }
-  /** Register a finished agent for turn-based tracking. Always registers; shouldShowFinished gates on config. */
+  /** Register a finished agent for turn-based tracking. No-op when eviction is disabled. */
   markFinished(id: string) {
-    this.finishedTurnAge.set(id, 0);
+    if (this.finishedEvictTurns > 0) this.finishedTurnAge.set(id, 0);
   }
 
   // ---- Navigation state machine ----
@@ -361,8 +361,7 @@ export class AgentWidget {
     const finished: AgentRecord[] = [];
 
     // Prune finishedTurnAge entries for agents no longer in the manager.
-    // Only build the id set when eviction is active — the default (0) skips it.
-    if (this.finishedEvictTurns > 0 && this.finishedTurnAge.size > 0) {
+    if (this.finishedTurnAge.size > 0) {
       const agentIds = new Set(allAgents.map((a) => a.id));
       for (const id of this.finishedTurnAge.keys()) {
         if (!agentIds.has(id)) this.finishedTurnAge.delete(id);
@@ -381,7 +380,7 @@ export class AgentWidget {
   private shouldShowFinished(a: AgentRecord): boolean {
     if (this.finishedEvictTurns === 0) return true;
     const age = this.finishedTurnAge.get(a.id) ?? 0;
-    const isLingerStatus = ["error", "aborted", "turn_limited", "stopped"].includes(a.lifecycle.status);
+    const isLingerStatus = LINGER_STATUSES.has(a.lifecycle.status);
     const maxAge = this.finishedEvictTurns + (isLingerStatus ? ERROR_LINGER_TURNS : 0);
     return isLingerStatus ? age <= maxAge : age < maxAge;
   }
@@ -538,8 +537,7 @@ export class AgentWidget {
     return this.forceCompact || (this.widgetShortcut && this.compactMode);
   }
 
-  private renderWidget(tui: TUI | undefined, theme: Theme): string[] {
-    if (!tui) return [];
+  private renderWidget(tui: TUI, theme: Theme): string[] {
     const { running, queued, finished } = this.categorizeAgents();
 
     const hasActive = running.length > 0 || queued.length > 0;

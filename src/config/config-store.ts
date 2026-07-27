@@ -144,7 +144,7 @@ export class ConfigStore {
       deltaInputTokens: a.deltaInputTokens !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
-      finishedEvictTurns: a.finishedEvictTurns ?? 0,
+      finishedEvictTurns: a.finishedEvictTurns ?? 4,
     };
   }
 
