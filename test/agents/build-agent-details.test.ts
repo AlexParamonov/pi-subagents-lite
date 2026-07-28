@@ -130,6 +130,41 @@ describe("buildAgentDetails", () => {
     expect(details.modelName).toBe("haiku");
   });
 
+  it("prefers session model name over invocation modelName", () => {
+    const record = makeRecord({
+      display: { type: "builder", description: "Build something", invocation: { modelName: "invocation-model" } },
+      execution: { session: { model: { name: "session-model" } } as any },
+    });
+    const details = buildAgentDetails(record, { includeStats: true });
+    expect(details.modelName).toBe("session-model");
+  });
+
+  it("falls back to invocation modelName when session has no model", () => {
+    const record = makeRecord({
+      display: { type: "builder", description: "Build something", invocation: { modelName: "fallback-model" } },
+      execution: { session: {} as any },
+    });
+    const details = buildAgentDetails(record, { includeStats: true });
+    expect(details.modelName).toBe("fallback-model");
+  });
+
+  it("includes thinkingLevel from invocation", () => {
+    const record = makeRecord({
+      display: { type: "builder", description: "Build something", invocation: { modelName: "haiku", thinkingLevel: "medium" } },
+    });
+    const details = buildAgentDetails(record, { includeStats: true });
+    expect(details.thinkingLevel).toBe("medium");
+  });
+
+  it("omits thinkingLevel when invocation has none", () => {
+    const record = makeRecord({
+      display: { type: "builder", description: "Build something", invocation: { modelName: "haiku" } },
+    });
+    const details = buildAgentDetails(record, { includeStats: true });
+    expect(details.thinkingLevel).toBeUndefined();
+  });
+
+
   // --- includeStatus ---
 
   it("includes status and outputFile when includeStatus is true", () => {

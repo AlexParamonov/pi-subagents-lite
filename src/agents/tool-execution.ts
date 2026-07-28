@@ -81,7 +81,8 @@ export function buildAgentDetails(
     details.contextPercent = getSessionContextPercent(record.execution.session);
     details.durationMs = elapsedMs;
     details.compactions = record.stats.compactionCount;
-    details.modelName = record.display.invocation?.modelName;
+    details.modelName = record.execution.session?.model?.name ?? record.display.invocation?.modelName;
+    details.thinkingLevel = record.display.invocation?.thinkingLevel;
     details.cost = record.stats.lifetimeUsage.cost;
   }
 

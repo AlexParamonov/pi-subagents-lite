@@ -97,6 +97,8 @@ export interface StatsVisibility {
   showContext?: boolean;
   showCost?: boolean;
   showTime?: boolean;
+  showModel?: boolean;
+  showThinking?: boolean;
 }
 
 /**
@@ -277,4 +279,25 @@ export function buildInvocationTags(invocation: AgentInvocation | undefined): { 
   if (invocation.runInBackground) tags.push("background");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
   return { modelName: invocation.modelName, tags };
+}
+
+/** Build a parenthesized model/thinking tag for widget display.
+ *
+ * Returns `(modelName · thinkingLevel)`, one of them, or empty string
+ * when neither is visible or data is undefined. Never returns `()`. */
+export function buildModelThinkingTag(
+  invocation: AgentInvocation | undefined,
+  visible?: StatsVisibility,
+): string {
+  if (!invocation) return "";
+  const showModel = visible?.showModel !== false;
+  const showThinking = visible?.showThinking !== false;
+  const modelName = showModel && typeof invocation.modelName === "string"
+    ? invocation.modelName.trim()
+    : undefined;
+  const thinkingLevel = showThinking && typeof invocation.thinkingLevel === "string"
+    ? invocation.thinkingLevel.trim()
+    : undefined;
+  const parts = [modelName, thinkingLevel].filter((p): p is string => p !== undefined && p.length > 0);
+  return parts.length > 0 ? `(${parts.join(" · ")})` : "";
 }
