@@ -153,7 +153,7 @@ export class AgentWidget {
   /** Navigation mode active. */
   private navActive = false;
 
-  /** Current highlight position in the roster (0 = main). */
+  /** Current highlight position in the roster (0 = first agent). */
   private _highlightedIndex = 0;
 
   /** Viewer overlay open — prevents deactivation while ResultViewer is displayed. */
@@ -234,13 +234,13 @@ export class AgentWidget {
     }
   }
 
-  /** Build the navigation roster: finished, running, queued. */
+  /** Build the navigation roster: running, queued, finished. */
   private buildRoster(): AgentRecord[] {
-    const { finished, running, queued } = this.categorizeAgents();
-    return [...finished, ...running, ...queued];
+    const { running, queued, finished } = this.categorizeAgents();
+    return [...running, ...queued, ...finished];
   }
 
-  /** Enter navigation mode. Highlights the first agent (index 1) if agents exist, else main (index 0). */
+  /** Enter navigation mode. Highlights the first agent (index 0) when one exists. */
   navActivate(): void {
     if (this.navActive) return;
     this.navActive = true;
@@ -248,7 +248,7 @@ export class AgentWidget {
     this.update();
   }
 
-  /** Move highlight down one position. Wraps from last agent to main. */
+  /** Move highlight down one position. Wraps from the last agent to the first. */
   navDown(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
@@ -257,7 +257,7 @@ export class AgentWidget {
     this._highlightedIndex = (this._highlightedIndex + 1) % roster.length;
     this.update();
   }
-  /** Move highlight up one position. Wraps from main to last agent. */
+  /** Move highlight up one position. Wraps from the first agent to the last. */
   navUp(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
@@ -286,7 +286,7 @@ export class AgentWidget {
     return this.navActive;
   }
 
-  /** Current highlight position (0 = main). */
+  /** Current highlight position (0 = first roster agent). */
   highlightedIndex(): number {
     return this._highlightedIndex;
   }
@@ -627,13 +627,13 @@ export class AgentWidget {
     const headingDisplay = getAgentStatusDisplay(running.length > 0 ? "running" : "queued");
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
-    // Build blocks — separate arrays so overflow logic can apply priority: running > queued > finished.
-    // Align all individually rendered agent rows. The aggregate queued row deliberately
-    // remains unchanged outside navigation mode.
+    // Build blocks — separate arrays so rendering and overflow use the same priority:
+    // running → queued → finished. Align all individually rendered agent rows. The
+    // aggregate queued row deliberately remains unchanged outside navigation mode.
     const layout = this.buildAgentColumnLayout([
-      ...finished,
       ...running,
       ...(this.navActive ? queued : []),
+      ...finished,
     ], theme, w);
     const finishedBlocks = this.buildFinishedBlocks(finished, theme, w, layout);
     const runningBlocks = this.buildRunningBlocks(running, theme, w, frame, layout);
@@ -647,11 +647,11 @@ export class AgentWidget {
       queuedBlocks = aggregated ? [aggregated] : [];
     }
 
-    // All blocks in display order: finished → running → queued.
+    // All blocks in display order: running → queued → finished.
     const blocks: RenderBlock[] = [
-      ...finishedBlocks,
       ...runningBlocks,
       ...queuedBlocks,
+      ...finishedBlocks,
     ];
 
     // ---- Overflow logic (works with blocks, not lines) ----
@@ -673,7 +673,7 @@ export class AgentWidget {
       lines.push(...this.renderBlocks(blocks, highlightedBlockIndex, theme));
     } else {
       // Pin the highlighted block so it's always visible during navigation.
-      // blocks is already [...finishedBlocks, ...runningBlocks, ...queuedBlocks].
+      // blocks is already [...runningBlocks, ...queuedBlocks, ...finishedBlocks].
       const pinnedBlock = highlightedBlockIndex >= 0 && highlightedBlockIndex < blocks.length
         ? blocks[highlightedBlockIndex]
         : undefined;

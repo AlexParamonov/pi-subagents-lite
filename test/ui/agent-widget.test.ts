@@ -329,17 +329,29 @@ describe("widget rendering format", () => {
     });
   });
 
-  describe("mixed running and finished", () => {
-    it("uses 2-space prefix for all items regardless of type", () => {
-      const running = makeRunningAgent("r1");
+  describe("mixed agent statuses", () => {
+    it("renders running, queued, then finished while preserving each group's order", () => {
+      const newerRunning = makeRunningAgent("r-new");
+      newerRunning.display.description = "Newer running";
+      const olderRunning = makeRunningAgent("r-old");
+      olderRunning.display.description = "Older running";
+      const queued = makeQueuedAgent("q1");
       const finished = makeFinishedAgent("f1");
-      activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [finished, running];
+      activity.set(newerRunning.id, makeActivity(newerRunning.id));
+      activity.set(olderRunning.id, makeActivity(olderRunning.id));
+      // The manager provides each status group newest-first, interleaved by status.
+      (manager as any).listAgents = () => [finished, newerRunning, queued, olderRunning];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // Both use 2-space prefix
-      expect(lines[1]).toMatch(/^  /); // finished agent
-      expect(lines[2]).toMatch(/^  /); // running agent
+      const runningNewIndex = lines.findIndex((line: string) => line.includes("Newer running"));
+      const runningOldIndex = lines.findIndex((line: string) => line.includes("Older running"));
+      const queuedIndex = lines.findIndex((line: string) => line.includes("1 queued"));
+      const finishedIndex = lines.findIndex((line: string) => line.includes("Finished agent f1"));
+
+      expect(runningNewIndex).toBeGreaterThan(0);
+      expect(runningOldIndex).toBeGreaterThan(runningNewIndex);
+      expect(queuedIndex).toBeGreaterThan(runningOldIndex);
+      expect(finishedIndex).toBeGreaterThan(queuedIndex);
     });
   });
 });
@@ -919,6 +931,22 @@ describe("max lines configuration", () => {
     // Should have overflow indicator
     const hasOverflow = lines.some((l: string) => l.includes("more"));
     expect(hasOverflow).toBe(true);
+  });
+
+  it("prioritizes running, then queued, over finished agents when space is limited", () => {
+    widget.setMaxLines(5);
+    const running = makeRunningAgent("r1");
+    const queued = makeQueuedAgent("q1");
+    const finished = [makeFinishedAgent("f1"), makeFinishedAgent("f2")];
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [finished[0], queued, running, finished[1]];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines.some((line: string) => line.includes("Test agent r1"))).toBe(true);
+    expect(lines.some((line: string) => line.includes("1 queued"))).toBe(true);
+    expect(lines.some((line: string) => line.includes("Finished agent"))).toBe(false);
+    expect(lines.find((line: string) => line.includes("more"))).toContain("2 finished");
   });
 });
 

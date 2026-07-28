@@ -3,7 +3,7 @@
  *
  * Covers:
  *   - Navigation state machine (activate, up, down, select, deactivate)
- *   - Roster building (finished, running, queued)
+ *   - Roster building (running, queued, finished)
  *   - Rendering with `>` marker and heading hint text
  *   - Queued agent expansion during navigation
  *   - Editor focus detection
@@ -151,7 +151,7 @@ describe("navigation state machine", () => {
 
       widget.navActivate();
       expect(widget.isNavActive()).toBe(true);
-      // Index 0 = first finished agent
+      // Index 0 = first running agent
       expect(widget.highlightedIndex()).toBe(0);
     });
 
@@ -170,10 +170,10 @@ describe("navigation state machine", () => {
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [finished, running];
 
-      widget.navActivate(); // highlights index 0 (first finished)
+      widget.navActivate(); // highlights index 0 (first running)
       expect(widget.highlightedIndex()).toBe(0);
 
-      widget.navDown(); // moves to running agent
+      widget.navDown(); // moves to finished agent
       expect(widget.highlightedIndex()).toBe(1);
     });
 
@@ -198,7 +198,7 @@ describe("navigation state machine", () => {
       widget.navDown(); // index 1 (running)
       expect(widget.highlightedIndex()).toBe(1);
 
-      widget.navUp(); // back to finished
+      widget.navUp(); // back to running
       expect(widget.highlightedIndex()).toBe(0);
     });
 
@@ -283,7 +283,7 @@ describe("navigation roster", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
-  it("includes finished at index 0, then running, queued", () => {
+  it("orders navigation as running, queued, then finished", () => {
     const finished = makeFinishedAgent("f1");
     const running = makeRunningAgent("r1");
     activity.set("r1", makeActivity("r1"));
@@ -292,12 +292,11 @@ describe("navigation roster", () => {
 
     widget.navActivate();
 
-    // Roster: finished(0), running(1), queued(2)
-    expect(widget.highlightedIndex()).toBe(0); // first agent
-    widget.navDown(); // running
-    expect(widget.highlightedIndex()).toBe(1);
-    widget.navDown(); // queued
-    expect(widget.highlightedIndex()).toBe(2);
+    expect(widget.navSelect()?.id).toBe("r1");
+    widget.navDown();
+    expect(widget.navSelect()?.id).toBe("q1");
+    widget.navDown();
+    expect(widget.navSelect()?.id).toBe("f1");
   });
 
   it("queued agents expand to individual rows during navigation", () => {
