@@ -3,13 +3,12 @@
  * instead of process.env.HOME for the user agent directory.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-const mockGetAgentDir = vi.fn(() => "/mock-home/.pi/agent");
 const mockSetAgentScanDirs = vi.fn();
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
-  getAgentDir: mockGetAgentDir,
+  getAgentDir: () => "/mock-home/.pi/agent",
 }));
 
 vi.mock("../src/agents/agent-types.js", () => ({
@@ -112,21 +111,15 @@ vi.mock("@earendil-works/pi-tui", () => ({
 const { scanAndRegisterAgents } = await import("../src/events.js");
 
 describe("events.ts home directory resolution", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetAgentDir.mockReturnValue("/mock-home/.pi/agent");
-  });
-
   it("uses getAgentDir() for user agent directory", async () => {
     const ctx = { cwd: "/project" } as any;
     await scanAndRegisterAgents(ctx);
 
-    // setAgentScanDirs is called with (userAgentDir, projectAgentDir, sharedAgentDir)
-    expect(mockSetAgentScanDirs).toHaveBeenCalled();
-    const callArgs = mockSetAgentScanDirs.mock.calls[0];
-    const userAgentDir = callArgs[0];
-
-    // Should be built from getAgentDir() + "agents"
-    expect(userAgentDir).toBe("/mock-home/.pi/agent/agents");
+    // First scan dir is the user agent dir, built from getAgentDir() + "agents"
+    expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
+      "/mock-home/.pi/agent/agents",
+      "/project/.pi/agents",
+      "/project/.agents/agents",
+    );
   });
 });
