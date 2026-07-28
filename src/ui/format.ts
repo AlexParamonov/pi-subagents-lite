@@ -283,7 +283,7 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
 /** Format a concrete thinking level for display; omitted or inherited values have no tag. */
 export function formatThinkingTag(value: unknown): string | undefined {
   const thinkingLevel = typeof value === "string" ? parseThinkingLevel(value) : undefined;
-  return thinkingLevel ? `thinking: ${thinkingLevel}` : undefined;
+  return thinkingLevel;
 }
 
 /** Build invocation display tags from an AgentInvocation. */

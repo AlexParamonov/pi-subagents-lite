@@ -186,12 +186,13 @@ describe("buildInvocationTags", () => {
   it("returns a concrete thinking tag separately from other invocation tags", () => {
     expect(buildInvocationTags({ modelName: "sonnet", thinkingLevel: "high", runInBackground: true, maxTurns: 10 })).toEqual({
       modelName: "sonnet",
-      thinkingTag: "thinking: high",
+      thinkingTag: "high",
       tags: ["background", "max turns: 10"],
     });
   });
 
-  it("does not format inherited or invalid thinking values", () => {
+  it("formats concrete levels compactly and omits inherited or invalid values", () => {
+    expect(formatThinkingTag("high")).toBe("high");
     expect(formatThinkingTag("inherit")).toBeUndefined();
     expect(formatThinkingTag("unknown")).toBeUndefined();
   });

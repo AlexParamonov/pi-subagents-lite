@@ -39,7 +39,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 vi.mock("../../src/ui/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
-  formatThinkingTag: vi.fn((value: unknown) => value === "high" ? "thinking: high" : undefined),
+  formatThinkingTag: vi.fn((value: unknown) => value === "high" ? "high" : undefined),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
 }));
 
@@ -70,13 +70,13 @@ describe("renderer", () => {
   it("shows thinking level directly after the model in a normal tool call", () => {
     renderAgentToolCall({ agent: "builder", _modelOverride: "sonnet", thinking: "high" }, noopTheme);
 
-    expect(textInstances.at(-1)?.text).toBe("▸ Builder (sonnet · thinking: high)");
+    expect(textInstances.at(-1)?.text).toBe("▸ Builder (sonnet · high)");
   });
 
   it("shows concrete thinking without a model override in a tool call", () => {
     renderAgentToolCall({ agent: "agent", thinking: "high" }, noopTheme);
 
-    expect(textInstances.at(-1)?.text).toBe("▸ Agent (thinking: high)");
+    expect(textInstances.at(-1)?.text).toBe("▸ Agent (high)");
   });
 
   it("keeps the normal tool call unchanged without a concrete thinking level", () => {
@@ -91,7 +91,7 @@ describe("renderer", () => {
       details: { type: "builder", description: "Build something", modelName: "sonnet", thinkingLevel: "high", turnCount: 5 },
     }, { expanded: false }, noopTheme, SHOW_COST);
 
-    expect(textInstances.map((t) => t.text).join("\n")).toContain("Builder (sonnet · thinking: high)");
+    expect(textInstances.map((t) => t.text).join("\n")).toContain("Builder (sonnet · high)");
   });
 
   it("shows concrete thinking without inventing a model in a foreground result card", () => {
@@ -101,7 +101,7 @@ describe("renderer", () => {
     }, { expanded: false }, noopTheme, SHOW_COST);
 
     const text = textInstances.map((t) => t.text).join("\n");
-    expect(text).toContain("Builder (thinking: high)");
+    expect(text).toContain("Builder (high)");
     expect(text).not.toContain("undefined");
   });
 
@@ -138,7 +138,7 @@ describe("renderer", () => {
 
     renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
 
-    expect(textInstances.map((t) => t.text).join("\n")).toContain("Builder (sonnet · thinking: high)");
+    expect(textInstances.map((t) => t.text).join("\n")).toContain("Builder (sonnet · high)");
   });
 
   it("shows concrete thinking without inventing a model in a background result card", () => {
@@ -148,7 +148,7 @@ describe("renderer", () => {
     }, { expanded: false }, noopTheme, SHOW_COST);
 
     const text = textInstances.map((t) => t.text).join("\n");
-    expect(text).toContain("Builder (thinking: high)");
+    expect(text).toContain("Builder (high)");
     expect(text).not.toContain("undefined");
   });
 

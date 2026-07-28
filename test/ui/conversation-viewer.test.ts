@@ -505,7 +505,7 @@ describe("ConversationViewer", () => {
 
       const modelLine = viewer.render(120).find(line => line.includes("sonnet"));
 
-      expect(modelLine).toContain("sonnet · thinking: high · 5⚙︎");
+      expect(modelLine).toContain("sonnet · high · 5⚙︎");
       expect(modelLine).toContain("background");
     });
 
@@ -515,9 +515,9 @@ describe("ConversationViewer", () => {
       record.display.invocation = { thinkingLevel: "high" };
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      const statsLine = viewer.render(120).find(line => line.includes("thinking: high"));
+      const statsLine = viewer.render(120).find(line => line.includes("high · 5⚙︎"));
 
-      expect(statsLine).toContain("thinking: high · 5⚙︎");
+      expect(statsLine).toContain("high · 5⚙︎");
       expect(statsLine).not.toContain("undefined");
     });
 
@@ -527,7 +527,7 @@ describe("ConversationViewer", () => {
       record.display.invocation = { modelName: "sonnet", thinkingLevel: "inherit" };
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      expect(viewer.render(120).join("\n")).not.toContain("thinking:");
+      expect(viewer.render(120).join("\n")).not.toContain("inherit");
     });
 
     it("renders user messages", () => {

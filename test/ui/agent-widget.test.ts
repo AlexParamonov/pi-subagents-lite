@@ -52,6 +52,7 @@ function makeMockTheme(): any {
     error: "error",
     warning: "warning",
     muted: "muted",
+    text: "text",
   };
   return {
     fg: (color: string, text: string) => `[${color}:${text}]`,
@@ -161,7 +162,7 @@ describe("widget rendering format", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // Activity line is the second line (index 2, after heading)
-      expect(lines[2]).toMatch(/^\[dim:  [│└]/);
+      expect(lines[2]).toMatch(/^\[text:  [│└]/);
     });
 
     it("places outputFile line before activity line", () => {
@@ -173,7 +174,7 @@ describe("widget rendering format", () => {
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // line[1] = header, line[2] = outputFile, line[3] = activity
       expect(lines[2]).toContain("tail -f");
-      expect(lines[3]).toMatch(/^\[dim:  [│└]/);
+      expect(lines[3]).toMatch(/^\[text:  [│└]/);
       expect(lines[3]).toContain("reading");
     });
 
@@ -183,7 +184,7 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [agent];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      expect(lines[2]).toMatch(/^\[dim:  └/);
+      expect(lines[2]).toMatch(/^\[text:  └/);
     });
   });
 
@@ -210,8 +211,8 @@ describe("widget rendering format", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // Activity lines use │ or └ connector
-      expect(lines[2]).toMatch(/^\[dim:  [│└]/);
-      expect(lines[4]).toMatch(/^\[dim:  [│└]/);
+      expect(lines[2]).toMatch(/^\[text:  [│└]/);
+      expect(lines[4]).toMatch(/^\[text:  [│└]/);
     });
 
     it("places outputFile before activity for each running agent", () => {
@@ -229,6 +230,65 @@ describe("widget rendering format", () => {
       expect(lines[3]).toContain("reading");
       expect(lines[5]).toContain("out2.log");
       expect(lines[6]).toContain("reading");
+    });
+  });
+
+  describe("running agent text colors", () => {
+    it("uses text for every regular full-row part while keeping the spinner accented", () => {
+      const agent = makeRunningAgent("a1");
+      agent.display.invocation = { modelName: "sonnet", thinkingLevel: "high" };
+      agent.display.worktreeLabel = "feature";
+      agent.display.outputFile = "/tmp/output.log";
+      activity.set(agent.id, makeActivity(agent.id));
+      (manager as any).listAgents = () => [agent];
+
+      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+      expect(lines[1]).toContain("[accent:⠋]");
+      expect(lines[1]).toContain("[text:**Builder**]");
+      expect(lines[1]).toContain("[text:(sonnet · high)]");
+      expect(lines[1]).toContain("[text:Test agent a1]");
+      expect(lines[1]).toContain("[text:5⚙︎");
+      expect(lines[2]).toMatch(/^\[text:  │ @feature  tail -f \/tmp\/output\.log\]/);
+      expect(lines[3]).toMatch(/^\[text:  └ reading…\]/);
+      expect(lines.slice(1).join("\n")).not.toContain("[dim:");
+    });
+
+    it("uses text for every regular compact-row part", () => {
+      widget.setCompactMode(true);
+      widget.setWidgetShortcut(true);
+      const agent = makeRunningAgent("a1");
+      agent.display.invocation = { modelName: "sonnet", thinkingLevel: "high" };
+      activity.set(agent.id, makeActivity(agent.id));
+      (manager as any).listAgents = () => [agent];
+
+      const line = (widget as any).renderWidget(makeMockTUI(), makeMockTheme())[1];
+
+      expect(line).toContain("[accent:⠋]");
+      expect(line).toContain("[text:**Builder**]");
+      expect(line).toContain("[text:(sonnet · high)]");
+      expect(line).toContain("[text:Test agent a1]");
+      expect(line).toContain("[text:5⚙︎");
+      expect(line).toContain("[text:reading…]");
+      expect(line).not.toContain("[dim:");
+    });
+
+    it("preserves an error stat color and reapplies text after its ANSI foreground reset", () => {
+      const agent = makeRunningAgent("a1");
+      agent.stats.contextPercent = 90.1;
+      agent.stats.contextWindow = 272000;
+      const ansiTheme = {
+        fg: (color: string, text: string) => {
+          const code = color === "error" ? 31 : color === "text" ? 97 : 37;
+          return `\u001b[${code}m${text}\u001b[39m`;
+        },
+        bold: (text: string) => text,
+      };
+
+      const statsLine = (widget as any).buildStatsLine(agent, ansiTheme);
+
+      expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m");
+      expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m\u001b[97m · ");
     });
   });
 
@@ -338,6 +398,26 @@ describe("finished agent status icons", () => {
 });
 
 describe("status bar format", () => {
+  it("uses Pi's dim token and restyles status text after widget invalidation", () => {
+    const uiCtx = { theme: makeMockTheme(), setStatus: vi.fn(), setWidget: vi.fn() };
+    const widget = new AgentWidget(makeMockManager([]), () => undefined);
+    widget.setUICtx(uiCtx);
+    (widget as any).manager.listAgents = () => [makeRunningAgent("a1")];
+
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "[dim:1 agent]");
+
+    uiCtx.theme = {
+      fg: (color: string, text: string) => `[new-${color}:${text}]`,
+      bold: (text: string) => text,
+    };
+    const widgetFactory = (uiCtx.setWidget as any).mock.calls[0][1];
+    widgetFactory(makeMockTUI(), makeMockTheme()).invalidate();
+
+    expect(uiCtx.setStatus).toHaveBeenLastCalledWith("subagents", "[new-dim:1 agent]");
+  });
+
   it("shows 'N agents: $cost' format with running agents", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
@@ -663,7 +743,7 @@ describe("model and thinking labels", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines[1]).toContain("(sonnet · thinking: high)");
+    expect(lines[1]).toContain("(sonnet · high)");
   });
 
   it("shows model and concrete thinking level for a running agent in compact mode", () => {
@@ -676,7 +756,7 @@ describe("model and thinking labels", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toContain("(sonnet · thinking: high)");
+    expect(lines[1]).toContain("(sonnet · high)");
   });
 
   it("shows model and concrete thinking level for a finished agent", () => {
@@ -685,7 +765,7 @@ describe("model and thinking labels", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines[1]).toContain("(sonnet · thinking: high)");
+    expect(lines[1]).toContain("(sonnet · high)");
   });
 
   it("does not invent a model when none was captured", () => {
@@ -695,7 +775,8 @@ describe("model and thinking labels", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines[1]).toContain("(thinking: high)");
+    expect(lines[1]).toContain("(high)");
+    expect(lines[1]).not.toContain("thinking:");
     expect(lines[1]).not.toContain("undefined");
   });
 
@@ -734,10 +815,10 @@ describe("model and thinking labels", () => {
     widget.navActivate();
 
     const stripMockStyling = (line: string) => line
-      .replace(/\[(?:accent|dim|success|error|warning|muted):/g, "")
+      .replace(/\[(?:accent|dim|text|success|error|warning|muted):/g, "")
       .replaceAll("]", "")
       .replaceAll("**", "");
-    const labelWidth = "(very-long-model · thinking: high)".length;
+    const labelWidth = "(very-long-model · high)".length;
     const nameWidth = "Explore".length;
     const assertColumnGaps = (line: string, name: string, label: string, description: string) => {
       const plain = stripMockStyling(line);
@@ -752,7 +833,7 @@ describe("model and thinking labels", () => {
 
     const fullLines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const finishedHeader = assertColumnGaps(findHeader(fullLines, "Finished description"), "Explore", "(haiku)", "Finished description");
-    const runningHeader = assertColumnGaps(findHeader(fullLines, "Running description"), "Builder", "(very-long-model · thinking: high)", "Running description");
+    const runningHeader = assertColumnGaps(findHeader(fullLines, "Running description"), "Builder", "(very-long-model · high)", "Running description");
     assertColumnGaps(findHeader(fullLines, "Queued description"), "Queue", "(sonnet)", "Queued description");
     expect(finishedHeader.indexOf("Finished description")).toBe(runningHeader.indexOf("Running description"));
     expect(finishedHeader.indexOf("10⚙︎")).toBe(runningHeader.indexOf("5⚙︎"));
@@ -760,7 +841,7 @@ describe("model and thinking labels", () => {
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
     const compactLines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    assertColumnGaps(findHeader(compactLines, "Running description"), "Builder", "(very-long-model · thinking: high)", "Running description");
+    assertColumnGaps(findHeader(compactLines, "Running description"), "Builder", "(very-long-model · high)", "Running description");
 
     finished.display.invocation = undefined;
     running.display.invocation = undefined;

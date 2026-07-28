@@ -8,7 +8,7 @@ import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatCost, getSessionUsageSnapshot } from "../agents/usage.js";
-import { formatMs, buildStatsParts, formatThinkingTag, getAgentStatusDisplay, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
+import { formatMs, buildStatsParts, formatThinkingTag, getAgentStatusDisplay, getDisplayName, truncateDesc, describeActivity, fgPreservingNestedStyles, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -42,6 +42,8 @@ const ACTIVITY_COLUMN_GAP_WIDTH = 2;
 
 
 export type UICtx = {
+  /** Pi UI theme; optional for test and legacy UI contexts. */
+  theme?: Pick<Theme, "fg">;
   setStatus(key: string, text: string | undefined): void;
   setWidget(
     key: string,
@@ -389,8 +391,8 @@ export class AgentWidget {
     const modelName = typeof invocation?.modelName === "string" && invocation.modelName.trim()
       ? invocation.modelName.trim()
       : undefined;
-    const thinkingTag = formatThinkingTag(invocation?.thinkingLevel);
-    const parts = [modelName, thinkingTag].filter((part): part is string => part !== undefined);
+    const thinkingLevel = formatThinkingTag(invocation?.thinkingLevel);
+    const parts = [modelName, thinkingLevel].filter((part): part is string => part !== undefined);
     return parts.length > 0 ? `(${parts.join(" · ")})` : "";
   }
 
@@ -449,9 +451,10 @@ export class AgentWidget {
     modelThinking: string,
     theme: Theme,
     layout: AgentColumnLayout,
+    color = "dim",
   ): string {
     return layout.modelThinkingWidth > 0
-      ? `${theme.fg("dim", modelThinking)}${MODEL_THINKING_COLUMN_GAP}`
+      ? `${theme.fg(color, modelThinking)}${MODEL_THINKING_COLUMN_GAP}`
       : "";
   }
 
@@ -514,7 +517,7 @@ export class AgentWidget {
       ...this.usageSnapshot(agent),
       durationMs: Date.now() - agent.lifecycle.startedAt,
     }, theme, this.statsVisibility);
-    return parts.join(" · ");
+    return fgPreservingNestedStyles(theme, "text", parts.join(" · "));
   }
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
@@ -555,7 +558,7 @@ export class AgentWidget {
     for (const a of running) {
       const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
       const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
-      const modelThinkingColumn = this.renderModelThinkingColumn(modelThinking, theme, layout);
+      const modelThinkingColumn = this.renderModelThinkingColumn(modelThinking, theme, layout, "text");
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
@@ -563,7 +566,7 @@ export class AgentWidget {
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${NAME_COLUMN_GAP}${modelThinkingColumn}${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.fg("text", theme.bold(name))}${NAME_COLUMN_GAP}${modelThinkingColumn}${theme.fg("text", desc)}  ${statsLine}  ${theme.fg("text", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
@@ -571,13 +574,13 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines
         const description = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${NAME_COLUMN_GAP}${modelThinkingColumn}${description}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.fg("text", theme.bold(name))}${NAME_COLUMN_GAP}${modelThinkingColumn}${theme.fg("text", description)}  ${statsLine}`;
         const continuations: string[] = [];
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {
-          continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
+          continuations.push(truncate(theme.fg("text", "  │ " + parts.join("  "))));
         }
-        continuations.push(truncate(theme.fg("dim", "  └ " + activity)));
+        continuations.push(truncate(theme.fg("text", "  └ " + activity)));
         blocks.push({
           header: truncate(headerLine),
           continuations,
@@ -831,6 +834,11 @@ export class AgentWidget {
     // when there are no agents, so there's no cost to keeping it alive.
   }
 
+  /** Apply Pi's semantic footer text token, falling back for older/test UI contexts. */
+  private styleStatusText(text: string): string {
+    return this.uiCtx?.theme?.fg("dim", text) ?? text;
+  }
+
   /** Update the status bar text, only if it changed. */
   private updateStatusBar(runningCount: number, queuedCount: number, finishedCount: number, running: AgentRecord[]) {
     const activeCount = runningCount + queuedCount;
@@ -845,7 +853,7 @@ export class AgentWidget {
       if (totalCost > 0) statusText += `: ${formatCost(totalCost)}`;
     }
     if (statusText !== this.lastStatusText) {
-      this.uiCtx?.setStatus(STATUS_KEY, statusText);
+      this.uiCtx?.setStatus(STATUS_KEY, this.styleStatusText(statusText));
       this.lastStatusText = statusText;
     }
   }
@@ -906,6 +914,10 @@ export class AgentWidget {
             this.widgetRegistered = false;
             this.tui = undefined;
             this.theme = undefined;
+            // Status text is rendered outside this widget, so restyle it explicitly.
+            if (this.lastStatusText !== undefined) {
+              this.uiCtx?.setStatus(STATUS_KEY, this.styleStatusText(this.lastStatusText));
+            }
           },
         };
       }, { placement: "aboveEditor" });
