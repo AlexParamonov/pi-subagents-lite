@@ -25,6 +25,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "loadSkillsImplicitly",
   "loadExtensionsImplicitly",
   "disableDefaultAgents",
+  "agentToolConstrainedSampling",
   "outputThinkingBufferSize",
   "finishedRetentionMinutes",
   "finishedEvictTurns",

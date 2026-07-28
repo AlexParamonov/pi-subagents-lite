@@ -10,11 +10,12 @@
  * Full integration testing is manual via pi TUI.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import {
   createMockExtensionAPI,
   hasParam,
   loadExtension,
+  shellMock,
   type MockExtensionAPI,
 } from "./fixtures";
 
@@ -42,6 +43,7 @@ vi.mock("@sinclair/typebox", () => {
         valueType,
       }),
       Union: (variants: any[]) => ({ type: "union", variants }),
+      Null: () => ({ type: "null" }),
       Literal: (value: string | number | boolean) => ({
         type: "literal",
         const: value,
@@ -132,6 +134,19 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
+// Mutable state shared between the shell mock and tests.
+const { mutableStore, spawnGuard } = vi.hoisted(() => ({
+  mutableStore: {
+    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolConstrainedSampling: false },
+    modelFor: () => "anthropic/claude-sonnet-4-6",
+  },
+  spawnGuard: { depth: 0 },
+}));
+
+vi.mock("../src/shell.js", () => shellMock({
+  store: mutableStore,
+  spawnGuard,
+}));
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
@@ -391,14 +406,16 @@ describe("Agent tool schema — worktree_path", () => {
 /* ------------------------------------------------------------------ */
 
 describe("subagent spawn guard", () => {
-  // The real shell module is used here (index.test.ts does not mock shell.js),
-  // so toggling the spawn flag drives the same counter the factory reads.
-  let shell: typeof import("../src/shell.js");
+  // Uses the mocked shell from vi.mock above; spawn guard state is shared via vi.hoisted.
+  const shell = {
+    isInsideSubagentSpawn: () => spawnGuard.depth > 0,
+    enterSubagentSpawn: () => { spawnGuard.depth++; },
+    exitSubagentSpawn: () => { spawnGuard.depth--; },
+  };
 
-  beforeEach(async () => {
-    shell = await import("../src/shell.js");
+  beforeEach(() => {
     // Defensive: start every test from a clean depth.
-    while (shell.isInsideSubagentSpawn()) shell.exitSubagentSpawn();
+    while (spawnGuard.depth > 0) spawnGuard.depth--;
   });
 
   it("registers tools and listeners for the parent session", async () => {
@@ -411,7 +428,7 @@ describe("subagent spawn guard", () => {
   });
 
   it("stays inert when loaded inside a subagent spawn", async () => {
-    shell.enterSubagentSpawn();
+    spawnGuard.depth++;
     try {
       const api = createMockExtensionAPI();
       await loadExtension(api.api);
@@ -421,21 +438,21 @@ describe("subagent spawn guard", () => {
       expect(api.tools).toHaveLength(0);
       expect(api.listeners).toHaveLength(0);
     } finally {
-      shell.exitSubagentSpawn();
+      spawnGuard.depth--;
     }
-    expect(shell.isInsideSubagentSpawn()).toBe(false);
+    expect(spawnGuard.depth).toBe(0);
   });
 
   it("is inert for nested spawns and recovers when depth returns to 0", async () => {
-    shell.enterSubagentSpawn();
-    shell.enterSubagentSpawn(); // nested
+    spawnGuard.depth++;
+    spawnGuard.depth++; // nested
     try {
       const api = createMockExtensionAPI();
       await loadExtension(api.api);
       expect(api.tools).toHaveLength(0);
     } finally {
-      shell.exitSubagentSpawn();
-      shell.exitSubagentSpawn();
+      spawnGuard.depth--;
+      spawnGuard.depth--;
     }
 
     // Parent load works again once no subagent is in flight
@@ -449,7 +466,7 @@ describe("subagent spawn guard", () => {
 /*  Constrained Sampling                                              */
 /* ------------------------------------------------------------------ */
 
-describe("constrained sampling", () => {
+describe("constrained sampling — default OFF", () => {
   let api: MockExtensionAPI;
 
   beforeAll(async () => {
@@ -457,8 +474,32 @@ describe("constrained sampling", () => {
     await loadExtension(api.api);
   });
 
-  for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
-    it(`${toolName} has constrainedSampling with json_schema and strict: prefer`, () => {
+  // Agent tool: no constrainedSampling when toggle is OFF (default)
+  it("Agent has no constrainedSampling when toggle is OFF", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool).toBeDefined();
+    expect(tool!.constrainedSampling).toBeUndefined();
+  });
+
+  it("Agent optional fields use Type.Optional when toggle is OFF", () => {
+    const tool = findTool(api, "Agent");
+    const props = tool!.parameters.properties;
+    expect(props.description.optional).toBe(true);
+    expect(props.agent.optional).toBe(true);
+    expect(props.run_in_background.optional).toBe(true);
+    expect(props.worktree_path.optional).toBe(true);
+  });
+
+  it("Agent schema does not have all fields in required when toggle is OFF", () => {
+    const tool = findTool(api, "Agent");
+    const required = tool!.parameters.required ?? [];
+    expect(required).not.toContain("description");
+    expect(required).not.toContain("worktree_path");
+  });
+
+  // StopAgent and AgentStatus: always have constrainedSampling
+  for (const toolName of ["StopAgent", "AgentStatus"]) {
+    it(`${toolName} has constrainedSampling (always)`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
       expect(tool!.constrainedSampling).toEqual({
@@ -473,4 +514,55 @@ describe("constrained sampling", () => {
       expect(tool!.parameters.additionalProperties).toBe(false);
     });
   }
+});
+
+describe("constrained sampling — toggle ON", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    // Flip the flag on the mutable store the shell mock returns.
+    mutableStore.agent.agentToolConstrainedSampling = true;
+    vi.resetModules();
+
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  afterAll(() => {
+    // Restore default for any subsequent tests.
+    mutableStore.agent.agentToolConstrainedSampling = false;
+  });
+
+  it("Agent has constrainedSampling when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool).toBeDefined();
+    expect(tool!.constrainedSampling).toEqual({
+      type: "json_schema",
+      strict: "prefer",
+    });
+  });
+
+  it("Agent schema has all fields in required when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    const required = tool!.parameters.required ?? [];
+    expect(required).toContain("prompt");
+    expect(required).toContain("description");
+    expect(required).toContain("agent");
+    expect(required).toContain("run_in_background");
+    expect(required).toContain("worktree_path");
+  });
+
+  it("Agent optional fields use nullable anyOf pattern when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    const props = tool!.parameters.properties;
+    expect(props.description.type).toBe("union");
+    expect(props.agent.type).toBe("union");
+    expect(props.run_in_background.type).toBe("union");
+    expect(props.worktree_path.type).toBe("union");
+  });
+
+  it("Agent schema has additionalProperties: false when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool!.parameters.additionalProperties).toBe(false);
+  });
 });

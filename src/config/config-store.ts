@@ -63,6 +63,8 @@ export interface ResolvedAgentSettings {
   readonly loadExtensionsImplicitly: boolean;
   /** Whether to skip built-in default agents at registration. */
   readonly disableDefaultAgents: boolean;
+  /** Whether to use strict-mode constrained sampling schema for the Agent tool. */
+  readonly agentToolConstrainedSampling: boolean;
   /** Whether to show toolUses count in widget stats line. */
   readonly showTools: boolean;
   /** Whether to show turn count in widget stats line. */
@@ -135,6 +137,7 @@ export class ConfigStore {
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
       disableDefaultAgents: a.disableDefaultAgents === true,
+      agentToolConstrainedSampling: a.agentToolConstrainedSampling === true,
       showTools: a.showTools !== false,
       showTurns: a.showTurns !== false,
       showInput: a.showInput !== false,
@@ -268,6 +271,10 @@ export class ConfigStore {
       },
       setDisableDefaultAgents: (value: boolean): void => {
         this.config.agent.disableDefaultAgents = value;
+        this.persist();
+      },
+      setAgentToolConstrainedSampling: (value: boolean): void => {
+        this.config.agent.agentToolConstrainedSampling = value;
         this.persist();
       },
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
