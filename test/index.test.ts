@@ -10,7 +10,7 @@
  * Full integration testing is manual via pi TUI.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import {
   createMockExtensionAPI,
   hasParam,
@@ -42,6 +42,7 @@ vi.mock("@sinclair/typebox", () => {
         valueType,
       }),
       Union: (variants: any[]) => ({ type: "union", variants }),
+      Null: () => ({ type: "null" }),
       Literal: (value: string | number | boolean) => ({
         type: "literal",
         const: value,
@@ -449,7 +450,7 @@ describe("subagent spawn guard", () => {
 /*  Constrained Sampling                                              */
 /* ------------------------------------------------------------------ */
 
-describe("constrained sampling", () => {
+describe("constrained sampling — default OFF", () => {
   let api: MockExtensionAPI;
 
   beforeAll(async () => {
@@ -457,8 +458,32 @@ describe("constrained sampling", () => {
     await loadExtension(api.api);
   });
 
-  for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
-    it(`${toolName} has constrainedSampling with json_schema and strict: prefer`, () => {
+  // Agent tool: no constrainedSampling when toggle is OFF (default)
+  it("Agent has no constrainedSampling when toggle is OFF", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool).toBeDefined();
+    expect(tool!.constrainedSampling).toBeUndefined();
+  });
+
+  it("Agent optional fields use Type.Optional when toggle is OFF", () => {
+    const tool = findTool(api, "Agent");
+    const props = tool!.parameters.properties;
+    expect(props.description.optional).toBe(true);
+    expect(props.agent.optional).toBe(true);
+    expect(props.run_in_background.optional).toBe(true);
+    expect(props.worktree_path.optional).toBe(true);
+  });
+
+  it("Agent schema does not have all fields in required when toggle is OFF", () => {
+    const tool = findTool(api, "Agent");
+    const required = tool!.parameters.required ?? [];
+    expect(required).not.toContain("description");
+    expect(required).not.toContain("worktree_path");
+  });
+
+  // StopAgent and AgentStatus: always have constrainedSampling
+  for (const toolName of ["StopAgent", "AgentStatus"]) {
+    it(`${toolName} has constrainedSampling (always)`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
       expect(tool!.constrainedSampling).toEqual({
@@ -474,3 +499,70 @@ describe("constrained sampling", () => {
     });
   }
 });
+
+describe("constrained sampling — toggle ON", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    // Mock config-io to return agentToolConstrainedSampling: true
+    vi.doMock("../src/config/config-io.js", () => ({
+      DEFAULT_GRACE_TURNS: 6,
+      VALID_SYSTEM_PROMPT_MODES: new Set(["replace", "inherit", "custom"]),
+      DEFAULT_CONCURRENCY: { default: 4 },
+      CUSTOM_PROMPT_PATH: "/fake/path",
+      loadConfig: () => ({
+        agent: {
+          default: null,
+          forceBackground: false,
+          agentToolConstrainedSampling: true,
+        },
+        concurrency: { default: 4 },
+      }),
+      saveConfigAtomic: vi.fn(),
+    }));
+    vi.resetModules();
+
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  afterAll(() => {
+    // Clean up mock after this describe block
+  });
+
+  it("Agent has constrainedSampling when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool).toBeDefined();
+    expect(tool!.constrainedSampling).toEqual({
+      type: "json_schema",
+      strict: "prefer",
+    });
+  });
+
+  it("Agent schema has all fields in required when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    const required = tool!.parameters.required ?? [];
+    expect(required).toContain("prompt");
+    expect(required).toContain("description");
+    expect(required).toContain("agent");
+    expect(required).toContain("run_in_background");
+    expect(required).toContain("worktree_path");
+  });
+
+  it("Agent optional fields use nullable anyOf pattern when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    const props = tool!.parameters.properties;
+    expect(props.description.type).toBe("union");
+    expect(props.agent.type).toBe("union");
+    expect(props.run_in_background.type).toBe("union");
+    expect(props.worktree_path.type).toBe("union");
+  });
+
+  it("Agent schema has additionalProperties: false when toggle is ON", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool!.parameters.additionalProperties).toBe(false);
+  });
+});
+
+// Clean up the doMock applied for the ON test suite
+vi.unmock("../src/config/config-io.js");

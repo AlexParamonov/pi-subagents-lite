@@ -60,7 +60,7 @@ export function shellMock(fns: ShellMockFns = {}) {
   const pi = fns.pi ?? { sendMessage: vi.fn(), exec: vi.fn() };
   const sessionCtx = fns.sessionCtx ?? { cwd: "/home/test" };
   const store = fns.store ?? {
-    agent: { graceTurns: 6, forceBackground: false, showCost: false },
+    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolConstrainedSampling: false },
     modelFor: () => "",
   };
   const coordinator = fns.coordinator ?? { spawn: vi.fn() };

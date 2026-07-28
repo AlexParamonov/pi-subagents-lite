@@ -23,23 +23,37 @@ const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
  */
 export function registerAgentTool(pi: ExtensionAPI): void {
   const types = getAvailableTypes();
-  // Use plain string to avoid verbose anyOf in prompt.
-  // Available types are listed in description for discoverability.
-  const agentParam = types.length > 0
-    ? Type.Optional(Type.String({ description: types.join(",") }))
-    : Type.Optional(Type.String());
+  const useConstrained = getStore().agent.agentToolConstrainedSampling;
+
+  // Build schema differently based on constrained sampling toggle.
+  // ON: all fields required, optional fields become nullable (anyOf string|null).
+  // OFF: original optional schema, no constrainedSampling.
+  const params = useConstrained
+    ? Type.Object({
+        prompt: Type.String(),
+        description: Type.Union([Type.String(), Type.Null()]),
+        agent: types.length > 0
+          ? Type.Union([Type.String({ description: types.join(",") }), Type.Null()])
+          : Type.Union([Type.String(), Type.Null()]),
+        run_in_background: Type.Union([Type.Boolean(), Type.Null()]),
+        worktree_path: Type.Union([Type.String(), Type.Null()]),
+      }, { additionalProperties: false, required: ["prompt", "description", "agent", "run_in_background", "worktree_path"] })
+    : Type.Object({
+        prompt: Type.String(),
+        description: Type.Optional(Type.String()),
+        agent: types.length > 0
+          ? Type.Optional(Type.String({ description: types.join(",") }))
+          : Type.Optional(Type.String()),
+        run_in_background: Type.Optional(Type.Boolean()),
+        worktree_path: Type.Optional(Type.String()),
+      }, { additionalProperties: false });
+
   const tool = {
     name: "Agent",
     label: "Agent",
-    parameters: Type.Object({
-      prompt: Type.String(),
-      description: Type.Optional(Type.String()),
-      agent: agentParam,
-      run_in_background: Type.Optional(Type.Boolean()),
-      worktree_path: Type.Optional(Type.String()),
-    }, { additionalProperties: false }),
+    parameters: params,
     execute: executeAgentTool,
-    constrainedSampling: CONSTRAINED_SAMPLING,
+    ...(useConstrained ? { constrainedSampling: CONSTRAINED_SAMPLING } : {}),
 
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
 
