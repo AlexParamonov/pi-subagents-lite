@@ -21,11 +21,33 @@ import { fakeCtx } from "../fixtures.ts";
 /* ------------------------------------------------------------------ */
 
 // Use vi.hoisted so mock factories can reference these at hoisting time
-const { mockValidateWorktreePath, mockSpawn, mockGetRecord, mockDiscoverNewAgents } = vi.hoisted(() => ({
+const { mockValidateWorktreePath, mockSpawn, mockGetRecord, mockDiscoverNewAgents, mockCoordinatorSpawn } = vi.hoisted(() => ({
   mockValidateWorktreePath: vi.fn(),
   mockSpawn: vi.fn().mockReturnValue("agent-id-123"),
   mockGetRecord: vi.fn(),
   mockDiscoverNewAgents: vi.fn(),
+  mockCoordinatorSpawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
+    const manager = {
+      spawn: mockSpawn,
+      getRecord: mockGetRecord,
+    };
+    const id = manager.spawn(_pi, _ctx, intent.type, intent.prompt, {
+      description: intent.description,
+      model: intent.model,
+      maxTurns: intent.maxTurns,
+      thinkingLevel: intent.thinkingLevel,
+      modelKey: intent.modelKey,
+      graceTurns: intent.graceTurns,
+      worktreePath: intent.worktreePath,
+      worktreeLabel: intent.worktreeLabel,
+      isBackground: intent.runInBackground,
+    });
+    const record = manager.getRecord(id);
+    if (!intent.runInBackground && record?.execution?.promise) {
+      await record.execution.promise;
+    }
+    return { agentId: id, record };
+  }),
 }));
 
 vi.mock("../../src/spawn/worktree-validator.js", () => ({
@@ -71,6 +93,7 @@ vi.mock("../../src/shell.js", () => ({
     getRecord: mockGetRecord,
     listAgents: vi.fn(() => []),
     getTotalAgentCost: vi.fn(() => 0),
+    getTotalAgentCount: vi.fn(() => 0),
     abort: vi.fn(() => false),
   }),
   getWidget: () => ({
@@ -78,29 +101,7 @@ vi.mock("../../src/shell.js", () => ({
     update: vi.fn(),
   }),
   getCoordinator: () => ({
-    spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
-      // Delegate to the mocked manager.spawn
-      const manager = {
-        spawn: mockSpawn,
-        getRecord: mockGetRecord,
-      };
-      const id = mockSpawn(_pi, _ctx, intent.type, intent.prompt, {
-        description: intent.description,
-        model: intent.model,
-        maxTurns: intent.maxTurns,
-        thinkingLevel: intent.thinkingLevel,
-        modelKey: intent.modelKey,
-        graceTurns: intent.graceTurns,
-        worktreePath: intent.worktreePath,
-        worktreeLabel: intent.worktreeLabel,
-        isBackground: intent.runInBackground,
-      });
-      const record = mockGetRecord(id);
-      if (!intent.runInBackground && record?.execution?.promise) {
-        await record.execution.promise;
-      }
-      return { agentId: id, record };
-    }),
+    spawn: mockCoordinatorSpawn,
     isBackground: vi.fn(() => false),
     scheduleNudge: vi.fn(),
     onAgentComplete: vi.fn(),
@@ -111,12 +112,13 @@ vi.mock("../../src/shell.js", () => ({
 vi.mock("../../src/agents/usage.js", () => ({
   addUsage: vi.fn(),
   getLifetimeTotal: vi.fn(() => 0),
-  getSessionContextPercent: vi.fn(() => null),
+  getSessionUsageSnapshot: vi.fn(() => undefined),
 }));
 
 // Import after mocks are in place
 import { executeAgentTool } from "../../src/agents/tool-execution.js";
 import * as agentTypes from "../../src/agents/agent-types.js";
+import * as utils from "../../src/utils.js";
 
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */
@@ -301,6 +303,22 @@ describe("executeAgentTool — worktree_path validation", () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toBe("Agent completed successfully");
+  });
+
+  it("stores the resolved thinking level in the tool spawn invocation", async () => {
+    vi.mocked(agentTypes.getAgentConfig).mockReturnValue({ maxTurns: 25, thinkingLevel: "high" } as any);
+    vi.mocked(utils.findModelInRegistry).mockReturnValue({ provider: "anthropic", id: "sonnet" } as any);
+
+    await executeAgentTool("tc-thinking", makeParams({ model: "anthropic/sonnet" }), undefined, undefined, ctx);
+
+    expect(mockCoordinatorSpawn).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      expect.objectContaining({
+        thinkingLevel: "high",
+        invocation: { modelName: "sonnet", thinkingLevel: "high" },
+      }),
+    );
   });
 
   it("does not crash the parent when validator throws unexpectedly", async () => {

@@ -8,18 +8,21 @@
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { AgentRecord, AgentStatus } from "../types.js";
-import { getSessionContextPercent } from "../agents/usage.js";
+import type { AgentRecord } from "../types.js";
+import { getSessionUsageSnapshot } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
 import { makeMarkdownTheme } from "./markdown-theme.js";
 import {
   buildInvocationTags,
-  buildStatsParts,
+  buildStatsCells,
+  formatStatsRow,
   describeActivity,
   fgPreservingNestedStyles,
+  getAgentStatusDisplay,
   getDisplayName,
   summarizeToolArgs,
+  type StatsVisibility,
 } from "./format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 
@@ -34,17 +37,6 @@ const TOOL_RESULT_MAX_CHARS = 500;
 const TOOL_RESULT_MAX_LINES = 5;
 /** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
 const STREAM_RENDER_DEBOUNCE_MS = 100;
-
-/** Header status icon and its theme color, per lifecycle status. */
-const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
-  running: { icon: "◈", color: "accent" },
-  completed: { icon: "✓", color: "success" },
-  turn_limited: { icon: "✓", color: "warning" },
-  error: { icon: "✗", color: "error" },
-  aborted: { icon: "✗", color: "error" },
-  stopped: { icon: "✗", color: "error" },
-  queued: { icon: "◇", color: "dim" },
-};
 
 export class ConversationViewer implements Component {
   private scrollOffset = 0;
@@ -89,6 +81,8 @@ export class ConversationViewer implements Component {
     keybindings?: ViewerKeybindings,
     /** Send a steering message to the agent. Omitted -> no compose affordance. */
     private onSteer?: (message: string) => void,
+    /** Configured visibility of the shared usage statistics. */
+    private statsVisibility?: StatsVisibility,
   ) {
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
@@ -242,21 +236,35 @@ export class ConversationViewer implements Component {
     const name = getDisplayName(this.record.display.type);
 
     const status = this.record.lifecycle.status;
-    const { icon, color } = STATUS_ICON[status];
+    const { icon, color } = getAgentStatusDisplay(status);
     const statusIcon = th.fg(color, icon);
-    // Build stats line like the widget
+    // Build stats line like the widget, retaining the final snapshot after a
+    // completed session has no longer-live context information.
     const durationMs = (this.record.lifecycle.completedAt ?? Date.now()) - this.record.lifecycle.startedAt;
-    const statsParts = buildStatsParts({
+    const liveSnapshot = getSessionUsageSnapshot(this.session);
+    const persistedSnapshot = {
+      contextPercent: this.record.stats.contextPercent,
+      contextWindow: this.record.stats.contextWindow,
+      autoCompactionEnabled: this.record.stats.autoCompactionEnabled,
+      usingSubscription: this.record.stats.usingSubscription,
+    };
+    const usageSnapshot = this.record.lifecycle.completedAt != null
+      && (persistedSnapshot.contextPercent != null || persistedSnapshot.contextWindow != null)
+      ? persistedSnapshot
+      : (liveSnapshot ?? persistedSnapshot);
+    const statsCells = buildStatsCells({
       toolUses: this.record.stats.toolUses,
       turnCount: this.record.stats.turnCount,
       maxTurns: this.record.stats.maxTurns,
       input: this.record.stats.lifetimeUsage.input,
       output: this.record.stats.lifetimeUsage.output,
-      contextPercent: getSessionContextPercent(this.session),
-      compactions: this.record.stats.compactionCount,
+      cacheRead: this.record.stats.cacheRead,
+      cacheWrite: this.record.stats.lifetimeUsage.cacheWrite,
+      latestCacheHitRate: this.record.stats.latestCacheHitRate,
       cost: this.record.stats.lifetimeUsage.cost,
+      ...usageSnapshot,
       durationMs,
-    }, th);
+    }, th, this.statsVisibility);
 
     const worktreeTag = this.record.display.worktreeLabel ? th.fg("muted", ` @${this.record.display.worktreeLabel}`) : "";
     // Row 1: status icon, name, description, worktree
@@ -265,13 +273,14 @@ export class ConversationViewer implements Component {
     ));
 
     // Row 2: model name + compact usage stats
-    const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
-    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
+    const { modelName, thinkingTag, tags } = buildInvocationTags(this.record.display.invocation);
+    const statsLine = fgPreservingNestedStyles(th, "dim", formatStatsRow(statsCells) ?? "");
     if (modelName) {
-      const parts = [statsLine, ...tags].filter(Boolean);
+      const parts = [thinkingTag, statsLine, ...tags].filter(Boolean);
       lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));
     } else {
-      lines.push(row(statsLine));
+      const parts = [thinkingTag, statsLine].filter(Boolean);
+      lines.push(row(parts.join(" · ")));
     }
     lines.push(hrMid);
 

@@ -33,6 +33,8 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   widgetDescLengthCompact: 30,
   widgetCompact: false,
   widgetShortcut: false,
+  widgetShowModelThinking: true,
+  widgetShowStartTime: true,
   widgetNavHint: true,
   systemPromptMode: "replace",
   includeContextFiles: true,
@@ -45,6 +47,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showCost: false,
   showTime: true,
   deltaInputTokens: false,
+  outputThinkingBufferSize: 0,
   finishedRetentionMinutes: 10,
 };
 

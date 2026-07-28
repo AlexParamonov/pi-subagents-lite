@@ -50,17 +50,15 @@ pi -e npm:pi-subagents-lite           # try without installing
 
 The LLM calls `Agent` like any other tool. Foreground agents return inline with stats; background agents acknowledge immediately and auto-deliver on completion.
 
-Running agents appear in the live widget:
+Agents appear in the live widget:
 
 ```
 ◈ Agents
-├─ ⠙ Agent  Write model precedence unit tests  6🛠 ·3⟳ ·↑6.8k↓1.3k 6%·12s
-│  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
-│  └ The file already exists but is ~175 lines. The user wants a …
-├─ ⠙ Agent  Code review of agent-runner.ts  4🛠 ·2⟳ ·↑7.2k↓1.5k 4%·12s
-│  └ Now let me check the types and related files for context on …
-└─ ⠙ Explore  Explore codebase architecture  13🛠 ·4⟳ ·↑16.1k↓2.9k 15%·12s
-   └ ## Architecture Summary: pi-subagents-lite
+  ⠙ 09:42 Agent    Write model precedence unit tests  6⚙︎  3⟳ · ↑6.8k ↓1.3k 6.0%/128k (auto) · 12s
+  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
+  └ The file already exists but is ~175 lines. The user wants a …
+  ◇ 09:41 Agent    Review agent-runner.ts
+  ✓ 09:40 Explore  Explore codebase architecture  13⚙︎  4⟳ · ↑16k ↓2.9k 15.0%/128k (auto) · 12s
 ```
 
 Background agents deliver a result notification when done:
@@ -68,7 +66,7 @@ Background agents deliver a result notification when done:
 ```
  Subagent Result
 
- ✓ Explore (model-name)·13🛠 ·5⟳ ·↑25.9k↓4.9k 15%·21s
+ ✓ Explore (model-name) · 13⚙︎  5⟳ · ↑25.9k ↓4.9k 15% · 21s
    Explore codebase architecture
    tail -f /tmp/pi-agent-outputs/4f6b0f08-7a9a-419.log
 ```
@@ -77,7 +75,7 @@ Foreground results land inline:
 
 ```
  ▸ Explore
- ✓ 31🛠 ·6⟳ ·↑48.1k↓9.2k 28%·39s
+ ✓ 31⚙︎  6⟳ · ↑48.1k ↓9.2k 28% · 39s
    Explore project directory structure
 ```
 
@@ -85,7 +83,7 @@ Stop a running agent from `/agents`:
 
 ```
 ○ Agents
-└─ ■ Agent  Code review of agent-runner.ts  12🛠 ·10⟳ ·↑32.8k↓6.2k 8%·52s stopped
+  ■ 09:42 Agent  Code review of agent-runner.ts  12⚙︎  10⟳ · ↑32.8k ↓6.2k 8% · 52s stopped
     tail -f /tmp/pi-agent-outputs/23689696-3cd3-400.log
 ```
 
@@ -251,27 +249,27 @@ Management menu with four sections:
   - **Spawn options** — force background, grace turns, default max turns, default thinking, disable default agents
   - **System prompt** — mode, custom prompt file, include AGENTS.md, load skills/extensions implicitly
   - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
-  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time)
+  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time in the widget and conversation viewer)
 
 ## Interface
 
 ### Live widget
 
-Persistent bar above the editor showing running and completed agents, updating live. Running agents show a spinner, current tool activity, turn count, token usage (with optional context-fill %), and elapsed time. Completed agents show a check mark with final stats. Click the `tail -f` path to follow output logs.
+Persistent bar above the editor showing running, queued, and completed agents in one newest-first list, updating live. `widgetShowModelThinking` controls one shared model-and-thinking column; when OFF, both values and their column are removed to free space. When `widgetShowStartTime` is ON (the default), every row shows its local creation/start time (`HH:MM`) directly after its status symbol; for queued agents this is the time it entered the queue. Running agents show a spinner, current tool activity, turn count, Pi-compatible token/cache/cost usage, context window utilization, and elapsed time. Completed agents retain their final context and subscription snapshot. Under overflow, running and queued rows take precedence over completed rows, then the visible rows are put back into newest-first order. Click the `tail -f` path to follow output logs.
 
-**Full mode** (tree, header + `tail -f` path + activity):
+**Full mode** (header + `tail -f` path + activity):
 ```
-├─ ⠙ Explore  description  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s
-│  │ tail -f /tmp/pi-agent-outputs/...
-│  └ thinking…
+  ⠙ 09:42 Explore  description  3⚙︎  5≤30⟳ · ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto) · 1h 2m 3s
+  │ tail -f /tmp/pi-agent-outputs/...
+  └ thinking…
 ```
 
 **Compact mode** (single line, description truncated, activity inline):
 ```
-├─ ⠙ Explore  description trunc…  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s  thinking…
+  ⠙ 09:42 Explore  description trunc…  3⚙︎  5≤30⟳ · ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto) · 1h 2m 3s  thinking…
 ```
 
-Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal < 80%, warning 80–99%, error at 100%. The max is hidden when well below the limit. Token glyphs (`↑` input, `↓` output) are self-explanatory — no "tokens" label.
+Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal < 80%, warning 80–99%, error at 100%. The max is hidden when well below the limit. The contiguous usage group follows Pi: `↑input ↓output Rcache-read Wcache-write CHhit-rate $cost context/window (auto)`. Input visibility also controls cache fields; output, context, and cost remain independently configurable.
 
 Compact mode is active when **Force compact** is ON, or **ctrl+o shortcut** is ON and the user has collapsed tool expansion. Force compact always wins.
 
@@ -281,7 +279,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Cost display** ON, shows dollar cost. Toggle as a session override from Model settings.
+**Stats line:** `15⟳ · ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto) · 47s`. Tools and turns form one counter group with two spaces between them; Pi footer metrics remain contiguous, with ` · ` separating the counter, Pi, and duration groups. The configured stats-visibility toggles also apply here, including **Cost display**. The same Pi-compatible usage group is used by foreground and background result cards.
 
 ## Configuration
 
@@ -300,11 +298,18 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
     "showOutput": true,
     "showContext": true,
     "showTime": true,
+    "deltaInputTokens": false,
     "widgetMaxLines": 12,
     "widgetMaxLinesCompact": 6,
     "widgetDescLengthFull": 50,
+    "widgetDescLengthCompact": 30,
     "widgetCompact": true,
     "widgetShortcut": false,
+    "widgetShowModelThinking": true,
+    "widgetShowStartTime": true,
+    "widgetNavHint": true,
+    "outputThinkingBufferSize": 0,
+    "finishedRetentionMinutes": 10,
     "systemPromptMode": "inherit",
     "includeContextFiles": true,
     "loadSkillsImplicitly": false,
@@ -330,19 +335,26 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 | Field | Default | Description |
 |---|---|---|
-| `widgetMaxLines` | `12` | Max body lines in full mode (excluding heading). |
-| `widgetMaxLinesCompact` | half of `widgetMaxLines` | Max body lines in compact mode. |
+| `widgetMaxLines` | `12` | Max total lines in full mode, including the heading. |
+| `widgetMaxLinesCompact` | half of `widgetMaxLines` | Max total lines in compact mode, including the heading. |
 | `widgetDescLengthFull` | `50` | Max description length in full mode. |
 | `widgetDescLengthCompact` | `30` | Max description length in compact mode. |
 | `widgetCompact` | `false` | Force compact mode regardless of ctrl+o state. |
 | `widgetShortcut` | `false` | When ON, ctrl+o (tool expansion toggle) syncs with widget compact mode. When OFF, compact is manual via `widgetCompact`. |
-| `outputThinkingBufferSize` | `200` | Thinking buffer ring size in chars. `0` = OFF. Flushes to output log at sentence boundaries. |
+| `widgetShowModelThinking` | `true` | Show one model-and-thinking column in every agent row. OFF removes the values and frees its space. |
+| `widgetShowStartTime` | `true` | Show each row's local `HH:MM` creation/start time. Queued rows show their queue-entry time. |
+| `widgetNavHint` | `true` | Show the `↓ to navigate` tip in the widget heading. |
+| `outputThinkingBufferSize` | `0` | Thinking buffer ring size in chars. `0` = OFF. Flushes to output log at sentence boundaries. |
+| `finishedRetentionMinutes` | `10` | Minutes to retain finished agents in the widget. |
+| `deltaInputTokens` | `false` | Estimate input-token deltas for vLLM-style providers without cache reporting. |
 
 ### Stats visibility
 
+These toggles apply to the live widget and conversation viewer.
+
 | Field | Default | Description |
 |---|---|---|
-| `showTools` | `true` | Tool count (🛠). |
+| `showTools` | `true` | Tool count (⚙︎). |
 | `showTurns` | `true` | Turn count (⟳). |
 | `showInput` | `true` | Input tokens (↑). |
 | `showOutput` | `true` | Output tokens (↓). |

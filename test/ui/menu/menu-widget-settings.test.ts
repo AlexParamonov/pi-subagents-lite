@@ -91,6 +91,31 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
     expect(compact.currentValue).toBe("ON");
   });
+
+  it("shows navigation hint with its configured value", async () => {
+    mockModules.mockConfig.agent.widgetNavHint = false;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const navHint = settingsListCalls[0].items.find((i: any) => i.id === "navHint");
+    expect(navHint.currentValue).toBe("OFF");
+  });
+
+  it("shows model and thinking with its configured value", async () => {
+    mockModules.mockConfig.agent.widgetShowModelThinking = false;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const modelThinking = settingsListCalls[0].items.find((i: any) => i.id === "showModelThinking");
+    expect(modelThinking.label).toBe("Show model & thinking");
+    expect(modelThinking.currentValue).toBe("OFF");
+  });
+
+  it("shows local start time with its configured value", async () => {
+    mockModules.mockConfig.agent.widgetShowStartTime = false;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const startTime = settingsListCalls[0].items.find((i: any) => i.id === "showStartTime");
+    expect(startTime.currentValue).toBe("OFF");
+  });
 });
 
 describe("showWidgetSettingsMenu — toggle onChange", () => {
@@ -127,6 +152,20 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
     settingsListCalls[0].onChange("shortcut", "ON");
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("toggles model and thinking, local start time, and navigation hint via onChange", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("showModelThinking", "OFF");
+    settingsListCalls[0].onChange("showStartTime", "OFF");
+    settingsListCalls[0].onChange("navHint", "OFF");
+    expect(mockModules.mockConfig.agent.widgetShowModelThinking).toBe(false);
+    expect(mockModules.mockConfig.agent.widgetShowStartTime).toBe(false);
+    expect(mockModules.mockConfig.agent.widgetNavHint).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show model & thinking OFF", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show local start time OFF", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Navigation hint OFF", "info");
   });
 });
 
@@ -211,7 +250,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     expect(mockDone).toHaveBeenCalled();
   });
 
-  it("compact max lines submenu rejects value below 1", async () => {
+  it("compact max lines submenu rejects values below 2", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
@@ -220,7 +259,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     const mockDone = vi.fn();
     maxLinesCompact.submenu("6", mockDone);
 
-    inputInstances[0].onSubmit!("0");
+    inputInstances[0].onSubmit!("1");
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
   });

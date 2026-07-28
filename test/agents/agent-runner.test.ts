@@ -536,6 +536,62 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     unsub();
   });
 
+  it("reports successful compaction usage separately from assistant usage", () => {
+    const onAssistantUsage = vi.fn();
+    const onSupplementalUsage = vi.fn();
+    const onCompaction = vi.fn();
+    const session = createMockSession();
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage, onSupplementalUsage, onCompaction });
+
+    session._getListeners()[0]({
+      type: "compaction_end",
+      reason: "threshold",
+      aborted: false,
+      result: {
+        tokensBefore: 1000,
+        usage: { input: 400, output: 50, cacheRead: 300, cacheWrite: 25, cost: { total: 0.12 } },
+      },
+    });
+
+    expect(onSupplementalUsage).toHaveBeenCalledWith({
+      input: 400,
+      output: 50,
+      cacheRead: 300,
+      cacheWrite: 25,
+      cost: 0.12,
+    });
+    expect(onAssistantUsage).not.toHaveBeenCalled();
+    expect(onCompaction).toHaveBeenCalledWith({ reason: "threshold", tokensBefore: 1000 });
+
+    unsub();
+  });
+
+  it("reports typed tool-result usage separately from assistant usage", () => {
+    const onAssistantUsage = vi.fn();
+    const onSupplementalUsage = vi.fn();
+    const session = createMockSession();
+    const unsub = subscribeToSessionEvents(session, { onAssistantUsage, onSupplementalUsage });
+
+    session._getListeners()[0]({
+      type: "message_end",
+      message: {
+        role: "toolResult",
+        usage: { input: 30, output: 5, cacheRead: 20, cacheWrite: 10, cost: { total: 0.03 } },
+      },
+    });
+
+    expect(onSupplementalUsage).toHaveBeenCalledWith({
+      input: 30,
+      output: 5,
+      cacheRead: 20,
+      cacheWrite: 10,
+      cost: 0.03,
+    });
+    expect(onAssistantUsage).not.toHaveBeenCalled();
+
+    unsub();
+  });
+
   it("does not fire onAssistantUsage for user message_end events", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();

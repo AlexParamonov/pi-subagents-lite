@@ -72,6 +72,7 @@ vi.mock("../src/agents/agent-manager.js", () => ({
     getAgent() { return undefined; }
     setConcurrency() {}
     getTotalAgentCost() { return 0; }
+    getTotalAgentCount() { return 0; }
     setOnComplete() {}
     dispose() { return Promise.resolve(); }
   },
@@ -111,6 +112,7 @@ vi.mock("../src/ui/format.js", () => ({
 const mockManager: any = {
   listAgents: vi.fn(() => []),
   getTotalAgentCost: vi.fn(() => 0),
+  getTotalAgentCount: vi.fn(() => 0),
 };
 
 const mockWidget: any = {

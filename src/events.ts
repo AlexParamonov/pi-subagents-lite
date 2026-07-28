@@ -133,6 +133,7 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
           () => manager?.abort(record.id, "user"),
           kb,
           (msg: string) => manager?.steer(record.id, msg),
+          getStore().agent,
         ),
       { overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` } },
     );

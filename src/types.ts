@@ -168,8 +168,15 @@ export interface AgentAccumulatedStats {
   compactionCount: number;
   /** Previous input token count for delta estimation (vLLM doesn't report cache hits). */
   prevInputTokens?: number;
-  /** Last-known context usage percentage (0–100), captured at completion. */
+  /** Pi-style cumulative cache reads (each request's cache prefix is counted). */
+  cacheRead: number;
+  /** Cache hit rate from the most recent usage event. */
+  latestCacheHitRate?: number;
+  /** Final context/auth snapshot, retained after the live session is gone. */
   contextPercent?: number | null;
+  contextWindow?: number;
+  autoCompactionEnabled?: boolean;
+  usingSubscription?: boolean;
 }
 
 

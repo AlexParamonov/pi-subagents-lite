@@ -6,6 +6,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import type { Usage } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
@@ -105,8 +106,15 @@ function normalizeMaxTurns(n: number | undefined): number | undefined {
   return Math.max(1, n);
 }
 
-/** Info about a tool event in the subagent. */
-interface RunOptions extends RunTunables, RunCallbacks {
+/**
+ * Internal usage channel for billable work that is not an assistant turn.
+ * These usages must not affect assistant-only input-delta or cache-hit metrics.
+ */
+interface SupplementalUsageCallbacks {
+  onSupplementalUsage?: (usage: AgentUsage) => void;
+}
+
+interface RunOptions extends RunTunables, RunCallbacks, SupplementalUsageCallbacks {
   /** ExtensionAPI instance — used for pi.exec() for git detection. */
   pi: ExtensionAPI;
   /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
@@ -187,15 +195,26 @@ function usageFromAssistantMessage(msg: Record<string, unknown>): AgentUsage | u
   };
 }
 
+/** Convert typed upstream usage from compaction or tool results to local accounting. */
+function usageFromTypedUsage(usage: Usage): AgentUsage {
+  return {
+    input: usage.input,
+    output: usage.output,
+    cacheWrite: usage.cacheWrite,
+    cacheRead: usage.cacheRead,
+    cost: usage.cost.total,
+  };
+}
+
 /**
  * Subscribe to shared session events (tool activity, usage, compaction)
  * used by runAgent. Returns an unsubscribe function.
  */
 export function subscribeToSessionEvents(
   session: AgentSession,
-  options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
+  options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onSupplementalUsage" | "onCompaction">,
 ): () => void {
-  if (!options.onToolActivity && !options.onAssistantUsage && !options.onCompaction) {
+  if (!options.onToolActivity && !options.onAssistantUsage && !options.onSupplementalUsage && !options.onCompaction) {
     return () => {};
   }
   return session.subscribe((event: AgentSessionEvent) => {
@@ -212,7 +231,13 @@ export function subscribeToSessionEvents(
         options.onAssistantUsage?.(usage);
       }
     }
+    if (event.type === "message_end" && event.message.role === "toolResult" && event.message.usage) {
+      options.onSupplementalUsage?.(usageFromTypedUsage(event.message.usage));
+    }
     if (event.type === "compaction_end" && !event.aborted && event.result) {
+      if (event.result.usage) {
+        options.onSupplementalUsage?.(usageFromTypedUsage(event.result.usage));
+      }
       options.onCompaction?.({ reason: event.reason, tokensBefore: event.result.tokensBefore });
     }
   });
