@@ -56,7 +56,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       id: "defaultThinking",
       label: "Default thinking level",
       currentValue: store.agent.defaultThinking ?? "inherit",
-      values: ["off", "minimal", "low", "medium", "high", "xhigh", "inherit"],
+      values: ["off", "minimal", "low", "medium", "high", "xhigh", "max", "inherit"],
       description: "Thinking level applied when agent frontmatter omits one.",
     },
     {
