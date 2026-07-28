@@ -7,12 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **Finished agents no longer vanish mid-navigation.** Widget eviction unified with manager retention — one configurable clock instead of two conflicting ones.
+## [1.5.2] - 2026-07-28
 
 ### Added
+- **Configurable turn-based eviction for finished agents.** Widget evicts agents after a configurable number of idle turns (default 4). Gated behind `finishedEvictTurns` setting.
 - **`finishedRetentionMinutes` setting** (Widget Settings, default 10, min 1). Controls how long finished agents stay visible.
 - **Navigation highlight clamps** when roster shrinks from agent eviction.
+- **`max` in spawn menu.** Max thinking level now selectable in the spawn wizard.
+
+### Changed
+- **Finished agents no longer vanish mid-navigation.** Widget eviction unified with manager retention.
+- **Agent tool result message clearer.** Delegation confirmation now explicitly states the agent was spawned.
+
+### Fixed
+- **Turn eviction timing corrected.** Eviction now triggers on `turn_start` instead of `tool_execution_start`, preventing incorrect eviction.
+- **Widget error containment.** Render, timer, and turn errors are caught and logged instead of crashing the widget.
+- **Extension tools available to subagent sessions.** Tools registered by extensions now pass through to subagent sessions correctly.
+- **Nav breakage after eviction fixed.** Roster navigation stays consistent when agents are evicted.
+
 
 ## [1.5.1] - 2026-07-26
 
