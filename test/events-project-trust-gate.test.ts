@@ -1,17 +1,15 @@
 /**
- * events-home-dir.test.ts — Verifies scanAndRegisterAgents uses getAgentDir()
- * instead of process.env.HOME for the user agent directory.
+ * events-project-trust-gate.test.ts — Verifies scanAndRegisterAgents gates
+ * project-local agent directories behind ctx.isProjectTrusted().
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { join } from "node:path";
 
 const mockSetAgentScanDirs = vi.fn();
 
-// Windows-style fixtures: the fix targets Windows, where HOME may be unset
-// and paths contain backslashes and spaces.
-const MOCK_AGENT_DIR = "C:\\Users\\Pi User\\.pi\\agent";
-const MOCK_CWD = "C:\\project";
+const MOCK_AGENT_DIR = "/home/user/.pi/agent";
+const MOCK_CWD = "/home/user/project";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => MOCK_AGENT_DIR,
@@ -116,16 +114,55 @@ vi.mock("@earendil-works/pi-tui", () => ({
 // Import after mocks
 const { scanAndRegisterAgents } = await import("../src/events.js");
 
-describe("events.ts home directory resolution", () => {
-  it("uses getAgentDir() for user agent directory", async () => {
-    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
+describe("events.ts project trust gate", () => {
+  beforeEach(() => {
+    mockSetAgentScanDirs.mockClear();
+  });
+
+  it("loads project dirs when project is trusted", async () => {
+    const ctx = {
+      cwd: MOCK_CWD,
+      isProjectTrusted: () => true,
+    } as any;
     await scanAndRegisterAgents(ctx);
 
-    // Scan dirs: user (from getAgentDir()), project, shared
     expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
       join(MOCK_AGENT_DIR, "agents"),
       join(MOCK_CWD, ".pi", "agents"),
       join(MOCK_CWD, ".agents", "agents"),
     );
+  });
+
+  it("skips project dirs when project is untrusted", async () => {
+    const ctx = {
+      cwd: MOCK_CWD,
+      isProjectTrusted: () => false,
+    } as any;
+    await scanAndRegisterAgents(ctx);
+
+    expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
+      join(MOCK_AGENT_DIR, "agents"), // user dir always loaded
+      "", // projectAgentDir blocked
+      "", // sharedAgentDir blocked
+    );
+  });
+
+  it("always loads user-level agent dir regardless of trust", async () => {
+    // Trusted
+    {
+      const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
+      await scanAndRegisterAgents(ctx);
+      const [userDir] = mockSetAgentScanDirs.mock.calls[0];
+      expect(userDir).toBe(join(MOCK_AGENT_DIR, "agents"));
+    }
+
+    // Untrusted
+    mockSetAgentScanDirs.mockClear();
+    {
+      const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => false } as any;
+      await scanAndRegisterAgents(ctx);
+      const [userDir] = mockSetAgentScanDirs.mock.calls[0];
+      expect(userDir).toBe(join(MOCK_AGENT_DIR, "agents"));
+    }
   });
 });

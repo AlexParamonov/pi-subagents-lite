@@ -84,8 +84,9 @@ export function ensureManagerAndWidget(): void {
 export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   const agentDir = getAgentDir();
   const userAgentDir = path.join(agentDir, "agents");
-  const sharedAgentDir = path.join(ctx.cwd, ".agents", "agents");
-  const projectAgentDir = path.join(ctx.cwd, ".pi", "agents");
+  const projectTrusted = ctx.isProjectTrusted();
+  const sharedAgentDir = projectTrusted ? path.join(ctx.cwd, ".agents", "agents") : "";
+  const projectAgentDir = projectTrusted ? path.join(ctx.cwd, ".pi", "agents") : "";
 
   // Store scan dirs for on-demand discovery (agents added during the session)
   setAgentScanDirs(userAgentDir, projectAgentDir, sharedAgentDir);
