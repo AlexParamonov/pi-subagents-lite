@@ -28,9 +28,9 @@ export const mockModules = {
   mockSessionCtx: {
     modelRegistry: {
       find: vi.fn((provider: string, modelId: string) => {
-        const known: Record<string, { provider: string; id: string }> = {
-          "openai/gpt-4o": { provider: "openai", id: "gpt-4o" },
-          "anthropic/claude-sonnet-4-20250514": { provider: "anthropic", id: "claude-sonnet-4-20250514" },
+        const known: Record<string, any> = {
+          "openai/gpt-4o": { provider: "openai", id: "gpt-4o", reasoning: false },
+          "anthropic/claude-sonnet-4-20250514": { provider: "anthropic", id: "claude-sonnet-4-20250514", reasoning: true },
         };
         return known[`${provider}/${modelId}`];
       }),
