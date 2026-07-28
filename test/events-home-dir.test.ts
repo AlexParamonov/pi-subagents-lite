@@ -4,11 +4,17 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { join } from "node:path";
 
 const mockSetAgentScanDirs = vi.fn();
 
+// Windows-style fixtures: the fix targets Windows, where HOME may be unset
+// and paths contain backslashes and spaces.
+const MOCK_AGENT_DIR = "C:\\Users\\Pi User\\.pi\\agent";
+const MOCK_CWD = "C:\\project";
+
 vi.mock("@earendil-works/pi-coding-agent", () => ({
-  getAgentDir: () => "/mock-home/.pi/agent",
+  getAgentDir: () => MOCK_AGENT_DIR,
 }));
 
 vi.mock("../src/agents/agent-types.js", () => ({
@@ -112,14 +118,14 @@ const { scanAndRegisterAgents } = await import("../src/events.js");
 
 describe("events.ts home directory resolution", () => {
   it("uses getAgentDir() for user agent directory", async () => {
-    const ctx = { cwd: "/project" } as any;
+    const ctx = { cwd: MOCK_CWD } as any;
     await scanAndRegisterAgents(ctx);
 
-    // First scan dir is the user agent dir, built from getAgentDir() + "agents"
+    // Scan dirs: user (from getAgentDir()), project, shared
     expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
-      "/mock-home/.pi/agent/agents",
-      "/project/.pi/agents",
-      "/project/.agents/agents",
+      join(MOCK_AGENT_DIR, "agents"),
+      join(MOCK_CWD, ".pi", "agents"),
+      join(MOCK_CWD, ".agents", "agents"),
     );
   });
 });
