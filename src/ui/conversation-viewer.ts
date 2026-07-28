@@ -15,7 +15,8 @@ import type { Theme } from "./types.js";
 import { makeMarkdownTheme } from "./markdown-theme.js";
 import {
   buildInvocationTags,
-  buildStatsParts,
+  buildStatsCells,
+  formatStatsRow,
   describeActivity,
   fgPreservingNestedStyles,
   getAgentStatusDisplay,
@@ -251,7 +252,7 @@ export class ConversationViewer implements Component {
       && (persistedSnapshot.contextPercent != null || persistedSnapshot.contextWindow != null)
       ? persistedSnapshot
       : (liveSnapshot ?? persistedSnapshot);
-    const statsParts = buildStatsParts({
+    const statsCells = buildStatsCells({
       toolUses: this.record.stats.toolUses,
       turnCount: this.record.stats.turnCount,
       maxTurns: this.record.stats.maxTurns,
@@ -273,7 +274,7 @@ export class ConversationViewer implements Component {
 
     // Row 2: model name + compact usage stats
     const { modelName, thinkingTag, tags } = buildInvocationTags(this.record.display.invocation);
-    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("  "));
+    const statsLine = fgPreservingNestedStyles(th, "dim", formatStatsRow(statsCells) ?? "");
     if (modelName) {
       const parts = [thinkingTag, statsLine, ...tags].filter(Boolean);
       lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));

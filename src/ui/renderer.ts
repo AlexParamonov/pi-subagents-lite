@@ -6,7 +6,7 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
-import { buildStatsParts, formatMs, formatThinkingTag, getDisplayName } from "./format.js";
+import { buildStatsCells, formatStatsRow, formatThinkingTag, getDisplayName } from "./format.js";
 
 // ============================================================================
 // Stats rendering helpers
@@ -23,7 +23,7 @@ export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string
 
 /** Build the stats line for an agent result card. */
 export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCost: boolean): string {
-  const parts = buildStatsParts({
+  const cells = buildStatsCells({
     toolUses: (d.toolUses as number) ?? 0,
     turnCount: d.turnCount as number | undefined,
     maxTurns: d.maxTurns as number | undefined,
@@ -37,9 +37,9 @@ export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCos
     autoCompactionEnabled: d.autoCompactionEnabled as boolean | undefined,
     cost: showCost ? (d.cost as number | undefined) : undefined,
     usingSubscription: showCost ? (d.usingSubscription as boolean | undefined) : undefined,
+    durationMs: d.durationMs as number,
   }, theme);
-  parts.push(formatMs(d.durationMs as number));
-  return parts.join(" · ");
+  return formatStatsRow(cells) ?? "";
 }
 
 // ============================================================================

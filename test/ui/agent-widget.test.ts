@@ -273,7 +273,7 @@ describe("widget rendering format", () => {
       expect(line).not.toContain("[dim:");
     });
 
-    it("separates every running and finished stats group with two spaces", () => {
+    it("uses semantic stats groups while keeping tool and turn cells contiguous", () => {
       const running = makeRunningAgent("running");
       const finished = makeFinishedAgent("finished");
       for (const agent of [running, finished]) {
@@ -289,10 +289,10 @@ describe("widget rendering format", () => {
 
       expect(statsRows).toHaveLength(2);
       for (const row of statsRows) {
-        expect(row).toContain("20⚙︎  6⟳  ↑1.0k ↓500");
-        expect(row).toMatch(/↑1\.0k ↓500  (?:\d+m(?: \d+s)?|\d+s)/);
-        expect(row).not.toContain("20⚙︎ ·");
-        expect(row).not.toContain("6⟳ ·");
+        expect(row).toContain("20⚙︎  6⟳ · ↑1.0k ↓500 ·");
+        expect(row).toMatch(/↑1\.0k ↓500 · (?:\d+m(?: \d+s)?|\d+s)/);
+        expect(row).not.toContain("20⚙︎ · 6⟳");
+        expect(row).not.toContain("20⚙︎  6⟳  ↑");
       }
     });
 
@@ -311,7 +311,7 @@ describe("widget rendering format", () => {
       const statsLine = (widget as any).buildStatsLine(agent, ansiTheme);
 
       expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m");
-      expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m\u001b[97m  ");
+      expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m\u001b[97m · ");
     });
   });
 
@@ -349,6 +349,27 @@ describe("widget rendering format", () => {
       expect(lines[4]).toMatch(/^\[dim:\s{4}/);
       expect(lines[2]).toContain("out1.log");
       expect(lines[4]).toContain("out2.log");
+    });
+
+    it("dims raw finished stats without applying the running text foreground", () => {
+      const agent = makeFinishedAgent("a1");
+      agent.stats.contextPercent = 95;
+      agent.stats.contextWindow = 272000;
+      (manager as any).listAgents = () => [agent];
+      const ansiTheme = {
+        fg: (color: string, text: string) => {
+          const code = color === "dim" ? 2 : color === "error" ? 31 : color === "text" ? 97 : 37;
+          const reset = color === "dim" ? 22 : 39;
+          return `\u001b[${code}m${text}\u001b[${reset}m`;
+        },
+        bold: (text: string) => text,
+      };
+
+      const line = (widget as any).renderWidget(makeMockTUI(), ansiTheme)[1];
+
+      expect(line).toContain("\u001b[2m10⚙︎");
+      expect(line).toContain("\u001b[31m95.0%/272k\u001b[39m");
+      expect(line).not.toContain("\u001b[97m");
     });
   });
 
@@ -859,8 +880,8 @@ describe("model and thinking labels", () => {
       const plain = stripMockStyling(line);
       const nameStart = plain.indexOf(name);
       const labelStart = plain.indexOf(label);
-      expect(labelStart).toBe(nameStart + nameWidth + 3);
-      expect(plain.indexOf(description)).toBe(labelStart + labelWidth + 4);
+      expect(labelStart).toBe(nameStart + nameWidth + 2);
+      expect(plain.indexOf(description)).toBe(labelStart + labelWidth + 2);
       return plain;
     };
     const findHeader = (lines: string[], description: string) =>
@@ -871,7 +892,8 @@ describe("model and thinking labels", () => {
     const runningHeader = assertColumnGaps(findHeader(fullLines, "Running description"), "Builder", "(very-long-model · high)", "Running description");
     assertColumnGaps(findHeader(fullLines, "Queued description"), "Queue", "(sonnet)", "Queued description");
     expect(finishedHeader.indexOf("Finished description")).toBe(runningHeader.indexOf("Running description"));
-    expect(finishedHeader.indexOf("10⚙︎")).toBe(runningHeader.indexOf("5⚙︎"));
+    const statEnd = (line: string, stat: string) => visibleWidth(line.slice(0, line.indexOf(stat))) + visibleWidth(stat);
+    expect(statEnd(finishedHeader, "10⚙︎")).toBe(statEnd(runningHeader, "5⚙︎"));
 
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
@@ -883,7 +905,7 @@ describe("model and thinking labels", () => {
     queued.display.invocation = undefined;
     const noModelLines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const noModelRunningHeader = stripMockStyling(findHeader(noModelLines, "Running description"));
-    expect(noModelRunningHeader).toContain("Builder   Running description");
+    expect(noModelRunningHeader).toContain("Builder  Running description");
   });
 
   it("aligns columns by terminal width for CJK names, models, and descriptions", () => {
@@ -904,6 +926,52 @@ describe("model and thinking labels", () => {
 
     expect(columnStart(cjkHeader, "解析")).toBe(columnStart(asciiHeader, "abcdef"));
     expect(columnStart(cjkHeader, "1⚙︎")).toBe(columnStart(asciiHeader, "2⚙︎"));
+  });
+
+  it("aligns structured stats across heterogeneous running and finished rows", () => {
+    const running = makeRunningAgent("running");
+    running.lifecycle.startedAt = Date.now() - 147_000;
+    running.stats = {
+      ...running.stats,
+      toolUses: 22,
+      turnCount: 13,
+      lifetimeUsage: { input: 98_000, output: 6_000, cacheWrite: 3_000, cost: 0.024 },
+      cacheRead: 459_000,
+      latestCacheHitRate: 94.3,
+      contextPercent: 45,
+      contextWindow: 128_000,
+      autoCompactionEnabled: true,
+    };
+    const finished = makeFinishedAgent("finished");
+    finished.lifecycle.startedAt = Date.now() - 149_000;
+    finished.lifecycle.completedAt = Date.now() - 60_000;
+    finished.stats = {
+      ...finished.stats,
+      toolUses: 9,
+      turnCount: 2,
+      lifetimeUsage: { input: 78_000, output: 3_000, cacheWrite: 0, cost: 1.2 },
+      cacheRead: 85_000,
+      latestCacheHitRate: 92.1,
+      contextPercent: 9,
+      contextWindow: 128_000,
+    };
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [running, finished];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makePlainTheme());
+    const runningHeader = lines.find((line: string) => line.includes("22⚙︎"))!;
+    const finishedHeader = lines.find((line: string) => line.includes("9⚙︎"))!;
+    const start = (line: string, text: string) => visibleWidth(line.slice(0, line.indexOf(text)));
+    const end = (line: string, text: string) => start(line, text) + visibleWidth(text);
+
+    expect(runningHeader).toContain("22⚙︎  13⟳ ·");
+    expect(finishedHeader).toMatch(/\s9⚙︎\s{2}\s2⟳ ·/);
+    expect(runningHeader).not.toContain("22⚙︎ ·");
+    expect(end(runningHeader, "22⚙︎")).toBe(end(finishedHeader, "9⚙︎"));
+    expect(end(runningHeader, "13⟳")).toBe(end(finishedHeader, "2⟳"));
+    for (const [left, right] of [["↑98k", "↑78k"], ["↓6.0k", "↓3.0k"], ["R459k", "R85k"], ["CH94.3%", "CH92.1%"], ["$0.024", "$1.200"], ["45.0%/128k", "9.0%/128k"], ["2m 27s", "1m 29s"]]) {
+      expect(start(runningHeader, left)).toBe(start(finishedHeader, right));
+    }
   });
 });
 

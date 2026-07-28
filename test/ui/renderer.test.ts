@@ -37,8 +37,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
 }));
 
 vi.mock("../../src/ui/format.js", () => ({
-  buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
-  formatMs: vi.fn(() => "1m0s"),
+  buildStatsCells: vi.fn(() => ({ tools: "5⚙︎", turns: "3⟳", duration: "1m 0s" })),
+  formatStatsRow: vi.fn(() => "5⚙︎  3⟳ · 1m 0s"),
   formatThinkingTag: vi.fn((value: unknown) => value === "high" ? "high" : undefined),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
 }));

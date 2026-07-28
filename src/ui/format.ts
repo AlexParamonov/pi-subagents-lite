@@ -14,6 +14,7 @@ import type { AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 import { parseThinkingLevel } from "../utils.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 /** Truncate a description string to `maxLen` characters, appending "..." if truncated. */
 export function truncateDesc(text: string, maxLen: number): string {
@@ -42,34 +43,141 @@ export interface UsageDisplay {
   autoCompactionEnabled?: boolean;
 }
 
+/** Individually addressable fields in the shared agent statistics display. */
+export interface StatsCells {
+  tools?: string;
+  turns?: string;
+  input?: string;
+  output?: string;
+  cacheRead?: string;
+  cacheWrite?: string;
+  hitRate?: string;
+  cost?: string;
+  context?: string;
+  duration?: string;
+}
+
+type UsageCellName = "input" | "output" | "cacheRead" | "cacheWrite" | "hitRate" | "cost" | "context";
+const USAGE_CELL_NAMES: UsageCellName[] = ["input", "output", "cacheRead", "cacheWrite", "hitRate", "cost", "context"];
+const PLAIN_THEME: Theme = {
+  fg: (_color, text) => text,
+  bg: (_color, text) => text,
+  bold: (text) => text,
+};
+
 /**
- * Format the exact Pi footer usage sequence. This intentionally keeps one
- * contiguous group: callers may put tools, turns, and duration around it using
- * their quieter ` · ` separators without splitting its space-separated fields.
+ * Build individually addressable agent stat cells. Keeping Pi footer fields
+ * separate lets multi-agent displays align each metric without changing the
+ * established single-row Pi sequence.
  */
-export function formatUsageBlock(args: UsageDisplay, visible?: StatsVisibility, theme?: Theme): string | undefined {
-  const parts: string[] = [];
-  if (visible?.showInput !== false && args.input > 0) parts.push(`↑${formatTokens(args.input)}`);
-  if (visible?.showOutput !== false && args.output > 0) parts.push(`↓${formatTokens(args.output)}`);
+export function buildStatsCells(
+  args: UsageDisplay & {
+    toolUses: number;
+    turnCount?: number;
+    maxTurns?: number;
+    durationMs?: number;
+  },
+  theme: Theme,
+  visible?: StatsVisibility,
+): StatsCells {
+  const cells: StatsCells = {};
+  if (visible?.showTools !== false && args.toolUses > 0) cells.tools = `${args.toolUses}⚙︎`;
+  if (visible?.showTurns !== false && args.turnCount != null) cells.turns = formatTurns(args.turnCount, args.maxTurns, theme);
+  if (visible?.showInput !== false && args.input > 0) cells.input = `↑${formatTokens(args.input)}`;
+  if (visible?.showOutput !== false && args.output > 0) cells.output = `↓${formatTokens(args.output)}`;
   if (visible?.showInput !== false) {
-    if ((args.cacheRead ?? 0) > 0) parts.push(`R${formatTokens(args.cacheRead!)}`);
-    if ((args.cacheWrite ?? 0) > 0) parts.push(`W${formatTokens(args.cacheWrite!)}`);
+    if ((args.cacheRead ?? 0) > 0) cells.cacheRead = `R${formatTokens(args.cacheRead!)}`;
+    if ((args.cacheWrite ?? 0) > 0) cells.cacheWrite = `W${formatTokens(args.cacheWrite!)}`;
     if (((args.cacheRead ?? 0) > 0 || (args.cacheWrite ?? 0) > 0) && args.latestCacheHitRate != null) {
-      parts.push(`CH${args.latestCacheHitRate.toFixed(1)}%`);
+      cells.hitRate = `CH${args.latestCacheHitRate.toFixed(1)}%`;
     }
   }
-  if (visible?.showCost !== false && (args.cost != null && (args.cost > 0 || args.usingSubscription))) {
-    parts.push(`${formatCost(args.cost)}${args.usingSubscription ? " (sub)" : ""}`);
+  if (visible?.showCost !== false && args.cost != null && (args.cost > 0 || args.usingSubscription)) {
+    cells.cost = `${formatCost(args.cost)}${args.usingSubscription ? " (sub)" : ""}`;
   }
   if (visible?.showContext !== false && (args.contextPercent != null || args.contextWindow != null)) {
     const context = args.contextPercent == null ? "?" : `${args.contextPercent.toFixed(1)}%`;
-    const contextDisplay = `${context}/${formatTokens(args.contextWindow ?? 0)}${args.autoCompactionEnabled ? " (auto)" : ""}`;
-    const contextColor = args.contextPercent != null && args.contextPercent > 90
+    const display = `${context}/${formatTokens(args.contextWindow ?? 0)}${args.autoCompactionEnabled ? " (auto)" : ""}`;
+    const color = args.contextPercent != null && args.contextPercent > 90
       ? "error"
       : args.contextPercent != null && args.contextPercent > 70 ? "warning" : undefined;
-    parts.push(contextColor && theme ? theme.fg(contextColor, contextDisplay) : contextDisplay);
+    cells.context = color ? theme.fg(color, display) : display;
   }
+  if (visible?.showTime !== false && args.durationMs != null) cells.duration = formatMs(args.durationMs);
+  return cells;
+}
+
+/** Format the exact contiguous Pi footer usage sequence. */
+export function formatUsageBlock(args: UsageDisplay, visible?: StatsVisibility, theme?: Theme): string | undefined {
+  // The usage cells do not need turn styling; use the supplied theme only for
+  // Pi's warning/error context foreground when one is available.
+  const cells = buildStatsCells({ ...args, toolUses: 0 }, theme ?? PLAIN_THEME, visible);
+  const parts = USAGE_CELL_NAMES.map((name) => cells[name]).filter((part): part is string => part !== undefined);
   return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
+/** Shared widths for a set of widget stat rows. */
+export interface StatsLayout {
+  hasCounters: boolean;
+  hasUsage: boolean;
+  toolWidth: number;
+  turnWidth: number;
+  usageWidths: Record<UsageCellName, number>;
+}
+
+/** Compute ANSI- and wide-character-aware widths for aligned stat rows. */
+export function buildStatsLayout(rows: StatsCells[]): StatsLayout {
+  const usageWidths = Object.fromEntries(USAGE_CELL_NAMES.map((name) => [name, 0])) as Record<UsageCellName, number>;
+  let toolWidth = 0;
+  let turnWidth = 0;
+  for (const row of rows) {
+    toolWidth = Math.max(toolWidth, visibleWidth(row.tools ?? ""));
+    turnWidth = Math.max(turnWidth, visibleWidth(row.turns ?? ""));
+    for (const name of USAGE_CELL_NAMES) usageWidths[name] = Math.max(usageWidths[name], visibleWidth(row[name] ?? ""));
+  }
+  return {
+    hasCounters: toolWidth > 0 || turnWidth > 0,
+    hasUsage: USAGE_CELL_NAMES.some((name) => usageWidths[name] > 0),
+    toolWidth,
+    turnWidth,
+    usageWidths,
+  };
+}
+
+function padStatsCell(text: string | undefined, width: number, rightAlign = false): string {
+  const padding = " ".repeat(Math.max(0, width - visibleWidth(text ?? "")));
+  return rightAlign ? padding + (text ?? "") : (text ?? "") + padding;
+}
+
+/**
+ * Render one structured stats row. Without a layout this is the compact,
+ * single-row form. With one, counter cells are right-aligned and Pi cells are
+ * padded by metric so the following duration column has a shared start.
+ */
+export function formatStatsRow(cells: StatsCells, layout?: StatsLayout): string | undefined {
+  if (!layout) {
+    const counters = [cells.tools, cells.turns].filter((cell): cell is string => cell !== undefined).join("  ");
+    const usage = USAGE_CELL_NAMES.map((name) => cells[name]).filter((cell): cell is string => cell !== undefined).join(" ");
+    const groups = [counters, usage, cells.duration].filter((group): group is string => group !== undefined && group.length > 0);
+    return groups.length > 0 ? groups.join(" · ") : undefined;
+  }
+
+  const groups: string[] = [];
+  if (layout.hasCounters) {
+    const counters = layout.toolWidth > 0 && layout.turnWidth > 0
+      ? `${padStatsCell(cells.tools, layout.toolWidth, true)}  ${padStatsCell(cells.turns, layout.turnWidth, true)}`
+      : layout.toolWidth > 0 ? padStatsCell(cells.tools, layout.toolWidth, true) : padStatsCell(cells.turns, layout.turnWidth, true);
+    groups.push(counters);
+  }
+  if (layout.hasUsage) {
+    const usage = USAGE_CELL_NAMES
+      .filter((name) => layout.usageWidths[name] > 0)
+      .map((name) => padStatsCell(cells[name], layout.usageWidths[name]))
+      .join(" ");
+    groups.push(usage);
+  }
+  if (cells.duration !== undefined) groups.push(cells.duration);
+  return groups.length > 0 ? groups.join(" · ") : undefined;
 }
 
 /** Format turn count with optional max limit. Shows max when >= 80% of limit. */
@@ -126,12 +234,13 @@ export function buildStatsParts(
   theme: Theme,
   visible?: StatsVisibility,
 ): string[] {
+  const cells = buildStatsCells(args, theme, visible);
   const parts: string[] = [];
-  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}⚙︎`);
-  if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
-  const usage = formatUsageBlock(args, visible, theme);
+  if (cells.tools) parts.push(cells.tools);
+  if (cells.turns) parts.push(cells.turns);
+  const usage = USAGE_CELL_NAMES.map((name) => cells[name]).filter((part): part is string => part !== undefined).join(" ");
   if (usage) parts.push(usage);
-  if (visible?.showTime !== false && args.durationMs != null) parts.push(formatMs(args.durationMs));
+  if (cells.duration) parts.push(cells.duration);
   return parts;
 }
 

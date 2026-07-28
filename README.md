@@ -54,12 +54,12 @@ Running agents appear in the live widget:
 
 ```
 ◈ Agents
-├─ ⠙ Agent  Write model precedence unit tests  6⚙︎  3⟳  ↑6.8k ↓1.3k 6.0%/128k (auto)  12s
+├─ ⠙ Agent  Write model precedence unit tests  6⚙︎  3⟳ · ↑6.8k ↓1.3k 6.0%/128k (auto) · 12s
 │  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
 │  └ The file already exists but is ~175 lines. The user wants a …
-├─ ⠙ Agent  Code review of agent-runner.ts  4⚙︎  2⟳  ↑7.2k ↓1.5k 4.0%/128k (auto)  12s
+├─ ⠙ Agent  Code review of agent-runner.ts  4⚙︎  2⟳ · ↑7.2k ↓1.5k 4.0%/128k (auto) · 12s
 │  └ Now let me check the types and related files for context on …
-└─ ⠙ Explore  Explore codebase architecture  13⚙︎  4⟳  ↑16k ↓2.9k 15.0%/128k (auto)  12s
+└─ ⠙ Explore  Explore codebase architecture  13⚙︎  4⟳ · ↑16k ↓2.9k 15.0%/128k (auto) · 12s
    └ ## Architecture Summary: pi-subagents-lite
 ```
 
@@ -68,7 +68,7 @@ Background agents deliver a result notification when done:
 ```
  Subagent Result
 
- ✓ Explore (model-name)·13⚙︎ ·5⟳ ·↑25.9k↓4.9k 15%·21s
+ ✓ Explore (model-name) · 13⚙︎  5⟳ · ↑25.9k ↓4.9k 15% · 21s
    Explore codebase architecture
    tail -f /tmp/pi-agent-outputs/4f6b0f08-7a9a-419.log
 ```
@@ -77,7 +77,7 @@ Foreground results land inline:
 
 ```
  ▸ Explore
- ✓ 31⚙︎ ·6⟳ ·↑48.1k↓9.2k 28%·39s
+ ✓ 31⚙︎  6⟳ · ↑48.1k ↓9.2k 28% · 39s
    Explore project directory structure
 ```
 
@@ -85,7 +85,7 @@ Stop a running agent from `/agents`:
 
 ```
 ○ Agents
-└─ ■ Agent  Code review of agent-runner.ts  12⚙︎ ·10⟳ ·↑32.8k↓6.2k 8%·52s stopped
+└─ ■ Agent  Code review of agent-runner.ts  12⚙︎  10⟳ · ↑32.8k ↓6.2k 8% · 52s stopped
     tail -f /tmp/pi-agent-outputs/23689696-3cd3-400.log
 ```
 
@@ -261,14 +261,14 @@ Persistent bar above the editor showing running and completed agents, updating l
 
 **Full mode** (tree, header + `tail -f` path + activity):
 ```
-├─ ⠙ Explore  description  3⚙︎  5≤30⟳  ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto)  1h 2m 3s
+├─ ⠙ Explore  description  3⚙︎  5≤30⟳ · ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto) · 1h 2m 3s
 │  │ tail -f /tmp/pi-agent-outputs/...
 │  └ thinking…
 ```
 
 **Compact mode** (single line, description truncated, activity inline):
 ```
-├─ ⠙ Explore  description trunc…  3⚙︎  5≤30⟳  ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto)  1h 2m 3s  thinking…
+├─ ⠙ Explore  description trunc…  3⚙︎  5≤30⟳ · ↑10k ↓1.8k R85k W3.0k CH89.2% $0.024 45.0%/128k (auto) · 1h 2m 3s  thinking…
 ```
 
 Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal < 80%, warning 80–99%, error at 100%. The max is hidden when well below the limit. The contiguous usage group follows Pi: `↑input ↓output Rcache-read Wcache-write CHhit-rate $cost context/window (auto)`. Input visibility also controls cache fields; output, context, and cost remain independently configurable.
@@ -281,7 +281,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `15⟳  ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto)  47s`. The configured stats-visibility toggles also apply here, including **Cost display**. The same Pi-compatible usage group is used by foreground and background result cards.
+**Stats line:** `15⟳ · ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto) · 47s`. Tools and turns form one counter group with two spaces between them; Pi footer metrics remain contiguous, with ` · ` separating the counter, Pi, and duration groups. The configured stats-visibility toggles also apply here, including **Cost display**. The same Pi-compatible usage group is used by foreground and background result cards.
 
 ## Configuration
 

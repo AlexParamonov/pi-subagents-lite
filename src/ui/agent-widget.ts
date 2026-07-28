@@ -8,7 +8,7 @@ import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatCost, getSessionUsageSnapshot } from "../agents/usage.js";
-import { formatMs, buildStatsParts, formatThinkingTag, getAgentStatusDisplay, getDisplayName, truncateDesc, describeActivity, fgPreservingNestedStyles, type StatsVisibility } from "./format.js";
+import { buildStatsCells, buildStatsLayout, formatStatsRow, formatThinkingTag, getAgentStatusDisplay, getDisplayName, truncateDesc, describeActivity, fgPreservingNestedStyles, type StatsCells, type StatsLayout, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -32,11 +32,10 @@ const STATUS_KEY = "subagents";
 const WIDGET_REFRESH_INTERVAL = 80;
 
 /** Fixed horizontal gaps between the aligned agent columns. */
-const NAME_COLUMN_GAP = "   ";
-const MODEL_THINKING_COLUMN_GAP = "    ";
+const NAME_COLUMN_GAP = "  ";
+const MODEL_THINKING_COLUMN_GAP = "  ";
 const ROW_PREFIX_WIDTH = 4; // two-space indent, status icon, and following space
 const STATS_COLUMN_GAP_WIDTH = 2;
-const STATS_GROUP_SEPARATOR = "  ";
 const ACTIVITY_COLUMN_GAP_WIDTH = 2;
 
 // ---- Types ----
@@ -410,7 +409,7 @@ export class AgentWidget {
   }
 
   /** Build shared terminal-width columns for visible individual agent rows. */
-  private buildAgentColumnLayout(agents: AgentRecord[], theme: Theme, terminalWidth: number): AgentColumnLayout {
+  private buildAgentColumnLayout(agents: AgentRecord[], terminalWidth: number, statsLines: Map<string, string>): AgentColumnLayout {
     const naturalLayout = agents.reduce<AgentColumnLayout>((layout, a) => ({
       nameWidth: Math.max(layout.nameWidth, visibleWidth(getDisplayName(a.display.type))),
       modelThinkingWidth: Math.max(layout.modelThinkingWidth, visibleWidth(this.displayModelThinking(a))),
@@ -418,7 +417,7 @@ export class AgentWidget {
     }), { nameWidth: 0, modelThinkingWidth: 0, descriptionWidth: 0 });
     const statsWidth = Math.max(0, ...agents
       .filter((a) => a.lifecycle.status !== "queued")
-      .map((a) => visibleWidth(this.buildStatsLine(a, theme))));
+      .map((a) => visibleWidth(statsLines.get(a.id) ?? "")));
     const activityWidth = this.isCompact()
       ? Math.max(0, ...agents
         .filter((a) => a.lifecycle.status === "running")
@@ -474,38 +473,9 @@ export class AgentWidget {
       : (live ?? persisted);
   }
 
-  /** Render a finished agent line. */
-  private renderFinishedLine(a: AgentRecord, theme: Theme, layout: AgentColumnLayout): string {
-    const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
-    const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
-    const description = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
-    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
-
-    const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
-    const statsParts = buildStatsParts({
-      toolUses: a.stats.toolUses,
-      turnCount: a.stats.turnCount,
-      maxTurns: a.stats.maxTurns,
-      input: a.stats.lifetimeUsage.input,
-      output: a.stats.lifetimeUsage.output,
-      cacheRead: a.stats.cacheRead,
-      cacheWrite: a.stats.lifetimeUsage.cacheWrite,
-      latestCacheHitRate: a.stats.latestCacheHitRate,
-      cost: a.stats.lifetimeUsage.cost,
-      ...this.usageSnapshot(a),
-      durationMs,
-    }, theme, this.statsVisibility);
-
-    const statsLine = statsParts.join(STATS_GROUP_SEPARATOR);
-    return `${icon} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
-  }
-
-  /** Build the stats line (tool uses, turns, tokens, cost, elapsed) for a running agent. */
-  private buildStatsLine(
-    agent: AgentRecord,
-    theme: Theme,
-  ): string {
-    const parts = buildStatsParts({
+  /** Build structured stats for a running or finished agent. */
+  private buildStatsCells(agent: AgentRecord, theme: Theme): StatsCells {
+    return buildStatsCells({
       toolUses: agent.stats.toolUses,
       turnCount: agent.stats.turnCount,
       maxTurns: agent.stats.maxTurns,
@@ -516,9 +486,22 @@ export class AgentWidget {
       latestCacheHitRate: agent.stats.latestCacheHitRate,
       cost: agent.stats.lifetimeUsage.cost,
       ...this.usageSnapshot(agent),
-      durationMs: Date.now() - agent.lifecycle.startedAt,
+      durationMs: (agent.lifecycle.completedAt ?? Date.now()) - agent.lifecycle.startedAt,
     }, theme, this.statsVisibility);
-    return fgPreservingNestedStyles(theme, "text", parts.join(STATS_GROUP_SEPARATOR));
+  }
+
+  /** Render a structured stats row while preserving nested warning/error colors. */
+  private buildStatsLine(agent: AgentRecord, theme: Theme, statsLayout?: StatsLayout, cells?: StatsCells): string {
+    return fgPreservingNestedStyles(theme, "text", formatStatsRow(cells ?? this.buildStatsCells(agent, theme), statsLayout) ?? "");
+  }
+
+  /** Render a finished agent line. */
+  private renderFinishedLine(a: AgentRecord, theme: Theme, layout: AgentColumnLayout, rawStats: string): string {
+    const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
+    const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
+    const description = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
+    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
+    return `${icon} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", description)}  ${wrapInDim(theme, rawStats)}${statusText}`;
   }
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
@@ -527,6 +510,7 @@ export class AgentWidget {
     theme: Theme,
     w: number,
     layout: AgentColumnLayout,
+    statsLines: Map<string, string>,
   ): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -539,7 +523,7 @@ export class AgentWidget {
         }
       }
       blocks.push({
-        header: truncate(`  ${this.renderFinishedLine(a, theme, layout)}`),
+        header: truncate(`  ${this.renderFinishedLine(a, theme, layout, statsLines.get(a.id) ?? "")}`),
         continuations,
       });
     }
@@ -553,6 +537,7 @@ export class AgentWidget {
     w: number,
     frame: string,
     layout: AgentColumnLayout,
+    statsLines: Map<string, string>,
   ): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -561,7 +546,8 @@ export class AgentWidget {
       const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
       const modelThinkingColumn = this.renderModelThinkingColumn(modelThinking, theme, layout, "text");
       const bg = this.getLiveView(a.id);
-      const statsLine = this.buildStatsLine(a, theme);
+      const rawStats = statsLines.get(a.id) ?? "";
+      const statsLine = fgPreservingNestedStyles(theme, "text", rawStats);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
@@ -629,15 +615,22 @@ export class AgentWidget {
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
     // Build blocks — separate arrays so rendering and overflow use the same priority:
-    // running → queued → finished. Align all individually rendered agent rows. The
-    // aggregate queued row deliberately remains unchanged outside navigation mode.
+    // running → queued → finished. Running and completed rows share one stats
+    // layout; queued rows deliberately have no stats.
+    const statCells = new Map<string, StatsCells>();
+    for (const agent of [...running, ...finished]) statCells.set(agent.id, this.buildStatsCells(agent, theme));
+    const statsLayout = buildStatsLayout([...statCells.values()]);
+    const statsLines = new Map<string, string>();
+    for (const agent of [...running, ...finished]) {
+      statsLines.set(agent.id, formatStatsRow(statCells.get(agent.id)!, statsLayout) ?? "");
+    }
     const layout = this.buildAgentColumnLayout([
       ...running,
       ...(this.navActive ? queued : []),
       ...finished,
-    ], theme, w);
-    const finishedBlocks = this.buildFinishedBlocks(finished, theme, w, layout);
-    const runningBlocks = this.buildRunningBlocks(running, theme, w, frame, layout);
+    ], w, statsLines);
+    const finishedBlocks = this.buildFinishedBlocks(finished, theme, w, layout, statsLines);
+    const runningBlocks = this.buildRunningBlocks(running, theme, w, frame, layout, statsLines);
 
     // Queued: individual rows during nav, aggregated block otherwise.
     let queuedBlocks: RenderBlock[];

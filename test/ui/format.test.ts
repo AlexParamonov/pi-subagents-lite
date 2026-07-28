@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildInvocationTags, buildStatsParts, formatThinkingTag, formatUsageBlock, getAgentStatusDisplay } from "../../src/ui/format.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { buildInvocationTags, buildStatsCells, buildStatsLayout, buildStatsParts, formatStatsRow, formatThinkingTag, formatUsageBlock, getAgentStatusDisplay } from "../../src/ui/format.js";
 
 const mockTheme = {
   fg: (_color: string, text: string) => text,
@@ -168,6 +169,32 @@ describe("buildStatsParts — all visible flags false", () => {
       showTime: false,
     });
     expect(parts).toEqual([]);
+  });
+});
+
+describe("structured stats rows", () => {
+  it("uses counter, Pi footer, and duration groups in the single-row formatter", () => {
+    const cells = buildStatsCells({ ...allStats, durationMs: 30_000 }, mockTheme);
+    expect(formatStatsRow(cells)).toBe("5⚙︎  3⟳ · ↑1.0k ↓500 R1.3M W12k CH99.1% $1.230 50.0%/272k (auto) · 30s");
+  });
+
+  it("reserves optional Pi metric slots and measures ANSI styling by visible width", () => {
+    const ansiTheme = {
+      fg: (color: string, text: string) => color === "error" ? `\u001b[31m${text}\u001b[39m` : text,
+      bold: (text: string) => text,
+    };
+    const rows = [
+      buildStatsCells({ ...allStats, toolUses: 22, turnCount: 13, contextPercent: 90.1, durationMs: 147_000 }, ansiTheme),
+      buildStatsCells({ ...allStats, toolUses: 9, turnCount: 2, cacheWrite: 0, contextPercent: 20, durationMs: 89_000 }, ansiTheme),
+    ];
+    const rendered = rows.map((row) => formatStatsRow(row, buildStatsLayout(rows))!);
+
+    expect(rendered[0]).toContain("22⚙︎  13⟳ ·");
+    expect(rendered[1]).toContain(" 9⚙︎   2⟳ ·");
+    expect(rendered[0]).toContain("\u001b[31m90.1%/272k (auto)\u001b[39m");
+    const start = (line: string, text: string) => visibleWidth(line.slice(0, line.indexOf(text)));
+    expect(start(rendered[1], "$1.230")).toBe(start(rendered[0], "$1.230"));
+    expect(start(rendered[1], "1m 29s")).toBe(start(rendered[0], "2m 27s"));
   });
 });
 
