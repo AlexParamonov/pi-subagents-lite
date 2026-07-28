@@ -129,16 +129,4 @@ describe("events.ts home directory resolution", () => {
     // Should be built from getAgentDir() + "agents"
     expect(userAgentDir).toBe("/mock-home/.pi/agent/agents");
   });
-
-  it("does not use process.env.HOME directly", async () => {
-    const ctx = { cwd: "/project" } as any;
-    await scanAndRegisterAgents(ctx);
-
-    const callArgs = mockSetAgentScanDirs.mock.calls[0];
-    const userAgentDir = callArgs[0];
-    const home = process.env.HOME || "";
-
-    // If it used process.env.HOME, the path would contain the real HOME
-    expect(userAgentDir).not.toContain(home);
-  });
 });

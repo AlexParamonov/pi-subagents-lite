@@ -12,7 +12,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 // Import after mock is set up
-const { CONFIG_PATH, CUSTOM_PROMPT_PATH } = await import("../../src/config/config-io.js");
+const { CUSTOM_PROMPT_PATH } = await import("../../src/config/config-io.js");
 
 describe("config-io home directory resolution", () => {
   beforeEach(() => {
