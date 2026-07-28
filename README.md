@@ -281,7 +281,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `15⟳ · ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto) · 47s`. The configured stats-visibility toggles also apply here, including **Cost display**. The same Pi-compatible usage group is used by foreground and background result cards.
+**Stats line:** `15⟳  ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto)  47s`. The configured stats-visibility toggles also apply here, including **Cost display**. The same Pi-compatible usage group is used by foreground and background result cards.
 
 ## Configuration
 

@@ -273,7 +273,7 @@ export class ConversationViewer implements Component {
 
     // Row 2: model name + compact usage stats
     const { modelName, thinkingTag, tags } = buildInvocationTags(this.record.display.invocation);
-    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join(" · "));
+    const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("  "));
     if (modelName) {
       const parts = [thinkingTag, statsLine, ...tags].filter(Boolean);
       lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));

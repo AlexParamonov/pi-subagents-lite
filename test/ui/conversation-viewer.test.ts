@@ -497,6 +497,20 @@ describe("ConversationViewer", () => {
       expect(header).not.toContain("$");
     });
 
+    it("separates stats groups with two spaces while retaining metadata separators", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      record.display.invocation = { modelName: "sonnet", thinkingLevel: "high", runInBackground: true };
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      const statsLine = viewer.render(120).find(line => line.includes("5⚙︎"))!;
+
+      expect(statsLine).toContain("sonnet · high · 5⚙︎  10⟳  ↑12k ↓8.0k W3.0k $0.024");
+      expect(statsLine).not.toContain("5⚙︎ ·");
+      expect(statsLine).not.toContain("10⟳ ·");
+      expect(statsLine).toContain(" · background");
+    });
+
     it("renders the thinking level immediately after the model", () => {
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { session } });
