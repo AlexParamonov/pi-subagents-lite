@@ -48,7 +48,7 @@ pi -e npm:pi-subagents-lite           # try without installing
 
 ## Quick Start
 
-The LLM calls `Agent` like any other tool. Foreground agents return inline with stats; background agents acknowledge immediately and auto-deliver on completion.
+The LLM calls `Agent` like any other tool. Foreground agents return inline with stats; background agents acknowledge immediately and auto-deliver on completion. On parent turns, the extension also adds a compact orchestration section generated from visible agent frontmatter, so agent definitions alone are enough for basic delegation—no separate `APPEND_SYSTEM.md` is needed. Set `agent.orchestrationPrompt` to `false` to disable it.
 
 Agents appear in the live widget:
 
@@ -97,9 +97,9 @@ Spawn a sub-agent.
 |---|---|---|
 | `prompt` | ✅ | The task for the sub-agent |
 | `description` | | Brief description for the caller (optional — derived from `prompt` if omitted) |
-| `agent` | | Type name — `general-purpose`, `Explore`, or any custom type. **Auto-populated** from `.md` files in your agent directories; drop a file, it appears in the enum. `hidden: true` hides a type from the list (still callable by name). |
+| `agent` | | Type name — `general-purpose`, `Explore`, or any custom type. The fixed tool schema intentionally has no dynamic type list; parent orchestration lists visible types when enabled. `hidden: true` removes a type from automatic catalog/menu listing (still callable by name). |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
-| `worktree_path` | | Absolute path to a git worktree. Agent runs in that worktree's context, discovers agents from its `.pi/agents/`, and shows a worktree label in the UI. Validated against the parent repo's git common dir. |
+| `worktree_path` | | Absolute path to a git worktree. In a trusted project, an explicitly selected worktree can supply its `.pi/agents/` for that spawn and shows a worktree label in the UI. It is never crawled automatically. Validated against the parent repo's git common dir. |
 
 > `model`, `max_turns`, `max_tokens`, and `thinking` are **not visible to the LLM** — injected at call time from agent config and frontmatter. See [Custom Agent Types](#custom-agent-types).
 
@@ -121,9 +121,9 @@ The result nudges the LLM to wait for automatic notifications instead of polling
 
 ## Custom Agent Types
 
-Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared workspace), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent; the body is its system prompt. The `name` field (or filename) becomes the agent type and **auto-populates the `agent` parameter's enum** — no registration. Files added mid-session are picked up on the next call that references them.
+Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared workspace), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent; the body is its system prompt. The `name` field, or the filename without `.md`, becomes the agent type. Project files are read only after project trust.
 
-Built-ins `general-purpose` and `Explore` are always available. **Precedence:** project (`.pi/agents/`) > shared (`.agents/agents/`) > user (`~/.pi/agent/agents/`) > built-ins. On name clash, higher precedence wins.
+The parent refreshes global and trusted current-project files before every turn, so added, changed, hidden, and removed files are reflected without restart. Worktree-local files are not crawled: in `/agents` → **Spawn agent**, select a trusted worktree before choosing its agent type (or name its agent in an `Agent` call). Give visible agents concise descriptions; those descriptions are parent prompt text. The automatic parent catalog advertises only exact agent names of at most 64 UTF-8 bytes without control characters, backticks, or orchestration markers; omitted names remain callable by their exact name. **Precedence:** project (`.pi/agents/`) > shared (`.agents/agents/`) > user (`~/.pi/agent/agents/`) > built-ins (unless disabled). `disableDefaultAgents` applies on the next parent turn and to on-demand discovery. On name clash, higher precedence wins.
 
 ```markdown
 ---
@@ -148,7 +148,7 @@ A minimal agent — just `name` and `description` — gets everything: all tools
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `name` | string | filename | Agent type name (the `agent` enum value). Must be unique. |
+| `name` | string | filename | Agent type name (the `agent` tool parameter). Must be unique. |
 | `display_name` | string | `name` | Label in the widget, `/agents` menu, and conversation viewer. |
 | `description` | string | `""` | One-sentence description in the `/agents` list and tool rendering. |
 | `tools` | `true` \| `string[]` \| `false` | `true` | **Tool whitelist** — which tool schemas the LLM sees. Accepts built-in names and extension tool references (see below). Mutually exclusive with `exclude_tools`. |
@@ -161,7 +161,7 @@ A minimal agent — just `name` and `description` — gets everything: all tools
 | `thinking` | string | inherit parent | One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer at the limit, then `max_turns + graceTurns` before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. Injected into provider request payloads. |
-| `hidden` | `true` \| `false` | `false` | `true` hides the type from the enum (LLM can't see or invoke it). Still callable by name. |
+| `hidden` | `true` \| `false` | `false` | `true` removes the type from the automatic catalog and menus; it remains explicitly callable by name. |
 
 ### Tool control (`tools` / `exclude_tools`)
 
@@ -247,7 +247,7 @@ Management menu with four sections:
 - **Settings**
   - **Model settings** — global default, per-type overrides, session overrides, clear all
   - **Spawn options** — force background, grace turns, default max turns, default thinking, disable default agents
-  - **System prompt** — mode, custom prompt file, include AGENTS.md, load skills/extensions implicitly
+  - **System prompt** — mode, custom prompt file, parent orchestration, AGENTS.md, implicit skills/extensions
   - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
   - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time in the widget and conversation viewer)
 
@@ -312,6 +312,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
     "finishedRetentionMinutes": 10,
     "systemPromptMode": "inherit",
     "includeContextFiles": true,
+    "orchestrationPrompt": true,
     "loadSkillsImplicitly": false,
     "loadExtensionsImplicitly": false,
     "disableDefaultAgents": false,
@@ -330,6 +331,12 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
   }
 }
 ```
+
+### Parent orchestration
+
+`orchestrationPrompt` defaults to `true`. It appends a parent-only, cache-stable catalog of visible global/trusted-current-project agents; subagents never inherit it. Visible descriptions should be concise. Only exact representable names of at most 64 UTF-8 bytes are advertised; descriptions are capped at 160 UTF-8 bytes, the catalog at 24 agents/3,879 UTF-8 bytes, and the full generated block at 4,096 UTF-8 bytes; a deterministic `… +N omitted` marker reports overflow. Toggle it in `/agents` → **Settings** → **System prompt**, or set `"orchestrationPrompt": false` under `agent` in config. Opt-out intentionally provides no automatic catalog.
+
+**APPEND_SYSTEM.md migration:** remove only static subagent delegation rules and agent catalogs from existing `APPEND_SYSTEM.md`; retain unrelated global instructions. The generated block supplies delegation guidance and the live catalog when enabled.
 
 ### Widget settings
 

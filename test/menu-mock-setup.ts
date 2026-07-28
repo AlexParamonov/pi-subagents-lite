@@ -58,6 +58,12 @@ vi.mock("../src/agents/agent-types.js", () => ({
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
   resolveType: vi.fn((name: string) => name),
   discoverNewAgents: vi.fn(async () => 0),
+  resolveAgentCatalog: vi.fn(async () => new Map([
+    ["general-purpose", { name: "general-purpose", description: "General-purpose agent", systemPrompt: "" }],
+    ["Explore", { name: "Explore", description: "Explore agent", systemPrompt: "" }],
+  ])),
+  resolveTypeInCatalog: vi.fn((catalog: Map<string, unknown>, name: string) => catalog.has(name) ? name : undefined),
+  snapshotAgentConfig: vi.fn((config: unknown) => config),
 }));
 
 // Capture SearchableSelectDialog instances for tests that need them
@@ -141,6 +147,7 @@ vi.mock("../src/shell.js", () => {
         defaultMaxTurns: a.defaultMaxTurns,
         loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
         loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+        orchestrationPrompt: a.orchestrationPrompt !== false,
         showTools: a.showTools !== false,
         showTurns: a.showTurns !== false,
         showInput: a.showInput !== false,
@@ -190,7 +197,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'widgetShowModelThinking', 'widgetShowStartTime', 'widgetNavHint', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly', 'disableDefaultAgents', 'outputThinkingBufferSize', 'finishedRetentionMinutes']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'widgetShowModelThinking', 'widgetShowStartTime', 'widgetNavHint', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly', 'disableDefaultAgents', 'orchestrationPrompt', 'outputThinkingBufferSize', 'finishedRetentionMinutes']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -207,6 +214,7 @@ vi.mock("../src/shell.js", () => {
         setDefaultMaxTurns(n: number | undefined) { mockModules.mockConfig.agent.defaultMaxTurns = n; },
         setLoadSkillsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadSkillsImplicitly = value; },
         setLoadExtensionsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadExtensionsImplicitly = value; },
+        setOrchestrationPrompt(enabled: boolean) { mockModules.mockConfig.agent.orchestrationPrompt = enabled; },
         setShowTools(enabled: boolean) { mockModules.mockConfig.agent.showTools = enabled; },
         setShowTurns(enabled: boolean) { mockModules.mockConfig.agent.showTurns = enabled; },
         setShowInput(enabled: boolean) { mockModules.mockConfig.agent.showInput = enabled; },
@@ -271,6 +279,7 @@ vi.mock("../src/shell.js", () => {
             description: intent.description,
             model: intent.model,
             maxTurns: intent.maxTurns,
+            maxTokens: intent.maxTokens,
             thinkingLevel: intent.thinkingLevel,
             isBackground: intent.runInBackground,
             modelKey: intent.modelKey,

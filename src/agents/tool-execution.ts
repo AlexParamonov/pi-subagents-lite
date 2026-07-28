@@ -11,7 +11,7 @@ import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-
 
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
-import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
+import { resolveType, getAgentConfig, discoverNewAgents, resolveAgentCatalog, resolveTypeInCatalog } from "./agent-types.js";
 import { getSessionUsageSnapshot } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 
@@ -154,38 +154,51 @@ export async function executeAgentTool(
   }
 
   const type = (params.agent as string) || "general-purpose";
-  let resolvedType = resolveType(type);
-  if (!resolvedType) {
-    // Not found in registry — try scanning filesystem for agents added during the session.
-    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
-    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
-    await discoverNewAgents(worktreeDir);
+  const trustedWorktreeDir = validatedWorktreePath && (ctx.isProjectTrusted?.() ?? false)
+    ? `${validatedWorktreePath}/.pi/agents`
+    : undefined;
+
+  // Worktree catalogs are local to this tool call. Never use the shared
+  // registry for a worktree name: it may be an override of a parent type.
+  let resolvedType: string | undefined;
+  let agentConfig;
+  if (trustedWorktreeDir) {
+    const catalog = await resolveAgentCatalog(trustedWorktreeDir, {
+      disableDefaultAgents: getStore().agent.disableDefaultAgents,
+    });
+    resolvedType = resolveTypeInCatalog(catalog, type);
+    agentConfig = resolvedType ? catalog.get(resolvedType) : undefined;
+  } else {
     resolvedType = resolveType(type);
+    if (!resolvedType) {
+      await discoverNewAgents({ disableDefaultAgents: getStore().agent.disableDefaultAgents });
+      resolvedType = resolveType(type);
+    }
+    agentConfig = resolvedType ? getAgentConfig(resolvedType) : undefined;
   }
-  if (!resolvedType) {
-    return errorResult(`Unknown agent type: ${type}`);
-  }
+  if (!resolvedType || !agentConfig) return errorResult(`Unknown agent type: ${type}`);
 
   const prompt = params.prompt as string;
   const description = (params.description as string | undefined) || prompt.split("\n")[0].slice(0, 80) || prompt.slice(0, 80);
   const runInBackground = params.run_in_background as boolean | undefined;
-  const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
+  const maxTurns = params.max_turns as number | undefined ?? agentConfig.maxTurns;
 
-  const modelStr = params.model as string | undefined;
+  // The listener intentionally leaves worktree calls alone. Resolve all
+  // precedence here, after the trusted worktree definition is known.
+  const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
+  const modelStr = params.model as string | undefined
+    ?? getStore().modelFor(resolvedType, parentModelId, agentConfig);
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
-
-  // Determine modelName for invocation (always capture for display)
   const modelName = model?.id;
-
-  // Resolve thinking: explicit param > agent config (frontmatter) > undefined (inherit)
   const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
-    ?? getAgentConfig(resolvedType)?.thinkingLevel;
+    ?? agentConfig.thinkingLevel;
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
   const result = await coordinator.spawn(getPiInstance(), ctx, {
     type: resolvedType,
+    agentConfig,
     prompt,
     description,
     model,
@@ -291,6 +304,9 @@ export async function toolCallListener(
   if (event.toolName !== "Agent") return;
 
   const input = event.input;
+  // A worktree may override a global type. Its config is resolved only after
+  // validation in executeAgentTool, not from the parent registry here.
+  if (typeof input.worktree_path === "string" && input.worktree_path.trim() !== "") return;
   const subagentType = input.agent as string | undefined;
   const agentConfig = subagentType ? getAgentConfig(subagentType) : undefined;
 

@@ -8,12 +8,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createNavInputHandler, scanAndRegisterAgents } from "../src/events.js";
+import { createNavInputHandler, scanAndRegisterAgents, setupEventListeners } from "../src/events.js";
+import { buildOrchestrationPrompt } from "../src/prompt/orchestration.js";
 
-const { mockGetAgentDir, mockSetAgentScanDirs, mockScanAndMerge } = vi.hoisted(() => ({
+const { mockGetAgentDir, mockSetAgentScanDirs, mockScanAndMerge, mockGetAvailableAgents } = vi.hoisted(() => ({
   mockGetAgentDir: vi.fn(() => "C:\\Users\\Pi User\\.pi\\agent"),
   mockSetAgentScanDirs: vi.fn(),
   mockScanAndMerge: vi.fn(async () => new Map()),
+  mockGetAvailableAgents: vi.fn(() => [{ name: "reviewer", description: "Reviews changes" }]),
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -48,6 +50,7 @@ vi.mock("../src/agents/agent-types.js", () => ({
     thinkingLevel: undefined,
   }),
   registerAgents: vi.fn(),
+  getAvailableAgents: mockGetAvailableAgents,
   getAvailableTypes: vi.fn(() => []),
   setAgentScanDirs: mockSetAgentScanDirs,
   scanAndMerge: mockScanAndMerge,
@@ -130,7 +133,7 @@ const mockWidget: any = {
 };
 
 const mockStore: any = {
-  agent: { disableDefaultAgents: false },
+  agent: { disableDefaultAgents: false, orchestrationPrompt: true },
   notifyToolsExpanded: vi.fn(),
 };
 
@@ -169,6 +172,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
         getEditorText: vi.fn(() => ""),
         notify: vi.fn(),
       },
+      isProjectTrusted: vi.fn(() => true),
     } as unknown as ExtensionContext;
   });
 
@@ -177,7 +181,10 @@ describe("navigation key handler (createNavInputHandler)", () => {
     const agentDir = "C:\\Users\\Pi User\\.pi\\agent";
 
     try {
-      await scanAndRegisterAgents({ cwd: "C:\\work\\project" } as ExtensionContext);
+      await scanAndRegisterAgents({
+        cwd: "C:\\work\\project",
+        isProjectTrusted: () => true,
+      } as ExtensionContext);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -185,6 +192,85 @@ describe("navigation key handler (createNavInputHandler)", () => {
     expect(mockGetAgentDir).toHaveBeenCalledOnce();
     expect(mockSetAgentScanDirs)
       .toHaveBeenCalledWith(join(agentDir, "agents"), join("C:\\work\\project", ".pi", "agents"), join("C:\\work\\project", ".agents", "agents"));
+  });
+
+  it("does not discover project-controlled agents before project trust", async () => {
+    await scanAndRegisterAgents({
+      cwd: "C:\\work\\untrusted",
+      isProjectTrusted: () => false,
+    } as ExtensionContext);
+
+    expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
+      join("C:\\Users\\Pi User\\.pi\\agent", "agents"),
+      "",
+      "",
+    );
+  });
+
+  describe("parent orchestration hook", () => {
+    it("refreshes trusted registry before each turn with stable prompt output", async () => {
+      const on = vi.fn();
+      setupEventListeners({ on } as any);
+      const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1]!;
+      const trusted = { cwd: "C:\\work\\project", isProjectTrusted: () => true } as ExtensionContext;
+
+      const first = await handler({ systemPrompt: "Base" }, trusted);
+      const second = await handler({ systemPrompt: "Base" }, trusted);
+
+      expect(mockScanAndMerge).toHaveBeenCalledTimes(2);
+      expect(first).toEqual(second);
+      expect(first.systemPrompt).toContain("`reviewer` — Reviews changes");
+    });
+
+    it("refreshes but does not inject when orchestration is disabled", async () => {
+      const on = vi.fn();
+      setupEventListeners({ on } as any);
+      const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1]!;
+      mockStore.agent.orchestrationPrompt = false;
+
+      const result = await handler({ systemPrompt: "Base" }, { cwd: "C:\\work\\project", isProjectTrusted: () => true } as ExtensionContext);
+
+      expect(mockScanAndMerge).toHaveBeenCalled();
+      expect(result).toBeUndefined();
+      mockStore.agent.orchestrationPrompt = true;
+    });
+
+    it("returns an empty prompt when disabling a standalone owned block", async () => {
+      const on = vi.fn();
+      setupEventListeners({ on } as any);
+      const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1]!;
+      mockStore.agent.orchestrationPrompt = false;
+      const owned = buildOrchestrationPrompt([{ name: "reviewer", description: "Reviews changes" }])!;
+
+      const result = await handler({ systemPrompt: owned }, { cwd: "C:\\work\\project", isProjectTrusted: () => true } as ExtensionContext);
+
+      expect(result).toEqual({ systemPrompt: "" });
+      mockStore.agent.orchestrationPrompt = true;
+    });
+
+    it("returns an empty prompt when no visible catalog remains", async () => {
+      const on = vi.fn();
+      setupEventListeners({ on } as any);
+      const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1]!;
+      mockGetAvailableAgents.mockReturnValueOnce([]);
+      const owned = buildOrchestrationPrompt([{ name: "reviewer", description: "Reviews changes" }])!;
+
+      const result = await handler({ systemPrompt: owned }, { cwd: "C:\\work\\project", isProjectTrusted: () => true } as ExtensionContext);
+
+      expect(result).toEqual({ systemPrompt: "" });
+    });
+
+    it("never exposes untrusted project agents in the parent prompt", async () => {
+      const on = vi.fn();
+      setupEventListeners({ on } as any);
+      const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1]!;
+      mockGetAvailableAgents.mockReturnValueOnce([]);
+
+      const result = await handler({ systemPrompt: "Base" }, { cwd: "C:\\work\\untrusted", isProjectTrusted: () => false } as ExtensionContext);
+
+      expect(mockSetAgentScanDirs).toHaveBeenCalledWith(expect.any(String), "", "");
+      expect(result).toBeUndefined();
+    });
   });
 
   describe("key release ignored", () => {

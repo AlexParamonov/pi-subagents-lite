@@ -17,6 +17,7 @@ import {
   getAgentConfig,
   setAgentScanDirs,
   discoverNewAgents,
+  resolveAgentCatalog,
   getConfig,
 } from "../../src/agents/agent-types.js";
 import { DEFAULT_AGENTS } from "../../src/agents/default-agents.js";
@@ -89,6 +90,24 @@ describe("discoverNewAgents — disableDefaultAgents", () => {
     setAgentScanDirs("", "");
   });
 
+  it("does not restore disabled defaults while discovering an explicit worktree", async () => {
+    const { dir, cleanup } = tempDirWithFiles([
+      { name: "worktree-agent.md", content: makeAgentMd({ name: "worktree-agent", description: "Worktree" }) },
+    ], "worktree-agents");
+
+    try {
+      registerAgents(new Map(), { disableDefaultAgents: true });
+      const catalog = await resolveAgentCatalog(dir, { disableDefaultAgents: true });
+
+      expect(catalog.has("worktree-agent")).toBe(true);
+      expect(getAvailableTypes()).not.toContain("worktree-agent");
+      expect(getAvailableTypes()).not.toContain("general-purpose");
+      expect(getAvailableTypes()).not.toContain("Explore");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("skips defaults when discovering with disableDefaultAgents", async () => {
     const { dir: projectDir, cleanup } = tempDirWithFiles([
       { name: "custom.md", content: makeAgentMd({ name: "custom", description: "Custom" }) },
@@ -98,7 +117,7 @@ describe("discoverNewAgents — disableDefaultAgents", () => {
       setAgentScanDirs("", projectDir);
       registerAgents(new Map(), { disableDefaultAgents: true });
 
-      await discoverNewAgents(undefined, { disableDefaultAgents: true });
+      await discoverNewAgents({ disableDefaultAgents: true });
 
       const types = getAvailableTypes();
       expect(types).toContain("custom");

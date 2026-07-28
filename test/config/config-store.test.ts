@@ -114,6 +114,7 @@ describe("ConfigStore reads", () => {
     expect(store.agent.widgetNavHint).toBe(true);
     expect(store.agent.defaultModel).toBeNull();
     expect(store.agent.finishedRetentionMinutes).toBe(10);
+    expect(store.agent.orchestrationPrompt).toBe(true);
   });
 
   it("returns configured values when present", () => {
@@ -180,6 +181,16 @@ describe("ConfigStore model resolution", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore persisted mutations", () => {
+  it("setOrchestrationPrompt persists the parent prompt setting", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+
+    store.mutate.agent.setOrchestrationPrompt(false);
+
+    expect(store.agent.orchestrationPrompt).toBe(false);
+    expect(saves[0].agent.orchestrationPrompt).toBe(false);
+  });
+
   it("setShowCost persists and syncs the widget", () => {
     const { io, saves } = memIO();
     const { w, calls } = widgetStub();

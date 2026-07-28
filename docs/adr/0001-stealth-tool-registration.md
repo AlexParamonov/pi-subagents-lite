@@ -1,31 +1,13 @@
 # Stealth tool registration
 
-The Agent tool is registered at extension init time with a minimal schema: `description: "."`,
-no `promptSnippet`, no `promptGuidelines`, parameters without `.description()`.
-The model parameter is removed from the schema entirely — injected via the `tool_call` event listener.
-The LLM learns about agent types and tool usage from a user message sent by `/agents` — not from the tool schema.
+The Agent tool is registered once at extension init with a minimal, byte-stable schema: no description, no prompt snippets or guidelines, and parameters without descriptions. Its optional `agent` field is always a bare string; it never has a config- or registry-driven enum.
 
 ## Why
 
-Registering the Agent tool at runtime (the `subagent-lazy` pattern) calls `registerTool()`
-→ `refreshTools()` → `setActiveToolsByName()` → system prompt rebuild. llama.cpp renders
-tool definitions into the prompt text via its Jinja2 chat template, so adding a tool changes
-the token sequence and invalidates the KV cache prefix match.
+Calling `registerTool()` at runtime rebuilds tools and can invalidate the system-prompt/KV-cache prefix. A fixed schema prevents mid-session tool registration and cache churn.
 
-Registering at init time freezes the tool set from turn 1. No mid-session tool changes,
-no system prompt rebuilds, no cache invalidation.
-
-Injecting the model via `tool_call` listener keeps the schema lean and lets the
-`resolveModel()` precedence chain (per-type override → global default → frontmatter → parent)
-run at call time with full context.
+When enabled, the parent-only orchestration block is the sole automatic catalog of visible agents. It is regenerated from the trusted live registry before each parent turn, independently of the tool schema. Disabling that block deliberately provides no automatic catalog; `/agents` remains available for manual use.
 
 ## Trade-off
 
-The minimal schema (`description: "."`, no parameter descriptions) means the LLM must infer
-usage from the tool name and parameter names alone. In practice this works — models use the
-Agent and StopAgent tools without issues. The optional `/agents` briefing can supplement
-understanding when the LLM needs to discover available agent types, but is not required for
-basic tool invocation.
-
-Registering at init time (rather than runtime) avoids system prompt rebuilds and KV-cache
-invalidation on mid-session tool changes.
+The schema is intentionally terse, so the model learns parameter usage from names and tool results. This keeps recurring tokens minimal and leaves dynamic discovery out of the schema.

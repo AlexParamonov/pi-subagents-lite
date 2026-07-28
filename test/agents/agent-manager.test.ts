@@ -119,6 +119,25 @@ describe("AgentManager", () => {
       deferred.resolve(mockRunResult());
     });
 
+    it("keeps a queued resolved config snapshot across registry-style mutation", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const first = makeResolvablePromise();
+      const second = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      const config = { name: "review", description: "worktree", systemPrompt: "frozen prompt", tools: ["read"] };
+      const ctx = fakeCtx();
+      const pi = fakePi();
+      manager.spawn(pi, ctx, "review", "first", { description: "first", modelKey: "test/model", isBackground: true });
+      manager.spawn(pi, ctx, "review", "queued", { description: "queued", modelKey: "test/model", isBackground: true, agentConfig: config });
+      // Simulate the live parent registry/config object being refreshed.
+      config.systemPrompt = "refreshed parent prompt";
+      config.tools[0] = "bash";
+      first.resolve(mockRunResult());
+      await vi.waitFor(() => expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2));
+      expect(mockModules.mockRunAgent.mock.calls[1]?.[3].agentConfig).toMatchObject({ systemPrompt: "frozen prompt", tools: ["read"] });
+      second.resolve(mockRunResult());
+    });
+
     it("starts queued agent when running agent completes", async () => {
       const config: ConcurrencyConfig = { default: 1, models: { "llamacpp/4b_small": 1 } };
       manager = new AgentManager(onComplete, config);

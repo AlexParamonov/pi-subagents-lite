@@ -51,6 +51,7 @@ export function createMockCtx(
   let customIdx = 0;
 
   return {
+    isProjectTrusted: () => true,
     ui: {
       select: vi.fn(async (title: string, items: string[]) => {
         const sel = selections[selectIdx++];

@@ -20,9 +20,10 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import {
+  BUILTIN_TOOL_NAMES,
   getAgentConfig,
   getConfig,
-  getToolNamesForType,
+  resolveAgentConfig,
   resolveSessionAllowedTools,
   resolveVisibleTools,
 } from "./agent-types.js";
@@ -33,7 +34,7 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
-import type { SubagentType, SystemPromptMode } from "./types.js";
+import type { AgentConfig, SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
@@ -115,6 +116,8 @@ interface SupplementalUsageCallbacks {
 }
 
 interface RunOptions extends RunTunables, RunCallbacks, SupplementalUsageCallbacks {
+  /** Detached definition captured before queueing; never re-resolve at start. */
+  agentConfig?: AgentConfig;
   /** ExtensionAPI instance — used for pi.exec() for git detection. */
   pi: ExtensionAPI;
   /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
@@ -379,7 +382,7 @@ function resolveSystemPromptSources(
  */
 function buildPrompt(
   type: SubagentType,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   config: ReturnType<typeof getConfig>,
   cwd: string,
   env: EnvInfo,
@@ -485,7 +488,7 @@ export function buildExtOverride(
  */
 function createResourceLoader(
   config: ReturnType<typeof getConfig>,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   cwd: string,
   systemPrompt: string,
   notify?: (msg: string) => void,
@@ -518,7 +521,7 @@ function createResourceLoader(
 async function initSession(
   ctx: ExtensionContext,
   options: RunOptions,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   type: SubagentType,
   cwd: string,
   loader: DefaultResourceLoader,
@@ -535,7 +538,7 @@ async function initSession(
     settingsManager: SettingsManager.create(cwd, agentDir),
     model,
     tools: resolveSessionAllowedTools({
-      registeredTools: getToolNamesForType(type),
+      registeredTools: agentConfig?.registeredTools?.length ? agentConfig.registeredTools : BUILTIN_TOOL_NAMES,
       tools: agentConfig?.tools,
       extToolMap,
     }), resourceLoader: loader,
@@ -565,7 +568,7 @@ async function initSession(
 async function createAndConfigureSession(
   ctx: ExtensionContext,
   options: RunOptions,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   type: SubagentType,
   cwd: string,
   loader: DefaultResourceLoader,
@@ -673,8 +676,12 @@ async function runAgentImpl(
   options: RunOptions,
 ): Promise<RunResult> {
   const store = getStore();
-  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
-  const agentConfig = getAgentConfig(type);
+  // A queued run must use the definition selected at enqueue time. Registry
+  // lookup remains only for legacy callers that did not provide a snapshot.
+  const agentConfig = options.agentConfig ?? getAgentConfig(type);
+  const config = options.agentConfig
+    ? resolveAgentConfig(agentConfig, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly)
+    : getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
 
   // Buffer warnings during setup to avoid inserting custom_message entries
   // between tool_use and tool_result in the session tree (causes Anthropic 400).

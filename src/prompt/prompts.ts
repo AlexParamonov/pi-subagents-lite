@@ -9,6 +9,7 @@ import type { EnvInfo } from "../types.js";
 import type { AgentConfig, SystemPromptMode } from "../agents/types.js";
 import type { SkillMeta, PreloadedSkill } from "./skill-loader.js";
 import { formatSkillsForPrompt, type Skill } from "@earendil-works/pi-coding-agent";
+import { stripOrchestrationPromptBlocks } from "./orchestration.js";
 
 /** Extra sections to inject into the system prompt (skills). */
 export interface PromptExtras {
@@ -32,8 +33,10 @@ export interface PromptExtras {
  *   - Skills block (text intro + <available_skills>...</available_skills>)
  *   - Current date: YYYY-MM-DD
  *   - Current working directory: /path
+ *   - [subagents-lite orchestration v1]...[/subagents-lite orchestration v1]
  *
  * These are re-added by subagents-lite from the subagent's own config,
+ * except orchestration guidance, which is parent-only,
  * so we strip them to avoid duplication.
  *
  * @param prompt  The parent system prompt to clean.
@@ -53,6 +56,10 @@ function stripScaffolding(prompt: string): string {
 
   // 4. Strip Current working directory: line
   result = result.replace(/\n?Current working directory:.*\n?/g, "\n");
+
+  // 5. Never inherit a complete extension-owned delegation block. Unmatched
+  // user/custom markers are ordinary content and must remain untouched.
+  result = stripOrchestrationPromptBlocks(result);
 
   // Clean up: collapse runs of 3+ newlines into 2
   result = result.replace(/\n{3,}/g, "\n\n");

@@ -61,8 +61,10 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => type),
-  getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
+  getAgentConfig: vi.fn(() => ({ name: "general-purpose", description: "", systemPrompt: "", maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
+  resolveAgentCatalog: vi.fn(async () => new Map([["general-purpose", { name: "general-purpose", description: "", systemPrompt: "", maxTurns: 25 }]])),
+  resolveTypeInCatalog: vi.fn((catalog: Map<string, unknown>, type: string) => catalog.has(type) ? type : undefined),
 }));
 
 vi.mock("../../src/models/model-precedence.js", () => ({
@@ -143,6 +145,7 @@ describe("executeAgentTool — worktree_path validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
+    ctx.isProjectTrusted = () => true;
     mockGetRecord.mockReturnValue({
       id: "agent-id-123",
       display: { type: "general-purpose", description: "Test agent" },
@@ -343,6 +346,7 @@ describe("executeAgentTool — worktree_path with background spawn", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
+    ctx.isProjectTrusted = () => true;
     mockGetRecord.mockReturnValue({
       id: "agent-id-bg",
       display: { type: "general-purpose", description: "Test agent", worktreeLabel: "feature" },
@@ -401,6 +405,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
+    ctx.isProjectTrusted = () => true;
     mockGetRecord.mockReturnValue({
       id: "agent-id-disc",
       result: "Agent completed successfully",
@@ -416,18 +421,19 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     });
   });
 
-  it("calls discoverNewAgents with worktree dir when type is not initially known", async () => {
+  it("uses the selected trusted worktree catalog and passes its config to spawn", async () => {
     mockValidateWorktreePath.mockResolvedValue({
       ok: true,
       resolvedPath: "/wt/feature",
       worktreeRoot: "/wt/feature",
       label: "feature",
     });
-
-    // First resolveType call returns undefined (type not known)
-    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    const worktreeConfig = {
+      name: "feature-reviewer", description: "Worktree override", systemPrompt: "Frozen worktree prompt",
+      model: "worktree/reviewer", thinkingLevel: "high" as const, maxTurns: 42, tools: ["read"],
+    };
+    vi.mocked(agentTypes.resolveAgentCatalog).mockResolvedValueOnce(new Map([["feature-reviewer", worktreeConfig]]));
+    vi.mocked(utils.findModelInRegistry).mockReturnValue({ provider: "worktree", id: "reviewer" } as any);
 
     await executeAgentTool(
       "tc-disc",
@@ -437,9 +443,16 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       ctx,
     );
 
-    // Should have called discoverNewAgents with the worktree's .pi/agents dir
-    expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
-    expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/wt/feature/.pi/agents");
+    expect(agentTypes.resolveAgentCatalog).toHaveBeenCalledWith("/wt/feature/.pi/agents", { disableDefaultAgents: undefined });
+    expect(mockDiscoverNewAgents).not.toHaveBeenCalled();
+    expect(agentTypes.resolveType).not.toHaveBeenCalled();
+    expect(mockCoordinatorSpawn).toHaveBeenCalledWith(expect.anything(), ctx, expect.objectContaining({
+      type: "feature-reviewer",
+      agentConfig: worktreeConfig,
+      modelKey: "worktree/reviewer",
+      maxTurns: 42,
+      thinkingLevel: "high",
+    }));
   });
 
   it("calls discoverNewAgents without worktree dir when type is not known and worktree_path omitted", async () => {
@@ -456,8 +469,20 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       ctx,
     );
 
-    // Should have called discoverNewAgents WITHOUT a worktree dir
+    // Parent discovery never accepts a worktree path.
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
-    expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith({ disableDefaultAgents: undefined });
+  });
+
+  it("does not discover worktree frontmatter when the project is untrusted", async () => {
+    mockValidateWorktreePath.mockResolvedValue({ ok: true, resolvedPath: "/wt/feature", worktreeRoot: "/wt/feature", label: "feature" });
+    ctx.isProjectTrusted = () => false;
+    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
+    resolveTypeSpy.mockReturnValueOnce(undefined);
+    resolveTypeSpy.mockReturnValueOnce("feature-reviewer");
+
+    await executeAgentTool("tc-disc-untrusted", makeParams({ agent: "feature-reviewer", worktree_path: "/wt/feature" }), undefined, undefined, ctx);
+
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith({ disableDefaultAgents: undefined });
   });
 });

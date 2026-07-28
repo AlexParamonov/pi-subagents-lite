@@ -46,6 +46,8 @@ export interface SubagentsConfig {
     loadExtensionsImplicitly?: boolean;
     /** When true, skip built-in default agents (general-purpose, Explore) at registration. */
     disableDefaultAgents?: boolean;
+    /** Whether to append dynamic parent-agent orchestration guidance. Default: true. */
+    orchestrationPrompt?: boolean;
     /** Whether to show toolUses count in widget stats line. Default: true. */
     showTools?: boolean;
     /** Whether to show turn count in widget stats line. Default: true. */
