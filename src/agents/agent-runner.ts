@@ -22,13 +22,13 @@ import {
   getAgentConfig,
   getConfig,
   getToolNamesForType,
+  resolveAgentConfig,
   resolveSessionAllowedTools,
   resolveVisibleTools,
 } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
 import type { AgentUsage } from "./usage.js";
-import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
-import { DEFAULT_AGENTS } from "./default-agents.js";
+import { GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
@@ -109,7 +109,7 @@ function normalizeMaxTurns(n: number | undefined): number | undefined {
 interface RunOptions extends RunTunables, RunCallbacks {
   /** ExtensionAPI instance — used for pi.exec() for git detection. */
   pi: ExtensionAPI;
-  /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
+  /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `explorer#a1b2c3d4`). */
   agentId?: string;
   /** Override working directory (resolved worktree path). */
   cwd?: string;
@@ -368,12 +368,10 @@ function buildPrompt(
   if (Array.isArray(config.skills)) {
     extras.skillMetas = loadSkillMeta(config.skills, cwd);
   }
-  if (agentConfig) {
-    return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
+  if (!agentConfig) {
+    throw new Error(`Unknown agent type: ${type || "(missing)"}`);
   }
-  const fallback = DEFAULT_AGENTS.get("general-purpose");
-  if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
-  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras, systemPromptMode);
+  return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
 }
 
 /** Build extension name → tool names map from loaded extensions. */
@@ -499,10 +497,10 @@ async function initSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
 ) {
-  const model = options.model ?? findModelInRegistry(
-    agentConfig?.model, ctx.modelRegistry, ctx.model,
-  );
-  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
+  // Spawn paths resolve MD/config/session precedence before reaching the runner.
+  // Only the parent session remains as a defensive fallback here.
+  const model = options.model ?? ctx.model;
+  const thinkingLevel = options.thinkingLevel ?? ctx.thinkingLevel;
   const agentDir = getAgentDir();
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd, agentDir,
@@ -510,7 +508,7 @@ async function initSession(
     settingsManager: SettingsManager.create(cwd, agentDir),
     model,
     tools: resolveSessionAllowedTools({
-      registeredTools: getToolNamesForType(type),
+      registeredTools: getToolNamesForType(type, agentConfig),
       tools: agentConfig?.tools,
       extToolMap,
     }), resourceLoader: loader,
@@ -648,8 +646,13 @@ async function runAgentImpl(
   options: RunOptions,
 ): Promise<RunResult> {
   const store = getStore();
-  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
-  const agentConfig = getAgentConfig(type);
+  // A queued spawn carries the configuration that was resolved at spawn time.
+  // Do not read the mutable registry when that snapshot is available: a later
+  // worktree discovery may have replaced the same type with another definition.
+  const agentConfig = options.agentConfig ?? getAgentConfig(type);
+  const config = options.agentConfig
+    ? resolveAgentConfig(options.agentConfig, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly)
+    : getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
 
   // Buffer warnings during setup to avoid inserting custom_message entries
   // between tool_use and tool_result in the session tree (causes Anthropic 400).

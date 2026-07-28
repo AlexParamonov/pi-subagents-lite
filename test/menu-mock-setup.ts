@@ -13,9 +13,11 @@ import { vi } from "vitest";
 export const mockModules = {
   mockConfig: {
     agent: { default: null, forceBackground: false } as Record<string, any>,
+    thinkingOverrides: {} as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
   },
   mockSessionOverrides: { default: null } as Record<string, any>,
+  mockSessionThinkingOverrides: {} as Record<string, any>,
   mockSessionShowCost: undefined as boolean | undefined,
   mockManager: {
     setConcurrency: vi.fn(),
@@ -29,17 +31,17 @@ export const mockModules = {
     modelRegistry: {
       find: vi.fn((provider: string, modelId: string) => {
         const known: Record<string, { provider: string; id: string }> = {
-          "openai/gpt-4o": { provider: "openai", id: "gpt-4o" },
-          "anthropic/claude-sonnet-4-20250514": { provider: "anthropic", id: "claude-sonnet-4-20250514" },
+          "openai/gpt-4o": { provider: "openai", id: "gpt-4o", reasoning: true },
+          "anthropic/claude-sonnet-4-20250514": { provider: "anthropic", id: "claude-sonnet-4-20250514", reasoning: true },
         };
         return known[`${provider}/${modelId}`];
       }),
       getAvailable: vi.fn(() => [
-        { provider: "anthropic", id: "claude-sonnet-4-20250514" },
-        { provider: "openai", id: "gpt-4o" },
+        { provider: "anthropic", id: "claude-sonnet-4-20250514", reasoning: true },
+        { provider: "openai", id: "gpt-4o", reasoning: true },
       ]),
     },
-    model: { provider: "test", id: "parent-model" },
+    model: { provider: "test", id: "parent-model", reasoning: true },
     cwd: "/test",
   },
   mockPiExec: vi.fn(),
@@ -58,6 +60,7 @@ vi.mock("../src/agents/agent-types.js", () => ({
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
   resolveType: vi.fn((name: string) => name),
   discoverNewAgents: vi.fn(async () => 0),
+  resolveWorktreeAgent: vi.fn(),
 }));
 
 // Capture SearchableSelectDialog instances for tests that need them
@@ -150,29 +153,63 @@ vi.mock("../src/shell.js", () => {
     sessionModelOverride(type: string) {
       return mockModules.mockSessionOverrides[type] ?? null;
     },
+    get sessionDefaultThinking() {
+      return mockModules.mockSessionThinkingOverrides.default;
+    },
+    sessionThinkingOverride(type: string) {
+      return mockModules.mockSessionThinkingOverrides[type];
+    },
+    persistedThinkingOverride(type: string) {
+      return mockModules.mockConfig.thinkingOverrides[type];
+    },
+    hasPersistedThinkingOverrides() {
+      return Object.keys(mockModules.mockConfig.thinkingOverrides).length > 0;
+    },
     get hasSessionShowCost() {
       return mockModules.mockSessionShowCost !== undefined;
     },
     agentConfigSnapshot() {
       return mockModules.mockConfig.agent;
     },
-    modelFor(type: string, parentModelId: string, agentConfig?: any) {
-      const sessionOverride = mockModules.mockSessionOverrides[type];
-      if (sessionOverride) return sessionOverride;
-      const sessionDefault = mockModules.mockSessionOverrides.default;
-      if (sessionDefault) return sessionDefault;
-      const configOverride = mockModules.mockConfig.agent[type];
-      if (configOverride) return configOverride;
-      const configDefault = mockModules.mockConfig.agent.default;
-      if (configDefault) return configDefault;
-      if (agentConfig?.model) return agentConfig.model;
-      return parentModelId;
+    modelSettingFor(type: string, parentModelId: string, agentConfig?: any, explicitModel?: string) {
+      const candidates = [
+        [explicitModel, "spawn"],
+        [mockModules.mockSessionOverrides[type], "session-agent"],
+        [mockModules.mockConfig.agent[type], "config-agent"],
+        [agentConfig?.model, "agent-md"],
+        [mockModules.mockSessionOverrides.default, "session-global"],
+        [mockModules.mockConfig.agent.default, "config-global"],
+        [parentModelId, "parent"],
+      ];
+      const found = candidates.find(([value]) => value != null && value !== "");
+      return found
+        ? { value: found[0] as string, source: found[1] as any }
+        : { value: parentModelId, source: "parent" as const };
+    },
+    modelFor(type: string, parentModelId: string, agentConfig?: any, explicitModel?: string) {
+      return (this as any).modelSettingFor(type, parentModelId, agentConfig, explicitModel).value;
+    },
+    thinkingSettingFor(type: string, parentThinking: string | undefined, agentConfig?: any, explicitThinking?: string) {
+      const candidates = [
+        [explicitThinking, "spawn"],
+        [mockModules.mockSessionThinkingOverrides[type], "session-agent"],
+        [mockModules.mockConfig.thinkingOverrides[type], "config-agent"],
+        [agentConfig?.thinkingLevel, "agent-md"],
+        [mockModules.mockSessionThinkingOverrides.default, "session-global"],
+        [mockModules.mockConfig.agent.defaultThinking, "config-global"],
+        [parentThinking, "parent"],
+      ];
+      const found = candidates.find(([value]) => value != null && value !== "");
+      return found ? { value: found[0], source: found[1] } : { value: undefined, source: "parent" };
     },
     mutate: {
       agent: {
         setDefaultModel(value: string | null) { mockModules.mockConfig.agent.default = value; },
         setModelOverride(type: string, value: string | null) { mockModules.mockConfig.agent[type] = value; },
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
+        setThinkingOverride(type: string, level: string) { mockModules.mockConfig.thinkingOverrides[type] = level; },
+        clearThinkingOverride(type: string) { delete mockModules.mockConfig.thinkingOverrides[type]; },
+        clearAllThinkingOverrides() { mockModules.mockConfig.thinkingOverrides = {}; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
           for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
@@ -233,7 +270,12 @@ vi.mock("../src/shell.js", () => {
       session: {
         setOverride(type: string, model: string) { mockModules.mockSessionOverrides[type] = model; },
         clearOverride(type: string) { delete mockModules.mockSessionOverrides[type]; },
-        clearAll() { mockModules.mockSessionOverrides = { default: null }; },
+        setThinkingOverride(type: string, level: string) { mockModules.mockSessionThinkingOverrides[type] = level; },
+        clearThinkingOverride(type: string) { delete mockModules.mockSessionThinkingOverrides[type]; },
+        clearAll() {
+          mockModules.mockSessionOverrides = { default: null };
+          mockModules.mockSessionThinkingOverrides = {};
+        },
         setShowCost(enabled: boolean) { mockModules.mockSessionShowCost = enabled; },
         clearShowCost() { mockModules.mockSessionShowCost = undefined; },
       },
@@ -253,6 +295,7 @@ vi.mock("../src/shell.js", () => {
             description: intent.description,
             model: intent.model,
             maxTurns: intent.maxTurns,
+            maxTokens: intent.maxTokens,
             thinkingLevel: intent.thinkingLevel,
             isBackground: intent.runInBackground,
             modelKey: intent.modelKey,

@@ -712,6 +712,19 @@ describe("getLiveView callback", () => {
   });
 });
 
+describe("widget invocation thinking", () => {
+  it("shows the normalized thinking level stored on the invocation", () => {
+    const agent = makeRunningAgent("thinking-agent");
+    agent.display.invocation = { thinkingLevel: "off" };
+    const manager = makeMockManager([agent]);
+    const widget = new AgentWidget(manager, () => makeActivity(agent.id));
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines.join("\n")).toContain("thinking:off");
+  });
+});
+
 describe("renderFinishedLine context percent", () => {
   it("uses stats.contextPercent for finished agents without execution.session", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };

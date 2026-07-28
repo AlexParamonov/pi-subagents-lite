@@ -26,8 +26,8 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   // Use plain string to avoid verbose anyOf in prompt.
   // Available types are listed in description for discoverability.
   const agentParam = types.length > 0
-    ? Type.Optional(Type.String({ description: types.join(",") }))
-    : Type.Optional(Type.String());
+    ? Type.String({ description: types.join(",") })
+    : Type.String();
   const tool = {
     name: "Agent",
     label: "Agent",
@@ -35,6 +35,11 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       prompt: Type.String(),
       description: Type.Optional(Type.String()),
       agent: agentParam,
+      model: Type.Optional(Type.String()),
+      thinking: Type.Optional(Type.Union([
+        Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
+        Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max"),
+      ])),
       run_in_background: Type.Optional(Type.Boolean()),
       worktree_path: Type.Optional(Type.String()),
     }, { additionalProperties: false }),

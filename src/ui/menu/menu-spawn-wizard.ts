@@ -12,8 +12,9 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
-import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
-import { findModelInRegistry, VALID_THINKING_LEVELS } from "../../utils.js";
+import { getAgentConfig, getAvailableTypes, resolveType, resolveWorktreeAgent } from "../../agents/agent-types.js";
+import { findModelInRegistry } from "../../utils.js";
+import { normalizeThinkingLevel, supportedThinkingLevels } from "../../models/thinking.js";
 import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
@@ -172,7 +173,9 @@ export async function showSpawnAgentMenu(
     selectedType = result;
   }
 
-  const agentConfig = getAgentConfig(selectedType)!;
+  // Keep the parent config separate from a selected worktree overlay. The
+  // overlay is resolved locally and must never replace this parent definition.
+  const parentAgentConfig = getAgentConfig(selectedType)!;
 
   // ---- Step 2: Prompt entry ----
   let prompt: string;
@@ -195,21 +198,73 @@ export async function showSpawnAgentMenu(
   const parentModelId = session?.model
     ? `${session.model.provider}/${session.model.id}`
     : "";
-  const effectiveModelStr = store.modelFor(selectedType, parentModelId, agentConfig);
-
-  let currentModelStr = effectiveModelStr || "";
-  let currentThinking: ThinkingLevel | undefined = agentConfig.thinkingLevel ?? store.agent.defaultThinking;
-  let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
-  let currentMaxTokens: number | undefined = agentConfig.maxTokens;
+  let currentResolvedType = resolveType(selectedType) ?? selectedType;
+  let currentAgentConfig = parentAgentConfig;
+  let currentModelStr = store.modelFor(currentResolvedType, parentModelId, currentAgentConfig) || "";
+  let modelChanged = false;
+  let thinkingChanged = false;
+  let maxTurnsChanged = false;
+  let maxTokensChanged = false;
+  let currentThinking: ThinkingLevel | undefined = store.thinkingSettingFor(
+    currentResolvedType,
+    session?.thinkingLevel,
+    currentAgentConfig,
+  ).value;
+  let currentMaxTurns: number | undefined = currentAgentConfig.maxTurns ?? store.agent.defaultMaxTurns;
+  let currentMaxTokens: number | undefined = currentAgentConfig.maxTokens;
   let currentGraceTurns: number = store.agent.graceTurns ?? DEFAULT_GRACE_TURNS;
   let currentBackground: boolean = store.agent.forceBackground;
   let currentWorktreePath: string | undefined;
   let currentWorktreeLabel = "Inherits parent cwd";
   let currentDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
+  let worktreeResolutionRequest = 0;
+
+  const applyAgentConfig = (type: string, config: typeof parentAgentConfig) => {
+    currentResolvedType = type;
+    currentAgentConfig = config;
+    if (!modelChanged) currentModelStr = store.modelFor(type, parentModelId, config) || "";
+    if (!thinkingChanged) currentThinking = store.thinkingSettingFor(type, session?.thinkingLevel, config).value;
+    if (!maxTurnsChanged) currentMaxTurns = config.maxTurns ?? store.agent.defaultMaxTurns;
+    if (!maxTokensChanged) currentMaxTokens = config.maxTokens;
+  };
+
+  const refreshSelectedWorktree = async (worktreePath: string | undefined) => {
+    const request = ++worktreeResolutionRequest;
+    if (!worktreePath) {
+      applyAgentConfig(resolveType(selectedType) ?? selectedType, parentAgentConfig);
+    } else {
+      const local = await resolveWorktreeAgent(
+        selectedType,
+        `${worktreePath}/.pi/agents`,
+        { disableDefaultAgents: store.agent.disableDefaultAgents },
+      );
+      // Ignore an older picker selection that completed after a newer one.
+      if (request !== worktreeResolutionRequest) return;
+      if (!local) {
+        ctx.ui.notify(`Unknown agent type in worktree: ${selectedType}`, "error");
+        return;
+      }
+      applyAgentConfig(local.type, local.config);
+    }
+    if (request === worktreeResolutionRequest) rebuild?.(buildItems());
+  };
+
+  const currentModel = () => findModelInRegistry(
+    currentModelStr || parentModelId,
+    session?.modelRegistry ?? ctx.modelRegistry,
+    session?.model ?? ctx.model,
+  );
 
   const buildItems = (): SettingItem[] => {
     const fmtNum = (v: number | undefined) => v != null ? String(v) : "(not set)";
     const displayModel = currentModelStr || "(inherits parent)";
+    const thinkingModel = currentModel();
+    const requestedThinking = currentThinking ?? session?.thinkingLevel;
+    const displayedThinking = thinkingModel?.reasoning === false
+      ? "off"
+      : normalizeThinkingLevel(thinkingModel, requestedThinking);
+    const thinkingLevels = supportedThinkingLevels(thinkingModel);
     const items: SettingItem[] = [
       {
         id: "spawn",
@@ -222,33 +277,53 @@ export async function showSpawnAgentMenu(
           const descItem = items.find(i => i.id === "description");
           const promptItem = items.find(i => i.id === "prompt");
 
-          const thinking = currentThinking;
-          const maxTurns = currentMaxTurns;
-          const maxTokens = currentMaxTokens;
           const graceTurns = Number(gtItem?.currentValue ?? DEFAULT_GRACE_TURNS);
           const background = bgItem?.currentValue === "ON";
           const description = descItem?.currentValue ?? currentDescription;
           const spawnPrompt = promptItem?.currentValue ?? prompt;
 
-          // Resolve model
-          let model: ReturnType<typeof findModelInRegistry> = undefined;
-          let modelKey: string | undefined;
-          if (currentModelStr) {
-            const registry = session?.modelRegistry ?? ctx.modelRegistry;
-            model = findModelInRegistry(currentModelStr, registry, undefined);
-            if (!model) {
-              ctx.ui.notify(`Model not found: ${currentModelStr}`, "error");
-              done();
-              return undefined as any;
-            }
-            modelKey = `${model.provider}/${model.id}`;
-          }
-
           const doSpawn = async () => {
+            // Resolve again immediately before spawning so the queued spawn
+            // receives a current, local config snapshot even if the worktree
+            // changed while the wizard was open. This does not touch the
+            // global parent registry.
+            let resolvedType = currentResolvedType;
+            let refreshedConfig = currentAgentConfig;
             if (currentWorktreePath) {
-              await discoverNewAgents(`${currentWorktreePath}/.pi/agents`);
+              const local = await resolveWorktreeAgent(
+                selectedType,
+                `${currentWorktreePath}/.pi/agents`,
+                { disableDefaultAgents: store.agent.disableDefaultAgents },
+              );
+              if (!local) {
+                ctx.ui.notify(`Unknown agent type in worktree: ${selectedType}`, "error");
+                return;
+              }
+              resolvedType = local.type;
+              refreshedConfig = local.config;
             }
-            const resolvedType = resolveType(selectedType) ?? selectedType;
+            const modelStr = modelChanged
+              ? currentModelStr
+              : store.modelFor(resolvedType, parentModelId, refreshedConfig);
+            const thinking = thinkingChanged
+              ? currentThinking
+              : store.thinkingSettingFor(resolvedType, session?.thinkingLevel, refreshedConfig).value;
+            const maxTurns = maxTurnsChanged
+              ? currentMaxTurns
+              : refreshedConfig.maxTurns ?? store.agent.defaultMaxTurns;
+            const maxTokens = maxTokensChanged ? currentMaxTokens : refreshedConfig.maxTokens;
+
+            let model: ReturnType<typeof findModelInRegistry> = undefined;
+            let modelKey: string | undefined;
+            if (modelStr) {
+              const registry = session?.modelRegistry ?? ctx.modelRegistry;
+              model = findModelInRegistry(modelStr, registry, undefined);
+              if (!model) {
+                ctx.ui.notify(`Model not found: ${modelStr}`, "error");
+                return;
+              }
+              modelKey = `${model.provider}/${model.id}`;
+            }
 
             const widget = getWidget();
             if (widget) {
@@ -262,6 +337,7 @@ export async function showSpawnAgentMenu(
                 type: resolvedType,
                 prompt: spawnPrompt,
                 description,
+                agentConfig: refreshedConfig,
                 model,
                 modelKey,
                 maxTurns,
@@ -311,7 +387,11 @@ export async function showSpawnAgentMenu(
           showClear: false,
           theme,
           onSelect: (_mode, model) => {
+            modelChanged = true;
             currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
+            // Preserve the requested MD/config value across model changes;
+            // buildItems derives the model-specific displayed value.
+            rebuild?.(buildItems());
           },
         }),
       },
@@ -343,11 +423,15 @@ export async function showSpawnAgentMenu(
                   onSelect: (value) => {
                     if (value === "Inherits parent cwd") {
                       currentWorktreePath = undefined;
-                      done("Inherits parent cwd");
+                      currentWorktreeLabel = "Inherits parent cwd";
+                      done(currentWorktreeLabel);
+                      void refreshSelectedWorktree(undefined);
                     } else {
                       const wt = worktrees.find(w => w.path === value);
                       currentWorktreePath = wt?.path;
-                      done(wt?.branch ?? "detached");
+                      currentWorktreeLabel = wt?.branch ?? "detached";
+                      done(currentWorktreeLabel);
+                      void refreshSelectedWorktree(currentWorktreePath);
                     }
                   },
                   onCancel: () => done(),
@@ -360,23 +444,35 @@ export async function showSpawnAgentMenu(
       {
         id: "thinkingLevel",
         label: "Thinking level",
-        currentValue: currentThinking ?? "inherit",
+        currentValue: displayedThinking ?? "inherit",
         description: "Set the reasoning effort level",
-        values: [...VALID_THINKING_LEVELS, "inherit"],
+        values: ["inherit", ...thinkingLevels],
       },
       {
         id: "maxTokens",
         label: "Max tokens",
         currentValue: fmtNum(currentMaxTokens),
         description: "Maximum tokens the agent can consume",
-        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }, () => { currentMaxTokens = undefined; }),
+        submenu: createNumericSubmenu(ctx, (parsed) => {
+          maxTokensChanged = true;
+          currentMaxTokens = parsed;
+        }, () => {
+          maxTokensChanged = true;
+          currentMaxTokens = undefined;
+        }),
       },
       {
         id: "maxTurns",
         label: "Max turns",
         currentValue: fmtNum(currentMaxTurns),
         description: "Maximum conversation turns before hard stop",
-        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }, () => { currentMaxTurns = undefined; }),
+        submenu: createNumericSubmenu(ctx, (parsed) => {
+          maxTurnsChanged = true;
+          currentMaxTurns = parsed;
+        }, () => {
+          maxTurnsChanged = true;
+          currentMaxTurns = undefined;
+        }),
       },
       {
         id: "graceTurns",
@@ -416,6 +512,7 @@ export async function showSpawnAgentMenu(
     const onChange = (id: string, newValue: string) => {
       switch (id) {
         case "thinkingLevel":
+          thinkingChanged = true;
           currentThinking = newValue === "inherit" ? undefined : newValue as ThinkingLevel;
           break;
         case "background":
@@ -427,6 +524,11 @@ export async function showSpawnAgentMenu(
       }
     };
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, doneRef);
-    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme, onCancel: () => doneRef() });
+    return new SettingsListWrapper(settingsList, {
+      title: "Spawn Options",
+      theme,
+      onCancel: () => doneRef(),
+      onRebuild: (callback) => { rebuild = callback; },
+    });
   });
 }

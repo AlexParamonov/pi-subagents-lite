@@ -386,6 +386,8 @@ export class AgentWidget {
       durationMs,
     }, theme, this.statsVisibility);
 
+    const thinkingLevel = a.display.invocation?.thinkingLevel;
+    if (thinkingLevel) statsParts.push(theme.fg("dim", `thinking:${thinkingLevel}`));
     const statsLine = statsParts.join("·");
     return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
@@ -406,6 +408,8 @@ export class AgentWidget {
       cost: agent.stats.lifetimeUsage.cost,
       durationMs: Date.now() - agent.lifecycle.startedAt,
     }, theme, this.statsVisibility);
+    const thinkingLevel = agent.display.invocation?.thinkingLevel;
+    if (thinkingLevel) parts.push(theme.fg("dim", `thinking:${thinkingLevel}`));
     return parts.join("·");
   }
 

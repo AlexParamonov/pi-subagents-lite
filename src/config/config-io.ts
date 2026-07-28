@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { SubagentsConfig } from "../models/model-precedence.js";
+import { parseThinkingLevel } from "../utils.js";
 
 const CONFIG_DIR = getAgentDir();
 const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
@@ -62,8 +63,19 @@ export function loadConfig(): SubagentsConfig {
 
   // @ts-expect-error TS2783: spread may override 'default', which is intentional (loaded value wins)
   const concurrency = { default: 4, ...(raw.concurrency ?? {}) } as SubagentsConfig["concurrency"];
+  const agent = { ...DEFAULT_AGENT, ...raw.agent };
+  // v1.5 and earlier shipped `Explore`; retain its model selection for the new
+  // lowercase `explorer` default only when the user did not configure that key.
+  // An own `explorer` property, including null or an empty string, is explicit.
+  if (!Object.hasOwn(raw.agent ?? {}, "explorer") && typeof raw.agent?.Explore === "string") {
+    agent.explorer = raw.agent.Explore;
+  }
+  const defaultThinking = parseThinkingLevel(agent.defaultThinking);
+  if (defaultThinking === undefined) delete agent.defaultThinking;
+  else agent.defaultThinking = defaultThinking;
   return {
-    agent: { ...DEFAULT_AGENT, ...raw.agent },
+    agent,
+    thinkingOverrides: { ...(raw.thinkingOverrides ?? {}) },
     concurrency,
   };
 }

@@ -54,12 +54,12 @@ Running agents appear in the live widget:
 
 ```
 ◈ Agents
-├─ ⠙ Agent  Write model precedence unit tests  6🛠 ·3⟳ ·↑6.8k↓1.3k 6%·12s
+├─ ⠙ Implementer  Write model precedence unit tests  6🛠 ·3⟳ ·↑6.8k↓1.3k 6%·12s
 │  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
 │  └ The file already exists but is ~175 lines. The user wants a …
-├─ ⠙ Agent  Code review of agent-runner.ts  4🛠 ·2⟳ ·↑7.2k↓1.5k 4%·12s
+├─ ⠙ Reviewer  Code review of agent-runner.ts  4🛠 ·2⟳ ·↑7.2k↓1.5k 4%·12s
 │  └ Now let me check the types and related files for context on …
-└─ ⠙ Explore  Explore codebase architecture  13🛠 ·4⟳ ·↑16.1k↓2.9k 15%·12s
+└─ ⠙ Explorer  Explore codebase architecture  13🛠 ·4⟳ ·↑16.1k↓2.9k 15%·12s
    └ ## Architecture Summary: pi-subagents-lite
 ```
 
@@ -68,7 +68,7 @@ Background agents deliver a result notification when done:
 ```
  Subagent Result
 
- ✓ Explore (model-name)·13🛠 ·5⟳ ·↑25.9k↓4.9k 15%·21s
+ ✓ Explorer (model-name)·13🛠 ·5⟳ ·↑25.9k↓4.9k 15%·21s
    Explore codebase architecture
    tail -f /tmp/pi-agent-outputs/4f6b0f08-7a9a-419.log
 ```
@@ -76,7 +76,7 @@ Background agents deliver a result notification when done:
 Foreground results land inline:
 
 ```
- ▸ Explore
+ ▸ Explorer
  ✓ 31🛠 ·6⟳ ·↑48.1k↓9.2k 28%·39s
    Explore project directory structure
 ```
@@ -85,7 +85,7 @@ Stop a running agent from `/agents`:
 
 ```
 ○ Agents
-└─ ■ Agent  Code review of agent-runner.ts  12🛠 ·10⟳ ·↑32.8k↓6.2k 8%·52s stopped
+└─ ■ Reviewer  Code review of agent-runner.ts  12🛠 ·10⟳ ·↑32.8k↓6.2k 8%·52s stopped
     tail -f /tmp/pi-agent-outputs/23689696-3cd3-400.log
 ```
 
@@ -99,11 +99,13 @@ Spawn a sub-agent.
 |---|---|---|
 | `prompt` | ✅ | The task for the sub-agent |
 | `description` | | Brief description for the caller (optional — derived from `prompt` if omitted) |
-| `agent` | | Type name — `general-purpose`, `Explore`, or any custom type. **Auto-populated** from `.md` files in your agent directories; drop a file, it appears in the enum. `hidden: true` hides a type from the list (still callable by name). |
+| `agent` | ✅ | Type name — one of the bundled defaults (`explorer`, `scout`, `implementer`, `reviewer`, `verifier`) or a custom type. **Auto-populated** from `.md` files in your agent directories; drop a file, it appears in the enum. `hidden: true` hides a type from the list (still callable by name). |
+| `model` | | Model override for this spawn (`provider/model`) |
+| `thinking` | | Thinking override for this spawn: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
 | `worktree_path` | | Absolute path to a git worktree. Agent runs in that worktree's context, discovers agents from its `.pi/agents/`, and shows a worktree label in the UI. Validated against the parent repo's git common dir. |
 
-> `model`, `max_turns`, `max_tokens`, and `thinking` are **not visible to the LLM** — injected at call time from agent config and frontmatter. See [Custom Agent Types](#custom-agent-types).
+> `max_turns` and `max_tokens` are injected from agent configuration. Model and thinking can be selected per spawn or configured through `/agents` → **Agent settings**.
 
 ### `StopAgent`
 
@@ -113,11 +115,11 @@ Stop a running agent by ID.
 |---|---|---|
 | `agent_id` | ✅ | The agent ID returned by `Agent` at spawn |
 
-IDs come from the `Agent` result, the `StopAgent` error (lists all running IDs), or `/agents` → **Running agents**. Display format is `id (type)` (e.g. `a1b2c3 (Explore)`).
+IDs come from the `Agent` result, the `StopAgent` error (lists all running IDs), or `/agents` → **Running agents**. Display format is `id (type)` (e.g. `a1b2c3 (explorer)`).
 
 ### `AgentStatus`
 
-List all agents with type, short ID, and status. Output: `type·short_id·status, ...` (e.g. `general-purpose·a1b2c3·running, Explore·d4e5f6·completed`).
+List all agents with type, short ID, and status. Output: `type·short_id·status, ...` (e.g. `implementer·a1b2c3·running, explorer·d4e5f6·completed`).
 
 The result nudges the LLM to wait for automatic notifications instead of polling — preventing wasteful repeated calls while still letting it discover agents when needed.
 
@@ -125,7 +127,7 @@ The result nudges the LLM to wait for automatic notifications instead of polling
 
 Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared workspace), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent; the body is its system prompt. The `name` field (or filename) becomes the agent type and **auto-populates the `agent` parameter's enum** — no registration. Files added mid-session are picked up on the next call that references them.
 
-Built-ins `general-purpose` and `Explore` are always available. **Precedence:** project (`.pi/agents/`) > shared (`.agents/agents/`) > user (`~/.pi/agent/agents/`) > built-ins. On name clash, higher precedence wins.
+Bundled defaults `explorer`, `scout`, `implementer`, `reviewer`, and `verifier` are enabled by default. Their complete, inspectable definitions ship as plain Markdown in `src/agents/defaults/`; `/agents` → **Debug** → **Agent types** shows each active definition's source. Copy a bundled file to a user or project agent directory to customize it. **Precedence:** project (`.pi/agents/`) > shared (`.agents/agents/`) > user (`~/.pi/agent/agents/`) > bundled defaults. On name clash, higher precedence wins. New overrides are refreshed when an agent is spawned.
 
 ```markdown
 ---
@@ -144,7 +146,7 @@ You are a security review specialist. Analyze code for vulnerabilities,
 focusing on injection flaws, auth bypasses, and insecure defaults.
 ```
 
-A minimal agent — just `name` and `description` — gets everything: all tools, extensions, and skills, same as `general-purpose`. Set restrictions only when you want them.
+A minimal agent — just `name` and `description` — gets all tools, extensions, and skills. Set restrictions only when you want them.
 
 ### Frontmatter reference
 
@@ -159,8 +161,8 @@ A minimal agent — just `name` and `description` — gets everything: all tools
 | `exclude_extensions` | `string[]` | none | **Extension blacklist** — all extensions except these load. Mutually exclusive with `extensions` (when `extensions` is `string[]`). |
 | `skills` | `true` \| `string[]` \| `false` | `true` | **Skill whitelist** — which skills are available (metadata in system prompt). |
 | `preload_skills` | `string[]` \| `false` | `false` | **Full skill injection** — dump complete SKILL.md content into the system prompt instead of metadata-only. |
-| `model` | string | inherit parent | Default model as `"provider/model-id"`. See [Model Resolution](#model-resolution). |
-| `thinking` | string | inherit parent | One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
+| `model` | string | inherit parent | Default model as `"provider/model-id"`. See [Model and Thinking Resolution](#model-and-thinking-resolution). |
+| `thinking` | string | inherit parent | One of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |
 | `max_turns` | number | unlimited | Soft turn limit. Agent gets a steer at the limit, then `max_turns + graceTurns` before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. Injected into provider request payloads. |
 | `hidden` | `true` \| `false` | `false` | `true` hides the type from the enum (LLM can't see or invoke it). Still callable by name. |
@@ -215,18 +217,18 @@ exclude_tools: [edit, write]
 
 **Token cost ranking** (highest → lowest): `preload_skills` ≫ `tools`/`exclude_tools` (each tool schema every turn) > `extensions` (hooks fire every turn) > `skills` (metadata-only, agent reads full content on-demand) > `skills: false` (zero). Prefer metadata skills over preloading; whitelist tools aggressively for narrow agents.
 
-## Model Resolution
+## Model and Thinking Resolution
 
-The extension picks the right model automatically. Precedence (highest first):
+Model and thinking use the same precedence (highest first):
 
-1. **Session per-type override** — `/agents` → Model settings, lasts the session
-2. **Session global default** — temporary
-3. **Config per-type override** — `~/.pi/agent/subagents-lite.json`
-4. **Config global default**
-5. **Agent frontmatter** — `model` in `.md`
-6. **Parent model** — inherit from the calling agent
+1. **Single-spawn value** — `model` or `thinking` in the `Agent` call/manual spawn
+2. **Session override for this agent** — `/agents` → Agent settings
+3. **Saved override for this agent** — `~/.pi/agent/subagents-lite.json`
+4. **Agent Markdown** — `model` or `thinking` in frontmatter
+5. **Global default** — session value first, then saved value
+6. **Parent session** — inherit from the calling agent
 
-The LLM never passes `model` — it's injected at call time. Set it once in config or frontmatter and forget.
+Agent settings show the effective value and its source. A global value is a fallback: it does not replace an agent-specific frontmatter value. Per-agent and manual-spawn Thinking selectors use the effective model's supported levels. If an existing MD/config value is unsupported, the UI shows the requested value and Pi-adjusted effective level; runtime records and widgets use the adjusted level. The global selector keeps all levels because it can apply to different models.
 
 ## System Prompt Mode
 
@@ -247,8 +249,8 @@ Management menu with four sections:
 - **Running agents** — status and description; per-agent actions (view snapshot, result, error; steer; stop) and bulk stop
 - **Spawn agent** — manually spawn without the LLM. Pick a type (with search), enter a prompt, tune options (model, thinking, max turns, max tokens, grace turns, background), then spawn. Options pre-fill from agent config.
 - **Settings**
-  - **Model settings** — global default, per-type overrides, session overrides, clear all
-  - **Spawn options** — force background, grace turns, default max turns, default thinking, disable default agents
+  - **Agent settings** — effective model and thinking with source; global and per-agent session/saved overrides
+  - **Spawn options** — force background, grace turns, default max turns, disable bundled default agents
   - **System prompt** — mode, custom prompt file, include AGENTS.md, load skills/extensions implicitly
   - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
   - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time)
@@ -261,14 +263,14 @@ Persistent bar above the editor showing running and completed agents, updating l
 
 **Full mode** (tree, header + `tail -f` path + activity):
 ```
-├─ ⠙ Explore  description  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s
+├─ ⠙ Explorer  description  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s
 │  │ tail -f /tmp/pi-agent-outputs/...
 │  └ thinking…
 ```
 
 **Compact mode** (single line, description truncated, activity inline):
 ```
-├─ ⠙ Explore  description trunc…  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s  thinking…
+├─ ⠙ Explorer  description trunc…  3🛠 ·5≤30⟳ ·↑10.2k↓1.8k 45%·1h 2m 3s  thinking…
 ```
 
 Turn format uses `≤` and `⟳` (`5≤30⟳` = 5 of 30 turns). Turn count is colored by usage: normal < 80%, warning 80–99%, error at 100%. The max is hidden when well below the limit. Token glyphs (`↑` input, `↓` output) are self-explanatory — no "tokens" label.
@@ -281,11 +283,13 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Cost display** ON, shows dollar cost. Toggle as a session override from Model settings.
+**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Cost display** ON, shows dollar cost. Toggle as a session override from Agent settings.
 
 ## Configuration
 
-`~/.pi/agent/subagents-lite.json` — managed via `/agents`, or edit directly. Per-type model overrides (e.g. `"Explore"`) are dynamic keys alongside the special fields.
+`~/.pi/agent/subagents-lite.json` — managed via `/agents`, or edit directly. Per-agent model overrides are dynamic keys in `agent`; per-agent thinking overrides live in `thinkingOverrides`.
+
+**Migration from 1.5.x:** Agent selection is now explicit. Calls that omitted `agent` or used `general-purpose` must choose one of `explorer`, `scout`, `implementer`, `reviewer`, or `verifier`. The former built-in `Explore` model key is migrated to lowercase `explorer` unless that key is already configured, including an explicit `null` inheritance value.
 
 ```json
 {
@@ -310,10 +314,14 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
     "loadSkillsImplicitly": false,
     "loadExtensionsImplicitly": false,
     "disableDefaultAgents": false,
-    "Explore": "xiaomi/mimo-v2.5",
-    "builder": "xiaomi/mimo-v2-pro",
-    "architecture-reviewer": "zai/glm-5.2",
-    "planner": "zai/glm-5.2"
+    "explorer": "xiaomi/mimo-v2.5",
+    "implementer": "xiaomi/mimo-v2-pro",
+    "reviewer": "zai/glm-5.2"
+  },
+  "thinkingOverrides": {
+    "explorer": "medium",
+    "implementer": "high",
+    "reviewer": "high"
   },
   "concurrency": {
     "default": 4,

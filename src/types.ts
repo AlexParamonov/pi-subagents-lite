@@ -6,7 +6,7 @@ import type { Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
-import type { SubagentType, AgentInvocation } from "./agents/types.js";
+import type { SubagentType, AgentConfig, AgentInvocation } from "./agents/types.js";
 
 /** Thinking level for agent models (sourced from @earendil-works/pi-ai). */
 export type ThinkingLevel = ModelThinkingLevel;
@@ -23,6 +23,8 @@ export interface ToolActivity {
  * flows through the whole chain.
  */
 export interface RunTunables {
+  /** Immutable-at-spawn agent definition, retained while a spawn waits in the queue. */
+  agentConfig?: AgentConfig;
   model?: Model<any>;
   maxTurns?: number;
   maxTokens?: number;

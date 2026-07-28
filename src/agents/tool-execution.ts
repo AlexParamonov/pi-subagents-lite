@@ -10,12 +10,14 @@ import { getStatusNote } from "../status-note.js";
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "../types.js";
+import type { AgentConfig } from "./types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
-import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
+import { resolveType, getAgentConfig, discoverNewAgents, resolveWorktreeAgent } from "./agent-types.js";
 import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
+import { normalizeThinkingLevel } from "../models/thinking.js";
 import {
   getPiInstance,
   getSessionCtx,
@@ -134,14 +136,32 @@ export async function executeAgentTool(
     }
   }
 
-  const type = (params.agent as string) || "general-purpose";
-  let resolvedType = resolveType(type);
-  if (!resolvedType) {
-    // Not found in registry — try scanning filesystem for agents added during the session.
-    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
-    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
-    await discoverNewAgents(worktreeDir);
+  const rawType = params.agent;
+  if (typeof rawType !== "string" || rawType.trim() === "") {
+    return errorResult("Agent type is required");
+  }
+  const type = rawType.trim();
+  // A worktree definition is a local overlay over a fresh parent merge. Never
+  // install it in the parent registry: concurrent worktree calls must retain
+  // their own resolved config all the way to the coordinator snapshot.
+  let resolvedType: string | undefined;
+  let agentConfig: AgentConfig | undefined;
+  const discoveryOptions = {
+    disableDefaultAgents: getStore().agent.disableDefaultAgents,
+  };
+  if (validatedWorktreePath) {
+    const local = await resolveWorktreeAgent(
+      type,
+      `${validatedWorktreePath}/.pi/agents`,
+      discoveryOptions,
+    );
+    resolvedType = local?.type;
+    agentConfig = local?.config;
+  } else {
+    // Non-worktree refreshes still update the global parent registry.
+    await discoverNewAgents(discoveryOptions);
     resolvedType = resolveType(type);
+    agentConfig = resolvedType ? getAgentConfig(resolvedType) : undefined;
   }
   if (!resolvedType) {
     return errorResult(`Unknown agent type: ${type}`);
@@ -150,18 +170,35 @@ export async function executeAgentTool(
   const prompt = params.prompt as string;
   const description = (params.description as string | undefined) || prompt.split("\n")[0].slice(0, 80) || prompt.slice(0, 80);
   const runInBackground = params.run_in_background as boolean | undefined;
-  const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
-
-  const modelStr = params.model as string | undefined;
-  const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
+  const maxTurns = params.max_turns as number | undefined ?? agentConfig?.maxTurns;
+  const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
+  const explicitModel = params._modelFromSettings === true
+    ? undefined
+    : typeof params.model === "string" ? params.model : undefined;
+  const modelSetting = getStore().modelSettingFor(resolvedType, parentModelId, agentConfig, explicitModel);
+  let model: ReturnType<typeof findModelInRegistry>;
+  if (explicitModel !== undefined) {
+    const parsed = parseModelKey(explicitModel);
+    model = parsed ? ctx.modelRegistry.find(parsed.provider, parsed.modelId) : undefined;
+    if (!model) return errorResult(`Model not found: ${explicitModel}`);
+  } else {
+    model = findModelInRegistry(modelSetting.value, ctx.modelRegistry, ctx.model);
+  }
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
 
   // Determine modelName for invocation (always capture for display)
   const modelName = model?.id;
 
-  // Resolve thinking: explicit param > agent config (frontmatter) > undefined (inherit)
-  const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
-    ?? getAgentConfig(resolvedType)?.thinkingLevel;
+  const explicitThinking = params._thinkingFromSettings === true
+    ? undefined
+    : parseThinkingLevel(params.thinking as string | undefined);
+  const thinkingSetting = getStore().thinkingSettingFor(
+    resolvedType,
+    ctx.thinkingLevel,
+    agentConfig,
+    explicitThinking,
+  );
+  const thinkingLevel = thinkingSetting.value;
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
@@ -169,6 +206,7 @@ export async function executeAgentTool(
     type: resolvedType,
     prompt,
     description,
+    agentConfig,
     model,
     modelKey,
     maxTurns,
@@ -272,28 +310,49 @@ export async function toolCallListener(
   if (event.toolName !== "Agent") return;
 
   const input = event.input;
-  const subagentType = input.agent as string | undefined;
+  // Preserve an explicitly requested model in the invocation display even for
+  // worktree calls. Only parent-derived defaults must wait for local discovery.
+  if (typeof input.model === "string") {
+    const parsed = parseModelKey(input.model);
+    if (parsed) input._modelOverride = parsed.modelId;
+  }
+  // Local worktree config is resolved asynchronously by executeAgentTool.
+  // Do not prefill this call from the parent registry/model: those values
+  // would be shown in the tool invocation but ignored by the local overlay.
+  if (typeof input.worktree_path === "string" && input.worktree_path.trim() !== "") return;
+
+  const requestedType = input.agent as string | undefined;
+  const subagentType = requestedType ? resolveType(requestedType) : undefined;
   const agentConfig = subagentType ? getAgentConfig(subagentType) : undefined;
 
   const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
 
-  const effectiveModel = getStore().modelFor(
-    subagentType ?? "general-purpose",
-    parentModelId,
-    agentConfig,
-  );
-
-  if (effectiveModel) {
-    input.model = effectiveModel;
-    // Always inject _modelOverride for renderCall
-    const parsed = parseModelKey(effectiveModel);
-    if (parsed) {
-      input._modelOverride = parsed.modelId;
+  if (subagentType && input.model === undefined) {
+    const effectiveModel = getStore().modelFor(subagentType, parentModelId, agentConfig);
+    if (effectiveModel) {
+      input.model = effectiveModel;
+      input._modelFromSettings = true;
     }
   }
-
-  // Inject thinking from agent config if not explicitly passed
-  if (input.thinking === undefined && agentConfig?.thinkingLevel !== undefined) {
-    input.thinking = agentConfig.thinkingLevel;
+  if (typeof input.model === "string") {
+    const parsed = parseModelKey(input.model);
+    if (parsed) input._modelOverride = parsed.modelId;
   }
+
+  if (subagentType && input.thinking === undefined) {
+    const setting = getStore().thinkingSettingFor(subagentType, ctx.thinkingLevel, agentConfig);
+    input.thinking = setting.value;
+    input._thinkingFromSettings = true;
+  }
+
+  // Keep the tool invocation display aligned with the normalized runtime
+  // value. executeAgentTool and the coordinator normalize again defensively.
+  const invocationModel = findModelInRegistry(
+    typeof input.model === "string" ? input.model : undefined,
+    ctx.modelRegistry,
+    ctx.model,
+  );
+  const requestedThinking = parseThinkingLevel(input.thinking as string | undefined);
+  const normalizedThinking = normalizeThinkingLevel(invocationModel, requestedThinking ?? ctx.thinkingLevel);
+  if (normalizedThinking !== undefined) input.thinking = normalizedThinking;
 }

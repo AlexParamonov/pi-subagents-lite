@@ -1,19 +1,32 @@
 /**
- * model-precedence.ts — Model resolution with explicit precedence.
+ * Agent model/thinking resolution with explicit, shared precedence.
  *
- * Pure function — no side effects, no file I/O, no pi SDK imports.
- *
- * Precedence chain (highest to lowest):
- *   1. sessionOverrides[subagentType]  (session per-type override)
- *   2. sessionOverrides["default"]     (session global default)
- *   3. config.agent[subagentType]      (config per-type override)
- *   4. config.agent["default"]         (config global default)
- *   5. agentConfig?.model              (agent config / frontmatter)
- *   6. parentModelId                   (inherit from parent)
+ * Highest to lowest for both settings:
+ *   1. explicit value for this spawn
+ *   2. session override for this agent type
+ *   3. persisted override for this agent type
+ *   4. agent Markdown/frontmatter
+ *   5. global default (session, then persisted)
+ *   6. parent session value
  */
 
 import type { ThinkingLevel } from "../types.js";
 import type { SystemPromptMode } from "../agents/types.js";
+import { parseThinkingLevel } from "../utils.js";
+
+export type SettingSource =
+  | "spawn"
+  | "session-agent"
+  | "config-agent"
+  | "agent-md"
+  | "session-global"
+  | "config-global"
+  | "parent";
+
+export interface ResolvedSetting<T> {
+  value: T;
+  source: SettingSource;
+}
 
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {
@@ -26,42 +39,29 @@ export interface SubagentsConfig {
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
     widgetShortcut?: boolean;
-    /** System prompt mode: replace (default), inherit parent, or custom file. */
     systemPromptMode?: SystemPromptMode;
-    /** Whether to include AGENTS.md context files in the subagent system prompt. Default: true. */
     includeContextFiles?: boolean;
-    /** Default thinking level for spawned agents. Undefined = inherit from agent config. */
     defaultThinking?: ThinkingLevel;
-    /** Default max turns for spawned agents. Undefined = unlimited. */
     defaultMaxTurns?: number;
-    /** Global default for skills loading when agent doesn't explicitly set skills. true (default) or false. */
     loadSkillsImplicitly?: boolean;
-    /** Global default for extensions loading when agent doesn't explicitly set extensions. true (default) or false. */
     loadExtensionsImplicitly?: boolean;
-    /** When true, skip built-in default agents (general-purpose, Explore) at registration. */
     disableDefaultAgents?: boolean;
-    /** Whether to show toolUses count in widget stats line. Default: true. */
     showTools?: boolean;
-    /** Whether to show turn count in widget stats line. Default: true. */
     showTurns?: boolean;
-    /** Whether to show input tokens in widget stats line. Default: true. */
     showInput?: boolean;
-    /** Whether to show output tokens in widget stats line. Default: true. */
     showOutput?: boolean;
-    /** Whether to show context percent and compactions in widget stats line. Default: true. */
     showContext?: boolean;
-    /** Whether to show elapsed time in widget stats line. Default: true. */
     showTime?: boolean;
-    /** Max description length in widget full mode. Default: 50. */
+    widgetNavHint?: boolean;
     widgetDescLengthFull?: number;
-    /** Max description length in widget compact mode. Default: 30. */
     widgetDescLengthCompact?: number;
-    /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
+    deltaInputTokens?: boolean;
     outputThinkingBufferSize?: number;
-    /** Minutes to retain finished agents in the widget. Default: 10. */
     finishedRetentionMinutes?: number;
     [agentType: string]: string | null | undefined | boolean | number;
   };
+  /** Persisted per-agent thinking overrides. */
+  thinkingOverrides?: Record<string, ThinkingLevel | null | undefined>;
   concurrency: {
     default: number;
     providers?: Record<string, number>;
@@ -69,56 +69,88 @@ export interface SubagentsConfig {
   };
 }
 
-/**
- * Shape of session-only model overrides.
- * Same as config.agent but without the forceBackground flag.
- * Not persisted — cleared on session_start.
- */
+/** Session-only model overrides. `default` is the session global fallback. */
 export interface SessionModelOverrides {
   default: string | null;
   [agentType: string]: string | null | undefined;
 }
 
-/** Options for resolveModel. */
+/** Session-only thinking overrides. `default` is the session global fallback. */
+export interface SessionThinkingOverrides {
+  default?: ThinkingLevel;
+  [agentType: string]: ThinkingLevel | undefined;
+}
+
 export interface ResolveModelOptions {
-  /** The type of subagent being spawned. */
   subagentType: string;
-  /** The agent's config (from .md frontmatter or defaults). */
+  explicitModel?: string;
   agentConfig?: { model?: string };
-  /** The global subagents-lite.json config (model overrides). */
   config: SubagentsConfig;
-  /** The parent agent's model ID (final fallback). */
   parentModelId: string;
-  /** Session-only overrides (checked first). */
   sessionOverrides?: SessionModelOverrides;
 }
 
-/**
- * Resolve the model for a subagent invocation.
- *
- * Returns the first non-null, non-undefined, non-empty-string value
- * from the precedence chain. If all are empty/null, returns parentModelId.
- */
-export function resolveModel(options: ResolveModelOptions): string {
-  const { subagentType, agentConfig, config, parentModelId, sessionOverrides } = options;
-
-  // Precedence chain: session > config > frontmatter > parent
-  // Cast agent values: index signature includes number (graceTurns), but models are always strings
-  const candidates: Array<string | boolean | null | undefined> = [
-    sessionOverrides?.[subagentType],
-    sessionOverrides?.["default"],
-    config.agent[subagentType] as string | null | undefined,
-    config.agent["default"],
-    agentConfig?.model,
-    parentModelId, // final fallback (always a valid string)
-  ];
-  return candidates.find(isValidValue) ?? parentModelId;
+export interface ResolveThinkingOptions {
+  subagentType: string;
+  explicitThinking?: ThinkingLevel;
+  agentConfig?: { thinkingLevel?: ThinkingLevel };
+  config: SubagentsConfig;
+  parentThinking?: ThinkingLevel;
+  sessionOverrides?: SessionThinkingOverrides;
 }
 
-/**
- * Check if a value is a valid non-empty model string.
- * Returns true for non-null, non-undefined, non-empty strings.
- */
-function isValidValue(value: string | boolean | null | undefined): value is string {
-  return typeof value === "string" && value.length > 0;
+function firstDefined<T>(
+  candidates: Array<{ value: T | null | undefined; source: SettingSource }>,
+): ResolvedSetting<T> | undefined {
+  for (const candidate of candidates) {
+    if (candidate.value !== undefined && candidate.value !== null && candidate.value !== "") {
+      return candidate as ResolvedSetting<T>;
+    }
+  }
+  return undefined;
+}
+
+/** Resolve a model and retain the source for transparent UI display. */
+export function resolveModelSetting(options: ResolveModelOptions): ResolvedSetting<string> {
+  const { subagentType, explicitModel, agentConfig, config, parentModelId, sessionOverrides } = options;
+  const candidates: Array<{ value: unknown; source: SettingSource }> = [
+    { value: explicitModel, source: "spawn" },
+    { value: sessionOverrides?.[subagentType], source: "session-agent" },
+    { value: config.agent[subagentType], source: "config-agent" },
+    { value: agentConfig?.model, source: "agent-md" },
+    { value: sessionOverrides?.default, source: "session-global" },
+    { value: config.agent.default, source: "config-global" },
+    { value: parentModelId, source: "parent" },
+  ];
+  const resolved = candidates.find(
+    (candidate): candidate is { value: string; source: SettingSource } =>
+      typeof candidate.value === "string" && candidate.value.length > 0,
+  );
+  return resolved ?? { value: parentModelId, source: "parent" };
+}
+
+/** Backwards-compatible value-only model resolver. */
+export function resolveModel(options: ResolveModelOptions): string {
+  return resolveModelSetting(options).value;
+}
+
+/** Resolve thinking and retain its source. Undefined means the parent has no explicit level. */
+export function resolveThinkingSetting(
+  options: ResolveThinkingOptions,
+): ResolvedSetting<ThinkingLevel | undefined> {
+  const { subagentType, explicitThinking, agentConfig, config, parentThinking, sessionOverrides } = options;
+  // Persisted config is parsed JSON and may contain values outside its
+  // TypeScript shape. Validate those values at the precedence boundary so an
+  // invalid saved override falls through instead of reaching the provider.
+  const persistedAgentThinking = parseThinkingLevel(config.thinkingOverrides?.[subagentType]);
+  const persistedDefaultThinking = parseThinkingLevel(config.agent.defaultThinking);
+  return firstDefined<ThinkingLevel>([
+    { value: explicitThinking, source: "spawn" },
+    { value: sessionOverrides?.[subagentType], source: "session-agent" },
+    { value: persistedAgentThinking, source: "config-agent" },
+    { value: agentConfig?.thinkingLevel, source: "agent-md" },
+    { value: sessionOverrides?.default, source: "session-global" },
+    { value: persistedDefaultThinking, source: "config-global" },
+    { value: parentThinking, source: "parent" },
+  ]) ?? { value: undefined, source: "parent" };
 }

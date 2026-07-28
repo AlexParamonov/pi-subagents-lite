@@ -8,9 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Bundled agent catalog now uses inspectable Markdown.** `explorer`, `scout`, `implementer`, `reviewer`, and `verifier` replace the embedded `general-purpose`/`Explore` pair; agent selection is explicit and silent general-purpose fallbacks are removed.
+- **Model and thinking resolution is unified and model-aware.** Precedence is spawn > session agent override > saved agent override > Agent Markdown > global fallback > parent. Agent Settings shows effective sources, filters per-agent Thinking choices by model capability, and reports Pi-adjusted values for incompatible existing settings.
 - **Finished agents no longer vanish mid-navigation.** Widget eviction unified with manager retention — one configurable clock instead of two conflicting ones.
 
 ### Added
+- **Per-agent thinking overrides** for the current session or persisted config, alongside existing model overrides.
 - **`finishedRetentionMinutes` setting** (Widget Settings, default 10, min 1). Controls how long finished agents stay visible.
 - **Navigation highlight clamps** when roster shrinks from agent eviction.
 

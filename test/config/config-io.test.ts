@@ -26,6 +26,35 @@ afterEach(() => {
 });
 
 describe("config I/O paths", () => {
+  it.each([
+    ["is absent", {}, "legacy/model"],
+    ["is explicitly null", { explorer: null }, null],
+    ["is explicitly empty", { explorer: "" }, ""],
+    ["has another explicit value", { explorer: "new/model" }, "new/model"],
+  ])("migrates legacy Explore only when explorer %s", async (_, explorer, expected) => {
+    mockGetAgentDir.mockReturnValue("/tmp/pi-agent");
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      agent: { Explore: "legacy/model", ...explorer },
+      concurrency: { default: 4 },
+    }));
+    vi.resetModules();
+
+    const { loadConfig } = await import("../../src/config/config-io.ts");
+    expect(loadConfig().agent.explorer).toBe(expected);
+  });
+
+  it("drops an invalid global thinking value while loading config", async () => {
+    mockGetAgentDir.mockReturnValue("/tmp/pi-agent");
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      agent: { defaultThinking: "invalid" },
+      concurrency: { default: 4 },
+    }));
+    vi.resetModules();
+
+    const { loadConfig } = await import("../../src/config/config-io.ts");
+    expect(loadConfig().agent.defaultThinking).toBeUndefined();
+  });
+
   it("uses Pi's agent directory for config and custom prompts when HOME is unset", async () => {
     const agentDir = "C:\\Users\\Pi User\\.pi\\agent";
     vi.stubEnv("HOME", "");

@@ -81,8 +81,9 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("|-----------|-------------|");
   lines.push("| `prompt` | The task for the agent (required) |");
   lines.push("| `description` | One-line summary of what the agent should do (required) |");
-  lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
-  lines.push("| `thinking` | Optional thinking mode override (e.g., `off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |");
+  lines.push("| `agent` | Which agent type to use (required) |");
+  lines.push("| `model` | Optional model override (`provider/model`) |");
+  lines.push("| `thinking` | Optional thinking mode override (e.g., `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) |");
   lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
   lines.push("| `worktree_path` | Optional path to a git worktree of the parent's repo. See below for details. |");
   lines.push("");

@@ -21,11 +21,33 @@ import { fakeCtx } from "../fixtures.ts";
 /* ------------------------------------------------------------------ */
 
 // Use vi.hoisted so mock factories can reference these at hoisting time
-const { mockValidateWorktreePath, mockSpawn, mockGetRecord, mockDiscoverNewAgents } = vi.hoisted(() => ({
+const {
+  mockValidateWorktreePath,
+  mockSpawn,
+  mockGetRecord,
+  mockDiscoverNewAgents,
+  mockResolveWorktreeAgent,
+  mockModelFor,
+  mockModelSettingFor,
+  mockThinkingSettingFor,
+} = vi.hoisted(() => ({
   mockValidateWorktreePath: vi.fn(),
   mockSpawn: vi.fn().mockReturnValue("agent-id-123"),
   mockGetRecord: vi.fn(),
   mockDiscoverNewAgents: vi.fn(),
+  mockResolveWorktreeAgent: vi.fn((type: string) => ({
+    type,
+    config: { maxTurns: 25, thinkingLevel: undefined },
+  })),
+  mockModelFor: vi.fn((_: string, parentModelId: string, agentConfig?: any) => agentConfig?.model ?? parentModelId),
+  mockModelSettingFor: vi.fn((_: string, parentModelId: string, agentConfig?: any, explicitModel?: string) => ({
+    value: explicitModel ?? agentConfig?.model ?? parentModelId,
+    source: explicitModel ? "spawn" : "parent",
+  })),
+  mockThinkingSettingFor: vi.fn((_: string, parentThinking: any, agentConfig?: any, explicitThinking?: any) => ({
+    value: explicitThinking ?? agentConfig?.thinkingLevel ?? parentThinking,
+    source: explicitThinking ? "spawn" : "parent",
+  })),
 }));
 
 vi.mock("../../src/spawn/worktree-validator.js", () => ({
@@ -41,16 +63,19 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => type),
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
+  resolveWorktreeAgent: mockResolveWorktreeAgent,
 }));
 
 vi.mock("../../src/models/model-precedence.js", () => ({
   resolveModel: vi.fn(() => undefined),
+  resolveModelSetting: vi.fn(() => ({ value: "", source: "parent" })),
+  resolveThinkingSetting: vi.fn(() => ({ value: undefined, source: "parent" })),
 }));
 
 vi.mock("../../src/utils.js", () => ({
   parseModelKey: vi.fn(() => null),
   findModelInRegistry: vi.fn(() => null),
-  parseThinkingLevel: vi.fn(() => undefined),
+  parseThinkingLevel: vi.fn((value?: string) => value),
 }));
 
 vi.mock("../../src/shell.js", () => ({
@@ -58,11 +83,9 @@ vi.mock("../../src/shell.js", () => ({
     get agent() {
       return { graceTurns: 5, forceBackground: false };
     },
-    modelFor(type: string, parentModelId: string, agentConfig?: any) {
-      // Simplified model resolution for testing
-      if (agentConfig?.model) return agentConfig.model;
-      return parentModelId;
-    },
+    modelFor: mockModelFor,
+    modelSettingFor: mockModelSettingFor,
+    thinkingSettingFor: mockThinkingSettingFor,
   }),
   getPiInstance: () => ({ sendMessage: vi.fn(), exec: vi.fn() }),
   getSessionCtx: () => ({ cwd: "/home/test/project" }),
@@ -86,7 +109,9 @@ vi.mock("../../src/shell.js", () => ({
       };
       const id = mockSpawn(_pi, _ctx, intent.type, intent.prompt, {
         description: intent.description,
+        agentConfig: intent.agentConfig,
         model: intent.model,
+        invocation: intent.invocation,
         maxTurns: intent.maxTurns,
         thinkingLevel: intent.thinkingLevel,
         modelKey: intent.modelKey,
@@ -115,8 +140,9 @@ vi.mock("../../src/agents/usage.js", () => ({
 }));
 
 // Import after mocks are in place
-import { executeAgentTool } from "../../src/agents/tool-execution.js";
+import { executeAgentTool, toolCallListener } from "../../src/agents/tool-execution.js";
 import * as agentTypes from "../../src/agents/agent-types.js";
+import * as utils from "../../src/utils.js";
 
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */
@@ -135,6 +161,115 @@ function makeParams(overrides: Record<string, unknown> = {}): Record<string, unk
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
 
+describe("toolCallListener — canonical agent settings", () => {
+  it("shows a model resolved from agent settings in invocation metadata", async () => {
+    vi.clearAllMocks();
+    mockModelFor.mockReturnValueOnce("openai/gpt-4o");
+    (utils.parseModelKey as any).mockReturnValueOnce({ provider: "openai", modelId: "gpt-4o" });
+    const input: Record<string, unknown> = { agent: "reviewer", prompt: "inspect" };
+
+    await toolCallListener({ toolName: "Agent", input } as any, fakeCtx() as any);
+
+    expect(input.model).toBe("openai/gpt-4o");
+    expect(input._modelOverride).toBe("gpt-4o");
+  });
+
+  it("uses the canonical type for case-insensitive agent names", async () => {
+    vi.clearAllMocks();
+    (agentTypes.resolveType as any).mockReturnValueOnce("explorer");
+
+    await toolCallListener(
+      { toolName: "Agent", input: { agent: "Explorer", prompt: "inspect" } } as any,
+      fakeCtx() as any,
+    );
+
+    expect(mockModelFor).toHaveBeenCalledWith(
+      "explorer",
+      expect.any(String),
+      expect.any(Object),
+    );
+    expect(mockThinkingSettingFor).toHaveBeenCalledWith(
+      "explorer",
+      undefined,
+      expect.any(Object),
+    );
+  });
+
+  it("does not inject parent model or thinking for a worktree call", async () => {
+    vi.clearAllMocks();
+    const input: Record<string, unknown> = {
+      agent: "reviewer", prompt: "inspect", worktree_path: "/wt/feature",
+    };
+
+    await toolCallListener({ toolName: "Agent", input } as any, fakeCtx() as any);
+
+    expect(input.model).toBeUndefined();
+    expect(input.thinking).toBeUndefined();
+    expect(mockModelFor).not.toHaveBeenCalled();
+    expect(mockThinkingSettingFor).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicit worktree model in the invocation display metadata", async () => {
+    vi.clearAllMocks();
+    (utils.parseModelKey as any).mockReturnValueOnce({
+      provider: "anthropic",
+      modelId: "claude-sonnet-4-20250514",
+    });
+    const input: Record<string, unknown> = {
+      agent: "reviewer",
+      prompt: "inspect",
+      worktree_path: "/wt/feature",
+      model: "anthropic/claude-sonnet-4-20250514",
+    };
+
+    await toolCallListener({ toolName: "Agent", input } as any, fakeCtx() as any);
+
+    expect(input._modelOverride).toBe("claude-sonnet-4-20250514");
+    expect(mockModelFor).not.toHaveBeenCalled();
+    expect(mockThinkingSettingFor).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeAgentTool — explicit agent type", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = fakeCtx();
+  });
+
+  it("fails clearly when the agent type is missing", async () => {
+    const result = await executeAgentTool(
+      "tc-missing-type",
+      makeParams({ agent: undefined }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Agent type is required");
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("fails clearly for an unknown agent type", async () => {
+    (agentTypes.resolveType as any).mockReturnValueOnce(undefined);
+
+    const result = await executeAgentTool(
+      "tc-unknown-type",
+      makeParams({ agent: "unknown-agent" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith({ disableDefaultAgents: undefined });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Unknown agent type: unknown-agent");
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
 describe("executeAgentTool — worktree_path validation", () => {
   let ctx: any;
 
@@ -151,6 +286,69 @@ describe("executeAgentTool — worktree_path validation", () => {
         toolUses: 0,
         compactionCount: 0,
       },
+    });
+  });
+
+  it("passes Agent tool model and thinking overrides to the shared resolver", async () => {
+    (utils.parseModelKey as any).mockReturnValueOnce({ provider: "openai", modelId: "gpt-4o" });
+    ctx.modelRegistry.find.mockReturnValueOnce({ provider: "openai", id: "gpt-4o", reasoning: true });
+    await executeAgentTool(
+      "tc-explicit-settings",
+      makeParams({ model: "openai/gpt-4o", thinking: "high" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(mockModelSettingFor).toHaveBeenCalledWith(
+      "general-purpose",
+      expect.any(String),
+      expect.any(Object),
+      "openai/gpt-4o",
+    );
+    expect(mockThinkingSettingFor).toHaveBeenCalledWith(
+      "general-purpose",
+      undefined,
+      expect.any(Object),
+      "high",
+    );
+    expect(mockSpawn.mock.calls[0][4].thinkingLevel).toBe("high");
+  });
+
+  it("rejects an unknown explicit model instead of silently using the parent", async () => {
+    (utils.parseModelKey as any).mockReturnValueOnce({ provider: "unknown", modelId: "model" });
+    ctx.modelRegistry.find.mockReturnValueOnce(undefined);
+
+    const result = await executeAgentTool(
+      "tc-unknown-model",
+      makeParams({ model: "unknown/model" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0]).toMatchObject({ type: "text", text: "Model not found: unknown/model" });
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("uses local worktree model and thinking for the spawned display", async () => {
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true, resolvedPath: "/wt/feature", worktreeRoot: "/wt/feature", label: "feature",
+    });
+    mockResolveWorktreeAgent.mockResolvedValueOnce({
+      type: "general-purpose",
+      config: { model: "openai/gpt-4o", thinkingLevel: "high", maxTurns: 9 },
+    });
+    const utils = await import("../../src/utils.js");
+    (utils.findModelInRegistry as any).mockReturnValueOnce({ provider: "openai", id: "gpt-4o", reasoning: true });
+
+    await executeAgentTool("tc-local-display", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx);
+
+    expect(mockSpawn.mock.calls[0][4]).toMatchObject({
+      agentConfig: { model: "openai/gpt-4o", thinkingLevel: "high" },
+      model: { provider: "openai", id: "gpt-4o" },
+      thinkingLevel: "high",
+      invocation: { modelName: "gpt-4o" },
     });
   });
 
@@ -398,7 +596,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     });
   });
 
-  it("calls discoverNewAgents with worktree dir when type is not initially known", async () => {
+  it("resolves a worktree type locally before spawning", async () => {
     mockValidateWorktreePath.mockResolvedValue({
       ok: true,
       resolvedPath: "/wt/feature",
@@ -406,10 +604,8 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       label: "feature",
     });
 
-    // First resolveType call returns undefined (type not known)
     const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    resolveTypeSpy.mockReturnValueOnce("feature-reviewer");
 
     await executeAgentTool(
       "tc-disc",
@@ -419,16 +615,18 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       ctx,
     );
 
-    // Should have called discoverNewAgents with the worktree's .pi/agents dir
-    expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
-    expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/wt/feature/.pi/agents");
+    // Worktree resolution is local and does not refresh the parent registry.
+    expect(mockResolveWorktreeAgent).toHaveBeenCalledWith(
+      "feature-reviewer",
+      "/wt/feature/.pi/agents",
+      { disableDefaultAgents: undefined },
+    );
+    expect(mockDiscoverNewAgents).not.toHaveBeenCalled();
   });
 
-  it("calls discoverNewAgents without worktree dir when type is not known and worktree_path omitted", async () => {
-    // First resolveType call returns undefined (type not known)
+  it("refreshes discovery without a worktree dir before resolving the type", async () => {
     const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    resolveTypeSpy.mockReturnValueOnce("feature-reviewer");
 
     await executeAgentTool(
       "tc-disc-no-wt",
@@ -438,8 +636,8 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       ctx,
     );
 
-    // Should have called discoverNewAgents WITHOUT a worktree dir
+    // Non-worktree discovery refreshes the parent registry.
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
-    expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith({ disableDefaultAgents: undefined });
   });
 });

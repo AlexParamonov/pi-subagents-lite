@@ -13,13 +13,19 @@
  * at session_start. `dispose()` drops deps at session_shutdown.
  */
 
-import type { SubagentsConfig, SessionModelOverrides } from "../models/model-precedence.js";
-import { resolveModel } from "../models/model-precedence.js";
+import type {
+  ResolvedSetting,
+  SessionModelOverrides,
+  SessionThinkingOverrides,
+  SubagentsConfig,
+} from "../models/model-precedence.js";
+import { resolveModelSetting, resolveThinkingSetting } from "../models/model-precedence.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
+import { parseThinkingLevel } from "../utils.js";
 import { VALID_SYSTEM_PROMPT_MODES, DEFAULT_CONCURRENCY, loadConfig, saveConfigAtomic } from "./config-io.js";
 
 
@@ -92,6 +98,7 @@ export interface ConfigStoreDeps {
 export class ConfigStore {
   private config: SubagentsConfig;
   private sessionOverrides: SessionModelOverrides = { default: null };
+  private sessionThinkingOverrides: SessionThinkingOverrides = {};
   private sessionShowCost: boolean | undefined;
   private widget?: AgentWidget;
   private manager?: AgentManager;
@@ -128,7 +135,7 @@ export class ConfigStore {
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
       systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string) ? (a.systemPromptMode as SystemPromptMode) : "replace",
       includeContextFiles: a.includeContextFiles ?? true,
-      defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
+      defaultThinking: parseThinkingLevel(a.defaultThinking),
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
@@ -165,23 +172,61 @@ export class ConfigStore {
     return this.sessionOverrides[type] ?? null;
   }
 
+  get sessionDefaultThinking(): ThinkingLevel | undefined {
+    return this.sessionThinkingOverrides.default;
+  }
+
+  sessionThinkingOverride(type: string): ThinkingLevel | undefined {
+    return this.sessionThinkingOverrides[type];
+  }
+
+  persistedThinkingOverride(type: string): ThinkingLevel | undefined {
+    return this.config.thinkingOverrides?.[type] ?? undefined;
+  }
+
+  /** Whether persisted thinking entries exist, including entries for removed agent types. */
+  hasPersistedThinkingOverrides(): boolean {
+    return Object.keys(this.config.thinkingOverrides ?? {}).length > 0;
+  }
+
   /** Raw agent config incl. dynamic per-type model keys (for menu display). */
   agentConfigSnapshot(): Readonly<SubagentsConfig["agent"]> {
     return this.config.agent;
   }
 
-  /**
-   * Resolve the effective model for a spawn, hiding resolveModel's option
-   * assembly. Precedence: session per-type → session default → config per-type
-   * → config default → agentConfig (frontmatter) → parentModelId.
-   */
-  modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }): string {
-    return resolveModel({
+  modelSettingFor(
+    type: string,
+    parentModelId: string,
+    agentConfig?: { model?: string },
+    explicitModel?: string,
+  ): ResolvedSetting<string> {
+    return resolveModelSetting({
       subagentType: type,
+      explicitModel,
       agentConfig,
       config: this.config,
       parentModelId,
       sessionOverrides: this.sessionOverrides,
+    });
+  }
+
+  modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }, explicitModel?: string): string {
+    return this.modelSettingFor(type, parentModelId, agentConfig, explicitModel).value;
+  }
+
+  thinkingSettingFor(
+    type: string,
+    parentThinking: ThinkingLevel | undefined,
+    agentConfig?: { thinkingLevel?: ThinkingLevel },
+    explicitThinking?: ThinkingLevel,
+  ): ResolvedSetting<ThinkingLevel | undefined> {
+    return resolveThinkingSetting({
+      subagentType: type,
+      explicitThinking,
+      agentConfig,
+      config: this.config,
+      parentThinking,
+      sessionOverrides: this.sessionThinkingOverrides,
     });
   }
 
@@ -203,6 +248,14 @@ export class ConfigStore {
         delete this.config.agent[type];
         this.persist();
       },
+      setThinkingOverride: (type: string, value: ThinkingLevel): void => {
+        this.config.thinkingOverrides = { ...(this.config.thinkingOverrides ?? {}), [type]: value };
+        this.persist();
+      },
+      clearThinkingOverride: (type: string): void => {
+        if (this.config.thinkingOverrides) delete this.config.thinkingOverrides[type];
+        this.persist();
+      },
       /** Clear all per-type model overrides, preserving non-model settings. */
       clearAllModelOverrides: (): void => {
         const preserved: Record<string, unknown> = {};
@@ -215,6 +268,10 @@ export class ConfigStore {
         this.config.agent = preserved as SubagentsConfig["agent"];
         this.persist();
         this.syncWidgetSettings();
+      },
+      clearAllThinkingOverrides: (): void => {
+        this.config.thinkingOverrides = {};
+        this.persist();
       },
       setForceBackground: (enabled: boolean): void => {
         this.config.agent.forceBackground = enabled;
@@ -371,8 +428,15 @@ export class ConfigStore {
       clearOverride: (type: string): void => {
         delete this.sessionOverrides[type];
       },
+      setThinkingOverride: (type: string, level: ThinkingLevel): void => {
+        this.sessionThinkingOverrides[type] = level;
+      },
+      clearThinkingOverride: (type: string): void => {
+        delete this.sessionThinkingOverrides[type];
+      },
       clearAll: (): void => {
         this.sessionOverrides = { default: null };
+        this.sessionThinkingOverrides = {};
       },
       /** Set a session showCost override. Not persisted. */
       setShowCost: (enabled: boolean): void => {
@@ -417,6 +481,7 @@ export class ConfigStore {
   reload(): void {
     this.config = this.io.load();
     this.sessionOverrides = { default: null };
+    this.sessionThinkingOverrides = {};
     this.sessionShowCost = undefined;
     this.lastToolsExpanded = undefined;
     this.syncAllDeps();
