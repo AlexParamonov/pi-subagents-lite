@@ -45,6 +45,11 @@ describe("buildAgentDetails", () => {
         turnCount: 10,
         maxTurns: 25,
         compactionCount: 1,
+        cacheRead: 75,
+        latestCacheHitRate: 50,
+        contextWindow: 128000,
+        autoCompactionEnabled: true,
+        usingSubscription: true,
       },
     };
     // Deep merge overrides into the base record
@@ -93,7 +98,13 @@ describe("buildAgentDetails", () => {
     expect(details.input).toBeDefined();
     expect(details.output).toBeDefined();
     expect(details.cost).toBe(0.01);
-    expect(details.contextPercent).toBeDefined();
+    expect(details.contextPercent).toBeNull();
+    expect(details.contextWindow).toBe(128000);
+    expect(details.autoCompactionEnabled).toBe(true);
+    expect(details.usingSubscription).toBe(true);
+    expect(details.cacheRead).toBe(75);
+    expect(details.cacheWrite).toBe(50);
+    expect(details.latestCacheHitRate).toBe(50);
     expect(details.durationMs).toBeDefined();
     expect(details.compactions).toBe(1);
     expect(details.modelName).toBeUndefined(); // no invocation set
@@ -123,11 +134,12 @@ describe("buildAgentDetails", () => {
     expect(details.durationMs).toBe(0);
   });
 
-  it("includes modelName from invocation", () => {
-    const record = makeRecord({ display: { type: "builder", description: "Build something", invocation: { modelName: "haiku" } } });
+  it("includes modelName and thinkingLevel from invocation", () => {
+    const record = makeRecord({ display: { type: "builder", description: "Build something", invocation: { modelName: "haiku", thinkingLevel: "high" } } });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.modelName).toBe("haiku");
+    expect(details.thinkingLevel).toBe("high");
   });
 
   // --- includeStatus ---

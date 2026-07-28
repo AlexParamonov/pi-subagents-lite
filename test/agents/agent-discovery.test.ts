@@ -8,7 +8,8 @@
  *   - mergeAgents: per-field merge default < user < project, returns Map<string, AgentConfig>
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as fs from "node:fs";
 import {
   parseAgentFile,
   scanAgentFilesInDir,
@@ -256,6 +257,17 @@ describe("scanAgentFilesInDir", () => {
     expect(result).toEqual([]);
   });
 
+  it("treats a readable but unlistable directory as empty", async () => {
+    const { dir, cleanup } = tempDirWithFiles([{ name: "agent.md", content: makeAgentMd({ name: "agent" }) }]);
+    const readdir = vi.spyOn(fs.promises, "readdir").mockRejectedValueOnce(new Error("EACCES"));
+    try {
+      await expect(scanAgentFilesInDir(dir, "user")).resolves.toEqual([]);
+    } finally {
+      readdir.mockRestore();
+      cleanup();
+    }
+  });
+
   it("parses all .md files in a directory", async () => {
     const { dir, cleanup } = tempDirWithFiles([
       { name: "alpha.md", content: makeAgentMd({ name: "alpha", model: "model/a" }) },
@@ -270,6 +282,21 @@ describe("scanAgentFilesInDir", () => {
       expect(agents.find((a) => a.name === "alpha")?.model).toBe("model/a");
       expect(agents.find((a) => a.name === "beta")?.model).toBe("model/b");
       expect(agents.find((a) => a.name === "gamma")?.model).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("uses the filename when frontmatter omits name", async () => {
+    const { dir, cleanup } = tempDirWithFiles([
+      { name: "reviewer.md", content: "---\ndescription: Reviews changes\n---\nInstructions" },
+    ]);
+
+    try {
+      const agents = await scanAgentFilesInDir(dir, "user");
+      expect(agents).toHaveLength(1);
+      expect(agents[0]?.name).toBe("reviewer");
+      expect(agents[0]?.description).toBe("Reviews changes");
     } finally {
       cleanup();
     }

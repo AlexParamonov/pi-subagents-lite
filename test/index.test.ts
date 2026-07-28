@@ -108,6 +108,7 @@ vi.mock("../src/agents/agent-types.js", () => ({
   getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(() => ({})),
   registerAgents: vi.fn(),
+  getAvailableAgents: vi.fn(() => []),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
 }));
@@ -363,6 +364,10 @@ describe("event listener registration", () => {
 
   it("registers session_start listener", () => {
     expect(api.listeners.some((l) => l.event === "session_start")).toBe(true);
+  });
+
+  it("registers the parent orchestration prompt hook", () => {
+    expect(api.listeners.some((l) => l.event === "before_agent_start")).toBe(true);
   });
 
   it("registers session_shutdown listener", () => {

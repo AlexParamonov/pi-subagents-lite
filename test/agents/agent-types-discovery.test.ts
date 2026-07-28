@@ -11,6 +11,8 @@ import {
   resolveType,
   getAgentConfig,
   resolveWorktreeAgent,
+  resolveAgentCatalog,
+  resolveTypeInCatalog,
 } from "../../src/agents/agent-types.js";
 
 describe("worktree-local agent resolution", () => {
@@ -81,6 +83,20 @@ describe("worktree-local agent resolution", () => {
     } finally {
       cleanupProject();
       cleanupWt();
+    }
+  });
+
+  it("exposes the same isolated worktree overlay through invocation catalogs", async () => {
+    const { dir: worktreeDir, cleanup } = tempDirWithFiles([
+      { name: "only.md", content: makeAgentMd({ name: "catalog-only", description: "Catalog only" }) },
+    ], "catalog-agents");
+    try {
+      const catalog = await resolveAgentCatalog(worktreeDir, { disableDefaultAgents: true });
+      expect(resolveTypeInCatalog(catalog, "catalog-only")).toBe("catalog-only");
+      expect(catalog.get("catalog-only")?.description).toBe("Catalog only");
+      expect(resolveType("catalog-only")).toBeUndefined();
+    } finally {
+      cleanup();
     }
   });
 

@@ -39,6 +39,12 @@ export interface SubagentsConfig {
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
     widgetShortcut?: boolean;
+    /** Whether to show model names and thinking levels in widget rows. */
+    widgetShowModelThinking?: boolean;
+    /** Whether to show local start times in widget rows. */
+    widgetShowStartTime?: boolean;
+    /** Whether to show the widget navigation hint. */
+    widgetNavHint?: boolean;
     systemPromptMode?: SystemPromptMode;
     includeContextFiles?: boolean;
     defaultThinking?: ThinkingLevel;
@@ -46,13 +52,14 @@ export interface SubagentsConfig {
     loadSkillsImplicitly?: boolean;
     loadExtensionsImplicitly?: boolean;
     disableDefaultAgents?: boolean;
+    /** Whether to append dynamic parent-agent orchestration guidance. */
+    orchestrationPrompt?: boolean;
     showTools?: boolean;
     showTurns?: boolean;
     showInput?: boolean;
     showOutput?: boolean;
     showContext?: boolean;
     showTime?: boolean;
-    widgetNavHint?: boolean;
     widgetDescLengthFull?: number;
     widgetDescLengthCompact?: number;
     deltaInputTokens?: boolean;

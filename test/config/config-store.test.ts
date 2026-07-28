@@ -67,6 +67,8 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setShowCost: (e: boolean) => calls.push(`setShowCost:${e}`),
     setForceCompact: (e: boolean) => calls.push(`setForceCompact:${e}`),
     setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
+    setShowModelThinking: (e: boolean) => calls.push(`setShowModelThinking:${e}`),
+    setShowStartTime: (e: boolean) => calls.push(`setShowStartTime:${e}`),
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
     setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
@@ -298,7 +300,7 @@ describe("ConfigStore persisted mutations", () => {
     calls.length = 0;
     store.mutate.widget.setShortcut(true);
     expect(saves[0].agent.widgetShortcut).toBe(true);
-    expect(calls.some((c) => c.startsWith("setWidgetShortcut"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("setWidgetShortcut"))).toBe(true);
   });
 
   it("concurrency setters persist and call manager.setConcurrency", () => {

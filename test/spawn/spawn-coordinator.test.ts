@@ -77,6 +77,7 @@ function makeMockManager() {
     abort: vi.fn(() => true),
     steer: vi.fn(async () => true),
     getTotalAgentCost: vi.fn(() => 0),
+    getTotalAgentCount: vi.fn(() => 0),
     dispose: vi.fn(),
     onComplete: undefined as any,
     onStart: undefined as any,
@@ -202,7 +203,7 @@ describe("SpawnCoordinator", () => {
     expect(options.modelKey).toBe("deepseek/deepseek-reasoner");
     expect(options.thinkingLevel).toBe("high");
     expect(options.invocation.thinkingLevel).toBe("high");
-    expect(buildInvocationTags(options.invocation).tags).toContain("thinking: high");
+    expect(buildInvocationTags(options.invocation).tags).not.toContain("thinking: high");
   });
 
   it("creates a live view on spawn", async () => {

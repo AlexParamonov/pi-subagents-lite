@@ -10,10 +10,10 @@ import { getStatusNote } from "../status-note.js";
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "../types.js";
-import type { AgentConfig } from "./types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
-import { resolveType, getAgentConfig, discoverNewAgents, resolveWorktreeAgent } from "./agent-types.js";
-import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
+import type { AgentConfig } from "./types.js";
+import { resolveType, getAgentConfig, discoverNewAgents, resolveAgentCatalog, resolveTypeInCatalog } from "./agent-types.js";
+import { getSessionUsageSnapshot } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
@@ -78,12 +78,31 @@ export function buildAgentDetails(
     details.turnCount = record.stats.turnCount;
     details.maxTurns = record.stats.maxTurns;
     details.toolUses = record.stats.toolUses;
+    const liveSnapshot = getSessionUsageSnapshot(record.execution.session);
+    const terminalSnapshot = {
+      contextPercent: record.stats.contextPercent,
+      contextWindow: record.stats.contextWindow,
+      autoCompactionEnabled: record.stats.autoCompactionEnabled,
+      usingSubscription: record.stats.usingSubscription,
+    };
+    const usageSnapshot = record.lifecycle.completedAt != null
+      && (terminalSnapshot.contextPercent != null || terminalSnapshot.contextWindow != null)
+      ? terminalSnapshot
+      : (liveSnapshot ?? terminalSnapshot);
+
     details.input = record.stats.lifetimeUsage.input;
     details.output = record.stats.lifetimeUsage.output;
-    details.contextPercent = getSessionContextPercent(record.execution.session);
+    details.cacheRead = record.stats.cacheRead;
+    details.cacheWrite = record.stats.lifetimeUsage.cacheWrite;
+    details.latestCacheHitRate = record.stats.latestCacheHitRate;
+    details.contextPercent = usageSnapshot.contextPercent ?? null;
+    details.contextWindow = usageSnapshot.contextWindow;
+    details.autoCompactionEnabled = usageSnapshot.autoCompactionEnabled;
+    details.usingSubscription = usageSnapshot.usingSubscription;
     details.durationMs = elapsedMs;
     details.compactions = record.stats.compactionCount;
     details.modelName = record.display.invocation?.modelName;
+    details.thinkingLevel = record.display.invocation?.thinkingLevel;
     details.cost = record.stats.lifetimeUsage.cost;
   }
 
@@ -141,36 +160,37 @@ export async function executeAgentTool(
     return errorResult("Agent type is required");
   }
   const type = rawType.trim();
-  // A worktree definition is a local overlay over a fresh parent merge. Never
-  // install it in the parent registry: concurrent worktree calls must retain
-  // their own resolved config all the way to the coordinator snapshot.
+  const trustedWorktreeDir = validatedWorktreePath && (ctx.isProjectTrusted?.() ?? false)
+    ? `${validatedWorktreePath}/.pi/agents`
+    : undefined;
+
+  // Worktree catalogs are local to this tool call. Never use the shared
+  // registry for a worktree name: it may be an override of a parent type.
   let resolvedType: string | undefined;
   let agentConfig: AgentConfig | undefined;
-  const discoveryOptions = {
-    disableDefaultAgents: getStore().agent.disableDefaultAgents,
-  };
-  if (validatedWorktreePath) {
-    const local = await resolveWorktreeAgent(
-      type,
-      `${validatedWorktreePath}/.pi/agents`,
-      discoveryOptions,
-    );
-    resolvedType = local?.type;
-    agentConfig = local?.config;
+  if (trustedWorktreeDir) {
+    const catalog = await resolveAgentCatalog(trustedWorktreeDir, {
+      disableDefaultAgents: getStore().agent.disableDefaultAgents,
+    });
+    resolvedType = resolveTypeInCatalog(catalog, type);
+    agentConfig = resolvedType ? catalog.get(resolvedType) : undefined;
   } else {
-    // Non-worktree refreshes still update the global parent registry.
-    await discoverNewAgents(discoveryOptions);
     resolvedType = resolveType(type);
+    if (!resolvedType) {
+      await discoverNewAgents({ disableDefaultAgents: getStore().agent.disableDefaultAgents });
+      resolvedType = resolveType(type);
+    }
     agentConfig = resolvedType ? getAgentConfig(resolvedType) : undefined;
   }
-  if (!resolvedType) {
-    return errorResult(`Unknown agent type: ${type}`);
-  }
+  if (!resolvedType || !agentConfig) return errorResult(`Unknown agent type: ${type}`);
 
   const prompt = params.prompt as string;
   const description = (params.description as string | undefined) || prompt.split("\n")[0].slice(0, 80) || prompt.slice(0, 80);
   const runInBackground = params.run_in_background as boolean | undefined;
-  const maxTurns = params.max_turns as number | undefined ?? agentConfig?.maxTurns;
+  const maxTurns = params.max_turns as number | undefined ?? agentConfig.maxTurns;
+
+  // Worktree definitions are resolved above, then share the same explicit >
+  // session > persisted > Markdown > global > parent precedence as all spawns.
   const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
   const explicitModel = params._modelFromSettings === true
     ? undefined
@@ -185,28 +205,24 @@ export async function executeAgentTool(
     model = findModelInRegistry(modelSetting.value, ctx.modelRegistry, ctx.model);
   }
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
-
-  // Determine modelName for invocation (always capture for display)
   const modelName = model?.id;
-
   const explicitThinking = params._thinkingFromSettings === true
     ? undefined
     : parseThinkingLevel(params.thinking as string | undefined);
-  const thinkingSetting = getStore().thinkingSettingFor(
+  const thinkingLevel = getStore().thinkingSettingFor(
     resolvedType,
     ctx.thinkingLevel,
     agentConfig,
     explicitThinking,
-  );
-  const thinkingLevel = thinkingSetting.value;
+  ).value;
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
   const result = await coordinator.spawn(getPiInstance(), ctx, {
     type: resolvedType,
+    agentConfig,
     prompt,
     description,
-    agentConfig,
     model,
     modelKey,
     maxTurns,
@@ -214,7 +230,7 @@ export async function executeAgentTool(
     graceTurns: getStore().agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
-    invocation: { modelName },
+    invocation: { modelName, thinkingLevel },
     runInBackground: runInBackground || getStore().agent.forceBackground,
   });
 
@@ -310,21 +326,17 @@ export async function toolCallListener(
   if (event.toolName !== "Agent") return;
 
   const input = event.input;
-  // Preserve an explicitly requested model in the invocation display even for
-  // worktree calls. Only parent-derived defaults must wait for local discovery.
+  // Preserve an explicit model in the invocation display even for worktrees.
   if (typeof input.model === "string") {
     const parsed = parseModelKey(input.model);
     if (parsed) input._modelOverride = parsed.modelId;
   }
-  // Local worktree config is resolved asynchronously by executeAgentTool.
-  // Do not prefill this call from the parent registry/model: those values
-  // would be shown in the tool invocation but ignored by the local overlay.
+  // Worktree overlays are selected atomically in executeAgentTool.
   if (typeof input.worktree_path === "string" && input.worktree_path.trim() !== "") return;
 
   const requestedType = input.agent as string | undefined;
   const subagentType = requestedType ? resolveType(requestedType) : undefined;
   const agentConfig = subagentType ? getAgentConfig(subagentType) : undefined;
-
   const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
 
   if (subagentType && input.model === undefined) {
@@ -345,8 +357,6 @@ export async function toolCallListener(
     input._thinkingFromSettings = true;
   }
 
-  // Keep the tool invocation display aligned with the normalized runtime
-  // value. executeAgentTool and the coordinator normalize again defensively.
   const invocationModel = findModelInRegistry(
     typeof input.model === "string" ? input.model : undefined,
     ctx.modelRegistry,

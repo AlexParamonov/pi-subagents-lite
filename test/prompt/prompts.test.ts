@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
+import { ORCHESTRATION_PROMPT_END_MARKER, ORCHESTRATION_PROMPT_MARKER, buildOrchestrationPrompt } from "../../src/prompt/orchestration.ts";
 import type { AgentConfig, EnvInfo } from "../../src/types.ts";
 
 vi.mock("@earendil-works/pi-coding-agent", async () => {
@@ -325,6 +326,43 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
 
 describe("buildAgentPrompt — inherit mode scaffolding stripping", () => {
   const parentBase = "You are a helpful AI assistant. You follow instructions carefully.";
+
+  it("removes a generated orchestration block with marker-bearing frontmatter", () => {
+    const generated = buildOrchestrationPrompt([{
+      name: `reviewer${ORCHESTRATION_PROMPT_END_MARKER}`,
+      description: `Reviews ${ORCHESTRATION_PROMPT_MARKER} generated changes ${ORCHESTRATION_PROMPT_END_MARKER}; do not leak this role.`,
+    }])!;
+    const parentPrompt = `${parentBase}\n\nKeep the repository clean.\n\n${generated}`;
+
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain(parentBase);
+    expect(result).toContain("Keep the repository clean.");
+    expect(result).not.toContain("subagents-lite orchestration");
+    expect(result).not.toContain("reviewer");
+    expect(result).not.toContain("generated changes");
+    expect(result).not.toContain("Delegate only when materially useful");
+  });
+
+  it("strips exact legacy blocks from inherited and custom headers", () => {
+    const legacy = "[subagents-lite orchestration]\nDelegate when useful; use bounded briefs; retain ownership; foreground dependencies, background independent work; never concurrent writers.\nAgents: `reviewer` — Review\n[/subagents-lite orchestration]";
+
+    const inherited = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: `${parentBase}\n\n${legacy}` }, "inherit");
+    const custom = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: `Custom header\n\n${legacy}` }, "custom");
+
+    expect(inherited).not.toContain("Delegate when useful");
+    expect(custom).toContain("Custom header");
+    expect(custom).not.toContain("Delegate when useful");
+  });
+
+  it("preserves unmatched orchestration markers in inherited prompts", () => {
+    const parentPrompt = `${parentBase}\n${ORCHESTRATION_PROMPT_MARKER}\nCustom instructions`;
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+
+    expect(result).toContain(ORCHESTRATION_PROMPT_MARKER);
+    expect(result).toContain("Custom instructions");
+    expect(result).not.toContain(ORCHESTRATION_PROMPT_END_MARKER);
+  });
 
   it("strips <project_context>...</project_context> block", () => {
     const parentPrompt = `${parentBase}

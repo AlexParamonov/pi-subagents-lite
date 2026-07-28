@@ -302,7 +302,13 @@ export async function scanAgentFilesInDir(
     return [];
   }
 
-  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    // A path can be accessible yet unlistable (ACL/race); discovery is best effort.
+    return [];
+  }
   const mdFiles = entries.filter(
     (e) => e.isFile() && e.name.endsWith(".md"),
   );
@@ -313,9 +319,9 @@ export async function scanAgentFilesInDir(
     try {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const info = parseAgentFile(content, source);
-      if (info.name) {
-        agents.push(info);
-      }
+      // The documented filename fallback makes a minimal `reviewer.md`
+      // definition usable without broadening the frontmatter parser.
+      agents.push({ ...info, name: info.name ?? path.basename(entry.name, ".md") });
     } catch {
       // Skip files that can't be read
     }

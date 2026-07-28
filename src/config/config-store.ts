@@ -52,6 +52,8 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  readonly widgetShowModelThinking: boolean;
+  readonly widgetShowStartTime: boolean;
   readonly widgetNavHint: boolean;
   readonly widgetDescLengthFull: number;
   readonly widgetDescLengthCompact: number;
@@ -69,6 +71,8 @@ export interface ResolvedAgentSettings {
   readonly loadExtensionsImplicitly: boolean;
   /** Whether to skip built-in default agents at registration. */
   readonly disableDefaultAgents: boolean;
+  /** Whether to append dynamic parent-agent orchestration guidance. */
+  readonly orchestrationPrompt: boolean;
   /** Whether to show toolUses count in widget stats line. */
   readonly showTools: boolean;
   /** Whether to show turn count in widget stats line. */
@@ -102,7 +106,7 @@ export class ConfigStore {
   private sessionShowCost: boolean | undefined;
   private widget?: AgentWidget;
   private manager?: AgentManager;
-  /** Previous tool-expansion state, for ctrl+o compact sync. */
+  /** Last known tool-expansion state, for ctrl+o compact sync. */
   private lastToolsExpanded: boolean | undefined;
 
   constructor(private readonly io: ConfigIO = fileConfigIO) {
@@ -118,8 +122,8 @@ export class ConfigStore {
 
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
-    const widgetMaxLines = a.widgetMaxLines!; // guaranteed by loadConfig default merge
-    const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
+    const widgetMaxLines = Math.max(2, a.widgetMaxLines!); // guaranteed by loadConfig default merge
+    const widgetMaxLinesCompact = Math.max(2, a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2));
 
     return {
       defaultModel: a.default ?? null,
@@ -130,6 +134,8 @@ export class ConfigStore {
       widgetMaxLinesCompact,
       widgetCompact: a.widgetCompact === true,
       widgetShortcut: a.widgetShortcut === true,
+      widgetShowModelThinking: a.widgetShowModelThinking !== false,
+      widgetShowStartTime: a.widgetShowStartTime !== false,
       widgetNavHint: a.widgetNavHint !== false,
       widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
@@ -140,6 +146,7 @@ export class ConfigStore {
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
       disableDefaultAgents: a.disableDefaultAgents === true,
+      orchestrationPrompt: a.orchestrationPrompt !== false,
       showTools: a.showTools !== false,
       showTurns: a.showTurns !== false,
       showInput: a.showInput !== false,
@@ -324,6 +331,10 @@ export class ConfigStore {
         this.config.agent.disableDefaultAgents = value;
         this.persist();
       },
+      setOrchestrationPrompt: (enabled: boolean): void => {
+        this.config.agent.orchestrationPrompt = enabled;
+        this.persist();
+      },
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
       setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
       setShowInput: (enabled: boolean) => this.setAgentVisibility("showInput", enabled),
@@ -350,17 +361,19 @@ export class ConfigStore {
         this.config.agent.widgetCompact = enabled;
         this.persist();
         this.syncWidgetSettings();
+        this.syncCompactModeFromToolsExpanded();
       },
       setMaxLines: (lines: number): void => {
-        this.config.agent.widgetMaxLines = lines;
+        const maxLines = Math.max(2, lines);
+        this.config.agent.widgetMaxLines = maxLines;
         if (this.config.agent.widgetMaxLinesCompact === undefined) {
-          this.config.agent.widgetMaxLinesCompact = Math.floor(lines / 2);
+          this.config.agent.widgetMaxLinesCompact = Math.max(2, Math.floor(maxLines / 2));
         }
         this.persist();
         this.syncWidgetSettings();
       },
       setMaxLinesCompact: (lines: number): void => {
-        this.config.agent.widgetMaxLinesCompact = lines;
+        this.config.agent.widgetMaxLinesCompact = Math.max(2, lines);
         this.persist();
         this.syncWidgetSettings();
       },
@@ -374,13 +387,21 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      // Note: persists only. Does NOT syncWidgetSettings — matches the existing
-      // behavior, where toggling the shortcut takes effect on next reload rather
-      // than immediately. Flagged for a follow-up (the other three widget
-      // setters do sync).
       setShortcut: (enabled: boolean): void => {
         this.config.agent.widgetShortcut = enabled;
         this.persist();
+        this.syncWidgetSettings();
+        this.syncCompactModeFromToolsExpanded();
+      },
+      setShowModelThinking: (enabled: boolean): void => {
+        this.config.agent.widgetShowModelThinking = enabled;
+        this.persist();
+        this.syncWidgetSettings();
+      },
+      setShowStartTime: (enabled: boolean): void => {
+        this.config.agent.widgetShowStartTime = enabled;
+        this.persist();
+        this.syncWidgetSettings();
       },
       setNavHint: (enabled: boolean): void => {
         this.config.agent.widgetNavHint = enabled;
@@ -456,23 +477,14 @@ export class ConfigStore {
   // ── ctrl+o compact sync (absorbs syncCompactFromToolsExpanded) ──
 
   /**
-   * Toggle widget compact mode when tool expansion changes (ctrl+o), gated on
-   * widgetShortcut. No-op when widgetCompact is forced on. Only acts on actual
-   * state transitions (not every call).
+   * Sync widget compact mode from the known tool-expansion state (ctrl+o),
+   * gated on widgetShortcut. The first known state and later state changes both
+   * apply immediately; force compact overrides this coupling.
    */
   notifyToolsExpanded(expanded: boolean): void {
-    if (this.config.agent.widgetShortcut !== true) {
-      this.lastToolsExpanded = expanded;
-      return;
-    }
-    if (this.config.agent.widgetCompact === true) {
-      this.lastToolsExpanded = expanded;
-      return;
-    }
-    if (this.lastToolsExpanded !== undefined && this.lastToolsExpanded !== expanded) {
-      this.widget?.setCompactMode(!expanded);
-    }
+    const changed = this.lastToolsExpanded !== expanded;
     this.lastToolsExpanded = expanded;
+    if (changed) this.syncCompactModeFromToolsExpanded();
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────
@@ -506,6 +518,15 @@ export class ConfigStore {
     this.io.save(this.config);
   }
 
+  /** Apply the last known tool-expansion state while shortcut coupling is active. */
+  private syncCompactModeFromToolsExpanded(): void {
+    if (this.config.agent.widgetShortcut === true
+      && this.config.agent.widgetCompact !== true
+      && this.lastToolsExpanded !== undefined) {
+      this.widget?.setCompactMode(!this.lastToolsExpanded);
+    }
+  }
+
   /** Push widget display settings (compact, shortcut, max lines) to the widget. */
   private syncWidgetSettings(): void {
     const w = this.widget;
@@ -513,6 +534,8 @@ export class ConfigStore {
     const a = this.agent;
     w.setForceCompact(a.widgetCompact);
     w.setWidgetShortcut(a.widgetShortcut);
+    w.setShowModelThinking(a.widgetShowModelThinking);
+    w.setShowStartTime(a.widgetShowStartTime);
     w.setMaxLines(a.widgetMaxLines);
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
     w.setDescLengthFull(a.widgetDescLengthFull);
@@ -552,6 +575,7 @@ export class ConfigStore {
     if (this.widget) {
       this.widget.setShowCost(this.agent.showCost);
       this.syncWidgetSettings();
+      this.syncCompactModeFromToolsExpanded();
       this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();

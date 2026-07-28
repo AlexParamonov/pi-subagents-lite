@@ -17,6 +17,8 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "widgetDescLengthCompact",
   "widgetCompact",
   "widgetShortcut",
+  "widgetShowModelThinking",
+  "widgetShowStartTime",
   "widgetNavHint",
   "systemPromptMode",
   "includeContextFiles",
@@ -25,6 +27,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "loadSkillsImplicitly",
   "loadExtensionsImplicitly",
   "disableDefaultAgents",
+  "orchestrationPrompt",
   "outputThinkingBufferSize",
   "finishedRetentionMinutes",
 ];

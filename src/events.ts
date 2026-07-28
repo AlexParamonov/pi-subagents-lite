@@ -3,13 +3,13 @@ import type { AgentRecord } from "./types.js";
 import * as path from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
-import { registerAgents, getAvailableTypes, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
+import { registerAgents, getAvailableAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./ui/conversation-viewer.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { toolCallListener } from "./agents/tool-execution.js";
-import { registerAgentTool } from "./registration.js";
+import { getOrchestrationPromptUpdate } from "./prompt/orchestration.js";
 import {
   getPiInstance,
   getManager,
@@ -80,8 +80,11 @@ export function ensureManagerAndWidget(): void {
  */
 export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   const userAgentDir = path.join(getAgentDir(), "agents");
-  const sharedAgentDir = path.join(ctx.cwd, ".agents", "agents");
-  const projectAgentDir = path.join(ctx.cwd, ".pi", "agents");
+  // Agent descriptions become parent system instructions, so never discover
+  // project-controlled definitions unless Pi has established project trust.
+  const projectTrusted = ctx.isProjectTrusted();
+  const sharedAgentDir = projectTrusted ? path.join(ctx.cwd, ".agents", "agents") : "";
+  const projectAgentDir = projectTrusted ? path.join(ctx.cwd, ".pi", "agents") : "";
 
   // Store scan dirs for on-demand discovery (agents added during the session)
   setAgentScanDirs(userAgentDir, projectAgentDir, sharedAgentDir);
@@ -133,6 +136,7 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
           () => manager?.abort(record.id, "user"),
           kb,
           (msg: string) => manager?.steer(record.id, msg),
+          getStore().agent,
         ),
       { overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` } },
     );
@@ -215,6 +219,18 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
 export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("tool_call", toolCallListener);
 
+  // Refresh only configured global/current-project directories before every
+  // parent turn. This picks up edits/removals without changing the fixed tool.
+  pi.on("before_agent_start", async (event, ctx) => {
+    await scanAndRegisterAgents(ctx);
+    const systemPrompt = getOrchestrationPromptUpdate(
+      event.systemPrompt,
+      getStore().agent.orchestrationPrompt,
+      getAvailableAgents(),
+    );
+    return systemPrompt === undefined ? undefined : { systemPrompt };
+  });
+
   pi.on("tool_execution_start", async (_event, ctx) => {
     // Set UI context on first tool execution
     if (!getWidget()) {
@@ -225,16 +241,13 @@ export function setupEventListeners(pi: ExtensionAPI): void {
   });
 
 
-  // session_start — load config, scan agents, register into registry,
-  // then re-register Agent tool with dynamic agent type enum
+  // session_start — load config, scan agents, and initialise the parent runtime.
   // Listen for ctrl+o keypress to sync compact mode (push-based, no polling)
   let unregisterTerminalInput: (() => void) | undefined;
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     setSessionCtx(ctx);
     await loadConfigAndRegisterAgents(ctx);
-    // Re-register with updated agent type list (now includes user/project agents)
-    registerAgentTool(pi);
     // Register ctrl+o listener
     if (ctx.hasUI && !unregisterTerminalInput) {
       unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));

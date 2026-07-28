@@ -95,7 +95,7 @@ export async function discoverNewAgents(options?: RegisterAgentsOptions): Promis
 }
 
 /** Resolve a type name in an explicit registry without reading global state. */
-function resolveTypeIn(availableAgents: ReadonlyMap<string, AgentConfig>, name: string): string | undefined {
+export function resolveTypeInCatalog(availableAgents: ReadonlyMap<string, AgentConfig>, name: string): string | undefined {
   if (!name) return undefined;
   if (availableAgents.has(name)) return name;
   const lower = name.toLowerCase();
@@ -122,6 +122,16 @@ export async function discoverWorktreeAgents(
   return mergeAgents(parentMerged, [], [], worktreeAgents);
 }
 
+/** Build an invocation-local catalog, optionally overlaid with a trusted worktree directory. */
+export async function resolveAgentCatalog(
+  trustedWorktreeDir?: string,
+  options?: RegisterAgentsOptions,
+): Promise<Map<string, AgentConfig>> {
+  return trustedWorktreeDir
+    ? discoverWorktreeAgents(trustedWorktreeDir, options)
+    : scanAndMerge(options);
+}
+
 /** A canonical type plus its worktree-local, fully merged configuration. */
 export interface WorktreeAgentResolution {
   type: string;
@@ -139,19 +149,40 @@ export async function resolveWorktreeAgent(
   options?: RegisterAgentsOptions,
 ): Promise<WorktreeAgentResolution | undefined> {
   const localAgents = await discoverWorktreeAgents(worktreeDir, options);
-  const type = resolveTypeIn(localAgents, name);
+  const type = resolveTypeInCatalog(localAgents, name);
   return type ? { type, config: localAgents.get(type)! } : undefined;
+}
+
+/** Return a detached config snapshot safe to retain while a run is queued. */
+export function snapshotAgentConfig(config: AgentConfig): AgentConfig {
+  return {
+    ...config,
+    registeredTools: config.registeredTools && [...config.registeredTools],
+    tools: Array.isArray(config.tools) ? [...config.tools] : config.tools,
+    excludeTools: config.excludeTools && [...config.excludeTools],
+    extensions: Array.isArray(config.extensions) ? [...config.extensions] : config.extensions,
+    excludeExtensions: config.excludeExtensions && [...config.excludeExtensions],
+    skills: Array.isArray(config.skills) ? [...config.skills] : config.skills,
+    preloadSkills: Array.isArray(config.preloadSkills) ? [...config.preloadSkills] : config.preloadSkills,
+  };
 }
 
 /** Resolve a type name case-insensitively. Also matches displayName. Returns the canonical key or undefined. */
 export function resolveType(name: string): string | undefined {
-  return resolveTypeIn(agents, name);
+  return resolveTypeInCatalog(agents, name);
 }
 
 /** Get the agent config for a type (case-insensitive). */
 export function getAgentConfig(name: string): AgentConfig | undefined {
   const key = resolveType(name);
   return key ? agents.get(key) : undefined;
+}
+
+/** Get visible agent configs in registry order. */
+export function getAvailableAgents(): Array<{ name: string; description: string }> {
+  return [...agents.entries()]
+    .filter(([, config]) => config.hidden !== true)
+    .map(([name, config]) => ({ name, description: config.description }));
 }
 
 /** Get all visible type names (for spawning and tool descriptions). */

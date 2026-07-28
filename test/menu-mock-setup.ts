@@ -59,6 +59,9 @@ vi.mock("../src/agents/agent-types.js", () => ({
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
   resolveType: vi.fn((name: string) => name),
+  resolveTypeInCatalog: vi.fn((catalog: Map<string, any>, name: string) => catalog.has(name) ? name : undefined),
+  resolveAgentCatalog: vi.fn(),
+  snapshotAgentConfig: vi.fn((config: any) => ({ ...config })),
   discoverNewAgents: vi.fn(async () => 0),
   resolveWorktreeAgent: vi.fn(),
 }));
@@ -83,6 +86,11 @@ vi.mock("../src/ui/searchable-select.js", () => ({
 
 
 vi.mock("../src/ui/format.js", () => ({
+  getAgentStatusDisplay: vi.fn((status: string) => ({
+    running: { icon: "◈", color: "accent" }, queued: { icon: "◇", color: "dim" },
+    completed: { icon: "✓", color: "success" }, turn_limited: { icon: "✓", color: "warning" },
+    stopped: { icon: "■", color: "dim" }, error: { icon: "✗", color: "error" }, aborted: { icon: "✗", color: "error" },
+  }[status])),
   getDisplayName: vi.fn((t: string) => t),
   truncateDesc: vi.fn((t: string) => t),
 }));
@@ -121,6 +129,9 @@ vi.mock("../src/shell.js", () => {
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
         widgetShortcut: a.widgetShortcut === true,
+        widgetShowModelThinking: a.widgetShowModelThinking !== false,
+        widgetShowStartTime: a.widgetShowStartTime !== false,
+        widgetNavHint: a.widgetNavHint !== false,
         widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
         widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
         systemPromptMode: a.systemPromptMode ?? "replace",
@@ -129,6 +140,7 @@ vi.mock("../src/shell.js", () => {
         defaultMaxTurns: a.defaultMaxTurns,
         loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
         loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+        orchestrationPrompt: a.orchestrationPrompt !== false,
         showTools: a.showTools !== false,
         showTurns: a.showTurns !== false,
         showInput: a.showInput !== false,
@@ -225,6 +237,7 @@ vi.mock("../src/shell.js", () => {
         setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
         setSystemPromptMode(mode: string) { mockModules.mockConfig.agent.systemPromptMode = mode; },
         setIncludeContextFiles(enabled: boolean) { mockModules.mockConfig.agent.includeContextFiles = enabled; },
+        setOrchestrationPrompt(enabled: boolean) { mockModules.mockConfig.agent.orchestrationPrompt = enabled; },
         setDefaultThinking(level: string | undefined) { mockModules.mockConfig.agent.defaultThinking = level; },
         setDefaultMaxTurns(n: number | undefined) { mockModules.mockConfig.agent.defaultMaxTurns = n; },
         setLoadSkillsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadSkillsImplicitly = value; },
@@ -246,6 +259,9 @@ vi.mock("../src/shell.js", () => {
         setDescLengthFull(n: number) { mockModules.mockConfig.agent.widgetDescLengthFull = n; },
         setDescLengthCompact(n: number) { mockModules.mockConfig.agent.widgetDescLengthCompact = n; },
         setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
+        setShowModelThinking(enabled: boolean) { mockModules.mockConfig.agent.widgetShowModelThinking = enabled; },
+        setShowStartTime(enabled: boolean) { mockModules.mockConfig.agent.widgetShowStartTime = enabled; },
+        setNavHint(enabled: boolean) { mockModules.mockConfig.agent.widgetNavHint = enabled; },
       },
       concurrency: {
         setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },
@@ -302,6 +318,7 @@ vi.mock("../src/shell.js", () => {
             graceTurns: intent.graceTurns,
             worktreePath: intent.worktreePath,
             worktreeLabel: intent.worktreeLabel,
+            agentConfig: intent.agentConfig,
             invocation: intent.invocation,
           },
         );

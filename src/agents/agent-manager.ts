@@ -19,8 +19,9 @@ import {
   type SpawnConfig,
   type ToolActivity,
 } from "../types.js";
+import { snapshotAgentConfig } from "./agent-types.js";
 import type { SubagentType } from "./types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
+import { addUsage, getLifetimeTotal, getSessionUsageSnapshot, type AgentUsage } from "./usage.js";
 import { errorMessage } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
@@ -83,6 +84,9 @@ export class AgentManager {
 
   /** Session-level cumulative agent cost. Survives agent eviction. */
   private totalAgentCost = 0;
+
+  /** Session-level cumulative accepted agent count. Survives agent eviction. */
+  private totalAgentCount = 0;
 
   /** Retention cutoff in minutes for finished agents. Updated at runtime via setRetentionMinutes. */
   private retentionMinutes = DEFAULT_RETENTION_MINUTES;
@@ -199,7 +203,11 @@ export class AgentManager {
   ): string {
     const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
     const abortController = new AbortController();
-    const args: SpawnArgs = { pi, ctx, type, prompt, options };
+    // Copy mutable frontmatter arrays before this request can sit in the queue.
+    const frozenOptions = options.agentConfig
+      ? { ...options, agentConfig: snapshotAgentConfig(options.agentConfig) }
+      : options;
+    const args: SpawnArgs = { pi, ctx, type, prompt, options: frozenOptions };
 
     // Check concurrency — applies to both foreground and background agents
     let queued = false;
@@ -235,20 +243,27 @@ export class AgentManager {
         toolUses: 0,
         turnCount: 1,
         compactionCount: 0,
+        cacheRead: 0,
         maxTurns: options.maxTurns,
       },
     };
     this.agents.set(id, record);
 
-    if (queued) return id;
+    // Queued agents have been successfully accepted even though their start is deferred.
+    if (queued) {
+      this.totalAgentCount++;
+      return id;
+    }
 
-    // startAgent can throw — clean up record so callers don't see an orphan
+    // startAgent can throw — clean up record so callers don't see an orphan.
+    // Count only after a synchronous start succeeds.
     try {
       this.startAgent(id, record, args, concurrencySlot);
     } catch (err) {
       this.agents.delete(id);
       throw err;
     }
+    this.totalAgentCount++;
     return id;
   }
 
@@ -322,7 +337,6 @@ export class AgentManager {
         }
         record.result = responseText;
         record.execution.session = session;
-        record.stats.contextPercent = getSessionContextPercent(session);
         record.lifecycle.completedAt ??= Date.now();
         return responseText;
       })
@@ -336,6 +350,16 @@ export class AgentManager {
         return "";
       })
       .finally(() => {
+        // Session handles are not guaranteed to remain usable after completion,
+        // so retain the footer values that terminal cards need before cleanup.
+        const snapshot = getSessionUsageSnapshot(record.execution.session);
+        if (snapshot) {
+          record.stats.contextPercent = snapshot.contextPercent;
+          record.stats.contextWindow = snapshot.contextWindow;
+          record.stats.autoCompactionEnabled = snapshot.autoCompactionEnabled;
+          record.stats.usingSubscription = snapshot.usingSubscription;
+        }
+
         // Finalize output log with final stats
         if (record.execution.outputLog) {
           try {
@@ -374,6 +398,11 @@ export class AgentManager {
     return this.totalAgentCost;
   }
 
+  /** Get the session-level cumulative accepted agent count. Survives agent eviction. */
+  getTotalAgentCount(): number {
+    return this.totalAgentCount;
+  }
+
   /**
    * Build common record-tracking callbacks shared by startAgent.
    * Updates the record's toolUses, lifetimeUsage, and compactionCount.
@@ -385,6 +414,7 @@ export class AgentManager {
   ): {
     onToolActivity: (activity: ToolActivity) => void;
     onAssistantUsage: (usage: AgentUsage) => void;
+    onSupplementalUsage: (usage: AgentUsage) => void;
     onCompaction: (info: CompactionInfo) => void;
   } {
     return {
@@ -404,7 +434,18 @@ export class AgentManager {
         record.stats.prevInputTokens = usage.input;
 
         addUsage(record.stats.lifetimeUsage, { ...usage, input: inputDelta });
+        record.stats.cacheRead += usage.cacheRead;
+        const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+        record.stats.latestCacheHitRate = promptTokens > 0
+          ? (usage.cacheRead / promptTokens) * 100
+          : undefined;
         options?.onAssistantUsage?.(usage);
+      },
+      // Compaction and tool-result usage is billable but is not an assistant
+      // request, so it must bypass the vLLM input-delta and cache-hit logic.
+      onSupplementalUsage: (usage) => {
+        addUsage(record.stats.lifetimeUsage, usage);
+        record.stats.cacheRead += usage.cacheRead;
       },
       onCompaction: (info) => {
         record.stats.compactionCount++;

@@ -1,6 +1,5 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { getAvailableTypes } from "./agents/agent-types.js";
 import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./ui/renderer.js";
@@ -13,28 +12,18 @@ import { getPiInstance, getStore } from "./shell.js";
 const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
 
 // ============================================================================
-// Agent tool registration helper — dynamic enum for agent types
+// Agent tool registration helper — fixed stealth schema
 // ============================================================================
 
-/**
- * Register (or re-register) the Agent tool with current agent types.
- * At init time only defaults exist; call again from session_start after
- * user/project agents are loaded to update the enum.
- */
-export function registerAgentTool(pi: ExtensionAPI): void {
-  const types = getAvailableTypes();
-  // Use plain string to avoid verbose anyOf in prompt.
-  // Available types are listed in description for discoverability.
-  const agentParam = types.length > 0
-    ? Type.String({ description: types.join(",") })
-    : Type.String();
+/** Register the Agent tool once at extension initialization. */
+function registerAgentTool(pi: ExtensionAPI): void {
   const tool = {
     name: "Agent",
     label: "Agent",
     parameters: Type.Object({
       prompt: Type.String(),
       description: Type.Optional(Type.String()),
-      agent: agentParam,
+      agent: Type.String(),
       model: Type.Optional(Type.String()),
       thinking: Type.Optional(Type.Union([
         Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
@@ -67,7 +56,7 @@ export function registerAgentTool(pi: ExtensionAPI): void {
 
 /** Register all tools, commands, and message renderers. */
 export function registerTools(pi: ExtensionAPI): void {
-  // Agent tool — stealth schema with dynamic agent type enum
+  // Agent tool — fixed stealth schema; live agents are advertised separately.
   registerAgentTool(pi);
 
   // StopAgent tool — stealth schema, stop a running agent by ID

@@ -27,6 +27,7 @@ const {
   mockGetRecord,
   mockDiscoverNewAgents,
   mockResolveWorktreeAgent,
+  mockResolveAgentCatalog,
   mockModelFor,
   mockModelSettingFor,
   mockThinkingSettingFor,
@@ -39,6 +40,7 @@ const {
     type,
     config: { maxTurns: 25, thinkingLevel: undefined },
   })),
+  mockResolveAgentCatalog: vi.fn(async () => new Map([["general-purpose", { maxTurns: 25, thinkingLevel: undefined }]])),
   mockModelFor: vi.fn((_: string, parentModelId: string, agentConfig?: any) => agentConfig?.model ?? parentModelId),
   mockModelSettingFor: vi.fn((_: string, parentModelId: string, agentConfig?: any, explicitModel?: string) => ({
     value: explicitModel ?? agentConfig?.model ?? parentModelId,
@@ -64,6 +66,8 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
   resolveWorktreeAgent: mockResolveWorktreeAgent,
+  resolveAgentCatalog: mockResolveAgentCatalog,
+  resolveTypeInCatalog: vi.fn((catalog: Map<string, unknown>, type: string) => catalog.has(type) ? type : undefined),
 }));
 
 vi.mock("../../src/models/model-precedence.js", () => ({
@@ -134,6 +138,7 @@ vi.mock("../../src/shell.js", () => ({
 }));
 
 vi.mock("../../src/agents/usage.js", () => ({
+  getSessionUsageSnapshot: vi.fn(() => undefined),
   addUsage: vi.fn(),
   getLifetimeTotal: vi.fn(() => 0),
   getSessionContextPercent: vi.fn(() => null),
@@ -253,7 +258,7 @@ describe("executeAgentTool — explicit agent type", () => {
   });
 
   it("fails clearly for an unknown agent type", async () => {
-    (agentTypes.resolveType as any).mockReturnValueOnce(undefined);
+    (agentTypes.resolveType as any).mockReturnValueOnce(undefined).mockReturnValueOnce(undefined);
 
     const result = await executeAgentTool(
       "tc-unknown-type",
@@ -335,10 +340,10 @@ describe("executeAgentTool — worktree_path validation", () => {
     mockValidateWorktreePath.mockResolvedValue({
       ok: true, resolvedPath: "/wt/feature", worktreeRoot: "/wt/feature", label: "feature",
     });
-    mockResolveWorktreeAgent.mockResolvedValueOnce({
-      type: "general-purpose",
-      config: { model: "openai/gpt-4o", thinkingLevel: "high", maxTurns: 9 },
-    });
+    ctx.isProjectTrusted = () => true;
+    mockResolveAgentCatalog.mockResolvedValueOnce(new Map([[
+      "general-purpose", { model: "openai/gpt-4o", thinkingLevel: "high", maxTurns: 9 },
+    ]]));
     const utils = await import("../../src/utils.js");
     (utils.findModelInRegistry as any).mockReturnValueOnce({ provider: "openai", id: "gpt-4o", reasoning: true });
 
@@ -603,9 +608,10 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       worktreeRoot: "/wt/feature",
       label: "feature",
     });
-
-    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer");
+    ctx.isProjectTrusted = () => true;
+    mockResolveAgentCatalog.mockResolvedValueOnce(new Map([[
+      "feature-reviewer", { maxTurns: 25, thinkingLevel: undefined },
+    ]]));
 
     await executeAgentTool(
       "tc-disc",
@@ -615,9 +621,8 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       ctx,
     );
 
-    // Worktree resolution is local and does not refresh the parent registry.
-    expect(mockResolveWorktreeAgent).toHaveBeenCalledWith(
-      "feature-reviewer",
+    // Worktree resolution uses an invocation-local catalog and never refreshes the parent registry.
+    expect(mockResolveAgentCatalog).toHaveBeenCalledWith(
       "/wt/feature/.pi/agents",
       { disableDefaultAgents: undefined },
     );
@@ -626,7 +631,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
 
   it("refreshes discovery without a worktree dir before resolving the type", async () => {
     const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer");
+    resolveTypeSpy.mockReturnValueOnce(undefined).mockReturnValueOnce("feature-reviewer");
 
     await executeAgentTool(
       "tc-disc-no-wt",

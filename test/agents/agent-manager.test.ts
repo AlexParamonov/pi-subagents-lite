@@ -119,6 +119,25 @@ describe("AgentManager", () => {
       deferred.resolve(mockRunResult());
     });
 
+    it("keeps a queued resolved config snapshot across registry-style mutation", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const first = makeResolvablePromise();
+      const second = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      const config = { name: "review", description: "worktree", systemPrompt: "frozen prompt", tools: ["read"] };
+      const ctx = fakeCtx();
+      const pi = fakePi();
+      manager.spawn(pi, ctx, "review", "first", { description: "first", modelKey: "test/model", isBackground: true });
+      manager.spawn(pi, ctx, "review", "queued", { description: "queued", modelKey: "test/model", isBackground: true, agentConfig: config });
+      // Simulate the live parent registry/config object being refreshed.
+      config.systemPrompt = "refreshed parent prompt";
+      config.tools[0] = "bash";
+      first.resolve(mockRunResult());
+      await vi.waitFor(() => expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2));
+      expect(mockModules.mockRunAgent.mock.calls[1]?.[3].agentConfig).toMatchObject({ systemPrompt: "frozen prompt", tools: ["read"] });
+      second.resolve(mockRunResult());
+    });
+
     it("starts queued agent when running agent completes", async () => {
       const config: ConcurrencyConfig = { default: 1, models: { "llamacpp/4b_small": 1 } };
       manager = new AgentManager(onComplete, config);
@@ -416,6 +435,61 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.04);
     });
   });
+
+  // ── Cumulative agent count ──
+
+  describe("totalAgentCount", () => {
+    it("counts accepted running and queued spawns exactly once", async () => {
+      const config: ConcurrencyConfig = { default: 1, models: { "test/model": 1 } };
+      manager = new AgentManager(onComplete, config);
+      const first = makeResolvablePromise();
+      const second = makeResolvablePromise();
+      mockModules.mockRunAgent
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "first", { description: "first", modelKey: "test/model" });
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "second", { description: "second", modelKey: "test/model" });
+
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+      expect(manager.getTotalAgentCount()).toBe(2);
+
+      first.resolve(mockRunResult());
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getTotalAgentCount()).toBe(2);
+
+      second.resolve(mockRunResult());
+      await manager.getRecord(id2)!.execution.promise;
+      await manager.getRecord(id1)!.execution.promise;
+    });
+
+    it("does not count a synchronously failed start", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockImplementationOnce(() => {
+        throw new Error("start failed");
+      });
+
+      expect(() => manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" })).toThrow("start failed");
+      expect(manager.getTotalAgentCount()).toBe(0);
+    });
+
+    it("persists after an agent is evicted", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+      record.lifecycle.resultConsumed = true;
+      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeUndefined();
+      expect(manager.getTotalAgentCount()).toBe(1);
+    });
+  });
+
   // ── Cleanup eviction ──
 
   describe("cleanup", () => {
@@ -515,6 +589,12 @@ describe("delta estimation", () => {
     return callbacks.onAssistantUsage;
   }
 
+  function getOnSupplementalUsage() {
+    const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+    const callbacks = call[3]; // 4th arg is the callbacks object
+    return callbacks.onSupplementalUsage;
+  }
+
   beforeEach(() => {
     mockStoreState.deltaInputTokens = true;
   });
@@ -606,6 +686,65 @@ describe("delta estimation", () => {
     // Second message: 250 input — delta disabled, so full input used
     onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
     expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
+  });
+
+  it("accumulates cache reads and retains only the newest cache-hit rate", () => {
+    manager = new AgentManager(onComplete);
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+    const onUsage = getOnAssistantUsage();
+
+    onUsage({ input: 100, output: 10, cacheRead: 80, cacheWrite: 20, cost: 0 });
+    onUsage({ input: 200, output: 10, cacheRead: 150, cacheWrite: 50, cost: 0 });
+
+    const stats = manager.getRecord(id)!.stats;
+    expect(stats.cacheRead).toBe(230);
+    expect(stats.latestCacheHitRate).toBeCloseTo((150 / 400) * 100);
+    expect(stats.lifetimeUsage.cacheWrite).toBe(70);
+  });
+
+  it("counts supplemental usage without changing assistant delta or cache-hit state", () => {
+    manager = new AgentManager(onComplete);
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+    const onAssistantUsage = getOnAssistantUsage();
+    const onSupplementalUsage = getOnSupplementalUsage();
+
+    onAssistantUsage({ input: 100, output: 10, cacheRead: 80, cacheWrite: 20, cost: 0.01 });
+    const stats = manager.getRecord(id)!.stats;
+    const assistantCacheHitRate = stats.latestCacheHitRate;
+
+    onSupplementalUsage({ input: 400, output: 50, cacheRead: 300, cacheWrite: 25, cost: 0.12 });
+
+    expect(stats.lifetimeUsage).toEqual({ input: 500, output: 60, cacheWrite: 45, cost: 0.13 });
+    expect(stats.cacheRead).toBe(380);
+    expect(stats.prevInputTokens).toBe(100);
+    expect(stats.latestCacheHitRate).toBe(assistantCacheHitRate);
+
+    // The next assistant report still uses the previous assistant input (100),
+    // rather than the compaction input (400), for the vLLM delta heuristic.
+    onAssistantUsage({ input: 200, output: 10, cacheRead: 0, cacheWrite: 0, cost: 0 });
+    expect(stats.lifetimeUsage.input).toBe(600);
+  });
+
+  it("persists final context, auto-compaction, and subscription snapshots", async () => {
+    manager = new AgentManager(onComplete);
+    const session = {
+      ...mockAgentSession(),
+      getContextUsage: () => ({ percent: 23.4, contextWindow: 272_000 }),
+      autoCompactionEnabled: true,
+      model: { provider: "kimi-coding" },
+    };
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session }));
+    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+    await manager.getRecord(id)!.execution.promise;
+
+    expect(manager.getRecord(id)!.stats).toMatchObject({
+      contextPercent: 23.4,
+      contextWindow: 272_000,
+      autoCompactionEnabled: true,
+      usingSubscription: true,
+    });
   });
 });
 }); // end describe AgentManager

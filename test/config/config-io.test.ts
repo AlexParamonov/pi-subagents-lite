@@ -55,6 +55,33 @@ describe("config I/O paths", () => {
     expect(loadConfig().agent.defaultThinking).toBeUndefined();
   });
 
+  it("defaults and preserves widget visibility and orchestration settings", async () => {
+    mockGetAgentDir.mockReturnValue("/tmp/pi-agent");
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+    }));
+    vi.resetModules();
+    let { loadConfig } = await import("../../src/config/config-io.ts");
+    expect(loadConfig().agent).toMatchObject({
+      widgetShowModelThinking: true,
+      widgetShowStartTime: true,
+      orchestrationPrompt: true,
+    });
+
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      agent: { default: null, forceBackground: false, widgetShowModelThinking: false, widgetShowStartTime: false, orchestrationPrompt: false },
+      concurrency: { default: 4 },
+    }));
+    vi.resetModules();
+    ({ loadConfig } = await import("../../src/config/config-io.ts"));
+    expect(loadConfig().agent).toMatchObject({
+      widgetShowModelThinking: false,
+      widgetShowStartTime: false,
+      orchestrationPrompt: false,
+    });
+  });
+
   it("uses Pi's agent directory for config and custom prompts when HOME is unset", async () => {
     const agentDir = "C:\\Users\\Pi User\\.pi\\agent";
     vi.stubEnv("HOME", "");
