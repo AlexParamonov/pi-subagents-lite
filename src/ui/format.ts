@@ -122,7 +122,7 @@ export function buildStatsParts(
   visible?: StatsVisibility,
 ): string[] {
   const parts: string[] = [];
-  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
+  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠︎ `);
   if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
   if (visible?.showInput !== false || visible?.showOutput !== false) {
     const showIn = visible?.showInput !== false;

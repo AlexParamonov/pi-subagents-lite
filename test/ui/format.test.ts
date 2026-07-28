@@ -29,12 +29,12 @@ const allStats = {
 describe("buildStatsParts — visible flag: showTools", () => {
   it("excludes toolUses when showTools is false", () => {
     const parts = buildStatsParts(allStats, mockTheme, { showTools: false });
-    expect(parts.some(p => p.includes("🛠"))).toBe(false);
+    expect(parts.some(p => p.includes("🛠︎"))).toBe(false);
   });
 
   it("includes toolUses when showTools is true (default)", () => {
     const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.some(p => p.includes("🛠"))).toBe(true);
+    expect(parts.some(p => p.includes("🛠︎"))).toBe(true);
   });
 });
 
@@ -131,7 +131,7 @@ describe("buildStatsParts — backward compatibility", () => {
   it("without visible parameter, behaves the same as before", () => {
     const parts = buildStatsParts(allStats, mockTheme);
     expect(parts.length).toBeGreaterThan(0);
-    expect(parts.some(p => p.includes("🛠"))).toBe(true);
+    expect(parts.some(p => p.includes("🛠︎"))).toBe(true);
     expect(parts.some(p => p.includes("⟳"))).toBe(true);
     expect(parts.some(p => p.includes("↑"))).toBe(true);
     expect(parts.some(p => p.includes("$"))).toBe(true);
