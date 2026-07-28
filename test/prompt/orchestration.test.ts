@@ -80,7 +80,7 @@ describe("parent orchestration prompt", () => {
 
   it("preserves built-in and registry/UI insertion order while sorting only the catalog", () => {
     registerAgents(new Map([["reviewer", agent("reviewer", "Reviews")]]));
-    expect(getAvailableTypes()).toEqual(["general-purpose", "Explore", "reviewer"]);
+    expect(getAvailableTypes()).toEqual(["explorer", "scout", "implementer", "reviewer", "verifier"]);
 
     // The catalog itself is sorted below for prompt cache stability.
 

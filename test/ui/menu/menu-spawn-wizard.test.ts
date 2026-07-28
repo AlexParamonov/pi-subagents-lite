@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules, selectDialogInstances, resetSelectDialogInstances } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
-import { resolveAgentCatalog, getAgentConfig, getAvailableTypes, resolveType } from "../../../src/agents/agent-types.js";
+import { getAgentConfig, getAvailableTypes, resolveAgentCatalog } from "../../../src/agents/agent-types.js";
 
 // Capture SettingsList constructor calls from pi-tui
 let settingsListCalls: Array<{
@@ -19,6 +19,7 @@ let settingsListCalls: Array<{
   theme: any;
   onChange: (id: string, newValue: string) => void;
   onCancel: () => void;
+  instance: any;
 }> = [];
 
 // Capture Input instances created
@@ -43,7 +44,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
     items: any[];
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any) {
       this.items = items;
-      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel });
+      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, instance: this });
     }
   },
   Input: class MockInput {
@@ -74,25 +75,27 @@ import { showSpawnAgentMenu } from "../../../src/ui/menu/menu-spawn-wizard.js";
 
 function setupMocks() {
   mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 6 };
-  mockModules.mockSessionOverrides.default = null;
+  mockModules.mockSessionOverrides = { default: null };
+  mockModules.mockSessionThinkingOverrides = {};
+  mockModules.mockConfig.thinkingOverrides = {};
   mockModules.mockManager.spawn.mockReset().mockReturnValue("agent-id-123");
   mockModules.mockManager.getRecord.mockReset();
   mockModules.mockPiExec.mockReset();
-  (resolveAgentCatalog as any).mockReset().mockResolvedValue(new Map([
-    ["general-purpose", { name: "general-purpose", description: "General-purpose agent", systemPrompt: "" }],
-    ["Explore", { name: "Explore", description: "Explore agent", systemPrompt: "" }],
-  ]));
   vi.clearAllMocks();
   settingsListCalls = [];
   inputInstances = [];
   selectListInstances = [];
   resetSelectDialogInstances();
-  (getAvailableTypes as any).mockReturnValue(["general-purpose", "Explore"]);
   (getAgentConfig as any).mockImplementation((name: string) => {
     if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, maxTokens: 10000, extensions: true, skills: true, systemPrompt: "" };
     if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
     return undefined;
   });
+  (getAvailableTypes as any).mockReturnValue(["general-purpose", "Explore"]);
+  (resolveAgentCatalog as any).mockReset().mockImplementation(async () => new Map([
+    ["general-purpose", (getAgentConfig as any)("general-purpose")],
+    ["Explore", (getAgentConfig as any)("Explore")],
+  ]));
 }
 
 /**
@@ -116,20 +119,6 @@ function createMockWizardCtx(stepResults: (string | undefined)[]) {
 // Helper to complete all 3 wizard steps
 async function completeWizard(ctx: ReturnType<typeof createMockCtx>) {
   await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-}
-
-function setupWorktreeExecMock(worktrees: { path: string; branch: string }[]) {
-  mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
-    if (args[0] === "rev-parse") return { code: 0, stdout: "/test/.git", stderr: "" };
-    if (args[0] === "worktree") {
-      return {
-        code: 0,
-        stdout: worktrees.map(wt => `worktree ${wt.path}\nbranch refs/heads/${wt.branch}`).join("\n\n"),
-        stderr: "",
-      };
-    }
-    return { code: 1, stdout: "", stderr: "" };
-  });
 }
 
 describe("showSpawnAgentMenu — wizard flow", () => {
@@ -240,10 +229,30 @@ describe("showSpawnAgentMenu — thinking level", () => {
     setupMocks();
   });
 
-  it("shows agent config thinking level", async () => {
+  it("shows the Agent MD thinking level when it is the effective setting", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.currentValue).toBe("medium");
+  });
+
+  it("uses the persisted per-agent thinking override before Agent MD", async () => {
+    mockModules.mockConfig.thinkingOverrides["general-purpose"] = "xhigh";
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    // The current model has no xhigh mapping, so the displayed value is the
+    // nearest supported level rather than the persisted request.
+    expect(item.currentValue).toBe("high");
+  });
+
+  it("uses the session per-agent thinking override before a persisted override", async () => {
+    mockModules.mockConfig.thinkingOverrides["general-purpose"] = "xhigh";
+    mockModules.mockSessionThinkingOverrides["general-purpose"] = "minimal";
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.currentValue).toBe("minimal");
   });
 
   it("pre-populates thinking from config default when agent has no thinking", async () => {
@@ -275,6 +284,40 @@ describe("showSpawnAgentMenu — thinking level", () => {
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("inherit");
+  });
+});
+
+describe("showSpawnAgentMenu — model-aware thinking", () => {
+  beforeEach(() => {
+    setupMocks();
+  });
+
+  it("rebuilds the thinking list when the selected model changes", async () => {
+    const noReasoning = { provider: "openai", id: "gpt-4o", reasoning: false };
+    mockModules.mockSessionCtx.modelRegistry.find.mockImplementation((provider: string, modelId: string) => {
+      if (`${provider}/${modelId}` === "openai/gpt-4o") return noReasoning;
+      return { provider, id: modelId, reasoning: true };
+    });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    const modelItem = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    modelItem.submenu("", vi.fn());
+    selectListInstances.at(-1)!.onSelect!({ value: "session" });
+    selectDialogInstances.at(-1)!.callbacks.onSelect("openai/gpt-4o");
+
+    let rebuiltThinking = settingsListCalls[1].instance.items.find((i: any) => i.id === "thinkingLevel");
+    expect(rebuiltThinking.currentValue).toBe("off");
+    expect(rebuiltThinking.values).toEqual(["inherit", "off"]);
+
+    const rebuiltModel = settingsListCalls[1].instance.items.find((i: any) => i.id === "model");
+    rebuiltModel.submenu("", vi.fn());
+    selectListInstances.at(-1)!.onSelect!({ value: "session" });
+    selectDialogInstances.at(-1)!.callbacks.onSelect("anthropic/claude-sonnet-4-20250514");
+
+    rebuiltThinking = settingsListCalls[1].instance.items.find((i: any) => i.id === "thinkingLevel");
+    expect(rebuiltThinking.currentValue).toBe("medium");
+    expect(rebuiltThinking.values).toContain("medium");
   });
 });
 
@@ -461,12 +504,21 @@ describe("showSpawnAgentMenu — model", () => {
     setupMocks();
   });
 
-  it("shows agent config model", async () => {
+  it("shows the Agent MD model when it is the effective setting", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
     expect(item.currentValue).toBe("anthropic/claude-sonnet-4-20250514");
     expect(typeof item.submenu).toBe("function");
+  });
+
+  it("uses the session per-agent model override before Agent MD", async () => {
+    mockModules.mockConfig.agent["general-purpose"] = "anthropic/claude-sonnet-4-20250514";
+    mockModules.mockSessionOverrides["general-purpose"] = "openai/gpt-4o";
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    expect(item.currentValue).toBe("openai/gpt-4o");
   });
 
   it("shows '(inherits parent)' when no model in precedence chain", async () => {
@@ -553,7 +605,115 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
-    await vi.waitFor(() => expect(mockDone).toHaveBeenCalledWith("feature"));
+    expect(mockDone).toHaveBeenCalledWith("feature");
+  });
+
+  it("refreshes model-aware options from a local worktree definition without leaking it", async () => {
+    mockModules.mockSessionCtx.modelRegistry.find.mockImplementation((provider: string, id: string) => ({
+      provider, id, reasoning: true,
+    }));
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    (resolveAgentCatalog as any).mockImplementation(async (dir?: string) => new Map([
+      ["general-purpose", dir ? {
+        name: "general-purpose", description: "Worktree override",
+        model: "openai/gpt-4o", thinkingLevel: "high",
+        maxTurns: 7, maxTokens: 500, systemPrompt: "",
+      } : (getAgentConfig as any)("general-purpose")],
+      ["Explore", (getAgentConfig as any)("Explore")],
+    ]));
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    worktree.submenu("Inherits parent cwd", vi.fn());
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
+    await vi.waitFor(() => expect((resolveAgentCatalog as any)).toHaveBeenCalledTimes(1));
+
+    let items = settingsListCalls[1].instance.items;
+    expect(items.find((i: any) => i.id === "model").currentValue).toBe("openai/gpt-4o");
+    expect(items.find((i: any) => i.id === "thinkingLevel").currentValue).toBe("high");
+    expect(items.find((i: any) => i.id === "thinkingLevel").values).toContain("high");
+    expect(items.find((i: any) => i.id === "maxTurns").currentValue).toBe("7");
+    expect(items.find((i: any) => i.id === "maxTokens").currentValue).toBe("500");
+
+    // Switching back uses the original parent config rather than the overlay.
+    items.find((i: any) => i.id === "worktree").submenu("feature", vi.fn());
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("Inherits parent cwd");
+    await vi.waitFor(() => expect(settingsListCalls[1].instance.items.find((i: any) => i.id === "model").currentValue).toBe("anthropic/claude-sonnet-4-20250514"));
+
+    settingsListCalls[1].instance.items.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
+    expect(mockModules.mockManager.spawn.mock.calls[0][4]).toMatchObject({
+      thinkingLevel: "medium", maxTurns: 25, maxTokens: 10000,
+    });
+  });
+
+  it("replaces worktree-only types when switching catalogs and snapshots the valid selection", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/wt-a", branch: "a" }, { path: "/wt-b", branch: "b" }] });
+    (resolveAgentCatalog as any).mockImplementation(async (dir?: string) => new Map(
+      (dir?.startsWith("/wt-a") ? ["general-purpose", "a-only"]
+        : dir?.startsWith("/wt-b") ? ["general-purpose", "b-only"]
+          : ["general-purpose", "Explore"])
+        .map(name => [name, name === "general-purpose" ? (getAgentConfig as any)(name) : {
+          name, description: name, model: "openai/gpt-4o", maxTurns: 3, systemPrompt: "",
+        }]),
+    ));
+    const ctx = createMockWizardCtx(["general-purpose", "review", undefined]);
+    await completeWizard(ctx);
+
+    const selectWorktree = async (path: string) => {
+      const item = settingsListCalls[1].instance.items.find((i: any) => i.id === "worktree");
+      item.submenu(item.currentValue, vi.fn());
+      selectDialogInstances.at(-1)!.callbacks.onSelect(path);
+      await vi.waitFor(() => expect(resolveAgentCatalog).toHaveBeenCalledWith(`${path}/.pi/agents`, expect.anything()));
+    };
+    await selectWorktree("/wt-a");
+    let type = settingsListCalls[1].instance.items.find((i: any) => i.id === "type");
+    type.submenu("general-purpose", vi.fn());
+    selectDialogInstances.at(-1)!.callbacks.onSelect("a-only");
+
+    await selectWorktree("/wt-b");
+    type = settingsListCalls[1].instance.items.find((i: any) => i.id === "type");
+    expect(type.currentValue).toBe("general-purpose");
+    type.submenu(type.currentValue, vi.fn());
+    expect(selectDialogInstances.at(-1)!.items.map((item: any) => item.value)).toEqual(["general-purpose", "b-only"]);
+
+    settingsListCalls[1].instance.items.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
+    expect(mockModules.mockManager.spawn.mock.calls[0][4]).toMatchObject({
+      worktreePath: "/wt-b",
+      agentConfig: expect.objectContaining({ name: "general-purpose" }),
+    });
+    expect(mockModules.mockManager.spawn.mock.calls[0][2]).toBe("general-purpose");
+
+    const parentWorktree = settingsListCalls[1].instance.items.find((i: any) => i.id === "worktree");
+    parentWorktree.submenu(parentWorktree.currentValue, vi.fn());
+    selectDialogInstances.at(-1)!.callbacks.onSelect("Inherits parent cwd");
+    await vi.waitFor(() => expect(settingsListCalls[1].instance.items.find((i: any) => i.id === "type").currentValue).toBe("general-purpose"));
+    type = settingsListCalls[1].instance.items.find((i: any) => i.id === "type");
+    type.submenu(type.currentValue, vi.fn());
+    expect(selectDialogInstances.at(-1)!.items.map((item: any) => item.value)).toEqual(["general-purpose", "Explore"]);
+  });
+
+  it("does not load worktree agent Markdown when the project is untrusted", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.isProjectTrusted = vi.fn(() => false);
+    await completeWizard(ctx);
+
+    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    worktree.submenu("Inherits parent cwd", vi.fn());
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
+    await vi.waitFor(() => expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("project is not trusted"),
+      "warning",
+    ));
+    expect(resolveAgentCatalog).not.toHaveBeenCalled();
+
+    // The spawn-time trust check also must not resolve an overlay.
+    settingsListCalls[1].instance.items.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
+    expect(resolveAgentCatalog).not.toHaveBeenCalled();
   });
 
   it("selecting 'Inherits parent cwd' returns that label", async () => {
@@ -564,13 +724,36 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("Inherits parent cwd");
-    await vi.waitFor(() => expect(mockDone).toHaveBeenCalledWith("Inherits parent cwd"));
+    expect(mockDone).toHaveBeenCalledWith("Inherits parent cwd");
   });
 });
 
 describe("showSpawnAgentMenu — spawn action", () => {
   beforeEach(() => {
     setupMocks();
+  });
+
+  it("opens a trusted worktree picker for an empty parent catalog and spawns a worktree-only type", async () => {
+    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === "rev-parse") return { code: 0, stdout: "/test/.git", stderr: "" };
+      if (args[0] === "worktree") return { code: 0, stdout: "worktree /wt-only\nbranch refs/heads/only", stderr: "" };
+      return { code: 1, stdout: "", stderr: "" };
+    });
+    (getAvailableTypes as any).mockReturnValue([]);
+    const worktreeOnly = { name: "worktree-only", description: "Only in worktree", model: "openai/gpt-4o", thinkingLevel: "high", maxTurns: 42, maxTokens: 8192, systemPrompt: "" };
+    (resolveAgentCatalog as any).mockResolvedValue(new Map([["worktree-only", worktreeOnly]]));
+    const ctx = createMockWizardCtx(["/wt-only", "worktree-only", "review", undefined]);
+    await completeWizard(ctx);
+
+    expect(resolveAgentCatalog).toHaveBeenCalledWith("/wt-only/.pi/agents", { disableDefaultAgents: undefined });
+    const options = settingsListCalls.at(-1)!.instance.items;
+    expect(options.find((i: any) => i.id === "type").currentValue).toBe("worktree-only");
+    options.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
+    expect(mockModules.mockManager.spawn.mock.calls[0][2]).toBe("worktree-only");
+    expect(mockModules.mockManager.spawn.mock.calls[0][4]).toMatchObject({
+      worktreePath: "/wt-only", agentConfig: worktreeOnly,
+    });
   });
 
   it("spawn item has submenu", async () => {
@@ -589,178 +772,15 @@ describe("showSpawnAgentMenu — spawn action", () => {
     expect(mockDone).toHaveBeenCalled();
   });
 
-  it("allows an empty parent catalog to select a trusted worktree-only type", async () => {
-    setupWorktreeExecMock([{ path: "/wt-only", branch: "only" }]);
-    (getAvailableTypes as any).mockReturnValue([]);
-    (resolveAgentCatalog as any).mockResolvedValue(new Map([["worktree-only", {
-      name: "worktree-only", description: "Only in worktree", systemPrompt: "",
-    }]]));
-    const ctx = createMockWizardCtx(["/wt-only", "worktree-only", "review", undefined]);
-    await completeWizard(ctx);
-    expect(resolveAgentCatalog).toHaveBeenCalledWith("/wt-only/.pi/agents", { disableDefaultAgents: undefined });
-    expect(ctx.ui.notify).not.toHaveBeenCalledWith("No agent types available", "error");
-  });
-
-  it("selects a trusted worktree-only type and spawns it with its config", async () => {
-    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
-      if (args[0] === "rev-parse") return { code: 0, stdout: "/test/.git", stderr: "" };
-      if (args[0] === "worktree") return { code: 0, stdout: "worktree /test-feature\nbranch refs/heads/feature", stderr: "" };
-      return { code: 1, stdout: "", stderr: "" };
-    });
-    (getAvailableTypes as any).mockReturnValue(["general-purpose", "Explore"]);
-    (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "worktree-only") {
-        return {
-          name,
-          description: "Only available in the selected worktree",
-          model: "openai/gpt-4o",
-          thinkingLevel: "high" as const,
-          maxTurns: 42,
-          maxTokens: 8192,
-          extensions: false,
-          skills: false,
-          systemPrompt: "",
-        };
-      }
-      if (name === "general-purpose") return { name, description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, maxTokens: 10000, extensions: true, skills: true, systemPrompt: "" };
-      if (name === "Explore") return { name, description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
-      return undefined;
-    });
-    (resolveAgentCatalog as any).mockResolvedValue(new Map([
-      ["general-purpose", { name: "general-purpose", description: "General-purpose agent", systemPrompt: "" }],
-      ["Explore", { name: "Explore", description: "Explore agent", systemPrompt: "" }],
-      ["worktree-only", { name: "worktree-only", description: "Only available in the selected worktree", model: "openai/gpt-4o", thinkingLevel: "high", maxTurns: 42, maxTokens: 8192, extensions: false, skills: false, systemPrompt: "" }],
-    ]));
-    const ctx = createMockWizardCtx(["general-purpose", "review feature", undefined]);
-    await completeWizard(ctx);
-
-    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
-    worktree.submenu("Inherits parent cwd", vi.fn());
-    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
-    await vi.waitFor(() => expect(resolveAgentCatalog).toHaveBeenCalledWith(
-      "/test-feature/.pi/agents",
-      { disableDefaultAgents: undefined },
-    ));
-
-    const type = settingsListCalls[1].items.find((i: any) => i.id === "type");
-    type.submenu("general-purpose", vi.fn());
-    const typeSelector = selectDialogInstances[selectDialogInstances.length - 1];
-    expect(typeSelector.items.map((item: any) => item.value)).toContain("worktree-only");
-    typeSelector.callbacks.onSelect("worktree-only");
-
-    const spawn = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
-    spawn.submenu("", vi.fn());
-    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledWith(
-      mockModules.mockPiInstance,
-      mockModules.mockSessionCtx,
-      "worktree-only",
-      "review feature",
-      expect.objectContaining({
-        model: { provider: "openai", id: "gpt-4o" },
-        modelKey: "openai/gpt-4o",
-        thinkingLevel: "high",
-        maxTurns: 42,
-        maxTokens: 8192,
-        worktreePath: "/test-feature",
-        worktreeLabel: "feature",
-      }),
-    ));
-  });
-
-  it("removes A-only types when switching from worktree A to B and never spawns the stale type", async () => {
-    setupWorktreeExecMock([{ path: "/wt-a", branch: "a" }, { path: "/wt-b", branch: "b" }]);
-    let types = ["general-purpose", "Explore"];
-    (getAvailableTypes as any).mockImplementation(() => types);
-    (resolveType as any).mockImplementation((name: string) => types.includes(name) ? name : undefined);
-    (resolveAgentCatalog as any).mockImplementation(async (worktreeDir?: string) => new Map(
-      (worktreeDir?.startsWith("/wt-a") ? ["general-purpose", "Explore", "a-only"]
-        : worktreeDir?.startsWith("/wt-b") ? ["general-purpose", "Explore", "b-only"]
-          : ["general-purpose", "Explore"]).map(name => [name, { name, description: name, model: "openai/gpt-4o", systemPrompt: "" }]),
-    ));
-    const ctx = createMockWizardCtx(["general-purpose", "review feature", undefined]);
-    await completeWizard(ctx);
-
-    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
-    const selectWorktree = async (path: string) => {
-      const done = vi.fn();
-      worktree.submenu("Inherits parent cwd", done);
-      selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect(path);
-      await vi.waitFor(() => expect(done).toHaveBeenCalled());
-    };
-
-    await selectWorktree("/wt-a");
-    const type = settingsListCalls[1].items.find((i: any) => i.id === "type");
-    type.submenu("general-purpose", vi.fn());
-    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("a-only");
-
-    await selectWorktree("/wt-b");
-    type.submenu("a-only", vi.fn());
-    expect(selectDialogInstances[selectDialogInstances.length - 1].items.map((item: any) => item.value))
-      .toEqual(["general-purpose", "Explore", "b-only"]);
-    expect(type.currentValue).toBe("general-purpose");
-
-    const spawn = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
-    spawn.submenu("", vi.fn());
-    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
-    expect(mockModules.mockManager.spawn.mock.calls.at(-1)?.[2]).toBe("general-purpose");
-    expect(mockModules.mockManager.spawn.mock.calls.some((call: any[]) => call[2] === "a-only")).toBe(false);
-  });
-
-  it("removes worktree-only types when returning to the parent cwd and never spawns them", async () => {
-    setupWorktreeExecMock([{ path: "/wt-a", branch: "a" }]);
-    let types = ["general-purpose", "Explore"];
-    (getAvailableTypes as any).mockImplementation(() => types);
-    (resolveType as any).mockImplementation((name: string) => types.includes(name) ? name : undefined);
-    (resolveAgentCatalog as any).mockImplementation(async (worktreeDir?: string) => new Map(
-      (worktreeDir ? ["general-purpose", "Explore", "a-only"] : ["general-purpose", "Explore"])
-        .map(name => [name, { name, description: name, model: "openai/gpt-4o", systemPrompt: "" }]),
-    ));
-    const ctx = createMockWizardCtx(["general-purpose", "review feature", undefined]);
-    await completeWizard(ctx);
-
-    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
-    const selectWorktree = async (path: string) => {
-      const done = vi.fn();
-      worktree.submenu("Inherits parent cwd", done);
-      selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect(path);
-      await vi.waitFor(() => expect(done).toHaveBeenCalled());
-    };
-
-    await selectWorktree("/wt-a");
-    const type = settingsListCalls[1].items.find((i: any) => i.id === "type");
-    type.submenu("general-purpose", vi.fn());
-    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("a-only");
-
-    await selectWorktree("Inherits parent cwd");
-    type.submenu("a-only", vi.fn());
-    expect(selectDialogInstances[selectDialogInstances.length - 1].items.map((item: any) => item.value))
-      .toEqual(["general-purpose", "Explore"]);
-    expect(type.currentValue).toBe("general-purpose");
-
-    const spawn = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
-    spawn.submenu("", vi.fn());
-    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
-    expect(mockModules.mockManager.spawn.mock.calls.at(-1)?.[2]).toBe("general-purpose");
-    expect(mockModules.mockManager.spawn.mock.calls.some((call: any[]) => call[2] === "a-only")).toBe(false);
-  });
-
-  it("does not scan an explicitly selected worktree when untrusted", async () => {
-    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
-      if (args[0] === "rev-parse") return { code: 0, stdout: "/test/.git", stderr: "" };
-      if (args[0] === "worktree") return { code: 0, stdout: "worktree /test-feature\nbranch refs/heads/feature", stderr: "" };
-      return { code: 1, stdout: "", stderr: "" };
-    });
+  it("passes the selected thinking override to the spawned agent", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
-    ctx.isProjectTrusted = () => false;
     await completeWizard(ctx);
+    settingsListCalls[1].onChange("thinkingLevel", "high");
 
-    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
-    worktree.submenu("Inherits parent cwd", vi.fn());
-    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
-    const spawn = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
-    spawn.submenu("", vi.fn());
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    item.submenu("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
 
-    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
-    expect(resolveAgentCatalog).not.toHaveBeenCalled();
+    expect(mockModules.mockManager.spawn.mock.calls[0][4].thinkingLevel).toBe("high");
   });
 });

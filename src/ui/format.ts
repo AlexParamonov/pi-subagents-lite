@@ -244,9 +244,13 @@ export function buildStatsParts(
   return parts;
 }
 
-/** Get display name for any agent type (built-in or custom). */
+/** Get display name for any known agent type; retain an unknown type's raw label for display. */
 export function getDisplayName(type: SubagentType): string {
-  return getConfig(type).displayName;
+  try {
+    return getConfig(type).displayName;
+  } catch {
+    return type;
+  }
 }
 
 /** Shared lifecycle icon and color used by agent views. */

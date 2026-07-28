@@ -8,12 +8,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord } from "../../src/types.js";
+import { buildInvocationTags } from "../../src/ui/format.js";
 
 // --- Mock modules ---
 
+const { mockAgentConfig } = vi.hoisted(() => ({
+  mockAgentConfig: vi.fn(() => undefined),
+}));
+
 vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((name: string) => name),
-  getAgentConfig: vi.fn(() => undefined),
+  getAgentConfig: mockAgentConfig,
   discoverNewAgents: vi.fn(async () => 0),
 }));
 
@@ -96,6 +101,7 @@ describe("SpawnCoordinator", () => {
     manager = makeMockManager();
     ctx = makeMockCtx();
     mockPi.sendMessage.mockClear();
+    mockAgentConfig.mockReset().mockReturnValue(undefined);
     mockGetPiInstance.mockReturnValue(mockPi);
     const mod = await import("../../src/spawn/spawn-coordinator.js");
     SpawnCoordinator = mod.SpawnCoordinator;
@@ -119,6 +125,44 @@ describe("SpawnCoordinator", () => {
     expect(manager.spawn.mock.calls[0][4].isBackground).toBe(true);
   });
 
+  it("snapshots an explicitly resolved agent config before handing it to the manager", async () => {
+    const coordinator = new SpawnCoordinator(manager as any);
+    const config = {
+      name: "builder",
+      description: "A-only",
+      systemPrompt: "Use A instructions.",
+      registeredTools: ["read"],
+      tools: ["read"],
+      extensions: ["a-extension"],
+      skills: ["a-skill"],
+      maxTurns: 3,
+      maxTokens: 200,
+    } as any;
+
+    await coordinator.spawn(mockPi, ctx, {
+      type: "builder",
+      prompt: "do something",
+      description: "Test config snapshot",
+      agentConfig: config,
+      graceTurns: 6,
+      runInBackground: true,
+    });
+    config.registeredTools.push("bash");
+    config.tools.push("bash");
+
+    const snapshot = manager.spawn.mock.calls[0][4].agentConfig;
+    expect(snapshot).toEqual(expect.objectContaining({
+      systemPrompt: "Use A instructions.",
+      registeredTools: ["read"],
+      tools: ["read"],
+      extensions: ["a-extension"],
+      skills: ["a-skill"],
+      maxTurns: 3,
+      maxTokens: 200,
+    }));
+    expect(snapshot).not.toBe(config);
+  });
+
   it("spawns a foreground agent and awaits its promise", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
     const result = await coordinator.spawn(mockPi, ctx, {
@@ -132,6 +176,34 @@ describe("SpawnCoordinator", () => {
     expect(result.agentId).toBeTruthy();
     expect(result.record).toBeTruthy();
     expect(manager.spawn.mock.calls[0][4].isBackground).toBe(false);
+  });
+
+  it("normalizes thinking before passing options and invocation to the manager", async () => {
+    const coordinator = new SpawnCoordinator(manager as any);
+    const model = {
+      provider: "deepseek",
+      id: "deepseek-reasoner",
+      reasoning: true,
+      thinkingLevelMap: { xhigh: null, max: null },
+    } as any;
+    ctx = { ...ctx, model };
+
+    await coordinator.spawn(mockPi, ctx, {
+      type: "builder",
+      prompt: "do something",
+      description: "Test",
+      thinkingLevel: "max",
+      graceTurns: 6,
+      invocation: { thinkingLevel: "max" },
+      runInBackground: true,
+    });
+
+    const options = manager.spawn.mock.calls[0][4];
+    expect(options.model).toBe(model);
+    expect(options.modelKey).toBe("deepseek/deepseek-reasoner");
+    expect(options.thinkingLevel).toBe("high");
+    expect(options.invocation.thinkingLevel).toBe("high");
+    expect(buildInvocationTags(options.invocation).tags).not.toContain("thinking: high");
   });
 
   it("creates a live view on spawn", async () => {

@@ -1,22 +1,116 @@
-/** Filesystem-backed catalog isolation tests. */
+/**
+ * agent-types-discovery.test.ts — Parent and worktree agent discovery.
+ */
+
 import { describe, it, expect, beforeEach } from "vitest";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
-import { registerAgents, setAgentScanDirs, discoverNewAgents, resolveAgentCatalog, resolveType, resolveTypeInCatalog, getAgentConfig } from "../../src/agents/agent-types.js";
+import {
+  registerAgents,
+  setAgentScanDirs,
+  discoverNewAgents,
+  resolveType,
+  getAgentConfig,
+  resolveWorktreeAgent,
+  resolveAgentCatalog,
+  resolveTypeInCatalog,
+} from "../../src/agents/agent-types.js";
 
-describe("worktree invocation catalogs", () => {
-  beforeEach(() => { registerAgents(new Map(), { disableDefaultAgents: true }); setAgentScanDirs("", "", ""); });
-  it("overrides same-name base definitions without mutating the parent registry", async () => {
-    const { dir: parent, cleanup: cleanParent } = tempDirWithFiles([{ name: "review.md", content: makeAgentMd({ name: "review", description: "parent" }) }], "parent-agents");
-    const { dir: worktree, cleanup: cleanWorktree } = tempDirWithFiles([{ name: "review.md", content: makeAgentMd({ name: "review", description: "worktree" }) }], "worktree-agents");
-    try { setAgentScanDirs("", parent); await discoverNewAgents({ disableDefaultAgents: true }); const catalog = await resolveAgentCatalog(worktree, { disableDefaultAgents: true }); expect(catalog.get("review")?.description).toBe("worktree"); expect(getAgentConfig("review")?.description).toBe("parent"); } finally { cleanParent(); cleanWorktree(); }
+describe("worktree-local agent resolution", () => {
+  beforeEach(() => {
+    registerAgents(new Map(), { disableDefaultAgents: true });
+    setAgentScanDirs("", "", "");
   });
-  it("keeps a unique worktree type out of the shared registry", async () => {
-    const { dir: worktree, cleanup } = tempDirWithFiles([{ name: "only.md", content: makeAgentMd({ name: "worktree-only", thinking: "high", max_turns: "50" }) }], "worktree-agents");
-    try { const catalog = await resolveAgentCatalog(worktree, { disableDefaultAgents: true }); expect(resolveTypeInCatalog(catalog, "worktree-only")).toBe("worktree-only"); expect(catalog.get("worktree-only")?.thinkingLevel).toBe("high"); expect(resolveType("worktree-only")).toBeUndefined(); } finally { cleanup(); }
+
+  it("keeps parallel A/B overlays atomic and leaves the parent registry unchanged", async () => {
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([
+      { name: "reviewer.md", content: makeAgentMd({
+        name: "reviewer", description: "Parent reviewer", tools: "read",
+      }).replace("System prompt body text.", "Parent prompt.") },
+    ], "parent-agents");
+    const { dir: worktreeA, cleanup: cleanupA } = tempDirWithFiles([
+      { name: "reviewer.md", content: makeAgentMd({
+        name: "reviewer", description: "A reviewer", tools: "bash",
+      }).replace("System prompt body text.", "A prompt.") },
+    ], "worktree-a-agents");
+    const { dir: worktreeB, cleanup: cleanupB } = tempDirWithFiles([
+      { name: "reviewer.md", content: makeAgentMd({
+        name: "reviewer", description: "B reviewer", tools: "write",
+      }).replace("System prompt body text.", "B prompt.") },
+    ], "worktree-b-agents");
+
+    try {
+      setAgentScanDirs("", projectDir);
+      await discoverNewAgents({ disableDefaultAgents: true });
+
+      const [a, b] = await Promise.all([
+        resolveWorktreeAgent("reviewer", worktreeA, { disableDefaultAgents: true }),
+        resolveWorktreeAgent("reviewer", worktreeB, { disableDefaultAgents: true }),
+      ]);
+
+      expect(a).toMatchObject({ type: "reviewer", config: {
+        description: "A reviewer", systemPrompt: "A prompt.",
+        registeredTools: ["bash"], tools: ["bash"],
+      } });
+      expect(b).toMatchObject({ type: "reviewer", config: {
+        description: "B reviewer", systemPrompt: "B prompt.",
+        registeredTools: ["write"], tools: ["write"],
+      } });
+      expect(getAgentConfig("reviewer")).toMatchObject({
+        description: "Parent reviewer", systemPrompt: "Parent prompt.",
+        registeredTools: ["read"], tools: ["read"],
+      });
+
+      // A later parent refresh still sees only parent definitions.
+      await discoverNewAgents({ disableDefaultAgents: true });
+      expect(getAgentConfig("reviewer")?.description).toBe("Parent reviewer");
+    } finally {
+      cleanupProject();
+      cleanupA();
+      cleanupB();
+    }
   });
-  it("switching or cancelling local catalogs cannot leak types", async () => {
-    const { dir: a, cleanup: cleanA } = tempDirWithFiles([{ name: "a.md", content: makeAgentMd({ name: "a-only" }) }], "a"); const { dir: b, cleanup: cleanB } = tempDirWithFiles([{ name: "b.md", content: makeAgentMd({ name: "b-only" }) }], "b");
-    try { const catalogA = await resolveAgentCatalog(a, { disableDefaultAgents: true }); const catalogB = await resolveAgentCatalog(b, { disableDefaultAgents: true }); expect(catalogA.has("a-only")).toBe(true); expect(catalogB.has("a-only")).toBe(false); expect(resolveType("a-only")).toBeUndefined(); expect(resolveType("b-only")).toBeUndefined(); } finally { cleanA(); cleanB(); }
+
+  it("resolves worktree-only types locally without registering them globally", async () => {
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
+      { name: "feature-reviewer.md", content: makeAgentMd({ name: "feature-reviewer", description: "Worktree only" }) },
+    ], "worktree-agents");
+    try {
+      setAgentScanDirs("", projectDir);
+      const resolved = await resolveWorktreeAgent("feature-reviewer", worktreeDir, { disableDefaultAgents: true });
+      expect(resolved?.config.description).toBe("Worktree only");
+      expect(resolveType("feature-reviewer")).toBeUndefined();
+    } finally {
+      cleanupProject();
+      cleanupWt();
+    }
+  });
+
+  it("exposes the same isolated worktree overlay through invocation catalogs", async () => {
+    const { dir: worktreeDir, cleanup } = tempDirWithFiles([
+      { name: "only.md", content: makeAgentMd({ name: "catalog-only", description: "Catalog only" }) },
+    ], "catalog-agents");
+    try {
+      const catalog = await resolveAgentCatalog(worktreeDir, { disableDefaultAgents: true });
+      expect(resolveTypeInCatalog(catalog, "catalog-only")).toBe("catalog-only");
+      expect(catalog.get("catalog-only")?.description).toBe("Catalog only");
+      expect(resolveType("catalog-only")).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refreshes the global registry for a non-worktree discovery", async () => {
+    const { dir: projectDir, cleanup } = tempDirWithFiles([
+      { name: "parent.md", content: makeAgentMd({ name: "parent", description: "Parent" }) },
+    ], "project-agents");
+    try {
+      setAgentScanDirs("", projectDir);
+      expect(await discoverNewAgents({ disableDefaultAgents: true })).toBe(1);
+      expect(getAgentConfig("parent")?.description).toBe("Parent");
+    } finally {
+      cleanup();
+    }
   });
 });
 

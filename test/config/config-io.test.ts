@@ -26,25 +26,60 @@ afterEach(() => {
 });
 
 describe("config I/O paths", () => {
-  it("loads widget visibility settings and supplies their true defaults", async () => {
-    mockGetAgentDir.mockReturnValue("/agent");
+  it.each([
+    ["is absent", {}, "legacy/model"],
+    ["is explicitly null", { explorer: null }, null],
+    ["is explicitly empty", { explorer: "" }, ""],
+    ["has another explicit value", { explorer: "new/model" }, "new/model"],
+  ])("migrates legacy Explore only when explorer %s", async (_, explorer, expected) => {
+    mockGetAgentDir.mockReturnValue("/tmp/pi-agent");
     mockReadFileSync.mockReturnValue(JSON.stringify({
-      agent: { default: null, forceBackground: false },
+      agent: { Explore: "legacy/model", ...explorer },
       concurrency: { default: 4 },
     }));
     vi.resetModules();
 
     const { loadConfig } = await import("../../src/config/config-io.ts");
-    expect(loadConfig().agent.widgetShowModelThinking).toBe(true);
-    expect(loadConfig().agent.widgetShowStartTime).toBe(true);
-    expect(loadConfig().agent.orchestrationPrompt).toBe(true);
+    expect(loadConfig().agent.explorer).toBe(expected);
+  });
 
+  it("drops an invalid global thinking value while loading config", async () => {
+    mockGetAgentDir.mockReturnValue("/tmp/pi-agent");
     mockReadFileSync.mockReturnValue(JSON.stringify({
-      agent: { default: null, forceBackground: false, widgetShowModelThinking: false, widgetShowStartTime: false },
+      agent: { defaultThinking: "invalid" },
       concurrency: { default: 4 },
     }));
-    expect(loadConfig().agent.widgetShowModelThinking).toBe(false);
-    expect(loadConfig().agent.widgetShowStartTime).toBe(false);
+    vi.resetModules();
+
+    const { loadConfig } = await import("../../src/config/config-io.ts");
+    expect(loadConfig().agent.defaultThinking).toBeUndefined();
+  });
+
+  it("defaults and preserves widget visibility and orchestration settings", async () => {
+    mockGetAgentDir.mockReturnValue("/tmp/pi-agent");
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+    }));
+    vi.resetModules();
+    let { loadConfig } = await import("../../src/config/config-io.ts");
+    expect(loadConfig().agent).toMatchObject({
+      widgetShowModelThinking: true,
+      widgetShowStartTime: true,
+      orchestrationPrompt: true,
+    });
+
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      agent: { default: null, forceBackground: false, widgetShowModelThinking: false, widgetShowStartTime: false, orchestrationPrompt: false },
+      concurrency: { default: 4 },
+    }));
+    vi.resetModules();
+    ({ loadConfig } = await import("../../src/config/config-io.ts"));
+    expect(loadConfig().agent).toMatchObject({
+      widgetShowModelThinking: false,
+      widgetShowStartTime: false,
+      orchestrationPrompt: false,
+    });
   });
 
   it("uses Pi's agent directory for config and custom prompts when HOME is unset", async () => {

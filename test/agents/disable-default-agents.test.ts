@@ -6,7 +6,7 @@
  *   - When disableDefaultAgents is false (default), DEFAULT_AGENTS are included
  *   - discoverNewAgents respects the setting
  *   - User agents overriding a default by name still work when setting is on
- *   - getConfig falls back to generic config when defaults disabled and no user agents
+ *   - Unknown types fail when defaults are disabled and no user agents exist
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -17,7 +17,7 @@ import {
   getAgentConfig,
   setAgentScanDirs,
   discoverNewAgents,
-  resolveAgentCatalog,
+  resolveWorktreeAgent,
   getConfig,
 } from "../../src/agents/agent-types.js";
 import { DEFAULT_AGENTS } from "../../src/agents/default-agents.js";
@@ -34,18 +34,47 @@ describe("registerAgents — disableDefaultAgents", () => {
     setAgentScanDirs("", "");
   });
 
-  it("includes DEFAULT_AGENTS by default (disableDefaultAgents=false)", () => {
+  it("includes exactly the five bundled Markdown defaults by default", () => {
     registerAgents(new Map());
-    const types = getAvailableTypes();
-    expect(types).toContain("general-purpose");
-    expect(types).toContain("Explore");
+    expect(getAvailableTypes()).toEqual(["explorer", "scout", "implementer", "reviewer", "verifier"]);
+    expect([...DEFAULT_AGENTS.keys()]).toEqual(["explorer", "scout", "implementer", "reviewer", "verifier"]);
+    for (const config of DEFAULT_AGENTS.values()) {
+      expect(config.source).toBe("default");
+      expect(config.model).toBeUndefined();
+      expect(config.thinkingLevel).toBeUndefined();
+      expect(config.extensions).toBe(false);
+      expect(config.skills).toBe(false);
+    }
+    expect(DEFAULT_AGENTS.get("explorer")).toMatchObject({
+      displayName: "Explorer",
+      registeredTools: ["read", "grep", "bash"],
+      systemPrompt: expect.stringContaining("Explore only the delegated question."),
+    });
+    expect(DEFAULT_AGENTS.get("implementer")).toMatchObject({
+      registeredTools: ["read", "grep", "bash", "edit", "write"],
+      systemPrompt: expect.stringContaining("Implement only the delegated bounded change."),
+    });
   });
 
-  it("skips DEFAULT_AGENTS when disableDefaultAgents is true", () => {
+  it("hardens Bash-enabled read-only defaults against repository mutation", () => {
+    for (const name of ["explorer", "scout", "reviewer", "verifier"]) {
+      const prompt = DEFAULT_AGENTS.get(name)!.systemPrompt;
+      expect(prompt).toContain("Do not intentionally change tracked source or configuration");
+      expect(prompt).toContain("install anything");
+      expect(prompt).toContain("shell redirects");
+      expect(prompt).toContain("state-changing or destructive Git or shell commands");
+      expect(prompt).toContain("git status --short");
+    }
+    expect(DEFAULT_AGENTS.get("explorer")!.systemPrompt).toContain("Run tests only when reproduction is explicitly delegated");
+    expect(DEFAULT_AGENTS.get("scout")!.systemPrompt).toContain("Run tests only when reproduction is explicitly delegated");
+    for (const name of ["reviewer", "verifier"]) {
+      expect(DEFAULT_AGENTS.get(name)!.systemPrompt).toContain("run existing tests or builds");
+    }
+  });
+
+  it("skips the five bundled defaults when disableDefaultAgents is true", () => {
     registerAgents(new Map(), { disableDefaultAgents: true });
-    const types = getAvailableTypes();
-    expect(types).not.toContain("general-purpose");
-    expect(types).not.toContain("Explore");
+    expect(getAvailableTypes()).toEqual([]);
   });
 
   it("still includes user-defined agents when disableDefaultAgents is true", () => {
@@ -58,20 +87,20 @@ describe("registerAgents — disableDefaultAgents", () => {
     registerAgents(userAgents, { disableDefaultAgents: true });
     const types = getAvailableTypes();
     expect(types).toContain("my-agent");
-    expect(types).not.toContain("general-purpose");
+    expect(types).not.toContain("explorer");
   });
 
-  it("user agent overriding a default by name is still registered when setting is on", () => {
+  it("user agent named like a default is still registered when setting is on", () => {
     const userAgents = new Map<string, AgentConfig>();
-    userAgents.set("general-purpose", {
-      name: "general-purpose",
-      description: "My custom general-purpose agent",
+    userAgents.set("explorer", {
+      name: "explorer",
+      description: "My custom explorer agent",
       systemPrompt: "custom prompt",
     });
     registerAgents(userAgents, { disableDefaultAgents: true });
-    const config = getAgentConfig("general-purpose");
+    const config = getAgentConfig("explorer");
     expect(config).toBeDefined();
-    expect(config!.description).toBe("My custom general-purpose agent");
+    expect(config!.description).toBe("My custom explorer agent");
   });
 
   it("returns empty types when defaults disabled and no user agents", () => {
@@ -90,19 +119,39 @@ describe("discoverNewAgents — disableDefaultAgents", () => {
     setAgentScanDirs("", "");
   });
 
-  it("does not restore disabled defaults while discovering an explicit worktree", async () => {
-    const { dir, cleanup } = tempDirWithFiles([
-      { name: "worktree-agent.md", content: makeAgentMd({ name: "worktree-agent", description: "Worktree" }) },
+  it("refreshes an existing bundled type when a higher-precedence file appears", async () => {
+    const { dir: projectDir, cleanup } = tempDirWithFiles([
+      { name: "explorer.md", content: makeAgentMd({ name: "explorer", description: "Project explorer" }) },
+    ], "project-agents");
+
+    try {
+      setAgentScanDirs("", projectDir);
+      expect(getAgentConfig("explorer")?.source).toBe("default");
+
+      await discoverNewAgents();
+
+      expect(getAgentConfig("explorer")).toMatchObject({
+        description: "Project explorer",
+        source: "project",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("resolves a worktree definition locally without overriding the bundled registry", async () => {
+    const { dir: worktreeDir, cleanup } = tempDirWithFiles([
+      { name: "explorer.md", content: "---\nname: explorer\ndescription: Worktree explorer\n---\nWorktree prompt" },
     ], "worktree-agents");
 
     try {
-      registerAgents(new Map(), { disableDefaultAgents: true });
-      const catalog = await resolveAgentCatalog(dir, { disableDefaultAgents: true });
-
-      expect(catalog.has("worktree-agent")).toBe(true);
-      expect(getAvailableTypes()).not.toContain("worktree-agent");
-      expect(getAvailableTypes()).not.toContain("general-purpose");
-      expect(getAvailableTypes()).not.toContain("Explore");
+      const local = await resolveWorktreeAgent("explorer", worktreeDir);
+      expect(local?.config).toMatchObject({
+        description: "Worktree explorer",
+        source: "project",
+        registeredTools: ["read", "grep", "bash"],
+      });
+      expect(getAgentConfig("explorer")?.source).toBe("default");
     } finally {
       cleanup();
     }
@@ -121,8 +170,8 @@ describe("discoverNewAgents — disableDefaultAgents", () => {
 
       const types = getAvailableTypes();
       expect(types).toContain("custom");
-      expect(types).not.toContain("general-purpose");
-      expect(types).not.toContain("Explore");
+      expect(types).not.toContain("explorer");
+      expect(types).not.toContain("implementer");
     } finally {
       cleanup();
     }
@@ -130,20 +179,17 @@ describe("discoverNewAgents — disableDefaultAgents", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  getConfig fallback when defaults are disabled                     */
+/*  getConfig failure when defaults are disabled                      */
 /* ------------------------------------------------------------------ */
 
-describe("getConfig — fallback when defaults disabled", () => {
+describe("getConfig — unknown type when defaults are disabled", () => {
   beforeEach(() => {
     registerAgents(new Map());
     setAgentScanDirs("", "");
   });
 
-  it("falls back to generic config when defaults disabled and general-purpose missing", () => {
+  it("fails clearly when defaults are disabled and no configured type exists", () => {
     registerAgents(new Map(), { disableDefaultAgents: true });
-    const config = getConfig("some-unknown-type");
-    // Should fall through to the absolute fallback (generic config)
-    expect(config.displayName).toBe("Agent");
-    expect(config.description).toBe("General-purpose agent for complex, multi-step tasks");
+    expect(() => getConfig("some-unknown-type")).toThrow("Unknown agent type: some-unknown-type");
   });
 });

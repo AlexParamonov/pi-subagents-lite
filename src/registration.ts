@@ -11,7 +11,11 @@ import { getPiInstance, getStore } from "./shell.js";
 // not yet declared in pi's ToolDefinition type.
 const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
 
-/** Register the fixed, intentionally bare Agent tool once at extension init. */
+// ============================================================================
+// Agent tool registration helper — fixed stealth schema
+// ============================================================================
+
+/** Register the Agent tool once at extension initialization. */
 function registerAgentTool(pi: ExtensionAPI): void {
   const tool = {
     name: "Agent",
@@ -19,13 +23,28 @@ function registerAgentTool(pi: ExtensionAPI): void {
     parameters: Type.Object({
       prompt: Type.String(),
       description: Type.Optional(Type.String()),
-      agent: Type.Optional(Type.String()),
+      agent: Type.String(),
+      model: Type.Optional(Type.String()),
+      thinking: Type.Optional(Type.Union([
+        Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
+        Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max"),
+      ])),
       run_in_background: Type.Optional(Type.Boolean()),
       worktree_path: Type.Optional(Type.String()),
     }, { additionalProperties: false }),
     execute: executeAgentTool,
+
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
-    renderResult: (result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean }, options: { expanded?: boolean }, theme: any) => renderAgentToolResult(result, options, theme, getStore().agent.showCost),
+
+    renderResult: (result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean }, options: { expanded?: boolean }, theme: any) => {
+      const showCost = getStore().agent.showCost;
+      return renderAgentToolResult(
+        result,
+        options,
+        theme,
+        showCost,
+      );
+    },
   };
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(tool);
@@ -37,6 +56,7 @@ function registerAgentTool(pi: ExtensionAPI): void {
 
 /** Register all tools, commands, and message renderers. */
 export function registerTools(pi: ExtensionAPI): void {
+  // Agent tool — fixed stealth schema; live agents are advertised separately.
   registerAgentTool(pi);
 
   // StopAgent tool — stealth schema, stop a running agent by ID

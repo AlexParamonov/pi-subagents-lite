@@ -42,7 +42,7 @@ export interface AgentConfig {
   /** true = agent is hidden from the schema enum but can still be called by name. */
   hidden?: boolean;
   /** Where this agent was loaded from */
-  source?: "project" | "global";
+  source?: "default" | "project" | "global";
 }
 
 export interface AgentInvocation {

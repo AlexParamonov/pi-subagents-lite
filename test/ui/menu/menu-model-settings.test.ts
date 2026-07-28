@@ -79,7 +79,9 @@ import { showModelSettingsMenu } from "../../../src/ui/menu/menu-model-settings.
 
 function resetAgentState(): void {
   mockModules.mockConfig.agent = { default: null, forceBackground: false };
+  mockModules.mockConfig.thinkingOverrides = {};
   mockModules.mockSessionOverrides = { default: null };
+  mockModules.mockSessionThinkingOverrides = {};
   mockModules.mockSessionShowCost = undefined;
 }
 
@@ -116,11 +118,23 @@ describe("showModelSettingsMenu — SettingsList migration", () => {
     expect(item.currentValue).toContain("openai/gpt-4o");
   });
 
-  it("shows '(inherits parent)' when no default is set", async () => {
+  it("shows the parent source when no global default is set", async () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
-    expect(item.currentValue).toContain("(inherits parent)");
+    expect(item.currentValue).toBe("inherit (parent)");
+  });
+
+  it("shows global model and thinking values with their sources", async () => {
+    mockModules.mockSessionOverrides.default = "openai/gpt-4o";
+    mockModules.mockConfig.agent.defaultThinking = "low";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "defaultModel").currentValue)
+      .toBe("openai/gpt-4o (session global)");
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking").currentValue)
+      .toBe("low (global default)");
   });
 });
 
@@ -153,33 +167,57 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "Explore") return { name: "Explore", description: "", model: "openai/gpt-4o" };
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514" };
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" };
       return undefined;
     });
     (getAllTypes as any).mockReturnValue(["general-purpose", "Explore"]);
   });
 
-  it("shows overridden types as items", async () => {
-    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+  it("shows model and thinking settings for every agent", async () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toContain("type:Explore");
+    expect(ids).toEqual(expect.arrayContaining([
+      "model:general-purpose", "thinking:general-purpose",
+      "model:Explore", "thinking:Explore",
+    ]));
   });
 
-  it("shows session override indicator", async () => {
-    mockModules.mockSessionOverrides["Explore"] = "openai/gpt-4o";
+  it("shows the effective per-agent model and thinking source", async () => {
+    mockModules.mockSessionOverrides.Explore = "openai/gpt-4o";
+    mockModules.mockConfig.thinkingOverrides.Explore = "xhigh";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
-    expect(item.currentValue).toContain("[session]");
+
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "model:Explore").currentValue)
+      .toBe("openai/gpt-4o (session override)");
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "thinking:Explore").currentValue)
+      .toBe("xhigh (saved override)");
   });
 
-  it("shows 'Override another type...' when non-overridden types exist", async () => {
+  it("shows Agent MD as the source when no per-agent override is set", async () => {
     const ctx = createMockCtx();
-    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toContain("overrideType");
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "model:Explore").currentValue)
+      .toBe("openai/gpt-4o (agent MD)");
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "thinking:general-purpose").currentValue)
+      .toBe("medium (agent MD)");
+  });
+
+  it("shows the clamped value and only supported levels for an incompatible agent setting", async () => {
+    mockModules.mockConfig.thinkingOverrides.Explore = "high";
+    const ctx = createMockCtx();
+    ctx.modelRegistry.find = vi.fn(() => ({ provider: "openai", id: "gpt-4o", reasoning: false }));
+    await showModelSettingsMenu(ctx, ["openai/gpt-4o"]);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "thinking:Explore");
+    expect(item.currentValue).toBe("off (saved override)");
+    expect(item.description).toContain("requested high from saved override");
+
+    item.submenu("", vi.fn());
+    selectListInstances.at(-1)!.onSelect!({ value: "session" });
+    expect(selectListInstances.at(-1)!.items.map((entry: any) => entry.value)).toEqual(["inherit", "off"]);
   });
 
   it("shows 'Clear session overrides' when session overrides exist", async () => {
@@ -241,5 +279,19 @@ describe("showModelSettingsMenu — clear all overrides", () => {
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("reset all clears persisted thinking overrides for removed agent types", async () => {
+    mockModules.mockConfig.thinkingOverrides["removed-agent"] = "high";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "clearAll");
+    const done = vi.fn();
+    item.submenu("", done);
+    const confirmList = selectListInstances[selectListInstances.length - 1];
+    confirmList.onSelect!({ value: "Yes" });
+
+    expect(mockModules.mockConfig.thinkingOverrides).toEqual({});
+    expect(ctx.ui.notify).toHaveBeenCalledWith("All agent settings reset", "info");
   });
 });

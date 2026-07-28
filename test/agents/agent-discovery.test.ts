@@ -17,6 +17,7 @@ import {
   parseExtensions,
 } from "../../src/agents/agent-discovery.ts";
 import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.ts";
+import { DEFAULT_AGENTS } from "../../src/agents/default-agents.ts";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
 
 /* ------------------------------------------------------------------ */
@@ -151,10 +152,10 @@ Just a body.
     expect(result.source).toBe("user");
   });
 
-  it("parses empty content", () => {
+  it("parses empty content without a prompt body", () => {
     const result = parseAgentFile("", "user");
     expect(result.name).toBeUndefined();
-    expect(result.systemPrompt).toBe("");
+    expect(result.systemPrompt).toBeUndefined();
     expect(result.source).toBe("user");
   });
 
@@ -357,6 +358,35 @@ describe("mergeAgents", () => {
     const result = mergeAgents(defaults, [], [], []);
     expect(result.size).toBe(1);
     expect(result.get("explorer")?.model).toBe("model/a");
+  });
+
+  it("keeps the default reviewer prompt for a bodyless partial override", () => {
+    const defaultReviewer = DEFAULT_AGENTS.get("reviewer")!;
+    const override = parseAgentFile(`---
+name: reviewer
+model: test/reviewer
+---
+`, "project");
+
+    const result = mergeAgents(DEFAULT_AGENTS, [], [], [override]);
+    const reviewer = result.get("reviewer")!;
+    expect(override.systemPrompt).toBeUndefined();
+    expect(reviewer.model).toBe("test/reviewer");
+    expect(reviewer.systemPrompt).toBe(defaultReviewer.systemPrompt);
+  });
+
+  it("replaces the default reviewer prompt when an override has a body", () => {
+    const override = parseAgentFile(`---
+name: reviewer
+model: test/reviewer
+---
+Use this reviewer prompt instead.
+`, "project");
+
+    const result = mergeAgents(DEFAULT_AGENTS, [], [], [override]);
+    const reviewer = result.get("reviewer")!;
+    expect(reviewer.model).toBe("test/reviewer");
+    expect(reviewer.systemPrompt).toBe("Use this reviewer prompt instead.");
   });
 
   it("user agents override defaults by name with per-field merge", () => {

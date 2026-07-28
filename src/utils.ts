@@ -50,9 +50,10 @@ export const VALID_THINKING_LEVELS: readonly ThinkingLevel[] = [
  * Validate and narrow a raw string value to ThinkingLevel.
  * Returns undefined if the value is not a valid thinking level.
  */
-export function parseThinkingLevel(raw: string | undefined): ThinkingLevel | undefined {
-  if (raw === undefined) return undefined;
-  return VALID_THINKING_LEVELS.includes(raw as ThinkingLevel) ? (raw as ThinkingLevel) : undefined;
+export function parseThinkingLevel(raw: unknown): ThinkingLevel | undefined {
+  return typeof raw === "string" && VALID_THINKING_LEVELS.includes(raw as ThinkingLevel)
+    ? raw as ThinkingLevel
+    : undefined;
 }
 
 /**

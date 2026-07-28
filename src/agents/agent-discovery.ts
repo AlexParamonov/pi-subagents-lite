@@ -36,8 +36,9 @@ export interface AgentConfigFromMd {
   max_turns?: number;
   max_tokens?: number;
   hidden?: boolean;
-  systemPrompt: string;
-  source: "user" | "project";
+  /** Prompt body, when the Markdown file contains non-empty content after frontmatter. */
+  systemPrompt?: string;
+  source: "default" | "user" | "project";
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,7 +259,7 @@ function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
  */
 export function parseAgentFile(
   content: string,
-  source: "user" | "project",
+  source: "default" | "user" | "project",
 ): AgentConfigFromMd {
   const { frontmatter, body } = parseFrontmatter(content);
 
@@ -277,7 +278,8 @@ export function parseAgentFile(
     max_turns: parseNumber(frontmatter, "max_turns"),
     max_tokens: parseNumber(frontmatter, "max_tokens"),
     hidden: parseBoolean(frontmatter, "hidden"),
-    systemPrompt: body,
+    // An absent body is not an override: retain a lower-precedence prompt.
+    systemPrompt: body || undefined,
     source: source,
   };
 }
@@ -391,11 +393,12 @@ function mergeAgentOverrides(
 
 /**
  * Translate AgentConfigFromMd fields to a Partial<AgentConfig> containing
- * only fields that are explicitly set in the frontmatter (not undefined).
+ * only fields that are explicitly set in frontmatter or as a prompt body
+ * (not undefined).
  *
  * When merging into an existing AgentConfig, spread this result after the
- * existing config so frontmatter fields override defaults while undefined
- * fields fall through to the existing values.
+ * existing config so explicit fields override defaults while undefined fields
+ * (including an absent prompt body) fall through to the existing values.
  */
 function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
   const obj: Record<string, unknown> = {
@@ -415,7 +418,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     maxTokens: md.max_tokens,
     hidden: md.hidden,
     systemPrompt: md.systemPrompt,
-    source: md.source === "project" ? "project" : "global",
+    source: md.source === "user" ? "global" : md.source,
   };
   return compactDefined(obj) as Partial<AgentConfig>;
 }
@@ -431,3 +434,8 @@ const BASE_DEFAULTS: AgentConfig = {
   // extensions and skills intentionally omitted — resolved by global default
   systemPrompt: "",
 };
+
+/** Convert a parsed Markdown agent into a complete standalone config. */
+export function toAgentConfig(md: AgentConfigFromMd): AgentConfig {
+  return { ...BASE_DEFAULTS, ...fromMd(md) } as AgentConfig;
+}

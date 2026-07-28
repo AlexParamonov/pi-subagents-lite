@@ -11,7 +11,7 @@ An autonomous child agent spawned from the parent conversation via the Agent too
 _Avoid_: Child agent, worker, task agent
 
 **Agent type**:
-A named configuration (general-purpose, Explore, or custom) defining a subagent's tool set, skills, system prompt, and default model.
+A named configuration (bundled default or custom) defining a subagent's tool set, skills, system prompt, and default model.
 _Avoid_: Agent kind, agent class
 
 **Agent briefing**:
@@ -25,11 +25,11 @@ _Avoid_: Hidden tool, minimal tool
 ### Configuration
 
 **Model override**:
-A user-configured model preference (per-type or global) that takes precedence over any built-in or frontmatter default. Set via `/agents` > Model settings.
+A user-configured model or thinking preference (per-agent or global). Per-agent overrides take precedence over Agent Markdown; global values are fallbacks. Set via `/agents` > Agent settings.
 _Avoid_: Model injection, model preference
 
 **Grace turns**:
-Additional turns allowed after the soft turn limit steer message before hard abort. Default 6, configurable via `/agents` > Model settings.
+Additional turns allowed after the soft turn limit steer message before hard abort. Default 6, configurable via `/agents` > Spawn options.
 _Avoid_: Grace period, extra turns
 
 ### Worktrees

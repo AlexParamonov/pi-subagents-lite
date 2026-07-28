@@ -272,10 +272,13 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     expect(message).toContain("prompt");
     expect(message).toContain("description");
     expect(message).toContain("agent");
-    expect(message).not.toContain("| `thinking`");
-    expect(message).not.toContain("| `model`");
+    expect(message).toContain("| `thinking`");
+    expect(message).toContain("| `model`");
     expect(message).not.toContain("| `max_turns`");
     expect(message).toContain("Optional one-line summary");
+    expect(message).toContain("Required agent type");
+    expect(message).toContain("five bundled defaults");
+    expect(message).not.toContain("default: general-purpose");
     expect(message).toContain("run_in_background");
     expect(message).toContain("worktree_path");
   });

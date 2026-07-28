@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.ts";
+import type { AgentConfig } from "../../src/agents/types.js";
 
 const fakePi = makeFakePi();
 
@@ -1965,5 +1966,82 @@ describe("runAgent — notify buffering", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('both tools and exclude_tools set'),
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — queued configuration snapshots                         */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — agent config snapshot", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("uses a supplied snapshot without reading the mutable agent registry", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    const snapshot: AgentConfig = {
+      name: "reviewer",
+      description: "Worktree A reviewer",
+      systemPrompt: "A-only prompt.",
+      registeredTools: ["read"],
+      tools: ["read"],
+      extensions: false,
+      skills: false,
+      maxTurns: 2,
+    };
+    mockModules.mockGetConfig.mockImplementation(() => { throw new Error("registry config must not be read"); });
+    mockModules.mockGetAgentConfig.mockImplementation(() => { throw new Error("registry agent must not be read"); });
+    mockModules.mockGetToolNamesForType.mockImplementation((_type, config) => config.registeredTools);
+
+    await runAgent(fakeCtx(), "reviewer", "review A", { pi: fakePi, agentConfig: snapshot });
+
+    expect(mockModules.mockGetConfig).not.toHaveBeenCalled();
+    expect(mockModules.mockGetAgentConfig).not.toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      snapshot,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(mockModules.mockCreateAgentSession.mock.calls[0][0].tools).toEqual(["read"]);
+  });
+
+  it("uses resolved spawn values rather than model or thinking from Agent Markdown", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    const snapshot: AgentConfig = {
+      name: "reviewer",
+      description: "Review",
+      systemPrompt: "Review.",
+      model: "agent-md/model",
+      thinkingLevel: "high",
+    };
+    const ctx = fakeCtx();
+    const model = { provider: "resolved", id: "spawn-model" };
+
+    await runAgent(ctx, "reviewer", "review", {
+      pi: fakePi,
+      agentConfig: snapshot,
+      model: model as any,
+      thinkingLevel: "minimal",
+    });
+
+    expect(mockModules.mockCreateAgentSession.mock.calls[0][0]).toMatchObject({
+      model,
+      thinkingLevel: "minimal",
+    });
+  });
+
+  it("rejects an unknown type instead of applying a fallback definition", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue(undefined);
+
+    await expect(runAgent(fakeCtx(), "unknown", "work", { pi: fakePi }))
+      .rejects.toThrow("Unknown agent type: unknown");
   });
 });

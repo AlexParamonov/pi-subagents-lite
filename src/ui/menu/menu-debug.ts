@@ -81,7 +81,9 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("|-----------|-------------|");
   lines.push("| `prompt` | The task for the agent (required) |");
   lines.push("| `description` | Optional one-line summary of what the agent should do |");
-  lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
+  lines.push("| `agent` | Required agent type. Choose one of the five bundled defaults or a custom type listed above. |");
+  lines.push("| `model` | Optional one-spawn model override. |");
+  lines.push("| `thinking` | Optional one-spawn thinking override. |");
   lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
   lines.push("| `worktree_path` | Optional path to a git worktree of the parent's repo. See below for details. |");
   lines.push("");
