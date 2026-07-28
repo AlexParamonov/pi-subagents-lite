@@ -66,6 +66,13 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         values: ["ON", "OFF"],
         description: "Give new agents all extensions when frontmatter omits the field.",
       },
+      {
+        id: "agentToolStrictMode",
+        label: "Strict schema for Agent tool",
+        currentValue: store.agent.agentToolStrictMode ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
+      },
     );
 
     return items;
@@ -102,6 +109,10 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       case "loadExtensionsImplicitly":
         store.mutate.agent.setLoadExtensionsImplicitly(newValue === "ON");
         ctx.ui.notify(`Load extensions implicitly set to ${newValue}`, "info");
+        break;
+      case "agentToolStrictMode":
+        store.mutate.agent.setAgentToolStrictMode(newValue === "ON");
+        ctx.ui.notify(`Agent tool strict mode ${newValue} (requires reload)`, "info");
         break;
     }
   };
