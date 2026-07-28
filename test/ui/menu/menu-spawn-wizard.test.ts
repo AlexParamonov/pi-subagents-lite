@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules, selectDialogInstances, resetSelectDialogInstances } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
 // Capture SettingsList constructor calls from pi-tui
 let settingsListCalls: Array<{
@@ -314,25 +315,24 @@ describe("showSpawnAgentMenu — thinking level", () => {
   });
 
   it("model change clamps thinking level to supported value", async () => {
-    // The clamping happens inside the model submenu's onSelect callback.
-    // We verify the clamping code is wired correctly by checking that
-    // the model item has a submenu with the onSelect callback.
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "high" as const, extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const modelItem = settingsListCalls[1].items.find((i: any) => i.id === "model");
-    expect(typeof modelItem.submenu).toBe("function");
-  });
-
-  it("thinking level onChange handler still works", async () => {
-    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
-    await completeWizard(ctx);
-    const onChange = settingsListCalls[1].onChange;
-    // Simulate changing thinking level via onChange (legacy path)
-    onChange("thinkingLevel", "high");
-    // The onChange handler updates currentThinking; verify via the thinkingLevel item's currentValue
-    // (Note: with submenu approach, currentThinking is updated in submenu onSelect,
-    // but onChange is still called by SettingsList when done() is invoked)
-    expect(true).toBe(true);
+    const mockDone = vi.fn();
+    modelItem.submenu("anthropic/claude-sonnet-4-20250514", mockDone);
+    // Trigger mode selection (session) — this creates the model selector
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "session" });
+    // Select a non-reasoning model to trigger the clamping callback
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("openai/gpt-4o");
+    // clampThinkingLevel should have been called with the non-reasoning model and currentThinking "high"
+    expect(vi.mocked(clampThinkingLevel).mock.calls).toHaveLength(1);
+    const [model, level] = vi.mocked(clampThinkingLevel).mock.calls[0];
+    expect(model.reasoning).toBe(false);
+    expect(level).toBe("high");
   });
 });
 
@@ -503,6 +503,7 @@ describe("showSpawnAgentMenu — background toggle", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
+    expect(item.currentValue).toBe("OFF");
   });
 
   it("shows 'ON' when enabled", async () => {

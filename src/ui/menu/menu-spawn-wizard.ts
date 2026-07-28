@@ -320,7 +320,7 @@ export async function showSpawnAgentMenu(
               const resolved = findModelInRegistry(currentModelStr, registry, session?.model);
               if (resolved) {
                 const clamped = clampThinkingLevel(resolved, currentThinking);
-                currentThinking = clamped === "off" ? "off" : clamped;
+                currentThinking = clamped;
               }
             }
           },
