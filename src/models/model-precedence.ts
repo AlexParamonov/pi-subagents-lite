@@ -26,6 +26,12 @@ export interface SubagentsConfig {
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
     widgetShortcut?: boolean;
+    /** Whether to show model names and thinking levels in widget rows. Default: true. */
+    widgetShowModelThinking?: boolean;
+    /** Whether to show local HH:MM start time in widget rows. Default: true. */
+    widgetShowStartTime?: boolean;
+    /** Whether to show the navigation tip in the widget heading. Default: true. */
+    widgetNavHint?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */
     systemPromptMode?: SystemPromptMode;
     /** Whether to include AGENTS.md context files in the subagent system prompt. Default: true. */

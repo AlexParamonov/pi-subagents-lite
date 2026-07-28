@@ -374,29 +374,129 @@ describe("widget rendering format", () => {
   });
 
   describe("mixed agent statuses", () => {
-    it("renders running, queued, then finished while preserving each group's order", () => {
+    it("renders one globally newest-first list regardless of status", () => {
+      const base = new Date(2024, 0, 2, 9, 0).getTime();
       const newerRunning = makeRunningAgent("r-new");
       newerRunning.display.description = "Newer running";
+      newerRunning.lifecycle.startedAt = base + 3_000;
       const olderRunning = makeRunningAgent("r-old");
       olderRunning.display.description = "Older running";
+      olderRunning.lifecycle.startedAt = base;
       const queued = makeQueuedAgent("q1");
+      queued.lifecycle.startedAt = base + 2_000;
       const finished = makeFinishedAgent("f1");
+      finished.lifecycle.startedAt = base + 1_000;
       activity.set(newerRunning.id, makeActivity(newerRunning.id));
       activity.set(olderRunning.id, makeActivity(olderRunning.id));
-      // The manager provides each status group newest-first, interleaved by status.
-      (manager as any).listAgents = () => [finished, newerRunning, queued, olderRunning];
+      // Deliberately interleave statuses and timestamps from the manager.
+      (manager as any).listAgents = () => [finished, olderRunning, queued, newerRunning];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       const runningNewIndex = lines.findIndex((line: string) => line.includes("Newer running"));
-      const runningOldIndex = lines.findIndex((line: string) => line.includes("Older running"));
-      const queuedIndex = lines.findIndex((line: string) => line.includes("1 queued"));
+      const queuedIndex = lines.findIndex((line: string) => line.includes("Test agent q1"));
       const finishedIndex = lines.findIndex((line: string) => line.includes("Finished agent f1"));
+      const runningOldIndex = lines.findIndex((line: string) => line.includes("Older running"));
 
       expect(runningNewIndex).toBeGreaterThan(0);
-      expect(runningOldIndex).toBeGreaterThan(runningNewIndex);
-      expect(queuedIndex).toBeGreaterThan(runningOldIndex);
+      expect(queuedIndex).toBeGreaterThan(runningNewIndex);
       expect(finishedIndex).toBeGreaterThan(queuedIndex);
+      expect(runningOldIndex).toBeGreaterThan(finishedIndex);
     });
+  });
+
+  it("preserves manager order for equal startedAt values across statuses", () => {
+    const startedAt = new Date(2024, 0, 2, 9, 0).getTime();
+    const queued = makeQueuedAgent("queued");
+    queued.lifecycle.startedAt = startedAt;
+    const finished = makeFinishedAgent("finished");
+    finished.lifecycle.startedAt = startedAt;
+    const running = makeRunningAgent("running");
+    running.lifecycle.startedAt = startedAt;
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [queued, finished, running];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const queuedIndex = lines.findIndex((line: string) => line.includes("Test agent queued"));
+    const finishedIndex = lines.findIndex((line: string) => line.includes("Finished agent finished"));
+    const runningIndex = lines.findIndex((line: string) => line.includes("Test agent running"));
+
+    expect(queuedIndex).toBeGreaterThan(0);
+    expect(finishedIndex).toBeGreaterThan(queuedIndex);
+    expect(runningIndex).toBeGreaterThan(finishedIndex);
+  });
+
+  it("places a fixed local HH:MM start time directly after every status symbol", () => {
+    const running = makeRunningAgent("running");
+    running.lifecycle.startedAt = new Date(2024, 0, 2, 3, 4).getTime();
+    const queued = makeQueuedAgent("queued");
+    queued.lifecycle.startedAt = new Date(2024, 0, 2, 3, 5).getTime();
+    const finished = makeFinishedAgent("finished");
+    finished.lifecycle.startedAt = new Date(2024, 0, 2, 3, 6).getTime();
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [running, queued, finished];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines.find((line: string) => line.includes("Test agent running"))).toContain("[accent:⠋] [text:03:04]");
+    expect(lines.find((line: string) => line.includes("Test agent queued"))).toContain("[dim:◇] [dim:03:05]");
+    expect(lines.find((line: string) => line.includes("Finished agent finished"))).toContain("[success:✓] [dim:03:06]");
+  });
+
+  it("hides local start time for running, queued, and finished rows when disabled", () => {
+    const running = makeRunningAgent("running");
+    running.lifecycle.startedAt = new Date(2024, 0, 2, 3, 4).getTime();
+    const queued = makeQueuedAgent("queued");
+    queued.lifecycle.startedAt = new Date(2024, 0, 2, 3, 5).getTime();
+    const finished = makeFinishedAgent("finished");
+    finished.lifecycle.startedAt = new Date(2024, 0, 2, 3, 6).getTime();
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [running, queued, finished];
+    widget.setShowStartTime(false);
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme()).join("\n");
+
+    expect(lines).not.toContain("03:04");
+    expect(lines).not.toContain("03:05");
+    expect(lines).not.toContain("03:06");
+  });
+
+  it("applies the start-time setting in compact mode for every status", () => {
+    const running = makeRunningAgent("running");
+    running.lifecycle.startedAt = new Date(2024, 0, 2, 3, 4).getTime();
+    const queued = makeQueuedAgent("queued");
+    queued.lifecycle.startedAt = new Date(2024, 0, 2, 3, 5).getTime();
+    const finished = makeFinishedAgent("finished");
+    finished.lifecycle.startedAt = new Date(2024, 0, 2, 3, 6).getTime();
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [running, queued, finished];
+    widget.setWidgetShortcut(true);
+    widget.setCompactMode(true);
+
+    const shown = (widget as any).renderWidget(makeMockTUI(), makeMockTheme()).join("\n");
+    expect(shown).toContain("03:04");
+    expect(shown).toContain("03:05");
+    expect(shown).toContain("03:06");
+
+    widget.setShowStartTime(false);
+    const hidden = (widget as any).renderWidget(makeMockTUI(), makeMockTheme()).join("\n");
+    expect(hidden).not.toContain("03:04");
+    expect(hidden).not.toContain("03:05");
+    expect(hidden).not.toContain("03:06");
+  });
+
+  it("returns the six start-time columns to descriptions on narrow terminals", () => {
+    const agent = makeRunningAgent("narrow");
+    const description = "abcdefghijklmnopqrstuvwxyz1234";
+    agent.display.description = description;
+    (manager as any).listAgents = () => [agent];
+    widget.setStatsVisibility({ showTools: false, showTurns: false, showInput: false, showOutput: false, showContext: false, showTime: false });
+
+    const withTime = (widget as any).renderWidget(makeMockTUI(50), makePlainTheme())[1];
+    widget.setShowStartTime(false);
+    const withoutTime = (widget as any).renderWidget(makeMockTUI(50), makePlainTheme())[1];
+
+    expect(withTime).not.toContain(description);
+    expect(withoutTime).toContain(description);
   });
 });
 
@@ -409,24 +509,20 @@ describe("queued agent status display", () => {
     widget = new AgentWidget(manager, () => undefined);
   });
 
-  it("uses the queued display for the queue-only heading and aggregated row", () => {
-    (manager as any).listAgents = () => [makeQueuedAgent("q1"), makeQueuedAgent("q2")];
+  it("uses the queued display, local start time, and an individual row for each queued agent", () => {
+    const q1 = makeQueuedAgent("q1");
+    q1.lifecycle.startedAt = new Date(2024, 0, 2, 3, 4).getTime();
+    const q2 = makeQueuedAgent("q2");
+    q2.lifecycle.startedAt = new Date(2024, 0, 2, 3, 3).getTime();
+    (manager as any).listAgents = () => [q2, q1];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
     expect(lines[0]).toMatch(/^\[dim:◇\]/);
-    expect(lines[1]).toContain("[dim:◇]");
-    expect(lines[1]).toContain("2 queued");
-  });
-
-  it("uses the queued display for individual rows during navigation", () => {
-    (manager as any).listAgents = () => [makeQueuedAgent("q1")];
-    widget.navActivate();
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-
-    expect(lines[1]).toContain("[dim:◇]");
+    expect(lines[1]).toContain("[dim:◇] [dim:03:04]");
     expect(lines[1]).toContain("Test agent q1");
+    expect(lines[2]).toContain("Test agent q2");
+    expect(lines.join("\n")).not.toContain("2 queued");
   });
 
   it("keeps the running-agent spinner when queued agents are also present", () => {
@@ -824,6 +920,52 @@ describe("model and thinking labels", () => {
     expect(lines[1]).toContain("(sonnet · high)");
   });
 
+  it("hides the model-and-thinking column for running, queued, and finished rows in full and compact modes", () => {
+    const running = makeRunningAgent("running");
+    running.display.invocation = { modelName: "model-running", thinkingLevel: "high" };
+    const queued = makeQueuedAgent("queued");
+    queued.display.invocation = { modelName: "model-queued", thinkingLevel: "high" };
+    const finished = makeFinishedAgent("finished");
+    finished.display.invocation = { modelName: "model-finished", thinkingLevel: "high" };
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [running, queued, finished];
+
+    for (const compact of [false, true]) {
+      widget.setWidgetShortcut(compact);
+      widget.setCompactMode(compact);
+      const shown = (widget as any).renderWidget(makeMockTUI(), makePlainTheme()).join("\n");
+      expect(shown).toContain("(model-running · high)");
+      expect(shown).toContain("(model-queued · high)");
+      expect(shown).toContain("(model-finished · high)");
+
+      widget.setShowModelThinking(false);
+      const hidden = (widget as any).renderWidget(makeMockTUI(), makePlainTheme()).join("\n");
+      expect(hidden).not.toContain("model-running");
+      expect(hidden).not.toContain("model-queued");
+      expect(hidden).not.toContain("model-finished");
+      expect(hidden).not.toContain(" · high");
+      widget.setShowModelThinking(true);
+    }
+  });
+
+  it("returns the hidden model-and-thinking column width to descriptions", () => {
+    const agent = makeRunningAgent("narrow");
+    const description = "abcdefghijklmnopqrstuvwxyz1234";
+    agent.display.description = description;
+    agent.display.invocation = { modelName: "long-model-name", thinkingLevel: "high" };
+    activity.set(agent.id, makeActivity(agent.id));
+    (manager as any).listAgents = () => [agent];
+    widget.setShowStartTime(false);
+    widget.setStatsVisibility({ showTools: false, showTurns: false, showInput: false, showOutput: false, showContext: false, showTime: false });
+
+    const withModelThinking = (widget as any).renderWidget(makeMockTUI(45), makePlainTheme())[1];
+    widget.setShowModelThinking(false);
+    const withoutModelThinking = (widget as any).renderWidget(makeMockTUI(45), makePlainTheme())[1];
+
+    expect(withModelThinking).not.toContain(description);
+    expect(withoutModelThinking).toContain(description);
+  });
+
   it("does not invent a model when none was captured", () => {
     const agent = makeRunningAgent("a1");
     agent.display.invocation = { thinkingLevel: "high" };
@@ -1012,6 +1154,14 @@ describe("max lines configuration", () => {
     expect(lines.length).toBeLessThanOrEqual(3);
   });
 
+  it("clamps full and compact widget line limits to two total lines", () => {
+    widget.setMaxLines(1);
+    widget.setMaxLinesCompact(1);
+
+    expect((widget as any).maxLines).toBe(2);
+    expect((widget as any).maxLinesCompact).toBe(2);
+  });
+
   it("shows overflow indicator when agents exceed max lines", () => {
     widget.setMaxLines(5);
     const agents = Array.from({ length: 10 }, (_, i) => makeRunningAgent(`a${i}`));
@@ -1024,19 +1174,81 @@ describe("max lines configuration", () => {
     expect(hasOverflow).toBe(true);
   });
 
-  it("prioritizes running, then queued, over finished agents when space is limited", () => {
-    widget.setMaxLines(5);
-    const running = makeRunningAgent("r1");
-    const queued = makeQueuedAgent("q1");
-    const finished = [makeFinishedAgent("f1"), makeFinishedAgent("f2")];
+  it("keeps a running header visible instead of a finished row at the two-line full-mode limit", () => {
+    widget.setMaxLines(2);
+    const running = makeRunningAgent("running");
+    const finished = makeFinishedAgent("finished");
     activity.set(running.id, makeActivity(running.id));
-    (manager as any).listAgents = () => [finished[0], queued, running, finished[1]];
+    (manager as any).listAgents = () => [finished, running];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-    expect(lines.some((line: string) => line.includes("Test agent r1"))).toBe(true);
-    expect(lines.some((line: string) => line.includes("1 queued"))).toBe(true);
-    expect(lines.some((line: string) => line.includes("Finished agent"))).toBe(false);
+    expect(lines).toHaveLength(2);
+    expect(lines.some((line: string) => line.includes("Test agent running"))).toBe(true);
+    expect(lines.some((line: string) => line.includes("Finished agent finished"))).toBe(false);
+  });
+
+  it("shows active headers before finished rows and counts only fully hidden agents", () => {
+    widget.setMaxLines(4);
+    const running = makeRunningAgent("running");
+    running.display.outputFile = "/tmp/running.log";
+    const queued = makeQueuedAgent("queued");
+    const finished = makeFinishedAgent("finished");
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [finished, running, queued];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines).toHaveLength(4);
+    expect(lines.some((line: string) => line.includes("Test agent running"))).toBe(true);
+    expect(lines.some((line: string) => line.includes("Test agent queued"))).toBe(true);
+    expect(lines.some((line: string) => line.includes("Finished agent finished"))).toBe(false);
+    expect(lines.find((line: string) => line.includes("more"))).toContain("1 finished");
+    expect(lines.join("\n")).not.toContain("running, 1 queued");
+  });
+
+  it("counts finished continuation rows when applying the full-mode line budget", () => {
+    widget.setMaxLines(5);
+    const agents = Array.from({ length: 4 }, (_, index) => {
+      const agent = makeFinishedAgent(`f${index}`);
+      agent.display.outputFile = `/tmp/f${index}.log`;
+      agent.lifecycle.startedAt = new Date(2024, 0, 2, 9, index).getTime();
+      return agent;
+    });
+    (manager as any).listAgents = () => agents;
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines.length).toBeLessThanOrEqual(5);
+    expect(lines.filter((line: string) => line.includes("Finished agent")).length).toBe(1);
+    expect(lines.some((line: string) => line.includes("more"))).toBe(true);
+  });
+
+  it("prioritizes active agents, fills with the newest finished row, then restores global order", () => {
+    widget.setMaxLines(6);
+    const running = makeRunningAgent("r1");
+    running.lifecycle.startedAt = new Date(2024, 0, 2, 9, 0).getTime();
+    const queued = makeQueuedAgent("q1");
+    queued.lifecycle.startedAt = new Date(2024, 0, 2, 9, 3).getTime();
+    const newestFinished = makeFinishedAgent("newest");
+    newestFinished.lifecycle.startedAt = new Date(2024, 0, 2, 9, 2).getTime();
+    const olderFinished = makeFinishedAgent("older");
+    olderFinished.lifecycle.startedAt = new Date(2024, 0, 2, 9, 1).getTime();
+    const oldestFinished = makeFinishedAgent("oldest");
+    oldestFinished.lifecycle.startedAt = new Date(2024, 0, 2, 8, 59).getTime();
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [olderFinished, running, oldestFinished, queued, newestFinished];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const queuedIndex = lines.findIndex((line: string) => line.includes("Test agent q1"));
+    const finishedIndex = lines.findIndex((line: string) => line.includes("Finished agent newest"));
+    const runningIndex = lines.findIndex((line: string) => line.includes("Test agent r1"));
+
+    expect(queuedIndex).toBeGreaterThan(0);
+    expect(finishedIndex).toBeGreaterThan(queuedIndex);
+    expect(runningIndex).toBeGreaterThan(finishedIndex);
+    expect(lines.some((line: string) => line.includes("Finished agent older"))).toBe(false);
+    expect(lines.some((line: string) => line.includes("Finished agent oldest"))).toBe(false);
     expect(lines.find((line: string) => line.includes("more"))).toContain("2 finished");
   });
 });

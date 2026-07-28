@@ -23,6 +23,11 @@ function defaultConfig(): SubagentsConfig {
       widgetDescLengthCompact: 30,
       widgetCompact: false,
       widgetShortcut: false,
+      widgetShowModelThinking: true,
+      widgetShowStartTime: true,
+      widgetNavHint: true,
+      outputThinkingBufferSize: 0,
+      finishedRetentionMinutes: 10,
       systemPromptMode: "replace",
       includeContextFiles: true,
       disableDefaultAgents: false,
@@ -66,6 +71,8 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setShowCost: (e: boolean) => calls.push(`setShowCost:${e}`),
     setForceCompact: (e: boolean) => calls.push(`setForceCompact:${e}`),
     setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
+    setShowModelThinking: (e: boolean) => calls.push(`setShowModelThinking:${e}`),
+    setShowStartTime: (e: boolean) => calls.push(`setShowStartTime:${e}`),
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
     setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
@@ -102,13 +109,16 @@ describe("ConfigStore reads", () => {
     expect(store.agent.widgetMaxLinesCompact).toBe(6);
     expect(store.agent.widgetCompact).toBe(false);
     expect(store.agent.widgetShortcut).toBe(false);
+    expect(store.agent.widgetShowModelThinking).toBe(true);
+    expect(store.agent.widgetShowStartTime).toBe(true);
+    expect(store.agent.widgetNavHint).toBe(true);
     expect(store.agent.defaultModel).toBeNull();
     expect(store.agent.finishedRetentionMinutes).toBe(10);
   });
 
   it("returns configured values when present", () => {
     const { io } = memIO({
-      agent: { default: "config/default", forceBackground: true, graceTurns: 9, showCost: true, widgetMaxLines: 20, widgetMaxLinesCompact: 7, widgetCompact: true, widgetShortcut: true },
+      agent: { default: "config/default", forceBackground: true, graceTurns: 9, showCost: true, widgetMaxLines: 20, widgetMaxLinesCompact: 7, widgetCompact: true, widgetShortcut: true, widgetShowModelThinking: false, widgetShowStartTime: false, widgetNavHint: false },
       concurrency: { default: 2 },
     });
     const store = new ConfigStore(io);
@@ -116,8 +126,21 @@ describe("ConfigStore reads", () => {
     expect(store.agent.showCost).toBe(true);
     expect(store.agent.widgetMaxLines).toBe(20);
     expect(store.agent.widgetMaxLinesCompact).toBe(7);
+    expect(store.agent.widgetShowModelThinking).toBe(false);
+    expect(store.agent.widgetShowStartTime).toBe(false);
+    expect(store.agent.widgetNavHint).toBe(false);
     expect(store.concurrency.default).toBe(2);
     expect(store.agent.defaultModel).toBe("config/default");
+  });
+
+  it("clamps loaded widget line limits to at least two", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetMaxLines: 1, widgetMaxLinesCompact: 1 },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.widgetMaxLines).toBe(2);
+    expect(store.agent.widgetMaxLinesCompact).toBe(2);
   });
 
   it("concurrency providers/models default to {}", () => {
@@ -173,18 +196,24 @@ describe("ConfigStore persisted mutations", () => {
     expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
   });
 
-  it("setWidgetMaxLines derives compact when unset and syncs the widget", () => {
+  it("clamps widget line setters and derives compact minimum from full minimum", () => {
     const { io, saves } = memIO();
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
     calls.length = 0;
 
-    store.mutate.widget.setMaxLines(20);
-    expect(saves[0].agent.widgetMaxLines).toBe(20);
-    expect(saves[0].agent.widgetMaxLinesCompact).toBe(10);
-    expect(calls).toContain("setMaxLines:20");
-    expect(calls).toContain("setMaxLinesCompact:10");
+    store.mutate.widget.setMaxLines(2);
+    expect(saves[0].agent.widgetMaxLines).toBe(2);
+    expect(saves[0].agent.widgetMaxLinesCompact).toBe(2);
+    expect(calls).toContain("setMaxLines:2");
+    expect(calls).toContain("setMaxLinesCompact:2");
+
+    store.mutate.widget.setMaxLines(1);
+    expect(saves[1].agent.widgetMaxLines).toBe(2);
+
+    store.mutate.widget.setMaxLinesCompact(1);
+    expect(saves[2].agent.widgetMaxLinesCompact).toBe(2);
   });
 
   it("setMaxLines does not overwrite an explicitly-set compact value", () => {
@@ -205,7 +234,7 @@ describe("ConfigStore persisted mutations", () => {
     expect(calls).toContain("setForceCompact:true");
   });
 
-  it("setShortcut persists but does not sync widget", () => {
+  it("setShortcut persists and immediately syncs the widget", () => {
     const { io, saves } = memIO();
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
@@ -213,7 +242,35 @@ describe("ConfigStore persisted mutations", () => {
     calls.length = 0;
     store.mutate.widget.setShortcut(true);
     expect(saves[0].agent.widgetShortcut).toBe(true);
-    expect(calls.some((c) => c.startsWith("setWidgetShortcut"))).toBe(false);
+    expect(calls).toContain("setWidgetShortcut:true");
+  });
+
+  it("setShowModelThinking persists and immediately syncs the widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.widget.setShowModelThinking(false);
+
+    expect(store.agent.widgetShowModelThinking).toBe(false);
+    expect(saves[0].agent.widgetShowModelThinking).toBe(false);
+    expect(calls).toContain("setShowModelThinking:false");
+  });
+
+  it("setShowStartTime persists and immediately syncs the widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.widget.setShowStartTime(false);
+
+    expect(store.agent.widgetShowStartTime).toBe(false);
+    expect(saves[0].agent.widgetShowStartTime).toBe(false);
+    expect(calls).toContain("setShowStartTime:false");
   });
 
   it("concurrency setters persist and call manager.setConcurrency", () => {
@@ -297,7 +354,7 @@ describe("ConfigStore model-override clearing", () => {
 
   it("clearAllModelOverrides preserves non-model settings, drops per-type overrides", () => {
     const { io } = memIO({
-      agent: { default: "keep-default", forceBackground: true, graceTurns: 7, showCost: true, widgetMaxLines: 14, Explore: "m1", general: "m2" },
+      agent: { default: "keep-default", forceBackground: true, graceTurns: 7, showCost: true, widgetMaxLines: 14, widgetShowModelThinking: false, widgetShowStartTime: false, Explore: "m1", general: "m2" },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -310,6 +367,8 @@ describe("ConfigStore model-override clearing", () => {
     expect(snap.graceTurns).toBe(7);
     expect(snap.showCost).toBe(true);
     expect(snap.widgetMaxLines).toBe(14);
+    expect(snap.widgetShowModelThinking).toBe(false);
+    expect(snap.widgetShowStartTime).toBe(false);
   });
 });
 
@@ -577,7 +636,7 @@ describe("ConfigStore lifecycle", () => {
   });
 
   it("reload re-syncs deps", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: true, widgetCompact: true }, concurrency: { default: 4 } });
+    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: true, widgetCompact: true, widgetShowModelThinking: false }, concurrency: { default: 4 } });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
@@ -585,6 +644,7 @@ describe("ConfigStore lifecycle", () => {
     store.reload();
     expect(calls).toContain("setShowCost:true");
     expect(calls).toContain("setForceCompact:true");
+    expect(calls).toContain("setShowModelThinking:false");
   });
 
   it("reload re-syncs retention to manager", () => {
@@ -606,6 +666,17 @@ describe("ConfigStore lifecycle", () => {
     expect(calls).toContain("setShowCost:true");
   });
 
+  it("setDeps applies a known collapsed tools state when shortcut coupling is active", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: true }, concurrency: { default: 4 } });
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+
+    store.notifyToolsExpanded(false);
+    store.setDeps({ widget: w });
+
+    expect(calls).toContain("setCompactMode:true");
+  });
+
   it("dispose drops deps so mutations no longer sync", () => {
     const { io } = memIO();
     const { w, calls } = widgetStub();
@@ -623,27 +694,46 @@ describe("ConfigStore lifecycle", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore notifyToolsExpanded", () => {
-  it("toggles widget compact mode only when shortcut is enabled and compact is off", () => {
+  it("applies the first known tools state and later transitions when shortcut is enabled", () => {
     const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: true, widgetCompact: false }, concurrency: { default: 4 } });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
-
-    store.notifyToolsExpanded(false); // initial transition from undefined -> ignored
     calls.length = 0;
-    store.notifyToolsExpanded(true); // expanded -> full
-    store.notifyToolsExpanded(false); // collapsed -> compact
+
+    store.notifyToolsExpanded(true);
+    expect(calls).toContain("setCompactMode:false");
+    calls.length = 0;
+    store.notifyToolsExpanded(false);
     expect(calls).toContain("setCompactMode:true");
   });
 
-  it("is a no-op when widgetShortcut is disabled", () => {
+  it("applies a known tools state when shortcut is enabled later", () => {
     const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: false }, concurrency: { default: 4 } });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
     calls.length = 0;
+
+    store.notifyToolsExpanded(false);
+    store.mutate.widget.setShortcut(true);
+
+    expect(calls).toContain("setWidgetShortcut:true");
+    expect(calls).toContain("setCompactMode:true");
+  });
+
+  it("ends shortcut coupling when shortcut is disabled", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: true }, concurrency: { default: 4 } });
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    store.notifyToolsExpanded(false);
+    store.mutate.widget.setShortcut(false);
+    calls.length = 0;
+
     store.notifyToolsExpanded(true);
     store.notifyToolsExpanded(false);
+
     expect(calls).toHaveLength(0);
   });
 
@@ -656,6 +746,20 @@ describe("ConfigStore notifyToolsExpanded", () => {
     store.notifyToolsExpanded(true);
     store.notifyToolsExpanded(false);
     expect(calls).toHaveLength(0);
+  });
+
+  it("applies a known collapsed tools state when force compact is disabled", () => {
+    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: true, widgetCompact: true }, concurrency: { default: 4 } });
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    store.notifyToolsExpanded(false);
+    calls.length = 0;
+
+    store.mutate.widget.setCompact(false);
+
+    expect(calls).toContain("setForceCompact:false");
+    expect(calls).toContain("setCompactMode:true");
   });
 });
 

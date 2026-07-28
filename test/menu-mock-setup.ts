@@ -130,6 +130,9 @@ vi.mock("../src/shell.js", () => {
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
         widgetShortcut: a.widgetShortcut === true,
+        widgetShowModelThinking: a.widgetShowModelThinking !== false,
+        widgetShowStartTime: a.widgetShowStartTime !== false,
+        widgetNavHint: a.widgetNavHint !== false,
         widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
         widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
         systemPromptMode: a.systemPromptMode ?? "replace",
@@ -187,7 +190,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'widgetShowModelThinking', 'widgetShowStartTime', 'widgetNavHint', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly', 'disableDefaultAgents', 'outputThinkingBufferSize', 'finishedRetentionMinutes']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -221,6 +224,9 @@ vi.mock("../src/shell.js", () => {
         setDescLengthFull(n: number) { mockModules.mockConfig.agent.widgetDescLengthFull = n; },
         setDescLengthCompact(n: number) { mockModules.mockConfig.agent.widgetDescLengthCompact = n; },
         setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
+        setShowModelThinking(enabled: boolean) { mockModules.mockConfig.agent.widgetShowModelThinking = enabled; },
+        setShowStartTime(enabled: boolean) { mockModules.mockConfig.agent.widgetShowStartTime = enabled; },
+        setNavHint(enabled: boolean) { mockModules.mockConfig.agent.widgetNavHint = enabled; },
       },
       concurrency: {
         setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },

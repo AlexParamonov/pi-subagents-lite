@@ -6,7 +6,7 @@
  * reset bug that occurred with ctx.ui.select.
  *
  * Structure:
- *   Main list: compact, maxLines, descLengthFull, maxLinesCompact, descLengthCompact, shortcut, usageStats
+ *   Main list: compact, maxLines, descriptions, shortcut, model/thinking, start time, navigation hint, retention, usageStats
  *   Usage stats submenu: 7 stat visibility toggles
  *
  * Exports:
@@ -59,6 +59,14 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
+      case "showModelThinking":
+        store.mutate.widget.setShowModelThinking(newValue === "ON");
+        ctx.ui.notify(`Show model & thinking ${newValue}`, "info");
+        break;
+      case "showStartTime":
+        store.mutate.widget.setShowStartTime(newValue === "ON");
+        ctx.ui.notify(`Show local start time ${newValue}`, "info");
+        break;
       case "navHint":
         store.mutate.widget.setNavHint(newValue === "ON");
         ctx.ui.notify(`Navigation hint ${newValue}`, "info");
@@ -101,7 +109,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
           store.mutate.widget.setMaxLines(parsed);
           ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
         }),
-        description: "Max body lines in full widget mode (excluding heading).",
+        description: "Max total lines in full widget mode, including the heading.",
       },
       {
         id: "descLengthFull",
@@ -117,11 +125,11 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         id: "maxLinesCompact",
         label: "Max lines (compact)",
         currentValue: String(store.agent.widgetMaxLinesCompact),
-        submenu: createNumericSubmenu(ctx, (parsed) => {
+        submenu: createNumericSubmenu(ctx, { min: 2 }, (parsed) => {
           store.mutate.widget.setMaxLinesCompact(parsed);
           ctx.ui.notify(`Max lines (compact) set to ${parsed}`, "info");
         }),
-        description: "Max body lines in compact widget mode.",
+        description: "Max total lines in compact widget mode, including the heading.",
       },
       {
         id: "descLengthCompact",
@@ -139,6 +147,20 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+      },
+      {
+        id: "showModelThinking",
+        label: "Show model & thinking",
+        currentValue: store.agent.widgetShowModelThinking ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Show each agent's model name and thinking level in one column.",
+      },
+      {
+        id: "showStartTime",
+        label: "Show local start time",
+        currentValue: store.agent.widgetShowStartTime ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Show local HH:MM start time after each agent status symbol.",
       },
       {
         id: "navHint",
@@ -175,7 +197,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       },
     ];
 
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
+    const settingsList = new SettingsList(items, 16, buildSettingsListTheme(theme), onChange, () => done(undefined));
     return new SettingsListWrapper(settingsList, { title: "Widget Settings", theme, onCancel: () => done(undefined) });
   });
 }
