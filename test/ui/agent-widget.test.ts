@@ -273,6 +273,29 @@ describe("widget rendering format", () => {
       expect(line).not.toContain("[dim:");
     });
 
+    it("separates every running and finished stats group with two spaces", () => {
+      const running = makeRunningAgent("running");
+      const finished = makeFinishedAgent("finished");
+      for (const agent of [running, finished]) {
+        agent.stats.toolUses = 20;
+        agent.stats.turnCount = 6;
+        agent.stats.lifetimeUsage = { input: 1000, output: 500, cacheWrite: 0, cost: 0 };
+      }
+      activity.set(running.id, makeActivity(running.id));
+      (manager as any).listAgents = () => [running, finished];
+
+      const lines = (widget as any).renderWidget(makeMockTUI(), makePlainTheme());
+      const statsRows = lines.filter((line: string) => line.includes("20⚙︎"));
+
+      expect(statsRows).toHaveLength(2);
+      for (const row of statsRows) {
+        expect(row).toContain("20⚙︎  6⟳  ↑1.0k ↓500");
+        expect(row).toMatch(/↑1\.0k ↓500  (?:\d+m(?: \d+s)?|\d+s)/);
+        expect(row).not.toContain("20⚙︎ ·");
+        expect(row).not.toContain("6⟳ ·");
+      }
+    });
+
     it("preserves an error stat color and reapplies text after its ANSI foreground reset", () => {
       const agent = makeRunningAgent("a1");
       agent.stats.contextPercent = 90.1;
@@ -288,7 +311,7 @@ describe("widget rendering format", () => {
       const statsLine = (widget as any).buildStatsLine(agent, ansiTheme);
 
       expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m");
-      expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m\u001b[97m · ");
+      expect(statsLine).toContain("\u001b[31m90.1%/272k\u001b[39m\u001b[97m  ");
     });
   });
 

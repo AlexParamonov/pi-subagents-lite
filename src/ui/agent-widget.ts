@@ -36,6 +36,7 @@ const NAME_COLUMN_GAP = "   ";
 const MODEL_THINKING_COLUMN_GAP = "    ";
 const ROW_PREFIX_WIDTH = 4; // two-space indent, status icon, and following space
 const STATS_COLUMN_GAP_WIDTH = 2;
+const STATS_GROUP_SEPARATOR = "  ";
 const ACTIVITY_COLUMN_GAP_WIDTH = 2;
 
 // ---- Types ----
@@ -495,11 +496,11 @@ export class AgentWidget {
       durationMs,
     }, theme, this.statsVisibility);
 
-    const statsLine = statsParts.join(" · ");
+    const statsLine = statsParts.join(STATS_GROUP_SEPARATOR);
     return `${icon} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
-  /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
+  /** Build the stats line (tool uses, turns, tokens, cost, elapsed) for a running agent. */
   private buildStatsLine(
     agent: AgentRecord,
     theme: Theme,
@@ -517,7 +518,7 @@ export class AgentWidget {
       ...this.usageSnapshot(agent),
       durationMs: Date.now() - agent.lifecycle.startedAt,
     }, theme, this.statsVisibility);
-    return fgPreservingNestedStyles(theme, "text", parts.join(" · "));
+    return fgPreservingNestedStyles(theme, "text", parts.join(STATS_GROUP_SEPARATOR));
   }
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
