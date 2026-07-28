@@ -6,7 +6,7 @@
  * reset bug that occurred with ctx.ui.select.
  *
  * Exports:
- *   - showSystemPromptMenu: system prompt mode, create prompt file, include AGENTS.md
+ *   - showSystemPromptMenu: mode, custom prompt, parent orchestration, AGENTS.md
  */
 
 import fs from "node:fs";
@@ -53,6 +53,13 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         description: "Load project and ~/.pi/agent AGENTS.md as shared <project_context>.",
       },
       {
+        id: "orchestrationPrompt",
+        label: "Parent orchestration prompt",
+        currentValue: store.agent.orchestrationPrompt ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Append compact dynamic agent guidance to parent turns.",
+      },
+      {
         id: "loadSkillsImplicitly",
         label: "Load skills implicitly",
         currentValue: store.agent.loadSkillsImplicitly ? "ON" : "OFF",
@@ -94,6 +101,10 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       case "includeContextFiles":
         store.mutate.agent.setIncludeContextFiles(newValue === "ON");
         ctx.ui.notify(`Include AGENTS.md set to ${newValue}`, "info");
+        break;
+      case "orchestrationPrompt":
+        store.mutate.agent.setOrchestrationPrompt(newValue === "ON");
+        ctx.ui.notify(`Parent orchestration prompt set to ${newValue}`, "info");
         break;
       case "loadSkillsImplicitly":
         store.mutate.agent.setLoadSkillsImplicitly(newValue === "ON");

@@ -39,6 +39,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   systemPromptMode: "replace",
   includeContextFiles: true,
   disableDefaultAgents: false,
+  orchestrationPrompt: true,
   showTools: true,
   showTurns: true,
   showInput: true,

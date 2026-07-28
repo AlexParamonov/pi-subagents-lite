@@ -80,9 +80,8 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("| Parameter | Description |");
   lines.push("|-----------|-------------|");
   lines.push("| `prompt` | The task for the agent (required) |");
-  lines.push("| `description` | One-line summary of what the agent should do (required) |");
+  lines.push("| `description` | Optional one-line summary of what the agent should do |");
   lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
-  lines.push("| `thinking` | Optional thinking mode override (e.g., `off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |");
   lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
   lines.push("| `worktree_path` | Optional path to a git worktree of the parent's repo. See below for details. |");
   lines.push("");
@@ -100,7 +99,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("- **Must be a path** inside a git worktree of the parent's repo, including the main checkout. Not a different repo, not a non-git directory.");
   lines.push("- **Relative paths** are resolved against the parent's working directory.");
   lines.push("- **On failure** the validator returns a specific reason (e.g., 'not a worktree of the parent's repository', 'path does not exist') — use this to self-correct.");
-  lines.push("- **Agent type discovery:** The worktree's `.pi/agents/` directory is scanned for agent types when this param is set, so worktree-local types become available to that spawn.");
+  lines.push("- **Agent type discovery:** In trusted projects only, the worktree's `.pi/agents/` directory is scanned into an invocation-local catalog for this spawn; it does not change the parent registry.");
   getPiInstance().sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }

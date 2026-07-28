@@ -19,6 +19,7 @@ import {
   type SpawnConfig,
   type ToolActivity,
 } from "../types.js";
+import { snapshotAgentConfig } from "./agent-types.js";
 import type { SubagentType } from "./types.js";
 import { addUsage, getLifetimeTotal, getSessionUsageSnapshot, type AgentUsage } from "./usage.js";
 import { errorMessage } from "../utils.js";
@@ -202,7 +203,11 @@ export class AgentManager {
   ): string {
     const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
     const abortController = new AbortController();
-    const args: SpawnArgs = { pi, ctx, type, prompt, options };
+    // Copy mutable frontmatter arrays before this request can sit in the queue.
+    const frozenOptions = options.agentConfig
+      ? { ...options, agentConfig: snapshotAgentConfig(options.agentConfig) }
+      : options;
+    const args: SpawnArgs = { pi, ctx, type, prompt, options: frozenOptions };
 
     // Check concurrency — applies to both foreground and background agents
     let queued = false;
@@ -292,6 +297,7 @@ export class AgentManager {
     const promise = runAgent(ctx, type, prompt, {
       pi,
       agentId: id,
+      agentConfig: options.agentConfig,
       model: options.model,
       maxTurns: options.maxTurns,
       maxTokens: options.maxTokens,

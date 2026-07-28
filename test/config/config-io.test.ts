@@ -37,6 +37,7 @@ describe("config I/O paths", () => {
     const { loadConfig } = await import("../../src/config/config-io.ts");
     expect(loadConfig().agent.widgetShowModelThinking).toBe(true);
     expect(loadConfig().agent.widgetShowStartTime).toBe(true);
+    expect(loadConfig().agent.orchestrationPrompt).toBe(true);
 
     mockReadFileSync.mockReturnValue(JSON.stringify({
       agent: { default: null, forceBackground: false, widgetShowModelThinking: false, widgetShowStartTime: false },

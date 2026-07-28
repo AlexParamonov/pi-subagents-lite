@@ -64,7 +64,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Disable default agents",
       currentValue: store.agent.disableDefaultAgents ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Skip auto-loading built-in agent types next session; only .pi/agents types load.",
+      description: "Skip built-in agent types on the next parent turn; user and project types remain.",
     },
   ];
 
@@ -80,7 +80,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         break;
       case "disableDefaultAgents":
         store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
-        ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
+        ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next parent turn)`, "info");
         break;
     }
   };
