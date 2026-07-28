@@ -36,6 +36,8 @@ export interface ShellMockFns {
   store?: any;
   coordinator?: any;
   widget?: any;
+  /** Spawn guard state for isInsideSubagentSpawn/enter/exit. */
+  spawnGuard?: { depth: number };
 }
 
 /**
@@ -50,29 +52,41 @@ export interface ShellMockFns {
  *   }));
  */
 export function shellMock(fns: ShellMockFns = {}) {
-  const manager = fns.manager ?? {
-    abort: vi.fn(),
-    getRecord: vi.fn(),
-    listAgents: vi.fn(() => []),
-    spawn: vi.fn(),
-    getTotalAgentCost: vi.fn(() => 0),
+  // Mutable state so setters update what getters return.
+  const state = {
+    manager: fns.manager ?? {
+      abort: vi.fn(),
+      getRecord: vi.fn(),
+      listAgents: vi.fn(() => []),
+      spawn: vi.fn(),
+      getTotalAgentCost: vi.fn(() => 0),
+    },
+    pi: fns.pi ?? { sendMessage: vi.fn(), exec: vi.fn() },
+    sessionCtx: fns.sessionCtx ?? { cwd: "/home/test" },
+    store: fns.store ?? {
+      agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolConstrainedSampling: false },
+      modelFor: () => "anthropic/claude-sonnet-4-6",
+    },
+    coordinator: fns.coordinator ?? { spawn: vi.fn() },
+    widget: fns.widget ?? undefined,
+    spawnGuard: fns.spawnGuard ?? { depth: 0 },
   };
-  const pi = fns.pi ?? { sendMessage: vi.fn(), exec: vi.fn() };
-  const sessionCtx = fns.sessionCtx ?? { cwd: "/home/test" };
-  const store = fns.store ?? {
-    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolConstrainedSampling: false },
-    modelFor: () => "",
-  };
-  const coordinator = fns.coordinator ?? { spawn: vi.fn() };
-  const widget = fns.widget ?? undefined;
 
   return {
-    getManager: () => manager,
-    getPiInstance: () => pi,
-    getSessionCtx: () => sessionCtx,
-    getStore: () => store,
-    getCoordinator: () => coordinator,
-    getWidget: () => widget,
+    getManager: () => state.manager,
+    getPiInstance: () => state.pi,
+    getSessionCtx: () => state.sessionCtx,
+    getStore: () => state.store,
+    getCoordinator: () => state.coordinator,
+    getWidget: () => state.widget,
+    setPiInstance: (pi: any) => { state.pi = pi; },
+    setSessionCtx: (ctx: any) => { state.sessionCtx = ctx; },
+    setManager: (m: any) => { state.manager = m; },
+    setWidget: (w: any) => { state.widget = w; },
+    setCoordinator: (c: any) => { state.coordinator = c; },
+    isInsideSubagentSpawn: () => state.spawnGuard.depth > 0,
+    enterSubagentSpawn: () => { state.spawnGuard.depth++; },
+    exitSubagentSpawn: () => { state.spawnGuard.depth--; },
   };
 }
 

@@ -15,6 +15,7 @@ import {
   createMockExtensionAPI,
   hasParam,
   loadExtension,
+  shellMock,
   type MockExtensionAPI,
 } from "./fixtures";
 
@@ -133,6 +134,19 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
+// Mutable state shared between the shell mock and tests.
+const { mutableStore, spawnGuard } = vi.hoisted(() => ({
+  mutableStore: {
+    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolConstrainedSampling: false },
+    modelFor: () => "anthropic/claude-sonnet-4-6",
+  },
+  spawnGuard: { depth: 0 },
+}));
+
+vi.mock("../src/shell.js", () => shellMock({
+  store: mutableStore,
+  spawnGuard,
+}));
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
@@ -392,14 +406,16 @@ describe("Agent tool schema — worktree_path", () => {
 /* ------------------------------------------------------------------ */
 
 describe("subagent spawn guard", () => {
-  // The real shell module is used here (index.test.ts does not mock shell.js),
-  // so toggling the spawn flag drives the same counter the factory reads.
-  let shell: typeof import("../src/shell.js");
+  // Uses the mocked shell from vi.mock above; spawn guard state is shared via vi.hoisted.
+  const shell = {
+    isInsideSubagentSpawn: () => spawnGuard.depth > 0,
+    enterSubagentSpawn: () => { spawnGuard.depth++; },
+    exitSubagentSpawn: () => { spawnGuard.depth--; },
+  };
 
-  beforeEach(async () => {
-    shell = await import("../src/shell.js");
+  beforeEach(() => {
     // Defensive: start every test from a clean depth.
-    while (shell.isInsideSubagentSpawn()) shell.exitSubagentSpawn();
+    while (spawnGuard.depth > 0) spawnGuard.depth--;
   });
 
   it("registers tools and listeners for the parent session", async () => {
@@ -412,7 +428,7 @@ describe("subagent spawn guard", () => {
   });
 
   it("stays inert when loaded inside a subagent spawn", async () => {
-    shell.enterSubagentSpawn();
+    spawnGuard.depth++;
     try {
       const api = createMockExtensionAPI();
       await loadExtension(api.api);
@@ -422,21 +438,21 @@ describe("subagent spawn guard", () => {
       expect(api.tools).toHaveLength(0);
       expect(api.listeners).toHaveLength(0);
     } finally {
-      shell.exitSubagentSpawn();
+      spawnGuard.depth--;
     }
-    expect(shell.isInsideSubagentSpawn()).toBe(false);
+    expect(spawnGuard.depth).toBe(0);
   });
 
   it("is inert for nested spawns and recovers when depth returns to 0", async () => {
-    shell.enterSubagentSpawn();
-    shell.enterSubagentSpawn(); // nested
+    spawnGuard.depth++;
+    spawnGuard.depth++; // nested
     try {
       const api = createMockExtensionAPI();
       await loadExtension(api.api);
       expect(api.tools).toHaveLength(0);
     } finally {
-      shell.exitSubagentSpawn();
-      shell.exitSubagentSpawn();
+      spawnGuard.depth--;
+      spawnGuard.depth--;
     }
 
     // Parent load works again once no subagent is in flight
@@ -504,22 +520,8 @@ describe("constrained sampling — toggle ON", () => {
   let api: MockExtensionAPI;
 
   beforeAll(async () => {
-    // Mock config-io to return agentToolConstrainedSampling: true
-    vi.doMock("../src/config/config-io.js", () => ({
-      DEFAULT_GRACE_TURNS: 6,
-      VALID_SYSTEM_PROMPT_MODES: new Set(["replace", "inherit", "custom"]),
-      DEFAULT_CONCURRENCY: { default: 4 },
-      CUSTOM_PROMPT_PATH: "/fake/path",
-      loadConfig: () => ({
-        agent: {
-          default: null,
-          forceBackground: false,
-          agentToolConstrainedSampling: true,
-        },
-        concurrency: { default: 4 },
-      }),
-      saveConfigAtomic: vi.fn(),
-    }));
+    // Flip the flag on the mutable store the shell mock returns.
+    mutableStore.agent.agentToolConstrainedSampling = true;
     vi.resetModules();
 
     api = createMockExtensionAPI();
@@ -527,7 +529,8 @@ describe("constrained sampling — toggle ON", () => {
   });
 
   afterAll(() => {
-    // Clean up mock after this describe block
+    // Restore default for any subsequent tests.
+    mutableStore.agent.agentToolConstrainedSampling = false;
   });
 
   it("Agent has constrainedSampling when toggle is ON", () => {
@@ -563,6 +566,3 @@ describe("constrained sampling — toggle ON", () => {
     expect(tool!.parameters.additionalProperties).toBe(false);
   });
 });
-
-// Clean up the doMock applied for the ON test suite
-vi.unmock("../src/config/config-io.js");
