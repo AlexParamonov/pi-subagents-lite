@@ -81,6 +81,18 @@ vi.mock("../src/ui/searchable-select.js", () => ({
 
 vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
+  getAgentStatusDisplay: vi.fn((status: string) => {
+    const displays: Record<string, { icon: string; color: string }> = {
+      running: { icon: "◈", color: "accent" },
+      queued: { icon: "◇", color: "dim" },
+      completed: { icon: "✓", color: "success" },
+      turn_limited: { icon: "✓", color: "warning" },
+      stopped: { icon: "■", color: "dim" },
+      error: { icon: "✗", color: "error" },
+      aborted: { icon: "✗", color: "error" },
+    };
+    return displays[status];
+  }),
   truncateDesc: vi.fn((t: string) => t),
 }));
 

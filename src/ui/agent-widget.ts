@@ -5,10 +5,10 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
-import type { AgentRecord } from "../types.js";
+import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatCost, getSessionUsageSnapshot } from "../agents/usage.js";
-import { formatMs, buildStatsParts, formatThinkingTag, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
+import { formatMs, buildStatsParts, formatThinkingTag, getAgentStatusDisplay, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -359,24 +359,27 @@ export class AgentWidget {
 
   /** Build the icon and status suffix for a finished agent. */
   private finishedIconAndStatus(
-    status: string,
+    status: AgentStatus,
     error: string | undefined,
     theme: Theme,
   ): { icon: string; statusText: string } {
+    const display = getAgentStatusDisplay(status);
+    const icon = theme.fg(display.color, display.icon);
     switch (status) {
       case "completed":
-        return { icon: theme.fg("success", "✓"), statusText: "" };
+        return { icon, statusText: "" };
       case "turn_limited":
-        return { icon: theme.fg("warning", "✓"), statusText: theme.fg("warning", " (turn limit)") };
+        return { icon, statusText: theme.fg("warning", " (turn limit)") };
       case "stopped":
-        return { icon: theme.fg("dim", "■"), statusText: theme.fg("dim", " stopped") };
+        return { icon, statusText: theme.fg("dim", " stopped") };
       case "error": {
         const errMsg = error ? `: ${error.slice(0, 60)}` : "";
-        return { icon: theme.fg("error", "✗"), statusText: theme.fg("error", ` error${errMsg}`) };
+        return { icon, statusText: theme.fg("error", ` error${errMsg}`) };
       }
+      case "aborted":
+        return { icon, statusText: theme.fg("warning", " aborted") };
       default:
-        // aborted
-        return { icon: theme.fg("error", "✗"), statusText: theme.fg("warning", " aborted") };
+        return { icon, statusText: "" };
     }
   }
 
@@ -592,7 +595,8 @@ export class AgentWidget {
   ): RenderBlock | undefined {
     if (queued.length === 0) return undefined;
     const truncate = (line: string) => truncateToWidth(line, w);
-    const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`;
+    const statusDisplay = getAgentStatusDisplay("queued");
+    const header = `  ${theme.fg(statusDisplay.color, statusDisplay.icon)} ${theme.fg("dim", `${queued.length} queued`)}`;
     return { header: truncate(header), continuations: [] };
   }
 
@@ -617,8 +621,7 @@ export class AgentWidget {
 
     const w = tui.terminal.columns;
     const truncate = (line: string) => truncateToWidth(line, w);
-    const headingColor = hasActive ? "accent" : "dim";
-    const headingIcon = hasActive ? "◈" : "◇";
+    const headingDisplay = getAgentStatusDisplay(running.length > 0 ? "running" : "queued");
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
     // Build blocks — separate arrays so overflow logic can apply priority: running > queued > finished.
@@ -655,7 +658,7 @@ export class AgentWidget {
     const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
 
     // Heading with navigation hint
-    const heading = this.buildHeading(theme, headingColor, headingIcon);
+    const heading = this.buildHeading(theme, headingDisplay.color, headingDisplay.icon);
     const lines: string[] = [truncate(heading)];
 
     // Determine highlighted block index for rendering the '>' marker.
@@ -700,11 +703,12 @@ export class AgentWidget {
   ): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
+    const statusDisplay = getAgentStatusDisplay("queued");
     for (const a of queued) {
       const name = padToVisibleWidth(getDisplayName(a.display.type), layout.nameWidth);
       const modelThinking = padToVisibleWidth(this.displayModelThinking(a, layout.modelThinkingWidth), layout.modelThinkingWidth);
       const desc = padToVisibleWidth(this.displayDescription(a, layout.descriptionWidth), layout.descriptionWidth);
-      const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", desc)}`;
+      const header = `  ${theme.fg(statusDisplay.color, statusDisplay.icon)} ${theme.fg("dim", name)}${NAME_COLUMN_GAP}${this.renderModelThinkingColumn(modelThinking, theme, layout)}${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), continuations: [] });
     }
     return blocks;
@@ -828,9 +832,11 @@ export class AgentWidget {
   }
 
   /** Update the status bar text, only if it changed. */
-  private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
-    const total = runningCount + queuedCount;
-    let statusText = total > 0 ? `${total} agent${total === 1 ? "" : "s"}` : `agents`;
+  private updateStatusBar(runningCount: number, queuedCount: number, finishedCount: number, running: AgentRecord[]) {
+    const activeCount = runningCount + queuedCount;
+    const activeText = activeCount > 0 ? `${activeCount} agent${activeCount === 1 ? "" : "s"}` : "";
+    const finishedText = finishedCount > 0 ? `${finishedCount} finished${finishedCount === 1 ? " agent" : " agents"}` : "";
+    let statusText = [activeText, finishedText].filter(Boolean).join(" · ");
     if (this.showCost) {
       const sessionCost = this.manager.getTotalAgentCost();
       // Also include in-flight running agents (not yet completed, so not in accumulator)
@@ -876,7 +882,7 @@ export class AgentWidget {
     }
 
     // Status bar — only call setStatus when the text actually changes
-    this.updateStatusBar(running.length, queued.length, running);
+    this.updateStatusBar(running.length, queued.length, finished.length, running);
 
     this.widgetFrame++;
 

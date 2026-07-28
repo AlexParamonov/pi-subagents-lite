@@ -19,7 +19,7 @@ import { Input, matchesKey, SelectList, truncateToWidth, visibleWidth, type Comp
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
-import { getDisplayName, truncateDesc } from "../format.js";
+import { getAgentStatusDisplay, getDisplayName, truncateDesc } from "../format.js";
 import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { getCoordinator, getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
@@ -46,6 +46,7 @@ async function showConversationViewer(
         () => manager?.abort(record.id, "user"),
         kb,
         (msg: string) => manager?.steer(record.id, msg),
+        getStore().agent,
       ),
     { overlay: true },
   );
@@ -254,10 +255,7 @@ export async function showRunningAgentsMenu(
     const buildAgentItems = (): SelectItem[] => {
       const items: SelectItem[] = agents.map((record) => {
         const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
-        const statusIcon = record.lifecycle.status === "running" ? "\u25B6" :
-          record.lifecycle.status === "completed" ? "\u2713" :
-          record.lifecycle.status === "queued" ? "\u23F3" :
-          record.lifecycle.status === "error" ? "\u2717" : "\u2022";
+        const { icon: statusIcon } = getAgentStatusDisplay(record.lifecycle.status);
         const descLen = getStore().agent.widgetDescLengthFull;
         const headline = record.display.description
           ? truncateDesc(record.display.description, descLen)
@@ -265,7 +263,7 @@ export async function showRunningAgentsMenu(
         const suffix = headline ? ` \u2014 ${headline}` : "";
         return {
           value: record.id,
-          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
+          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${getDisplayName(record.display.type)}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
         };
       });
       if (running.length > 0) {

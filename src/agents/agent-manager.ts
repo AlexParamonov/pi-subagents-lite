@@ -394,6 +394,7 @@ export class AgentManager {
   ): {
     onToolActivity: (activity: ToolActivity) => void;
     onAssistantUsage: (usage: AgentUsage) => void;
+    onSupplementalUsage: (usage: AgentUsage) => void;
     onCompaction: (info: CompactionInfo) => void;
   } {
     return {
@@ -419,6 +420,12 @@ export class AgentManager {
           ? (usage.cacheRead / promptTokens) * 100
           : undefined;
         options?.onAssistantUsage?.(usage);
+      },
+      // Compaction and tool-result usage is billable but is not an assistant
+      // request, so it must bypass the vLLM input-delta and cache-hit logic.
+      onSupplementalUsage: (usage) => {
+        addUsage(record.stats.lifetimeUsage, usage);
+        record.stats.cacheRead += usage.cacheRead;
       },
       onCompaction: (info) => {
         record.stats.compactionCount++;

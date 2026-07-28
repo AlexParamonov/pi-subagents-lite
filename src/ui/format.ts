@@ -10,6 +10,7 @@
 
 import { getConfig } from "../agents/agent-types.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
+import type { AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 import { parseThinkingLevel } from "../utils.js";
@@ -137,6 +138,25 @@ export function buildStatsParts(
 /** Get display name for any agent type (built-in or custom). */
 export function getDisplayName(type: SubagentType): string {
   return getConfig(type).displayName;
+}
+
+/** Shared lifecycle icon and color used by agent views. */
+export function getAgentStatusDisplay(status: AgentStatus): { icon: string; color: string } {
+  switch (status) {
+    case "running":
+      return { icon: "◈", color: "accent" };
+    case "queued":
+      return { icon: "◇", color: "dim" };
+    case "completed":
+      return { icon: "✓", color: "success" };
+    case "turn_limited":
+      return { icon: "✓", color: "warning" };
+    case "stopped":
+      return { icon: "■", color: "dim" };
+    case "error":
+    case "aborted":
+      return { icon: "✗", color: "error" };
+  }
 }
 
 /**

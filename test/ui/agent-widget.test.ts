@@ -92,6 +92,12 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
   };
 }
 
+function makeQueuedAgent(id: string, type: string = "builder"): any {
+  const agent = makeRunningAgent(id, type);
+  agent.lifecycle.status = "queued";
+  return agent;
+}
+
 function makeFinishedAgent(id: string, type: string = "builder"): any {
   return {
     id,
@@ -278,6 +284,59 @@ describe("widget rendering format", () => {
   });
 });
 
+describe("queued agent status display", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    widget = new AgentWidget(manager, () => undefined);
+  });
+
+  it("uses the queued display for the queue-only heading and aggregated row", () => {
+    (manager as any).listAgents = () => [makeQueuedAgent("q1"), makeQueuedAgent("q2")];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines[0]).toMatch(/^\[dim:◇\]/);
+    expect(lines[1]).toContain("[dim:◇]");
+    expect(lines[1]).toContain("2 queued");
+  });
+
+  it("uses the queued display for individual rows during navigation", () => {
+    (manager as any).listAgents = () => [makeQueuedAgent("q1")];
+    widget.navActivate();
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    expect(lines[1]).toContain("[dim:◇]");
+    expect(lines[1]).toContain("Test agent q1");
+  });
+
+  it("keeps the running-agent spinner when queued agents are also present", () => {
+    const running = makeRunningAgent("running");
+    (manager as any).listAgents = () => [running, makeQueuedAgent("queued")];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makePlainTheme());
+
+    expect(lines[0]).toMatch(/^◈ Agents/);
+    expect(lines.find((line: string) => line.includes("Test agent running"))).toContain("⠋");
+  });
+});
+
+describe("finished agent status icons", () => {
+  it.each([
+    ["completed", "✓"],
+    ["turn_limited", "✓"],
+    ["stopped", "■"],
+    ["error", "✗"],
+    ["aborted", "✗"],
+  ])("uses %s icon %s", (status, icon) => {
+    const widget = new AgentWidget(makeMockManager([]), () => undefined);
+    expect((widget as any).finishedIconAndStatus(status, undefined, makePlainTheme()).icon).toBe(icon);
+  });
+});
+
 describe("status bar format", () => {
   it("shows 'N agents: $cost' format with running agents", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
@@ -297,7 +356,7 @@ describe("status bar format", () => {
     expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^2 agents: \$0\.\d+$/));
   });
 
-  it("shows 'agents: $cost' format when no running/queued agents but finished exist", () => {
+  it("shows finished-agent count and cost when no running/queued agents exist", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([], 0.01);
@@ -310,7 +369,19 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^agents: \$0\.\d+$/));
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^1 finished agent: \$0\.\d+$/));
+  });
+
+  it("reports finished agents separately from active agents", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const manager = makeMockManager([]);
+    const widget = new AgentWidget(manager, () => undefined);
+    widget.setUICtx(uiCtx);
+
+    (manager as any).listAgents = () => [makeRunningAgent("running"), makeFinishedAgent("finished-1"), makeFinishedAgent("finished-2")];
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agent · 2 finished agents");
   });
 
   it("shows 'N agents' without cost when cost is zero", () => {

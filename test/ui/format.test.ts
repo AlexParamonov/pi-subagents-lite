@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildInvocationTags, buildStatsParts, formatThinkingTag, formatUsageBlock } from "../../src/ui/format.js";
+import { buildInvocationTags, buildStatsParts, formatThinkingTag, formatUsageBlock, getAgentStatusDisplay } from "../../src/ui/format.js";
 
 const mockTheme = {
   fg: (_color: string, text: string) => text,
@@ -29,6 +29,18 @@ const allStats = {
   cost: 1.23,
   durationMs: 65000,
 };
+
+describe("getAgentStatusDisplay", () => {
+  it.each([
+    ["completed", "✓"],
+    ["turn_limited", "✓"],
+    ["stopped", "■"],
+    ["error", "✗"],
+    ["aborted", "✗"],
+  ] as const)("maps %s to %s", (status, icon) => {
+    expect(getAgentStatusDisplay(status).icon).toBe(icon);
+  });
+});
 
 describe("buildStatsParts — visible flag: showTools", () => {
   it("excludes toolUses when showTools is false", () => {

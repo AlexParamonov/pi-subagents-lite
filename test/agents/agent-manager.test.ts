@@ -515,6 +515,12 @@ describe("delta estimation", () => {
     return callbacks.onAssistantUsage;
   }
 
+  function getOnSupplementalUsage() {
+    const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+    const callbacks = call[3]; // 4th arg is the callbacks object
+    return callbacks.onSupplementalUsage;
+  }
+
   beforeEach(() => {
     mockStoreState.deltaInputTokens = true;
   });
@@ -621,6 +627,30 @@ describe("delta estimation", () => {
     expect(stats.cacheRead).toBe(230);
     expect(stats.latestCacheHitRate).toBeCloseTo((150 / 400) * 100);
     expect(stats.lifetimeUsage.cacheWrite).toBe(70);
+  });
+
+  it("counts supplemental usage without changing assistant delta or cache-hit state", () => {
+    manager = new AgentManager(onComplete);
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+    const onAssistantUsage = getOnAssistantUsage();
+    const onSupplementalUsage = getOnSupplementalUsage();
+
+    onAssistantUsage({ input: 100, output: 10, cacheRead: 80, cacheWrite: 20, cost: 0.01 });
+    const stats = manager.getRecord(id)!.stats;
+    const assistantCacheHitRate = stats.latestCacheHitRate;
+
+    onSupplementalUsage({ input: 400, output: 50, cacheRead: 300, cacheWrite: 25, cost: 0.12 });
+
+    expect(stats.lifetimeUsage).toEqual({ input: 500, output: 60, cacheWrite: 45, cost: 0.13 });
+    expect(stats.cacheRead).toBe(380);
+    expect(stats.prevInputTokens).toBe(100);
+    expect(stats.latestCacheHitRate).toBe(assistantCacheHitRate);
+
+    // The next assistant report still uses the previous assistant input (100),
+    // rather than the compaction input (400), for the vLLM delta heuristic.
+    onAssistantUsage({ input: 200, output: 10, cacheRead: 0, cacheWrite: 0, cost: 0 });
+    expect(stats.lifetimeUsage.input).toBe(600);
   });
 
   it("persists final context, auto-compaction, and subscription snapshots", async () => {

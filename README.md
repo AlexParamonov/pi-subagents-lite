@@ -251,7 +251,7 @@ Management menu with four sections:
   - **Spawn options** — force background, grace turns, default max turns, default thinking, disable default agents
   - **System prompt** — mode, custom prompt file, include AGENTS.md, load skills/extensions implicitly
   - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
-  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time)
+  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time in the widget and conversation viewer)
 
 ## Interface
 
@@ -281,7 +281,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `15⟳ · ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto) · 47s`. The same Pi-compatible usage group is used by foreground and background result cards; cost remains controlled by **Cost display**.
+**Stats line:** `15⟳ · ↑12k ↓8.0k R85k W3.0k CH89.2% $0.024 47.0%/128k (auto) · 47s`. The configured stats-visibility toggles also apply here, including **Cost display**. The same Pi-compatible usage group is used by foreground and background result cards.
 
 ## Configuration
 
@@ -339,6 +339,8 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 | `outputThinkingBufferSize` | `200` | Thinking buffer ring size in chars. `0` = OFF. Flushes to output log at sentence boundaries. |
 
 ### Stats visibility
+
+These toggles apply to the live widget and conversation viewer.
 
 | Field | Default | Description |
 |---|---|---|

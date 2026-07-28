@@ -467,6 +467,36 @@ describe("ConversationViewer", () => {
       expect(lines[lines.length - 1]).toMatch(/[╰]/);
     });
 
+    it.each([
+      ["completed", "✓"],
+      ["turn_limited", "✓"],
+      ["stopped", "■"],
+      ["error", "✗"],
+      ["aborted", "✗"],
+    ] as const)("uses the shared %s status icon", (status, icon) => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ lifecycle: { status, startedAt: Date.now() - 30000, completedAt: Date.now() } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      expect(viewer.render(120)[1]).toContain(icon);
+    });
+
+    it("honors configured stats visibility in its header", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(
+        makeTui(), session, record, noopTheme, vi.fn(), undefined, undefined, undefined,
+        { showTools: false, showTurns: false, showInput: false, showOutput: false, showContext: false, showCost: false, showTime: false },
+      );
+
+      const header = viewer.render(120).slice(1, 3).join("\n");
+      expect(header).not.toContain("⚙︎");
+      expect(header).not.toContain("⟳");
+      expect(header).not.toContain("↑");
+      expect(header).not.toContain("↓");
+      expect(header).not.toContain("$");
+    });
+
     it("renders the thinking level immediately after the model", () => {
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { session } });

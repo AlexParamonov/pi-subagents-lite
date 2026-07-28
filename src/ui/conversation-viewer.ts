@@ -8,7 +8,7 @@
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { AgentRecord, AgentStatus } from "../types.js";
+import type { AgentRecord } from "../types.js";
 import { getSessionUsageSnapshot } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
@@ -18,8 +18,10 @@ import {
   buildStatsParts,
   describeActivity,
   fgPreservingNestedStyles,
+  getAgentStatusDisplay,
   getDisplayName,
   summarizeToolArgs,
+  type StatsVisibility,
 } from "./format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 
@@ -34,17 +36,6 @@ const TOOL_RESULT_MAX_CHARS = 500;
 const TOOL_RESULT_MAX_LINES = 5;
 /** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
 const STREAM_RENDER_DEBOUNCE_MS = 100;
-
-/** Header status icon and its theme color, per lifecycle status. */
-const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
-  running: { icon: "◈", color: "accent" },
-  completed: { icon: "✓", color: "success" },
-  turn_limited: { icon: "✓", color: "warning" },
-  error: { icon: "✗", color: "error" },
-  aborted: { icon: "✗", color: "error" },
-  stopped: { icon: "✗", color: "error" },
-  queued: { icon: "◇", color: "dim" },
-};
 
 export class ConversationViewer implements Component {
   private scrollOffset = 0;
@@ -89,6 +80,8 @@ export class ConversationViewer implements Component {
     keybindings?: ViewerKeybindings,
     /** Send a steering message to the agent. Omitted -> no compose affordance. */
     private onSteer?: (message: string) => void,
+    /** Configured visibility of the shared usage statistics. */
+    private statsVisibility?: StatsVisibility,
   ) {
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
@@ -242,7 +235,7 @@ export class ConversationViewer implements Component {
     const name = getDisplayName(this.record.display.type);
 
     const status = this.record.lifecycle.status;
-    const { icon, color } = STATUS_ICON[status];
+    const { icon, color } = getAgentStatusDisplay(status);
     const statusIcon = th.fg(color, icon);
     // Build stats line like the widget, retaining the final snapshot after a
     // completed session has no longer-live context information.
@@ -270,7 +263,7 @@ export class ConversationViewer implements Component {
       cost: this.record.stats.lifetimeUsage.cost,
       ...usageSnapshot,
       durationMs,
-    }, th);
+    }, th, this.statsVisibility);
 
     const worktreeTag = this.record.display.worktreeLabel ? th.fg("muted", ` @${this.record.display.worktreeLabel}`) : "";
     // Row 1: status icon, name, description, worktree
