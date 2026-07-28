@@ -7,6 +7,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+  getAgentDir: () => "/home/test/.pi/agent",
+}));
 import { createNavInputHandler } from "../src/events.js";
 
 /* ------------------------------------------------------------------ */
