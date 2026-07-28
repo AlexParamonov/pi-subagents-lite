@@ -23,7 +23,7 @@ const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
  */
 export function registerAgentTool(pi: ExtensionAPI): void {
   const types = getAvailableTypes();
-  const useConstrained = getStore().agent.agentToolConstrainedSampling;
+  const useConstrained = getStore().agent.agentToolStrictMode;
 
   // Use plain string to avoid verbose anyOf in prompt.
   // Available types are listed in description for discoverability.

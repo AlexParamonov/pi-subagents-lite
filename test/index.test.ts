@@ -137,7 +137,7 @@ vi.mock("../src/ui/agent-widget.js", () => ({
 // Mutable state shared between the shell mock and tests.
 const { mutableStore, spawnGuard } = vi.hoisted(() => ({
   mutableStore: {
-    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolConstrainedSampling: false },
+    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolStrictMode: false },
     modelFor: () => "anthropic/claude-sonnet-4-6",
   },
   spawnGuard: { depth: 0 },
@@ -521,7 +521,7 @@ describe("constrained sampling — toggle ON", () => {
 
   beforeAll(async () => {
     // Flip the flag on the mutable store the shell mock returns.
-    mutableStore.agent.agentToolConstrainedSampling = true;
+    mutableStore.agent.agentToolStrictMode = true;
     vi.resetModules();
 
     api = createMockExtensionAPI();
@@ -530,7 +530,7 @@ describe("constrained sampling — toggle ON", () => {
 
   afterAll(() => {
     // Restore default for any subsequent tests.
-    mutableStore.agent.agentToolConstrainedSampling = false;
+    mutableStore.agent.agentToolStrictMode = false;
   });
 
   it("Agent has constrainedSampling when toggle is ON", () => {

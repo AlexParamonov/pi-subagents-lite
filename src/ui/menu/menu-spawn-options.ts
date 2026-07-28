@@ -67,11 +67,11 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       description: "Skip auto-loading built-in agent types next session; only .pi/agents types load.",
     },
     {
-      id: "agentToolConstrainedSampling",
-      label: "Constrained sampling (Agent tool)",
-      currentValue: store.agent.agentToolConstrainedSampling ? "ON" : "OFF",
+      id: "agentToolStrictMode",
+      label: "Strict schema for Agent tool",
+      currentValue: store.agent.agentToolStrictMode ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Use strict-mode schema for the Agent tool (required for OpenAI Codex). Requires reload.",
+      description: "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
     },
   ];
 
@@ -89,9 +89,9 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
         ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
         break;
-      case "agentToolConstrainedSampling":
-        store.mutate.agent.setAgentToolConstrainedSampling(newValue === "ON");
-        ctx.ui.notify(`Agent tool constrained sampling ${newValue} (requires reload)`, "info");
+      case "agentToolStrictMode":
+        store.mutate.agent.setAgentToolStrictMode(newValue === "ON");
+        ctx.ui.notify(`Agent tool strict mode ${newValue} (requires reload)`, "info");
         break;
     }
   };

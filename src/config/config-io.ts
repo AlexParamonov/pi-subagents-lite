@@ -36,7 +36,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   systemPromptMode: "replace",
   includeContextFiles: true,
   disableDefaultAgents: false,
-  agentToolConstrainedSampling: false,
+  agentToolStrictMode: false,
   showTools: true,
   showTurns: true,
   showInput: true,

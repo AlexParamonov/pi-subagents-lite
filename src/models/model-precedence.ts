@@ -40,8 +40,8 @@ export interface SubagentsConfig {
     loadExtensionsImplicitly?: boolean;
     /** When true, skip built-in default agents (general-purpose, Explore) at registration. */
     disableDefaultAgents?: boolean;
-    /** When true, use strict-mode constrained sampling schema for the Agent tool (all fields required, nullable optional fields). */
-    agentToolConstrainedSampling?: boolean;
+    /** When true, use strict-mode schema for the Agent tool. Costs more tokens due to nullable field encoding. */
+    agentToolStrictMode?: boolean;
     /** Whether to show toolUses count in widget stats line. Default: true. */
     showTools?: boolean;
     /** Whether to show turn count in widget stats line. Default: true. */
