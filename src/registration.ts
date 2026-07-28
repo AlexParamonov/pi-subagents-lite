@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type, type TSchema } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { getAvailableTypes } from "./agents/agent-types.js";
 import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
@@ -25,28 +25,26 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   const types = getAvailableTypes();
   const useConstrained = getStore().agent.agentToolConstrainedSampling;
 
-  // Build schema differently based on constrained sampling toggle.
-  // ON: all fields required, optional fields become nullable (anyOf string|null).
-  // OFF: original optional schema, no constrainedSampling.
-  const params = useConstrained
-    ? Type.Object({
-        prompt: Type.String(),
-        description: Type.Union([Type.String(), Type.Null()]),
-        agent: types.length > 0
-          ? Type.Union([Type.String({ description: types.join(",") }), Type.Null()])
-          : Type.Union([Type.String(), Type.Null()]),
-        run_in_background: Type.Union([Type.Boolean(), Type.Null()]),
-        worktree_path: Type.Union([Type.String(), Type.Null()]),
-      }, { additionalProperties: false, required: ["prompt", "description", "agent", "run_in_background", "worktree_path"] })
-    : Type.Object({
-        prompt: Type.String(),
-        description: Type.Optional(Type.String()),
-        agent: types.length > 0
-          ? Type.Optional(Type.String({ description: types.join(",") }))
-          : Type.Optional(Type.String()),
-        run_in_background: Type.Optional(Type.Boolean()),
-        worktree_path: Type.Optional(Type.String()),
-      }, { additionalProperties: false });
+  // Use plain string to avoid verbose anyOf in prompt.
+  // Available types are listed in description for discoverability.
+  const agentType = types.length > 0
+    ? Type.String({ description: types.join(",") })
+    : Type.String();
+
+  // Constrained sampling (strict mode) requires every property in `required`,
+  // so optional fields become nullable unions instead of Type.Optional.
+  const optional = <T extends TSchema>(base: T) =>
+    useConstrained ? Type.Union([base, Type.Null()]) : Type.Optional(base);
+
+  const params = Type.Object({
+    prompt: Type.String(),
+    description: optional(Type.String()),
+    agent: optional(agentType),
+    run_in_background: optional(Type.Boolean()),
+    worktree_path: optional(Type.String()),
+  }, useConstrained
+    ? { additionalProperties: false, required: ["prompt", "description", "agent", "run_in_background", "worktree_path"] }
+    : { additionalProperties: false });
 
   const tool = {
     name: "Agent",
