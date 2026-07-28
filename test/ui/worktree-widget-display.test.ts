@@ -38,12 +38,13 @@ vi.mock("@earendil-works/pi-tui", () => ({
 /*  Factories                                                         */
 /* ------------------------------------------------------------------ */
 
-function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
+function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = agents.length): AgentManager {
   return {
     listAgents: () => agents,
     getAgent: () => undefined,
     setConcurrency: () => {},
     getTotalAgentCost: () => totalAgentCost,
+    getTotalAgentCount: () => totalAgentCount,
   } as any as AgentManager;
 }
 

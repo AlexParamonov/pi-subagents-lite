@@ -93,6 +93,7 @@ vi.mock("../../src/shell.js", () => ({
     getRecord: mockGetRecord,
     listAgents: vi.fn(() => []),
     getTotalAgentCost: vi.fn(() => 0),
+    getTotalAgentCount: vi.fn(() => 0),
     abort: vi.fn(() => false),
   }),
   getWidget: () => ({

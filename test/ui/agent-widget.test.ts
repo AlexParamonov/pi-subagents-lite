@@ -34,12 +34,13 @@ vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
   };
 });
 
-function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
+function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = agents.length): AgentManager {
   return {
     listAgents: () => agents,
     getAgent: () => undefined,
     setConcurrency: () => {},
     getTotalAgentCost: () => totalAgentCost,
+    getTotalAgentCount: () => totalAgentCount,
     // other methods not used by widget
   } as any as AgentManager;
 }
@@ -552,13 +553,13 @@ describe("finished agent status icons", () => {
 describe("status bar format", () => {
   it("uses Pi's dim token and restyles status text after widget invalidation", () => {
     const uiCtx = { theme: makeMockTheme(), setStatus: vi.fn(), setWidget: vi.fn() };
-    const widget = new AgentWidget(makeMockManager([]), () => undefined);
+    const widget = new AgentWidget(makeMockManager([], 0, 1), () => undefined);
     widget.setUICtx(uiCtx);
     (widget as any).manager.listAgents = () => [makeRunningAgent("a1")];
 
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "[dim:1 agent]");
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "[dim:1 active · 1 agent total]");
 
     uiCtx.theme = {
       fg: (color: string, text: string) => `[new-${color}:${text}]`,
@@ -567,13 +568,13 @@ describe("status bar format", () => {
     const widgetFactory = (uiCtx.setWidget as any).mock.calls[0][1];
     widgetFactory(makeMockTUI(), makeMockTheme()).invalidate();
 
-    expect(uiCtx.setStatus).toHaveBeenLastCalledWith("subagents", "[new-dim:1 agent]");
+    expect(uiCtx.setStatus).toHaveBeenLastCalledWith("subagents", "[new-dim:1 active · 1 agent total]");
   });
 
-  it("shows 'N agents: $cost' format with running agents", () => {
+  it("shows active and session-total counts with running-agent cost", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0);
+    const manager = makeMockManager([], 0, 10);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -585,41 +586,65 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [a1, a2];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^2 agents: \$0\.\d+$/));
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^2 active · 10 agents total: \$0\.\d+$/));
   });
 
-  it("shows finished-agent count and cost when no running/queued agents exist", () => {
+  it("shows only the session total when no agents are active", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0.01);
+    const manager = makeMockManager([], 0.01, 10);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
-    // Only finished agents, no running/queued
+    // One retained finished record represents a session that has had ten agents.
     const finished = makeFinishedAgent("f1");
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^1 finished agent: \$0\.\d+$/));
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "10 agents total: $0.010");
   });
 
-  it("reports finished agents separately from active agents", () => {
+  it("uses the session total instead of the retained finished-agent count", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
-    const manager = makeMockManager([]);
+    const manager = makeMockManager([], 0, 10);
     const widget = new AgentWidget(manager, () => undefined);
     widget.setUICtx(uiCtx);
 
     (manager as any).listAgents = () => [makeRunningAgent("running"), makeFinishedAgent("finished-1"), makeFinishedAgent("finished-2")];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 agent · 2 finished agents");
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 active · 10 agents total");
   });
 
-  it("shows 'N agents' without cost when cost is zero", () => {
+  it("retains the session summary when retention removes the last record", () => {
+    let statusText: string | undefined;
+    const uiCtx = {
+      setStatus: vi.fn((_key: string, text: string | undefined) => { statusText = text; }),
+      setWidget: vi.fn(),
+    };
+    const manager = makeMockManager([], 0.01, 10);
+    const widget = new AgentWidget(manager, () => undefined);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    let agents = [makeFinishedAgent("finished")];
+    (manager as any).listAgents = () => agents;
+    widget.update();
+
+    agents = [];
+    widget.update();
+
+    expect(statusText).toBe("10 agents total: $0.010");
+    expect(uiCtx.setStatus).not.toHaveBeenCalledWith("subagents", undefined);
+    expect(uiCtx.setStatus).toHaveBeenCalledTimes(1);
+    expect(uiCtx.setWidget).toHaveBeenLastCalledWith("agents", undefined);
+  });
+
+  it("shows active and total counts without cost when cost is zero", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0);
+    const manager = makeMockManager([], 0, 1);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -629,7 +654,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^1 agent$/));
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", "1 active · 1 agent total");
   });
 });
 
@@ -645,7 +670,7 @@ describe("status bar cost from accumulator", () => {
     };
     activity = new Map();
     // No running agents, but totalAgentCost is $1.23 (from evicted agents)
-    manager = makeMockManager([], 1.23);
+    manager = makeMockManager([], 1.23, 2);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -667,7 +692,7 @@ describe("status bar cost from accumulator", () => {
     };
     activity = new Map();
     // Running agent with $0 cost, but session accumulator has $2.50
-    manager = makeMockManager([], 2.50);
+    manager = makeMockManager([], 2.50, 2);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -687,7 +712,7 @@ describe("status bar cost from accumulator", () => {
       setWidget: vi.fn(),
     };
     activity = new Map();
-    manager = makeMockManager([], 1.50);
+    manager = makeMockManager([], 1.50, 1);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(false);
     widget.setUICtx(uiCtx);

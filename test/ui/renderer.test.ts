@@ -40,6 +40,16 @@ vi.mock("../../src/ui/format.js", () => ({
   buildStatsCells: vi.fn(() => ({ tools: "5⚙︎", turns: "3⟳", duration: "1m 0s" })),
   formatStatsRow: vi.fn(() => "5⚙︎  3⟳ · 1m 0s"),
   formatThinkingTag: vi.fn((value: unknown) => value === "high" ? "high" : undefined),
+  getAgentStatusDisplay: vi.fn((status: string) => {
+    const displays: Record<string, { icon: string; color: string }> = {
+      completed: { icon: "✓", color: "success" },
+      turn_limited: { icon: "✓", color: "warning" },
+      stopped: { icon: "■", color: "dim" },
+      error: { icon: "✗", color: "error" },
+      aborted: { icon: "✗", color: "error" },
+    };
+    return displays[status] ?? displays.completed;
+  }),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
 }));
 
@@ -150,6 +160,24 @@ describe("renderer", () => {
     const text = textInstances.map((t) => t.text).join("\n");
     expect(text).toContain("Builder (high)");
     expect(text).not.toContain("undefined");
+  });
+
+  it.each([
+    ["stopped", "■", "dim"],
+    ["turn_limited", "✓", "warning"],
+  ])("uses the shared %s status icon and theme color", (status, icon, color) => {
+    const theme = {
+      ...noopTheme,
+      fg: vi.fn((themeColor: string, value: string) => `[${themeColor}]${value}`),
+    };
+
+    renderSubagentResult({
+      content: "Agent output",
+      details: { type: "builder", description: "Build something", turnCount: 5, status },
+    }, { expanded: false }, theme, SHOW_COST);
+
+    expect(textInstances.map((t) => t.text).join("\n")).toContain(`[${color}]${icon}`);
+    expect(theme.fg).toHaveBeenCalledWith(color, icon);
   });
 
   it("shows worktree path in fallback result line (no turnCount)", () => {

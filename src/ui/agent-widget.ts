@@ -864,8 +864,8 @@ export class AgentWidget {
 
     return { visible, overflowLine };
   }
-  /** Clear widget and status bar. */
-  private clearWidget() {
+  /** Clear widget and, unless retained for session history, the status bar. */
+  private clearWidget(clearStatus = true) {
     // Deactivate navigation when agents clear
     if (this.navActive) {
       this.navActive = false;
@@ -876,7 +876,7 @@ export class AgentWidget {
       this.widgetRegistered = false;
       this.tui = undefined;
     }
-    if (this.lastStatusText !== undefined) {
+    if (clearStatus && this.lastStatusText !== undefined) {
       this.uiCtx?.setStatus(STATUS_KEY, undefined);
       this.lastStatusText = undefined;
     }
@@ -892,11 +892,12 @@ export class AgentWidget {
   }
 
   /** Update the status bar text, only if it changed. */
-  private updateStatusBar(runningCount: number, queuedCount: number, finishedCount: number, running: AgentRecord[]) {
+  private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
     const activeCount = runningCount + queuedCount;
-    const activeText = activeCount > 0 ? `${activeCount} agent${activeCount === 1 ? "" : "s"}` : "";
-    const finishedText = finishedCount > 0 ? `${finishedCount} finished${finishedCount === 1 ? " agent" : " agents"}` : "";
-    let statusText = [activeText, finishedText].filter(Boolean).join(" · ");
+    const totalCount = this.manager.getTotalAgentCount();
+    const activeText = activeCount > 0 ? `${activeCount} active` : "";
+    const totalText = `${totalCount} agent${totalCount === 1 ? "" : "s"} total`;
+    let statusText = [activeText, totalText].filter(Boolean).join(" · ");
     if (this.showCost) {
       const sessionCost = this.manager.getTotalAgentCost();
       // Also include in-flight running agents (not yet completed, so not in accumulator)
@@ -933,16 +934,19 @@ export class AgentWidget {
     const hasActive = running.length > 0 || queued.length > 0;
     const hasFinished = finished.length > 0;
 
-    // Nothing to show — clear widget if registered, then early-return
+    // Nothing to render — retain the session summary after finished-record eviction.
     if (!hasActive && !hasFinished) {
-      if (this.widgetRegistered || this.lastStatusText !== undefined) {
+      if (this.manager.getTotalAgentCount() > 0) {
+        this.clearWidget(false);
+        this.updateStatusBar(0, 0, []);
+      } else if (this.widgetRegistered || this.lastStatusText !== undefined) {
         this.clearWidget();
       }
       return;
     }
 
     // Status bar — only call setStatus when the text actually changes
-    this.updateStatusBar(running.length, queued.length, finished.length, running);
+    this.updateStatusBar(running.length, queued.length, running);
 
     this.widgetFrame++;
 

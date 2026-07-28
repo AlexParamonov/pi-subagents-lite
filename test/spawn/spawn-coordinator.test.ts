@@ -72,6 +72,7 @@ function makeMockManager() {
     abort: vi.fn(() => true),
     steer: vi.fn(async () => true),
     getTotalAgentCost: vi.fn(() => 0),
+    getTotalAgentCount: vi.fn(() => 0),
     dispose: vi.fn(),
     onComplete: undefined as any,
     onStart: undefined as any,

@@ -6,7 +6,8 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
-import { buildStatsCells, formatStatsRow, formatThinkingTag, getDisplayName } from "./format.js";
+import { buildStatsCells, formatStatsRow, formatThinkingTag, getAgentStatusDisplay, getDisplayName } from "./format.js";
+import type { AgentStatus } from "../types.js";
 
 // ============================================================================
 // Stats rendering helpers
@@ -118,12 +119,13 @@ export function renderSubagentResult(
   inner.addChild(new Spacer(1));
 
   if (d && d.turnCount != null) {
-    const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
-    const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+    const status = (d.status as AgentStatus | undefined) ?? "completed";
+    const { icon, color } = getAgentStatusDisplay(status);
+    const statusIcon = theme.fg(color, icon);
 
     const namePart = agentNameLabel(d, theme);
     const statsLine = buildStatsLine(d, theme, showCost);
-    let headerLine = `${icon} ${namePart} · ${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
+    let headerLine = `${statusIcon} ${namePart} · ${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
     if (d.outputFile as string) {
       headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
     }
@@ -156,8 +158,9 @@ function buildFallbackResultLine(
   text: string,
   theme: Theme,
 ): string {
-  const icon = theme.fg("success", "✓");
-  let line = icon;
+  const status = (d?.status as AgentStatus | undefined) ?? "completed";
+  const { icon, color } = getAgentStatusDisplay(status);
+  let line = theme.fg(color, icon);
   if (d?.type) {
     line += ` ${agentNameLabel(d, theme)}`;
   }

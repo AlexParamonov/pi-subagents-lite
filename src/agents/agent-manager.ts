@@ -84,6 +84,9 @@ export class AgentManager {
   /** Session-level cumulative agent cost. Survives agent eviction. */
   private totalAgentCost = 0;
 
+  /** Session-level cumulative accepted agent count. Survives agent eviction. */
+  private totalAgentCount = 0;
+
   /** Retention cutoff in minutes for finished agents. Updated at runtime via setRetentionMinutes. */
   private retentionMinutes = DEFAULT_RETENTION_MINUTES;
 
@@ -241,15 +244,21 @@ export class AgentManager {
     };
     this.agents.set(id, record);
 
-    if (queued) return id;
+    // Queued agents have been successfully accepted even though their start is deferred.
+    if (queued) {
+      this.totalAgentCount++;
+      return id;
+    }
 
-    // startAgent can throw — clean up record so callers don't see an orphan
+    // startAgent can throw — clean up record so callers don't see an orphan.
+    // Count only after a synchronous start succeeds.
     try {
       this.startAgent(id, record, args, concurrencySlot);
     } catch (err) {
       this.agents.delete(id);
       throw err;
     }
+    this.totalAgentCount++;
     return id;
   }
 
@@ -381,6 +390,11 @@ export class AgentManager {
   /** Get the session-level cumulative agent cost. Survives agent eviction. */
   getTotalAgentCost(): number {
     return this.totalAgentCost;
+  }
+
+  /** Get the session-level cumulative accepted agent count. Survives agent eviction. */
+  getTotalAgentCount(): number {
+    return this.totalAgentCount;
   }
 
   /**

@@ -416,6 +416,61 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.04);
     });
   });
+
+  // ── Cumulative agent count ──
+
+  describe("totalAgentCount", () => {
+    it("counts accepted running and queued spawns exactly once", async () => {
+      const config: ConcurrencyConfig = { default: 1, models: { "test/model": 1 } };
+      manager = new AgentManager(onComplete, config);
+      const first = makeResolvablePromise();
+      const second = makeResolvablePromise();
+      mockModules.mockRunAgent
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "first", { description: "first", modelKey: "test/model" });
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "second", { description: "second", modelKey: "test/model" });
+
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+      expect(manager.getTotalAgentCount()).toBe(2);
+
+      first.resolve(mockRunResult());
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getTotalAgentCount()).toBe(2);
+
+      second.resolve(mockRunResult());
+      await manager.getRecord(id2)!.execution.promise;
+      await manager.getRecord(id1)!.execution.promise;
+    });
+
+    it("does not count a synchronously failed start", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockImplementationOnce(() => {
+        throw new Error("start failed");
+      });
+
+      expect(() => manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" })).toThrow("start failed");
+      expect(manager.getTotalAgentCount()).toBe(0);
+    });
+
+    it("persists after an agent is evicted", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+      record.lifecycle.resultConsumed = true;
+      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeUndefined();
+      expect(manager.getTotalAgentCount()).toBe(1);
+    });
+  });
+
   // ── Cleanup eviction ──
 
   describe("cleanup", () => {
