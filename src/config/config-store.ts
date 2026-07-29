@@ -347,12 +347,12 @@ export class ConfigStore {
       setShowModel: (enabled: boolean): void => {
         this.config.agent.widgetShowModel = enabled;
         this.persist();
-        this.syncWidgetSettings();
+        this.syncWidgetStatsVisibility();
       },
       setShowThinking: (enabled: boolean): void => {
         this.config.agent.widgetShowThinking = enabled;
         this.persist();
-        this.syncWidgetSettings();
+        this.syncWidgetStatsVisibility();
       },
       setNavHint: (enabled: boolean): void => {
         this.config.agent.widgetNavHint = enabled;
