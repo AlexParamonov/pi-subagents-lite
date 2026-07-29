@@ -98,12 +98,10 @@ Spawn a sub-agent.
 | `prompt` | ✅ | The task for the sub-agent |
 | `description` | | Brief description for the caller (optional — derived from `prompt` if omitted) |
 | `agent` | ✅ | Explicit type name — one of bundled `explorer`, `scout`, `implementer`, `reviewer`, `verifier`, or a custom type. The parent orchestration catalog lists visible types when enabled. `hidden: true` removes a type from automatic catalog/menu listing (still callable by name). |
-| `model` | | Optional one-spawn model override. |
-| `thinking` | | Optional one-spawn thinking override. |
 | `run_in_background` | | Fire-and-forget; result delivered automatically when done |
 | `worktree_path` | | Absolute path to a git worktree. In a trusted project, an explicitly selected worktree can supply its `.pi/agents/` for that spawn and shows a worktree label in the UI. It is never crawled automatically. Validated against the parent repo's git common dir. |
 
-The fixed bare schema requires `agent`; `model` and `thinking` are visible optional one-spawn overrides. `max_turns` and `max_tokens` remain agent-config-only. See [Custom Agent Types](#custom-agent-types).
+The fixed bare schema requires `agent`. Model, thinking, turn, and token settings are intentionally not exposed to the orchestrator; configure them through `/agents`, Agent Markdown, or persistent settings. See [Custom Agent Types](#custom-agent-types).
 
 ### `StopAgent`
 
@@ -219,14 +217,14 @@ exclude_tools: [edit, write]
 
 Model and thinking use the same precedence (highest first):
 
-1. **Spawn override** — optional `model` or `thinking` on this Agent call
+1. **Manual spawn override** — model or thinking selected through `/agents` for this spawn
 2. **Session-agent override** — `/agents` → Settings → Agent settings, lasts the session
 3. **Persistent agent override** — `~/.pi/agent/subagents-lite.json`
 4. **Agent Markdown** — frontmatter in the selected agent definition
 5. **Global default** — session global first, then persistent global
 6. **Parent value** — inherit from the calling agent
 
-Set a default in config or frontmatter, or use the visible optional spawn fields for a one-off override.
+Set a default in config or frontmatter, or use `/agents` for a one-off manual spawn override.
 
 ## System Prompt Mode
 

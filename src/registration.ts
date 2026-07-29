@@ -24,11 +24,6 @@ function registerAgentTool(pi: ExtensionAPI): void {
       prompt: Type.String(),
       description: Type.Optional(Type.String()),
       agent: Type.String(),
-      model: Type.Optional(Type.String()),
-      thinking: Type.Optional(Type.Union([
-        Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
-        Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max"),
-      ])),
       run_in_background: Type.Optional(Type.Boolean()),
       worktree_path: Type.Optional(Type.String()),
     }, { additionalProperties: false }),

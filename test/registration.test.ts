@@ -139,24 +139,12 @@ describe("Agent tool registration", () => {
         prompt: { type: "string" },
         description: { type: "string" },
         agent: { type: "string" },
-        model: { type: "string" },
-        thinking: {
-          anyOf: [
-            { const: "off", type: "string" },
-            { const: "minimal", type: "string" },
-            { const: "low", type: "string" },
-            { const: "medium", type: "string" },
-            { const: "high", type: "string" },
-            { const: "xhigh", type: "string" },
-            { const: "max", type: "string" },
-          ],
-        },
         run_in_background: { type: "boolean" },
         worktree_path: { type: "string" },
       },
     });
     expect(Object.keys(tool.parameters.properties)).toEqual([
-      "prompt", "description", "agent", "model", "thinking", "run_in_background", "worktree_path",
+      "prompt", "description", "agent", "run_in_background", "worktree_path",
     ]);
     expect(tool.parameters.required).toEqual(["prompt", "agent"]);
     expect(tool.parameters.properties.agent).not.toHaveProperty("enum");

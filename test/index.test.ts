@@ -183,9 +183,9 @@ describe("Agent tool schema — stealth", () => {
     expect(agentTool()!.promptGuidelines).toBeUndefined();
   });
 
-  it("allows one-spawn model and thinking overrides", () => {
-    expect(hasParam(agentTool()!.parameters, "model")).toBe(true);
-    expect(hasParam(agentTool()!.parameters, "thinking")).toBe(true);
+  it("keeps model and thinking overrides out of the LLM-visible schema", () => {
+    expect(hasParam(agentTool()!.parameters, "model")).toBe(false);
+    expect(hasParam(agentTool()!.parameters, "thinking")).toBe(false);
   });
 
   it("excludes inherit_context param", () => {
@@ -235,7 +235,7 @@ describe("Agent tool schema — stealth", () => {
   it("requires an explicit agent type while keeping other arguments optional", () => {
     const properties = agentTool()!.parameters.properties;
     expect(properties.agent.optional).toBeUndefined();
-    for (const name of ["description", "model", "thinking", "run_in_background", "worktree_path"]) {
+    for (const name of ["description", "run_in_background", "worktree_path"]) {
       expect(properties[name].optional).toBe(true);
     }
   });
