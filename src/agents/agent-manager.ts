@@ -353,18 +353,23 @@ export class AgentManager {
         // Decrement per-model concurrency count
         if (concurrencySlot) concurrencySlot.running--;
 
-        this.safeNotifyComplete(record);
+        this.tallyCompletion(record);
         this.drainQueue();
       });
 
     record.execution.promise = promise;
   }
 
-  /** Notify completion callback, ignoring any errors. */
-  private safeNotifyComplete(record: AgentRecord): void {
+  /** Fire the onComplete callback, ignoring any errors from the callback itself. */
+  private notifyComplete(record: AgentRecord): void {
+    try { this.onComplete?.(record); } catch { /* ignore */ }
+  }
+
+  /** Tally session cost/count for a completed agent, then notify. */
+  private tallyCompletion(record: AgentRecord): void {
     this.totalAgentCost += record.stats.lifetimeUsage.cost;
     this.totalAgentCount++;
-    try { this.onComplete?.(record); } catch { /* ignore */ }
+    this.notifyComplete(record);
   }
 
   setOnComplete(cb: OnAgentComplete): void {
@@ -439,8 +444,8 @@ export class AgentManager {
         record.error = errorMessage(err);
         record.lifecycle.completedAt = Date.now();
         started.add(entry.id);
-        // Notify UI of the failure, but don't count it as a completed agent
-        try { this.onComplete?.(record); } catch { /* ignore */ }
+        // Failed starts notify the UI but aren't tallied as completed agents
+        this.notifyComplete(record);
       }
     }
     this.queue = this.queue.filter(e => !started.has(e.id));
