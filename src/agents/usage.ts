@@ -16,9 +16,9 @@ export type LifetimeUsage = { input: number; output: number; cacheWrite: number;
  */
 export type AgentUsage = LifetimeUsage & { cacheRead: number };
 
-/** Sum of lifetime usage components (including cost), or 0 if undefined. */
+/** Sum of input + output token counts, or 0 if undefined. */
 export function getLifetimeTotal(u?: LifetimeUsage): number {
-  return u ? u.input + u.output + u.cacheWrite + u.cost : 0;
+  return u ? u.input + u.output : 0;
 }
 
 /** Add a usage delta into a target accumulator (mutates target). */

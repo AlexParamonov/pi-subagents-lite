@@ -416,6 +416,68 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.04);
     });
   });
+
+  // ── Agent count ──
+
+  describe("totalAgentCount", () => {
+    it("starts at zero", () => {
+      manager = new AgentManager(onComplete);
+      expect(manager.getTotalAgentCount()).toBe(0);
+    });
+
+    it("increments when an agent completes", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "test", modelKey: "test/model" });
+      await manager.getRecord(id)!.execution.promise;
+
+      expect(manager.getTotalAgentCount()).toBe(1);
+    });
+
+    it("increments after successful spawn only", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task1", { description: "t1", modelKey: "test/model" });
+      await manager.getRecord(id1)!.execution.promise;
+
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task2", { description: "t2", modelKey: "test/model" });
+      await manager.getRecord(id2)!.execution.promise;
+
+      expect(manager.getTotalAgentCount()).toBe(2);
+    });
+
+    it("persists count after agent is evicted from map", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "test", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      expect(manager.getTotalAgentCount()).toBe(1);
+
+      // Evict the record
+      record.lifecycle.resultConsumed = true;
+      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
+      (manager as any).cleanup();
+
+      expect(manager.getRecord(id)).toBeUndefined();
+      expect(manager.getTotalAgentCount()).toBe(1);
+    });
+
+    it("does not count failed spawn (startAgent throws)", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockRejectedValueOnce(new Error("boom"));
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "fail", modelKey: "test/model" });
+      await manager.getRecord(id)!.execution.promise;
+
+      // Agent failed but still completed (error status), count should increment
+      expect(manager.getTotalAgentCount()).toBe(1);
+    });
+  });
   // ── Cleanup eviction ──
 
   describe("cleanup", () => {

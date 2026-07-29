@@ -39,6 +39,7 @@ function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
     getAgent: () => undefined,
     setConcurrency: () => {},
     getTotalAgentCost: () => totalAgentCost,
+    getTotalAgentCount: () => 0,
   } as any as AgentManager;
 }
 
