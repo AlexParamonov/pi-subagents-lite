@@ -137,10 +137,10 @@ vi.mock("../src/shell.js", () => {
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
         finishedEvictTurns: a.finishedEvictTurns ?? 4,
         modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
+        statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
         widgetShowModel: a.widgetShowModel !== false,
         widgetShowThinking: a.widgetShowThinking !== false,
         widgetNavHint: a.widgetNavHint !== false,
-        statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
       };
     },
     get concurrency() {
