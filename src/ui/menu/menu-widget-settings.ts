@@ -164,10 +164,8 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
   ];
 }
 
-/** Build SettingsList items for the Stats category. */
-function buildStatsItems(store: ReturnType<typeof getStore>): SettingItem[] {
-  const statConfig = buildStatConfig(store);
-  const descriptions: Record<string, string> = {
+/** Stat descriptions keyed by stat id. */
+const STAT_DESCRIPTIONS: Record<string, string> = {
     showTools: "Show tool count (\ud83e\uddde\u200d\ud83d\udd28) in the widget.",
     showTurns: "Show turn count (\u27f3) in the widget.",
     showInput: "Show input tokens (\u2191) in the widget.",
@@ -175,13 +173,16 @@ function buildStatsItems(store: ReturnType<typeof getStore>): SettingItem[] {
     showContext: "Show context-fill percent (%) in the widget.",
     showCost: "Show dollar cost ($) in the widget.",
     showTime: "Show elapsed time in the widget.",
-  };
+};
+
+/** Build SettingsList items for the Stats category. */
+function buildStatsItems(store: ReturnType<typeof getStore>, statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>): SettingItem[] {
   const items: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
     id,
     label: cfg.label,
     currentValue: cfg.get() ? "ON" : "OFF",
     values: ["ON", "OFF"],
-    description: descriptions[id],
+    description: STAT_DESCRIPTIONS[id],
   }));
   items.push({ id: "__sep__", label: " ", currentValue: "" });
   items.push({
@@ -195,7 +196,7 @@ function buildStatsItems(store: ReturnType<typeof getStore>): SettingItem[] {
 }
 
 /** Build the onChange handler for a category's SettingsList. */
-function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>, _category: string) {
+function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>) {
   const statConfig = buildStatConfig(store);
   return (id: string, newValue: string) => {
     // Stats toggles
@@ -241,7 +242,6 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Model display ${newValue}`, "info");
         break;
 
-
       // Stats (deltaInputTokens is not in statConfig)
       case "deltaInputTokens":
         store.mutate.agent.setDeltaInputTokens(newValue === "ON");
@@ -268,12 +268,11 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
 /** Show a SettingsList submenu for a specific category. */
 async function showCategorySubmenu(
   ctx: ExtensionCommandContext,
-  category: string,
   title: string,
   buildItems: () => SettingItem[],
 ): Promise<void> {
   const store = getStore();
-  const onChange = buildOnChange(ctx, store, category);
+  const onChange = buildOnChange(ctx, store);
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const items = buildItems();
@@ -302,17 +301,19 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
 
     switch (choice) {
       case "layout":
-        await showCategorySubmenu(ctx, "layout", "Layout", () => buildLayoutItems(ctx, getStore()));
+        await showCategorySubmenu(ctx, "Layout", () => buildLayoutItems(ctx, store));
         break;
       case "display":
-        await showCategorySubmenu(ctx, "display", "Display", () => buildDisplayItems(getStore()));
+        await showCategorySubmenu(ctx, "Display", () => buildDisplayItems(store));
         break;
       case "behavior":
-        await showCategorySubmenu(ctx, "behavior", "Behavior", () => buildBehaviorItems(ctx, getStore()));
+        await showCategorySubmenu(ctx, "Behavior", () => buildBehaviorItems(ctx, store));
         break;
-      case "stats":
-        await showCategorySubmenu(ctx, "stats", "Stats", () => buildStatsItems(getStore()));
+      case "stats": {
+        const statConfig = buildStatConfig(store);
+        await showCategorySubmenu(ctx, "Stats", () => buildStatsItems(store, statConfig));
         break;
+      }
     }
   }
 }
