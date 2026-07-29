@@ -211,7 +211,7 @@ exclude_tools: [edit, write]
 | `skills` | `true` / `[debug, tdd]` / `false` | All / listed / no skills (metadata-only in system prompt) |
 | `preload_skills` | `[debug]` / `false` | Dump full SKILL.md content / none (default) |
 
-**Implicit loading.** `loadSkillsImplicitly` and `loadExtensionsImplicitly` are config globals that decide what an agent gets when its frontmatter **omits** `skills` / `extensions`. They default ON, so an agent that says nothing about either gets everything. Turn them OFF (in config, or `/agents` → System prompt) to default every new agent to nothing — isolated sessions and minimal token cost, with agents opting in explicitly via `skills: [debug]` / `extensions: [tavily]`. A concrete frontmatter value always overrides the global.
+**Implicit loading.** `loadSkillsImplicitly` and `loadExtensionsImplicitly` are config globals that decide what an agent gets when its frontmatter **omits** `skills` / `extensions`. They default ON, so an agent that says nothing about either gets everything. Turn them OFF (in config, or `/agents` → Settings → Advanced → System prompt, context, skills & extensions) to default every new agent to nothing — isolated sessions and minimal token cost, with agents opting in explicitly via `skills: [debug]` / `extensions: [tavily]`. A concrete frontmatter value always overrides the global.
 
 **Token cost ranking** (highest → lowest): `preload_skills` ≫ `tools`/`exclude_tools` (each tool schema every turn) > `extensions` (hooks fire every turn) > `skills` (metadata-only, agent reads full content on-demand) > `skills: false` (zero). Prefer metadata skills over preloading; whitelist tools aggressively for narrow agents.
 
@@ -219,7 +219,7 @@ exclude_tools: [edit, write]
 
 The extension picks the right model automatically. Precedence (highest first):
 
-1. **Session per-type override** — `/agents` → Model settings, lasts the session
+1. **Session per-type override** — `/agents` → Settings → Agent models, lasts the session
 2. **Session global default** — temporary
 3. **Config per-type override** — `~/.pi/agent/subagents-lite.json`
 4. **Config global default**
@@ -242,16 +242,15 @@ When `includeContextFiles` is `true` (default), AGENTS.md files from the project
 
 ### `/agents`
 
-Management menu with four sections:
+Management menu with three sections:
 
-- **Running agents** — status and description; per-agent actions (view snapshot, result, error; steer; stop) and bulk stop
-- **Spawn agent** — manually spawn without the LLM. Pick a type (with search), enter a prompt, tune options (model, thinking, max turns, max tokens, grace turns, background), then spawn. Options pre-fill from agent config.
+- **Running agents** — status and description; per-agent actions (view conversation, result, error; steer; stop) and bulk stop
+- **Spawn agent** — manually spawn without the LLM. Pick a type (with search), enter a prompt, then set model, background mode, or advanced worktree/thinking/limit options before spawning. Options pre-fill from agent config.
 - **Settings**
-  - **Model settings** — global default, per-type overrides, session overrides, clear all
-  - **Spawn options** — force background, grace turns, default max turns, default thinking, disable default agents
-  - **System prompt** — mode, custom prompt file, include AGENTS.md, load skills/extensions implicitly
-  - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
-  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time)
+  - **Agent models** — global default, per-type overrides, session overrides, clear all
+  - **Execution** — default concurrency, force background, default max turns
+  - **Appearance** — force compact mode, full widget line count, and Minimal/Standard/Detailed stats presets
+  - **Advanced** — per-provider/per-model concurrency limits, system prompt/context/skills/extensions, agent behavior/discovery, detailed widget settings, and agent-type diagnostics
 
 ## Interface
 
@@ -281,7 +280,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 **Navigation:** `↑↓` / `PgUp/PgDn` scroll · `g`/`G` top/bottom · `Home`/`End` jump · `f` fullscreen · `r` refresh · `q`/`Esc` close.
 
-**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Cost display** ON, shows dollar cost. Toggle as a session override from Model settings.
+**Stats line:** `↑12.0k · ↓8.0k · W3.0k · $0.024 · 15 turns · 47s`. With **Show cost** ON, it includes dollar cost. Configure individual stats under `/agents` → Settings → Advanced → Detailed widget settings.
 
 ## Configuration
 

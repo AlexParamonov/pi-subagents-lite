@@ -137,6 +137,27 @@ describe("SettingsListWrapper — onRebuild sets items directly", () => {
   });
 });
 
+describe("SettingsListWrapper — nested submenu input", () => {
+  it("passes text and cursor keys through to a focusable nested submenu", () => {
+    const handleInput = vi.fn();
+    const input = { focused: true };
+    const nestedList = { submenuComponent: input };
+    const list = {
+      ...makeSettingsList([{ id: "advanced", label: "Advanced", currentValue: "→" }]),
+      submenuComponent: nestedList,
+      handleInput,
+    };
+    const wrapper = new SettingsListWrapper(list, { title: "T", theme });
+
+    wrapper.handleInput("j");
+    wrapper.handleInput("k");
+    wrapper.handleInput("\x1b[C");
+    wrapper.handleInput("\x1b[D");
+
+    expect(handleInput.mock.calls.map(([key]) => key)).toEqual(["j", "k", "\x1b[C", "\x1b[D"]);
+  });
+});
+
 describe("SettingsListWrapper — render frame", () => {
   it("renders the list content between top/bottom separators with a header", () => {
     const list = {

@@ -8,7 +8,6 @@ import { randomUUID } from "node:crypto";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent-runner.js";
 import { AgentOutputLog } from "./output-file.js";
-import { getStore } from "../shell.js";
 import {
   type AgentRecord,
   type AgentStatus,
@@ -392,17 +391,7 @@ export class AgentManager {
         options?.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
-        // vLLM doesn't report cache hits, so usage.input is full prompt_tokens.
-        // Estimate new tokens as delta from previous message's input.
-        const deltaEnabled = getStore().agent.deltaInputTokens;
-        const cacheRead = usage.cacheRead;
-        let inputDelta = usage.input;
-        if (deltaEnabled && cacheRead === 0 && record.stats.prevInputTokens != null && usage.input > record.stats.prevInputTokens) {
-          inputDelta = usage.input - record.stats.prevInputTokens;
-        }
-        record.stats.prevInputTokens = usage.input;
-
-        addUsage(record.stats.lifetimeUsage, { ...usage, input: inputDelta });
+        addUsage(record.stats.lifetimeUsage, usage);
         options?.onAssistantUsage?.(usage);
       },
       onCompaction: (info) => {

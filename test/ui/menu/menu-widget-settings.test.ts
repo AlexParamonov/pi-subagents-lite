@@ -84,12 +84,12 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
   });
 
-  it("shows 'Force compact mode · ON' when enabled", async () => {
+  it("omits compact mode because it lives in Appearance", async () => {
     mockModules.mockConfig.agent.widgetCompact = true;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
-    expect(compact.currentValue).toBe("ON");
+    expect(compact).toBeUndefined();
   });
 });
 
@@ -111,13 +111,12 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("toggles compact mode via onChange", async () => {
+  it("does not handle the Appearance-only compact setting", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("compact", "ON");
-    expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(false);
   });
 
   it("toggles shortcut via onChange", async () => {
@@ -148,12 +147,11 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("maxLines item has submenu function", async () => {
+  it("omits full-mode max lines because it lives in Appearance", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
-    expect(maxLines.currentValue).toBe("12");
-    expect(typeof maxLines.submenu).toBe("function");
+    expect(maxLines).toBeUndefined();
   });
 
   it("maxLinesCompact item has submenu function", async () => {
@@ -164,48 +162,45 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     expect(typeof maxLinesCompact.submenu).toBe("function");
   });
 
-  it("numeric submenu creates Input with initial value and handles submit", async () => {
-    mockModules.mockConfig.agent.widgetMaxLines = 12;
+  it("compact-lines submenu creates Input and handles submit", async () => {
+    mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
 
-    const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
+    const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLinesCompact");
     const mockDone = vi.fn();
-    maxLines.submenu("12", mockDone);
+    maxLines.submenu("6", mockDone);
 
-    // Input was created with initial value
     expect(inputInstances.length).toBe(1);
-    expect(inputInstances[0].value).toBe("12");
-
-    // Simulate submit with valid value
+    expect(inputInstances[0].value).toBe("6");
     inputInstances[0].onSubmit!("10");
-    expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
+    expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(10);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("10");
   });
 
-  it("numeric submenu rejects value below minimum", async () => {
-    mockModules.mockConfig.agent.widgetMaxLines = 12;
+  it("compact-lines submenu rejects zero", async () => {
+    mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
 
-    const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
+    const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLinesCompact");
     const mockDone = vi.fn();
-    maxLines.submenu("12", mockDone);
+    maxLines.submenu("6", mockDone);
 
-    inputInstances[0].onSubmit!("1");
-    expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
+    inputInstances[0].onSubmit!("0");
+    expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
-  it("numeric submenu handles escape", async () => {
+  it("compact-lines submenu handles escape", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
 
-    const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
+    const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLinesCompact");
     const mockDone = vi.fn();
-    maxLines.submenu("12", mockDone);
+    maxLines.submenu("6", mockDone);
 
     inputInstances[0].onEscape!();
     expect(mockDone).toHaveBeenCalled();

@@ -104,11 +104,12 @@ export function createSearchableSelect(
   items: SelectOption[],
   callbacks: { onSelect: (value: string) => Component | void; onCancel: () => void },
   theme: Theme,
+  currentValue: string | null = null,
 ): Component {
   let delegator: ReturnType<typeof createDelegatingComponent>;
   const selector = new SearchableSelectDialog(
     items,
-    null,
+    currentValue,
     {
       onSelect: (value) => {
         const next = callbacks.onSelect(value);

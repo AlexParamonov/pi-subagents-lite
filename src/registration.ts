@@ -102,7 +102,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   // Command registration
   pi.registerCommand("agents", {
-    description: "Manage subagents: agent briefing, model settings, concurrency, running agents, agent types",
+    description: "Manage subagents: running agents, spawning, models, execution, appearance, and advanced settings",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const modelOptions = ctx.modelRegistry.getAvailable().map((m) => `${m.provider}/${m.id}`);
       await showAgentsMainMenu(ctx, modelOptions);

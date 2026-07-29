@@ -111,11 +111,11 @@ deployments go through `pi install` and pi's normal extension loader.
 1. Launch pi from the wave-1 worktree in a fresh tmux window. Capture
    the prompt; assert the loaded extensions list contains `src` and
    the status bar shows the worktree path and branch.
-2. Run `/agents > Debug > Agent briefing` via `send-keys`. Capture.
-   Grep the briefing output for the five required phrases (param
-   exists and is optional, value must be a worktree, relative
-   resolves against cwd, errors are self-describing, worktree's
-   `.pi/agents/` is scanned).
+2. Run `/agents > Settings > Advanced > Diagnostics > Agent types`
+   via `send-keys`. Capture and verify the expected agent catalog is
+   available. Worktree parameter behavior is validated by the spawn
+   flows below and by Vitest; the removed Agent briefing action is no
+   longer part of the manual test path.
 3. **US-6 (param omitted).** Open the spawn menu via `/agents >
    Spawn agent`. Leave the "Worktree" row at "Inherits parent cwd",
    enter a prompt that runs `sleep 5`, Spawn. Verify the widget shows
@@ -131,7 +131,7 @@ deployments go through `pi install` and pi's normal extension loader.
 6. **US-1 (LLM spawns into a worktree).** Prompt the LLM: "Spawn a
    subagent in `<target-worktree-path>` that runs `sleep 5` and
    reports when done." Verify the widget shows the agent with the
-   worktree label. Confirms the briefing taught the LLM the param.
+   worktree label. Confirms the registered tool schema exposes the param.
 7. **US-4 (worktree-local agent type).** Drop a
    `.pi/agents/feature-reviewer.md` into the target worktree with
    valid frontmatter. Prompt the LLM: "Use the `feature-reviewer`

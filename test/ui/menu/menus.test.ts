@@ -32,7 +32,7 @@ describe("showAgentsMainMenu — SelectList dispatcher", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("shows 4 items: Running agents, Spawn agent, Settings, Debug", async () => {
+  it("shows the simplified three-item main menu", async () => {
     const ctx = createMockCtx();
     await showAgentsMainMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     // The SelectList is passed to ctx.ui.custom; items are in the factory
@@ -79,18 +79,14 @@ describe("main menu — submenu navigation", () => {
     });
   });
 
-  it("debug submenu is accessible from main menu", async () => {
+  it("opens Settings from the main menu", async () => {
     const ctx = createMockCtx();
-    // First custom call: main menu, returns 'debug'
-    // Second custom call: debug menu (via showDebugMenu), returns undefined
-    // Third custom call: back to main menu, returns undefined
     let customCallCount = 0;
     ctx.ui.custom.mockImplementation(async () => {
       customCallCount++;
-      if (customCallCount === 1) return "debug"; // main menu → select debug
-      return undefined; // debug menu and main menu escape
+      return customCallCount === 1 ? "settings" : undefined;
     });
     await showAgentsMainMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(ctx.ui.custom).toHaveBeenCalled();
+    expect(ctx.ui.custom).toHaveBeenCalledTimes(3);
   });
 });

@@ -7,7 +7,7 @@ The AgentManager uses per-model concurrency limits instead of a single global
 2. **Per-provider**: `"provider"` key applies to all models from that provider
 3. **Default**: fallback for any model not covered above
 
-Configured via `/agents` > Concurrency settings, persisted in
+Configured via `/agents` > Settings > Advanced > Concurrency limits, persisted in
 `~/.pi/agent/subagents-lite.json`.
 
 ## Why

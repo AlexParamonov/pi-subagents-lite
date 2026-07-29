@@ -13,6 +13,11 @@ import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 
 // Capture SettingsList constructor calls from pi-tui
+let advancedOptionsCall: {
+  items: any[];
+  onChange: (id: string, newValue: string) => void;
+} | undefined;
+
 let settingsListCalls: Array<{
   items: any[];
   maxVisible: number;
@@ -80,6 +85,7 @@ function setupMocks() {
   mockModules.mockPiExec.mockReset();
   vi.clearAllMocks();
   settingsListCalls = [];
+  advancedOptionsCall = undefined;
   inputInstances = [];
   selectListInstances = [];
   resetSelectDialogInstances();
@@ -111,6 +117,18 @@ function createMockWizardCtx(stepResults: (string | undefined)[]) {
 // Helper to complete all 3 wizard steps
 async function completeWizard(ctx: ReturnType<typeof createMockCtx>) {
   await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+  const basicItems = settingsListCalls[1]?.items;
+  const advanced = basicItems?.find((item: any) => item.id === "advanced");
+  if (advanced) {
+    advanced.submenu("", () => {});
+    const advancedCall = settingsListCalls.pop()!;
+    advancedOptionsCall = advancedCall;
+    basicItems.push(...advancedCall.items);
+  }
+}
+
+function allOptionItems(): any[] {
+  return settingsListCalls[1].items;
 }
 
 describe("showSpawnAgentMenu — wizard flow", () => {
@@ -170,7 +188,7 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    const ids = allOptionItems().map((i: any) => i.id);
     expect(ids).toContain("worktree");
   });
 
@@ -181,7 +199,7 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    const ids = allOptionItems().map((i: any) => i.id);
     expect(ids).not.toContain("worktree");
   });
 });
@@ -450,6 +468,20 @@ describe("showSpawnAgentMenu — model", () => {
     expect(typeof item.submenu).toBe("function");
   });
 
+  it("opens a direct searchable picker without a scope-selection step", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    const done = vi.fn();
+    const selectListsBefore = selectListInstances.length;
+    item.submenu(item.currentValue, done);
+    expect(selectListInstances).toHaveLength(selectListsBefore);
+    expect(selectDialogInstances[0].items.map((option: any) => option.value)).toContain("(inherits parent)");
+    expect(selectDialogInstances[0].currentValue).toBe("anthropic/claude-sonnet-4-20250514");
+    selectDialogInstances[0].callbacks.onSelect("(inherits parent)");
+    expect(done).toHaveBeenCalledWith("(inherits parent)");
+  });
+
   it("shows '(inherits parent)' when no model in precedence chain", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "general-purpose") return { name: "general-purpose", description: "", extensions: true, skills: true, systemPrompt: "" };
@@ -568,5 +600,31 @@ describe("showSpawnAgentMenu — spawn action", () => {
     const mockDone = vi.fn();
     item.submenu("", mockDone);
     expect(mockDone).toHaveBeenCalled();
+  });
+
+  it("passes basic and advanced changes to the coordinator intent", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    settingsListCalls[1].onChange("background", "ON");
+    advancedOptionsCall!.onChange("thinkingLevel", "high");
+    advancedOptionsCall!.onChange("description", "focused fix");
+
+    const maxTurns = advancedOptionsCall!.items.find((item: any) => item.id === "maxTurns");
+    maxTurns.submenu("25", vi.fn());
+    inputInstances[inputInstances.length - 1].onSubmit!("12");
+
+    const spawn = settingsListCalls[1].items.find((item: any) => item.id === "spawn");
+    spawn.submenu("", vi.fn());
+
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
+    const [, , type, prompt, options] = mockModules.mockManager.spawn.mock.calls[0];
+    expect({ type, prompt }).toEqual({ type: "general-purpose", prompt: "fix the bug" });
+    expect(options).toMatchObject({
+      description: "focused fix",
+      maxTurns: 12,
+      thinkingLevel: "high",
+      isBackground: true,
+      graceTurns: 6,
+    });
   });
 });

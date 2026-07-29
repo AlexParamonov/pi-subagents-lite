@@ -159,7 +159,7 @@ async function showTextViewer(
 }
 
 /**
- * Build a SelectList of actions for a single agent (view result/error/snapshot,
+ * Build a SelectList of actions for a single agent (view conversation/result/error,
  * steer, stop) for use as a submenu inside a delegating component.
  * @param done — return to the parent agent list (cancel / no actions).
  * @param setActive — swap the delegating component's active child (steer input).
@@ -180,10 +180,7 @@ export function buildAgentActionsList(
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
-  if (record.lifecycle.status === "running" && hasSession) {
-    items.push({ value: "view-snapshot", label: "View snapshot" });
-  }
-  if (hasSession && !isRunning) {
+  if (hasSession) {
     items.push({ value: "view-conversation", label: "View conversation" });
   }
   if (hasResult) {
@@ -205,7 +202,7 @@ export function buildAgentActionsList(
 
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
-    if (item.value === "view-snapshot" || item.value === "view-conversation") {
+    if (item.value === "view-conversation") {
       await showConversationViewer(ctx, record);
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);

@@ -9,9 +9,11 @@
  *   - helpers.ts: shared helpers (buildSettingsListTheme, buildSelectListTheme, validateNumeric)
  *   - menu-model-settings.ts: showModelSettingsMenu
  *   - menu-concurrency.ts: showConcurrencySettingsMenu
+ *   - menu-appearance.ts: showAppearanceMenu
+ *   - menu-execution.ts: showExecutionMenu
  *   - menu-widget-settings.ts: showWidgetSettingsMenu
  *   - menu-running-agents.ts: showRunningAgentsMenu
- *   - menu-debug.ts: showDebugMenu
+ *   - menu-debug.ts: showDiagnosticsMenu
  *   - menu-spawn-options.ts: showSpawnOptionsMenu
  *   - menu-system-prompt.ts: showSystemPromptMenu
  *   - menus.ts (this file): dispatcher — main menu and settings menu
@@ -23,9 +25,11 @@ import { buildSelectListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { showModelSettingsMenu } from "./menu-model-settings.js";
 import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
+import { showAppearanceMenu } from "./menu-appearance.js";
+import { showExecutionMenu } from "./menu-execution.js";
 import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
 import { showRunningAgentsMenu } from "./menu-running-agents.js";
-import { showDebugMenu } from "./menu-debug.js";
+import { showDiagnosticsMenu } from "./menu-debug.js";
 import { showSpawnOptionsMenu } from "./menu-spawn-options.js";
 import { showSystemPromptMenu } from "./menu-system-prompt.js";
 
@@ -61,20 +65,45 @@ export async function showSettingsMenu(
   modelOptions: string[],
 ): Promise<void> {
   const items: SelectItem[] = [
-    { value: "model", label: "Model settings", description: "Set global default and per-type model overrides" },
-    { value: "concurrency", label: "Concurrency settings", description: "Set per-model slot limits" },
-    { value: "spawnoptions", label: "Spawn options", description: "Default thinking, max turns, background, grace turns" },
-    { value: "systemprompt", label: "System prompt", description: "Prompt mode, custom prompt file, AGENTS.md" },
-    { value: "widget", label: "Widget settings", description: "Configure widget display options" },
+    { value: "models", label: "Agent models", description: "Set global default and per-type model overrides" },
+    { value: "execution", label: "Execution", description: "Default concurrency, background mode, and max turns" },
+    { value: "appearance", label: "Appearance", description: "Widget size, compact mode, and stats preset" },
+    { value: "advanced", label: "Advanced", description: "Limits, prompts, behavior, detailed widget settings, diagnostics" },
   ];
 
   await runSelectMenu(ctx, "Settings", items, async (choice) => {
     switch (choice) {
-      case "model": await showModelSettingsMenu(ctx, modelOptions); break;
-      case "concurrency": await showConcurrencySettingsMenu(ctx, modelOptions); break;
-      case "spawnoptions": await showSpawnOptionsMenu(ctx); break;
+      case "models": await showModelSettingsMenu(ctx, modelOptions); break;
+      case "execution": await showExecutionMenu(ctx); break;
+      case "appearance": await showAppearanceMenu(ctx); break;
+      case "advanced": await showAdvancedMenu(ctx, modelOptions); break;
+    }
+  });
+}
+
+async function showAdvancedMenu(
+  ctx: ExtensionCommandContext,
+  modelOptions: string[],
+): Promise<void> {
+  const items: SelectItem[] = [
+    { value: "concurrency", label: "Concurrency limits", description: "Per-provider and per-model agent slot limits" },
+    { value: "systemprompt", label: "System prompt, context, skills & extensions", description: "Prompt mode and implicit loading defaults" },
+    { value: "behavior", label: "Agent behavior & discovery", description: "Grace turns, default thinking, and built-in discovery" },
+    { value: "widget", label: "Detailed widget settings", description: "Compact lines, descriptions, shortcuts, retention, and stat toggles" },
+    { value: "diagnostics", label: "Diagnostics", description: "Inspect discovered agent types" },
+  ];
+
+  await runSelectMenu(ctx, "Advanced", items, async (choice) => {
+    switch (choice) {
+      case "concurrency": await showConcurrencySettingsMenu(ctx, modelOptions, {
+        includeDefault: false,
+        resetDefault: false,
+        title: "Concurrency Limits",
+      }); break;
       case "systemprompt": await showSystemPromptMenu(ctx); break;
+      case "behavior": await showSpawnOptionsMenu(ctx, "behavior"); break;
       case "widget": await showWidgetSettingsMenu(ctx); break;
+      case "diagnostics": await showDiagnosticsMenu(ctx); break;
     }
   });
 }
@@ -84,10 +113,9 @@ export async function showAgentsMainMenu(
   modelOptions: string[],
 ): Promise<void> {
   const items: SelectItem[] = [
-    { value: "running", label: "Running agents", description: "List running/queued agents" },
+    { value: "running", label: "Running agents", description: "List running, queued, and completed agents" },
     { value: "spawn", label: "Spawn agent", description: "Manually spawn a new agent" },
-    { value: "settings", label: "Settings", description: "Model, concurrency, and widget settings" },
-    { value: "debug", label: "Debug", description: "Agent types, briefing, diagnostics" },
+    { value: "settings", label: "Settings", description: "Models, execution, appearance, and advanced settings" },
   ];
 
   await runSelectMenu(ctx, "Agents", items, async (choice) => {
@@ -95,7 +123,6 @@ export async function showAgentsMainMenu(
       case "running": await showRunningAgentsMenu(ctx); break;
       case "spawn": await showSpawnAgentMenu(ctx, modelOptions); break;
       case "settings": await showSettingsMenu(ctx, modelOptions); break;
-      case "debug": await showDebugMenu(ctx); break;
     }
   });
 }

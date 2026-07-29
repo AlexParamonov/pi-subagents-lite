@@ -14,9 +14,8 @@ import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry, VALID_THINKING_LEVELS } from "../../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
+import { buildModelOptions, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
-import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import {
@@ -207,8 +206,84 @@ export async function showSpawnAgentMenu(
   let currentWorktreeLabel = "Inherits parent cwd";
   let currentDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
 
+  const createAdvancedOptionsMenu = (theme: Theme, done: (value?: string) => void) => {
+    const fmtNum = (value: number | undefined) => value != null ? String(value) : "(not set)";
+    const items: SettingItem[] = [
+      ...(inGitRepo ? [{
+        id: "worktree",
+        label: "Worktree",
+        currentValue: currentWorktreeLabel,
+        description: "Run in a linked git worktree instead of the parent cwd.",
+        submenu: (_value: string, subDone: (value?: string) => void) => createSearchableSelect(
+          [
+            { value: "Inherits parent cwd", label: "Inherits parent cwd" },
+            ...worktrees.map((worktree) => ({
+              value: worktree.path,
+              label: truncatePath(worktree.path),
+              provider: worktree.isDetached ? "detached" : (worktree.branch ?? "detached"),
+            })),
+          ],
+          {
+            onSelect: (value) => {
+              if (value === "Inherits parent cwd") {
+                currentWorktreePath = undefined;
+                currentWorktreeLabel = value;
+                subDone(value);
+              } else {
+                const worktree = worktrees.find((entry) => entry.path === value);
+                currentWorktreePath = worktree?.path;
+                currentWorktreeLabel = worktree?.branch ?? "detached";
+                subDone(currentWorktreeLabel);
+              }
+            },
+            onCancel: () => subDone(),
+          },
+          theme,
+        ),
+      } as SettingItem] : []),
+      {
+        id: "thinkingLevel",
+        label: "Thinking level",
+        currentValue: currentThinking ?? "inherit",
+        values: [...VALID_THINKING_LEVELS, "inherit"],
+        description: "Set the reasoning effort level.",
+      },
+      {
+        id: "maxTokens",
+        label: "Max tokens",
+        currentValue: fmtNum(currentMaxTokens),
+        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }, () => { currentMaxTokens = undefined; }),
+        description: "Maximum tokens the agent can consume.",
+      },
+      {
+        id: "maxTurns",
+        label: "Max turns",
+        currentValue: fmtNum(currentMaxTurns),
+        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }, () => { currentMaxTurns = undefined; }),
+        description: "Maximum conversation turns before the hard stop.",
+      },
+      {
+        id: "graceTurns",
+        label: "Grace turns",
+        currentValue: String(currentGraceTurns),
+        submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
+        description: "Extra turns after the soft limit before aborting.",
+      },
+      {
+        id: "description",
+        label: "Description",
+        currentValue: currentDescription,
+        submenu: createInputSubmenu(ctx),
+        description: "Short label shown in the agents list.",
+      },
+    ];
+    return new SettingsList(items, 10, buildSettingsListTheme(theme), (id, value) => {
+      if (id === "thinkingLevel") currentThinking = value === "inherit" ? undefined : value as ThinkingLevel;
+      else if (id === "description") currentDescription = value;
+    }, () => done());
+  };
+
   const buildItems = (): SettingItem[] => {
-    const fmtNum = (v: number | undefined) => v != null ? String(v) : "(not set)";
     const displayModel = currentModelStr || "(inherits parent)";
     const items: SettingItem[] = [
       {
@@ -217,18 +292,13 @@ export async function showSpawnAgentMenu(
         currentValue: "",
         description: "Spawn the agent with current settings",
         submenu: (_v, done) => {
-          const gtItem = items.find(i => i.id === "graceTurns");
-          const bgItem = items.find(i => i.id === "background");
-          const descItem = items.find(i => i.id === "description");
-          const promptItem = items.find(i => i.id === "prompt");
-
           const thinking = currentThinking;
           const maxTurns = currentMaxTurns;
           const maxTokens = currentMaxTokens;
-          const graceTurns = Number(gtItem?.currentValue ?? DEFAULT_GRACE_TURNS);
-          const background = bgItem?.currentValue === "ON";
-          const description = descItem?.currentValue ?? currentDescription;
-          const spawnPrompt = promptItem?.currentValue ?? prompt;
+          const graceTurns = currentGraceTurns;
+          const background = currentBackground;
+          const description = currentDescription;
+          const spawnPrompt = prompt;
 
           // Resolve model
           let model: ReturnType<typeof findModelInRegistry> = undefined;
@@ -306,14 +376,18 @@ export async function showSpawnAgentMenu(
         label: "Model",
         currentValue: displayModel,
         description: "Override the default model for this agent",
-        submenu: createModelSelectSubmenu({
-          modelOptions,
-          showClear: false,
-          theme,
-          onSelect: (_mode, model) => {
-            currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
+        submenu: (_currentValue, done) => createSearchableSelect(
+          buildModelOptions(modelOptions),
+          {
+            onSelect: (model) => {
+              currentModelStr = model === "(inherits parent)" ? "" : model;
+              done(model);
+            },
+            onCancel: () => done(),
           },
-        }),
+          theme,
+          displayModel,
+        ),
       },
       {
         id: "background",
@@ -322,76 +396,12 @@ export async function showSpawnAgentMenu(
         description: "Run the agent in the background",
         values: ["ON", "OFF"],
       },
-      ...(inGitRepo
-        ? [{
-            id: "worktree",
-            label: "Worktree",
-            currentValue: currentWorktreeLabel,
-            description: "Run in a linked git worktree instead of parent cwd",
-            submenu: (_v: string, done: (v?: string) => void) => {
-              const pickerItems = [
-                { value: "Inherits parent cwd", label: "Inherits parent cwd" },
-                ...worktrees.map(wt => {
-                  const branchLabel = wt.isDetached ? "detached" : (wt.branch ?? "detached");
-                  const truncPath = truncatePath(wt.path);
-                  return { value: wt.path, label: truncPath, provider: branchLabel };
-                }),
-              ];
-              return createSearchableSelect(
-                pickerItems,
-                {
-                  onSelect: (value) => {
-                    if (value === "Inherits parent cwd") {
-                      currentWorktreePath = undefined;
-                      done("Inherits parent cwd");
-                    } else {
-                      const wt = worktrees.find(w => w.path === value);
-                      currentWorktreePath = wt?.path;
-                      done(wt?.branch ?? "detached");
-                    }
-                  },
-                  onCancel: () => done(),
-                },
-                theme,
-              );
-            },
-          } as SettingItem]
-        : []),
       {
-        id: "thinkingLevel",
-        label: "Thinking level",
-        currentValue: currentThinking ?? "inherit",
-        description: "Set the reasoning effort level",
-        values: [...VALID_THINKING_LEVELS, "inherit"],
-      },
-      {
-        id: "maxTokens",
-        label: "Max tokens",
-        currentValue: fmtNum(currentMaxTokens),
-        description: "Maximum tokens the agent can consume",
-        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTokens = parsed; }, () => { currentMaxTokens = undefined; }),
-      },
-      {
-        id: "maxTurns",
-        label: "Max turns",
-        currentValue: fmtNum(currentMaxTurns),
-        description: "Maximum conversation turns before hard stop",
-        submenu: createNumericSubmenu(ctx, (parsed) => { currentMaxTurns = parsed; }, () => { currentMaxTurns = undefined; }),
-      },
-      {
-        id: "graceTurns",
-        label: "Grace turns",
-        currentValue: String(currentGraceTurns),
-        description: "Extra turns after soft limit before abort",
-        submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
-      },
-      { id: "__sep__", label: " ", currentValue: "" },
-      {
-        id: "description",
-        label: "Description",
-        currentValue: currentDescription,
-        description: "Short label shown in the agents list",
-        submenu: createInputSubmenu(ctx),
+        id: "advanced",
+        label: "Advanced options",
+        currentValue: "→",
+        description: "Worktree, thinking, token and turn limits, grace turns, and description.",
+        submenu: (_currentValue, done) => createAdvancedOptionsMenu(theme, done),
       },
       {
         id: "prompt",
@@ -399,7 +409,7 @@ export async function showSpawnAgentMenu(
         currentValue: prompt,
         description: "The user message sent to the agent",
         submenu: createInputSubmenu(ctx, { required: true }),
-      }
+      },
     ];
 
     return items;
