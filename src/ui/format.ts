@@ -10,6 +10,7 @@
 
 import { getConfig } from "../agents/agent-types.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
+import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 
@@ -272,13 +273,13 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
 }
 
 /** Build invocation display tags from an AgentInvocation. */
-export function buildInvocationTags(invocation: AgentInvocation | undefined): { modelName?: string; tags: string[] } {
+export function buildInvocationTags(invocation: AgentInvocation | undefined): string[] {
   const tags: string[] = [];
-  if (!invocation) return { tags };
+  if (!invocation) return [];
   if (invocation.thinkingLevel) tags.push(`thinking: ${invocation.thinkingLevel}`);
   if (invocation.runInBackground) tags.push("background");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
-  return { modelName: invocation.modelName, tags };
+  return tags;
 }
 
 /** Build a parenthesized model/thinking tag for widget display.
@@ -292,12 +293,8 @@ export function buildModelThinkingTag(
 ): string {
   const showModel = visible?.showModel !== false;
   const showThinking = visible?.showThinking !== false;
-  const model = showModel && typeof modelName === "string"
-    ? modelName.trim()
-    : undefined;
-  const thinking = showThinking && typeof thinkingLevel === "string"
-    ? thinkingLevel.trim()
-    : undefined;
+  const model = showModel ? modelName?.trim() : undefined;
+  const thinking = showThinking ? thinkingLevel?.trim() : undefined;
   const parts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
   return parts.length > 0 ? `(${parts.join(" · ")})` : "";
 }
@@ -309,7 +306,7 @@ export function resolveModelLabel(style: "id" | "name", labelName: string | unde
 }
 
 /** Resolve model label from an AgentRecord, preferring session model over invocation fallback. */
-export function resolveAgentModelLabel(a: { execution: { session?: { model?: { name?: string; id?: string } } }, display: { invocation?: { modelName?: string } } }, style: "id" | "name"): string | undefined {
+export function resolveAgentModelLabel(a: AgentRecord, style: "id" | "name"): string | undefined {
   const model = a.execution.session?.model;
   const label = model
     ? (style === "name" ? model.name : model.id)
