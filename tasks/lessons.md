@@ -90,3 +90,13 @@
 ### Refactor Scope
 - Refactor agent should stay within issue scope. Mock pattern improvements are out-of-scope for a trust-gate issue.
 - If refactor hits a vitest ordering issue (vi.mock vs vi.hoisted), stop and move on — the code works.
+
+### Model-Aware UI Filtering
+- Use library-provided helpers (getSupportedThinkingLevels, clampThinkingLevel) instead of reimplementing filtering logic.
+- Submenu pattern (lazy evaluation) works well for dynamic option lists — avoids SettingsList rebuild complexity.
+- Grill thoroughly: user corrected scope twice (no Model settings change, non-reasoning shows only off).
+
+## agent-stats-cleanup - 2025-01-27
+**What worked:** Grilling session clarified format requirements through iterative refinement. Two formats (full/compact) with config toggle gave user flexibility. Review caught test assertion bug and untested code path. Refactor extracted `buildStatusBarText` for clarity.
+**What failed:** Builder initially implemented format without config toggle; had to re-spawn for scope addition. First review found misleading test name and `drainQueue` catch block violating AC.
+**Next time:** Clarify format variations upfront during grill. Check `drainQueue` catch blocks for counter increments. Test names must match assertions.

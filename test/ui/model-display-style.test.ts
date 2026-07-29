@@ -143,7 +143,7 @@ describe("buildModelThinkingTag with model label", () => {
 
   it("combines model and thinking", () => {
     const tag = buildModelThinkingTag("27b_mtp", "high", { showModel: true, showThinking: true });
-    expect(tag).toBe("(27b_mtp · high)");
+    expect(tag).toBe("(27b_mtp • high)");
   });
 
   it("omits model when showModel is false", () => {

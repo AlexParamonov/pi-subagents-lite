@@ -2,7 +2,7 @@
  * model-thinking-tag.test.ts — Tests for buildModelThinkingTag.
  *
  * Tests the widget model/thinking tag formatting:
- *   (modelName · thinkingLevel) with independent visibility toggles.
+ *   (modelName • thinkingLevel) with independent visibility toggles.
  */
 
 import { describe, it, expect } from "vitest";
@@ -29,7 +29,7 @@ describe("buildModelThinkingTag", () => {
   });
 
   it("formats both model and thinking with middle dot separator", () => {
-    expect(buildModelThinkingTag("haiku", "medium", { showModel: true, showThinking: true })).toBe("(haiku · medium)");
+    expect(buildModelThinkingTag("haiku", "medium", { showModel: true, showThinking: true })).toBe("(haiku • medium)");
   });
 
   it("hides model when showModel is false", () => {
@@ -92,7 +92,7 @@ describe("agentNameLabel", () => {
 
   it("includes both model and thinking with middle dot", () => {
     const d = { type: "builder", modelName: "haiku", modelId: "haiku", thinkingLevel: "medium" };
-    expect(agentNameLabel(d, theme)).toBe("Agent (haiku · medium)");
+    expect(agentNameLabel(d, theme)).toBe("Agent (haiku • medium)");
   });
 
   it("ignores empty model name", () => {
@@ -107,6 +107,6 @@ describe("agentNameLabel", () => {
 
   it("trims whitespace from values", () => {
     const d = { type: "builder", modelName: "  haiku  ", modelId: "  haiku  ", thinkingLevel: "  low  " };
-    expect(agentNameLabel(d, theme)).toBe("Agent (haiku · low)");
+    expect(agentNameLabel(d, theme)).toBe("Agent (haiku • low)");
   });
 });
