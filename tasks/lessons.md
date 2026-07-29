@@ -82,3 +82,11 @@
 - When bumping versions, always run the package manager to regenerate lockfiles. Never hand-edit bun.lock.
 - Keep `@ts-expect-error` comments focused — one error per directive.
 
+
+### Cross-Platform
+- `process.env.HOME` is unreliable on Windows. Use SDK's `getAgentDir()` or `os.homedir()` instead.
+- Check existing PRs for reference implementations before grilling alternatives — PR #12 already solved this issue.
+
+### Refactor Scope
+- Refactor agent should stay within issue scope. Mock pattern improvements are out-of-scope for a trust-gate issue.
+- If refactor hits a vitest ordering issue (vi.mock vs vi.hoisted), stop and move on — the code works.
