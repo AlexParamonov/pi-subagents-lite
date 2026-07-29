@@ -6,7 +6,7 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
-import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
+import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag } from "./format.js";
 
 // ============================================================================
 // Stats rendering helpers
@@ -17,8 +17,7 @@ export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string
   const typeName = getDisplayName((d.type as string) || "");
   const modelName = d.modelName as string | undefined;
   const thinkingLevel = d.thinkingLevel as string | undefined;
-  const parts = [modelName, thinkingLevel].filter((p): p is string => !!p && p.trim().length > 0);
-  const tag = parts.length > 0 ? `(${parts.join(" · ")})` : "";
+  const tag = buildModelThinkingTag(modelName, thinkingLevel);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
 

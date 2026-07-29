@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { buildModelThinkingTag } from "../../src/ui/format.js";
+import { agentNameLabel } from "../../src/ui/renderer.js";
 
 describe("buildModelThinkingTag", () => {
   const defaultVisible = { showModel: true, showThinking: true };
@@ -67,5 +68,44 @@ describe("buildModelThinkingTag", () => {
     for (const level of ["off", "minimal", "low", "medium", "high", "max"] as const) {
       expect(buildModelThinkingTag(undefined, level, defaultVisible)).toBe(`(${level})`);
     }
+  });
+});
+
+describe("agentNameLabel", () => {
+  const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+
+  it("returns just the type name when no model or thinking", () => {
+    const d = { type: "builder" };
+    expect(agentNameLabel(d, theme)).toBe("Agent");
+  });
+
+  it("includes model name in parens", () => {
+    const d = { type: "builder", modelName: "haiku" };
+    expect(agentNameLabel(d, theme)).toBe("Agent (haiku)");
+  });
+
+  it("includes thinking level in parens", () => {
+    const d = { type: "builder", thinkingLevel: "medium" };
+    expect(agentNameLabel(d, theme)).toBe("Agent (medium)");
+  });
+
+  it("includes both model and thinking with middle dot", () => {
+    const d = { type: "builder", modelName: "haiku", thinkingLevel: "medium" };
+    expect(agentNameLabel(d, theme)).toBe("Agent (haiku · medium)");
+  });
+
+  it("ignores empty model name", () => {
+    const d = { type: "builder", modelName: "", thinkingLevel: "low" };
+    expect(agentNameLabel(d, theme)).toBe("Agent (low)");
+  });
+
+  it("ignores whitespace-only model name", () => {
+    const d = { type: "builder", modelName: "   ", thinkingLevel: "low" };
+    expect(agentNameLabel(d, theme)).toBe("Agent (low)");
+  });
+
+  it("trims whitespace from values", () => {
+    const d = { type: "builder", modelName: "  haiku  ", thinkingLevel: "  low  " };
+    expect(agentNameLabel(d, theme)).toBe("Agent (haiku · low)");
   });
 });
