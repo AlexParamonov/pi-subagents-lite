@@ -79,57 +79,110 @@ export async function scanAndMerge(options?: { disableDefaultAgents?: boolean })
   return mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
 }
 /**
- * Scan the known agent directories and register any newly discovered agents
- * that aren't already in the registry. Returns the number of new agents added.
- *
- * @param worktreeDir - Optional absolute path to a worktree's `.pi/agents/` directory.
- *   When set, agents from this directory are also scanned and added to the registry.
- *   Worktree-local types use "project" source attribution and follow the same
- *   parsing and name-uniqueness rules as the parent's project scan.
- * @param options - Optional settings. disableDefaultAgents skips DEFAULT_AGENTS in the merge.
+ * Scan the parent directories and refresh the global registry. Worktree
+ * definitions deliberately never pass through this function: a worktree is a
+ * spawn-local overlay, not session-global state. Returns the number of names
+ * newly added to the parent registry.
  */
-export async function discoverNewAgents(worktreeDir?: string, options?: { disableDefaultAgents?: boolean }): Promise<number> {
-  const merged = await scanAndMerge(options);
-
-  let count = 0;
-  for (const [name, config] of merged) {
-    if (!agents.has(name)) {
-      agents.set(name, config);
-      count++;
-    }
+export async function discoverNewAgents(options?: RegisterAgentsOptions): Promise<number> {
+  const discovered = await scanAndMerge(options);
+  const previousNames = new Set(agents.keys());
+  agents.clear();
+  for (const [name, config] of discovered) {
+    agents.set(name, config);
   }
+  return [...discovered.keys()].filter((name) => !previousNames.has(name)).length;
+}
 
-  // Scan worktree-local agents (only when worktreeDir is provided)
-  if (worktreeDir) {
-    const worktreeAgents = await scanAgentFilesInDir(worktreeDir, "project");
-    const wtMerged = mergeAgents(new Map(), [], [], worktreeAgents);
-    for (const [name, config] of wtMerged) {
-      if (!agents.has(name)) {
-        agents.set(name, config);
-        count++;
-      }
-    }
+/** Resolve a type name in an explicit registry without reading global state. */
+export function resolveTypeInCatalog(availableAgents: ReadonlyMap<string, AgentConfig>, name: string): string | undefined {
+  if (!name) return undefined;
+  if (availableAgents.has(name)) return name;
+  const lower = name.toLowerCase();
+  for (const [key, config] of availableAgents.entries()) {
+    if (key.toLowerCase() === lower) return key;
+    if ((config.displayName ?? "").toLowerCase() === lower) return key;
   }
+  return undefined;
+}
 
-  return count;
+/**
+ * Build a fresh, local registry for one worktree. This never mutates the
+ * parent registry, so concurrent worktree spawns cannot observe each other's
+ * partial overlays.
+ */
+export async function discoverWorktreeAgents(
+  worktreeDir: string,
+  options?: RegisterAgentsOptions,
+): Promise<Map<string, AgentConfig>> {
+  const [parentMerged, worktreeAgents] = await Promise.all([
+    scanAndMerge(options),
+    scanAgentFilesInDir(worktreeDir, "project"),
+  ]);
+  return mergeAgents(parentMerged, [], [], worktreeAgents);
+}
+
+/** Build an invocation-local catalog, optionally overlaid with a trusted worktree directory. */
+export async function resolveAgentCatalog(
+  trustedWorktreeDir?: string,
+  options?: RegisterAgentsOptions,
+): Promise<Map<string, AgentConfig>> {
+  return trustedWorktreeDir
+    ? discoverWorktreeAgents(trustedWorktreeDir, options)
+    : scanAndMerge(options);
+}
+
+/** A canonical type plus its worktree-local, fully merged configuration. */
+export interface WorktreeAgentResolution {
+  type: string;
+  config: AgentConfig;
+}
+
+/**
+ * Resolve an agent against a fresh parent merge plus one worktree overlay.
+ * The returned configuration belongs solely to this resolution and must be
+ * carried by the spawn rather than looked up in the mutable global registry.
+ */
+export async function resolveWorktreeAgent(
+  name: string,
+  worktreeDir: string,
+  options?: RegisterAgentsOptions,
+): Promise<WorktreeAgentResolution | undefined> {
+  const localAgents = await discoverWorktreeAgents(worktreeDir, options);
+  const type = resolveTypeInCatalog(localAgents, name);
+  return type ? { type, config: localAgents.get(type)! } : undefined;
+}
+
+/** Return a detached config snapshot safe to retain while a run is queued. */
+export function snapshotAgentConfig(config: AgentConfig): AgentConfig {
+  return {
+    ...config,
+    registeredTools: config.registeredTools && [...config.registeredTools],
+    tools: Array.isArray(config.tools) ? [...config.tools] : config.tools,
+    excludeTools: config.excludeTools && [...config.excludeTools],
+    extensions: Array.isArray(config.extensions) ? [...config.extensions] : config.extensions,
+    excludeExtensions: config.excludeExtensions && [...config.excludeExtensions],
+    skills: Array.isArray(config.skills) ? [...config.skills] : config.skills,
+    preloadSkills: Array.isArray(config.preloadSkills) ? [...config.preloadSkills] : config.preloadSkills,
+  };
 }
 
 /** Resolve a type name case-insensitively. Also matches displayName. Returns the canonical key or undefined. */
 export function resolveType(name: string): string | undefined {
-  if (!name) return undefined;
-  if (agents.has(name)) return name;
-  const lower = name.toLowerCase();
-  for (const [key, config] of agents.entries()) {
-    if (key.toLowerCase() === lower) return key;
-    if ((config.displayName ?? '').toLowerCase() === lower) return key;
-  }
-  return undefined;
+  return resolveTypeInCatalog(agents, name);
 }
 
 /** Get the agent config for a type (case-insensitive). */
 export function getAgentConfig(name: string): AgentConfig | undefined {
   const key = resolveType(name);
   return key ? agents.get(key) : undefined;
+}
+
+/** Get visible agent configs in registry order. */
+export function getAvailableAgents(): Array<{ name: string; description: string }> {
+  return [...agents.entries()]
+    .filter(([, config]) => config.hidden !== true)
+    .map(([name, config]) => ({ name, description: config.description }));
 }
 
 /** Get all visible type names (for spawning and tool descriptions). */
@@ -307,8 +360,8 @@ export function resolveSessionAllowedTools(opts: {
 }
 
 /** Get built-in tool names for a type (case-insensitive). */
-export function getToolNamesForType(type: string): string[] {
-  const config = getAgentConfig(type);
+export function getToolNamesForType(type: string, configOverride?: AgentConfig): string[] {
+  const config = configOverride ?? getAgentConfig(type);
   return config?.registeredTools?.length
     ? config.registeredTools
     : [...BUILTIN_TOOL_NAMES];
@@ -342,39 +395,32 @@ function applyGlobalDefaults(
   };
 }
 
-/** Find the first non-hidden config: resolved type, then general-purpose, then undefined. */
-function findActiveConfig(type: string): AgentConfig | undefined {
-  const key = resolveType(type);
-  const config = key ? agents.get(key) : undefined;
-  if (config?.hidden !== true) return config;
-  return agents.get("general-purpose");
+/** Resolve an already-selected agent definition without consulting the registry. */
+export function resolveAgentConfig(
+  config: AgentConfig,
+  loadSkillsImplicitly: boolean = true,
+  loadExtensionsImplicitly: boolean = true,
+): ResolvedAgentConfig {
+  const { skills, extensions, ...rest } = config;
+  const defaults = applyGlobalDefaults(skills, extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
+  return {
+    displayName: rest.displayName ?? rest.name,
+    description: rest.description,
+    registeredTools: rest.registeredTools ?? BUILTIN_TOOL_NAMES,
+    tools: rest.tools,
+    ...defaults,
+  };
 }
 
-/** Get config for a type (case-insensitive). Falls back to general-purpose. */
+/** Get config for an explicitly selected type (case-insensitive). */
 export function getConfig(
   type: string,
   loadSkillsImplicitly: boolean = true,
   loadExtensionsImplicitly: boolean = true,
 ): ResolvedAgentConfig {
-  const config = findActiveConfig(type);
-  if (config) {
-    const { skills, extensions, ...rest } = config;
-    const defaults = applyGlobalDefaults(skills, extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
-    return {
-      displayName: rest.displayName ?? rest.name,
-      description: rest.description,
-      registeredTools: rest.registeredTools ?? BUILTIN_TOOL_NAMES,
-      tools: rest.tools,
-      ...defaults,
-    };
+  const config = getAgentConfig(type);
+  if (!config) {
+    throw new Error(`Unknown agent type: ${type || "(missing)"}`);
   }
-
-  // Absolute fallback — no config found at all
-  const defaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
-  return {
-    displayName: "Agent",
-    description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: BUILTIN_TOOL_NAMES,
-    ...defaults,
-  };
+  return resolveAgentConfig(config, loadSkillsImplicitly, loadExtensionsImplicitly);
 }

@@ -8,7 +8,8 @@
  *   - mergeAgents: per-field merge default < user < project, returns Map<string, AgentConfig>
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as fs from "node:fs";
 import {
   parseAgentFile,
   scanAgentFilesInDir,
@@ -16,6 +17,7 @@ import {
   parseExtensions,
 } from "../../src/agents/agent-discovery.ts";
 import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.ts";
+import { DEFAULT_AGENTS } from "../../src/agents/default-agents.ts";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
 
 /* ------------------------------------------------------------------ */
@@ -142,6 +144,17 @@ Just a body.
     expect(result.source).toBe("project");
   });
 
+  it("parses CRLF frontmatter", () => {
+    const content = "---\r\nname: windows-agent\r\ntools: [read, bash]\r\nextensions: false\r\n---\r\nWindows body\r\n";
+    const result = parseAgentFile(content, "project");
+    expect(result).toMatchObject({
+      name: "windows-agent",
+      tools: ["read", "bash"],
+      extensions: false,
+      systemPrompt: "Windows body",
+    });
+  });
+
   it("parses content with no frontmatter", () => {
     const content = "# Just a markdown file\n\nNo frontmatter here.";
     const result = parseAgentFile(content, "user");
@@ -150,10 +163,10 @@ Just a body.
     expect(result.source).toBe("user");
   });
 
-  it("parses empty content", () => {
+  it("parses empty content without a prompt body", () => {
     const result = parseAgentFile("", "user");
     expect(result.name).toBeUndefined();
-    expect(result.systemPrompt).toBe("");
+    expect(result.systemPrompt).toBeUndefined();
     expect(result.source).toBe("user");
   });
 
@@ -255,6 +268,17 @@ describe("scanAgentFilesInDir", () => {
     expect(result).toEqual([]);
   });
 
+  it("treats a readable but unlistable directory as empty", async () => {
+    const { dir, cleanup } = tempDirWithFiles([{ name: "agent.md", content: makeAgentMd({ name: "agent" }) }]);
+    const readdir = vi.spyOn(fs.promises, "readdir").mockRejectedValueOnce(new Error("EACCES"));
+    try {
+      await expect(scanAgentFilesInDir(dir, "user")).resolves.toEqual([]);
+    } finally {
+      readdir.mockRestore();
+      cleanup();
+    }
+  });
+
   it("parses all .md files in a directory", async () => {
     const { dir, cleanup } = tempDirWithFiles([
       { name: "alpha.md", content: makeAgentMd({ name: "alpha", model: "model/a" }) },
@@ -269,6 +293,21 @@ describe("scanAgentFilesInDir", () => {
       expect(agents.find((a) => a.name === "alpha")?.model).toBe("model/a");
       expect(agents.find((a) => a.name === "beta")?.model).toBe("model/b");
       expect(agents.find((a) => a.name === "gamma")?.model).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("uses the filename when frontmatter omits name", async () => {
+    const { dir, cleanup } = tempDirWithFiles([
+      { name: "reviewer.md", content: "---\ndescription: Reviews changes\n---\nInstructions" },
+    ]);
+
+    try {
+      const agents = await scanAgentFilesInDir(dir, "user");
+      expect(agents).toHaveLength(1);
+      expect(agents[0]?.name).toBe("reviewer");
+      expect(agents[0]?.description).toBe("Reviews changes");
     } finally {
       cleanup();
     }
@@ -330,6 +369,35 @@ describe("mergeAgents", () => {
     const result = mergeAgents(defaults, [], [], []);
     expect(result.size).toBe(1);
     expect(result.get("explorer")?.model).toBe("model/a");
+  });
+
+  it("keeps the default reviewer prompt for a bodyless partial override", () => {
+    const defaultReviewer = DEFAULT_AGENTS.get("reviewer")!;
+    const override = parseAgentFile(`---
+name: reviewer
+model: test/reviewer
+---
+`, "project");
+
+    const result = mergeAgents(DEFAULT_AGENTS, [], [], [override]);
+    const reviewer = result.get("reviewer")!;
+    expect(override.systemPrompt).toBeUndefined();
+    expect(reviewer.model).toBe("test/reviewer");
+    expect(reviewer.systemPrompt).toBe(defaultReviewer.systemPrompt);
+  });
+
+  it("replaces the default reviewer prompt when an override has a body", () => {
+    const override = parseAgentFile(`---
+name: reviewer
+model: test/reviewer
+---
+Use this reviewer prompt instead.
+`, "project");
+
+    const result = mergeAgents(DEFAULT_AGENTS, [], [], [override]);
+    const reviewer = result.get("reviewer")!;
+    expect(reviewer.model).toBe("test/reviewer");
+    expect(reviewer.systemPrompt).toBe("Use this reviewer prompt instead.");
   });
 
   it("user agents override defaults by name with per-field merge", () => {

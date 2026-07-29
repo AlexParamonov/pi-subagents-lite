@@ -444,16 +444,8 @@ describe("getConfig — global implicit defaults", () => {
     expect(result.extensions).toBe(false);
   });
 
-  it("unknown agent type uses global defaults", () => {
-    const result = getConfig("nonexistent", false, false);
-    expect(result.skills).toBe(false);
-    expect(result.extensions).toBe(false);
-  });
-
-  it("unknown agent type with load-all defaults to true", () => {
-    const result = getConfig("nonexistent", true, true);
-    expect(result.skills).toBe(true);
-    expect(result.extensions).toBe(true);
+  it("unknown agent type fails instead of falling back", () => {
+    expect(() => getConfig("nonexistent", false, false)).toThrow("Unknown agent type: nonexistent");
   });
 });
 

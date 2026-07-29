@@ -6,7 +6,7 @@ import type { Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
-import type { SubagentType, AgentInvocation } from "./agents/types.js";
+import type { SubagentType, AgentInvocation, AgentConfig } from "./agents/types.js";
 
 /** Thinking level for agent models (sourced from @earendil-works/pi-ai). */
 export type ThinkingLevel = ModelThinkingLevel;
@@ -69,6 +69,8 @@ export interface RunCallbacks {
  * extends RunTunables with display/identity fields.
  */
 export interface SpawnConfig extends RunTunables {
+  /** Detached definition resolved at selection/tool invocation time. */
+  agentConfig?: AgentConfig;
   description: string;
   modelKey?: string;
   worktreePath?: string;
@@ -167,8 +169,15 @@ export interface AgentAccumulatedStats {
   /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
   compactionCount: number;
   /** Previous input token count for delta estimation (vLLM doesn't report cache hits). */
-  /** Last-known context usage percentage (0–100), captured at completion. */
+  /** Pi-style cumulative cache reads (each request's cache prefix is counted). */
+  cacheRead: number;
+  /** Cache hit rate from the most recent usage event. */
+  latestCacheHitRate?: number;
+  /** Final context/auth snapshot, retained after the live session is gone. */
   contextPercent?: number | null;
+  contextWindow?: number;
+  autoCompactionEnabled?: boolean;
+  usingSubscription?: boolean;
 }
 
 

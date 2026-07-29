@@ -6,6 +6,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import type { Usage } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
@@ -19,20 +20,20 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import {
+  BUILTIN_TOOL_NAMES,
   getAgentConfig,
   getConfig,
-  getToolNamesForType,
+  resolveAgentConfig,
   resolveSessionAllowedTools,
   resolveVisibleTools,
 } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
 import type { AgentUsage } from "./usage.js";
-import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
-import { DEFAULT_AGENTS } from "./default-agents.js";
+import { GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
 import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
-import type { SubagentType, SystemPromptMode } from "./types.js";
+import type { AgentConfig, SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 
@@ -105,11 +106,20 @@ function normalizeMaxTurns(n: number | undefined): number | undefined {
   return Math.max(1, n);
 }
 
-/** Info about a tool event in the subagent. */
-interface RunOptions extends RunTunables, RunCallbacks {
+/**
+ * Internal usage channel for billable work that is not an assistant turn.
+ * These usages must not affect assistant-only input-delta or cache-hit metrics.
+ */
+interface SupplementalUsageCallbacks {
+  onSupplementalUsage?: (usage: AgentUsage) => void;
+}
+
+interface RunOptions extends RunTunables, RunCallbacks, SupplementalUsageCallbacks {
+  /** Detached definition captured before queueing; never re-resolve at start. */
+  agentConfig?: AgentConfig;
   /** ExtensionAPI instance — used for pi.exec() for git detection. */
   pi: ExtensionAPI;
-  /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
+  /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `explorer#a1b2c3d4`). */
   agentId?: string;
   /** Override working directory (resolved worktree path). */
   cwd?: string;
@@ -187,15 +197,26 @@ function usageFromAssistantMessage(msg: Record<string, unknown>): AgentUsage | u
   };
 }
 
+/** Convert typed upstream usage from compaction or tool results to local accounting. */
+function usageFromTypedUsage(usage: Usage): AgentUsage {
+  return {
+    input: usage.input,
+    output: usage.output,
+    cacheWrite: usage.cacheWrite,
+    cacheRead: usage.cacheRead,
+    cost: usage.cost.total,
+  };
+}
+
 /**
  * Subscribe to shared session events (tool activity, usage, compaction)
  * used by runAgent. Returns an unsubscribe function.
  */
 export function subscribeToSessionEvents(
   session: AgentSession,
-  options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
+  options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onSupplementalUsage" | "onCompaction">,
 ): () => void {
-  if (!options.onToolActivity && !options.onAssistantUsage && !options.onCompaction) {
+  if (!options.onToolActivity && !options.onAssistantUsage && !options.onSupplementalUsage && !options.onCompaction) {
     return () => {};
   }
   return session.subscribe((event: AgentSessionEvent) => {
@@ -212,7 +233,13 @@ export function subscribeToSessionEvents(
         options.onAssistantUsage?.(usage);
       }
     }
+    if (event.type === "message_end" && event.message.role === "toolResult" && event.message.usage) {
+      options.onSupplementalUsage?.(usageFromTypedUsage(event.message.usage));
+    }
     if (event.type === "compaction_end" && !event.aborted && event.result) {
+      if (event.result.usage) {
+        options.onSupplementalUsage?.(usageFromTypedUsage(event.result.usage));
+      }
       options.onCompaction?.({ reason: event.reason, tokensBefore: event.result.tokensBefore });
     }
   });
@@ -354,7 +381,7 @@ function resolveSystemPromptSources(
  */
 function buildPrompt(
   type: SubagentType,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   config: ReturnType<typeof getConfig>,
   cwd: string,
   env: EnvInfo,
@@ -368,12 +395,8 @@ function buildPrompt(
   if (Array.isArray(config.skills)) {
     extras.skillMetas = loadSkillMeta(config.skills, cwd);
   }
-  if (agentConfig) {
-    return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
-  }
-  const fallback = DEFAULT_AGENTS.get("general-purpose");
-  if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
-  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras, systemPromptMode);
+  if (!agentConfig) throw new Error(`Unknown agent type: ${type}`);
+  return buildAgentPrompt(agentConfig, cwd, env, extras, systemPromptMode);
 }
 
 /** Build extension name → tool names map from loaded extensions. */
@@ -460,7 +483,7 @@ export function buildExtOverride(
  */
 function createResourceLoader(
   config: ReturnType<typeof getConfig>,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   cwd: string,
   systemPrompt: string,
   notify?: (msg: string) => void,
@@ -493,16 +516,17 @@ function createResourceLoader(
 async function initSession(
   ctx: ExtensionContext,
   options: RunOptions,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   type: SubagentType,
   cwd: string,
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
 ) {
-  const model = options.model ?? findModelInRegistry(
-    agentConfig?.model, ctx.modelRegistry, ctx.model,
-  );
-  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
+  // Model and thinking precedence is resolved at the spawn boundary. The
+  // runner consumes those resolved values and only inherits from its parent
+  // defensively for direct callers.
+  const model = options.model ?? ctx.model;
+  const thinkingLevel = options.thinkingLevel ?? ctx.thinkingLevel;
   const agentDir = getAgentDir();
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd, agentDir,
@@ -510,7 +534,7 @@ async function initSession(
     settingsManager: SettingsManager.create(cwd, agentDir),
     model,
     tools: resolveSessionAllowedTools({
-      registeredTools: getToolNamesForType(type),
+      registeredTools: agentConfig?.registeredTools?.length ? agentConfig.registeredTools : BUILTIN_TOOL_NAMES,
       tools: agentConfig?.tools,
       extToolMap,
     }), resourceLoader: loader,
@@ -540,7 +564,7 @@ async function initSession(
 async function createAndConfigureSession(
   ctx: ExtensionContext,
   options: RunOptions,
-  agentConfig: ReturnType<typeof getAgentConfig>,
+  agentConfig: AgentConfig | undefined,
   type: SubagentType,
   cwd: string,
   loader: DefaultResourceLoader,
@@ -648,8 +672,13 @@ async function runAgentImpl(
   options: RunOptions,
 ): Promise<RunResult> {
   const store = getStore();
-  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
-  const agentConfig = getAgentConfig(type);
+  // A queued run uses the definition selected at enqueue time. Registry
+  // lookup remains only for legacy direct callers that did not provide a snapshot.
+  const agentConfig = options.agentConfig ?? getAgentConfig(type);
+  if (!agentConfig) throw new Error(`Unknown agent type: ${type}`);
+  const config = options.agentConfig
+    ? resolveAgentConfig(options.agentConfig, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly)
+    : getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
 
   // Buffer warnings during setup to avoid inserting custom_message entries
   // between tool_use and tool_result in the session tree (causes Anthropic 400).

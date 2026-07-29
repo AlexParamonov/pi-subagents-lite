@@ -3,7 +3,7 @@
  *
  * Covers:
  *   - Navigation state machine (activate, up, down, select, deactivate)
- *   - Roster building (finished, running, queued)
+ *   - Roster building (running, queued, finished)
  *   - Rendering with `>` marker and heading hint text
  *   - Queued agent expansion during navigation
  *   - Editor focus detection
@@ -31,14 +31,16 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 
 vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
+  visibleWidth: (text: string) => text.length,
 }));
 
-function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
+function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = agents.length): AgentManager {
   return {
     listAgents: () => agents,
     getAgent: () => undefined,
     setConcurrency: () => {},
     getTotalAgentCost: () => totalAgentCost,
+    getTotalAgentCount: () => totalAgentCount,
   } as any as AgentManager;
 }
 
@@ -150,7 +152,7 @@ describe("navigation state machine", () => {
 
       widget.navActivate();
       expect(widget.isNavActive()).toBe(true);
-      // Index 0 = first finished agent
+      // Index 0 = first running agent
       expect(widget.highlightedIndex()).toBe(0);
     });
 
@@ -169,10 +171,10 @@ describe("navigation state machine", () => {
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [finished, running];
 
-      widget.navActivate(); // highlights index 0 (first finished)
+      widget.navActivate(); // highlights index 0 (first running)
       expect(widget.highlightedIndex()).toBe(0);
 
-      widget.navDown(); // moves to running agent
+      widget.navDown(); // moves to finished agent
       expect(widget.highlightedIndex()).toBe(1);
     });
 
@@ -197,7 +199,7 @@ describe("navigation state machine", () => {
       widget.navDown(); // index 1 (running)
       expect(widget.highlightedIndex()).toBe(1);
 
-      widget.navUp(); // back to finished
+      widget.navUp(); // back to running
       expect(widget.highlightedIndex()).toBe(0);
     });
 
@@ -282,21 +284,43 @@ describe("navigation roster", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
-  it("includes finished at index 0, then running, queued", () => {
+  it("orders navigation globally by startedAt across statuses", () => {
     const finished = makeFinishedAgent("f1");
+    finished.lifecycle.startedAt = new Date(2024, 0, 2, 9, 1).getTime();
     const running = makeRunningAgent("r1");
+    running.lifecycle.startedAt = new Date(2024, 0, 2, 9, 2).getTime();
     activity.set("r1", makeActivity("r1"));
     const queued = makeQueuedAgent("q1");
+    queued.lifecycle.startedAt = new Date(2024, 0, 2, 9, 3).getTime();
     (manager as any).listAgents = () => [finished, running, queued];
 
     widget.navActivate();
 
-    // Roster: finished(0), running(1), queued(2)
-    expect(widget.highlightedIndex()).toBe(0); // first agent
-    widget.navDown(); // running
-    expect(widget.highlightedIndex()).toBe(1);
-    widget.navDown(); // queued
-    expect(widget.highlightedIndex()).toBe(2);
+    expect(widget.navSelect()?.id).toBe("q1");
+    widget.navDown();
+    expect(widget.navSelect()?.id).toBe("r1");
+    widget.navDown();
+    expect(widget.navSelect()?.id).toBe("f1");
+  });
+
+  it("preserves manager order for equal startedAt values across statuses", () => {
+    const startedAt = new Date(2024, 0, 2, 9, 3).getTime();
+    const queued = makeQueuedAgent("q1");
+    queued.lifecycle.startedAt = startedAt;
+    const finished = makeFinishedAgent("f1");
+    finished.lifecycle.startedAt = startedAt;
+    const running = makeRunningAgent("r1");
+    running.lifecycle.startedAt = startedAt;
+    activity.set(running.id, makeActivity(running.id));
+    (manager as any).listAgents = () => [queued, finished, running];
+
+    widget.navActivate();
+
+    expect(widget.navSelect()?.id).toBe("q1");
+    widget.navDown();
+    expect(widget.navSelect()?.id).toBe("f1");
+    widget.navDown();
+    expect(widget.navSelect()?.id).toBe("r1");
   });
 
   it("queued agents expand to individual rows during navigation", () => {
@@ -311,14 +335,15 @@ describe("navigation roster", () => {
     expect(widget.highlightedIndex()).toBe(1);
   });
 
-  it("queued agents aggregate when navigation is inactive", () => {
+  it("queued agents remain individual when navigation is inactive", () => {
     const q1 = makeQueuedAgent("q1");
     const q2 = makeQueuedAgent("q2");
     (manager as any).listAgents = () => [q1, q2];
 
-    // Without nav active, queued agents render as "2 queued" block
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines.some((l: string) => l.includes("2 queued"))).toBe(true);
+    expect(lines.some((l: string) => l.includes("Queued agent q1"))).toBe(true);
+    expect(lines.some((l: string) => l.includes("Queued agent q2"))).toBe(true);
+    expect(lines.some((l: string) => l.includes("2 queued"))).toBe(false);
   });
 });
 
@@ -443,11 +468,32 @@ describe("overflow with navigation", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
+  it("keeps a pinned multi-line block within widgetMaxLines by trimming continuations", () => {
+    widget.setMaxLines(3);
+    const pinned = makeRunningAgent("pinned");
+    pinned.display.outputFile = "/tmp/pinned.log";
+    const other = makeFinishedAgent("other");
+    activity.set(pinned.id, makeActivity(pinned.id));
+    (manager as any).listAgents = () => [pinned, other];
+
+    widget.navActivate();
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const pinnedHeader = lines.find((line: string) => line.includes("Running agent pinned"));
+
+    expect(lines.length).toBeLessThanOrEqual(3);
+    expect(pinnedHeader).toContain("→");
+    expect(lines.some((line: string) => line.includes("tail -f /tmp/pinned.log"))).toBe(false);
+    expect(lines.some((line: string) => line.includes("more"))).toBe(true);
+  });
+
   it("pinned block appears when navigating to a hidden agent", () => {
     // Create 15 finished agents — body budget is maxLines-1 = 11,
     // so 4 agents are hidden by overflow without pinning.
+    const startedAt = new Date(2024, 0, 2, 9, 0).getTime();
     const agents = Array.from({ length: 15 }, (_, i) => {
       const agent = makeFinishedAgent(`f${i}`);
+      agent.lifecycle.startedAt = startedAt;
       agent.display.description = `Finished agent ${i}`;
       return agent;
     });

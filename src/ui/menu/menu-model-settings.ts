@@ -1,162 +1,174 @@
-/**
- * menu-model-settings.ts — Model settings menu concern.
- *
- * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
- * Model overrides use 2-step submenu: override mode → model selection.
- * Cost display toggle removed (already in widget settings → usage stats).
- *
- * Exports:
- *   - showModelSettingsMenu: model settings with global default, per-type overrides
- */
+/** Combined global and per-agent model/thinking settings. */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
+import type { ThinkingLevel } from "../../types.js";
+import { findModelInRegistry } from "../../utils.js";
+import { normalizeThinkingLevel, supportedThinkingLevels } from "../../models/thinking.js";
+import type { SettingSource } from "../../models/model-precedence.js";
 import type { Theme } from "../types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
-import { buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
+import { buildSettingsListTheme } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
+import { createThinkingSelectSubmenu } from "./submenus/thinking-select.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
+
+const SOURCE_LABELS: Record<SettingSource, string> = {
+  spawn: "spawn",
+  "session-agent": "session override",
+  "config-agent": "saved override",
+  "agent-md": "agent MD",
+  "session-global": "session global",
+  "config-global": "global default",
+  parent: "parent",
+};
+
+function withSource(value: string | undefined, source: SettingSource): string {
+  return `${value ?? "inherit"} (${SOURCE_LABELS[source]})`;
+}
 
 export async function showModelSettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
 ): Promise<void> {
-  // Build menu items from current store state.
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] => {
     const items: SettingItem[] = [];
-    
-    // Shared onSelect for model override submenus: applies session/permanent/clear
-    // mode to the given config key, with `label` used in notify messages.
-    const modelOverrideOnSelect = (
-      key: string,
-      label: string,
-    ): (mode: "session" | "permanent" | "clear", model: string | null) => void =>
-      (mode, model) => {
+
+    const modelOverride = (key: string, label: string) =>
+      (mode: "session" | "permanent" | "clear", model: string | null): void => {
         if (mode === "clear") {
-          store.mutate.agent.clearModelOverride(key);
           store.mutate.session.clearOverride(key);
-          ctx.ui.notify(`${label} overrides cleared`, "info");
-          return;
-        }
-        const effective = model === "(inherits parent)" ? null : model;
-        if (mode === "session") {
-          if (effective === null) {
-            store.mutate.session.clearOverride(key);
-          } else {
-            store.mutate.session.setOverride(key, effective);
-          }
+          if (key === "default") store.mutate.agent.setDefaultModel(null);
+          else store.mutate.agent.clearModelOverride(key);
         } else {
-          store.mutate.agent.setModelOverride(key, effective);
+          const value = model === "(inherits parent)" ? null : model;
+          if (mode === "session") {
+            if (value === null) store.mutate.session.clearOverride(key);
+            else store.mutate.session.setOverride(key, value);
+          } else if (key === "default") {
+            store.mutate.agent.setDefaultModel(value);
+          } else if (value === null) {
+            store.mutate.agent.clearModelOverride(key);
+          } else {
+            store.mutate.agent.setModelOverride(key, value);
+          }
         }
-        ctx.ui.notify(
-          effective === null
-            ? `${label} inherits parent model`
-            : `${label} model set to ${effective}`,
-          "info",
-        );
+        ctx.ui.notify(`${label} model updated`, "info");
       };
 
-    // Global default model
-    const sessionDefault = store.sessionDefaultModel;
-    const hasSessionGlobal = sessionDefault != null;
-    const globalDisplayValue = hasSessionGlobal
-      ? `${sessionDefault} [session]`
-      : store.agent.defaultModel
-        ? store.agent.defaultModel
-        : "(inherits parent)";
+    const thinkingOverride = (key: string, label: string) =>
+      (mode: "session" | "permanent" | "clear", level: ThinkingLevel | undefined): void => {
+        if (mode === "clear") {
+          store.mutate.session.clearThinkingOverride(key);
+          if (key === "default") store.mutate.agent.setDefaultThinking(undefined);
+          else store.mutate.agent.clearThinkingOverride(key);
+        } else if (mode === "session") {
+          if (level === undefined) store.mutate.session.clearThinkingOverride(key);
+          else store.mutate.session.setThinkingOverride(key, level);
+        } else if (key === "default") {
+          store.mutate.agent.setDefaultThinking(level);
+        } else if (level === undefined) {
+          store.mutate.agent.clearThinkingOverride(key);
+        } else {
+          store.mutate.agent.setThinkingOverride(key, level);
+        }
+        ctx.ui.notify(`${label} thinking updated`, "info");
+      };
 
+    const globalModel = store.sessionDefaultModel ?? store.agent.defaultModel;
+    const globalModelSource: SettingSource = store.sessionDefaultModel
+      ? "session-global"
+      : store.agent.defaultModel
+        ? "config-global"
+        : "parent";
     items.push({
       id: "defaultModel",
       label: "Global default model",
-      currentValue: globalDisplayValue,
-      description: "Model used when no per-type override or frontmatter model applies.",
+      currentValue: withSource(globalModel ?? "inherit", globalModelSource),
+      description: "Fallback model used only when an agent MD does not specify one.",
       submenu: createModelSelectSubmenu({
         modelOptions,
-        showClear: false,
+        showClear: globalModelSource !== "parent",
         theme,
-        onSelect: modelOverrideOnSelect("default", "Global default"),
+        onSelect: modelOverride("default", "Global default"),
       }),
     });
 
-    // Per-type overrides
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
-    items.push({ id: "__sep__", label: "── Per-type overrides ──", currentValue: "────────" });
-    const types = getAllTypes();
-    const typeEntries = types.map((typeName) => {
-      const cfg = getAgentConfig(typeName);
-      const sessionOverride = store.sessionModelOverride(typeName);
-      const configOverride = store.agentConfigSnapshot()[typeName];
-      const hasSession = sessionOverride != null;
-      const hasConfigOverride = configOverride != null && typeof configOverride === "string";
-      const effectiveModel = store.modelFor(typeName, "(inherits parent)", cfg);
-      return { typeName, cfg, sessionOverride, configOverride, hasSession, hasConfigOverride, effectiveModel };
+    const globalThinking = store.sessionDefaultThinking ?? store.agent.defaultThinking;
+    const globalThinkingSource: SettingSource = store.sessionDefaultThinking
+      ? "session-global"
+      : store.agent.defaultThinking
+        ? "config-global"
+        : "parent";
+    items.push({
+      id: "defaultThinking",
+      label: "Global default thinking",
+      currentValue: withSource(globalThinking, globalThinkingSource),
+      description: "Fallback thinking used only when an agent MD does not specify one.",
+      submenu: createThinkingSelectSubmenu({
+        showClear: globalThinkingSource !== "parent",
+        theme,
+        onSelect: thinkingOverride("default", "Global default"),
+      }),
     });
 
-    const overridden = typeEntries.filter(e => e.hasSession || e.hasConfigOverride);
-    const nonOverridden = typeEntries.filter(e => !e.hasSession && !e.hasConfigOverride);
-
-    for (const { typeName, cfg, sessionOverride, configOverride, hasSession, effectiveModel } of overridden) {
-      const frontmatterHint = !hasSession && configOverride && cfg?.model ? `${cfg.model} → ` : "";
-      const displayModel = hasSession ? `${sessionOverride} [session]` : effectiveModel;
-      const hasPerm = !!configOverride;
+    items.push({ id: "__types__", label: "── Per-agent settings ──", currentValue: "────────" });
+    for (const typeName of getAllTypes()) {
+      const cfg = getAgentConfig(typeName);
+      const model = store.modelSettingFor(typeName, "inherit", cfg);
+      const thinking = store.thinkingSettingFor(typeName, undefined, cfg);
+      // Some command contexts do not expose a lookup-capable registry (for
+      // example during startup). In that case retain the full level list.
+      const registry = ctx.modelRegistry as typeof ctx.modelRegistry & { find?: unknown };
+      const effectiveModel = typeof registry.find === "function"
+        ? findModelInRegistry(model.value, registry as Parameters<typeof findModelInRegistry>[1], ctx.model)
+        : ctx.model;
+      const effectiveThinking = normalizeThinkingLevel(effectiveModel, thinking.value);
+      const incompatibleThinking = thinking.value !== undefined && effectiveThinking !== thinking.value;
+      const configModel = store.agentConfigSnapshot()[typeName];
 
       items.push({
-        id: `type:${typeName}`,
-        label: typeName,
-        currentValue: `${frontmatterHint}${displayModel}`,
-        description: `Per-type model override for the ${typeName} agent type.`,
+        id: `model:${typeName}`,
+        label: `${typeName} · model`,
+        currentValue: withSource(model.value, model.source),
+        description: `Model setting for ${typeName}. Agent-specific overrides take priority over its MD.`,
         submenu: createModelSelectSubmenu({
           modelOptions,
-          showClear: hasPerm,
+          showClear: store.sessionModelOverride(typeName) !== null || typeof configModel === "string",
           theme,
-          onSelect: modelOverrideOnSelect(typeName, typeName),
+          onSelect: modelOverride(typeName, typeName),
+        }),
+      });
+      items.push({
+        id: `thinking:${typeName}`,
+        label: `${typeName} · thinking`,
+        currentValue: withSource(effectiveThinking, thinking.source),
+        description: incompatibleThinking
+          ? `Using ${effectiveThinking}; requested ${thinking.value} from ${SOURCE_LABELS[thinking.source]} is unsupported by the effective model.`
+          : `Thinking setting for ${typeName}. Agent-specific overrides take priority over its MD.`,
+        submenu: createThinkingSelectSubmenu({
+          showClear: store.sessionThinkingOverride(typeName) !== undefined
+            || store.persistedThinkingOverride(typeName) !== undefined,
+          levels: supportedThinkingLevels(effectiveModel),
+          theme,
+          onSelect: thinkingOverride(typeName, typeName),
         }),
       });
     }
 
-    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
-    // Override another type...
-    if (nonOverridden.length > 0) {
-      items.push({
-        id: "overrideType",
-        label: "Override another type...",
-        currentValue: "",
-        description: "Add a model override for an agent type that currently inherits.",
-        submenu: (_currentValue, subDone) =>
-          createSearchableSelect(
-            nonOverridden.map(e => ({ value: e.typeName, label: e.typeName })),
-            {
-              onSelect: (typeName) => {
-                const entry = nonOverridden.find(e => e.typeName === typeName)!;
-                // Delegate to createModelSelectSubmenu for the 2-step model flow
-                const modelSubmenu = createModelSelectSubmenu({
-                  modelOptions,
-                  showClear: false,
-                  theme,
-                  onSelect: modelOverrideOnSelect(entry.typeName, entry.typeName),
-                });
-                return modelSubmenu(entry.effectiveModel, subDone);
-              },
-              onCancel: () => subDone(),
-            },
-            theme,
-          ),
-      });
-    }
-
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
-    // Clear session overrides
-    const hasSessionOverrides = store.sessionDefaultModel != null ||
-      getAllTypes().some(type => store.sessionModelOverride(type) != null);
-    if (hasSessionOverrides) {
+    const hasSession = store.sessionDefaultModel !== null
+      || store.sessionDefaultThinking !== undefined
+      || getAllTypes().some((type) => store.sessionModelOverride(type) !== null
+        || store.sessionThinkingOverride(type) !== undefined);
+    if (hasSession) {
       items.push({
         id: "clearSession",
         label: "Clear session overrides",
         currentValue: "",
-        description: "Discard model overrides set only for this session.",
+        description: "Discard session-only model and thinking overrides.",
         submenu: createConfirmSubmenu({
           message: "Clear all session overrides?",
           theme,
@@ -168,26 +180,32 @@ export async function showModelSettingsMenu(
       });
     }
 
-    // Clear all overrides
     items.push({
       id: "clearAll",
-      label: "Clear all overrides",
+      label: "Reset all agent settings",
       currentValue: "",
-      description: "Discard all model overrides (config and session).",
+      description: "Clear saved and session model/thinking overrides, including global defaults.",
       submenu: createConfirmSubmenu({
-        message: "Clear all model overrides?",
+        message: "Reset all model and thinking settings?",
         theme,
         onConfirm: () => {
           const agentConfig = store.agentConfigSnapshot();
-          const hasOverrides = Object.entries(agentConfig).some(
-            ([k, v]) => !CONFIG_AGENT_NON_MODEL_KEYS.includes(k) && v != null,
+          const hasModelOverrides = Object.entries(agentConfig).some(
+            ([key, value]) => !CONFIG_AGENT_NON_MODEL_KEYS.includes(key) && value != null,
           );
-          if (!hasOverrides && store.agent.defaultModel === null) {
+          const hasAnything = hasSession || hasModelOverrides || store.agent.defaultModel !== null
+            || store.agent.defaultThinking !== undefined
+            || store.hasPersistedThinkingOverrides();
+          if (!hasAnything) {
             ctx.ui.notify("No overrides to clear", "info");
             return;
           }
+          store.mutate.session.clearAll();
           store.mutate.agent.clearAllModelOverrides();
-          ctx.ui.notify("All model overrides cleared", "info");
+          store.mutate.agent.clearAllThinkingOverrides();
+          store.mutate.agent.setDefaultModel(null);
+          store.mutate.agent.setDefaultThinking(undefined);
+          ctx.ui.notify("All agent settings reset", "info");
         },
       }),
     });
@@ -195,19 +213,21 @@ export async function showModelSettingsMenu(
     return items;
   };
 
-  let rebuild: ((items: any[]) => void) | undefined;
-
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const store = getStore();
-    const items = buildItems(store, theme);
-
-    
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme)), () => done(undefined));
+    const items = buildItems(getStore(), theme);
+    const settingsList = new SettingsList(
+      items,
+      18,
+      buildSettingsListTheme(theme),
+      () => rebuild?.(buildItems(getStore(), theme)),
+      () => done(undefined),
+    );
     return new SettingsListWrapper(settingsList, {
-      title: "Model Settings",
+      title: "Agent Settings",
       theme,
       onCancel: () => done(undefined),
-      onRebuild: (r) => { rebuild = r; },
+      onRebuild: (callback) => { rebuild = callback; },
     });
   });
 }

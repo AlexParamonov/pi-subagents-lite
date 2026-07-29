@@ -193,6 +193,28 @@ describe("showSystemPromptMenu — Include AGENTS.md", () => {
   });
 });
 
+describe("showSystemPromptMenu — Parent orchestration prompt", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    settingsListCalls = [];
+  });
+
+  it("toggles the parent prompt without re-registering tools", async () => {
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "orchestrationPrompt");
+    expect(item.currentValue).toBe("ON");
+
+    settingsListCalls[0].onChange("orchestrationPrompt", "OFF");
+
+    expect(mockModules.mockConfig.agent.orchestrationPrompt).toBe(false);
+  });
+});
+
 describe("showSystemPromptMenu — Load skills implicitly", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false };

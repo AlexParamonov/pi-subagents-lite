@@ -91,6 +91,26 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
     const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
     expect(compact).toBeUndefined();
   });
+
+  it("does not expose a navigation-hint toggle", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "navHint")).toBeUndefined();
+  });
+
+  it("leaves model and thinking visibility in Appearance", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    expect(settingsListCalls[0].items.find((i: any) => i.id === "showModelThinking")).toBeUndefined();
+  });
+
+  it("shows local start time with its configured value", async () => {
+    mockModules.mockConfig.agent.widgetShowStartTime = false;
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const startTime = settingsListCalls[0].items.find((i: any) => i.id === "showStartTime");
+    expect(startTime.currentValue).toBe("OFF");
+  });
 });
 
 describe("showWidgetSettingsMenu — toggle onChange", () => {
@@ -126,6 +146,14 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
     settingsListCalls[0].onChange("shortcut", "ON");
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("toggles local start time via onChange", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("showStartTime", "OFF");
+    expect(mockModules.mockConfig.agent.widgetShowStartTime).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show local start time OFF", "info");
   });
 });
 
@@ -206,7 +234,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     expect(mockDone).toHaveBeenCalled();
   });
 
-  it("compact max lines submenu rejects value below 1", async () => {
+  it("compact max lines submenu rejects values below 2", async () => {
     mockModules.mockConfig.agent.widgetMaxLinesCompact = 6;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
@@ -215,7 +243,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     const mockDone = vi.fn();
     maxLinesCompact.submenu("6", mockDone);
 
-    inputInstances[0].onSubmit!("0");
+    inputInstances[0].onSubmit!("1");
     expect(mockModules.mockConfig.agent.widgetMaxLinesCompact).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
   });

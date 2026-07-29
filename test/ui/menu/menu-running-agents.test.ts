@@ -6,7 +6,7 @@
  * Selecting an agent opens an actions submenu (also SelectList).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
@@ -54,6 +54,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 
 // Import AFTER mock setup
 import { showRunningAgentsMenu, buildAgentActionsList } from "../../../src/ui/menu/menu-running-agents.js";
+import { getDisplayName } from "../../../src/ui/format.js";
 
 function makeRecord(overrides: any = {}): any {
   return {
@@ -69,10 +70,15 @@ function makeRecord(overrides: any = {}): any {
 }
 const noopTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
 
+afterEach(() => {
+  vi.mocked(getDisplayName).mockImplementation((type) => type);
+});
+
 describe("showRunningAgentsMenu — SelectList migration", () => {
   beforeEach(() => {
     selectListCalls = [];
     vi.clearAllMocks();
+    vi.mocked(getDisplayName).mockImplementation((type) => type);
     mockModules.mockManager.listAgents.mockReset().mockReturnValue([]);
   });
 
@@ -105,13 +111,28 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     expect(selectListCalls[0].items[1].value).toBe("agent-2");
   });
 
-  it("includes agent type in label", async () => {
-    mockModules.mockManager.listAgents.mockReturnValue([
-      makeRecord({ id: "agent-1", display: { type: "general-purpose", description: "Test" } }),
-    ]);
-    const ctx = createMockCtx();
-    await showRunningAgentsMenu(ctx);
-    expect(selectListCalls[0].items[0].label).toContain("general-purpose");
+  it("uses the configured display name and shared lifecycle icons in labels", async () => {
+    vi.mocked(getDisplayName).mockImplementation((type) => `Display ${type}`);
+    const statuses = [
+      ["completed", "✓"],
+      ["turn_limited", "✓"],
+      ["stopped", "■"],
+      ["error", "✗"],
+      ["aborted", "✗"],
+    ] as const;
+    mockModules.mockManager.listAgents.mockReturnValue(statuses.map(([status], index) =>
+      makeRecord({ id: `agent-${index}`, display: { type: "custom", description: "Test" }, lifecycle: { status, startedAt: Date.now() - 1000 } }),
+    ));
+
+    await showRunningAgentsMenu(createMockCtx());
+
+    const labels = selectListCalls[0].items.map((item: any) => item.label);
+    expect(labels).toHaveLength(statuses.length);
+    for (const [status, icon] of statuses) {
+      const label = labels.find((value: string) => value.includes(` ${status} `));
+      expect(label).toContain(`Display custom  ${status}`);
+      expect(label.startsWith(icon)).toBe(true);
+    }
   });
 
   it("returns a component that renders with a title", async () => {

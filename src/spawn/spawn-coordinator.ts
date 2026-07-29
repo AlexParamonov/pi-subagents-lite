@@ -1,9 +1,12 @@
 import { getPiInstance, getSessionCtx, getWidget } from "../shell.js";
 import { SHORT_ID_LENGTH } from "../types.js";
+import { normalizeThinkingLevel } from "../models/thinking.js";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord, SpawnConfig, ToolActivity } from "../types.js";
+import type { AgentConfig } from "../agents/types.js";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.js";
+import { getAgentConfig } from "../agents/agent-types.js";
 import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.js";
 
 /**
@@ -48,6 +51,21 @@ export interface SpawnResult {
 /** Batch delay for nudges — only emit one update per batch window (ms). */
 const NUDGE_DELAY_MS = 200;
 
+/** Copy array-valued fields so queued work cannot observe later config mutation. */
+function snapshotAgentConfig(config: AgentConfig | undefined): AgentConfig | undefined {
+  if (!config) return undefined;
+  return {
+    ...config,
+    registeredTools: config.registeredTools && [...config.registeredTools],
+    tools: Array.isArray(config.tools) ? [...config.tools] : config.tools,
+    excludeTools: config.excludeTools && [...config.excludeTools],
+    extensions: Array.isArray(config.extensions) ? [...config.extensions] : config.extensions,
+    excludeExtensions: config.excludeExtensions && [...config.excludeExtensions],
+    skills: Array.isArray(config.skills) ? [...config.skills] : config.skills,
+    preloadSkills: Array.isArray(config.preloadSkills) ? [...config.preloadSkills] : config.preloadSkills,
+  };
+}
+
 // ============================================================================
 // SpawnCoordinator
 // ============================================================================
@@ -89,11 +107,29 @@ export class SpawnCoordinator {
     };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
 
+    // This is the shared spawn boundary for tool and menu paths. Normalize
+    // thinking here so the manager, record, runner, and UI all receive the
+    // level the effective model will actually use.
+    const model = intent.model ?? ctx.model;
+    const thinkingLevel = normalizeThinkingLevel(
+      model,
+      intent.thinkingLevel ?? ctx.thinkingLevel,
+    );
+    const modelKey = intent.modelKey ?? (model ? `${model.provider}/${model.id}` : undefined);
+    // Callers that discover a worktree pass its config explicitly. The fallback
+    // keeps every other coordinator caller safe too.
+    const agentConfig = snapshotAgentConfig(intent.agentConfig ?? getAgentConfig(intent.type));
+
     // Shared config fields (SpawnConfig) pass through unchanged; only the
     // intent-only fields (type/prompt/runInBackground) need translation.
-    const { type, prompt, runInBackground, ...config } = intent;
+    const { type, prompt, runInBackground, invocation, ...config } = intent;
     const spawnOptions: SpawnOptions = {
       ...config,
+      model,
+      modelKey,
+      thinkingLevel,
+      agentConfig,
+      invocation: { ...invocation, thinkingLevel },
       isBackground: runInBackground,
       ...liveViewCallbacks,
     };

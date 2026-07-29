@@ -65,9 +65,9 @@ export async function showSettingsMenu(
   modelOptions: string[],
 ): Promise<void> {
   const items: SelectItem[] = [
-    { value: "models", label: "Agent models", description: "Set global default and per-type model overrides" },
+    { value: "models", label: "Agent settings", description: "Set global and per-agent model/thinking overrides" },
     { value: "execution", label: "Execution", description: "Default concurrency, background mode, and max turns" },
-    { value: "appearance", label: "Appearance", description: "Widget size, compact mode, and stats preset" },
+    { value: "appearance", label: "Appearance", description: "Widget size, compact mode, model/thinking, and stats preset" },
     { value: "advanced", label: "Advanced", description: "Limits, prompts, behavior, detailed widget settings, diagnostics" },
   ];
 
@@ -88,7 +88,7 @@ async function showAdvancedMenu(
   const items: SelectItem[] = [
     { value: "concurrency", label: "Concurrency limits", description: "Per-provider and per-model agent slot limits" },
     { value: "systemprompt", label: "System prompt, context, skills & extensions", description: "Prompt mode and implicit loading defaults" },
-    { value: "behavior", label: "Agent behavior & discovery", description: "Grace turns, default thinking, and built-in discovery" },
+    { value: "behavior", label: "Agent behavior & discovery", description: "Grace turns and built-in agent discovery" },
     { value: "widget", label: "Detailed widget settings", description: "Compact lines, descriptions, shortcuts, retention, and stat toggles" },
     { value: "diagnostics", label: "Diagnostics", description: "Inspect discovered agent types" },
   ];

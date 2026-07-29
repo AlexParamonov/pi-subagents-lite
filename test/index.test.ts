@@ -99,6 +99,8 @@ vi.mock("../src/ui/searchable-select.js", () => ({
 
 vi.mock("../src/models/model-precedence.js", () => ({
   resolveModel: vi.fn((opts: any) => opts?.parentModelId ?? ""),
+  resolveModelSetting: vi.fn((opts: any) => ({ value: opts?.parentModelId ?? "", source: "parent" })),
+  resolveThinkingSetting: vi.fn((opts: any) => ({ value: opts?.parentThinking, source: "parent" })),
 }));
 
 vi.mock("../src/agents/agent-types.js", () => ({
@@ -106,6 +108,7 @@ vi.mock("../src/agents/agent-types.js", () => ({
   getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(() => ({})),
   registerAgents: vi.fn(),
+  getAvailableAgents: vi.fn(() => []),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
 }));
@@ -180,8 +183,9 @@ describe("Agent tool schema — stealth", () => {
     expect(agentTool()!.promptGuidelines).toBeUndefined();
   });
 
-  it("excludes model param", () => {
-    expect(hasParam(agentTool()!.parameters, "model")).toBe(false);
+  it("allows one-spawn model and thinking overrides", () => {
+    expect(hasParam(agentTool()!.parameters, "model")).toBe(true);
+    expect(hasParam(agentTool()!.parameters, "thinking")).toBe(true);
   });
 
   it("excludes inherit_context param", () => {
@@ -228,9 +232,10 @@ describe("Agent tool schema — stealth", () => {
     expect(wtSchema?.description).toBeUndefined();
   });
 
-  it("keeps non-prompt arguments optional", () => {
+  it("requires an explicit agent type while keeping other arguments optional", () => {
     const properties = agentTool()!.parameters.properties;
-    for (const name of ["description", "agent", "run_in_background", "worktree_path"]) {
+    expect(properties.agent.optional).toBeUndefined();
+    for (const name of ["description", "model", "thinking", "run_in_background", "worktree_path"]) {
       expect(properties[name].optional).toBe(true);
     }
   });
@@ -359,6 +364,10 @@ describe("event listener registration", () => {
 
   it("registers session_start listener", () => {
     expect(api.listeners.some((l) => l.event === "session_start")).toBe(true);
+  });
+
+  it("registers the parent orchestration prompt hook", () => {
+    expect(api.listeners.some((l) => l.event === "before_agent_start")).toBe(true);
   });
 
   it("registers session_shutdown listener", () => {

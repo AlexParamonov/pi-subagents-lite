@@ -83,6 +83,13 @@ export async function showAppearanceMenu(ctx: ExtensionCommandContext): Promise<
       description: "Maximum body lines in the full widget, excluding its heading.",
     },
     {
+      id: "showModelThinking",
+      label: "Show model & thinking",
+      currentValue: store.agent.widgetShowModelThinking ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Show each agent's model and thinking level in the widget.",
+    },
+    {
       id: "statsPreset",
       label: "Stats preset",
       currentValue: currentStatsPreset(store),
@@ -95,6 +102,9 @@ export async function showAppearanceMenu(ctx: ExtensionCommandContext): Promise<
     if (id === "compact") {
       store.mutate.widget.setCompact(value === "ON");
       ctx.ui.notify(`Force compact mode ${value}`, "info");
+    } else if (id === "showModelThinking") {
+      store.mutate.widget.setShowModelThinking(value === "ON");
+      ctx.ui.notify(`Show model & thinking ${value}`, "info");
     } else if (id === "statsPreset" && value !== "Custom") {
       applyStatsPreset(store, value as Exclude<StatsPreset, "Custom">);
       ctx.ui.notify(`Stats preset set to ${value}`, "info");

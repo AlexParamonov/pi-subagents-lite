@@ -13,13 +13,19 @@
  * at session_start. `dispose()` drops deps at session_shutdown.
  */
 
-import type { SubagentsConfig, SessionModelOverrides } from "../models/model-precedence.js";
-import { resolveModel } from "../models/model-precedence.js";
+import type {
+  ResolvedSetting,
+  SessionModelOverrides,
+  SessionThinkingOverrides,
+  SubagentsConfig,
+} from "../models/model-precedence.js";
+import { resolveModelSetting, resolveThinkingSetting } from "../models/model-precedence.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
+import { parseThinkingLevel } from "../utils.js";
 import { VALID_SYSTEM_PROMPT_MODES, DEFAULT_CONCURRENCY, loadConfig, saveConfigAtomic } from "./config-io.js";
 
 
@@ -46,6 +52,8 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  readonly widgetShowModelThinking: boolean;
+  readonly widgetShowStartTime: boolean;
   readonly widgetDescLengthFull: number;
   readonly widgetDescLengthCompact: number;
   /** System prompt mode: replace (default), inherit parent, or custom file. */
@@ -62,6 +70,8 @@ export interface ResolvedAgentSettings {
   readonly loadExtensionsImplicitly: boolean;
   /** Whether to skip built-in default agents at registration. */
   readonly disableDefaultAgents: boolean;
+  /** Whether to append dynamic parent-agent orchestration guidance. */
+  readonly orchestrationPrompt: boolean;
   /** Whether to show toolUses count in widget stats line. */
   readonly showTools: boolean;
   /** Whether to show turn count in widget stats line. */
@@ -89,10 +99,11 @@ export interface ConfigStoreDeps {
 export class ConfigStore {
   private config: SubagentsConfig;
   private sessionOverrides: SessionModelOverrides = { default: null };
+  private sessionThinkingOverrides: SessionThinkingOverrides = {};
   private sessionShowCost: boolean | undefined;
   private widget?: AgentWidget;
   private manager?: AgentManager;
-  /** Previous tool-expansion state, for ctrl+o compact sync. */
+  /** Last known tool-expansion state, for ctrl+o compact sync. */
   private lastToolsExpanded: boolean | undefined;
 
   constructor(private readonly io: ConfigIO = fileConfigIO) {
@@ -108,8 +119,8 @@ export class ConfigStore {
 
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
-    const widgetMaxLines = a.widgetMaxLines!; // guaranteed by loadConfig default merge
-    const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
+    const widgetMaxLines = Math.max(2, a.widgetMaxLines!); // guaranteed by loadConfig default merge
+    const widgetMaxLinesCompact = Math.max(2, a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2));
 
     return {
       defaultModel: a.default ?? null,
@@ -120,15 +131,18 @@ export class ConfigStore {
       widgetMaxLinesCompact,
       widgetCompact: a.widgetCompact === true,
       widgetShortcut: a.widgetShortcut === true,
+      widgetShowModelThinking: a.widgetShowModelThinking !== false,
+      widgetShowStartTime: a.widgetShowStartTime !== false,
       widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
       systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string) ? (a.systemPromptMode as SystemPromptMode) : "replace",
       includeContextFiles: a.includeContextFiles ?? true,
-      defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
+      defaultThinking: parseThinkingLevel(a.defaultThinking),
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
       disableDefaultAgents: a.disableDefaultAgents === true,
+      orchestrationPrompt: a.orchestrationPrompt !== false,
       showTools: a.showTools !== false,
       showTurns: a.showTurns !== false,
       showInput: a.showInput !== false,
@@ -160,23 +174,61 @@ export class ConfigStore {
     return this.sessionOverrides[type] ?? null;
   }
 
+  get sessionDefaultThinking(): ThinkingLevel | undefined {
+    return this.sessionThinkingOverrides.default;
+  }
+
+  sessionThinkingOverride(type: string): ThinkingLevel | undefined {
+    return this.sessionThinkingOverrides[type];
+  }
+
+  persistedThinkingOverride(type: string): ThinkingLevel | undefined {
+    return this.config.thinkingOverrides?.[type] ?? undefined;
+  }
+
+  /** Whether persisted thinking entries exist, including entries for removed agent types. */
+  hasPersistedThinkingOverrides(): boolean {
+    return Object.keys(this.config.thinkingOverrides ?? {}).length > 0;
+  }
+
   /** Raw agent config incl. dynamic per-type model keys (for menu display). */
   agentConfigSnapshot(): Readonly<SubagentsConfig["agent"]> {
     return this.config.agent;
   }
 
-  /**
-   * Resolve the effective model for a spawn, hiding resolveModel's option
-   * assembly. Precedence: session per-type → session default → config per-type
-   * → config default → agentConfig (frontmatter) → parentModelId.
-   */
-  modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }): string {
-    return resolveModel({
+  modelSettingFor(
+    type: string,
+    parentModelId: string,
+    agentConfig?: { model?: string },
+    explicitModel?: string,
+  ): ResolvedSetting<string> {
+    return resolveModelSetting({
       subagentType: type,
+      explicitModel,
       agentConfig,
       config: this.config,
       parentModelId,
       sessionOverrides: this.sessionOverrides,
+    });
+  }
+
+  modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }, explicitModel?: string): string {
+    return this.modelSettingFor(type, parentModelId, agentConfig, explicitModel).value;
+  }
+
+  thinkingSettingFor(
+    type: string,
+    parentThinking: ThinkingLevel | undefined,
+    agentConfig?: { thinkingLevel?: ThinkingLevel },
+    explicitThinking?: ThinkingLevel,
+  ): ResolvedSetting<ThinkingLevel | undefined> {
+    return resolveThinkingSetting({
+      subagentType: type,
+      explicitThinking,
+      agentConfig,
+      config: this.config,
+      parentThinking,
+      sessionOverrides: this.sessionThinkingOverrides,
     });
   }
 
@@ -198,6 +250,14 @@ export class ConfigStore {
         delete this.config.agent[type];
         this.persist();
       },
+      setThinkingOverride: (type: string, value: ThinkingLevel): void => {
+        this.config.thinkingOverrides = { ...(this.config.thinkingOverrides ?? {}), [type]: value };
+        this.persist();
+      },
+      clearThinkingOverride: (type: string): void => {
+        if (this.config.thinkingOverrides) delete this.config.thinkingOverrides[type];
+        this.persist();
+      },
       /** Clear all per-type model overrides, preserving non-model settings. */
       clearAllModelOverrides: (): void => {
         const preserved: Record<string, unknown> = {};
@@ -210,6 +270,10 @@ export class ConfigStore {
         this.config.agent = preserved as SubagentsConfig["agent"];
         this.persist();
         this.syncWidgetSettings();
+      },
+      clearAllThinkingOverrides: (): void => {
+        this.config.thinkingOverrides = {};
+        this.persist();
       },
       setForceBackground: (enabled: boolean): void => {
         this.config.agent.forceBackground = enabled;
@@ -262,6 +326,10 @@ export class ConfigStore {
         this.config.agent.disableDefaultAgents = value;
         this.persist();
       },
+      setOrchestrationPrompt: (enabled: boolean): void => {
+        this.config.agent.orchestrationPrompt = enabled;
+        this.persist();
+      },
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
       setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
       setShowInput: (enabled: boolean) => this.setAgentVisibility("showInput", enabled),
@@ -284,17 +352,19 @@ export class ConfigStore {
         this.config.agent.widgetCompact = enabled;
         this.persist();
         this.syncWidgetSettings();
+        this.syncCompactModeFromToolsExpanded();
       },
       setMaxLines: (lines: number): void => {
-        this.config.agent.widgetMaxLines = lines;
+        const maxLines = Math.max(2, lines);
+        this.config.agent.widgetMaxLines = maxLines;
         if (this.config.agent.widgetMaxLinesCompact === undefined) {
-          this.config.agent.widgetMaxLinesCompact = Math.floor(lines / 2);
+          this.config.agent.widgetMaxLinesCompact = Math.max(2, Math.floor(maxLines / 2));
         }
         this.persist();
         this.syncWidgetSettings();
       },
       setMaxLinesCompact: (lines: number): void => {
-        this.config.agent.widgetMaxLinesCompact = lines;
+        this.config.agent.widgetMaxLinesCompact = Math.max(2, lines);
         this.persist();
         this.syncWidgetSettings();
       },
@@ -308,13 +378,21 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      // Note: persists only. Does NOT syncWidgetSettings — matches the existing
-      // behavior, where toggling the shortcut takes effect on next reload rather
-      // than immediately. Flagged for a follow-up (the other three widget
-      // setters do sync).
       setShortcut: (enabled: boolean): void => {
         this.config.agent.widgetShortcut = enabled;
         this.persist();
+        this.syncWidgetSettings();
+        this.syncCompactModeFromToolsExpanded();
+      },
+      setShowModelThinking: (enabled: boolean): void => {
+        this.config.agent.widgetShowModelThinking = enabled;
+        this.persist();
+        this.syncWidgetSettings();
+      },
+      setShowStartTime: (enabled: boolean): void => {
+        this.config.agent.widgetShowStartTime = enabled;
+        this.persist();
+        this.syncWidgetSettings();
       },
     },
     concurrency: {
@@ -348,7 +426,6 @@ export class ConfigStore {
         this.persist();
         this.applyConcurrency();
       },
-      /** Remove provider/model limits while preserving the configured default. */
       resetOverrides: (): void => {
         this.config.concurrency = { default: this.config.concurrency.default };
         this.persist();
@@ -363,8 +440,15 @@ export class ConfigStore {
       clearOverride: (type: string): void => {
         delete this.sessionOverrides[type];
       },
+      setThinkingOverride: (type: string, level: ThinkingLevel): void => {
+        this.sessionThinkingOverrides[type] = level;
+      },
+      clearThinkingOverride: (type: string): void => {
+        delete this.sessionThinkingOverrides[type];
+      },
       clearAll: (): void => {
         this.sessionOverrides = { default: null };
+        this.sessionThinkingOverrides = {};
       },
       /** Set a session showCost override. Not persisted. */
       setShowCost: (enabled: boolean): void => {
@@ -384,23 +468,14 @@ export class ConfigStore {
   // ── ctrl+o compact sync (absorbs syncCompactFromToolsExpanded) ──
 
   /**
-   * Toggle widget compact mode when tool expansion changes (ctrl+o), gated on
-   * widgetShortcut. No-op when widgetCompact is forced on. Only acts on actual
-   * state transitions (not every call).
+   * Sync widget compact mode from the known tool-expansion state (ctrl+o),
+   * gated on widgetShortcut. The first known state and later state changes both
+   * apply immediately; force compact overrides this coupling.
    */
   notifyToolsExpanded(expanded: boolean): void {
-    if (this.config.agent.widgetShortcut !== true) {
-      this.lastToolsExpanded = expanded;
-      return;
-    }
-    if (this.config.agent.widgetCompact === true) {
-      this.lastToolsExpanded = expanded;
-      return;
-    }
-    if (this.lastToolsExpanded !== undefined && this.lastToolsExpanded !== expanded) {
-      this.widget?.setCompactMode(!expanded);
-    }
+    const changed = this.lastToolsExpanded !== expanded;
     this.lastToolsExpanded = expanded;
+    if (changed) this.syncCompactModeFromToolsExpanded();
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────
@@ -409,6 +484,7 @@ export class ConfigStore {
   reload(): void {
     this.config = this.io.load();
     this.sessionOverrides = { default: null };
+    this.sessionThinkingOverrides = {};
     this.sessionShowCost = undefined;
     this.lastToolsExpanded = undefined;
     this.syncAllDeps();
@@ -433,6 +509,15 @@ export class ConfigStore {
     this.io.save(this.config);
   }
 
+  /** Apply the last known tool-expansion state while shortcut coupling is active. */
+  private syncCompactModeFromToolsExpanded(): void {
+    if (this.config.agent.widgetShortcut === true
+      && this.config.agent.widgetCompact !== true
+      && this.lastToolsExpanded !== undefined) {
+      this.widget?.setCompactMode(!this.lastToolsExpanded);
+    }
+  }
+
   /** Push widget display settings (compact, shortcut, max lines) to the widget. */
   private syncWidgetSettings(): void {
     const w = this.widget;
@@ -440,6 +525,8 @@ export class ConfigStore {
     const a = this.agent;
     w.setForceCompact(a.widgetCompact);
     w.setWidgetShortcut(a.widgetShortcut);
+    w.setShowModelThinking(a.widgetShowModelThinking);
+    w.setShowStartTime(a.widgetShowStartTime);
     w.setMaxLines(a.widgetMaxLines);
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
     w.setDescLengthFull(a.widgetDescLengthFull);
@@ -478,6 +565,7 @@ export class ConfigStore {
     if (this.widget) {
       this.widget.setShowCost(this.agent.showCost);
       this.syncWidgetSettings();
+      this.syncCompactModeFromToolsExpanded();
       this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();

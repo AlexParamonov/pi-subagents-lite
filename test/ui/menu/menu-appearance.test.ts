@@ -30,6 +30,7 @@ describe("showAppearanceMenu", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = {
       default: null, forceBackground: false, widgetCompact: false, widgetMaxLines: 12,
+      widgetShowModelThinking: true,
       showTools: true, showTurns: true, showInput: true, showOutput: true,
       showContext: true, showCost: false, showTime: true,
     };
@@ -38,12 +39,18 @@ describe("showAppearanceMenu", () => {
     vi.clearAllMocks();
   });
 
-  it("contains only compact mode, full widget lines, and the stats preset", async () => {
+  it("contains the common appearance controls", async () => {
     await showAppearanceMenu(createMockCtx());
     expect(settingsLists[0].items.map((item: any) => item.id)).toEqual([
-      "compact", "maxLines", "statsPreset",
+      "compact", "maxLines", "showModelThinking", "statsPreset",
     ]);
     expect(settingsLists[0].items.find((item: any) => item.id === "statsPreset").currentValue).toBe("Standard");
+  });
+
+  it("toggles model and thinking visibility", async () => {
+    await showAppearanceMenu(createMockCtx());
+    settingsLists[0].onChange("showModelThinking", "OFF");
+    expect(mockModules.mockConfig.agent.widgetShowModelThinking).toBe(false);
   });
 
   it("shows Custom for mixed stats and applies the Detailed preset", async () => {

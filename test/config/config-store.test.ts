@@ -43,6 +43,7 @@ function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): { io: Confi
   // Merge with defaults like loadConfig does
   const merged: SubagentsConfig = {
     agent: { ...(defaultConfig().agent), ...(initial.agent ?? {}) },
+    thinkingOverrides: { ...(initial.thinkingOverrides ?? {}) },
     concurrency: { default: 4, ...(initial.concurrency ?? {}) },
   };
   let cur = structuredClone(merged);
@@ -66,6 +67,8 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setShowCost: (e: boolean) => calls.push(`setShowCost:${e}`),
     setForceCompact: (e: boolean) => calls.push(`setForceCompact:${e}`),
     setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
+    setShowModelThinking: (e: boolean) => calls.push(`setShowModelThinking:${e}`),
+    setShowStartTime: (e: boolean) => calls.push(`setShowStartTime:${e}`),
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
     setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
@@ -119,6 +122,14 @@ describe("ConfigStore reads", () => {
     expect(store.agent.defaultModel).toBe("config/default");
   });
 
+  it("does not expose a malformed global thinking value", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, defaultThinking: "invalid" as any },
+      concurrency: { default: 4 },
+    });
+    expect(new ConfigStore(io).agent.defaultThinking).toBeUndefined();
+  });
+
   it("concurrency providers/models default to {}", () => {
     const store = new ConfigStore(memIO().io);
     expect(store.concurrency.providers).toEqual({});
@@ -138,16 +149,92 @@ describe("ConfigStore model resolution", () => {
     expect(store.modelFor("Explore", "parent", { model: "frontmatter" })).toBe("session/explore");
   });
 
-  it("falls through config -> frontmatter -> parent", () => {
+  it("uses frontmatter before the global default", () => {
     const { io } = memIO({ agent: { default: "config/default", forceBackground: false }, concurrency: { default: 4 } });
     const store = new ConfigStore(io);
-    expect(store.modelFor("Explore", "parent", { model: "frontmatter" })).toBe("config/default");
+    expect(store.modelFor("Explore", "parent", { model: "frontmatter" })).toBe("frontmatter");
     expect(store.modelFor("Explore", "parent")).toBe("config/default");
+  });
+
+  it("resolves persisted and session thinking overrides with sources", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, defaultThinking: "low" },
+      thinkingOverrides: { reviewer: "medium" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.thinkingSettingFor("reviewer", "minimal", { thinkingLevel: "high" }))
+      .toEqual({ value: "medium", source: "config-agent" });
+    store.mutate.session.setThinkingOverride("reviewer", "xhigh");
+    expect(store.thinkingSettingFor("reviewer", "minimal", { thinkingLevel: "high" }))
+      .toEqual({ value: "xhigh", source: "session-agent" });
   });
 
   it("returns parentModelId when nothing else is set", () => {
     const store = new ConfigStore(memIO().io);
     expect(store.modelFor("Explore", "parent/model")).toBe("parent/model");
+  });
+
+  it("reports model and thinking sources through the complete store precedence chain", () => {
+    const { io } = memIO({
+      agent: {
+        default: "config/global-model",
+        forceBackground: false,
+        reviewer: "config/reviewer-model",
+        defaultThinking: "low",
+      },
+      thinkingOverrides: { reviewer: "medium" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    const agentMd = { model: "md/model", thinkingLevel: "high" as const };
+
+    store.mutate.session.setOverride("reviewer", "session/reviewer-model");
+    store.mutate.session.setThinkingOverride("reviewer", "xhigh");
+    store.mutate.session.setOverride("default", "session/global-model");
+    store.mutate.session.setThinkingOverride("default", "off");
+
+    expect(store.modelSettingFor("reviewer", "parent/model", agentMd, "spawn/model"))
+      .toEqual({ value: "spawn/model", source: "spawn" });
+    expect(store.thinkingSettingFor("reviewer", "minimal", agentMd, "max"))
+      .toEqual({ value: "max", source: "spawn" });
+
+    expect(store.modelSettingFor("reviewer", "parent/model", agentMd))
+      .toEqual({ value: "session/reviewer-model", source: "session-agent" });
+    expect(store.thinkingSettingFor("reviewer", "minimal", agentMd))
+      .toEqual({ value: "xhigh", source: "session-agent" });
+
+    store.mutate.session.clearOverride("reviewer");
+    store.mutate.session.clearThinkingOverride("reviewer");
+    expect(store.modelSettingFor("reviewer", "parent/model", agentMd))
+      .toEqual({ value: "config/reviewer-model", source: "config-agent" });
+    expect(store.thinkingSettingFor("reviewer", "minimal", agentMd))
+      .toEqual({ value: "medium", source: "config-agent" });
+
+    store.mutate.agent.clearModelOverride("reviewer");
+    store.mutate.agent.clearThinkingOverride("reviewer");
+    expect(store.modelSettingFor("reviewer", "parent/model", agentMd))
+      .toEqual({ value: "md/model", source: "agent-md" });
+    expect(store.thinkingSettingFor("reviewer", "minimal", agentMd))
+      .toEqual({ value: "high", source: "agent-md" });
+
+    expect(store.modelSettingFor("reviewer", "parent/model"))
+      .toEqual({ value: "session/global-model", source: "session-global" });
+    expect(store.thinkingSettingFor("reviewer", "minimal"))
+      .toEqual({ value: "off", source: "session-global" });
+
+    store.mutate.session.clearOverride("default");
+    store.mutate.session.clearThinkingOverride("default");
+    expect(store.modelSettingFor("reviewer", "parent/model"))
+      .toEqual({ value: "config/global-model", source: "config-global" });
+    expect(store.thinkingSettingFor("reviewer", "minimal"))
+      .toEqual({ value: "low", source: "config-global" });
+
+    const parentOnly = new ConfigStore(memIO().io);
+    expect(parentOnly.modelSettingFor("reviewer", "parent/model"))
+      .toEqual({ value: "parent/model", source: "parent" });
+    expect(parentOnly.thinkingSettingFor("reviewer", "minimal"))
+      .toEqual({ value: "minimal", source: "parent" });
   });
 });
 
@@ -212,7 +299,7 @@ describe("ConfigStore persisted mutations", () => {
     calls.length = 0;
     store.mutate.widget.setShortcut(true);
     expect(saves[0].agent.widgetShortcut).toBe(true);
-    expect(calls.some((c) => c.startsWith("setWidgetShortcut"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("setWidgetShortcut"))).toBe(true);
   });
 
   it("concurrency setters persist and call manager.setConcurrency", () => {

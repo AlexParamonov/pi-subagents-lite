@@ -9,7 +9,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { formatTokens } from "./usage.js";
+import { formatCost, formatTokens } from "./usage.js";
 import { summarizeToolArgs } from "../ui/format.js";
 
 
@@ -29,7 +29,7 @@ function findLastSentenceBoundary(text: string): number {
 /** Format the [DONE] summary line with final stats. */
 function formatDoneLine(stats: { turnCount: number; toolUseCount: number; totalTokens: number; cost: number }): string {
   const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
-  const costStr = `$${stats.cost.toFixed(3)}`;
+  const costStr = formatCost(stats.cost);
   return `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`;
 }
 /** Max content length for full tool result display — longer results get a summary line. */

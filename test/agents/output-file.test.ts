@@ -129,7 +129,7 @@ describe("streamToOutputFile", () => {
     expect(lastLine).toMatch(/\[DONE\]/);
     expect(lastLine).toContain("3 turns");
     expect(lastLine).toContain("5 tool uses");
-    expect(lastLine).toContain("12.4k tokens");
+    expect(lastLine).toContain("12k tokens");
     expect(lastLine).toContain("$0.024");
   });
 

@@ -10,8 +10,11 @@
 
 import { getConfig } from "../agents/agent-types.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
+import type { AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
+import { parseThinkingLevel } from "../utils.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 /** Truncate a description string to `maxLen` characters, appending "..." if truncated. */
 export function truncateDesc(text: string, maxLen: number): string {
@@ -24,46 +27,164 @@ const MAX_COMMAND_DISPLAY_LENGTH = 350;
 /** Max length for a truncated string value in default tool arg summaries. */
 const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 350;
 
-// ---- Internal helpers (used by buildStatsParts) ----
+// ---- Usage formatting -----------------------------------------------------
+
+/** Fields for Pi's contiguous usage block. */
+export interface UsageDisplay {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  latestCacheHitRate?: number;
+  cost?: number;
+  usingSubscription?: boolean;
+  contextPercent?: number | null;
+  contextWindow?: number;
+  autoCompactionEnabled?: boolean;
+}
+
+/** Individually addressable fields in the shared agent statistics display. */
+export interface StatsCells {
+  tools?: string;
+  turns?: string;
+  input?: string;
+  output?: string;
+  cacheRead?: string;
+  cacheWrite?: string;
+  hitRate?: string;
+  cost?: string;
+  context?: string;
+  duration?: string;
+}
+
+type UsageCellName = "input" | "output" | "cacheRead" | "cacheWrite" | "hitRate" | "cost" | "context";
+const USAGE_CELL_NAMES: UsageCellName[] = ["input", "output", "cacheRead", "cacheWrite", "hitRate", "cost", "context"];
+const PLAIN_THEME: Theme = {
+  fg: (_color, text) => text,
+  bg: (_color, text) => text,
+  bold: (text) => text,
+};
 
 /**
- * Token count with optional context-fill % and compaction-count annotations.
- * Thresholds for percent: <70% dim, 70–85% warning, ≥85% error.
- * Compaction count rendered as `↻ N` in dim.
- *
- *   "↑12k↓8k"                    — no annotations
- *   "↑12k↓8k 45%"                — percent only
- *   "↑12k↓8k ↻ 2"                 — compactions only (e.g. right after compact)
- *   "↑12k↓8k 45% ↻ 2"             — both
+ * Build individually addressable agent stat cells. Keeping Pi footer fields
+ * separate lets multi-agent displays align each metric without changing the
+ * established single-row Pi sequence.
  */
-export function formatSessionTokens(
-  inputTokens: number,
-  outputTokens: number,
-  percent: number | null,
+export function buildStatsCells(
+  args: UsageDisplay & {
+    toolUses: number;
+    turnCount?: number;
+    maxTurns?: number;
+    durationMs?: number;
+  },
   theme: Theme,
-  compactions = 0,
-): string {
-  const tokenParts: string[] = [];
-  if (inputTokens > 0) tokenParts.push(`↑${formatTokens(inputTokens, true)}`);
-  if (outputTokens > 0) tokenParts.push(`↓${formatTokens(outputTokens, true)}`);
-  const tokenStr = tokenParts.join("");
-  const annot: string[] = [];
-  if (percent !== null) {
-    const color = percent >= 85 ? "error" : percent >= 70 ? "warning" : "dim";
-    annot.push(theme.fg(color, `${Math.round(percent)}%`));
+  visible?: StatsVisibility,
+): StatsCells {
+  const cells: StatsCells = {};
+  if (visible?.showTools !== false && args.toolUses > 0) cells.tools = `${args.toolUses}⚙︎`;
+  if (visible?.showTurns !== false && args.turnCount != null) cells.turns = formatTurns(args.turnCount, args.maxTurns, theme);
+  if (visible?.showInput !== false && args.input > 0) cells.input = `↑${formatTokens(args.input)}`;
+  if (visible?.showOutput !== false && args.output > 0) cells.output = `↓${formatTokens(args.output)}`;
+  if (visible?.showInput !== false) {
+    if ((args.cacheRead ?? 0) > 0) cells.cacheRead = `R${formatTokens(args.cacheRead!)}`;
+    if ((args.cacheWrite ?? 0) > 0) cells.cacheWrite = `W${formatTokens(args.cacheWrite!)}`;
+    if (((args.cacheRead ?? 0) > 0 || (args.cacheWrite ?? 0) > 0) && args.latestCacheHitRate != null) {
+      cells.hitRate = `CH${args.latestCacheHitRate.toFixed(1)}%`;
+    }
   }
-  if (compactions > 0) {
-    annot.push(theme.fg("dim", `↻ ${compactions}`));
+  if (visible?.showCost !== false && args.cost != null && (args.cost > 0 || args.usingSubscription)) {
+    cells.cost = `${formatCost(args.cost)}${args.usingSubscription ? " (sub)" : ""}`;
   }
-  if (annot.length === 0) return tokenStr;
-  return `${tokenStr} ${annot.join(" ")}`;
+  if (visible?.showContext !== false && (args.contextPercent != null || args.contextWindow != null)) {
+    const context = args.contextPercent == null ? "?" : `${args.contextPercent.toFixed(1)}%`;
+    const display = `${context}/${formatTokens(args.contextWindow ?? 0)}${args.autoCompactionEnabled ? " (auto)" : ""}`;
+    const color = args.contextPercent != null && args.contextPercent > 90
+      ? "error"
+      : args.contextPercent != null && args.contextPercent > 70 ? "warning" : undefined;
+    cells.context = color ? theme.fg(color, display) : display;
+  }
+  if (visible?.showTime !== false && args.durationMs != null) cells.duration = formatMs(args.durationMs);
+  return cells;
+}
+
+/** Format the exact contiguous Pi footer usage sequence. */
+export function formatUsageBlock(args: UsageDisplay, visible?: StatsVisibility, theme?: Theme): string | undefined {
+  // The usage cells do not need turn styling; use the supplied theme only for
+  // Pi's warning/error context foreground when one is available.
+  const cells = buildStatsCells({ ...args, toolUses: 0 }, theme ?? PLAIN_THEME, visible);
+  const parts = USAGE_CELL_NAMES.map((name) => cells[name]).filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
+/** Shared widths for a set of widget stat rows. */
+export interface StatsLayout {
+  hasCounters: boolean;
+  hasUsage: boolean;
+  toolWidth: number;
+  turnWidth: number;
+  usageWidths: Record<UsageCellName, number>;
+}
+
+/** Compute ANSI- and wide-character-aware widths for aligned stat rows. */
+export function buildStatsLayout(rows: StatsCells[]): StatsLayout {
+  const usageWidths = Object.fromEntries(USAGE_CELL_NAMES.map((name) => [name, 0])) as Record<UsageCellName, number>;
+  let toolWidth = 0;
+  let turnWidth = 0;
+  for (const row of rows) {
+    toolWidth = Math.max(toolWidth, visibleWidth(row.tools ?? ""));
+    turnWidth = Math.max(turnWidth, visibleWidth(row.turns ?? ""));
+    for (const name of USAGE_CELL_NAMES) usageWidths[name] = Math.max(usageWidths[name], visibleWidth(row[name] ?? ""));
+  }
+  return {
+    hasCounters: toolWidth > 0 || turnWidth > 0,
+    hasUsage: USAGE_CELL_NAMES.some((name) => usageWidths[name] > 0),
+    toolWidth,
+    turnWidth,
+    usageWidths,
+  };
+}
+
+function padStatsCell(text: string | undefined, width: number, rightAlign = false): string {
+  const padding = " ".repeat(Math.max(0, width - visibleWidth(text ?? "")));
+  return rightAlign ? padding + (text ?? "") : (text ?? "") + padding;
+}
+
+/**
+ * Render one structured stats row. Without a layout this is the compact,
+ * single-row form. With one, counter cells are right-aligned and Pi cells are
+ * padded by metric so the following duration column has a shared start.
+ */
+export function formatStatsRow(cells: StatsCells, layout?: StatsLayout): string | undefined {
+  if (!layout) {
+    const counters = [cells.tools, cells.turns].filter((cell): cell is string => cell !== undefined).join("  ");
+    const usage = USAGE_CELL_NAMES.map((name) => cells[name]).filter((cell): cell is string => cell !== undefined).join(" ");
+    const groups = [counters, usage, cells.duration].filter((group): group is string => group !== undefined && group.length > 0);
+    return groups.length > 0 ? groups.join(" · ") : undefined;
+  }
+
+  const groups: string[] = [];
+  if (layout.hasCounters) {
+    const counters = layout.toolWidth > 0 && layout.turnWidth > 0
+      ? `${padStatsCell(cells.tools, layout.toolWidth, true)}  ${padStatsCell(cells.turns, layout.turnWidth, true)}`
+      : layout.toolWidth > 0 ? padStatsCell(cells.tools, layout.toolWidth, true) : padStatsCell(cells.turns, layout.turnWidth, true);
+    groups.push(counters);
+  }
+  if (layout.hasUsage) {
+    const usage = USAGE_CELL_NAMES
+      .filter((name) => layout.usageWidths[name] > 0)
+      .map((name) => padStatsCell(cells[name], layout.usageWidths[name]))
+      .join(" ");
+    groups.push(usage);
+  }
+  if (cells.duration !== undefined) groups.push(cells.duration);
+  return groups.length > 0 ? groups.join(" · ") : undefined;
 }
 
 /** Format turn count with optional max limit. Shows max when >= 80% of limit. */
 function formatTurns(turnCount: number, maxTurns: number | null | undefined, theme: Theme): string {
-  if (maxTurns == null) return `${turnCount}⟳ `;
+  if (maxTurns == null) return `${turnCount}⟳`;
   const ratio = turnCount / maxTurns;
-  const text = ratio >= 0.8 ? `${turnCount}≤${maxTurns}⟳ ` : `${turnCount}⟳ `;
+  const text = ratio >= 0.8 ? `${turnCount}≤${maxTurns}⟳` : `${turnCount}⟳`;
   if (ratio >= 1) return theme.fg("error", text);
   if (ratio >= 0.8) return theme.fg("warning", text);
   return text;
@@ -100,52 +221,55 @@ export interface StatsVisibility {
 }
 
 /**
- * Build common stats parts: toolUses · turns · input↓ output with context % · cost · time.
- * Shared by AgentWidget and index.ts for consistent stats display.
- *
- * @param visible - Optional visibility flags. All default to true for backward compatibility.
- * @param durationMs - Optional duration in ms. When provided and showTime is not false, appends formatted time.
+ * Build common stats groups. Tools, turns, Pi usage, and duration are kept
+ * separate so every caller can join the groups with ` · ` consistently.
  */
 export function buildStatsParts(
-  args: {
+  args: UsageDisplay & {
     toolUses: number;
     turnCount?: number;
     maxTurns?: number;
-    input: number;
-    output: number;
-    contextPercent: number | null;
-    compactions: number;
-    cost?: number;
     durationMs?: number;
   },
   theme: Theme,
   visible?: StatsVisibility,
 ): string[] {
+  const cells = buildStatsCells(args, theme, visible);
   const parts: string[] = [];
-  if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠 `);
-  if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
-  if (visible?.showInput !== false || visible?.showOutput !== false) {
-    const showIn = visible?.showInput !== false;
-    const showOut = visible?.showOutput !== false;
-    const inputTokens = showIn ? args.input : 0;
-    const outputTokens = showOut ? args.output : 0;
-    if (inputTokens > 0 || outputTokens > 0) {
-      parts.push(formatSessionTokens(
-        inputTokens, outputTokens,
-        visible?.showContext !== false ? args.contextPercent : null,
-        theme,
-        visible?.showContext !== false ? args.compactions : 0,
-      ));
-    }
-  }
-  if (visible?.showCost !== false && args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
-  if (visible?.showTime !== false && args.durationMs != null) parts.push(formatMs(args.durationMs));
+  if (cells.tools) parts.push(cells.tools);
+  if (cells.turns) parts.push(cells.turns);
+  const usage = USAGE_CELL_NAMES.map((name) => cells[name]).filter((part): part is string => part !== undefined).join(" ");
+  if (usage) parts.push(usage);
+  if (cells.duration) parts.push(cells.duration);
   return parts;
 }
 
-/** Get display name for any agent type (built-in or custom). */
+/** Get display name for any known agent type; retain an unknown type's raw label for display. */
 export function getDisplayName(type: SubagentType): string {
-  return getConfig(type).displayName;
+  try {
+    return getConfig(type).displayName;
+  } catch {
+    return type;
+  }
+}
+
+/** Shared lifecycle icon and color used by agent views. */
+export function getAgentStatusDisplay(status: AgentStatus): { icon: string; color: string } {
+  switch (status) {
+    case "running":
+      return { icon: "◈", color: "accent" };
+    case "queued":
+      return { icon: "◇", color: "dim" };
+    case "completed":
+      return { icon: "✓", color: "success" };
+    case "turn_limited":
+      return { icon: "✓", color: "warning" };
+    case "stopped":
+      return { icon: "■", color: "dim" };
+    case "error":
+    case "aborted":
+      return { icon: "✗", color: "error" };
+  }
 }
 
 /**
@@ -269,12 +393,21 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
   return `${formatMs(Date.now() - startedAt)} (running)`;
 }
 
+/** Format a concrete thinking level for display; omitted or inherited values have no tag. */
+export function formatThinkingTag(value: unknown): string | undefined {
+  const thinkingLevel = typeof value === "string" ? parseThinkingLevel(value) : undefined;
+  return thinkingLevel;
+}
+
 /** Build invocation display tags from an AgentInvocation. */
-export function buildInvocationTags(invocation: AgentInvocation | undefined): { modelName?: string; tags: string[] } {
+export function buildInvocationTags(invocation: AgentInvocation | undefined): { modelName?: string; thinkingTag?: string; tags: string[] } {
   const tags: string[] = [];
   if (!invocation) return { tags };
-  if (invocation.thinkingLevel) tags.push(`thinking: ${invocation.thinkingLevel}`);
   if (invocation.runInBackground) tags.push("background");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
-  return { modelName: invocation.modelName, tags };
+  return {
+    modelName: invocation.modelName,
+    thinkingTag: formatThinkingTag(invocation.thinkingLevel),
+    tags,
+  };
 }
