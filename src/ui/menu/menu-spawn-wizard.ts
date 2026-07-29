@@ -364,6 +364,9 @@ export async function showSpawnAgentMenu(
                 currentThinking = clamped;
               }
             }
+
+            // Rebuild items so displayed thinking level reflects clamped value
+            rebuild?.(buildItems());
           },
         }),
       },
@@ -465,6 +468,7 @@ export async function showSpawnAgentMenu(
 
   let theme: Theme;
   let doneRef: () => void;
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, t, _kb, done) => {
     theme = t;
@@ -481,10 +485,12 @@ export async function showSpawnAgentMenu(
           break;
         case "prompt":
           prompt = newValue;
-        break;
+          break;
       }
+      // Rebuild items so displayed values stay in sync after any change
+      rebuild?.(buildItems());
     };
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, doneRef);
-    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme, onCancel: () => doneRef() });
+    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme, onCancel: () => doneRef(), onRebuild: (r) => { rebuild = r; } });
   });
 }
