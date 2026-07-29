@@ -10,10 +10,11 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
+import { getSupportedThinkingLevels, clampThinkingLevel } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
-import { findModelInRegistry, VALID_THINKING_LEVELS } from "../../utils.js";
+import { findModelInRegistry } from "../../utils.js";
 import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
@@ -121,6 +122,47 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
 // Spawn agent wizard
 // ============================================================================
 
+/**
+ * Build a submenu for selecting the thinking level based on the current model.
+ * Non-reasoning models only show 'off'; reasoning models show supported levels plus 'inherit'.
+ */
+function createThinkingLevelSubmenu(
+  registry: Parameters<typeof findModelInRegistry>[1],
+  currentModelStr: string,
+  fallbackModel: Parameters<typeof findModelInRegistry>[2],
+  theme: Theme,
+  onThinkingChange: (level: ThinkingLevel | undefined) => void,
+): (_currentValue: string, done: (v?: string) => void) => any {
+  return (_currentValue, done) => {
+    const model = findModelInRegistry(currentModelStr, registry, fallbackModel);
+    if (!model) {
+      done();
+      return {} as any;
+    }
+
+    const supported = getSupportedThinkingLevels(model);
+    const isReasoning = model.reasoning;
+
+    const items: Array<{ value: string; label: string; description?: string }> = supported.map(level => ({
+      value: level,
+      label: level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1),
+      description: !isReasoning ? "(not supported by this model)" : undefined,
+    }));
+
+    if (isReasoning) {
+      items.push({ value: "inherit", label: "Inherit" });
+    }
+
+    const list = new SelectList(items, 10, buildSelectListTheme(theme));
+    list.onSelect = (item) => {
+      onThinkingChange(item.value === "inherit" ? undefined : item.value as ThinkingLevel);
+      done(item.value);
+    };
+    list.onCancel = () => done();
+
+    return list;
+  };
+}
 
 /**
  * Show the spawn agent flow as a multi-step wizard:
@@ -312,6 +354,16 @@ export async function showSpawnAgentMenu(
           theme,
           onSelect: (_mode, model) => {
             currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
+
+            // Clamp thinking level to nearest supported level for the new model
+            if (currentThinking != null && currentModelStr) {
+              const registry = session?.modelRegistry ?? ctx.modelRegistry;
+              const resolved = findModelInRegistry(currentModelStr, registry, session?.model);
+              if (resolved) {
+                const clamped = clampThinkingLevel(resolved, currentThinking);
+                currentThinking = clamped;
+              }
+            }
           },
         }),
       },
@@ -362,7 +414,13 @@ export async function showSpawnAgentMenu(
         label: "Thinking level",
         currentValue: currentThinking ?? "inherit",
         description: "Set the reasoning effort level",
-        values: [...VALID_THINKING_LEVELS, "inherit"],
+        submenu: createThinkingLevelSubmenu(
+          session?.modelRegistry ?? ctx.modelRegistry,
+          currentModelStr,
+          session?.model,
+          theme,
+          (level) => { currentThinking = level; },
+        ),
       },
       {
         id: "maxTokens",

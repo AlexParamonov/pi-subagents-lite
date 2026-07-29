@@ -11,6 +11,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockModules, selectDialogInstances, resetSelectDialogInstances } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
+
+// Mock pi-ai thinking level functions
+let mockGetSupportedThinkingLevels: (model: any) => string[] = () => ["off", "minimal", "low", "medium", "high", "xhigh"];
+let mockClampThinkingLevel: (model: any, level: string) => string = (_m, level) => level;
+
+vi.mock("@earendil-works/pi-ai", () => ({
+  getSupportedThinkingLevels: vi.fn((model: any) => mockGetSupportedThinkingLevels(model)),
+  clampThinkingLevel: vi.fn((model: any, level: string) => mockClampThinkingLevel(model, level)),
+}));
 
 // Capture SettingsList constructor calls from pi-tui
 let settingsListCalls: Array<{
@@ -88,6 +98,11 @@ function setupMocks() {
     if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
     return undefined;
   });
+  // Reset pi-ai mocks to defaults (reasoning model)
+  mockGetSupportedThinkingLevels = (model: any) => model.reasoning
+    ? ["off", "minimal", "low", "medium", "high", "xhigh"]
+    : ["off"];
+  mockClampThinkingLevel = (_m: any, level: string) => level;
 }
 
 /**
@@ -221,10 +236,19 @@ describe("showSpawnAgentMenu — thinking level", () => {
     setupMocks();
   });
 
-  it("shows agent config thinking level", async () => {
+  it("uses a submenu instead of static values", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(typeof item.submenu).toBe("function");
+    expect(item.values).toBeUndefined();
+  });
+
+  it("shows agent config thinking level as currentValue", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(item.currentValue).toBe("medium");
   });
 
   it("pre-populates thinking from config default when agent has no thinking", async () => {
@@ -256,6 +280,59 @@ describe("showSpawnAgentMenu — thinking level", () => {
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("inherit");
+  });
+
+  it("submenu shows supported levels for reasoning model", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const mockDone = vi.fn();
+    item.submenu("medium", mockDone);
+    // The submenu creates a SelectList; check its items
+    const list = selectListInstances[selectListInstances.length - 1];
+    const values = list.items.map((i: any) => i.value);
+    expect(values).toContain("off");
+    expect(values).toContain("medium");
+    expect(values).toContain("high");
+    expect(values).toContain("inherit");
+  });
+
+  it("submenu shows only 'off' for non-reasoning model", async () => {
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "openai/gpt-4o", thinkingLevel: "off" as const, extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const mockDone = vi.fn();
+    item.submenu("off", mockDone);
+    const list = selectListInstances[selectListInstances.length - 1];
+    const values = list.items.map((i: any) => i.value);
+    expect(values).toEqual(["off"]);
+    // Check the description note
+    expect(list.items[0].description).toContain("not supported");
+  });
+
+  it("model change clamps thinking level to supported value", async () => {
+    (getAgentConfig as any).mockImplementation((name: string) => {
+      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "high" as const, extensions: true, skills: true, systemPrompt: "" };
+      return undefined;
+    });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const modelItem = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    const mockDone = vi.fn();
+    modelItem.submenu("anthropic/claude-sonnet-4-20250514", mockDone);
+    // Trigger mode selection (session) — this creates the model selector
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "session" });
+    // Select a non-reasoning model to trigger the clamping callback
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("openai/gpt-4o");
+    // clampThinkingLevel should have been called with the non-reasoning model and currentThinking "high"
+    expect(vi.mocked(clampThinkingLevel).mock.calls).toHaveLength(1);
+    const [model, level] = vi.mocked(clampThinkingLevel).mock.calls[0];
+    expect(model.reasoning).toBe(false);
+    expect(level).toBe("high");
   });
 });
 
@@ -426,6 +503,7 @@ describe("showSpawnAgentMenu — background toggle", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
+    expect(item.currentValue).toBe("OFF");
   });
 
   it("shows 'ON' when enabled", async () => {
