@@ -6,8 +6,7 @@
  * reset bug that occurred with ctx.ui.select.
  *
  * Structure:
- *   Detailed list: descriptions, compact lines, shortcut, start time, retention, and usage stats.
- *   Common appearance controls live in menu-appearance.ts.
+ *   One flat list containing all widget appearance, sizing, behavior, and stat controls.
  *
  * Exports:
  *   - showWidgetSettingsMenu
@@ -46,6 +45,14 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     }
 
     switch (id) {
+      case "compact":
+        store.mutate.widget.setCompact(newValue === "ON");
+        ctx.ui.notify(`Force compact mode ${newValue}`, "info");
+        break;
+      case "showModelThinking":
+        store.mutate.widget.setShowModelThinking(newValue === "ON");
+        ctx.ui.notify(`Show model & thinking ${newValue}`, "info");
+        break;
       case "shortcut":
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
@@ -81,14 +88,28 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
 
     const items: SettingItem[] = [
       {
-        id: "descLengthFull",
-        label: "Description length (full)",
-        currentValue: String(store.agent.widgetDescLengthFull),
-        submenu: createNumericSubmenu(ctx, { min: 5 }, (parsed) => {
-          store.mutate.widget.setDescLengthFull(parsed);
-          ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
+        id: "compact",
+        label: "Force compact mode",
+        currentValue: store.agent.widgetCompact ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Force compact widget mode regardless of ctrl+o state.",
+      },
+      {
+        id: "shortcut",
+        label: "Ctrl+o shortcut",
+        currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+      },
+      {
+        id: "maxLines",
+        label: "Max lines (full)",
+        currentValue: String(store.agent.widgetMaxLines),
+        submenu: createNumericSubmenu(ctx, { min: 2 }, (parsed) => {
+          store.mutate.widget.setMaxLines(parsed);
+          ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
         }),
-        description: "Max description length shown in full widget mode.",
+        description: "Maximum body lines in the full widget, excluding its heading.",
       },
       {
         id: "maxLinesCompact",
@@ -101,6 +122,16 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         description: "Max total lines in compact widget mode, including the heading.",
       },
       {
+        id: "descLengthFull",
+        label: "Description length (full)",
+        currentValue: String(store.agent.widgetDescLengthFull),
+        submenu: createNumericSubmenu(ctx, { min: 5 }, (parsed) => {
+          store.mutate.widget.setDescLengthFull(parsed);
+          ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
+        }),
+        description: "Max description length shown in full widget mode.",
+      },
+      {
         id: "descLengthCompact",
         label: "Description length (compact)",
         currentValue: String(store.agent.widgetDescLengthCompact),
@@ -111,11 +142,11 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         description: "Max description length shown in compact widget mode.",
       },
       {
-        id: "shortcut",
-        label: "Ctrl+o shortcut",
-        currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
+        id: "showModelThinking",
+        label: "Show model & thinking",
+        currentValue: store.agent.widgetShowModelThinking ? "ON" : "OFF",
         values: ["ON", "OFF"],
-        description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+        description: "Show each agent's model and thinking level in the widget.",
       },
       {
         id: "showStartTime",
@@ -124,13 +155,9 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         values: ["ON", "OFF"],
         description: "Show local HH:MM start time after each agent status symbol.",
       },
-      {
-        id: "thinkingBuffer",
-        label: "Log file thinking buffer",
-        currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
-        values: ["OFF", "80", "200", "500", "1000"],
-        description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
-      },
+      { id: "__sep__", label: "Usage stats", currentValue: "" },
+      ...statItems,
+      { id: "__sep__", label: "Behavior", currentValue: "" },
       {
         id: "finishedRetention",
         label: "Finished agent retention",
@@ -141,14 +168,12 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         }),
         description: "Minutes to keep finished agents visible in the widget before cleanup.",
       },
-      { id: "__sep__", label: " ", currentValue: "" },
       {
-        id: "usageStats",
-        label: "Usage stats",
-        currentValue: "→",
-        submenu: (_currentValue, done2) =>
-          new SettingsList(statItems, 7, buildSettingsListTheme(theme), onChange, () => done2()),
-        description: "Toggle which usage stats appear in the widget.",
+        id: "thinkingBuffer",
+        label: "Log file thinking buffer",
+        currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
+        values: ["OFF", "80", "200", "500", "1000"],
+        description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
       },
     ];
 

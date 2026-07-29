@@ -77,31 +77,21 @@ describe("showWidgetSettingsMenu — SettingsList integration", () => {
   });
 
 
-  it("shows 'Force compact mode' with current value", async () => {
-    mockModules.mockConfig.agent.widgetCompact = false;
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
-  });
-
-  it("omits compact mode because it lives in Appearance", async () => {
+  it("shows all common appearance controls", async () => {
     mockModules.mockConfig.agent.widgetCompact = true;
+    mockModules.mockConfig.agent.widgetShowModelThinking = false;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
-    const compact = settingsListCalls[0].items.find((i: any) => i.id === "compact");
-    expect(compact).toBeUndefined();
+    const items = settingsListCalls[0].items;
+    expect(items.find((i: any) => i.id === "compact").currentValue).toBe("ON");
+    expect(items.find((i: any) => i.id === "maxLines").currentValue).toBe("12");
+    expect(items.find((i: any) => i.id === "showModelThinking").currentValue).toBe("OFF");
   });
 
   it("does not expose a navigation-hint toggle", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls[0].items.find((i: any) => i.id === "navHint")).toBeUndefined();
-  });
-
-  it("leaves model and thinking visibility in Appearance", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    expect(settingsListCalls[0].items.find((i: any) => i.id === "showModelThinking")).toBeUndefined();
   });
 
   it("shows local start time with its configured value", async () => {
@@ -131,12 +121,15 @@ describe("showWidgetSettingsMenu — toggle onChange", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("does not handle the Appearance-only compact setting", async () => {
+  it("toggles compact mode and model/thinking visibility", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
+    mockModules.mockConfig.agent.widgetShowModelThinking = true;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("compact", "ON");
-    expect(mockModules.mockConfig.agent.widgetCompact).toBe(false);
+    settingsListCalls[0].onChange("showModelThinking", "OFF");
+    expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
+    expect(mockModules.mockConfig.agent.widgetShowModelThinking).toBe(false);
   });
 
   it("toggles shortcut via onChange", async () => {
@@ -175,11 +168,16 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("omits full-mode max lines because it lives in Appearance", async () => {
+  it("full-mode max lines is editable here", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const maxLines = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
-    expect(maxLines).toBeUndefined();
+    const mockDone = vi.fn();
+    expect(maxLines.currentValue).toBe("12");
+    maxLines.submenu("12", mockDone);
+    inputInstances[0].onSubmit!("18");
+    expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(18);
+    expect(mockDone).toHaveBeenCalledWith("18");
   });
 
   it("maxLinesCompact item has submenu function", async () => {
@@ -343,7 +341,7 @@ describe("showWidgetSettingsMenu — numeric submenu", () => {
   });
 });
 
-describe("showWidgetSettingsMenu — Usage stats submenu", () => {
+describe("showWidgetSettingsMenu — usage stats", () => {
   beforeEach(() => {
     mockModules.mockConfig.agent = {
       default: null, forceBackground: false,
@@ -361,70 +359,36 @@ describe("showWidgetSettingsMenu — Usage stats submenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("usageStats item has submenu function", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    expect(typeof usageStats.submenu).toBe("function");
-  });
-
-
-  it("stat items have correct ON/OFF values from store", async () => {
-    mockModules.mockConfig.agent.showTools = true;
+  it("exposes all stat toggles directly with their current values", async () => {
     mockModules.mockConfig.agent.showTurns = false;
-    mockModules.mockConfig.agent.showCost = false;
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
 
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    usageStats.submenu("", vi.fn());
-
-    const statItems = settingsListCalls[1].items;
-    expect(statItems.find((i: any) => i.id === "showTools").currentValue).toBe("ON");
-    expect(statItems.find((i: any) => i.id === "showTurns").currentValue).toBe("OFF");
-    expect(statItems.find((i: any) => i.id === "showCost").currentValue).toBe("OFF");
+    const items = settingsListCalls[0].items;
+    expect(items.find((i: any) => i.id === "usageStats")).toBeUndefined();
+    expect(items.find((i: any) => i.id === "showTools").currentValue).toBe("ON");
+    expect(items.find((i: any) => i.id === "showTurns").currentValue).toBe("OFF");
+    expect(items.find((i: any) => i.id === "showCost").currentValue).toBe("OFF");
   });
 
-  it("stat toggle onChange updates store", async () => {
-    mockModules.mockConfig.agent.showTools = true;
+  it("updates all seven stat toggles directly", async () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
+    const onChange = settingsListCalls[0].onChange;
 
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    usageStats.submenu("", vi.fn());
+    onChange("showTools", "OFF");
+    onChange("showTurns", "OFF");
+    onChange("showInput", "OFF");
+    onChange("showOutput", "OFF");
+    onChange("showContext", "OFF");
+    onChange("showCost", "ON");
+    onChange("showTime", "OFF");
 
-    settingsListCalls[1].onChange("showTools", "OFF");
-    expect(mockModules.mockConfig.agent.showTools).toBe(false);
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
-  });
-
-  it("stat toggle onChange for all 7 stats", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-
-    const usageStats = settingsListCalls[0].items.find((i: any) => i.id === "usageStats");
-    usageStats.submenu("", vi.fn());
-
-    settingsListCalls[1].onChange("showTools", "OFF");
-    expect(mockModules.mockConfig.agent.showTools).toBe(false);
-
-    settingsListCalls[1].onChange("showTurns", "OFF");
-    expect(mockModules.mockConfig.agent.showTurns).toBe(false);
-
-    settingsListCalls[1].onChange("showInput", "OFF");
-    expect(mockModules.mockConfig.agent.showInput).toBe(false);
-
-    settingsListCalls[1].onChange("showOutput", "OFF");
-    expect(mockModules.mockConfig.agent.showOutput).toBe(false);
-
-    settingsListCalls[1].onChange("showContext", "OFF");
-    expect(mockModules.mockConfig.agent.showContext).toBe(false);
-
-    settingsListCalls[1].onChange("showCost", "ON");
-    expect(mockModules.mockConfig.agent.showCost).toBe(true);
-
-    settingsListCalls[1].onChange("showTime", "OFF");
-    expect(mockModules.mockConfig.agent.showTime).toBe(false);
+    expect(mockModules.mockConfig.agent).toMatchObject({
+      showTools: false, showTurns: false, showInput: false, showOutput: false,
+      showContext: false, showCost: true, showTime: false,
+    });
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(7);
   });
 });
 

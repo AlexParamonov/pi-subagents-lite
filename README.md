@@ -247,8 +247,8 @@ Management menu with three sections:
 - **Settings**
   - **Agent settings** — effective model and thinking with source; global and per-agent session/saved overrides
   - **Execution** — default concurrency, force background, default max turns
-  - **Appearance** — compact mode, widget size, model/thinking visibility, and stats presets
-  - **Advanced** — provider/model concurrency limits, system prompt/context/skills/extensions, agent behavior/discovery, detailed widget settings, and diagnostics
+  - **Widget** — all appearance, sizing, behavior, and individual usage-stat controls in one menu
+  - **Advanced** — provider/model concurrency limits, system prompt/context/skills/extensions, agent behavior/discovery, and diagnostics
 
 ## Interface
 
