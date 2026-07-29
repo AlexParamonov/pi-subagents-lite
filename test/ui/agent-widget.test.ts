@@ -556,7 +556,7 @@ describe("status bar compact format", () => {
     expect(statusCall[1]).toBe("◈ 1");
   });
 
-  it("compact format shows '◇' when no agents exist", () => {
+  it("compact format shows '◇' when no active agents exist", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
     const manager = makeMockManager([], 0, 0);
