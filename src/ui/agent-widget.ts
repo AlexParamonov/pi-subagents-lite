@@ -12,7 +12,7 @@ import {
   getLifetimeTotal,
   getSessionContextPercent,
 } from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, type StatsVisibility } from "./format.js";
+import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, buildModelThinkingTag, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -428,7 +428,16 @@ export class AgentWidget {
     }, theme, this.statsVisibility);
 
     const statsLine = statsParts.join("·");
-    return `${icon} ${theme.fg("dim", name)}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+    const modelTag = this.modelThinkingTag(a);
+    const modelTagPart = modelTag ? ` ${theme.fg("dim", modelTag)}` : "";
+    return `${icon} ${theme.fg("dim", name)}${modelTagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+  }
+
+  /** Build the parenthesized model/thinking tag for an agent. */
+  private modelThinkingTag(a: AgentRecord): string {
+    const modelName = a.execution.session?.model?.name ?? a.display.invocation?.modelName;
+    const thinkingLevel = a.display.invocation?.thinkingLevel;
+    return buildModelThinkingTag(modelName, thinkingLevel, this.statsVisibility);
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
@@ -488,11 +497,13 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
+      const tag = this.modelThinkingTag(a);
+      const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = truncateDesc(a.display.description, this.descLengthCompact);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
@@ -500,7 +511,7 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {

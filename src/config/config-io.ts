@@ -33,6 +33,8 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   widgetDescLengthCompact: 30,
   widgetCompact: false,
   widgetShortcut: false,
+  widgetShowModel: true,
+  widgetShowThinking: true,
   widgetNavHint: true,
   systemPromptMode: "replace",
   includeContextFiles: true,

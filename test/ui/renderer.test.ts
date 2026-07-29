@@ -40,6 +40,7 @@ vi.mock("../../src/ui/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
+  buildModelThinkingTag: vi.fn((m, t) => { const p = [m, t].filter(Boolean); return p.length ? `(${p.join(" · ")})` : ""; }),
 }));
 
 // Import after mocks are set up

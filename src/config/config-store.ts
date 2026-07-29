@@ -46,6 +46,8 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
   readonly widgetShortcut: boolean;
+  readonly widgetShowModel: boolean;
+  readonly widgetShowThinking: boolean;
   readonly widgetNavHint: boolean;
   readonly widgetDescLengthFull: number;
   readonly widgetDescLengthCompact: number;
@@ -127,6 +129,8 @@ export class ConfigStore {
       widgetMaxLinesCompact,
       widgetCompact: a.widgetCompact === true,
       widgetShortcut: a.widgetShortcut === true,
+      widgetShowModel: a.widgetShowModel !== false,
+      widgetShowThinking: a.widgetShowThinking !== false,
       widgetNavHint: a.widgetNavHint !== false,
       widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
@@ -340,6 +344,16 @@ export class ConfigStore {
         this.config.agent.widgetShortcut = enabled;
         this.persist();
       },
+      setShowModel: (enabled: boolean): void => {
+        this.config.agent.widgetShowModel = enabled;
+        this.persist();
+        this.syncWidgetSettings();
+      },
+      setShowThinking: (enabled: boolean): void => {
+        this.config.agent.widgetShowThinking = enabled;
+        this.persist();
+        this.syncWidgetSettings();
+      },
       setNavHint: (enabled: boolean): void => {
         this.config.agent.widgetNavHint = enabled;
         this.persist();
@@ -484,6 +498,8 @@ export class ConfigStore {
       showContext: a.showContext,
       showCost: a.showCost,
       showTime: a.showTime,
+      showModel: a.widgetShowModel,
+      showThinking: a.widgetShowThinking,
     });
   }
 

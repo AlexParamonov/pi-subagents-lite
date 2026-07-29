@@ -59,6 +59,14 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
+      case "showModel":
+        store.mutate.widget.setShowModel(newValue === "ON");
+        ctx.ui.notify(`Show model ${newValue}`, "info");
+        break;
+      case "showThinking":
+        store.mutate.widget.setShowThinking(newValue === "ON");
+        ctx.ui.notify(`Show thinking ${newValue}`, "info");
+        break;
       case "navHint":
         store.mutate.widget.setNavHint(newValue === "ON");
         ctx.ui.notify(`Navigation hint ${newValue}`, "info");
@@ -139,6 +147,20 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+      },
+      {
+        id: "showModel",
+        label: "Show model",
+        currentValue: store.agent.widgetShowModel ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Show the model name next to each agent in the widget.",
+      },
+      {
+        id: "showThinking",
+        label: "Show thinking",
+        currentValue: store.agent.widgetShowThinking ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description: "Show the thinking level next to each agent in the widget.",
       },
       {
         id: "navHint",
