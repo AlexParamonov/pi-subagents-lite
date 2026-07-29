@@ -268,7 +268,11 @@ export class ConversationViewer implements Component {
     ));
 
     // Row 2: model name + compact usage stats
-    const tags = buildInvocationTags(this.record.display.invocation);
+    const resolvedInvocation = {
+      ...this.record.display.invocation,
+      thinkingLevel: this.record.execution.session?.thinkingLevel ?? this.record.display.invocation?.thinkingLevel,
+    };
+    const tags = buildInvocationTags(resolvedInvocation);
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
 
     const modelLabel = resolveAgentModelLabel(this.record, this.modelDisplayStyle);

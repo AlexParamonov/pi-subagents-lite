@@ -451,7 +451,7 @@ export class AgentWidget {
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
     const modelLabel = resolveAgentModelLabel(a, this.modelDisplayStyle);
-    const thinkingLevel = a.display.invocation?.thinkingLevel;
+    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
     return buildModelThinkingTag(modelLabel, thinkingLevel, this.statsVisibility);
   }
 

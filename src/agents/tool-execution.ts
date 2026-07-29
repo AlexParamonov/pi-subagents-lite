@@ -83,7 +83,7 @@ export function buildAgentDetails(
     details.compactions = record.stats.compactionCount;
     details.modelName = record.execution.session?.model?.name ?? record.display.invocation?.modelName;
     details.modelId = record.execution.session?.model?.id ?? record.display.invocation?.modelName;
-    details.thinkingLevel = record.display.invocation?.thinkingLevel;
+    details.thinkingLevel = record.execution.session?.thinkingLevel ?? record.display.invocation?.thinkingLevel;
     details.cost = record.stats.lifetimeUsage.cost;
   }
 
@@ -178,7 +178,7 @@ export async function executeAgentTool(
     graceTurns: getStore().agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
-    invocation: { modelName },
+    invocation: { modelName, thinkingLevel, maxTurns },
     runInBackground: runInBackground || getStore().agent.forceBackground,
   });
 
