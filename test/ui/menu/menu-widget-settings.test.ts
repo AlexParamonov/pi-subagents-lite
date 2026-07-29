@@ -82,7 +82,6 @@ function setupMockConfig() {
 }
 
 /** Create a ctx that dispatches a specific category choice on first custom call. */
-/** Create a ctx that dispatches a specific category choice on first custom call. */
 function createDispatchCtx(choice: string) {
   let callCount = 0;
   return {
@@ -402,5 +401,11 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
     expect(wrapperCalls).toContainEqual({ title: "Stats" });
+  });
+  it("stat labels have no 'Show' prefix", async () => {
+    const ctx = createDispatchCtx("stats");
+    await showWidgetSettingsMenu(ctx);
+    const labels = settingsListCalls[0].items.filter((i: any) => i.id !== "__sep__").map((i: any) => i.label);
+    expect(labels).toEqual(["Tools", "Turns", "Input tokens", "Output tokens", "Context %", "Cost", "Time", "Delta input tokens"]);
   });
 });
