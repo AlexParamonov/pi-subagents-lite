@@ -6,7 +6,7 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
-import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag } from "./format.js";
+import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag, resolveModelLabel } from "./format.js";
 
 // ============================================================================
 // Stats rendering helpers
@@ -15,9 +15,7 @@ import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag } from
 /** Format agent display name with optional model/thinking level: "Agent (mimo-v2.5-pro · high)" or "Agent". */
 export function agentNameLabel(d: Record<string, unknown>, theme: Theme, modelDisplayStyle: "id" | "name" = "id"): string {
   const typeName = getDisplayName((d.type as string) || "");
-  const modelLabel = modelDisplayStyle === "name"
-    ? (d.modelName as string | undefined)
-    : (d.modelId as string | undefined);
+  const modelLabel = resolveModelLabel(modelDisplayStyle, d.modelName as string | undefined, d.modelId as string | undefined);
   const thinkingLevel = d.thinkingLevel as string | undefined;
   const tag = buildModelThinkingTag(modelLabel, thinkingLevel);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);

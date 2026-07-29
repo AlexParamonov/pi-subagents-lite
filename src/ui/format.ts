@@ -301,3 +301,18 @@ export function buildModelThinkingTag(
   const parts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
   return parts.length > 0 ? `(${parts.join(" · ")})` : "";
 }
+
+/** Pick the model label based on display style, trimming whitespace. Returns undefined for empty. */
+export function resolveModelLabel(style: "id" | "name", labelName: string | undefined, labelId: string | undefined): string | undefined {
+  const label = style === "name" ? labelName : labelId;
+  return label?.trim() || undefined;
+}
+
+/** Resolve model label from an AgentRecord, preferring session model over invocation fallback. */
+export function resolveAgentModelLabel(a: { execution: { session?: { model?: { name?: string; id?: string } } }, display: { invocation?: { modelName?: string } } }, style: "id" | "name"): string | undefined {
+  const model = a.execution.session?.model;
+  const label = model
+    ? (style === "name" ? model.name : model.id)
+    : a.display.invocation?.modelName;
+  return label?.trim() || undefined;
+}

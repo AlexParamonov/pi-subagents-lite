@@ -12,7 +12,7 @@ import {
   getLifetimeTotal,
   getSessionContextPercent,
 } from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, buildModelThinkingTag, type StatsVisibility } from "./format.js";
+import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, buildModelThinkingTag, resolveAgentModelLabel, type StatsVisibility } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -442,10 +442,7 @@ export class AgentWidget {
 
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
-    const model = a.execution.session?.model;
-    const modelLabel = model
-      ? (this.modelDisplayStyle === "name" ? model.name : model.id)
-      : a.display.invocation?.modelName;
+    const modelLabel = resolveAgentModelLabel(a, this.modelDisplayStyle);
     const thinkingLevel = a.display.invocation?.thinkingLevel;
     return buildModelThinkingTag(modelLabel, thinkingLevel, this.statsVisibility);
   }

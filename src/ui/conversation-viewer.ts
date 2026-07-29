@@ -19,6 +19,7 @@ import {
   describeActivity,
   fgPreservingNestedStyles,
   getDisplayName,
+  resolveAgentModelLabel,
   summarizeToolArgs,
 } from "./format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
@@ -270,12 +271,7 @@ export class ConversationViewer implements Component {
     const { tags } = buildInvocationTags(this.record.display.invocation);
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
 
-    // Resolve model label from session (when available) using the display style setting
-    const model = this.record.execution.session?.model;
-    const modelLabel = model
-      ? (this.modelDisplayStyle === "name" ? model.name : model.id)
-      : this.record.display.invocation?.modelName;
-
+    const modelLabel = resolveAgentModelLabel(this.record, this.modelDisplayStyle);
     if (modelLabel) {
       const parts = [statsLine, ...tags].filter(Boolean);
       lines.push(row(th.fg("dim", `  ${modelLabel} · ${parts.join(" · ")}`)));
