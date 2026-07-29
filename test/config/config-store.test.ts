@@ -74,6 +74,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setFinishedEvictTurns: (n: number) => calls.push(`setFinishedEvictTurns:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
+    setStatusBarFormat: (f: string) => calls.push(`setStatusBarFormat:${f}`),
   };
   return { w: w as unknown as AgentWidget, calls };
 }
@@ -767,5 +768,51 @@ describe("ConfigStore outputThinkingBufferSize", () => {
     const snap = store.agentConfigSnapshot();
     expect(snap.outputThinkingBufferSize).toBe(500);
     expect(snap.Explore).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  statusBarFormat                                                     */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore statusBarFormat", () => {
+  it("defaults to 'full' when absent", () => {
+    const store = new ConfigStore(memIO().io);
+    expect(store.agent.statusBarFormat).toBe("full");
+  });
+
+  it("returns configured value when present", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, statusBarFormat: "compact" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.statusBarFormat).toBe("compact");
+  });
+
+  it("setStatusBarFormat persists and syncs to widget", () => {
+    const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    saves.length = 0;
+
+    store.mutate.widget.setStatusBarFormat("compact");
+    expect(store.agent.statusBarFormat).toBe("compact");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.statusBarFormat).toBe("compact");
+    expect(calls).toContain("setStatusBarFormat:compact");
+  });
+
+  it("reload syncs statusBarFormat to widget", () => {
+    const { io, current } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+    current().agent.statusBarFormat = "compact";
+    store.reload();
+    expect(calls).toContain("setStatusBarFormat:compact");
   });
 });

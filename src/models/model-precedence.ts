@@ -64,6 +64,8 @@ export interface SubagentsConfig {
     finishedRetentionMinutes?: number;
     /** Turns to keep finished agents visible in the widget. 0 = disabled. Default: 4. */
     finishedEvictTurns?: number;
+    /** Status bar format: 'full' (default) or 'compact'. */
+    statusBarFormat?: "full" | "compact";
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

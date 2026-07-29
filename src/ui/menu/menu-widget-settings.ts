@@ -51,6 +51,10 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.widget.setCompact(newValue === "ON");
         ctx.ui.notify(`Force compact mode ${newValue}`, "info");
         break;
+      case "statusBarFormat":
+        store.mutate.widget.setStatusBarFormat(newValue as "full" | "compact");
+        ctx.ui.notify(`Status bar format: ${newValue}`, "info");
+        break;
       case "shortcut":
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
@@ -100,6 +104,13 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetCompact ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "Force compact widget mode regardless of ctrl+o state.",
+      },
+      {
+        id: "statusBarFormat",
+        label: "Status bar format",
+        currentValue: store.agent.statusBarFormat,
+        values: ["full", "compact"],
+        description: "Status bar format: full (Agents: N active · M done) or compact (N MΣ).",
       },
       {
         id: "maxLines",

@@ -476,6 +476,106 @@ describe("status bar cost from accumulator", () => {
   });
 });
 
+describe("status bar compact format", () => {
+  it("compact format: '◈ 2 5Σ $0.12' with active, done, and cost", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.12, 5);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    a1.stats.lifetimeUsage.cost = 0;
+    const a2 = makeRunningAgent("a2");
+    a2.stats.lifetimeUsage.cost = 0;
+    (manager as any).listAgents = () => [a1, a2];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◈ 2 5Σ $0.12");
+  });
+
+  it("compact format omits cost section when cost is zero", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 2);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [a1];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◈ 1 2Σ");
+  });
+
+  it("compact format omits active count when 0", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.50, 3);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◇ 3Σ $0.50");
+  });
+
+  it("compact format omits done count when 0", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 0);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [a1];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◈ 1");
+  });
+
+  it("compact format shows '◇' when no agents exist", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 0);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    // finished agent triggers update
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toContain("◇");
+  });
+});
+
 // ------------------------------------------------------------------ */
 /*  Compact mode and max lines tests                                 */
 /* ------------------------------------------------------------------ */

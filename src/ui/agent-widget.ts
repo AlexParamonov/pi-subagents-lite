@@ -135,6 +135,10 @@ export class AgentWidget {
 
   /** Whether to show navigation hint text in the heading. */
   private navHint = true;
+
+  /** Status bar format: 'full' or 'compact'. */
+  private statusBarFormat: "full" | "compact" = "full";
+
   /** Turn age for finished agents: agent id → turns since completion. */
   private finishedTurnAge = new Map<string, number>();
 
@@ -211,6 +215,11 @@ export class AgentWidget {
   /** Set whether to show navigation hint text in the heading. */
   setNavHint(enabled: boolean) {
     this.navHint = enabled;
+  }
+
+  /** Set status bar format ('full' or 'compact'). */
+  setStatusBarFormat(format: "full" | "compact") {
+    this.statusBarFormat = format;
   }
   /** Set the turn threshold for evicting finished agents. 0 = disabled. */
   setFinishedEvictTurns(turns: number) {
@@ -764,20 +773,32 @@ export class AgentWidget {
     const doneCount = this.manager.getTotalAgentCount();
     const icon = activeCount > 0 ? "◈" : "◇";
 
-    let statusText = `${icon} Agents`;
-    const suffixParts: string[] = [];
-    if (activeCount > 0) suffixParts.push(`${activeCount} active`);
-    if (doneCount > 0) suffixParts.push(`${doneCount} done`);
-
+    // Compute total cost (session accumulator + in-flight running agents)
+    let totalCost = 0;
     if (this.showCost) {
       const sessionCost = this.manager.getTotalAgentCost();
-      // Also include in-flight running agents (not yet completed, so not in accumulator)
       const runningCost = running.reduce((sum, a) => sum + a.stats.lifetimeUsage.cost, 0);
-      const totalCost = sessionCost + runningCost;
-      if (totalCost > 0) suffixParts.push(formatCost(totalCost));
+      totalCost = sessionCost + runningCost;
     }
 
-    if (suffixParts.length > 0) statusText += ": " + suffixParts.join(" \u00b7 ");
+    let statusText: string;
+    if (this.statusBarFormat === "compact") {
+      // Compact: ◈ [N ][MΣ][ $cost]
+      const parts: string[] = [icon];
+      if (activeCount > 0) parts.push(`${activeCount}`);
+      if (doneCount > 0) parts.push(`${doneCount}Σ`);
+      if (totalCost > 0) parts.push(formatCost(totalCost));
+      statusText = parts.join(" ");
+    } else {
+      // Full: ◈ Agents: [N active][ · M done][ · $cost]
+      statusText = `${icon} Agents`;
+      const suffixParts: string[] = [];
+      if (activeCount > 0) suffixParts.push(`${activeCount} active`);
+      if (doneCount > 0) suffixParts.push(`${doneCount} done`);
+      if (totalCost > 0) suffixParts.push(formatCost(totalCost));
+      if (suffixParts.length > 0) statusText += ": " + suffixParts.join(" \u00b7 ");
+    }
+
     if (statusText !== this.lastStatusText) {
       this.uiCtx?.setStatus(STATUS_KEY, statusText);
       this.lastStatusText = statusText;
