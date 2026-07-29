@@ -439,7 +439,8 @@ export class AgentManager {
         record.error = errorMessage(err);
         record.lifecycle.completedAt = Date.now();
         started.add(entry.id);
-        this.safeNotifyComplete(record);
+        // Notify UI of the failure, but don't count it as a completed agent
+        try { this.onComplete?.(record); } catch { /* ignore */ }
       }
     }
     this.queue = this.queue.filter(e => !started.has(e.id));

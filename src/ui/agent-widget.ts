@@ -9,7 +9,6 @@ import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
 import {
   formatCost,
-  getLifetimeTotal,
   getSessionContextPercent,
 } from "../agents/usage.js";
 import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, buildModelThinkingTag, type StatsVisibility } from "./format.js";
