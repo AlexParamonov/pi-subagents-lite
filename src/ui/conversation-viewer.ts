@@ -10,7 +10,6 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import { getSessionContextPercent } from "../agents/usage.js";
-import { getStore } from "../shell.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
 import { makeMarkdownTheme } from "./markdown-theme.js";
@@ -48,6 +47,8 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
 };
 
 export class ConversationViewer implements Component {
+  /** Model display format: 'id' (short) or 'name' (full). */
+  private modelDisplayStyle: "id" | "name" = "id";
   private scrollOffset = 0;
   private autoScroll = true;
   private unsubscribe: (() => void) | undefined;
@@ -272,7 +273,7 @@ export class ConversationViewer implements Component {
     // Resolve model label from session (when available) using the display style setting
     const model = this.record.execution.session?.model;
     const modelLabel = model
-      ? (getStore().agent.modelDisplayStyle === "name" ? model.name : model.id)
+      ? (this.modelDisplayStyle === "name" ? model.name : model.id)
       : this.record.display.invocation?.modelName;
 
     if (modelLabel) {
@@ -388,6 +389,10 @@ export class ConversationViewer implements Component {
       this.unsubscribe();
       this.unsubscribe = undefined;
     }
+  }
+  /** Set model display format: 'id' (short) or 'name' (full). */
+  setModelDisplayStyle(style: "id" | "name") {
+    this.modelDisplayStyle = style;
   }
 
   private viewportHeight(): number {

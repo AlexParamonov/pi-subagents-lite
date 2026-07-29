@@ -36,8 +36,8 @@ async function showConversationViewer(
   const coordinator = getCoordinator();
 
   await ctx.ui.custom<void>(
-    (tui, theme, kb, done) =>
-      new ConversationViewer(
+    (tui, theme, kb, done) => {
+      const viewer = new ConversationViewer(
         tui,
         record.execution.session!,
         record,
@@ -46,8 +46,10 @@ async function showConversationViewer(
         () => manager?.abort(record.id, "user"),
         kb,
         (msg: string) => manager?.steer(record.id, msg),
-      ),
-    { overlay: true },
+      );
+      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
+      return viewer;
+    },
   );
 }
 

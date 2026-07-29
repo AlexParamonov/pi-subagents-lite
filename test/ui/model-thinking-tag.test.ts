@@ -80,8 +80,9 @@ describe("agentNameLabel", () => {
   });
 
   it("includes model name in parens", () => {
-    const d = { type: "builder", modelName: "haiku", modelId: "haiku" };
-    expect(agentNameLabel(d, theme)).toBe("Agent (haiku)");
+    const d = { type: "builder", modelName: "Qwen3.6 27B", modelId: "qwen3-27b" };
+    expect(agentNameLabel(d, theme, "id")).toBe("Agent (qwen3-27b)");
+    expect(agentNameLabel(d, theme, "name")).toBe("Agent (Qwen3.6 27B)");
   });
 
   it("includes thinking level in parens", () => {
