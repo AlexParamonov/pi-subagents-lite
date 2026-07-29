@@ -135,6 +135,8 @@ vi.mock("../src/shell.js", () => {
         deltaInputTokens: a.deltaInputTokens !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
+        finishedEvictTurns: a.finishedEvictTurns ?? 4,
+        modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
       };
     },
     get concurrency() {
@@ -175,7 +177,7 @@ vi.mock("../src/shell.js", () => {
         clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly', 'modelDisplayStyle']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -209,6 +211,10 @@ vi.mock("../src/shell.js", () => {
         setDescLengthFull(n: number) { mockModules.mockConfig.agent.widgetDescLengthFull = n; },
         setDescLengthCompact(n: number) { mockModules.mockConfig.agent.widgetDescLengthCompact = n; },
         setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
+        setShowModel(enabled: boolean) { mockModules.mockConfig.agent.widgetShowModel = enabled; },
+        setShowThinking(enabled: boolean) { mockModules.mockConfig.agent.widgetShowThinking = enabled; },
+        setNavHint(enabled: boolean) { mockModules.mockConfig.agent.widgetNavHint = enabled; },
+        setModelDisplayStyle(style: string) { mockModules.mockConfig.agent.modelDisplayStyle = style; },
       },
       concurrency: {
         setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },

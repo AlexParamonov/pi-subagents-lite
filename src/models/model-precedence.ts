@@ -64,6 +64,8 @@ export interface SubagentsConfig {
     finishedRetentionMinutes?: number;
     /** Turns to keep finished agents visible in the widget. 0 = disabled. Default: 4. */
     finishedEvictTurns?: number;
+    /** How to display the model label: short ID or full name. Default: 'id'. */
+    modelDisplayStyle?: "id" | "name";
     [agentType: string]: string | null | undefined | boolean | number;
   };
   concurrency: {

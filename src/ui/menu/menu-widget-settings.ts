@@ -71,6 +71,10 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.widget.setNavHint(newValue === "ON");
         ctx.ui.notify(`Navigation hint ${newValue}`, "info");
         break;
+      case "modelDisplayStyle":
+        store.mutate.widget.setModelDisplayStyle(newValue === "Name" ? "name" : "id");
+        ctx.ui.notify(`Model display ${newValue}`, "info");
+        break;
     }
   };
 
@@ -168,6 +172,13 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         currentValue: store.agent.widgetNavHint ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "Show navigation tip (↓ to navigate) in the widget heading.",
+      },
+      {
+        id: "modelDisplayStyle",
+        label: "Model display",
+        currentValue: store.agent.modelDisplayStyle === "name" ? "Name" : "ID",
+        values: ["ID", "Name"],
+        description: "Show model short ID (e.g. '27b_mtp') or full name (e.g. 'Qwen3.6 27B FP8').",
       },
       {
         id: "thinkingBuffer",

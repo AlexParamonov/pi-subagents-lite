@@ -50,6 +50,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   deltaInputTokens: false,
   finishedRetentionMinutes: 10,
   finishedEvictTurns: 4,
+  modelDisplayStyle: "id",
 };
 
 /**

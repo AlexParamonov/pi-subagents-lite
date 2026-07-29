@@ -142,6 +142,9 @@ export class AgentWidget {
   /** Configurable turn threshold for evicting finished agents. 0 = disabled. */
   private finishedEvictTurns = 0;
 
+  /** Model display format: 'id' (short) or 'name' (full). */
+  private modelDisplayStyle: "id" | "name" = "id";
+
   /** Navigation mode active. */
   private navActive = false;
 
@@ -216,6 +219,10 @@ export class AgentWidget {
   /** Set the turn threshold for evicting finished agents. 0 = disabled. */
   setFinishedEvictTurns(turns: number) {
     this.finishedEvictTurns = turns;
+  }
+  /** Set model display format: 'id' (short) or 'name' (full). */
+  setModelDisplayStyle(style: "id" | "name") {
+    this.modelDisplayStyle = style;
   }
   /** Register a finished agent for turn-based tracking. No-op when eviction is disabled. */
   markFinished(id: string) {
@@ -435,9 +442,12 @@ export class AgentWidget {
 
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
-    const modelName = a.execution.session?.model?.name ?? a.display.invocation?.modelName;
+    const model = a.execution.session?.model;
+    const modelLabel = model
+      ? (this.modelDisplayStyle === "name" ? model.name : model.id)
+      : a.display.invocation?.modelName;
     const thinkingLevel = a.display.invocation?.thinkingLevel;
-    return buildModelThinkingTag(modelName, thinkingLevel, this.statsVisibility);
+    return buildModelThinkingTag(modelLabel, thinkingLevel, this.statsVisibility);
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */

@@ -10,6 +10,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import { getSessionContextPercent } from "../agents/usage.js";
+import { getStore } from "../shell.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
 import { makeMarkdownTheme } from "./markdown-theme.js";
@@ -265,11 +266,18 @@ export class ConversationViewer implements Component {
     ));
 
     // Row 2: model name + compact usage stats
-    const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
+    const { tags } = buildInvocationTags(this.record.display.invocation);
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
-    if (modelName) {
+
+    // Resolve model label from session (when available) using the display style setting
+    const model = this.record.execution.session?.model;
+    const modelLabel = model
+      ? (getStore().agent.modelDisplayStyle === "name" ? model.name : model.id)
+      : this.record.display.invocation?.modelName;
+
+    if (modelLabel) {
       const parts = [statsLine, ...tags].filter(Boolean);
-      lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));
+      lines.push(row(th.fg("dim", `  ${modelLabel} · ${parts.join(" · ")}`)));
     } else {
       lines.push(row(statsLine));
     }

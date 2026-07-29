@@ -82,6 +82,7 @@ export function buildAgentDetails(
     details.durationMs = elapsedMs;
     details.compactions = record.stats.compactionCount;
     details.modelName = record.execution.session?.model?.name ?? record.display.invocation?.modelName;
+    details.modelId = record.execution.session?.model?.id ?? record.display.invocation?.modelName;
     details.thinkingLevel = record.display.invocation?.thinkingLevel;
     details.cost = record.stats.lifetimeUsage.cost;
   }

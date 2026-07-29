@@ -13,11 +13,13 @@ import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag } from
 // ============================================================================
 
 /** Format agent display name with optional model/thinking level: "Agent (mimo-v2.5-pro · high)" or "Agent". */
-export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
+export function agentNameLabel(d: Record<string, unknown>, theme: Theme, modelDisplayStyle: "id" | "name" = "id"): string {
   const typeName = getDisplayName((d.type as string) || "");
-  const modelName = d.modelName as string | undefined;
+  const modelLabel = modelDisplayStyle === "name"
+    ? (d.modelName as string | undefined)
+    : (d.modelId as string | undefined);
   const thinkingLevel = d.thinkingLevel as string | undefined;
-  const tag = buildModelThinkingTag(modelName, thinkingLevel);
+  const tag = buildModelThinkingTag(modelLabel, thinkingLevel);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
 
@@ -64,6 +66,7 @@ export function renderAgentToolResult(
   options: { expanded?: boolean },
   theme: Theme,
   showCost: boolean,
+  modelDisplayStyle: "id" | "name" = "id",
 ): Text {
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? result.content[0].text ?? "" : "";
@@ -72,7 +75,7 @@ export function renderAgentToolResult(
   const desc = (d?.description as string) || "";
 
   if (d && d.turnCount != null) {
-    const namePart = agentNameLabel(d, theme);
+    const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
     let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
@@ -101,6 +104,7 @@ export function renderSubagentResult(
   options: { expanded?: boolean },
   theme: Theme,
   showCost: boolean,
+  modelDisplayStyle: "id" | "name" = "id",
 ): Container {
   const { expanded } = options;
   const d = message.details;
@@ -114,7 +118,7 @@ export function renderSubagentResult(
     const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
     const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
 
-    const namePart = agentNameLabel(d, theme);
+    const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
     let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
     if (d.outputFile as string) {
@@ -130,7 +134,7 @@ export function renderSubagentResult(
       inner.addChild(new Text(text.split("\n").map(l => `  ${l}`).join("\n"), 0, 0));
     }
   } else {
-    inner.addChild(new Text(buildFallbackResultLine(d, text, theme), 0, 0));
+    inner.addChild(new Text(buildFallbackResultLine(d, text, theme, modelDisplayStyle), 0, 0));
   }
 
   const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
@@ -148,11 +152,12 @@ function buildFallbackResultLine(
   d: Record<string, unknown> | undefined,
   text: string,
   theme: Theme,
+  modelDisplayStyle: "id" | "name" = "id",
 ): string {
   const icon = theme.fg("success", "✓");
   let line = icon;
   if (d?.type) {
-    line += ` ${agentNameLabel(d, theme)}`;
+    line += ` ${agentNameLabel(d, theme, modelDisplayStyle)}`;
   }
   const desc = (d?.description as string) || "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
