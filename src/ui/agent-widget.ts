@@ -435,10 +435,8 @@ export class AgentWidget {
 
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
-    const invocation = a.display.invocation;
-    // Session model is always available for running/finished agents
-    const modelName = a.execution.session?.model?.name ?? invocation?.modelName;
-    const thinkingLevel = invocation?.thinkingLevel;
+    const modelName = a.execution.session?.model?.name ?? a.display.invocation?.modelName;
+    const thinkingLevel = a.display.invocation?.thinkingLevel;
     return buildModelThinkingTag(modelName, thinkingLevel, this.statsVisibility);
   }
 
