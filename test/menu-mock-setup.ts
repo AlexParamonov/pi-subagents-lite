@@ -137,6 +137,10 @@ vi.mock("../src/shell.js", () => {
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
         finishedEvictTurns: a.finishedEvictTurns ?? 4,
         modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
+        statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
+        widgetShowModel: a.widgetShowModel !== false,
+        widgetShowThinking: a.widgetShowThinking !== false,
+        widgetNavHint: a.widgetNavHint !== false,
       };
     },
     get concurrency() {
@@ -203,6 +207,7 @@ vi.mock("../src/shell.js", () => {
         setDeltaInputTokens(enabled: boolean) { mockModules.mockConfig.agent.deltaInputTokens = enabled; },
         setOutputThinkingBufferSize(size: number) { mockModules.mockConfig.agent.outputThinkingBufferSize = size; },
         setFinishedRetentionMinutes(n: number) { mockModules.mockConfig.agent.finishedRetentionMinutes = n; },
+        setFinishedEvictTurns(n: number) { mockModules.mockConfig.agent.finishedEvictTurns = n; },
       },
       widget: {
         setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
@@ -215,6 +220,7 @@ vi.mock("../src/shell.js", () => {
         setShowThinking(enabled: boolean) { mockModules.mockConfig.agent.widgetShowThinking = enabled; },
         setNavHint(enabled: boolean) { mockModules.mockConfig.agent.widgetNavHint = enabled; },
         setModelDisplayStyle(style: string) { mockModules.mockConfig.agent.modelDisplayStyle = style; },
+        setStatusBarFormat(format: string) { mockModules.mockConfig.agent.statusBarFormat = format; },
       },
       concurrency: {
         setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },
