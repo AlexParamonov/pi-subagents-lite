@@ -170,7 +170,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     expect(values).toContain("view-error");
   });
 
-  it("shows View snapshot action for running agent with session", () => {
+  it("shows View conversation action for running agent with session", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
@@ -178,7 +178,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     });
     const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
     const values = list.items.map((i: any) => i.value);
-    expect(values).toContain("view-snapshot");
+    expect(values).toContain("view-conversation");
   });
 
   it("shows Steer and Stop actions for running agent", () => {
@@ -242,7 +242,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
     expect(capturedFactory).toBeDefined();
   });
 
-  it("opens ConversationViewer when selecting view-snapshot", async () => {
+  it("opens ConversationViewer when selecting view-conversation", async () => {
     let capturedFactory: any = null;
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
@@ -256,7 +256,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
     });
 
     const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
-    await list.onSelect!({ value: "view-snapshot" });
+    await list.onSelect!({ value: "view-conversation" });
 
     expect(capturedFactory).toBeDefined();
   });
@@ -499,16 +499,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
     expect(values).not.toContain("view-conversation");
   });
 
-  it("does not show View conversation for running agent (still View snapshot)", () => {
+  it("shows View conversation for running agent with a session", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "",
     });
     const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
-    const values = list.items.map((i: any) => i.value);
-    expect(values).not.toContain("view-conversation");
-    expect(values).toContain("view-snapshot");
+    expect(list.items.map((i: any) => i.value)).toContain("view-conversation");
   });
 
   it("opens ConversationViewer when selecting view-conversation", async () => {

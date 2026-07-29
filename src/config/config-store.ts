@@ -54,7 +54,6 @@ export interface ResolvedAgentSettings {
   readonly widgetShortcut: boolean;
   readonly widgetShowModelThinking: boolean;
   readonly widgetShowStartTime: boolean;
-  readonly widgetNavHint: boolean;
   readonly widgetDescLengthFull: number;
   readonly widgetDescLengthCompact: number;
   /** System prompt mode: replace (default), inherit parent, or custom file. */
@@ -85,8 +84,6 @@ export interface ResolvedAgentSettings {
   readonly showContext: boolean;
   /** Whether to show elapsed time in widget stats line. */
   readonly showTime: boolean;
-  /** Whether to estimate input token delta for vLLM (no cache reporting). */
-  readonly deltaInputTokens: boolean;
   /** Buffer size for streaming thinking blocks to output file. 0 = disabled. */
   readonly outputThinkingBufferSize: number;
   /** Minutes to retain finished agents before cleanup eviction. */
@@ -136,7 +133,6 @@ export class ConfigStore {
       widgetShortcut: a.widgetShortcut === true,
       widgetShowModelThinking: a.widgetShowModelThinking !== false,
       widgetShowStartTime: a.widgetShowStartTime !== false,
-      widgetNavHint: a.widgetNavHint !== false,
       widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
       systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string) ? (a.systemPromptMode as SystemPromptMode) : "replace",
@@ -153,7 +149,6 @@ export class ConfigStore {
       showOutput: a.showOutput !== false,
       showContext: a.showContext !== false,
       showTime: a.showTime !== false,
-      deltaInputTokens: a.deltaInputTokens !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
     };
@@ -341,10 +336,6 @@ export class ConfigStore {
       setShowOutput: (enabled: boolean) => this.setAgentVisibility("showOutput", enabled),
       setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
       setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
-      setDeltaInputTokens: (enabled: boolean): void => {
-        this.config.agent.deltaInputTokens = enabled;
-        this.persist();
-      },
       setOutputThinkingBufferSize: (size: number): void => {
         this.config.agent.outputThinkingBufferSize = size;
         this.persist();
@@ -403,11 +394,6 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      setNavHint: (enabled: boolean): void => {
-        this.config.agent.widgetNavHint = enabled;
-        this.persist();
-        this.syncWidgetSettings();
-      },
     },
     concurrency: {
       setDefault: (n: number): void => {
@@ -437,6 +423,11 @@ export class ConfigStore {
       },
       reset: (): void => {
         this.config.concurrency = { ...DEFAULT_CONCURRENCY };
+        this.persist();
+        this.applyConcurrency();
+      },
+      resetOverrides: (): void => {
+        this.config.concurrency = { default: this.config.concurrency.default };
         this.persist();
         this.applyConcurrency();
       },
@@ -540,7 +531,6 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
     w.setDescLengthFull(a.widgetDescLengthFull);
     w.setDescLengthCompact(a.widgetDescLengthCompact);
-    w.setNavHint(a.widgetNavHint);
   }
 
   /** Push stats visibility flags to the widget. */

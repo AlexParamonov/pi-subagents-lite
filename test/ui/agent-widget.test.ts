@@ -346,10 +346,11 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       // All tail-f lines use spaces only (no connector) for finished agents
-      expect(lines[2]).toMatch(/^\[dim:\s{4}/);
-      expect(lines[4]).toMatch(/^\[dim:\s{4}/);
-      expect(lines[2]).toContain("out1.log");
-      expect(lines[4]).toContain("out2.log");
+      const outputLines = lines.filter((line: string) => line.includes("tail -f"));
+      expect(outputLines).toHaveLength(2);
+      expect(outputLines.every((line: string) => /^\[dim:\s{4}/.test(line))).toBe(true);
+      expect(outputLines.some((line: string) => line.includes("out1.log"))).toBe(true);
+      expect(outputLines.some((line: string) => line.includes("out2.log"))).toBe(true);
     });
 
     it("dims raw finished stats without applying the running text foreground", () => {

@@ -172,9 +172,6 @@ export class AgentWidget {
   /** Max description length in compact mode. */
   private descLengthCompact = 30;
 
-  /** Whether to show navigation hint text in the heading. */
-  private navHint = true;
-
   /** Navigation mode active. */
   private navActive = false;
 
@@ -254,11 +251,6 @@ export class AgentWidget {
   /** Set max description length for compact mode. */
   setDescLengthCompact(len: number) {
     this.descLengthCompact = len;
-  }
-
-  /** Set whether to show navigation hint text in the heading. */
-  setNavHint(enabled: boolean) {
-    this.navHint = enabled;
   }
 
   // ---- Navigation state machine ----
@@ -726,7 +718,6 @@ export class AgentWidget {
     if (this.navActive) {
       return `${iconText}  ${theme.fg("dim", "↑↓ navigate · enter view · esc back")}`;
     }
-    if (!this.navHint) return iconText;
     return `${iconText}  ${theme.fg("dim", "↓ to navigate")}`;
   }
 

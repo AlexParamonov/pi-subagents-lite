@@ -36,17 +36,6 @@ vi.mock("../../src/agents/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
 }));
 
-// Controllable mock for getStore(), used by delta estimation tests
-const mockStoreState = { deltaInputTokens: true };
-
-vi.mock("../../src/shell.js", () => ({
-  getStore: () => ({
-    agent: {
-      deltaInputTokens: mockStoreState.deltaInputTokens,
-    },
-  }),
-}));
-
 function mockAgentSession(): any {
   return { subscribe: vi.fn(), messages: [], dispose: vi.fn() };
 }
@@ -578,7 +567,7 @@ describe("AgentManager", () => {
     });
   });
 
-describe("delta estimation", () => {
+describe("usage accounting", () => {
   /**
    * Helper: capture the onAssistantUsage callback passed to runAgent,
    * so we can invoke it manually with different usage values.
@@ -595,11 +584,7 @@ describe("delta estimation", () => {
     return callbacks.onSupplementalUsage;
   }
 
-  beforeEach(() => {
-    mockStoreState.deltaInputTokens = true;
-  });
-
-  it("uses full input on first message (no prevInputTokens yet)", () => {
+  it("adds each assistant usage report in full", () => {
     manager = new AgentManager(onComplete);
     mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
@@ -607,85 +592,11 @@ describe("delta estimation", () => {
     const record = manager.getRecord(id)!;
     const onUsage = getOnAssistantUsage();
 
-    // First usage report: 100 input tokens, no cacheRead
     onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-
-    // Full input recorded on first message
-    expect(record.stats.lifetimeUsage.input).toBe(100);
-    expect(record.stats.lifetimeUsage.output).toBe(50);
-    expect(record.stats.prevInputTokens).toBe(100);
-  });
-
-  it("computes delta when delta enabled and cacheRead is 0", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
-
-    // First message: 100 input
-    onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(100);
-
-    // Second message: 250 input (150 new tokens added to context)
     onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(250); // 100 + 150 delta
-    expect(record.stats.lifetimeUsage.output).toBe(80); // 50 + 30
-    expect(record.stats.prevInputTokens).toBe(250);
-  });
 
-  it("uses full input when cacheRead > 0 (provider reports caching)", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
-
-    // First message: 100 input
-    onUsage({ input: 100, output: 50, cacheWrite: 10, cost: 0, cacheRead: 80 });
-    expect(record.stats.lifetimeUsage.input).toBe(100);
-
-    // Second message: 200 input with cacheRead > 0 — delta estimation skipped
-    onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 150 });
-    expect(record.stats.lifetimeUsage.input).toBe(300); // 100 + 200 (full, no delta)
-  });
-
-  it("prevents negative delta when input shrinks (e.g. after compaction)", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
-
-    // First message: 500 input
-    onUsage({ input: 500, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(500);
-
-    // After compaction: 200 input (shrunk) — delta would be -300, clamped to 200
-    onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(700); // 500 + 200 (full, delta skipped)
-  });
-
-  it("skips delta estimation when setting is disabled", () => {
-    mockStoreState.deltaInputTokens = false;
-
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
-
-    // First message: 100 input
-    onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(100);
-
-    // Second message: 250 input — delta disabled, so full input used
-    onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
+    expect(record.stats.lifetimeUsage.input).toBe(350);
+    expect(record.stats.lifetimeUsage.output).toBe(80);
   });
 
   it("accumulates cache reads and retains only the newest cache-hit rate", () => {
@@ -703,7 +614,7 @@ describe("delta estimation", () => {
     expect(stats.lifetimeUsage.cacheWrite).toBe(70);
   });
 
-  it("counts supplemental usage without changing assistant delta or cache-hit state", () => {
+  it("counts supplemental usage without changing assistant cache-hit state", () => {
     manager = new AgentManager(onComplete);
     mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
     const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
@@ -718,13 +629,10 @@ describe("delta estimation", () => {
 
     expect(stats.lifetimeUsage).toEqual({ input: 500, output: 60, cacheWrite: 45, cost: 0.13 });
     expect(stats.cacheRead).toBe(380);
-    expect(stats.prevInputTokens).toBe(100);
     expect(stats.latestCacheHitRate).toBe(assistantCacheHitRate);
 
-    // The next assistant report still uses the previous assistant input (100),
-    // rather than the compaction input (400), for the vLLM delta heuristic.
     onAssistantUsage({ input: 200, output: 10, cacheRead: 0, cacheWrite: 0, cost: 0 });
-    expect(stats.lifetimeUsage.input).toBe(600);
+    expect(stats.lifetimeUsage.input).toBe(700);
   });
 
   it("persists final context, auto-compaction, and subscription snapshots", async () => {

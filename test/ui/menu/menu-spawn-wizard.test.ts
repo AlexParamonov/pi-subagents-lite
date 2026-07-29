@@ -121,6 +121,21 @@ async function completeWizard(ctx: ReturnType<typeof createMockCtx>) {
   await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
 }
 
+function openAdvancedOptions() {
+  const basicItems = settingsListCalls[1].instance.items;
+  const advanced = basicItems.find((item: any) => item.id === "advanced");
+  if (!advanced) return undefined;
+  const before = settingsListCalls.length;
+  advanced.submenu("", () => {});
+  return settingsListCalls[before];
+}
+
+function allOptionItems(): any[] {
+  const basicItems = settingsListCalls[1].instance.items;
+  const advancedCall = openAdvancedOptions();
+  return advancedCall ? [...basicItems, ...advancedCall.items] : basicItems;
+}
+
 describe("showSpawnAgentMenu — wizard flow", () => {
   beforeEach(() => {
     setupMocks();
@@ -170,6 +185,14 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
   });
 
 
+  it("keeps only common controls in the basic panel", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    expect(settingsListCalls[1].instance.items.map((item: any) => item.id).filter((id: string) => id !== "__sep__")).toEqual([
+      "spawn", "model", "background", "advanced", "prompt",
+    ]);
+  });
+
   it("includes worktree item when in git repo", async () => {
     mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
       if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return { code: 0, stdout: "/test/.git", stderr: "" };
@@ -178,7 +201,7 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    const ids = allOptionItems().map((i: any) => i.id);
     expect(ids).toContain("worktree");
   });
 
@@ -189,7 +212,7 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const ids = settingsListCalls[1].items.map((i: any) => i.id);
+    const ids = allOptionItems().map((i: any) => i.id);
     expect(ids).not.toContain("worktree");
   });
 });
@@ -202,21 +225,21 @@ describe("showSpawnAgentMenu — description", () => {
   it("description pre-filled from prompt (truncated if >50 chars)", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "a".repeat(100), undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "description");
+    const item = allOptionItems().find((i: any) => i.id === "description");
     expect(item.currentValue).toBe("a".repeat(50));
   });
 
   it("description pre-filled from prompt (full if <=50 chars)", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "description");
+    const item = allOptionItems().find((i: any) => i.id === "description");
     expect(item.currentValue).toBe("fix the bug");
   });
 
   it("description submenu creates Input", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "description");
+    const item = allOptionItems().find((i: any) => i.id === "description");
     const beforeCount = inputInstances.length;
     const mockDone = vi.fn();
     item.submenu("fix the bug", mockDone);
@@ -232,7 +255,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
   it("shows the Agent MD thinking level when it is the effective setting", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const item = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("medium");
   });
 
@@ -240,7 +263,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
     mockModules.mockConfig.thinkingOverrides["general-purpose"] = "xhigh";
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const item = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     // The current model has no xhigh mapping, so the displayed value is the
     // nearest supported level rather than the persisted request.
     expect(item.currentValue).toBe("high");
@@ -251,7 +274,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
     mockModules.mockSessionThinkingOverrides["general-purpose"] = "minimal";
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const item = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("minimal");
   });
 
@@ -263,7 +286,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const item = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("high");
   });
 
@@ -271,7 +294,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const item = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("medium");
   });
 
@@ -282,7 +305,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    const item = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(item.currentValue).toBe("inherit");
   });
 });
@@ -301,21 +324,19 @@ describe("showSpawnAgentMenu — model-aware thinking", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
 
-    const modelItem = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    const modelItem = allOptionItems().find((i: any) => i.id === "model");
     modelItem.submenu("", vi.fn());
-    selectListInstances.at(-1)!.onSelect!({ value: "session" });
     selectDialogInstances.at(-1)!.callbacks.onSelect("openai/gpt-4o");
 
-    let rebuiltThinking = settingsListCalls[1].instance.items.find((i: any) => i.id === "thinkingLevel");
+    let rebuiltThinking = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(rebuiltThinking.currentValue).toBe("off");
     expect(rebuiltThinking.values).toEqual(["inherit", "off"]);
 
-    const rebuiltModel = settingsListCalls[1].instance.items.find((i: any) => i.id === "model");
+    const rebuiltModel = allOptionItems().find((i: any) => i.id === "model");
     rebuiltModel.submenu("", vi.fn());
-    selectListInstances.at(-1)!.onSelect!({ value: "session" });
     selectDialogInstances.at(-1)!.callbacks.onSelect("anthropic/claude-sonnet-4-20250514");
 
-    rebuiltThinking = settingsListCalls[1].instance.items.find((i: any) => i.id === "thinkingLevel");
+    rebuiltThinking = allOptionItems().find((i: any) => i.id === "thinkingLevel");
     expect(rebuiltThinking.currentValue).toBe("medium");
     expect(rebuiltThinking.values).toContain("medium");
   });
@@ -329,7 +350,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
   it("shows agent config max turns", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     expect(item.currentValue).toBe("25");
   });
 
@@ -340,7 +361,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     expect(item.currentValue).toBe("(not set)");
   });
 
@@ -352,14 +373,14 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     expect(item.currentValue).toBe("50");
   });
 
   it("max turns submenu accepts valid number", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("15");
@@ -369,7 +390,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
   it("max turns submenu accepts 'unlimited'", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("unlimited");
@@ -379,7 +400,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
   it("max turns submenu rejects value < 1", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("0");
@@ -390,7 +411,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
   it("max turns submenu rejects invalid input", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTurns");
+    const item = allOptionItems().find((i: any) => i.id === "maxTurns");
     const mockDone = vi.fn();
     item.submenu("25", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("abc");
@@ -407,7 +428,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
   it("shows agent config max tokens", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    const item = allOptionItems().find((i: any) => i.id === "maxTokens");
     expect(item.currentValue).toBe("10000");
   });
 
@@ -418,14 +439,14 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    const item = allOptionItems().find((i: any) => i.id === "maxTokens");
     expect(item.currentValue).toBe("(not set)");
   });
 
   it("max tokens submenu accepts valid number", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    const item = allOptionItems().find((i: any) => i.id === "maxTokens");
     const mockDone = vi.fn();
     item.submenu("10000", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("5000");
@@ -435,7 +456,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
   it("max tokens submenu rejects invalid input", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "maxTokens");
+    const item = allOptionItems().find((i: any) => i.id === "maxTokens");
     const mockDone = vi.fn();
     item.submenu("10000", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("abc");
@@ -453,14 +474,14 @@ describe("showSpawnAgentMenu — grace turns submenu", () => {
     mockModules.mockConfig.agent = { default: null, forceBackground: false, graceTurns: 8 };
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
+    const item = allOptionItems().find((i: any) => i.id === "graceTurns");
     expect(item.currentValue).toBe("8");
   });
 
   it("grace turns submenu accepts valid number", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
+    const item = allOptionItems().find((i: any) => i.id === "graceTurns");
     const mockDone = vi.fn();
     item.submenu("6", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("3");
@@ -470,7 +491,7 @@ describe("showSpawnAgentMenu — grace turns submenu", () => {
   it("grace turns submenu rejects negative numbers", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "graceTurns");
+    const item = allOptionItems().find((i: any) => i.id === "graceTurns");
     const mockDone = vi.fn();
     item.submenu("6", mockDone);
     inputInstances[inputInstances.length - 1].onSubmit!("-1");
@@ -487,14 +508,14 @@ describe("showSpawnAgentMenu — background toggle", () => {
   it("shows 'OFF' when disabled", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
+    const item = allOptionItems().find((i: any) => i.id === "background");
   });
 
   it("shows 'ON' when enabled", async () => {
     mockModules.mockConfig.agent.forceBackground = true;
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "background");
+    const item = allOptionItems().find((i: any) => i.id === "background");
     expect(item.currentValue).toBe("ON");
   });
 });
@@ -507,9 +528,19 @@ describe("showSpawnAgentMenu — model", () => {
   it("shows the Agent MD model when it is the effective setting", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    const item = allOptionItems().find((i: any) => i.id === "model");
     expect(item.currentValue).toBe("anthropic/claude-sonnet-4-20250514");
     expect(typeof item.submenu).toBe("function");
+  });
+
+  it("opens a direct model picker with the effective model selected", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = allOptionItems().find((i: any) => i.id === "model");
+    const selectListsBefore = selectListInstances.length;
+    item.submenu(item.currentValue, vi.fn());
+    expect(selectListInstances).toHaveLength(selectListsBefore);
+    expect(selectDialogInstances.at(-1)!.currentValue).toBe("anthropic/claude-sonnet-4-20250514");
   });
 
   it("uses the session per-agent model override before Agent MD", async () => {
@@ -517,7 +548,7 @@ describe("showSpawnAgentMenu — model", () => {
     mockModules.mockSessionOverrides["general-purpose"] = "openai/gpt-4o";
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    const item = allOptionItems().find((i: any) => i.id === "model");
     expect(item.currentValue).toBe("openai/gpt-4o");
   });
 
@@ -531,7 +562,7 @@ describe("showSpawnAgentMenu — model", () => {
     mockModules.mockSessionCtx.model = undefined;
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "model");
+    const item = allOptionItems().find((i: any) => i.id === "model");
     expect(item.currentValue).toBe("(inherits parent)");
     mockModules.mockSessionCtx.model = origModel;
   });
@@ -568,7 +599,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const item = allOptionItems().find((i: any) => i.id === "worktree");
     expect(item.currentValue).toBe("Inherits parent cwd");
   });
 
@@ -576,7 +607,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const item = allOptionItems().find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
     const wtSelector = selectDialogInstances[selectDialogInstances.length - 1];
@@ -589,7 +620,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-detached", detached: true }] });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const item = allOptionItems().find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
     const labels = selectDialogInstances[selectDialogInstances.length - 1].items.map((i: any) => i.label);
@@ -601,7 +632,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const item = allOptionItems().find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
@@ -624,12 +655,12 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
 
-    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const worktree = allOptionItems().find((i: any) => i.id === "worktree");
     worktree.submenu("Inherits parent cwd", vi.fn());
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
     await vi.waitFor(() => expect((resolveAgentCatalog as any)).toHaveBeenCalledTimes(1));
 
-    let items = settingsListCalls[1].instance.items;
+    let items = allOptionItems();
     expect(items.find((i: any) => i.id === "model").currentValue).toBe("openai/gpt-4o");
     expect(items.find((i: any) => i.id === "thinkingLevel").currentValue).toBe("high");
     expect(items.find((i: any) => i.id === "thinkingLevel").values).toContain("high");
@@ -639,9 +670,9 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     // Switching back uses the original parent config rather than the overlay.
     items.find((i: any) => i.id === "worktree").submenu("feature", vi.fn());
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("Inherits parent cwd");
-    await vi.waitFor(() => expect(settingsListCalls[1].instance.items.find((i: any) => i.id === "model").currentValue).toBe("anthropic/claude-sonnet-4-20250514"));
+    await vi.waitFor(() => expect(allOptionItems().find((i: any) => i.id === "model").currentValue).toBe("anthropic/claude-sonnet-4-20250514"));
 
-    settingsListCalls[1].instance.items.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    allOptionItems().find((i: any) => i.id === "spawn").submenu("", vi.fn());
     await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
     expect(mockModules.mockManager.spawn.mock.calls[0][4]).toMatchObject({
       thinkingLevel: "medium", maxTurns: 25, maxTokens: 10000,
@@ -662,23 +693,23 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     await completeWizard(ctx);
 
     const selectWorktree = async (path: string) => {
-      const item = settingsListCalls[1].instance.items.find((i: any) => i.id === "worktree");
+      const item = allOptionItems().find((i: any) => i.id === "worktree");
       item.submenu(item.currentValue, vi.fn());
       selectDialogInstances.at(-1)!.callbacks.onSelect(path);
       await vi.waitFor(() => expect(resolveAgentCatalog).toHaveBeenCalledWith(`${path}/.pi/agents`, expect.anything()));
     };
     await selectWorktree("/wt-a");
-    let type = settingsListCalls[1].instance.items.find((i: any) => i.id === "type");
+    let type = allOptionItems().find((i: any) => i.id === "type");
     type.submenu("general-purpose", vi.fn());
     selectDialogInstances.at(-1)!.callbacks.onSelect("a-only");
 
     await selectWorktree("/wt-b");
-    type = settingsListCalls[1].instance.items.find((i: any) => i.id === "type");
+    type = allOptionItems().find((i: any) => i.id === "type");
     expect(type.currentValue).toBe("general-purpose");
     type.submenu(type.currentValue, vi.fn());
     expect(selectDialogInstances.at(-1)!.items.map((item: any) => item.value)).toEqual(["general-purpose", "b-only"]);
 
-    settingsListCalls[1].instance.items.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    allOptionItems().find((i: any) => i.id === "spawn").submenu("", vi.fn());
     await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
     expect(mockModules.mockManager.spawn.mock.calls[0][4]).toMatchObject({
       worktreePath: "/wt-b",
@@ -686,11 +717,11 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     });
     expect(mockModules.mockManager.spawn.mock.calls[0][2]).toBe("general-purpose");
 
-    const parentWorktree = settingsListCalls[1].instance.items.find((i: any) => i.id === "worktree");
+    const parentWorktree = allOptionItems().find((i: any) => i.id === "worktree");
     parentWorktree.submenu(parentWorktree.currentValue, vi.fn());
     selectDialogInstances.at(-1)!.callbacks.onSelect("Inherits parent cwd");
-    await vi.waitFor(() => expect(settingsListCalls[1].instance.items.find((i: any) => i.id === "type").currentValue).toBe("general-purpose"));
-    type = settingsListCalls[1].instance.items.find((i: any) => i.id === "type");
+    await vi.waitFor(() => expect(allOptionItems().find((i: any) => i.id === "type").currentValue).toBe("general-purpose"));
+    type = allOptionItems().find((i: any) => i.id === "type");
     type.submenu(type.currentValue, vi.fn());
     expect(selectDialogInstances.at(-1)!.items.map((item: any) => item.value)).toEqual(["general-purpose", "Explore"]);
   });
@@ -701,7 +732,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     ctx.isProjectTrusted = vi.fn(() => false);
     await completeWizard(ctx);
 
-    const worktree = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const worktree = allOptionItems().find((i: any) => i.id === "worktree");
     worktree.submenu("Inherits parent cwd", vi.fn());
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
     await vi.waitFor(() => expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -711,7 +742,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     expect(resolveAgentCatalog).not.toHaveBeenCalled();
 
     // The spawn-time trust check also must not resolve an overlay.
-    settingsListCalls[1].instance.items.find((i: any) => i.id === "spawn").submenu("", vi.fn());
+    allOptionItems().find((i: any) => i.id === "spawn").submenu("", vi.fn());
     await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
     expect(resolveAgentCatalog).not.toHaveBeenCalled();
   });
@@ -720,7 +751,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const item = allOptionItems().find((i: any) => i.id === "worktree");
     const mockDone = vi.fn();
     item.submenu("Inherits parent cwd", mockDone);
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("Inherits parent cwd");
@@ -746,7 +777,7 @@ describe("showSpawnAgentMenu — spawn action", () => {
     await completeWizard(ctx);
 
     expect(resolveAgentCatalog).toHaveBeenCalledWith("/wt-only/.pi/agents", { disableDefaultAgents: undefined });
-    const options = settingsListCalls.at(-1)!.instance.items;
+    const options = allOptionItems();
     expect(options.find((i: any) => i.id === "type").currentValue).toBe("worktree-only");
     options.find((i: any) => i.id === "spawn").submenu("", vi.fn());
     await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
@@ -759,14 +790,14 @@ describe("showSpawnAgentMenu — spawn action", () => {
   it("spawn item has submenu", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    const item = allOptionItems().find((i: any) => i.id === "spawn");
     expect(typeof item.submenu).toBe("function");
   });
 
   it("spawn submenu immediately calls done", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    const item = allOptionItems().find((i: any) => i.id === "spawn");
     const mockDone = vi.fn();
     item.submenu("", mockDone);
     expect(mockDone).toHaveBeenCalled();
@@ -775,9 +806,9 @@ describe("showSpawnAgentMenu — spawn action", () => {
   it("passes the selected thinking override to the spawned agent", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
-    settingsListCalls[1].onChange("thinkingLevel", "high");
+    openAdvancedOptions()!.onChange("thinkingLevel", "high");
 
-    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    const item = allOptionItems().find((i: any) => i.id === "spawn");
     item.submenu("", vi.fn());
     await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalledTimes(1));
 

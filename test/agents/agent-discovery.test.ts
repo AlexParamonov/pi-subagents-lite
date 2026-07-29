@@ -144,6 +144,17 @@ Just a body.
     expect(result.source).toBe("project");
   });
 
+  it("parses CRLF frontmatter", () => {
+    const content = "---\r\nname: windows-agent\r\ntools: [read, bash]\r\nextensions: false\r\n---\r\nWindows body\r\n";
+    const result = parseAgentFile(content, "project");
+    expect(result).toMatchObject({
+      name: "windows-agent",
+      tools: ["read", "bash"],
+      extensions: false,
+      systemPrompt: "Windows body",
+    });
+  });
+
   it("parses content with no frontmatter", () => {
     const content = "# Just a markdown file\n\nNo frontmatter here.";
     const result = parseAgentFile(content, "user");

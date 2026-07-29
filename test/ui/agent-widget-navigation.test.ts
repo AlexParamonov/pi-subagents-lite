@@ -490,8 +490,10 @@ describe("overflow with navigation", () => {
   it("pinned block appears when navigating to a hidden agent", () => {
     // Create 15 finished agents — body budget is maxLines-1 = 11,
     // so 4 agents are hidden by overflow without pinning.
+    const startedAt = new Date(2024, 0, 2, 9, 0).getTime();
     const agents = Array.from({ length: 15 }, (_, i) => {
       const agent = makeFinishedAgent(`f${i}`);
+      agent.lifecycle.startedAt = startedAt;
       agent.display.description = `Finished agent ${i}`;
       return agent;
     });

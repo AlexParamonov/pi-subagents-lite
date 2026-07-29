@@ -43,8 +43,6 @@ export interface SubagentsConfig {
     widgetShowModelThinking?: boolean;
     /** Whether to show local start times in widget rows. */
     widgetShowStartTime?: boolean;
-    /** Whether to show the widget navigation hint. */
-    widgetNavHint?: boolean;
     systemPromptMode?: SystemPromptMode;
     includeContextFiles?: boolean;
     defaultThinking?: ThinkingLevel;
@@ -62,7 +60,6 @@ export interface SubagentsConfig {
     showTime?: boolean;
     widgetDescLengthFull?: number;
     widgetDescLengthCompact?: number;
-    deltaInputTokens?: boolean;
     outputThinkingBufferSize?: number;
     finishedRetentionMinutes?: number;
     [agentType: string]: string | null | undefined | boolean | number;

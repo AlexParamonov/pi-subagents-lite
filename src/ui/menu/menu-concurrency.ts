@@ -25,10 +25,36 @@ import { getStore } from "../../shell.js";
 import type { SelectOption } from "../searchable-select.js";
 import type { Theme } from "../types.js";
 
+export interface ConcurrencyMenuOptions {
+  /** Include the global default limit. Advanced only manages overrides. */
+  includeDefault?: boolean;
+  /** Resetting the full menu also restores the default; Advanced preserves it. */
+  resetDefault?: boolean;
+  title?: string;
+}
+
+/** Shared default-concurrency item used by the Execution menu and full limits menu. */
+export function createDefaultConcurrencySetting(ctx: ExtensionCommandContext): SettingItem {
+  const store = getStore();
+  return {
+    id: "defaultConcurrency",
+    label: "Default concurrency",
+    currentValue: String(store.concurrency.default),
+    description: "Concurrent agent slots when no per-provider or per-model limit applies.",
+    submenu: createNumericSubmenu(ctx, (parsed) => {
+      store.mutate.concurrency.setDefault(parsed);
+      ctx.ui.notify(`Default concurrency set to ${parsed}`, "info");
+    }),
+  };
+}
+
 export async function showConcurrencySettingsMenu(
   ctx: ExtensionCommandContext,
   modelOptions: string[],
+  options: ConcurrencyMenuOptions = {},
 ): Promise<void> {
+  const includeDefault = options.includeDefault ?? true;
+  const resetDefault = options.resetDefault ?? true;
   // Build menu items from current store state.
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme, modelOptions: string[], onRebuild?: () => void): SettingItem[] => {
     const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
@@ -76,17 +102,7 @@ export async function showConcurrencySettingsMenu(
         theme,
       );
 
-    // Global default
-    items.push({
-      id: "defaultConcurrency",
-      label: "Default concurrency limit",
-      currentValue: String(store.concurrency.default),
-      description: "Concurrent agent slots when no per-provider or per-model limit applies.",
-      submenu: createNumericSubmenu(ctx, (parsed) => {
-        store.mutate.concurrency.setDefault(parsed);
-        ctx.ui.notify(`Default concurrency set to ${parsed}`, "info");
-      }),
-    });
+    if (includeDefault) items.push(createDefaultConcurrencySetting(ctx));
 
     // Per-provider limits
     items.push({ id: "__sep__", label: " ", currentValue: "" });
@@ -168,19 +184,23 @@ export async function showConcurrencySettingsMenu(
       });
     }
 
-    // Reset all to defaults
     items.push({ id: "__sep__", label: " ", currentValue: "" });
     items.push({
       id: "resetAll",
-      label: "Reset all to defaults",
+      label: resetDefault ? "Reset all to defaults" : "Remove all overrides",
       currentValue: "",
-      description: "Restore the default limit and remove all per-provider and per-model limits.",
+      description: resetDefault
+        ? "Restore the default limit and remove all per-provider and per-model limits."
+        : "Remove all per-provider and per-model limits without changing the default.",
       submenu: createConfirmSubmenu({
-        message: "Reset all concurrency limits to defaults?",
+        message: resetDefault
+          ? "Reset all concurrency limits to defaults?"
+          : "Remove all provider and model concurrency overrides?",
         theme,
         onConfirm: () => {
-          store.mutate.concurrency.reset();
-          ctx.ui.notify("Concurrency reset to defaults", "info");
+          if (resetDefault) store.mutate.concurrency.reset();
+          else store.mutate.concurrency.resetOverrides();
+          ctx.ui.notify(resetDefault ? "Concurrency reset to defaults" : "Concurrency overrides removed", "info");
         },
       }),
     });
@@ -196,7 +216,7 @@ export async function showConcurrencySettingsMenu(
     const items = buildItems(store, theme, modelOptions, triggerRebuild);
     const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => triggerRebuild(), () => done(undefined));
     return new SettingsListWrapper(settingsList, {
-      title: "Concurrency Settings",
+      title: options.title ?? "Concurrency Settings",
       theme,
       onCancel: () => done(undefined),
       onRebuild: (r) => { rebuild = r; },

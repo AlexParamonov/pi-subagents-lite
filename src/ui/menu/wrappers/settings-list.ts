@@ -111,8 +111,14 @@ export class SettingsListWrapper implements Component {
   }
 
   private get hasSubmenu(): boolean {
-    const submenu = (this.settingsList as any)?.submenuComponent ?? null;
-    return isFocusable(submenu);
+    let submenu = (this.settingsList as any)?.submenuComponent ?? null;
+    const visited = new Set<unknown>();
+    while (submenu && !visited.has(submenu)) {
+      if (isFocusable(submenu)) return true;
+      visited.add(submenu);
+      submenu = (submenu as any).submenuComponent ?? null;
+    }
+    return false;
   }
 
   handleInput(data: string): void {

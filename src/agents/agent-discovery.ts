@@ -61,8 +61,12 @@ function parseFrontmatter(
     return { frontmatter: {}, body: "" };
   }
 
+  // Normalize Windows line endings so delimiter detection and body slicing
+  // use one consistent representation.
+  content = content.replace(/\r\n/g, "\n");
+
   // Check for triple-dash delimited frontmatter
-  if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
+  if (!content.startsWith("---\n")) {
     return { frontmatter: {}, body: content };
   }
 

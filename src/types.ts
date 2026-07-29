@@ -169,7 +169,6 @@ export interface AgentAccumulatedStats {
   /** Number of times this agent's session has compacted. Initialized to 0 at spawn. */
   compactionCount: number;
   /** Previous input token count for delta estimation (vLLM doesn't report cache hits). */
-  prevInputTokens?: number;
   /** Pi-style cumulative cache reads (each request's cache prefix is counted). */
   cacheRead: number;
   /** Cache hit rate from the most recent usage event. */

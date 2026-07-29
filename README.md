@@ -211,7 +211,7 @@ exclude_tools: [edit, write]
 | `skills` | `true` / `[debug, tdd]` / `false` | All / listed / no skills (metadata-only in system prompt) |
 | `preload_skills` | `[debug]` / `false` | Dump full SKILL.md content / none (default) |
 
-**Implicit loading.** `loadSkillsImplicitly` and `loadExtensionsImplicitly` are config globals that decide what an agent gets when its frontmatter **omits** `skills` / `extensions`. They default ON, so an agent that says nothing about either gets everything. Turn them OFF (in config, or `/agents` → System prompt) to default every new agent to nothing — isolated sessions and minimal token cost, with agents opting in explicitly via `skills: [debug]` / `extensions: [tavily]`. A concrete frontmatter value always overrides the global.
+**Implicit loading.** `loadSkillsImplicitly` and `loadExtensionsImplicitly` are config globals that decide what an agent gets when its frontmatter **omits** `skills` / `extensions`. They default ON, so an agent that says nothing about either gets everything. Turn them OFF (in config, or `/agents` → Settings → Advanced → System prompt, context, skills & extensions) to default every new agent to nothing — isolated sessions and minimal token cost, with agents opting in explicitly via `skills: [debug]` / `extensions: [tavily]`. A concrete frontmatter value always overrides the global.
 
 **Token cost ranking** (highest → lowest): `preload_skills` ≫ `tools`/`exclude_tools` (each tool schema every turn) > `extensions` (hooks fire every turn) > `skills` (metadata-only, agent reads full content on-demand) > `skills: false` (zero). Prefer metadata skills over preloading; whitelist tools aggressively for narrow agents.
 
@@ -220,7 +220,7 @@ exclude_tools: [edit, write]
 Model and thinking use the same precedence (highest first):
 
 1. **Spawn override** — optional `model` or `thinking` on this Agent call
-2. **Session-agent override** — `/agents` → Agent settings, lasts the session
+2. **Session-agent override** — `/agents` → Settings → Agent settings, lasts the session
 3. **Persistent agent override** — `~/.pi/agent/subagents-lite.json`
 4. **Agent Markdown** — frontmatter in the selected agent definition
 5. **Global default** — session global first, then persistent global
@@ -242,16 +242,15 @@ When `includeContextFiles` is `true` (default), AGENTS.md files from the project
 
 ### `/agents`
 
-Management menu with four sections:
+Management menu with three sections:
 
-- **Running agents** — status and description; per-agent actions (view snapshot, result, error; steer; stop) and bulk stop
-- **Spawn agent** — manually spawn without the LLM. Pick a type (with search), enter a prompt, tune options (model, thinking, max turns, max tokens, grace turns, background), then spawn. Options pre-fill from agent config.
+- **Running agents** — status and description; per-agent actions (view conversation, result, error; steer; stop) and bulk stop
+- **Spawn agent** — manually spawn without the LLM. Pick a type, enter a prompt, then set model/background or open Advanced options for worktree, type, thinking, limits, grace turns, and description.
 - **Settings**
   - **Agent settings** — effective model and thinking with source; global and per-agent session/saved overrides
-  - **Spawn options** — force background, grace turns, default max turns, disable bundled default agents
-  - **System prompt** — mode, custom prompt file, parent orchestration, AGENTS.md, implicit skills/extensions
-  - **Concurrency** — default limit, per-provider and per-model slots (with search), reset to defaults
-  - **Widget settings** — force compact, max lines, description length, thinking buffer size, ctrl+o shortcut, usage stats (toggle tools, turns, input/output tokens, context %, cost, time in the widget and conversation viewer)
+  - **Execution** — default concurrency, force background, default max turns
+  - **Appearance** — compact mode, widget size, model/thinking visibility, and stats presets
+  - **Advanced** — provider/model concurrency limits, system prompt/context/skills/extensions, agent behavior/discovery, detailed widget settings, and diagnostics
 
 ## Interface
 
@@ -302,7 +301,6 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
     "showOutput": true,
     "showContext": true,
     "showTime": true,
-    "deltaInputTokens": false,
     "widgetMaxLines": 12,
     "widgetMaxLinesCompact": 6,
     "widgetDescLengthFull": 50,
@@ -311,7 +309,6 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
     "widgetShortcut": false,
     "widgetShowModelThinking": true,
     "widgetShowStartTime": true,
-    "widgetNavHint": true,
     "outputThinkingBufferSize": 0,
     "finishedRetentionMinutes": 10,
     "systemPromptMode": "inherit",
@@ -342,7 +339,7 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 
 ### Parent orchestration
 
-`orchestrationPrompt` defaults to `true`. It appends a parent-only, cache-stable catalog of visible global/trusted-current-project agents; subagents never inherit it. Visible descriptions should be concise. Only exact representable names of at most 64 UTF-8 bytes are advertised; descriptions are capped at 160 UTF-8 bytes, the catalog at 24 agents/3,879 UTF-8 bytes, and the full generated block at 4,096 UTF-8 bytes; a deterministic `… +N omitted` marker reports overflow. Toggle it in `/agents` → **Settings** → **System prompt**, or set `"orchestrationPrompt": false` under `agent` in config. Opt-out intentionally provides no automatic catalog.
+`orchestrationPrompt` defaults to `true`. It appends a parent-only, cache-stable catalog of visible global/trusted-current-project agents; subagents never inherit it. Visible descriptions should be concise. Only exact representable names of at most 64 UTF-8 bytes are advertised; descriptions are capped at 160 UTF-8 bytes, the catalog at 24 agents/3,879 UTF-8 bytes, and the full generated block at 4,096 UTF-8 bytes; a deterministic `… +N omitted` marker reports overflow. Toggle it in `/agents` → **Settings** → **Advanced** → **System prompt, context, skills & extensions**, or set `"orchestrationPrompt": false` under `agent` in config. Opt-out intentionally provides no automatic catalog.
 
 **APPEND_SYSTEM.md migration:** remove only static subagent delegation rules and agent catalogs from existing `APPEND_SYSTEM.md`; retain unrelated global instructions. The generated block supplies delegation guidance and the live catalog when enabled.
 
@@ -358,10 +355,10 @@ Fullscreen transcript viewer for agent sessions — opens automatically from `/a
 | `widgetShortcut` | `false` | When ON, ctrl+o (tool expansion toggle) syncs with widget compact mode. When OFF, compact is manual via `widgetCompact`. |
 | `widgetShowModelThinking` | `true` | Show one model-and-thinking column in every agent row. OFF removes the values and frees its space. |
 | `widgetShowStartTime` | `true` | Show each row's local `HH:MM` creation/start time. Queued rows show their queue-entry time. |
-| `widgetNavHint` | `true` | Show the `↓ to navigate` tip in the widget heading. |
 | `outputThinkingBufferSize` | `0` | Thinking buffer ring size in chars. `0` = OFF. Flushes to output log at sentence boundaries. |
 | `finishedRetentionMinutes` | `10` | Minutes to retain finished agents in the widget. |
-| `deltaInputTokens` | `false` | Estimate input-token deltas for vLLM-style providers without cache reporting. |
+
+The `↓ to navigate` heading hint is always shown while the widget is visible.
 
 ### Stats visibility
 

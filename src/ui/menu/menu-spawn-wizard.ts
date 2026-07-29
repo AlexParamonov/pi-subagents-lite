@@ -16,9 +16,8 @@ import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, resolveAgentCatalog, resolveTypeInCatalog, snapshotAgentConfig } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
 import { normalizeThinkingLevel, supportedThinkingLevels } from "../../models/thinking.js";
-import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
+import { buildModelOptions, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
-import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import {
@@ -300,9 +299,8 @@ export async function showSpawnAgentMenu(
     session?.model ?? ctx.model,
   );
 
-  const buildItems = (): SettingItem[] => {
-    const fmtNum = (v: number | undefined) => v != null ? String(v) : "(not set)";
-    const displayModel = currentModelStr || "(inherits parent)";
+  const createAdvancedOptionsMenu = (theme: Theme, done: (value?: string) => void) => {
+    const fmtNum = (value: number | undefined) => value != null ? String(value) : "(not set)";
     const thinkingModel = currentModel();
     const requestedThinking = currentThinking ?? session?.thinkingLevel;
     const displayedThinking = thinkingModel?.reasoning === false
@@ -310,21 +308,137 @@ export async function showSpawnAgentMenu(
       : normalizeThinkingLevel(thinkingModel, requestedThinking);
     const thinkingLevels = supportedThinkingLevels(thinkingModel);
     const items: SettingItem[] = [
+      ...(inGitRepo ? [{
+        id: "worktree",
+        label: "Worktree",
+        currentValue: currentWorktreeLabel,
+        description: "Run in a linked git worktree instead of the parent cwd.",
+        submenu: (_value: string, subDone: (value?: string) => void) => createSearchableSelect(
+          [
+            { value: "Inherits parent cwd", label: "Inherits parent cwd" },
+            ...worktrees.map((worktree) => ({
+              value: worktree.path,
+              label: truncatePath(worktree.path),
+              provider: worktree.isDetached ? "detached" : (worktree.branch ?? "detached"),
+            })),
+          ],
+          {
+            onSelect: (value) => {
+              if (value === "Inherits parent cwd") {
+                currentWorktreePath = undefined;
+                currentWorktreeLabel = value;
+                subDone(value);
+                void applyWorktreeSelection(undefined);
+              } else {
+                const worktree = worktrees.find((entry) => entry.path === value);
+                currentWorktreePath = worktree?.path;
+                currentWorktreeLabel = worktree?.branch ?? "detached";
+                subDone(currentWorktreeLabel);
+                void applyWorktreeSelection(currentWorktreePath);
+              }
+            },
+            onCancel: () => subDone(),
+          },
+          theme,
+          currentWorktreePath ?? "Inherits parent cwd",
+        ),
+      } as SettingItem] : []),
+      {
+        id: "type",
+        label: "Agent type",
+        currentValue: selectedType,
+        description: configFor(selectedType)?.description ?? "Agent type",
+        submenu: (_value: string, subDone: (value?: string) => void) => createSearchableSelect(
+          availableTypes().map(type => ({
+            value: type,
+            label: type,
+            description: configFor(type)?.description ?? "Agent type",
+          })),
+          {
+            onSelect: (type) => {
+              const resolved = resolveSelectedType(type);
+              const config = resolved ? configFor(resolved) : undefined;
+              if (resolved && config) applyAgentConfig(resolved, config);
+              rebuild?.(buildItems());
+              subDone(selectedType);
+            },
+            onCancel: () => subDone(),
+          },
+          theme,
+          selectedType,
+        ),
+      },
+      {
+        id: "thinkingLevel",
+        label: "Thinking level",
+        currentValue: displayedThinking ?? "inherit",
+        values: ["inherit", ...thinkingLevels],
+        description: "Set the reasoning effort level.",
+      },
+      {
+        id: "maxTokens",
+        label: "Max tokens",
+        currentValue: fmtNum(currentMaxTokens),
+        submenu: createNumericSubmenu(ctx, (parsed) => {
+          maxTokensChanged = true;
+          currentMaxTokens = parsed;
+        }, () => {
+          maxTokensChanged = true;
+          currentMaxTokens = undefined;
+        }),
+        description: "Maximum tokens the agent can consume.",
+      },
+      {
+        id: "maxTurns",
+        label: "Max turns",
+        currentValue: fmtNum(currentMaxTurns),
+        submenu: createNumericSubmenu(ctx, (parsed) => {
+          maxTurnsChanged = true;
+          currentMaxTurns = parsed;
+        }, () => {
+          maxTurnsChanged = true;
+          currentMaxTurns = undefined;
+        }),
+        description: "Maximum conversation turns before the hard stop.",
+      },
+      {
+        id: "graceTurns",
+        label: "Grace turns",
+        currentValue: String(currentGraceTurns),
+        submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
+        description: "Extra turns after the soft limit before aborting.",
+      },
+      {
+        id: "description",
+        label: "Description",
+        currentValue: currentDescription,
+        submenu: createInputSubmenu(ctx),
+        description: "Short label shown in the agents list.",
+      },
+    ];
+    return new SettingsList(items, 10, buildSettingsListTheme(theme), (id, value) => {
+      if (id === "thinkingLevel") {
+        thinkingChanged = true;
+        currentThinking = value === "inherit" ? undefined : value as ThinkingLevel;
+      } else if (id === "description") {
+        currentDescription = value;
+      }
+    }, () => done());
+  };
+
+  const buildItems = (): SettingItem[] => {
+    const displayModel = currentModelStr || "(inherits parent)";
+    const items: SettingItem[] = [
       {
         id: "spawn",
         label: "Spawn",
         currentValue: "",
         description: "Spawn the agent with current settings",
         submenu: (_v, done) => {
-          const gtItem = items.find(i => i.id === "graceTurns");
-          const bgItem = items.find(i => i.id === "background");
-          const descItem = items.find(i => i.id === "description");
-          const promptItem = items.find(i => i.id === "prompt");
-
-          const graceTurns = Number(gtItem?.currentValue ?? DEFAULT_GRACE_TURNS);
-          const background = bgItem?.currentValue === "ON";
-          const description = descItem?.currentValue ?? currentDescription;
-          const spawnPrompt = promptItem?.currentValue ?? prompt;
+          const graceTurns = currentGraceTurns;
+          const background = currentBackground;
+          const description = currentDescription;
+          const spawnPrompt = prompt;
 
           const doSpawn = async () => {
             // Re-read the selected worktree only into an invocation-local
@@ -430,18 +544,20 @@ export async function showSpawnAgentMenu(
         label: "Model",
         currentValue: displayModel,
         description: "Override the default model for this agent",
-        submenu: createModelSelectSubmenu({
-          modelOptions,
-          showClear: false,
-          theme,
-          onSelect: (_mode, model) => {
-            modelChanged = true;
-            currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
-            // Preserve the requested MD/config value across model changes;
-            // buildItems derives the model-specific displayed value.
-            rebuild?.(buildItems());
+        submenu: (_currentValue, done) => createSearchableSelect(
+          buildModelOptions(modelOptions),
+          {
+            onSelect: (model) => {
+              modelChanged = true;
+              currentModelStr = model === "(inherits parent)" ? "" : model;
+              rebuild?.(buildItems());
+              done(model);
+            },
+            onCancel: () => done(),
           },
-        }),
+          theme,
+          displayModel,
+        ),
       },
       {
         id: "background",
@@ -450,116 +566,12 @@ export async function showSpawnAgentMenu(
         description: "Run the agent in the background",
         values: ["ON", "OFF"],
       },
-      ...(inGitRepo
-        ? [{
-            id: "worktree",
-            label: "Worktree",
-            currentValue: currentWorktreeLabel,
-            description: "Run in a linked git worktree instead of parent cwd",
-            submenu: (_v: string, done: (v?: string) => void) => {
-              const pickerItems = [
-                { value: "Inherits parent cwd", label: "Inherits parent cwd" },
-                ...worktrees.map(wt => {
-                  const branchLabel = wt.isDetached ? "detached" : (wt.branch ?? "detached");
-                  const truncPath = truncatePath(wt.path);
-                  return { value: wt.path, label: truncPath, provider: branchLabel };
-                }),
-              ];
-              return createSearchableSelect(
-                pickerItems,
-                {
-                  onSelect: (value) => {
-                    if (value === "Inherits parent cwd") {
-                      currentWorktreePath = undefined;
-                      currentWorktreeLabel = "Inherits parent cwd";
-                      done(currentWorktreeLabel);
-                      void applyWorktreeSelection(undefined);
-                    } else {
-                      const wt = worktrees.find(w => w.path === value);
-                      currentWorktreePath = wt?.path;
-                      currentWorktreeLabel = wt?.branch ?? "detached";
-                      done(currentWorktreeLabel);
-                      void applyWorktreeSelection(currentWorktreePath);
-                    }
-                  },
-                  onCancel: () => done(),
-                },
-                theme,
-              );
-            },
-          } as SettingItem]
-        : []),
       {
-        id: "type",
-        label: "Agent type",
-        currentValue: selectedType,
-        description: configFor(selectedType)?.description ?? "Agent type",
-        submenu: (_v: string, done: (v?: string) => void) => createSearchableSelect(
-          availableTypes().map(type => ({
-            value: type,
-            label: type,
-            description: configFor(type)?.description ?? "Agent type",
-          })),
-          {
-            onSelect: (type) => {
-              const resolved = resolveSelectedType(type);
-              const config = resolved ? configFor(resolved) : undefined;
-              if (resolved && config) applyAgentConfig(resolved, config);
-              rebuild?.(buildItems());
-              done(selectedType);
-            },
-            onCancel: () => done(),
-          },
-          theme,
-        ),
-      },
-      {
-        id: "thinkingLevel",
-        label: "Thinking level",
-        currentValue: displayedThinking ?? "inherit",
-        description: "Set the reasoning effort level",
-        values: ["inherit", ...thinkingLevels],
-      },
-      {
-        id: "maxTokens",
-        label: "Max tokens",
-        currentValue: fmtNum(currentMaxTokens),
-        description: "Maximum tokens the agent can consume",
-        submenu: createNumericSubmenu(ctx, (parsed) => {
-          maxTokensChanged = true;
-          currentMaxTokens = parsed;
-        }, () => {
-          maxTokensChanged = true;
-          currentMaxTokens = undefined;
-        }),
-      },
-      {
-        id: "maxTurns",
-        label: "Max turns",
-        currentValue: fmtNum(currentMaxTurns),
-        description: "Maximum conversation turns before hard stop",
-        submenu: createNumericSubmenu(ctx, (parsed) => {
-          maxTurnsChanged = true;
-          currentMaxTurns = parsed;
-        }, () => {
-          maxTurnsChanged = true;
-          currentMaxTurns = undefined;
-        }),
-      },
-      {
-        id: "graceTurns",
-        label: "Grace turns",
-        currentValue: String(currentGraceTurns),
-        description: "Extra turns after soft limit before abort",
-        submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_GRACE_TURNS }, (parsed) => { currentGraceTurns = parsed; }),
-      },
-      { id: "__sep__", label: " ", currentValue: "" },
-      {
-        id: "description",
-        label: "Description",
-        currentValue: currentDescription,
-        description: "Short label shown in the agents list",
-        submenu: createInputSubmenu(ctx),
+        id: "advanced",
+        label: "Advanced options",
+        currentValue: "→",
+        description: "Worktree, type, thinking, token and turn limits, grace turns, and description.",
+        submenu: (_currentValue, done) => createAdvancedOptionsMenu(theme, done),
       },
       {
         id: "prompt",

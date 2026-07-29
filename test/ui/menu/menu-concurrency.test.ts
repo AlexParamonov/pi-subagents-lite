@@ -252,14 +252,24 @@ describe("showConcurrencySettingsMenu — reset all", () => {
     const ctx = createMockCtx();
     await showConcurrencySettingsMenu(ctx, ["llamacpp/4b", "openai/gpt-4o"]);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "resetAll");
-    const done = vi.fn();
-    item.submenu("", done);
-    // The confirm submenu creates a SelectList — simulate selecting "Yes"
-    const confirmList = selectListInstances[selectListInstances.length - 1];
-    expect(confirmList).toBeDefined();
-    confirmList.onSelect!({ value: "Yes" });
+    item.submenu("", vi.fn());
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "Yes" });
     expect(mockModules.mockConfig.concurrency).toEqual({ default: 4 });
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("advanced reset removes overrides without changing the default", async () => {
+    mockModules.mockConfig.concurrency = {
+      default: 7,
+      providers: { llamacpp: 2 },
+      models: { "llamacpp/4b": 3 },
+    };
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, ["llamacpp/4b"], { includeDefault: false, resetDefault: false });
+    const items = settingsListCalls[0].items;
+    expect(items.map((item: any) => item.id)).not.toContain("defaultConcurrency");
+    const reset = items.find((item: any) => item.id === "resetAll");
+    reset.submenu("", vi.fn());
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "Yes" });
+    expect(mockModules.mockConfig.concurrency).toEqual({ default: 7 });
   });
 });

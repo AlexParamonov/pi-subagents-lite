@@ -14,7 +14,6 @@ vi.mock("../../src/agents/agent-runner.js", () => ({
 }));
 
 vi.mock("../../src/shell.js", () => ({
-  getStore: () => ({ agent: { deltaInputTokens: false } }),
   getWidget: () => undefined,
   getPiInstance: () => undefined,
   getSessionCtx: () => undefined,

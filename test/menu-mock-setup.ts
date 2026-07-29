@@ -67,15 +67,17 @@ vi.mock("../src/agents/agent-types.js", () => ({
 }));
 
 // Capture SearchableSelectDialog instances for tests that need them
-export let selectDialogInstances: Array<{ items: any[]; callbacks: any }> = [];
+export let selectDialogInstances: Array<{ items: any[]; currentValue: any; callbacks: any }> = [];
 export function resetSelectDialogInstances() { selectDialogInstances = []; }
 
 vi.mock("../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
     items: any[];
+    currentValue: any;
     callbacks: any;
-    constructor(items: any[], _currentValue: any, callbacks: any, _theme: any) {
+    constructor(items: any[], currentValue: any, callbacks: any, _theme: any) {
       this.items = items;
+      this.currentValue = currentValue;
       this.callbacks = callbacks;
       selectDialogInstances.push(this as any);
     }
@@ -131,7 +133,6 @@ vi.mock("../src/shell.js", () => {
         widgetShortcut: a.widgetShortcut === true,
         widgetShowModelThinking: a.widgetShowModelThinking !== false,
         widgetShowStartTime: a.widgetShowStartTime !== false,
-        widgetNavHint: a.widgetNavHint !== false,
         widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
         widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
         systemPromptMode: a.systemPromptMode ?? "replace",
@@ -147,7 +148,6 @@ vi.mock("../src/shell.js", () => {
         showOutput: a.showOutput !== false,
         showContext: a.showContext !== false,
         showTime: a.showTime !== false,
-        deltaInputTokens: a.deltaInputTokens !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
       };
@@ -224,7 +224,7 @@ vi.mock("../src/shell.js", () => {
         clearAllThinkingOverrides() { mockModules.mockConfig.thinkingOverrides = {}; },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
+          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly']) {
             const val = mockModules.mockConfig.agent[key];
             if (val != null || key === 'default' || key === 'forceBackground') {
               preserved[key] = val;
@@ -248,7 +248,6 @@ vi.mock("../src/shell.js", () => {
         setShowOutput(enabled: boolean) { mockModules.mockConfig.agent.showOutput = enabled; },
         setShowContext(enabled: boolean) { mockModules.mockConfig.agent.showContext = enabled; },
         setShowTime(enabled: boolean) { mockModules.mockConfig.agent.showTime = enabled; },
-        setDeltaInputTokens(enabled: boolean) { mockModules.mockConfig.agent.deltaInputTokens = enabled; },
         setOutputThinkingBufferSize(size: number) { mockModules.mockConfig.agent.outputThinkingBufferSize = size; },
         setFinishedRetentionMinutes(n: number) { mockModules.mockConfig.agent.finishedRetentionMinutes = n; },
       },
@@ -261,7 +260,6 @@ vi.mock("../src/shell.js", () => {
         setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
         setShowModelThinking(enabled: boolean) { mockModules.mockConfig.agent.widgetShowModelThinking = enabled; },
         setShowStartTime(enabled: boolean) { mockModules.mockConfig.agent.widgetShowStartTime = enabled; },
-        setNavHint(enabled: boolean) { mockModules.mockConfig.agent.widgetNavHint = enabled; },
       },
       concurrency: {
         setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },
@@ -281,6 +279,9 @@ vi.mock("../src/shell.js", () => {
         },
         reset() {
           mockModules.mockConfig.concurrency = { default: 4 };
+        },
+        resetOverrides() {
+          mockModules.mockConfig.concurrency = { default: mockModules.mockConfig.concurrency.default };
         },
       },
       session: {

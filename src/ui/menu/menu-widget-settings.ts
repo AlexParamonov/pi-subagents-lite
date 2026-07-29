@@ -6,8 +6,8 @@
  * reset bug that occurred with ctx.ui.select.
  *
  * Structure:
- *   Main list: compact, maxLines, descriptions, shortcut, model/thinking, start time, navigation hint, retention, usageStats
- *   Usage stats submenu: 7 stat visibility toggles
+ *   Detailed list: descriptions, compact lines, shortcut, start time, retention, and usage stats.
+ *   Common appearance controls live in menu-appearance.ts.
  *
  * Exports:
  *   - showWidgetSettingsMenu
@@ -26,7 +26,6 @@ function buildStatConfig(store: ReturnType<typeof getStore>) {
     ["showTools", { label: "Show tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
     ["showTurns", { label: "Show turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
     ["showInput", { label: "Show input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) }],
-    ["deltaInputTokens", { label: "Delta input tokens", get: () => store.agent.deltaInputTokens, set: (v) => store.mutate.agent.setDeltaInputTokens(v) }],
     ["showOutput", { label: "Show output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) }],
     ["showContext", { label: "Show context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) }],
     ["showCost", { label: "Show cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) }],
@@ -47,10 +46,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     }
 
     switch (id) {
-      case "compact":
-        store.mutate.widget.setCompact(newValue === "ON");
-        ctx.ui.notify(`Force compact mode ${newValue}`, "info");
-        break;
       case "shortcut":
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
@@ -59,17 +54,9 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
-      case "showModelThinking":
-        store.mutate.widget.setShowModelThinking(newValue === "ON");
-        ctx.ui.notify(`Show model & thinking ${newValue}`, "info");
-        break;
       case "showStartTime":
         store.mutate.widget.setShowStartTime(newValue === "ON");
         ctx.ui.notify(`Show local start time ${newValue}`, "info");
-        break;
-      case "navHint":
-        store.mutate.widget.setNavHint(newValue === "ON");
-        ctx.ui.notify(`Navigation hint ${newValue}`, "info");
         break;
     }
   };
@@ -79,7 +66,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
       showTools: "Show tool count (⚙︎) in the widget.",
       showTurns: "Show turn count (⟳ ) in the widget.",
       showInput: "Show input tokens (↑) in the widget.",
-      deltaInputTokens: "Estimate input token delta for vLLM (no cache reporting).",
       showOutput: "Show output tokens (↓) in the widget.",
       showContext: "Show context-fill percent (%) in the widget.",
       showCost: "Show dollar cost ($) in the widget.",
@@ -94,23 +80,6 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     }));
 
     const items: SettingItem[] = [
-      {
-        id: "compact",
-        label: "Force compact mode",
-        currentValue: store.agent.widgetCompact ? "ON" : "OFF",
-        values: ["ON", "OFF"],
-        description: "Force compact widget mode regardless of ctrl+o state.",
-      },
-      {
-        id: "maxLines",
-        label: "Max lines (full)",
-        currentValue: String(store.agent.widgetMaxLines),
-        submenu: createNumericSubmenu(ctx, { min: 2 }, (parsed) => {
-          store.mutate.widget.setMaxLines(parsed);
-          ctx.ui.notify(`Max lines (full) set to ${parsed}`, "info");
-        }),
-        description: "Max total lines in full widget mode, including the heading.",
-      },
       {
         id: "descLengthFull",
         label: "Description length (full)",
@@ -149,25 +118,11 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
       },
       {
-        id: "showModelThinking",
-        label: "Show model & thinking",
-        currentValue: store.agent.widgetShowModelThinking ? "ON" : "OFF",
-        values: ["ON", "OFF"],
-        description: "Show each agent's model name and thinking level in one column.",
-      },
-      {
         id: "showStartTime",
         label: "Show local start time",
         currentValue: store.agent.widgetShowStartTime ? "ON" : "OFF",
         values: ["ON", "OFF"],
         description: "Show local HH:MM start time after each agent status symbol.",
-      },
-      {
-        id: "navHint",
-        label: "Navigation hint",
-        currentValue: store.agent.widgetNavHint ? "ON" : "OFF",
-        values: ["ON", "OFF"],
-        description: "Show navigation tip (↓ to navigate) in the widget heading.",
       },
       {
         id: "thinkingBuffer",
