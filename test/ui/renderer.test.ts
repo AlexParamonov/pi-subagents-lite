@@ -41,6 +41,7 @@ vi.mock("../../src/ui/format.js", () => ({
   formatMs: vi.fn(() => "1m0s"),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
   buildModelThinkingTag: vi.fn((m, t) => { const p = [m, t].filter(Boolean); return p.length ? `(${p.join(" · ")})` : ""; }),
+  resolveModelLabel: vi.fn((style, name, id) => (style === "name" ? name : id)?.trim() || undefined),
 }));
 
 // Import after mocks are set up

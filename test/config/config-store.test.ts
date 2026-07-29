@@ -74,6 +74,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setFinishedEvictTurns: (n: number) => calls.push(`setFinishedEvictTurns:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
+    setModelDisplayStyle: (s: string) => calls.push(`setModelDisplayStyle:${s}`),
   };
   return { w: w as unknown as AgentWidget, calls };
 }

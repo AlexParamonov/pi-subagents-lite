@@ -128,8 +128,8 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
     widget.setViewerOpen(true);
 
     await ctx.ui.custom<void>(
-      (tui, theme, kb, done) =>
-        new ConversationViewer(
+      (tui, theme, kb, done) => {
+        const viewer = new ConversationViewer(
           tui,
           record.execution.session!,
           record,
@@ -138,8 +138,10 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
           () => manager?.abort(record.id, "user"),
           kb,
           (msg: string) => manager?.steer(record.id, msg),
-        ),
-      { overlay: true, overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` } },
+        );
+        viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
+        return viewer;
+      },
     );
   } finally {
     widget.setViewerOpen(false);

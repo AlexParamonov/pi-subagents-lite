@@ -87,6 +87,8 @@ export interface ResolvedAgentSettings {
   readonly finishedRetentionMinutes: number;
   /** Turns to keep finished agents visible. 0 = disabled. */
   readonly finishedEvictTurns: number;
+  /** Model display format: 'id' (short) or 'name' (full). */
+  readonly modelDisplayStyle: "id" | "name";
 }
 
 /** Side-effect targets, injected after construction. */
@@ -152,6 +154,7 @@ export class ConfigStore {
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
       finishedEvictTurns: a.finishedEvictTurns ?? 4,
+      modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
     };
   }
 
@@ -359,6 +362,11 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
+      setModelDisplayStyle: (style: "id" | "name"): void => {
+        this.config.agent.modelDisplayStyle = style;
+        this.persist();
+        this.syncWidgetSettings();
+      },
     },
     concurrency: {
       setDefault: (n: number): void => {
@@ -483,6 +491,7 @@ export class ConfigStore {
     w.setDescLengthCompact(a.widgetDescLengthCompact);
     w.setNavHint(a.widgetNavHint);
     w.setFinishedEvictTurns(a.finishedEvictTurns);
+    w.setModelDisplayStyle(a.modelDisplayStyle);
   }
 
   /** Push stats visibility flags to the widget. */

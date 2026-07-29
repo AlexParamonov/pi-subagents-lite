@@ -80,8 +80,9 @@ describe("agentNameLabel", () => {
   });
 
   it("includes model name in parens", () => {
-    const d = { type: "builder", modelName: "haiku" };
-    expect(agentNameLabel(d, theme)).toBe("Agent (haiku)");
+    const d = { type: "builder", modelName: "Qwen3.6 27B", modelId: "qwen3-27b" };
+    expect(agentNameLabel(d, theme, "id")).toBe("Agent (qwen3-27b)");
+    expect(agentNameLabel(d, theme, "name")).toBe("Agent (Qwen3.6 27B)");
   });
 
   it("includes thinking level in parens", () => {
@@ -90,22 +91,22 @@ describe("agentNameLabel", () => {
   });
 
   it("includes both model and thinking with middle dot", () => {
-    const d = { type: "builder", modelName: "haiku", thinkingLevel: "medium" };
+    const d = { type: "builder", modelName: "haiku", modelId: "haiku", thinkingLevel: "medium" };
     expect(agentNameLabel(d, theme)).toBe("Agent (haiku · medium)");
   });
 
   it("ignores empty model name", () => {
-    const d = { type: "builder", modelName: "", thinkingLevel: "low" };
+    const d = { type: "builder", modelName: "", modelId: "", thinkingLevel: "low" };
     expect(agentNameLabel(d, theme)).toBe("Agent (low)");
   });
 
   it("ignores whitespace-only model name", () => {
-    const d = { type: "builder", modelName: "   ", thinkingLevel: "low" };
+    const d = { type: "builder", modelName: "   ", modelId: "   ", thinkingLevel: "low" };
     expect(agentNameLabel(d, theme)).toBe("Agent (low)");
   });
 
   it("trims whitespace from values", () => {
-    const d = { type: "builder", modelName: "  haiku  ", thinkingLevel: "  low  " };
+    const d = { type: "builder", modelName: "  haiku  ", modelId: "  haiku  ", thinkingLevel: "  low  " };
     expect(agentNameLabel(d, theme)).toBe("Agent (haiku · low)");
   });
 });

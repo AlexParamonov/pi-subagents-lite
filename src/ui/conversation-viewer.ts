@@ -19,6 +19,7 @@ import {
   describeActivity,
   fgPreservingNestedStyles,
   getDisplayName,
+  resolveAgentModelLabel,
   summarizeToolArgs,
 } from "./format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
@@ -47,6 +48,8 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
 };
 
 export class ConversationViewer implements Component {
+  /** Model display format: 'id' (short) or 'name' (full). */
+  private modelDisplayStyle: "id" | "name" = "id";
   private scrollOffset = 0;
   private autoScroll = true;
   private unsubscribe: (() => void) | undefined;
@@ -265,11 +268,13 @@ export class ConversationViewer implements Component {
     ));
 
     // Row 2: model name + compact usage stats
-    const { modelName, tags } = buildInvocationTags(this.record.display.invocation);
+    const { tags } = buildInvocationTags(this.record.display.invocation);
     const statsLine = fgPreservingNestedStyles(th, "dim", statsParts.join("·"));
-    if (modelName) {
+
+    const modelLabel = resolveAgentModelLabel(this.record, this.modelDisplayStyle);
+    if (modelLabel) {
       const parts = [statsLine, ...tags].filter(Boolean);
-      lines.push(row(th.fg("dim", `  ${modelName} · ${parts.join(" · ")}`)));
+      lines.push(row(th.fg("dim", `  ${modelLabel} · ${parts.join(" · ")}`)));
     } else {
       lines.push(row(statsLine));
     }
@@ -380,6 +385,10 @@ export class ConversationViewer implements Component {
       this.unsubscribe();
       this.unsubscribe = undefined;
     }
+  }
+  /** Set model display format: 'id' (short) or 'name' (full). */
+  setModelDisplayStyle(style: "id" | "name") {
+    this.modelDisplayStyle = style;
   }
 
   private viewportHeight(): number {

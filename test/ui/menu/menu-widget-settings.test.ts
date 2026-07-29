@@ -525,3 +525,58 @@ describe("showWidgetSettingsMenu — finished agent retention", () => {
     expect(mockDone).not.toHaveBeenCalled();
   });
 });
+
+describe("showWidgetSettingsMenu — model display style", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = {
+      default: null, forceBackground: false,
+      widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
+      widgetShortcut: false,
+      widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
+      showTools: true, showTurns: true, showInput: true, showOutput: true,
+      showContext: true, showCost: false, showTime: true,
+      modelDisplayStyle: "id",
+    };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    settingsListCalls = [];
+    inputInstances = [];
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  it("shows modelDisplayStyle item with ID as default", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "modelDisplayStyle");
+    expect(item).toBeDefined();
+    expect(item.currentValue).toBe("ID");
+    expect(item.values).toEqual(["ID", "Name"]);
+  });
+
+  it("shows Name when configured", async () => {
+    mockModules.mockConfig.agent.modelDisplayStyle = "name";
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "modelDisplayStyle");
+    expect(item.currentValue).toBe("Name");
+  });
+
+  it("onChange toggles to 'name' when selecting Name", async () => {
+    mockModules.mockConfig.agent.modelDisplayStyle = "id";
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("modelDisplayStyle", "Name");
+    expect(mockModules.mockConfig.agent.modelDisplayStyle).toBe("name");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Model display Name", "info");
+  });
+
+  it("onChange toggles to 'id' when selecting ID", async () => {
+    mockModules.mockConfig.agent.modelDisplayStyle = "name";
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("modelDisplayStyle", "ID");
+    expect(mockModules.mockConfig.agent.modelDisplayStyle).toBe("id");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Model display ID", "info");
+  });
+});
