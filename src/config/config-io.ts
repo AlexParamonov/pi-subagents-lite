@@ -51,6 +51,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   finishedRetentionMinutes: 10,
   finishedEvictTurns: 4,
   modelDisplayStyle: "id",
+  statusBarFormat: "full",
 };
 
 /**

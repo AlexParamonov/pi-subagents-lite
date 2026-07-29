@@ -89,6 +89,8 @@ export interface ResolvedAgentSettings {
   readonly finishedEvictTurns: number;
   /** Model display format: 'id' (short) or 'name' (full). */
   readonly modelDisplayStyle: "id" | "name";
+  /** Status bar format: 'full' (default) or 'compact'. */
+  readonly statusBarFormat: "full" | "compact";
 }
 
 /** Side-effect targets, injected after construction. */
@@ -155,6 +157,7 @@ export class ConfigStore {
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
       finishedEvictTurns: a.finishedEvictTurns ?? 4,
       modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
+      statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
     };
   }
 
@@ -367,6 +370,11 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
+      setStatusBarFormat: (format: "full" | "compact"): void => {
+        this.config.agent.statusBarFormat = format;
+        this.persist();
+        this.syncWidgetSettings();
+      },
     },
     concurrency: {
       setDefault: (n: number): void => {
@@ -492,6 +500,7 @@ export class ConfigStore {
     w.setNavHint(a.widgetNavHint);
     w.setFinishedEvictTurns(a.finishedEvictTurns);
     w.setModelDisplayStyle(a.modelDisplayStyle);
+    w.setStatusBarFormat(a.statusBarFormat);
   }
 
   /** Push stats visibility flags to the widget. */

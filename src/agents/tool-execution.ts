@@ -12,7 +12,7 @@ import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
-import { getLifetimeTotal, getSessionContextPercent } from "./usage.js";
+import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";

@@ -72,6 +72,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
     setModelDisplayStyle: (s: string) => calls.push(`setModelDisplayStyle:${s}`),
+    setStatusBarFormat: (f: string) => calls.push(`setStatusBarFormat:${f}`),
   };
   return { w: w as unknown as AgentWidget, calls };
 }

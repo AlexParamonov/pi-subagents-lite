@@ -4,7 +4,7 @@
  * Tests cover:
  *   - LifetimeUsage type includes cost field
  *   - addUsage accumulates cost alongside tokens
- *   - getLifetimeTotal includes cost in sum
+ *   - getLifetimeTotal returns input + output only
  *   - Backward compatibility (existing token fields unchanged)
  */
 
@@ -63,22 +63,22 @@ describe("addUsage", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  getLifetimeTotal — includes cost                                   */
+/*  getLifetimeTotal — returns input + output only                        */
 /* ------------------------------------------------------------------ */
 
 describe("getLifetimeTotal", () => {
-  it("returns sum of input + output + cacheWrite + cost", () => {
+  it("returns sum of input + output only (no cacheWrite, no cost)", () => {
     const u: LifetimeUsage = { input: 100, output: 50, cacheWrite: 10, cost: 5 };
-    // 100 + 50 + 10 + 5 = 165
-    expect(getLifetimeTotal(u)).toBe(165);
+    // 100 + 50 = 150
+    expect(getLifetimeTotal(u)).toBe(150);
   });
 
   it("returns 0 for undefined", () => {
     expect(getLifetimeTotal(undefined)).toBe(0);
   });
 
-  it("returns 0 when all components are 0", () => {
-    const u: LifetimeUsage = { input: 0, output: 0, cacheWrite: 0, cost: 0 };
+  it("returns 0 when input and output are 0", () => {
+    const u: LifetimeUsage = { input: 0, output: 0, cacheWrite: 99, cost: 99 };
     expect(getLifetimeTotal(u)).toBe(0);
   });
 });

@@ -84,6 +84,9 @@ export class AgentManager {
   /** Session-level cumulative agent cost. Survives agent eviction. */
   private totalAgentCost = 0;
 
+  /** Session-level completed agent count. Survives agent eviction. */
+  private totalAgentCount = 0;
+
   /** Retention cutoff in minutes for finished agents. Updated at runtime via setRetentionMinutes. */
   private retentionMinutes = DEFAULT_RETENTION_MINUTES;
 
@@ -342,7 +345,6 @@ export class AgentManager {
               turnCount: record.stats.turnCount ?? 0,
               toolUseCount: record.stats.toolUses,
               totalTokens: getLifetimeTotal(record.stats.lifetimeUsage),
-              cost: record.stats.lifetimeUsage.cost,
             });
           } catch { /* ignore */ }
           record.execution.outputLog = undefined;
@@ -361,6 +363,7 @@ export class AgentManager {
   /** Notify completion callback, ignoring any errors. */
   private safeNotifyComplete(record: AgentRecord): void {
     this.totalAgentCost += record.stats.lifetimeUsage.cost;
+    this.totalAgentCount++;
     try { this.onComplete?.(record); } catch { /* ignore */ }
   }
 
@@ -371,6 +374,11 @@ export class AgentManager {
   /** Get the session-level cumulative agent cost. Survives agent eviction. */
   getTotalAgentCost(): number {
     return this.totalAgentCost;
+  }
+
+  /** Get the session-level completed agent count. Survives agent eviction. */
+  getTotalAgentCount(): number {
+    return this.totalAgentCount;
   }
 
   /**
@@ -431,7 +439,8 @@ export class AgentManager {
         record.error = errorMessage(err);
         record.lifecycle.completedAt = Date.now();
         started.add(entry.id);
-        this.safeNotifyComplete(record);
+        // Notify UI of the failure, but don't count it as a completed agent
+        try { this.onComplete?.(record); } catch { /* ignore */ }
       }
     }
     this.queue = this.queue.filter(e => !started.has(e.id));

@@ -29,12 +29,13 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
 }));
 
-function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
+function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
   return {
     listAgents: () => agents,
     getAgent: () => undefined,
     setConcurrency: () => {},
     getTotalAgentCost: () => totalAgentCost,
+    getTotalAgentCount: () => totalAgentCount,
     // other methods not used by widget
   } as any as AgentManager;
 }
@@ -267,44 +268,63 @@ describe("widget rendering format", () => {
 });
 
 describe("status bar format", () => {
-  it("shows 'N agents: $cost' format with running agents", () => {
+  it("shows '◈ Agents: N active' when running agents with no cost", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0);
+    const manager = makeMockManager([], 0, 0);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
     const a1 = makeRunningAgent("a1");
-    a1.stats.lifetimeUsage.cost = 0.05;
-    const a2 = makeRunningAgent("a2");
-    a2.stats.lifetimeUsage.cost = 0.03;
-    (manager as any).listAgents = () => [a1, a2];
+    a1.stats.lifetimeUsage.cost = 0;
+    (manager as any).listAgents = () => [a1];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^2 agents: \$0\.\d+$/));
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("◈ Agents: 1 active"));
   });
 
-  it("shows 'agents: $cost' format when no running/queued agents but finished exist", () => {
+  it("shows '◈ Agents: N active · M done · $cost' with running, done, and cost", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0.01);
+    const manager = makeMockManager([], 0.12, 5);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
-    // Only finished agents, no running/queued
+    const a1 = makeRunningAgent("a1");
+    a1.stats.lifetimeUsage.cost = 0;
+    (manager as any).listAgents = () => [a1];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toContain("◈ Agents: 1 active · 5 done · ");
+  });
+
+  it("shows '◇ Agents: M done · $cost' when no running agents but finished exist", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.01, 1);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
     const finished = makeFinishedAgent("f1");
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^agents: \$0\.\d+$/));
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toContain("◇ Agents: 1 done · ");
   });
 
-  it("shows 'N agents' without cost when cost is zero", () => {
+  it("omits cost section when cost is zero", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0);
+    const manager = makeMockManager([], 0, 2);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -314,7 +334,67 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringMatching(/^1 agent$/));
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).not.toContain("$");
+    expect(statusCall[1]).toContain("1 active");
+  });
+
+  it("omits active count when active is 0", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.50, 3);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).not.toContain("active");
+    expect(statusCall[1]).toContain("done");
+  });
+
+  it("omits done count when done is 0", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 0);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const agent = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [agent];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).not.toContain("done");
+    expect(statusCall[1]).toContain("active");
+  });
+
+  it("shows '◇ Agents: M done' without cost when done exists but cost is zero", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 1);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◇ Agents: 1 done");
   });
 });
 
@@ -330,7 +410,7 @@ describe("status bar cost from accumulator", () => {
     };
     activity = new Map();
     // No running agents, but totalAgentCost is $1.23 (from evicted agents)
-    manager = makeMockManager([], 1.23);
+    manager = makeMockManager([], 1.23, 2);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -342,7 +422,10 @@ describe("status bar cost from accumulator", () => {
     widget.update();
 
     // Status bar should include $1.28 ($1.23 session + $0.05 running)
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("$1.28"));
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toContain("$1.28");
   });
 
   it("shows accumulated cost even when no running agents have cost", () => {
@@ -352,7 +435,7 @@ describe("status bar cost from accumulator", () => {
     };
     activity = new Map();
     // Running agent with $0 cost, but session accumulator has $2.50
-    manager = makeMockManager([], 2.50);
+    manager = makeMockManager([], 2.50, 1);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -363,7 +446,10 @@ describe("status bar cost from accumulator", () => {
     widget.update();
 
     // Should show $2.50 from accumulator
-    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("$2.50"));
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toContain("$2.50");
   });
 
   it("hides cost when showCost is false", () => {
@@ -372,7 +458,7 @@ describe("status bar cost from accumulator", () => {
       setWidget: vi.fn(),
     };
     activity = new Map();
-    manager = makeMockManager([], 1.50);
+    manager = makeMockManager([], 1.50, 1);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(false);
     widget.setUICtx(uiCtx);
@@ -387,6 +473,106 @@ describe("status bar cost from accumulator", () => {
       (c: any[]) => c[0] === "subagents",
     );
     expect(statusCall[1]).not.toContain("$");
+  });
+});
+
+describe("status bar compact format", () => {
+  it("compact format: '◈ 2 5Σ $0.12' with active, done, and cost", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.12, 5);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    a1.stats.lifetimeUsage.cost = 0;
+    const a2 = makeRunningAgent("a2");
+    a2.stats.lifetimeUsage.cost = 0;
+    (manager as any).listAgents = () => [a1, a2];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◈ 2 5Σ $0.12");
+  });
+
+  it("compact format omits cost section when cost is zero", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 2);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [a1];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◈ 1 2Σ");
+  });
+
+  it("compact format omits active count when 0", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0.50, 3);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◇ 3Σ $0.50");
+  });
+
+  it("compact format omits done count when 0", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 0);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setShowCost(true);
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    const a1 = makeRunningAgent("a1");
+    (manager as any).listAgents = () => [a1];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toBe("◈ 1");
+  });
+
+  it("compact format shows '◇' when no active agents exist", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([], 0, 0);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setStatusBarFormat("compact");
+    widget.setUICtx(uiCtx);
+
+    // finished agent triggers update
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
+      (c: any[]) => c[0] === "subagents",
+    );
+    expect(statusCall[1]).toContain("◇");
   });
 });
 

@@ -27,10 +27,9 @@ function findLastSentenceBoundary(text: string): number {
 }
 
 /** Format the [DONE] summary line with final stats. */
-function formatDoneLine(stats: { turnCount: number; toolUseCount: number; totalTokens: number; cost: number }): string {
+function formatDoneLine(stats: { turnCount: number; toolUseCount: number; totalTokens: number }): string {
   const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
-  const costStr = `$${stats.cost.toFixed(3)}`;
-  return `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}, ${costStr}\n`;
+  return `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}\n`;
 }
 /** Max content length for full tool result display — longer results get a summary line. */
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 500;
@@ -172,7 +171,7 @@ function formatMessageLine(
 export function streamToOutputFile(
   session: AgentSession,
   path: string,
-  stats?: { turnCount: number; toolUseCount: number; totalTokens: number; cost: number },
+  stats?: { turnCount: number; toolUseCount: number; totalTokens: number },
   bufferSize: number = 0,
 ): () => void {
   let writtenCount = 1; // initial user prompt already written
@@ -266,7 +265,7 @@ export function streamToOutputFile(
     flush();
 
     // Write DONE line
-    const doneStats = stats ?? { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
+    const doneStats = stats ?? { turnCount: 0, toolUseCount: 0, totalTokens: 0 };
     safeAppend(path, formatDoneLine(doneStats));
 
     // Unsubscribe from session events
@@ -283,7 +282,6 @@ export interface OutputFinalStats {
   turnCount: number;
   toolUseCount: number;
   totalTokens: number;
-  cost: number;
 }
 
 /**
@@ -313,7 +311,7 @@ export class AgentOutputLog {
    * before the DONE line is written.
    */
   attach(session: AgentSession): void {
-    this.statsRef = { turnCount: 0, toolUseCount: 0, totalTokens: 0, cost: 0 };
+    this.statsRef = { turnCount: 0, toolUseCount: 0, totalTokens: 0 };
     this.cleanup = streamToOutputFile(session, this.path, this.statsRef, this.bufferSize);
   }
 
@@ -330,7 +328,6 @@ export class AgentOutputLog {
       this.statsRef.turnCount = stats.turnCount;
       this.statsRef.toolUseCount = stats.toolUseCount;
       this.statsRef.totalTokens = stats.totalTokens;
-      this.statsRef.cost = stats.cost;
       this.cleanup();
       this.cleanup = undefined;
       this.statsRef = undefined;
