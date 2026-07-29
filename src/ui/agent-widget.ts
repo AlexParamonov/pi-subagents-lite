@@ -777,13 +777,14 @@ export class AgentWidget {
   /** Build the status bar text for the current agent state. */
   private buildStatusBarText(activeCount: number, doneCount: number, totalCost: number): string {
     const icon = activeCount > 0 ? "◈" : "◇";
+    const iconColor = activeCount > 0 ? "accent" : "dim";
 
     if (this.statusBarFormat === "compact") {
       const parts: string[] = [icon];
       if (activeCount > 0) parts.push(`${activeCount}`);
       if (doneCount > 0) parts.push(`${doneCount}Σ`);
       if (totalCost > 0) parts.push(formatCost(totalCost));
-      return parts.join(" ");
+      return this.theme ? `${this.theme.fg(iconColor, icon)}${parts.slice(1).map(p => ` ${p}`).join("")}` : parts.join(" ");
     }
 
     // Full: ◈ Agents: [N active][ · M done][ · $cost]
@@ -791,8 +792,9 @@ export class AgentWidget {
     if (activeCount > 0) suffixParts.push(`${activeCount} active`);
     if (doneCount > 0) suffixParts.push(`${doneCount} done`);
     if (totalCost > 0) suffixParts.push(formatCost(totalCost));
-    if (suffixParts.length > 0) return `${icon} Agents: ${suffixParts.join(" \u00b7 ")}`;
-    return `${icon} Agents`;
+    const agentsLabel = this.theme ? this.theme.fg(iconColor, "Agents") : "Agents";
+    if (suffixParts.length > 0) return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}: ${suffixParts.join(" \u00b7 ")}`;
+    return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}`;
   }
 
   /** Update the status bar text, only if it changed. */
