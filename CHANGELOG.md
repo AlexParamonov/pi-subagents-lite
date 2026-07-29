@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-29
+
+### Added
+- **`statusBarFormat` setting** (`'full' | 'compact'`). Full format (default) always shows active and done counts. Compact: `◈ N MΣ`.
+- **Model and thinking indicators in widget.** `(modelName · thinkingLevel)` shown next to agent names. `modelDisplayStyle` toggles between short ID and full name. Independent visibility toggles in widget settings.
+- **Model-aware thinking level filtering in spawn wizard.** Levels filtered by selected model's capabilities. Model change clamps current level.
+- **`agentToolStrictMode` toggle.** Constrained sampling with strict json_schema for the Agent tool. Reduces malformed tool calls at higher token cost.
+- **Thinking level in nudge cards.** Shown alongside model name.
+- **Project agent dirs gated behind `isProjectTrusted()`.** Untrusted projects skip `.agents/agents` and `.pi/agents`. User-level agents always load.
+
+### Changed
+- **Widget settings reorganized into 4 submenus.** Layout, Display, Behavior, Stats.
+- **DONE line shows token count, not cost.** `getLifetimeTotal()` returns input + output only.
+- **Stats labels drop `Show` prefix.**
+
+### Fixed
+- **Spawn wizard display refreshes** after model or thinking level change.
+- **Thinking level displayed in widget** when using default (inherit) thinking level.
+- **Failed agent starts no longer count** toward `totalAgentCount` or `totalAgentCost`.
+- **`setShowModel`/`setShowThinking` now sync stats visibility** to the widget immediately.
+- **Home directory resolution on Windows.** Replaced `process.env.HOME` with `getAgentDir()` from SDK.
+- **Text emoji for tools count** in spawn options.
+
 ## [1.5.2] - 2026-07-28
 
 ### Added
