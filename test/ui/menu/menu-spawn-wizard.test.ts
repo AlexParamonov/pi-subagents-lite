@@ -1,12 +1,3 @@
-// Mock pi-ai thinking level functions
-let mockGetSupportedThinkingLevels: (model: any) => string[] = () => ["off", "minimal", "low", "medium", "high", "xhigh"];
-let mockClampThinkingLevel: (model: any, level: string) => string = (_m, level) => level;
-
-vi.mock("@earendil-works/pi-ai", () => ({
-  getSupportedThinkingLevels: vi.fn((model: any) => mockGetSupportedThinkingLevels(model)),
-  clampThinkingLevel: vi.fn((model: any, level: string) => mockClampThinkingLevel(model, level)),
-}));
-
 /**
  * menu-spawn-wizard.test.ts — Tests for showSpawnAgentMenu.
  *
@@ -21,6 +12,15 @@ import { mockModules, selectDialogInstances, resetSelectDialogInstances } from "
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
+
+// Mock pi-ai thinking level functions
+let mockGetSupportedThinkingLevels: (model: any) => string[] = () => ["off", "minimal", "low", "medium", "high", "xhigh"];
+let mockClampThinkingLevel: (model: any, level: string) => string = (_m, level) => level;
+
+vi.mock("@earendil-works/pi-ai", () => ({
+  getSupportedThinkingLevels: vi.fn((model: any) => mockGetSupportedThinkingLevels(model)),
+  clampThinkingLevel: vi.fn((model: any, level: string) => mockClampThinkingLevel(model, level)),
+}));
 
 // Capture SettingsList constructor calls from pi-tui
 let settingsListCalls: Array<{
