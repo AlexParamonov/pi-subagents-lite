@@ -286,18 +286,18 @@ export function buildInvocationTags(invocation: AgentInvocation | undefined): { 
  * Returns `(modelName · thinkingLevel)`, one of them, or empty string
  * when neither is visible or data is undefined. Never returns `()`. */
 export function buildModelThinkingTag(
-  invocation: AgentInvocation | undefined,
+  modelName: string | undefined,
+  thinkingLevel: string | undefined,
   visible?: StatsVisibility,
 ): string {
-  if (!invocation) return "";
   const showModel = visible?.showModel !== false;
   const showThinking = visible?.showThinking !== false;
-  const modelName = showModel && typeof invocation.modelName === "string"
-    ? invocation.modelName.trim()
+  const model = showModel && typeof modelName === "string"
+    ? modelName.trim()
     : undefined;
-  const thinkingLevel = showThinking && typeof invocation.thinkingLevel === "string"
-    ? invocation.thinkingLevel.trim()
+  const thinking = showThinking && typeof thinkingLevel === "string"
+    ? thinkingLevel.trim()
     : undefined;
-  const parts = [modelName, thinkingLevel].filter((p): p is string => p !== undefined && p.length > 0);
+  const parts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
   return parts.length > 0 ? `(${parts.join(" · ")})` : "";
 }

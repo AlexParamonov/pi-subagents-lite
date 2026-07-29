@@ -12,11 +12,14 @@ import { buildStatsParts, formatMs, getDisplayName } from "./format.js";
 // Stats rendering helpers
 // ============================================================================
 
-/** Format agent display name with optional model: "Agent (mimo-v2.5-pro)" or "Agent". */
+/** Format agent display name with optional model/thinking level: "Agent (mimo-v2.5-pro · high)" or "Agent". */
 export function agentNameLabel(d: Record<string, unknown>, theme: Theme): string {
   const typeName = getDisplayName((d.type as string) || "");
   const modelName = d.modelName as string | undefined;
-  return modelName ? `${theme.bold(typeName)} (${modelName})` : theme.bold(typeName);
+  const thinkingLevel = d.thinkingLevel as string | undefined;
+  const parts = [modelName, thinkingLevel].filter((p): p is string => !!p && p.trim().length > 0);
+  const tag = parts.length > 0 ? `(${parts.join(" · ")})` : "";
+  return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
 
 /** Build the stats line for an agent result card. */

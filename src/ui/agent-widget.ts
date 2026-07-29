@@ -435,7 +435,11 @@ export class AgentWidget {
 
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
-    return buildModelThinkingTag(a.display.invocation, this.statsVisibility);
+    const invocation = a.display.invocation;
+    // Session model is always available for running/finished agents
+    const modelName = a.execution.session?.model?.name ?? invocation?.modelName;
+    const thinkingLevel = invocation?.thinkingLevel;
+    return buildModelThinkingTag(modelName, thinkingLevel, this.statsVisibility);
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
@@ -495,11 +499,13 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
+      const tag = this.modelThinkingTag(a);
+      const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = truncateDesc(a.display.description, this.descLengthCompact);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${this.modelThinkingTag(a) ? ` ${theme.fg("dim", this.modelThinkingTag(a))}` : ""}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
@@ -507,7 +513,7 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${this.modelThinkingTag(a) ? ` ${theme.fg("dim", this.modelThinkingTag(a))}` : ""}  ${fullDesc}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
         const parts = buildWorktreeOutputParts(a);
         if (parts.length > 0) {
