@@ -767,11 +767,31 @@ export class AgentWidget {
     // when there are no agents, so there's no cost to keeping it alive.
   }
 
+  /** Build the status bar text for the current agent state. */
+  private buildStatusBarText(activeCount: number, doneCount: number, totalCost: number): string {
+    const icon = activeCount > 0 ? "◈" : "◇";
+
+    if (this.statusBarFormat === "compact") {
+      const parts: string[] = [icon];
+      if (activeCount > 0) parts.push(`${activeCount}`);
+      if (doneCount > 0) parts.push(`${doneCount}Σ`);
+      if (totalCost > 0) parts.push(formatCost(totalCost));
+      return parts.join(" ");
+    }
+
+    // Full: ◈ Agents: [N active][ · M done][ · $cost]
+    const suffixParts: string[] = [];
+    if (activeCount > 0) suffixParts.push(`${activeCount} active`);
+    if (doneCount > 0) suffixParts.push(`${doneCount} done`);
+    if (totalCost > 0) suffixParts.push(formatCost(totalCost));
+    if (suffixParts.length > 0) return `${icon} Agents: ${suffixParts.join(" \u00b7 ")}`;
+    return `${icon} Agents`;
+  }
+
   /** Update the status bar text, only if it changed. */
   private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
     const activeCount = runningCount + queuedCount;
     const doneCount = this.manager.getTotalAgentCount();
-    const icon = activeCount > 0 ? "◈" : "◇";
 
     // Compute total cost (session accumulator + in-flight running agents)
     let totalCost = 0;
@@ -781,23 +801,7 @@ export class AgentWidget {
       totalCost = sessionCost + runningCost;
     }
 
-    let statusText: string;
-    if (this.statusBarFormat === "compact") {
-      // Compact: ◈ [N ][MΣ][ $cost]
-      const parts: string[] = [icon];
-      if (activeCount > 0) parts.push(`${activeCount}`);
-      if (doneCount > 0) parts.push(`${doneCount}Σ`);
-      if (totalCost > 0) parts.push(formatCost(totalCost));
-      statusText = parts.join(" ");
-    } else {
-      // Full: ◈ Agents: [N active][ · M done][ · $cost]
-      statusText = `${icon} Agents`;
-      const suffixParts: string[] = [];
-      if (activeCount > 0) suffixParts.push(`${activeCount} active`);
-      if (doneCount > 0) suffixParts.push(`${doneCount} done`);
-      if (totalCost > 0) suffixParts.push(formatCost(totalCost));
-      if (suffixParts.length > 0) statusText += ": " + suffixParts.join(" \u00b7 ");
-    }
+    const statusText = this.buildStatusBarText(activeCount, doneCount, totalCost);
 
     if (statusText !== this.lastStatusText) {
       this.uiCtx?.setStatus(STATUS_KEY, statusText);
