@@ -243,6 +243,11 @@ body
   });
 
 
+  it("parses CRLF", () => {
+    const result = parseAgentFile("---\r\nname: x\r\n---\r\nbody", "user");
+    expect(result.name).toBe("x");
+  });
+
 });
 
 /* ------------------------------------------------------------------ */

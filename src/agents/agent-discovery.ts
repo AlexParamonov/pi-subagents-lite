@@ -65,14 +65,23 @@ function parseFrontmatter(
     return { frontmatter: {}, body: content };
   }
 
-  // Find closing ---
-  const endIdx = content.indexOf("\n---\n", 4);
-  if (endIdx === -1) {
+  // Find closing --- (handle both LF and CRLF line endings)
+  const lfEnd = content.indexOf("\n---\n", 4);
+  const crlfEnd = content.indexOf("\r\n---\r\n", 4);
+  let endIdx: number;
+  let closingLen: number;
+  if (lfEnd !== -1 && (crlfEnd === -1 || lfEnd < crlfEnd)) {
+    endIdx = lfEnd;
+    closingLen = 5; // \n---\n
+  } else if (crlfEnd !== -1) {
+    endIdx = crlfEnd;
+    closingLen = 7; // \r\n---\r\n
+  } else {
     return { frontmatter: {}, body: content };
   }
 
   const fmRaw = content.slice(4, endIdx);
-  const body = content.slice(endIdx + 5).trim();
+  const body = content.slice(endIdx + closingLen).trim();
 
   const frontmatter: Record<string, unknown> = {};
   let currentKey: string | null = null;
