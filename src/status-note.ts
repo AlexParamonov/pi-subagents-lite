@@ -7,7 +7,7 @@ const STATUS_NOTES: Partial<Record<AgentStatus, string>> = {
 
 const STOP_NOTES: Record<StopInitiator, string> = {
   user: "STOPPED BY THE USER before completion — output is partial; the task was NOT finished",
-  agent: "stopped before completion — output is partial; the task was NOT finished",
+  agent: "STOPPED BY YOU before completion — output is partial; the task was NOT finished",
 };
 
 export function getStatusNote(lifecycle: AgentLifecycle): string {

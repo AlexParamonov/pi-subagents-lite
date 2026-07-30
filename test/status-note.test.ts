@@ -11,11 +11,11 @@ describe("getStatusNote", () => {
   });
 
   it("returns agent stop message when stoppedBy is agent", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "agent" })).toMatch(/stopped before completion/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "agent" })).toMatch(/STOPPED BY YOU/);
   });
 
   it("returns agent stop message when stoppedBy is undefined", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0 })).toMatch(/stopped before completion/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0 })).toMatch(/STOPPED BY YOU/);
   });
 
   it("wraps known notes with space-parentheses", () => {
