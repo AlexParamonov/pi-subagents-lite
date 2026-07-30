@@ -173,6 +173,10 @@ export class ConfigStore {
     };
   }
 
+  get modelPrompts(): Record<string, string> {
+    return this.config.modelPrompts ?? {};
+  }
+
   get sessionDefaultModel(): string | null {
     return this.sessionOverrides.default ?? null;
   }
@@ -406,6 +410,16 @@ export class ConfigStore {
         this.config.concurrency = { ...DEFAULT_CONCURRENCY };
         this.persist();
         this.applyConcurrency();
+      },
+    },
+    modelPrompts: {
+      setModelPrompt: (modelId: string, text: string): void => {
+        this.config.modelPrompts = { ...(this.config.modelPrompts ?? {}), [modelId]: text };
+        this.persist();
+      },
+      clearModelPrompt: (modelId: string): void => {
+        if (this.config.modelPrompts) delete this.config.modelPrompts[modelId];
+        this.persist();
       },
     },
     session: {

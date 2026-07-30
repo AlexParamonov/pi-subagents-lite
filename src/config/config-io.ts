@@ -71,6 +71,7 @@ export function loadConfig(): SubagentsConfig {
   return {
     agent: { ...DEFAULT_AGENT, ...raw.agent },
     concurrency,
+    modelPrompts: { ...(raw.modelPrompts ?? {}) },
   };
 }
 

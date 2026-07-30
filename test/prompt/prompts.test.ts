@@ -545,3 +545,69 @@ Current working directory: /tmp`;
     expect(result).not.toContain("<project_context>");
   });
 });
+
+describe("buildAgentPrompt — per-model prompt", () => {
+  it("renders model_prompt block when modelPrompt is provided", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      modelPrompt: "Always respond in JSON.",
+      modelPromptId: "anthropic/claude-sonnet-4-20250514",
+    });
+
+    expect(result).toContain("<model_prompt path=\"anthropic/claude-sonnet-4-20250514\">");
+    expect(result).toContain("Always respond in JSON.");
+    expect(result).toContain("</model_prompt>");
+  });
+
+  it("escapes XML in model prompt content", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      modelPrompt: "Use <code> blocks & be <helpful>.",
+      modelPromptId: "openai/gpt-4o",
+    });
+
+    expect(result).toContain("&lt;code&gt;");
+    expect(result).toContain("&lt;helpful&gt;");
+  });
+
+  it("places model_prompt after agent_instructions and before skills", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      modelPrompt: "Model prompt.",
+      modelPromptId: "anthropic/claude",
+      skillBlocks: [
+        { name: "tdd", description: "TDD", content: "TDD content." },
+      ],
+    });
+
+    const agentInstructionsEnd = result.indexOf("</agent_instructions>");
+    const modelPromptStart = result.indexOf("<model_prompt");
+    const skillStart = result.indexOf("<available_skills>");
+
+    expect(modelPromptStart).toBeGreaterThan(agentInstructionsEnd);
+    expect(skillStart).toBeGreaterThan(modelPromptStart);
+  });
+
+  it("does not render model_prompt when modelPrompt is empty", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      modelPrompt: "",
+      modelPromptId: "anthropic/claude",
+    });
+
+    expect(result).not.toContain("<model_prompt");
+  });
+
+  it("does not render model_prompt when modelPrompt is undefined", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {});
+
+    expect(result).not.toContain("<model_prompt");
+  });
+
+  it("renders model_prompt without skills", () => {
+    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
+      modelPrompt: "Be concise.",
+      modelPromptId: "openai/gpt-4o",
+    });
+
+    expect(result).toContain("<model_prompt");
+    expect(result).not.toContain("<available_skills>");
+  });
+});
+

@@ -6,18 +6,61 @@
  * reset bug that occurred with ctx.ui.select.
  *
  * Exports:
- *   - showSystemPromptMenu: system prompt mode, create prompt file, include AGENTS.md
+ *   - showSystemPromptMenu: system prompt mode, create prompt file, include AGENTS.md, per-model prompts
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
+import { SettingsList, type SettingItem, Editor } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { SystemPromptMode } from "../../agents/types.js";
 import { getStore } from "../../shell.js";
 import { CUSTOM_PROMPT_PATH } from "../../config/config-io.js";
+
+/**
+ * Build a submenu that opens a multiline Editor for a per-model prompt.
+ * @param ctx Extension context
+ * @param store Config store
+ * @param modelKey Full model string (e.g. `anthropic/claude-sonnet-4-20250514`)
+ * @param currentText Current prompt text (empty string if none)
+ */
+function createModelPromptEditor(
+  ctx: ExtensionCommandContext,
+  store: ReturnType<typeof getStore>,
+  modelKey: string,
+  currentText: string,
+): SettingItem["submenu"] {
+  return (_currentValue, subDone) => {
+    ctx.ui.custom((tui, theme, _kb, editorDone) => {
+      const editor = new Editor(tui, {
+        borderColor: (s: string) => s,
+        selectList: {
+          selectedPrefix: () => theme.fg("accent", "→ "),
+          selectedText: (s: string) => theme.fg("accent", s),
+          description: (s: string) => theme.fg("muted", s),
+          scrollInfo: (s: string) => theme.fg("dim", s),
+          noMatch: (s: string) => theme.fg("dim", s),
+        },
+      });
+      editor.setText(currentText);
+      editor.onSubmit = (text: string) => {
+        if (text.length > 0) {
+          store.mutate.modelPrompts.setModelPrompt(modelKey, text);
+          ctx.ui.notify(`Prompt saved for ${modelKey}`, "info");
+        } else {
+          store.mutate.modelPrompts.clearModelPrompt(modelKey);
+          ctx.ui.notify(`Prompt cleared for ${modelKey}`, "info");
+        }
+        editorDone(undefined);
+        subDone();
+      };
+      return editor;
+    });
+    return {} as any;
+  };
+}
 
 export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
@@ -74,6 +117,26 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         description: "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
       },
     );
+
+    // Per-model prompts section
+    const models = ctx.modelRegistry.getAvailable();
+    const modelPrompts = store.modelPrompts;
+    items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: "__sep__", label: "── Per-model prompts ──", currentValue: "────────" });
+    for (const model of models) {
+      const modelKey = `${model.provider}/${model.id}`;
+      const prompt = modelPrompts[modelKey] ?? "";
+      const preview = prompt.length > 0
+        ? (prompt.length > 40 ? prompt.slice(0, 40) + "..." : prompt)
+        : "(none)";
+      items.push({
+        id: `model-prompt:${modelKey}`,
+        label: modelKey,
+        currentValue: preview,
+        description: "Custom prompt appended for agents using this model.",
+        submenu: createModelPromptEditor(ctx, store, modelKey, prompt),
+      });
+    }
 
     return items;
   };

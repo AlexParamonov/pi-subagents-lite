@@ -22,6 +22,10 @@ export interface PromptExtras {
   customSystemPrompt?: string;
   /** Project context files (AGENTS.md) for custom mode. */
   contextFiles?: Array<{ path: string; content: string }>;
+  /** Per-model prompt text. Rendered as <model_prompt> block after agent_instructions. */
+  modelPrompt?: string;
+  /** Model key for the path attribute in <model_prompt> (e.g. `anthropic/claude-sonnet-4-20250514`). */
+  modelPromptId?: string;
 }
 
 /**
@@ -169,10 +173,17 @@ export function buildAgentPrompt(
     : `You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously.\n\n${envBlock}`;
 
   // active_agent goes AFTER shared prefix (header + env + context) for KV cache
-  return `${basePrompt}${contextSuffix}\n${activeAgentTag}\n${agentInstructions}${extrasSuffix}`;
+  // Per-model prompt: rendered after agent_instructions, before skills
+  let modelPromptSuffix = "";
+  if (extras?.modelPrompt && extras.modelPrompt.length > 0) {
+    const pathAttr = extras.modelPromptId ?? "unknown";
+    modelPromptSuffix = `\n<model_prompt path="${escapeXml(pathAttr)}">${escapeXml(extras.modelPrompt)}</model_prompt>`;
+  }
+
+  return `${basePrompt}${contextSuffix}\n${activeAgentTag}\n${agentInstructions}${modelPromptSuffix}${extrasSuffix}`;
 }
 
-function escapeXml(value: string): string {
+export function escapeXml(value: string): string {
   // Only escape < and > — enough for XML-like tags, keeps text readable for LLMs
   return value
     .replace(/</g, "&lt;")

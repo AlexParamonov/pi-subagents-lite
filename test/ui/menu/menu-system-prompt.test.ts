@@ -279,3 +279,53 @@ describe("showSystemPromptMenu — item order", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("showSystemPromptMenu — Per-model prompts", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false };
+    mockModules.mockConfig.modelPrompts = {};
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    settingsListCalls = [];
+  });
+
+  it("shows per-model prompts section with models from registry", async () => {
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    expect(ids).toContain("model-prompt:anthropic/claude-sonnet-4-20250514");
+    expect(ids).toContain("model-prompt:openai/gpt-4o");
+  });
+
+  it("shows '(none)' for models without prompts", async () => {
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "model-prompt:openai/gpt-4o");
+    expect(item.currentValue).toBe("(none)");
+  });
+
+  it("shows truncated preview for models with prompts", async () => {
+    mockModules.mockConfig.modelPrompts = { "openai/gpt-4o": "This is a very long prompt that should be truncated in the display" };
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "model-prompt:openai/gpt-4o");
+    expect(item.currentValue).toBe("This is a very long prompt that should b...");
+  });
+
+  it("shows full preview for short prompts", async () => {
+    mockModules.mockConfig.modelPrompts = { "openai/gpt-4o": "Be concise." };
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "model-prompt:openai/gpt-4o");
+    expect(item.currentValue).toBe("Be concise.");
+  });
+
+  it("each model row has a submenu", async () => {
+    const ctx = createMockCtx();
+    await showSystemPromptMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "model-prompt:openai/gpt-4o");
+    expect(item.submenu).toBeDefined();
+  });
+});
+

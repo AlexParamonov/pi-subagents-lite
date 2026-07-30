@@ -44,6 +44,7 @@ function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): { io: Confi
   const merged: SubagentsConfig = {
     agent: { ...(defaultConfig().agent), ...(initial.agent ?? {}) },
     concurrency: { default: 4, ...(initial.concurrency ?? {}) },
+    modelPrompts: { ...(initial.modelPrompts ?? {}) },
   };
   let cur = structuredClone(merged);
   const saves: SubagentsConfig[] = [];
@@ -817,3 +818,75 @@ describe("ConfigStore statusBarFormat", () => {
     expect(calls).toContain("setStatusBarFormat:compact");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  modelPrompts                                                       */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore modelPrompts", () => {
+  it("defaults to empty object", () => {
+    const store = new ConfigStore(memIO().io);
+    expect(store.modelPrompts).toEqual({});
+  });
+
+  it("returns configured prompts", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+      modelPrompts: { "anthropic/claude-sonnet-4-20250514": "You are helpful." },
+    });
+    const store = new ConfigStore(io);
+    expect(store.modelPrompts["anthropic/claude-sonnet-4-20250514"]).toBe("You are helpful.");
+  });
+
+  it("setModelPrompt persists", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+
+    store.mutate.modelPrompts.setModelPrompt("openai/gpt-4o", "Be concise.");
+    expect(store.modelPrompts["openai/gpt-4o"]).toBe("Be concise.");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].modelPrompts["openai/gpt-4o"]).toBe("Be concise.");
+  });
+
+  it("clearModelPrompt deletes and persists", () => {
+    const { io, saves } = memIO({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+      modelPrompts: { "openai/gpt-4o": "Be concise.", "anthropic/claude": "Be thorough." },
+    });
+    const store = new ConfigStore(io);
+    saves.length = 0;
+
+    store.mutate.modelPrompts.clearModelPrompt("openai/gpt-4o");
+    expect(store.modelPrompts["openai/gpt-4o"]).toBeUndefined();
+    expect(store.modelPrompts["anthropic/claude"]).toBe("Be thorough.");
+    expect(saves).toHaveLength(1);
+  });
+
+  it("setModelPrompt overwrites existing value", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+      modelPrompts: { "openai/gpt-4o": "Old prompt." },
+    });
+    const store = new ConfigStore(io);
+
+    store.mutate.modelPrompts.setModelPrompt("openai/gpt-4o", "New prompt.");
+    expect(store.modelPrompts["openai/gpt-4o"]).toBe("New prompt.");
+  });
+
+  it("setModelPrompt with empty string clears the prompt", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+      modelPrompts: { "openai/gpt-4o": "Some prompt." },
+    });
+    const store = new ConfigStore(io);
+
+    store.mutate.modelPrompts.setModelPrompt("openai/gpt-4o", "");
+    expect(store.modelPrompts["openai/gpt-4o"]).toBe("");
+  });
+});
+

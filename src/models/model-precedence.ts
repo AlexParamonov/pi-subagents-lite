@@ -75,7 +75,9 @@ export interface SubagentsConfig {
     providers?: Record<string, number>;
     models?: Record<string, number>;
   };
-}
+  /** Per-model system prompts. Keys are full model strings (e.g. `anthropic/claude-sonnet-4-20250514`). Values are prompt text. Empty string or absent key = disabled. */
+  modelPrompts: Record<string, string>;
+};
 
 /**
  * Shape of session-only model overrides.

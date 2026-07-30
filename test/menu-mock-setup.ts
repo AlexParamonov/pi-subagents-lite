@@ -150,6 +150,9 @@ vi.mock("../src/shell.js", () => {
         models: mockModules.mockConfig.concurrency.models ?? {},
       };
     },
+    get modelPrompts() {
+      return mockModules.mockConfig.modelPrompts ?? {};
+    },
     get sessionDefaultModel() {
       return mockModules.mockSessionOverrides.default ?? null;
     },
@@ -240,6 +243,15 @@ vi.mock("../src/shell.js", () => {
         },
         reset() {
           mockModules.mockConfig.concurrency = { default: 4 };
+        },
+      },
+      modelPrompts: {
+        setModelPrompt(modelId: string, text: string) {
+          if (!mockModules.mockConfig.modelPrompts) mockModules.mockConfig.modelPrompts = {};
+          mockModules.mockConfig.modelPrompts[modelId] = text;
+        },
+        clearModelPrompt(modelId: string) {
+          if (mockModules.mockConfig.modelPrompts) delete mockModules.mockConfig.modelPrompts[modelId];
         },
       },
       session: {

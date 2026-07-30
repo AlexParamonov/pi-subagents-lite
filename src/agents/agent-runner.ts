@@ -359,7 +359,7 @@ function buildPrompt(
   cwd: string,
   env: EnvInfo,
   systemPromptMode: SystemPromptMode = "replace",
-  resolverExtras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {},
+  resolverExtras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles" | "modelPrompt" | "modelPromptId"> = {},
 ): string {
   const extras: PromptExtras = { ...resolverExtras };
   if (Array.isArray(agentConfig?.preloadSkills)) {
@@ -669,9 +669,15 @@ async function runAgentImpl(
   // Resolve system prompt mode + source prompts + context files
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify);
 
+  // Resolve effective model key for per-model prompt lookup
+  const effectiveModelKey = options.model
+    ? `${options.model.provider}/${options.model.id}`
+    : store.modelFor(type, ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "", agentConfig);
+  const modelPrompt = store.modelPrompts[effectiveModelKey];
+
   const systemPrompt = buildPrompt(
     type, agentConfig, config, effectiveCwd, env,
-    mode, promptExtras,
+    mode, { ...promptExtras, modelPrompt, modelPromptId: effectiveModelKey },
   );
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt, bufferNotify);
   const { extToolMap } = await reloadAndMap();
