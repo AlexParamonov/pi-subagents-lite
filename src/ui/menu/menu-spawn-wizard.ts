@@ -11,11 +11,14 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import { getSupportedThinkingLevels, clampThinkingLevel } from "@earendil-works/pi-ai";
+import { readdirSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
 import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
+import type { SelectOption } from "../searchable-select.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
@@ -117,6 +120,101 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Parse an autocomplete query into the directory to list, the prefix to filter
+ * entries by, and a function that builds each entry's relative label.
+ *
+ * - Empty / "." / "./": list baseDir, no prefix filter.
+ * - Trailing "/": list that directory's contents, no prefix filter.
+ * - Otherwise: list the parent dir, filter by the last path segment.
+ */
+function parseQuery(
+  baseDir: string,
+  q: string,
+): { searchDir: string; searchPrefix: string; labelFor: (name: string) => string } {
+  if (!q || q === "." || q === "./") {
+    return { searchDir: baseDir, searchPrefix: "", labelFor: (name: string) => name };
+  }
+  if (q.endsWith("/")) {
+    return { searchDir: resolve(baseDir, q), searchPrefix: "", labelFor: (name: string) => q + name };
+  }
+  const dir = dirname(q);
+  return {
+    searchDir: resolve(baseDir, dir),
+    searchPrefix: basename(q),
+    labelFor: (name: string) => (dir === "." ? name : join(dir, name)),
+  };
+}
+
+/**
+ * Autocomplete callback: find matching directories under baseDir for a typed query.
+ * Uses readdirSync to walk the filesystem on demand — no pre-fetching.
+ */
+export function createDirectorySuggestions(baseDir: string) {
+  return (query: string): SelectOption[] => {
+    try {
+      const q = query.trim();
+      const { searchDir, searchPrefix, labelFor } = parseQuery(baseDir, q);
+
+      // Validate searchDir exists and is a directory
+      try {
+        if (!statSync(searchDir).isDirectory()) {
+          return [];
+        }
+      } catch {
+        return [];
+      }
+
+      const entries = readdirSync(searchDir, { withFileTypes: true });
+      const results: SelectOption[] = [];
+
+      for (const entry of entries) {
+        // Only show directories
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+          continue;
+        }
+
+        // Symlink target may not be a directory — readdir Dirent reports the
+        // link type, not its target, so stat the resolved path.
+        if (entry.isSymbolicLink()) {
+          try {
+            if (!statSync(join(searchDir, entry.name)).isDirectory()) {
+              continue;
+            }
+          } catch {
+            continue;
+          }
+        }
+
+        // Filter by prefix (case-insensitive)
+        if (searchPrefix && !entry.name.toLowerCase().startsWith(searchPrefix.toLowerCase())) {
+          continue;
+        }
+
+        // Build the relative path from baseDir, ensuring a ./ prefix
+        let relativePath = labelFor(entry.name);
+        if (!relativePath.startsWith("./") && !relativePath.startsWith("/")) {
+          relativePath = "./" + relativePath;
+        }
+
+        // Compute absolute path for the value
+        const absolutePath = resolve(baseDir, relativePath);
+
+        results.push({
+          value: absolutePath,
+          label: relativePath + "/",
+          provider: "dir",
+        });
+      }
+
+      return results;
+    } catch {
+      return [];
+    }
+  };
+}
+
 
 // ============================================================================
 // Spawn agent wizard
@@ -382,7 +480,7 @@ export async function showSpawnAgentMenu(
             id: "worktree",
             label: "Worktree",
             currentValue: currentWorktreeLabel,
-            description: "Run in a linked git worktree instead of parent cwd",
+            description: "Run in a subdirectory or worktree instead of parent cwd",
             submenu: (_v: string, done: (v?: string) => void) => {
               const pickerItems = [
                 { value: "Inherits parent cwd", label: "Inherits parent cwd" },
@@ -392,6 +490,7 @@ export async function showSpawnAgentMenu(
                   return { value: wt.path, label: truncPath, provider: branchLabel };
                 }),
               ];
+              const dirSuggestions = createDirectorySuggestions(parentCwd);
               return createSearchableSelect(
                 pickerItems,
                 {
@@ -401,13 +500,17 @@ export async function showSpawnAgentMenu(
                       done("Inherits parent cwd");
                     } else {
                       const wt = worktrees.find(w => w.path === value);
-                      currentWorktreePath = wt?.path;
-                      done(wt?.branch ?? "detached");
+                      currentWorktreePath = value;
+                      currentWorktreeLabel = wt
+                        ? (wt.branch ?? "detached")
+                        : basename(value);
+                      done(currentWorktreeLabel);
                     }
                   },
                   onCancel: () => done(),
                 },
                 theme,
+                { getSuggestions: dirSuggestions },
               );
             },
           } as SettingItem]

@@ -6,7 +6,7 @@
  */
 import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "../types.js";
-import { SearchableSelectDialog, type SelectOption } from "../searchable-select.js";
+import { SearchableSelectDialog, type SelectOption, type SuggestionsCallback } from "../searchable-select.js";
 import { parseModelKey } from "../../utils.js";
 /**
  * Build SelectOption[] from raw "provider/model-id" strings.
@@ -104,6 +104,7 @@ export function createSearchableSelect(
   items: SelectOption[],
   callbacks: { onSelect: (value: string) => Component | void; onCancel: () => void },
   theme: Theme,
+  options?: { getSuggestions?: SuggestionsCallback },
 ): Component {
   let delegator: ReturnType<typeof createDelegatingComponent>;
   const selector = new SearchableSelectDialog(
@@ -117,6 +118,7 @@ export function createSearchableSelect(
       onCancel: callbacks.onCancel,
     },
     theme,
+    options,
   );
   delegator = createDelegatingComponent(selector);
   return delegator;

@@ -17,7 +17,7 @@ export const WORKTREE_VALIDATION_ERRORS = {
   NOT_A_DIRECTORY: "worktree_path is not a directory: the specified path exists but is not a directory",
   PARENT_NOT_IN_GIT_REPO: "worktree_path validation failed: the parent session is not inside a git repository",
   NOT_IN_GIT_REPO: "worktree_path is not inside a git repository",
-  DIFFERENT_REPO: "worktree_path is not a worktree of the parent's repository",
+  DIFFERENT_REPO: "worktree_path must be a subdirectory or worktree in the same repository",
   GIT_NOT_FOUND: "worktree_path validation failed: git executable not found on this host",
   GIT_TIMEOUT: "worktree_path validation failed: git command timed out",
 } as const;

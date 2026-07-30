@@ -290,7 +290,7 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
     const message = mockSendUserMessage.mock.calls[0][0];
     expect(message).toContain("worktree_path");
-    expect(message).toContain("git worktree of the parent");
+    expect(message).toContain("subdirectory or worktree");
     expect(message).toContain("Relative paths");
     expect(message).toContain(".pi/agents/");
   });

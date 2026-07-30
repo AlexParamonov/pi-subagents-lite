@@ -61,16 +61,18 @@ vi.mock("../src/agents/agent-types.js", () => ({
 }));
 
 // Capture SearchableSelectDialog instances for tests that need them
-export let selectDialogInstances: Array<{ items: any[]; callbacks: any }> = [];
+export let selectDialogInstances: Array<{ items: any[]; callbacks: any; options?: any }> = [];
 export function resetSelectDialogInstances() { selectDialogInstances = []; }
 
 vi.mock("../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
     items: any[];
     callbacks: any;
-    constructor(items: any[], _currentValue: any, callbacks: any, _theme: any) {
+    options?: any;
+    constructor(items: any[], _currentValue: any, callbacks: any, _theme: any, options?: any) {
       this.items = items;
       this.callbacks = callbacks;
+      this.options = options;
       selectDialogInstances.push(this as any);
     }
     handleInput(_data: string) {}

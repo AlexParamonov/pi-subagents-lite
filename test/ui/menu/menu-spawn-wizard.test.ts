@@ -625,6 +625,31 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("Inherits parent cwd");
     expect(mockDone).toHaveBeenCalledWith("Inherits parent cwd");
   });
+
+  it("worktree submenu passes getSuggestions callback for directory autocomplete", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const mockDone = vi.fn();
+    item.submenu("Inherits parent cwd", mockDone);
+    const instance = selectDialogInstances[selectDialogInstances.length - 1];
+    expect(instance.options).toBeDefined();
+    expect(typeof instance.options.getSuggestions).toBe("function");
+  });
+
+  it("selecting a directory path (not a worktree) sets the path correctly", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    const mockDone = vi.fn();
+    item.submenu("Inherits parent cwd", mockDone);
+    // Simulate selecting a directory path from autocomplete (not a worktree)
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test/src/agents");
+    expect(mockDone).toHaveBeenCalledWith("agents");
+  });
+
 });
 
 describe("showSpawnAgentMenu — spawn action", () => {

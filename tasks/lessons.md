@@ -100,3 +100,8 @@
 **What worked:** Grilling session clarified format requirements through iterative refinement. Two formats (full/compact) with config toggle gave user flexibility. Review caught test assertion bug and untested code path. Refactor extracted `buildStatusBarText` for clarity.
 **What failed:** Builder initially implemented format without config toggle; had to re-spawn for scope addition. First review found misleading test name and `drainQueue` catch block violating AC.
 **Next time:** Clarify format variations upfront during grill. Check `drainQueue` catch blocks for counter increments. Test names must match assertions.
+
+## broaden-worktree-path - 2025-01-27
+**What worked:** Grilling revealed the feature already existed (validator accepted subdirs). Manual test with a real subdirectory confirmed behavior before investing in UI changes. Refactor caught dead code path in filterItems fallback.
+**What failed:** Initial issue scope missed the spawn wizard picker — only showed git worktrees, not subdirectories. User caught this during review.
+**Next time:** When broadening a feature's documented scope, also check the UI surfaces that expose it. Error messages and docs are half the story if the menu doesn't let users pick the new option.

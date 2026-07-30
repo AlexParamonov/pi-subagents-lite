@@ -35,6 +35,9 @@ interface SelectDialogCallbacks {
   onCancel: () => void;
 }
 
+/** Callback that returns autocomplete suggestions for a typed query. */
+export type SuggestionsCallback = (query: string) => SelectOption[];
+
 /* ------------------------------------------------------------------ */
 /*  SearchableSelectDialog                                             */
 /* ------------------------------------------------------------------ */
@@ -62,6 +65,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
   private currentValue: string | null;
   private callbacks: SelectDialogCallbacks;
   private theme: Theme;
+  private getSuggestions: SuggestionsCallback | undefined;
 
   // Focusable implementation — propagate to searchInput for IME cursor
   private _focused = false;
@@ -80,6 +84,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
     currentValue: string | null,
     callbacks: SelectDialogCallbacks,
     theme: Theme,
+    options?: { getSuggestions?: SuggestionsCallback },
   ) {
     super();
 
@@ -87,6 +92,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
     this.currentValue = currentValue;
     this.callbacks = callbacks;
     this.theme = theme;
+    this.getSuggestions = options?.getSuggestions;
     this.filteredItems = [...items];
 
     // Pre-select current value if present
@@ -183,6 +189,16 @@ export class SearchableSelectDialog extends Container implements Focusable {
       return;
     }
 
+    // Tab — autocomplete to selected item's label
+    if (kb.matches(keyData, "tui.input.tab")) {
+      if (this.filteredItems.length > 0) {
+        this.searchInput.setValue(this.filteredItems[this.selectedIndex].label);
+        this.searchInput.moveCursorToEnd();
+        this.filterItems();
+      }
+      return;
+    }
+
     // Everything else → search input (triggers fuzzy filter)
     this.searchInput.handleInput(keyData);
     this.filterItems();
@@ -198,15 +214,26 @@ export class SearchableSelectDialog extends Container implements Focusable {
 
   private filterItems(): void {
     const query = this.searchInput.getValue();
-    if (!query) {
-      this.filteredItems = [...this.items];
-    } else {
-      this.filteredItems = fuzzyFilter(
-        this.items,
-        query,
-        (item) => `${item.label} ${item.provider} ${item.value}`,
-      );
+    // When a suggestions callback is wired (e.g. directory autocomplete) and it
+    // returns matches for this query, show those and reset the selection.
+    // Otherwise fall back to fuzzy-filtering the static item list so the user
+    // still has options rather than a dead end.
+    if (query && this.getSuggestions) {
+      const suggestions = this.getSuggestions(query);
+      if (suggestions.length > 0) {
+        this.filteredItems = suggestions;
+        this.selectedIndex = 0;
+        this.updateList();
+        return;
+      }
     }
+    this.filteredItems = query
+      ? fuzzyFilter(
+          this.items,
+          query,
+          (item) => `${item.label} ${item.provider} ${item.value}`,
+        )
+      : [...this.items];
     // Clamp selection index
     this.selectedIndex = Math.min(
       this.selectedIndex,

@@ -152,6 +152,30 @@ describe("validateWorktreePath", () => {
     expect(typeof success.label).toBe("string");
     expect(success.label!.length).toBeGreaterThan(0);
   });
+  it("accepts a subdirectory within the same repo (toplevel is parent)", async () => {
+    const parentCwd = join(tmpDir, "repo");
+    const subPath = join(tmpDir, "repo", "packages", "web");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(subPath, { recursive: true });
+
+    const commonDir = join(tmpDir, "repo", ".git");
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, commonDir],
+      [subPath, commonDir],
+    ]);
+    const toplevelResults = new Map<string, string | null>([
+      [subPath, parentCwd],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults, toplevelResults), subPath, parentCwd);
+
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(subPath);
+    expect(success.worktreeRoot).toBe(parentCwd);
+    expect(success.label).toBe("repo/packages/web");
+  });
+
 
   // ── relative path resolution ──────────────────────────────────
 
