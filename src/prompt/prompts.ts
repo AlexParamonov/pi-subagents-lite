@@ -175,7 +175,7 @@ export function buildAgentPrompt(
   // active_agent goes AFTER shared prefix (header + env + context) for KV cache
   // Per-model prompt: rendered after agent_instructions, before skills
   let modelPromptSuffix = "";
-  if (extras?.modelPrompt && extras.modelPrompt.length > 0) {
+  if (extras?.modelPrompt) {
     const pathAttr = extras.modelPromptId ?? "unknown";
     modelPromptSuffix = `\n<model_prompt path="${escapeXml(pathAttr)}">${escapeXml(extras.modelPrompt)}</model_prompt>`;
   }

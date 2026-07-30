@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem, Editor } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme } from "./helpers.js";
+import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { SystemPromptMode } from "../../agents/types.js";
 import { getStore } from "../../shell.js";
@@ -36,13 +36,7 @@ function createModelPromptEditor(
     ctx.ui.custom((tui, theme, _kb, editorDone) => {
       const editor = new Editor(tui, {
         borderColor: (s: string) => s,
-        selectList: {
-          selectedPrefix: () => theme.fg("accent", "→ "),
-          selectedText: (s: string) => theme.fg("accent", s),
-          description: (s: string) => theme.fg("muted", s),
-          scrollInfo: (s: string) => theme.fg("dim", s),
-          noMatch: (s: string) => theme.fg("dim", s),
-        },
+        selectList: buildSelectListTheme(theme),
       });
       editor.setText(currentText);
       editor.onSubmit = (text: string) => {
