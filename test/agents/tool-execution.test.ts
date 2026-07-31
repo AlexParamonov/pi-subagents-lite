@@ -481,6 +481,7 @@ describe("executeAgentTool — foreground error result", () => {
     expect(text).toContain("anthropic/claude-sonnet-4");
     expect(text).toContain("model failed to load");
   });
+});
 
 describe("formatResultContent", () => {
   function makeContentRecord(overrides: Record<string, unknown> = {}) {
@@ -526,5 +527,4 @@ describe("formatResultContent", () => {
 
     expect(content).toBe("done");
   });
-});
 });
