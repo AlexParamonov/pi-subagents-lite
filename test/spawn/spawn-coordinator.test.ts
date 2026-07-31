@@ -270,6 +270,42 @@ describe("SpawnCoordinator", () => {
     });
   });
 
+  describe("nudge content", () => {
+    it("includes the recorded error message when the background agent failed", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+      result.record.lifecycle.status = "error";
+      result.record.error = "model failed to load";
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      const content = mockPi.sendMessage.mock.calls[0][0].content as string;
+      // Header (status) and result content still present; error text appended
+      expect(content).toBe('[Subagent "builder" agent-0 error]\n\ndone\n\nError: model failed to load');
+    });
+
+    it("keeps the nudge unchanged for non-error completions", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+      });
+      result.record.lifecycle.status = "completed";
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      const content = mockPi.sendMessage.mock.calls[0][0].content as string;
+      expect(content).toBe('[Subagent "builder" agent-0 completed]\n\ndone');
+    });
+  });
+
   describe("onAgentComplete", () => {
     it("deletes live view on completion", () => {
       const coordinator = new SpawnCoordinator(manager as any);
