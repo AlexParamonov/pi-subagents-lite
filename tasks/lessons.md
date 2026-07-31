@@ -16,6 +16,7 @@
 - Tests must interact through component tree, not captured mock references.
 - Export testable functions early to avoid mock ceremony.
 - Existing tests that mock away the real path mask the bug. Assert constructor args, not just downstream behavior.
+- When a range edit targets code that shifted since the last read, it can clobber adjacent signatures (replaced a function header, orphaned its body). Re-read the region before multi-line replaces, and check the parse after.
 
 ### Delegation
 - Delegate immediately without pre-reading files — agent explores itself.

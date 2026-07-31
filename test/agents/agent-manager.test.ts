@@ -706,5 +706,80 @@ describe("delta estimation", () => {
     onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
     expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
   });
-});
+  });
+
+  // ── Model error handling (final assistant message stopReason "error") ──
+
+  describe("model error handling", () => {
+    function sessionWithModel(model?: { provider: string; id: string }) {
+      return { subscribe: vi.fn(), messages: [], dispose: vi.fn(), model };
+    }
+
+    it("marks the record error with type, model, and provider error when runAgent reports a modelError", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult({
+        responseText: "",
+        modelError: "model failed to load into memory",
+        session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }),
+      }));
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      expect(record.lifecycle.status).toBe("error");
+      expect(record.result).toBe("");
+      expect(record.error).toContain("general-purpose");
+      expect(record.error).toContain("anthropic/claude-sonnet-4");
+      expect(record.error).toContain("model failed to load into memory");
+    });
+
+    it("keeps completed status when runAgent reports no modelError", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      expect(record.lifecycle.status).toBe("completed");
+      expect(record.error).toBeUndefined();
+      expect(record.result).toBe("done");
+    });
+
+    it("prefers aborted status over modelError", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ aborted: true, modelError: "boom" }));
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      expect(record.lifecycle.status).toBe("aborted");
+    });
+
+    it("prefers error status over turn_limited", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ turnLimited: true, modelError: "boom" }));
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      expect(record.lifecycle.status).toBe("error");
+    });
+
+    it("does not overwrite an externally stopped status when a modelError is reported", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      manager.abort(id, "user");
+      deferred.resolve(mockRunResult({ modelError: "boom", session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }) }));
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(manager.getRecord(id)!.lifecycle.status).toBe("stopped");
+    });
+  });
 }); // end describe AgentManager
