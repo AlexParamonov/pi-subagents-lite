@@ -328,7 +328,11 @@ export class AgentManager {
       .then(({ responseText, session, aborted, turnLimited, modelError }) => {
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
-          record.lifecycle.status = aborted ? "aborted" : modelError ? "error" : turnLimited ? "turn_limited" : "completed";
+          // Precedence: an abort during a model error wins; a model error outranks a turn limit.
+          record.lifecycle.status = aborted ? "aborted"
+            : modelError ? "error"
+            : turnLimited ? "turn_limited"
+            : "completed";
         }
         record.result = responseText;
         if (modelError) {
