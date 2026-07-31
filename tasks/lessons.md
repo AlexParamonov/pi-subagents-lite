@@ -6,6 +6,7 @@
 - Clean up after merge: commit/discard untracked files first. Verify path exists before spawning reviewers.
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
 - Always verify worktree branch exists and is checked out before spawning builder.
+- Read files through the worktree path, never the main checkout. Verify `git status` after writing any file.
 
 ### Testing
 - Always `bun run test` after merging to main; clean merge ≠ passing tests.
@@ -16,7 +17,7 @@
 - Tests must interact through component tree, not captured mock references.
 - Export testable functions early to avoid mock ceremony.
 - Existing tests that mock away the real path mask the bug. Assert constructor args, not just downstream behavior.
-- When a range edit targets code that shifted since the last read, it can clobber adjacent signatures (replaced a function header, orphaned its body). Re-read the region before multi-line replaces, and check the parse after.
+- When a range edit targets code that shifted since the last read, it can clobber adjacent signatures. Re-read before multi-line replaces; check the parse after.
 - When a replace range ends with the same line as the next surviving line, the edit tool flags boundary duplication — verify and delete the stray duplicate before running tests.
 
 ### Delegation
@@ -84,7 +85,6 @@
 - When bumping versions, always run the package manager to regenerate lockfiles. Never hand-edit bun.lock.
 - Keep `@ts-expect-error` comments focused — one error per directive.
 
-
 ### Cross-Platform
 - `process.env.HOME` is unreliable on Windows. Use SDK's `getAgentDir()` or `os.homedir()` instead.
 - Check existing PRs for reference implementations before grilling alternatives — PR #12 already solved this issue.
@@ -97,23 +97,3 @@
 - Use library-provided helpers (getSupportedThinkingLevels, clampThinkingLevel) instead of reimplementing filtering logic.
 - Submenu pattern (lazy evaluation) works well for dynamic option lists — avoids SettingsList rebuild complexity.
 - Grill thoroughly: user corrected scope twice (no Model settings change, non-reasoning shows only off).
-
-## agent-stats-cleanup - 2025-01-27
-**What worked:** Grilling session clarified format requirements through iterative refinement. Two formats (full/compact) with config toggle gave user flexibility. Review caught test assertion bug and untested code path. Refactor extracted `buildStatusBarText` for clarity.
-**What failed:** Builder initially implemented format without config toggle; had to re-spawn for scope addition. First review found misleading test name and `drainQueue` catch block violating AC.
-**Next time:** Clarify format variations upfront during grill. Check `drainQueue` catch blocks for counter increments. Test names must match assertions.
-
-## surface-subagent-model-errors - 2026-08-01
-**What worked:** Investigation first: traced the full silent-failure chain (pi-ai emits stopReason "error" assistant message with empty content instead of throwing; extension read only text blocks so result came back empty; record marked completed). Writing the mechanism into the issue gave the builder a precise contract. Detection on the final assistant message only — transient errors followed by a successful turn don't fail the run. Status precedence ladder (stopped > aborted > error > turn_limited > completed) pinned by tests.
-**What failed:** Manual live-session test not possible (no API keys in env) — fell back to code inspection + suite, per repo precedent. Builder flagged a behavior deviation (turn-limited run whose final message is a provider error records error, not turn_limited) that the issue's AC wording had not anticipated; reviewer accepted it as more truthful.
-**Next time:** For error-surfacing work in pi extensions, state in the issue that the provider error arrives as an assistant message with stopReason "error" (not a throw) — it's the load-bearing fact. Acknowledge the error-vs-turn_limited overlap explicitly in ACs. Note that a lessons.md entry committed inside a feature diff is fine as long as it matches the file's style.
-
-## background-nudge-error-details - 2026-08-01
-**What worked:** Finding the shared formatter (`formatResultContent`) meant the nudge fix needed zero changes in the nudge emitter — one guarded append in the pure function covered both callers, with the foreground error path already intercepting above it. Alternatives doc flagged the canonical-placement option and the builder picked it explicitly. Reviewer caught a real test-structure defect (mis-nested describe block) that brace-counting alone wouldn't have surfaced; the fix round verified the claim against the file before editing.
-**What failed:** Test file structure error passed the suite (vitest tolerates the nesting) — reviewer caught it, not CI. Manual live test again impossible (no provider); tester also found the TUI can't inject a broken model through the Agent tool or spawn wizard.
-**Next time:** For nudge/notification formatting, prefer the shared formatter over touching each emitter — divergence is the recurring bug class (the formatter's doc comment exists because the callers diverged before). Brace-count validation is not enough; check describe/it nesting structure explicitly. The TUI model-injection limitation is a standing constraint for future error-path manual tests.
-
-## fix-default-thinking-fallback - 2026-08-01
-**What worked:** Issue pinpointed both buggy sites with exact line refs and the correct resolution chain, so the builder could go straight to TDD (8 regression tests: 2 red for the missing fallback, 6 green guarding precedence). Both spawn paths (menu-driven wizard, LLM-driven tool call + listener) now share one chain: explicit param > frontmatter > store default > inherit. New test file rather than editing the existing tool-execution spec kept the "only modify src/agents/tool-execution.ts" constraint literal.
-**What failed:** A path mistake wrote the new test file into the main checkout instead of the git worktree — caught by `git status` before any damage. Also, the worktree file diverged from the main checkout (different commits), so issue line refs and the first read of the main checkout's file didn't match the worktree; had to re-read before editing.
-**Next time:** For worktree tasks, read files through the worktree path from the start, never the main checkout. Verify `git status` in the worktree immediately after writing any file.
