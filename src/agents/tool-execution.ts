@@ -91,14 +91,21 @@ export function buildAgentDetails(
 }
 
 /**
- * Result text plus status note, for display.
+ * Result text plus status note, for display. For error status, appends the
+ * recorded error message so the nudge explains the failure.
  *
  * Shared by the foreground tool result and the subagent-result nudge so both
  * callers stay in sync on the nullish default and separator handling — they
  * have diverged before. getStatusNote owns the leading separator.
  */
 export function formatResultContent(record: AgentRecord): string {
-  return (record.result ?? "") + getStatusNote(record.lifecycle);
+  // Only the nudge path formats error-status records as text: the foreground
+  // handler intercepts error status earlier and returns an errorResult instead.
+  const errorNote =
+    record.lifecycle.status === "error" && record.error
+      ? `\n\nError: ${record.error}`
+      : "";
+  return (record.result ?? "") + errorNote + getStatusNote(record.lifecycle);
 }
 
 // ============================================================================

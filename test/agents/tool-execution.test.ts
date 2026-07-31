@@ -115,7 +115,7 @@ vi.mock("../../src/agents/usage.js", () => ({
 }));
 
 // Import after mocks are in place
-import { executeAgentTool } from "../../src/agents/tool-execution.js";
+import { executeAgentTool, formatResultContent } from "../../src/agents/tool-execution.js";
 import * as agentTypes from "../../src/agents/agent-types.js";
 
 /* ------------------------------------------------------------------ */
@@ -480,5 +480,51 @@ describe("executeAgentTool — foreground error result", () => {
     expect(text).toContain("feature-reviewer");
     expect(text).toContain("anthropic/claude-sonnet-4");
     expect(text).toContain("model failed to load");
+  });
+});
+
+describe("formatResultContent", () => {
+  function makeContentRecord(overrides: Record<string, unknown> = {}) {
+    return {
+      result: "done",
+      lifecycle: { status: "completed", startedAt: Date.now() },
+      ...overrides,
+    } as any;
+  }
+
+  it("appends the recorded error message for error status", () => {
+    const content = formatResultContent(
+      makeContentRecord({ lifecycle: { status: "error", startedAt: Date.now() }, error: "model failed to load" }),
+    );
+
+    expect(content).toBe("done\n\nError: model failed to load");
+  });
+
+  it("keeps completed output unchanged (no error block)", () => {
+    expect(formatResultContent(makeContentRecord())).toBe("done");
+  });
+
+  it("keeps aborted output unchanged", () => {
+    const content = formatResultContent(
+      makeContentRecord({ lifecycle: { status: "aborted", startedAt: Date.now() } }),
+    );
+
+    expect(content).toBe("done (hit the turn limit before completion; output may be incomplete)");
+  });
+
+  it("keeps turn_limited output unchanged", () => {
+    const content = formatResultContent(
+      makeContentRecord({ lifecycle: { status: "turn_limited", startedAt: Date.now() } }),
+    );
+
+    expect(content).toBe("done (wrapped up at the turn limit — output may be partial)");
+  });
+
+  it("does not append a dangling error block when error text is missing", () => {
+    const content = formatResultContent(
+      makeContentRecord({ lifecycle: { status: "error", startedAt: Date.now() } }),
+    );
+
+    expect(content).toBe("done");
   });
 });
