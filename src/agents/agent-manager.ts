@@ -42,6 +42,16 @@ function isTerminalStatus(status: AgentStatus): boolean {
   return status !== "running" && status !== "queued";
 }
 
+/**
+ * Format the model error recorded on a failed run: the subagent type, the
+ * resolved model (provider/id), and the provider's error message.
+ */
+function formatModelError(type: SubagentType, session: AgentSession | undefined, providerError: string): string {
+  const model = session?.model;
+  const modelKey = model ? `${model.provider}/${model.id}` : undefined;
+  return modelKey ? `${type} (${modelKey}): ${providerError}` : `${type}: ${providerError}`;
+}
+
 /** Configuration for per-model concurrency limits. */
 export interface ConcurrencyConfig {
   /** Default concurrency limit for models not in the models or providers map. */
@@ -317,12 +327,15 @@ export class AgentManager {
         options.onSessionCreated?.(session);
       },
     })
-      .then(({ responseText, session, aborted, turnLimited }) => {
+      .then(({ responseText, session, aborted, turnLimited, modelError }) => {
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
-          record.lifecycle.status = aborted ? "aborted" : turnLimited ? "turn_limited" : "completed";
+          record.lifecycle.status = aborted ? "aborted" : modelError ? "error" : turnLimited ? "turn_limited" : "completed";
         }
         record.result = responseText;
+        if (modelError) {
+          record.error = formatModelError(record.display.type, session, modelError);
+        }
         record.execution.session = session;
         record.stats.contextPercent = getSessionContextPercent(session);
         record.lifecycle.completedAt ??= Date.now();

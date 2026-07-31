@@ -124,6 +124,12 @@ interface RunResult {
   aborted: boolean;
   /** True if the agent hit the soft turn limit and wrapped up within grace turns. */
   turnLimited: boolean;
+  /**
+   * Provider error message when the run ended in a model error: the final
+   * assistant message has stopReason "error". Absent for normal, aborted,
+   * and turn-limited runs, and for transient errors superseded by a later turn.
+   */
+  modelError?: string;
 }
 
 /**
@@ -156,6 +162,22 @@ function getLastAssistantText(session: AgentSession): string {
     if (text) return text;
   }
   return "";
+}
+
+/**
+ * The provider error message when the run ended in a model error: the final
+ * assistant message has stopReason "error". Returns undefined when the final
+ * assistant message ended normally (or was aborted), so a transient error
+ * followed by a successful turn never fails the run.
+ */
+function getFinalModelError(session: AgentSession): string | undefined {
+  for (let i = session.messages.length - 1; i >= 0; i--) {
+    const msg = session.messages[i];
+    if (msg.role !== "assistant") continue;
+    if (msg.stopReason !== "error") return undefined;
+    return msg.errorMessage && msg.errorMessage.trim() ? msg.errorMessage : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -691,5 +713,11 @@ async function runAgentImpl(
     else console.warn(`[pi-subagents-lite] ${msg}`);
   }
 
-  return { responseText, session, aborted: getAborted(), turnLimited: getTurnLimited() };
+  return {
+    responseText,
+    session,
+    aborted: getAborted(),
+    turnLimited: getTurnLimited(),
+    modelError: getFinalModelError(session),
+  };
 }

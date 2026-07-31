@@ -443,3 +443,42 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
   });
 });
+
+describe("executeAgentTool — foreground error result", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = fakeCtx();
+  });
+
+  it("returns an isError result containing type, model, and provider error for a failed run", async () => {
+    mockGetRecord.mockReturnValue({
+      id: "agent-id-err",
+      result: "",
+      error: "feature-reviewer (anthropic/claude-sonnet-4): model failed to load",
+      display: { type: "feature-reviewer", description: "Reviews feature" },
+      lifecycle: { status: "error", startedAt: Date.now() - 1000, completedAt: Date.now() },
+      execution: { promise: Promise.resolve("") },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+      },
+    });
+
+    const result = await executeAgentTool(
+      "tc-err",
+      makeParams({ agent: "feature-reviewer" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toContain("feature-reviewer");
+    expect(text).toContain("anthropic/claude-sonnet-4");
+    expect(text).toContain("model failed to load");
+  });
+});
