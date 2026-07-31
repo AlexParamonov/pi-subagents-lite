@@ -46,10 +46,8 @@ function isTerminalStatus(status: AgentStatus): boolean {
  * Format the model error recorded on a failed run: the subagent type, the
  * resolved model (provider/id), and the provider's error message.
  */
-function formatModelError(type: SubagentType, session: AgentSession | undefined, providerError: string): string {
-  const model = session?.model;
-  const modelKey = model ? `${model.provider}/${model.id}` : undefined;
-  return modelKey ? `${type} (${modelKey}): ${providerError}` : `${type}: ${providerError}`;
+function formatModelError(type: SubagentType, model: { provider: string; id: string } | undefined, providerError: string): string {
+  return model ? `${type} (${model.provider}/${model.id}): ${providerError}` : `${type}: ${providerError}`;
 }
 
 /** Configuration for per-model concurrency limits. */
@@ -334,7 +332,7 @@ export class AgentManager {
         }
         record.result = responseText;
         if (modelError) {
-          record.error = formatModelError(record.display.type, session, modelError);
+          record.error = formatModelError(record.display.type, session?.model, modelError);
         }
         record.execution.session = session;
         record.stats.contextPercent = getSessionContextPercent(session);
