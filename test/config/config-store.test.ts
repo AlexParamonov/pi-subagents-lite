@@ -26,7 +26,7 @@ function defaultConfig(): SubagentsConfig {
       systemPromptMode: "replace",
       includeContextFiles: true,
       disableDefaultAgents: false,
-      showTools: true,
+      showTools: false,
       showTurns: true,
       showInput: true,
       showOutput: true,
@@ -667,9 +667,9 @@ describe("ConfigStore notifyToolsExpanded", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore show* stats visibility", () => {
-  it("all show* keys default to true", () => {
+  it("showTools and deltaInputTokens default to false, rest default to true", () => {
     const store = new ConfigStore(memIO().io);
-    expect(store.agent.showTools).toBe(true);
+    expect(store.agent.showTools).toBe(false);
     expect(store.agent.showTurns).toBe(true);
     expect(store.agent.showInput).toBe(true);
     expect(store.agent.showOutput).toBe(true);

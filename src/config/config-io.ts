@@ -40,7 +40,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   includeContextFiles: true,
   disableDefaultAgents: false,
   agentToolStrictMode: false,
-  showTools: true,
+  showTools: false,
   showTurns: true,
   showInput: true,
   showOutput: true,
