@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-08-01
+
+### Changed
+- **`showTools` and `deltaInputTokens` now default to off.** Reduces noise in the widget and spawn wizard for new users.
+
 ### Fixed
 - **`defaultThinking` from spawn options now applied in LLM-driven spawn path.** Subagents spawned via the `Agent` tool now respect the thinking level set in spawn options when agent frontmatter does not define one. Previously they inherited the parent's thinking level instead.
+- **Error message included in background agent failure nudge.** The completion nudge for a failed background subagent now appends the error text so the parent sees why the agent failed without opening the output file.
+- **Subagent model errors surfaced as failed runs.** When a subagent's model fails (load error, OOM, provider error), the run is now reported as an error instead of silently completing with an empty result.
+- **Agent self-stop distinguished from user stop in status notes.** Agent-initiated stops now read 'STOPPED BY YOU' matching the user stop style.
+- **CRLF line endings parsed in agent frontmatter.** Agent files with Windows line endings (`\r\n`) are now parsed correctly. Previously the closing delimiter was not recognized and the agent was silently dropped.
+- **Model picker uses `ctx.scopedModels` for pi 0.83+.** Model list respects provider-scoped model availability.
 
 ## [1.6.0] - 2026-07-29
 
