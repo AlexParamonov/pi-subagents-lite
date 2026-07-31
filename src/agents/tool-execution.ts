@@ -168,9 +168,10 @@ export async function executeAgentTool(
   // Determine modelName for invocation (always capture for display)
   const modelName = model?.id;
 
-  // Resolve thinking: explicit param > agent config (frontmatter) > undefined (inherit)
+  // Resolve thinking: explicit param > agent config (frontmatter) > spawn options default > undefined (inherit)
   const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
-    ?? getAgentConfig(resolvedType)?.thinkingLevel;
+    ?? getAgentConfig(resolvedType)?.thinkingLevel
+    ?? getStore().agent.defaultThinking;
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
@@ -301,8 +302,8 @@ export async function toolCallListener(
     }
   }
 
-  // Inject thinking from agent config if not explicitly passed
-  if (input.thinking === undefined && agentConfig?.thinkingLevel !== undefined) {
-    input.thinking = agentConfig.thinkingLevel;
+  // Inject thinking if not explicitly passed: agent frontmatter > spawn options default
+  if (input.thinking === undefined) {
+    input.thinking = agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
   }
 }
