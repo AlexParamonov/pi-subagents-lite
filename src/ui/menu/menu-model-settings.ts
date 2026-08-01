@@ -20,20 +20,15 @@ import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 
-export async function showModelSettingsMenu(
-  ctx: ExtensionCommandContext,
-  modelOptions: string[],
-): Promise<void> {
+export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   // Build menu items from current store state.
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] => {
     const items: SettingItem[] = [];
-    
+
     // Shared onSelect for model override submenus: applies session/permanent/clear
     // mode to the given config key, with `label` used in notify messages.
-    const modelOverrideOnSelect = (
-      key: string,
-      label: string,
-    ): (mode: "session" | "permanent" | "clear", model: string | null) => void =>
+    const modelOverrideOnSelect =
+      (key: string, label: string): ((mode: "session" | "permanent" | "clear", model: string | null) => void) =>
       (mode, model) => {
         if (mode === "clear") {
           store.mutate.agent.clearModelOverride(key);
@@ -52,9 +47,7 @@ export async function showModelSettingsMenu(
           store.mutate.agent.setModelOverride(key, effective);
         }
         ctx.ui.notify(
-          effective === null
-            ? `${label} inherits parent model`
-            : `${label} model set to ${effective}`,
+          effective === null ? `${label} inherits parent model` : `${label} model set to ${effective}`,
           "info",
         );
       };
@@ -95,8 +88,8 @@ export async function showModelSettingsMenu(
       return { typeName, cfg, sessionOverride, configOverride, hasSession, hasConfigOverride, effectiveModel };
     });
 
-    const overridden = typeEntries.filter(e => e.hasSession || e.hasConfigOverride);
-    const nonOverridden = typeEntries.filter(e => !e.hasSession && !e.hasConfigOverride);
+    const overridden = typeEntries.filter((e) => e.hasSession || e.hasConfigOverride);
+    const nonOverridden = typeEntries.filter((e) => !e.hasSession && !e.hasConfigOverride);
 
     for (const { typeName, cfg, sessionOverride, configOverride, hasSession, effectiveModel } of overridden) {
       const frontmatterHint = !hasSession && configOverride && cfg?.model ? `${cfg.model} → ` : "";
@@ -127,10 +120,10 @@ export async function showModelSettingsMenu(
         description: "Add a model override for an agent type that currently inherits.",
         submenu: (_currentValue, subDone) =>
           createSearchableSelect(
-            nonOverridden.map(e => ({ value: e.typeName, label: e.typeName })),
+            nonOverridden.map((e) => ({ value: e.typeName, label: e.typeName })),
             {
               onSelect: (typeName) => {
-                const entry = nonOverridden.find(e => e.typeName === typeName)!;
+                const entry = nonOverridden.find((e) => e.typeName === typeName)!;
                 // Delegate to createModelSelectSubmenu for the 2-step model flow
                 const modelSubmenu = createModelSelectSubmenu({
                   modelOptions,
@@ -149,8 +142,8 @@ export async function showModelSettingsMenu(
 
     items.push({ id: "__sep__", label: " ", currentValue: "" });
     // Clear session overrides
-    const hasSessionOverrides = store.sessionDefaultModel != null ||
-      getAllTypes().some(type => store.sessionModelOverride(type) != null);
+    const hasSessionOverrides =
+      store.sessionDefaultModel != null || getAllTypes().some((type) => store.sessionModelOverride(type) != null);
     if (hasSessionOverrides) {
       items.push({
         id: "clearSession",
@@ -201,13 +194,20 @@ export async function showModelSettingsMenu(
     const store = getStore();
     const items = buildItems(store, theme);
 
-    
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => rebuild?.(buildItems(getStore(), theme)), () => done(undefined));
+    const settingsList = new SettingsList(
+      items,
+      15,
+      buildSettingsListTheme(theme),
+      (_id, _v) => rebuild?.(buildItems(getStore(), theme)),
+      () => done(undefined),
+    );
     return new SettingsListWrapper(settingsList, {
       title: "Model Settings",
       theme,
       onCancel: () => done(undefined),
-      onRebuild: (r) => { rebuild = r; },
+      onRebuild: (r) => {
+        rebuild = r;
+      },
     });
   });
 }

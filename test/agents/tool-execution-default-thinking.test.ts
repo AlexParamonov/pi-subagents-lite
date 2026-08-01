@@ -48,9 +48,7 @@ vi.mock("../../src/utils.js", () => ({
   parseModelKey: vi.fn(() => null),
   findModelInRegistry: vi.fn(() => undefined),
   // Faithful to the real parser: valid levels pass through, everything else is undefined.
-  parseThinkingLevel: vi.fn((raw?: string) =>
-    raw !== undefined && VALID_THINKING.includes(raw) ? raw : undefined,
-  ),
+  parseThinkingLevel: vi.fn((raw?: string) => (raw !== undefined && VALID_THINKING.includes(raw) ? raw : undefined)),
 }));
 
 vi.mock("../../src/shell.js", () => ({

@@ -14,7 +14,14 @@ import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
 // Mock pi-ai thinking level functions
-let mockGetSupportedThinkingLevels: (model: any) => string[] = () => ["off", "minimal", "low", "medium", "high", "xhigh"];
+let mockGetSupportedThinkingLevels: (model: any) => string[] = () => [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
 let mockClampThinkingLevel: (model: any, level: string) => string = (_m, level) => level;
 
 vi.mock("@earendil-works/pi-ai", () => ({
@@ -60,8 +67,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
     value = "";
     onSubmit?: (value: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
     constructor() {
       inputInstances.push(this as any);
     }
@@ -94,14 +105,34 @@ function setupMocks() {
   selectListInstances = [];
   resetSelectDialogInstances();
   (getAgentConfig as any).mockImplementation((name: string) => {
-    if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "medium" as const, maxTurns: 25, maxTokens: 10000, extensions: true, skills: true, systemPrompt: "" };
-    if (name === "Explore") return { name: "Explore", description: "Explore agent", model: "openai/gpt-4o", thinkingLevel: "low" as const, maxTurns: 10, extensions: false, skills: false, systemPrompt: "" };
+    if (name === "general-purpose")
+      return {
+        name: "general-purpose",
+        description: "General-purpose agent",
+        model: "anthropic/claude-sonnet-4-20250514",
+        thinkingLevel: "medium" as const,
+        maxTurns: 25,
+        maxTokens: 10000,
+        extensions: true,
+        skills: true,
+        systemPrompt: "",
+      };
+    if (name === "Explore")
+      return {
+        name: "Explore",
+        description: "Explore agent",
+        model: "openai/gpt-4o",
+        thinkingLevel: "low" as const,
+        maxTurns: 10,
+        extensions: false,
+        skills: false,
+        systemPrompt: "",
+      };
     return undefined;
   });
   // Reset pi-ai mocks to defaults (reasoning model)
-  mockGetSupportedThinkingLevels = (model: any) => model.reasoning
-    ? ["off", "minimal", "low", "medium", "high", "xhigh"]
-    : ["off"];
+  mockGetSupportedThinkingLevels = (model: any) =>
+    model.reasoning ? ["off", "minimal", "low", "medium", "high", "xhigh"] : ["off"];
   mockClampThinkingLevel = (_m: any, level: string) => level;
 }
 
@@ -176,11 +207,12 @@ describe("showSpawnAgentMenu — step 3 options items", () => {
     setupMocks();
   });
 
-
   it("includes worktree item when in git repo", async () => {
     mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return { code: 0, stdout: "/test/.git", stderr: "" };
-      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") return { code: 0, stdout: "worktree /test\nbranch refs/heads/main", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--git-common-dir")
+        return { code: 0, stdout: "/test/.git", stderr: "" };
+      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain")
+        return { code: 0, stdout: "worktree /test\nbranch refs/heads/main", stderr: "" };
       return { code: 1, stdout: "", stderr: "" };
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -254,7 +286,15 @@ describe("showSpawnAgentMenu — thinking level", () => {
   it("pre-populates thinking from config default when agent has no thinking", async () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "anthropic/claude-sonnet-4-20250514",
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -273,7 +313,15 @@ describe("showSpawnAgentMenu — thinking level", () => {
 
   it("shows 'inherit' when no config default and no agent config", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "anthropic/claude-sonnet-4-20250514",
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -299,7 +347,16 @@ describe("showSpawnAgentMenu — thinking level", () => {
 
   it("submenu shows only 'off' for non-reasoning model", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "openai/gpt-4o", thinkingLevel: "off" as const, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "openai/gpt-4o",
+          thinkingLevel: "off" as const,
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -316,7 +373,16 @@ describe("showSpawnAgentMenu — thinking level", () => {
 
   it("model change clamps thinking level to supported value", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", thinkingLevel: "high" as const, extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "anthropic/claude-sonnet-4-20250514",
+          thinkingLevel: "high" as const,
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -350,7 +416,15 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
 
   it("shows 'unlimited' when no config and no agent config", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "anthropic/claude-sonnet-4-20250514",
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -362,7 +436,15 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
   it("pre-populates from config default when agent has no maxTurns", async () => {
     mockModules.mockConfig.agent.defaultMaxTurns = 50;
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "anthropic/claude-sonnet-4-20250514",
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -428,7 +510,15 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
 
   it("shows 'unlimited' when no agent config", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514", extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "",
+          model: "anthropic/claude-sonnet-4-20250514",
+          extensions: true,
+          skills: true,
+          systemPrompt: "",
+        };
       return undefined;
     });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
@@ -530,7 +620,8 @@ describe("showSpawnAgentMenu — model", () => {
 
   it("shows '(inherits parent)' when no model in precedence chain", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return { name: "general-purpose", description: "", extensions: true, skills: true, systemPrompt: "" };
+      if (name === "general-purpose")
+        return { name: "general-purpose", description: "", extensions: true, skills: true, systemPrompt: "" };
       return undefined;
     });
     mockModules.mockConfig.agent = { default: null, forceBackground: false };
@@ -549,19 +640,25 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     setupMocks();
   });
 
-  function setupExecMock(options: { inGitRepo?: boolean; worktrees?: { path: string; branch?: string; detached?: boolean }[] } = {}) {
+  function setupExecMock(
+    options: { inGitRepo?: boolean; worktrees?: { path: string; branch?: string; detached?: boolean }[] } = {},
+  ) {
     const { inGitRepo = true, worktrees = [] } = options;
     function buildPorcelainOutput(wts: typeof worktrees): string {
-      return wts.map(wt => {
-        let block = `worktree ${wt.path}`;
-        if (wt.branch) block += `\nbranch refs/heads/${wt.branch}`;
-        else if (wt.detached) block += "\ndetached";
-        return block;
-      }).join("\n\n");
+      return wts
+        .map((wt) => {
+          let block = `worktree ${wt.path}`;
+          if (wt.branch) block += `\nbranch refs/heads/${wt.branch}`;
+          else if (wt.detached) block += "\ndetached";
+          return block;
+        })
+        .join("\n\n");
     }
     mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
       if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
-        return inGitRepo ? { code: 0, stdout: "/test/.git", stderr: "" } : { code: 128, stdout: "", stderr: "fatal: not a git repository" };
+        return inGitRepo
+          ? { code: 0, stdout: "/test/.git", stderr: "" }
+          : { code: 128, stdout: "", stderr: "fatal: not a git repository" };
       }
       if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") {
         if (!inGitRepo) return { code: 128, stdout: "", stderr: "fatal: not a git repository" };
@@ -580,7 +677,13 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
   });
 
   it("worktree submenu creates SelectList with worktrees", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
@@ -605,7 +708,13 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
   });
 
   it("selecting a worktree calls done with branch name", async () => {
-    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }, { path: "/test-feature", branch: "feature" }] });
+    setupExecMock({
+      inGitRepo: true,
+      worktrees: [
+        { path: "/test", branch: "main" },
+        { path: "/test-feature", branch: "feature" },
+      ],
+    });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i: any) => i.id === "worktree");

@@ -53,10 +53,7 @@ export function buildSnapshotMarkdown(messages: readonly any[]): string {
     switch (msg.role) {
       case "user": {
         const content = msg.content;
-        const text =
-          typeof content === "string"
-            ? content
-            : extractText(content ?? []);
+        const text = typeof content === "string" ? content : extractText(content ?? []);
         lines.push(`> user: ${text}`, "");
         break;
       }

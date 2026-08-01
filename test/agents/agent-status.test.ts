@@ -19,9 +19,11 @@ const mockListAgents = vi.fn();
 /*  Global mocks                                                      */
 /* ------------------------------------------------------------------ */
 
-vi.mock("../../src/shell.js", () => shellMock({
-  manager: { listAgents: mockListAgents },
-}));
+vi.mock("../../src/shell.js", () =>
+  shellMock({
+    manager: { listAgents: mockListAgents },
+  }),
+);
 
 /* ------------------------------------------------------------------ */
 /*  Execute behavior tests                                            */
@@ -37,14 +39,7 @@ describe("AgentStatus tool execute behavior", () => {
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_1",
-      {},
-      undefined,
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_1", {}, undefined, undefined, undefined, {} as any);
 
     expect(result.content[0].text).toContain("No agents");
     expect(result.content[0].text).toContain("Don't poll");
@@ -58,14 +53,7 @@ describe("AgentStatus tool execute behavior", () => {
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_2",
-      {},
-      undefined,
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_2", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
     // Contract: agent entries use "id (type) status" format, short ID is 8 chars
@@ -81,14 +69,7 @@ describe("AgentStatus tool execute behavior", () => {
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_3",
-      {},
-      undefined,
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_3", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
     // Contract: multiple agents comma-separated, each matching the format
@@ -107,14 +88,7 @@ describe("AgentStatus tool execute behavior", () => {
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_4",
-      {},
-      undefined,
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_4", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
     // Contract: each agent entry matches the format pattern with its status
@@ -131,32 +105,23 @@ describe("AgentStatus tool execute behavior", () => {
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_5",
-      {},
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_5", {}, undefined, undefined, {} as any);
 
     expect(result.content[0].text).toContain("Don't poll — you'll receive notifications when agents complete.");
   });
 
   it("truncates long IDs to 8 characters", async () => {
     mockListAgents.mockReturnValue([
-      { id: "a-very-long-agent-id-that-exceeds-short-length", display: { type: "reviewer" }, lifecycle: { status: "completed" } },
+      {
+        id: "a-very-long-agent-id-that-exceeds-short-length",
+        display: { type: "reviewer" },
+        lifecycle: { status: "completed" },
+      },
     ]);
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_6",
-      {},
-      undefined,
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_6", {}, undefined, undefined, undefined, {} as any);
 
     // Contract: short ID is always 8 characters
     expect(result.content[0].text).toMatch(/[a-z0-9-]{8} \(reviewer\) completed/);
@@ -167,13 +132,7 @@ describe("AgentStatus tool execute behavior", () => {
 
     const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
-    const result = await executeAgentStatusTool(
-      "call_7",
-      {},
-      undefined,
-      undefined,
-      {} as any,
-    );
+    const result = await executeAgentStatusTool("call_7", {}, undefined, undefined, {} as any);
 
     expect(result.isError).toBeUndefined();
   });

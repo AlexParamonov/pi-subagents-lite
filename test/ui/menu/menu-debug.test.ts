@@ -25,7 +25,9 @@ let settingsListWrapperCalls: Array<{
 
 vi.mock("@earendil-works/pi-tui", () => {
   return {
-    SettingsList: class MockSettingsList { constructor() {} },
+    SettingsList: class MockSettingsList {
+      constructor() {}
+    },
     SelectList: class MockSelectList {
       items: any[];
       maxVisible: number;
@@ -36,15 +38,21 @@ vi.mock("@earendil-works/pi-tui", () => {
         this.maxVisible = maxVisible;
         selectListCalls.push(this as any);
       }
-      render() { return []; }
+      render() {
+        return [];
+      }
       handleInput() {}
     },
     Input: class MockInput {
       value = "";
       onSubmit?: (v: string) => void;
       onEscape?: () => void;
-      setValue(v: string) { this.value = v; }
-      getValue() { return this.value; }
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
     },
   };
 });
@@ -55,7 +63,9 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
     constructor(component: any, options: any) {
       settingsListWrapperCalls.push({ component, options });
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
     invalidate() {}
   },
@@ -96,8 +106,6 @@ describe("showDebugMenu — SelectList migration", () => {
     expect(settingsListWrapperCalls.length).toBe(1);
     expect(settingsListWrapperCalls[0].options.title).toBe("Debug");
   });
-
-
 });
 
 describe("showDebugMenu — agent types action (SelectList)", () => {
@@ -126,7 +134,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
+    );
     expect(notifyCall).toBeDefined();
     expect(notifyCall[0]).toContain("general-purpose");
     expect(notifyCall[0]).toContain("General-purpose agent");
@@ -143,7 +153,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("secret-agent"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("secret-agent"),
+    );
     expect(notifyCall[0]).toContain("[HIDDEN]");
   });
 
@@ -156,7 +168,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
+    );
     expect(notifyCall[0]).toContain("Model: claude-sonnet-4-20250514");
   });
 
@@ -169,7 +183,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
+    );
     expect(notifyCall[0]).toContain("Tools: file_read, file_write");
   });
 
@@ -181,7 +197,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
+    );
     expect(notifyCall[0]).toContain("Tools: all built-in tools");
   });
 
@@ -194,7 +212,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
+    );
     expect(notifyCall[0]).toContain("known");
     expect(notifyCall[0]).not.toContain("unknown");
   });
@@ -208,7 +228,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find((c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"));
+    const notifyCall = ctx.ui.notify.mock.calls.find(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
+    );
     expect(notifyCall[0]).toContain("Source: .pi/agents/ext-agent.md");
   });
 });
@@ -224,16 +246,18 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     mockModules.mockPiInstance.sendUserMessage = mockSendUserMessage;
     (getAvailableTypes as any).mockReturnValue(["general-purpose", "Explore"]);
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "general-purpose") return {
-        displayName: "General Purpose",
-        description: "General-purpose agent",
-        registeredTools: ["file_read", "file_write"],
-        model: "claude-sonnet-4-20250514",
-        maxTurns: 50,
-      };
-      if (name === "Explore") return {
-        description: "Explore agent",
-      };
+      if (name === "general-purpose")
+        return {
+          displayName: "General Purpose",
+          description: "General-purpose agent",
+          registeredTools: ["file_read", "file_write"],
+          model: "claude-sonnet-4-20250514",
+          maxTurns: 50,
+        };
+      if (name === "Explore")
+        return {
+          description: "Explore agent",
+        };
       return undefined;
     });
   });

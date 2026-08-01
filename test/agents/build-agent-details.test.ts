@@ -101,7 +101,13 @@ describe("buildAgentDetails", () => {
 
   it("computes input and output from lifetimeUsage", () => {
     const record = makeRecord({
-      stats: { lifetimeUsage: { input: 1000, output: 2000, cacheWrite: 500, cost: 0.05 }, toolUses: 5, compactionCount: 1, turnCount: 10, maxTurns: 25 },
+      stats: {
+        lifetimeUsage: { input: 1000, output: 2000, cacheWrite: 500, cost: 0.05 },
+        toolUses: 5,
+        compactionCount: 1,
+        turnCount: 10,
+        maxTurns: 25,
+      },
     });
     const details = buildAgentDetails(record, { includeStats: true });
 
@@ -124,7 +130,9 @@ describe("buildAgentDetails", () => {
   });
 
   it("includes modelName from invocation", () => {
-    const record = makeRecord({ display: { type: "builder", description: "Build something", invocation: { modelName: "haiku" } } });
+    const record = makeRecord({
+      display: { type: "builder", description: "Build something", invocation: { modelName: "haiku" } },
+    });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.modelName).toBe("haiku");
@@ -150,7 +158,11 @@ describe("buildAgentDetails", () => {
 
   it("includes thinkingLevel from invocation", () => {
     const record = makeRecord({
-      display: { type: "builder", description: "Build something", invocation: { modelName: "haiku", thinkingLevel: "medium" } },
+      display: {
+        type: "builder",
+        description: "Build something",
+        invocation: { modelName: "haiku", thinkingLevel: "medium" },
+      },
     });
     const details = buildAgentDetails(record, { includeStats: true });
     expect(details.thinkingLevel).toBe("medium");
@@ -164,11 +176,13 @@ describe("buildAgentDetails", () => {
     expect(details.thinkingLevel).toBeUndefined();
   });
 
-
   // --- includeStatus ---
 
   it("includes status and outputFile when includeStatus is true", () => {
-    const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 }, display: { type: "builder", description: "Build something", outputFile: "/tmp/out.log" } });
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 },
+      display: { type: "builder", description: "Build something", outputFile: "/tmp/out.log" },
+    });
     const details = buildAgentDetails(record, { includeStatus: true });
 
     expect(details.status).toBe("completed");
@@ -181,7 +195,10 @@ describe("buildAgentDetails", () => {
   // --- Both options ---
 
   it("includes both stats and status when both options are true", () => {
-    const record = makeRecord({ lifecycle: { status: "error", startedAt: 1000, completedAt: 5000 }, display: { type: "builder", description: "Build something", outputFile: "/tmp/err.log" } });
+    const record = makeRecord({
+      lifecycle: { status: "error", startedAt: 1000, completedAt: 5000 },
+      display: { type: "builder", description: "Build something", outputFile: "/tmp/err.log" },
+    });
     const details = buildAgentDetails(record, { includeStats: true, includeStatus: true });
 
     expect(details.status).toBe("error");
@@ -195,7 +212,15 @@ describe("buildAgentDetails", () => {
   // --- turnCount from record ---
 
   it("uses record.turnCount for details", () => {
-    const record = makeRecord({ stats: { lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 }, toolUses: 5, turnCount: 42, maxTurns: 25, compactionCount: 1 } });
+    const record = makeRecord({
+      stats: {
+        lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 },
+        toolUses: 5,
+        turnCount: 42,
+        maxTurns: 25,
+        compactionCount: 1,
+      },
+    });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.turnCount).toBe(42);
@@ -212,7 +237,13 @@ describe("buildAgentDetails", () => {
 
   it("handles zero lifetimeUsage", () => {
     const record = makeRecord({
-      stats: { lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 }, toolUses: 5, compactionCount: 1, turnCount: 10, maxTurns: 25 },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 5,
+        compactionCount: 1,
+        turnCount: 10,
+        maxTurns: 25,
+      },
     });
     const details = buildAgentDetails(record, { includeStats: true });
 

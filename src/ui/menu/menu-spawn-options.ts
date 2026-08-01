@@ -43,13 +43,18 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       id: "defaultMaxTurns",
       label: "Default max turns",
       currentValue: String(store.agent.defaultMaxTurns ?? "(not set)"),
-      submenu: createNumericSubmenu(ctx, { min: 1 }, (parsed) => {
-        store.mutate.agent.setDefaultMaxTurns(parsed);
-        ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
-      }, () => {
-        store.mutate.agent.setDefaultMaxTurns(undefined);
-        ctx.ui.notify("Default max turns cleared", "info");
-      }),
+      submenu: createNumericSubmenu(
+        ctx,
+        { min: 1 },
+        (parsed) => {
+          store.mutate.agent.setDefaultMaxTurns(parsed);
+          ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
+        },
+        () => {
+          store.mutate.agent.setDefaultMaxTurns(undefined);
+          ctx.ui.notify("Default max turns cleared", "info");
+        },
+      ),
       description: "Soft turn limit; agent is steered here, then hard-aborts after grace turns. Blank = unlimited.",
     },
     {
@@ -75,7 +80,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         ctx.ui.notify(`Force background set to ${newValue}`, "info");
         break;
       case "defaultThinking":
-        store.mutate.agent.setDefaultThinking(newValue === "inherit" ? undefined : newValue as ThinkingLevel);
+        store.mutate.agent.setDefaultThinking(newValue === "inherit" ? undefined : (newValue as ThinkingLevel));
         ctx.ui.notify(`Default thinking level set to ${newValue}`, "info");
         break;
       case "disableDefaultAgents":

@@ -30,7 +30,11 @@ export const mockModules = {
       find: vi.fn((provider: string, modelId: string) => {
         const known: Record<string, any> = {
           "openai/gpt-4o": { provider: "openai", id: "gpt-4o", reasoning: false },
-          "anthropic/claude-sonnet-4-20250514": { provider: "anthropic", id: "claude-sonnet-4-20250514", reasoning: true },
+          "anthropic/claude-sonnet-4-20250514": {
+            provider: "anthropic",
+            id: "claude-sonnet-4-20250514",
+            reasoning: true,
+          },
         };
         return known[`${provider}/${modelId}`];
       }),
@@ -62,7 +66,9 @@ vi.mock("../src/agents/agent-types.js", () => ({
 
 // Capture SearchableSelectDialog instances for tests that need them
 export let selectDialogInstances: Array<{ items: any[]; callbacks: any }> = [];
-export function resetSelectDialogInstances() { selectDialogInstances = []; }
+export function resetSelectDialogInstances() {
+  selectDialogInstances = [];
+}
 
 vi.mock("../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
@@ -77,7 +83,6 @@ vi.mock("../src/ui/searchable-select.js", () => ({
     invalidate() {}
   },
 }));
-
 
 vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
@@ -112,7 +117,7 @@ vi.mock("../src/shell.js", () => {
       return {
         defaultModel: a.default ?? null,
         forceBackground: a.forceBackground === true,
-        showCost: mockModules.mockSessionShowCost ?? (a.showCost === true),
+        showCost: mockModules.mockSessionShowCost ?? a.showCost === true,
         graceTurns: a.graceTurns ?? 6,
         widgetMaxLines,
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
@@ -176,54 +181,147 @@ vi.mock("../src/shell.js", () => {
     },
     mutate: {
       agent: {
-        setDefaultModel(value: string | null) { mockModules.mockConfig.agent.default = value; },
-        setModelOverride(type: string, value: string | null) { mockModules.mockConfig.agent[type] = value; },
-        clearModelOverride(type: string) { delete mockModules.mockConfig.agent[type]; },
+        setDefaultModel(value: string | null) {
+          mockModules.mockConfig.agent.default = value;
+        },
+        setModelOverride(type: string, value: string | null) {
+          mockModules.mockConfig.agent[type] = value;
+        },
+        clearModelOverride(type: string) {
+          delete mockModules.mockConfig.agent[type];
+        },
         clearAllModelOverrides() {
           const preserved: Record<string, unknown> = {};
-          for (const key of ['default', 'forceBackground', 'graceTurns', 'showCost', 'showTools', 'showTurns', 'showInput', 'showOutput', 'showContext', 'showTime', 'deltaInputTokens', 'widgetMaxLines', 'widgetMaxLinesCompact', 'widgetDescLengthFull', 'widgetDescLengthCompact', 'widgetCompact', 'widgetShortcut', 'systemPromptMode', 'includeContextFiles', 'defaultThinking', 'defaultMaxTurns', 'loadSkillsImplicitly', 'loadExtensionsImplicitly', 'modelDisplayStyle']) {
+          for (const key of [
+            "default",
+            "forceBackground",
+            "graceTurns",
+            "showCost",
+            "showTools",
+            "showTurns",
+            "showInput",
+            "showOutput",
+            "showContext",
+            "showTime",
+            "deltaInputTokens",
+            "widgetMaxLines",
+            "widgetMaxLinesCompact",
+            "widgetDescLengthFull",
+            "widgetDescLengthCompact",
+            "widgetCompact",
+            "widgetShortcut",
+            "systemPromptMode",
+            "includeContextFiles",
+            "defaultThinking",
+            "defaultMaxTurns",
+            "loadSkillsImplicitly",
+            "loadExtensionsImplicitly",
+            "modelDisplayStyle",
+          ]) {
             const val = mockModules.mockConfig.agent[key];
-            if (val != null || key === 'default' || key === 'forceBackground') {
+            if (val != null || key === "default" || key === "forceBackground") {
               preserved[key] = val;
             }
           }
           mockModules.mockConfig.agent = preserved as any;
         },
-        setForceBackground(enabled: boolean) { mockModules.mockConfig.agent.forceBackground = enabled; },
-        setShowCost(enabled: boolean) { mockModules.mockConfig.agent.showCost = enabled; },
-        setGraceTurns(n: number) { mockModules.mockConfig.agent.graceTurns = n; },
-        setSystemPromptMode(mode: string) { mockModules.mockConfig.agent.systemPromptMode = mode; },
-        setIncludeContextFiles(enabled: boolean) { mockModules.mockConfig.agent.includeContextFiles = enabled; },
-        setDefaultThinking(level: string | undefined) { mockModules.mockConfig.agent.defaultThinking = level; },
-        setDefaultMaxTurns(n: number | undefined) { mockModules.mockConfig.agent.defaultMaxTurns = n; },
-        setLoadSkillsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadSkillsImplicitly = value; },
-        setLoadExtensionsImplicitly(value: boolean) { mockModules.mockConfig.agent.loadExtensionsImplicitly = value; },
-        setShowTools(enabled: boolean) { mockModules.mockConfig.agent.showTools = enabled; },
-        setShowTurns(enabled: boolean) { mockModules.mockConfig.agent.showTurns = enabled; },
-        setShowInput(enabled: boolean) { mockModules.mockConfig.agent.showInput = enabled; },
-        setShowOutput(enabled: boolean) { mockModules.mockConfig.agent.showOutput = enabled; },
-        setShowContext(enabled: boolean) { mockModules.mockConfig.agent.showContext = enabled; },
-        setShowTime(enabled: boolean) { mockModules.mockConfig.agent.showTime = enabled; },
-        setDeltaInputTokens(enabled: boolean) { mockModules.mockConfig.agent.deltaInputTokens = enabled; },
-        setOutputThinkingBufferSize(size: number) { mockModules.mockConfig.agent.outputThinkingBufferSize = size; },
-        setFinishedRetentionMinutes(n: number) { mockModules.mockConfig.agent.finishedRetentionMinutes = n; },
-        setFinishedEvictTurns(n: number) { mockModules.mockConfig.agent.finishedEvictTurns = n; },
+        setForceBackground(enabled: boolean) {
+          mockModules.mockConfig.agent.forceBackground = enabled;
+        },
+        setShowCost(enabled: boolean) {
+          mockModules.mockConfig.agent.showCost = enabled;
+        },
+        setGraceTurns(n: number) {
+          mockModules.mockConfig.agent.graceTurns = n;
+        },
+        setSystemPromptMode(mode: string) {
+          mockModules.mockConfig.agent.systemPromptMode = mode;
+        },
+        setIncludeContextFiles(enabled: boolean) {
+          mockModules.mockConfig.agent.includeContextFiles = enabled;
+        },
+        setDefaultThinking(level: string | undefined) {
+          mockModules.mockConfig.agent.defaultThinking = level;
+        },
+        setDefaultMaxTurns(n: number | undefined) {
+          mockModules.mockConfig.agent.defaultMaxTurns = n;
+        },
+        setLoadSkillsImplicitly(value: boolean) {
+          mockModules.mockConfig.agent.loadSkillsImplicitly = value;
+        },
+        setLoadExtensionsImplicitly(value: boolean) {
+          mockModules.mockConfig.agent.loadExtensionsImplicitly = value;
+        },
+        setShowTools(enabled: boolean) {
+          mockModules.mockConfig.agent.showTools = enabled;
+        },
+        setShowTurns(enabled: boolean) {
+          mockModules.mockConfig.agent.showTurns = enabled;
+        },
+        setShowInput(enabled: boolean) {
+          mockModules.mockConfig.agent.showInput = enabled;
+        },
+        setShowOutput(enabled: boolean) {
+          mockModules.mockConfig.agent.showOutput = enabled;
+        },
+        setShowContext(enabled: boolean) {
+          mockModules.mockConfig.agent.showContext = enabled;
+        },
+        setShowTime(enabled: boolean) {
+          mockModules.mockConfig.agent.showTime = enabled;
+        },
+        setDeltaInputTokens(enabled: boolean) {
+          mockModules.mockConfig.agent.deltaInputTokens = enabled;
+        },
+        setOutputThinkingBufferSize(size: number) {
+          mockModules.mockConfig.agent.outputThinkingBufferSize = size;
+        },
+        setFinishedRetentionMinutes(n: number) {
+          mockModules.mockConfig.agent.finishedRetentionMinutes = n;
+        },
+        setFinishedEvictTurns(n: number) {
+          mockModules.mockConfig.agent.finishedEvictTurns = n;
+        },
       },
       widget: {
-        setCompact(enabled: boolean) { mockModules.mockConfig.agent.widgetCompact = enabled; },
-        setMaxLines(lines: number) { mockModules.mockConfig.agent.widgetMaxLines = lines; },
-        setMaxLinesCompact(lines: number) { mockModules.mockConfig.agent.widgetMaxLinesCompact = lines; },
-        setDescLengthFull(n: number) { mockModules.mockConfig.agent.widgetDescLengthFull = n; },
-        setDescLengthCompact(n: number) { mockModules.mockConfig.agent.widgetDescLengthCompact = n; },
-        setShortcut(enabled: boolean) { mockModules.mockConfig.agent.widgetShortcut = enabled; },
-        setShowModel(enabled: boolean) { mockModules.mockConfig.agent.widgetShowModel = enabled; },
-        setShowThinking(enabled: boolean) { mockModules.mockConfig.agent.widgetShowThinking = enabled; },
-        setNavHint(enabled: boolean) { mockModules.mockConfig.agent.widgetNavHint = enabled; },
-        setModelDisplayStyle(style: string) { mockModules.mockConfig.agent.modelDisplayStyle = style; },
-        setStatusBarFormat(format: string) { mockModules.mockConfig.agent.statusBarFormat = format; },
+        setCompact(enabled: boolean) {
+          mockModules.mockConfig.agent.widgetCompact = enabled;
+        },
+        setMaxLines(lines: number) {
+          mockModules.mockConfig.agent.widgetMaxLines = lines;
+        },
+        setMaxLinesCompact(lines: number) {
+          mockModules.mockConfig.agent.widgetMaxLinesCompact = lines;
+        },
+        setDescLengthFull(n: number) {
+          mockModules.mockConfig.agent.widgetDescLengthFull = n;
+        },
+        setDescLengthCompact(n: number) {
+          mockModules.mockConfig.agent.widgetDescLengthCompact = n;
+        },
+        setShortcut(enabled: boolean) {
+          mockModules.mockConfig.agent.widgetShortcut = enabled;
+        },
+        setShowModel(enabled: boolean) {
+          mockModules.mockConfig.agent.widgetShowModel = enabled;
+        },
+        setShowThinking(enabled: boolean) {
+          mockModules.mockConfig.agent.widgetShowThinking = enabled;
+        },
+        setNavHint(enabled: boolean) {
+          mockModules.mockConfig.agent.widgetNavHint = enabled;
+        },
+        setModelDisplayStyle(style: string) {
+          mockModules.mockConfig.agent.modelDisplayStyle = style;
+        },
+        setStatusBarFormat(format: string) {
+          mockModules.mockConfig.agent.statusBarFormat = format;
+        },
       },
       concurrency: {
-        setDefault(n: number) { mockModules.mockConfig.concurrency.default = n; },
+        setDefault(n: number) {
+          mockModules.mockConfig.concurrency.default = n;
+        },
         setProvider(key: string, n: number) {
           if (!mockModules.mockConfig.concurrency.providers) mockModules.mockConfig.concurrency.providers = {};
           mockModules.mockConfig.concurrency.providers[key] = n;
@@ -243,11 +341,21 @@ vi.mock("../src/shell.js", () => {
         },
       },
       session: {
-        setOverride(type: string, model: string) { mockModules.mockSessionOverrides[type] = model; },
-        clearOverride(type: string) { delete mockModules.mockSessionOverrides[type]; },
-        clearAll() { mockModules.mockSessionOverrides = { default: null }; },
-        setShowCost(enabled: boolean) { mockModules.mockSessionShowCost = enabled; },
-        clearShowCost() { mockModules.mockSessionShowCost = undefined; },
+        setOverride(type: string, model: string) {
+          mockModules.mockSessionOverrides[type] = model;
+        },
+        clearOverride(type: string) {
+          delete mockModules.mockSessionOverrides[type];
+        },
+        clearAll() {
+          mockModules.mockSessionOverrides = { default: null };
+        },
+        setShowCost(enabled: boolean) {
+          mockModules.mockSessionShowCost = enabled;
+        },
+        clearShowCost() {
+          mockModules.mockSessionShowCost = undefined;
+        },
       },
     },
   };
@@ -260,20 +368,18 @@ vi.mock("../src/shell.js", () => {
     getSessionCtx: () => mockModules.mockSessionCtx,
     getCoordinator: vi.fn(() => ({
       spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
-        const id = mockModules.mockManager.spawn(
-          _pi, _ctx, intent.type, intent.prompt, {
-            description: intent.description,
-            model: intent.model,
-            maxTurns: intent.maxTurns,
-            thinkingLevel: intent.thinkingLevel,
-            isBackground: intent.runInBackground,
-            modelKey: intent.modelKey,
-            graceTurns: intent.graceTurns,
-            worktreePath: intent.worktreePath,
-            worktreeLabel: intent.worktreeLabel,
-            invocation: intent.invocation,
-          },
-        );
+        const id = mockModules.mockManager.spawn(_pi, _ctx, intent.type, intent.prompt, {
+          description: intent.description,
+          model: intent.model,
+          maxTurns: intent.maxTurns,
+          thinkingLevel: intent.thinkingLevel,
+          isBackground: intent.runInBackground,
+          modelKey: intent.modelKey,
+          graceTurns: intent.graceTurns,
+          worktreePath: intent.worktreePath,
+          worktreeLabel: intent.worktreeLabel,
+          invocation: intent.invocation,
+        });
         const record = mockModules.mockManager.getRecord(id);
         if (!intent.runInBackground && record?.execution?.promise) {
           await record.execution.promise;

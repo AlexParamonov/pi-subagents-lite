@@ -16,7 +16,9 @@ const mockModules = vi.hoisted(() => ({
     uuidCounter++;
     return `agent-${String(uuidCounter).padStart(8, "0")}`;
   }),
-  resetUuidCounter: () => { uuidCounter = 0; },
+  resetUuidCounter: () => {
+    uuidCounter = 0;
+  },
   fsMock: {
     writeFileSync: vi.fn(),
     readFileSync: vi.fn(),
@@ -89,9 +91,21 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/4b_small", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/4b_small", isBackground: true });
-      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", { description: "task 3", modelKey: "llamacpp/4b_small", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
@@ -109,8 +123,16 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/4b_small", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/4b_small", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
@@ -125,15 +147,21 @@ describe("AgentManager", () => {
 
       const deferred1 = makeResolvablePromise();
       const deferred2 = makeResolvablePromise();
-      mockModules.mockRunAgent
-        .mockReturnValueOnce(deferred1.promise)
-        .mockReturnValueOnce(deferred2.promise);
+      mockModules.mockRunAgent.mockReturnValueOnce(deferred1.promise).mockReturnValueOnce(deferred2.promise);
 
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/4b_small", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/4b_small", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b_small",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
@@ -164,9 +192,21 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/27b", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/4b", isBackground: true });
-      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", { description: "task 3", modelKey: "llamacpp/27b", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/27b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/27b",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
@@ -188,9 +228,21 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "claude/sonnet", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "claude/sonnet", isBackground: true });
-      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", { description: "task 3", modelKey: "claude/sonnet", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "claude/sonnet",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "claude/sonnet",
+        isBackground: true,
+      });
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "claude/sonnet",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
@@ -219,10 +271,26 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/4b", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/27b", isBackground: true });
-      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", { description: "task 3", modelKey: "llamacpp/3b", isBackground: true });
-      const id4 = manager.spawn(pi, ctx, "general-purpose", "task 4", { description: "task 4", modelKey: "claude/sonnet", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/27b",
+        isBackground: true,
+      });
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/3b",
+        isBackground: true,
+      });
+      const id4 = manager.spawn(pi, ctx, "general-purpose", "task 4", {
+        description: "task 4",
+        modelKey: "claude/sonnet",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
@@ -249,8 +317,16 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/4b", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/4b", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
@@ -269,8 +345,16 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "task 1", modelKey: "llamacpp/4b", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "task 2", modelKey: "llamacpp/4b", isBackground: true });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
 
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
@@ -288,15 +372,21 @@ describe("AgentManager", () => {
 
       const deferred1 = makeResolvablePromise();
       const deferred2 = makeResolvablePromise();
-      mockModules.mockRunAgent
-        .mockReturnValueOnce(deferred1.promise)
-        .mockReturnValueOnce(deferred2.promise);
+      mockModules.mockRunAgent.mockReturnValueOnce(deferred1.promise).mockReturnValueOnce(deferred2.promise);
 
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "bg task", { description: "bg task", modelKey: "llamacpp/4b", isBackground: true });
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "fg task", { description: "fg task", modelKey: "llamacpp/4b", isBackground: false });
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "bg task", {
+        description: "bg task",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "fg task", {
+        description: "fg task",
+        modelKey: "llamacpp/4b",
+        isBackground: false,
+      });
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
@@ -327,7 +417,10 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id = manager.spawn(pi, ctx, "general-purpose", "task", { description: "test task", modelKey: "test/model" });
+      const id = manager.spawn(pi, ctx, "general-purpose", "task", {
+        description: "test task",
+        modelKey: "test/model",
+      });
       manager.getRecord(id)!.stats.lifetimeUsage.cost = 0.05;
       await manager.getRecord(id)!.execution.promise;
 
@@ -341,7 +434,10 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id = manager.spawn(pi, ctx, "general-purpose", "task", { description: "test task", modelKey: "test/model" });
+      const id = manager.spawn(pi, ctx, "general-purpose", "task", {
+        description: "test task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       record.stats.lifetimeUsage.cost = 0.03;
       await record.execution.promise;
@@ -370,7 +466,10 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.02);
 
       mockModules.mockRunAgent.mockResolvedValueOnce(mockRunResult());
-      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", { description: "second", modelKey: "test/model" });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "second",
+        modelKey: "test/model",
+      });
       manager.getRecord(id2)!.stats.lifetimeUsage.cost = 0.05;
       await manager.getRecord(id2)!.execution.promise;
       expect(manager.getTotalAgentCost()).toBe(0.07);
@@ -399,7 +498,10 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id = manager.spawn(pi, ctx, "general-purpose", "task", { description: "stoppable", modelKey: "test/model" });
+      const id = manager.spawn(pi, ctx, "general-purpose", "task", {
+        description: "stoppable",
+        modelKey: "test/model",
+      });
       manager.getRecord(id)!.stats.lifetimeUsage.cost = 0.04;
 
       manager.abort(id, "agent");
@@ -411,7 +513,7 @@ describe("AgentManager", () => {
         turnLimited: false,
       });
 
-      await new Promise(r => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 10));
 
       expect(manager.getTotalAgentCost()).toBe(0.04);
     });
@@ -429,7 +531,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "test", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "test",
+        modelKey: "test/model",
+      });
       await manager.getRecord(id)!.execution.promise;
 
       expect(manager.getTotalAgentCount()).toBe(1);
@@ -439,10 +544,16 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task1", { description: "t1", modelKey: "test/model" });
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task1", {
+        description: "t1",
+        modelKey: "test/model",
+      });
       await manager.getRecord(id1)!.execution.promise;
 
-      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task2", { description: "t2", modelKey: "test/model" });
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task2", {
+        description: "t2",
+        modelKey: "test/model",
+      });
       await manager.getRecord(id2)!.execution.promise;
 
       expect(manager.getTotalAgentCount()).toBe(2);
@@ -452,7 +563,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "test", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "test",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -471,7 +585,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockRejectedValueOnce(new Error("boom"));
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "fail", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "fail",
+        modelKey: "test/model",
+      });
       await manager.getRecord(id)!.execution.promise;
 
       // Agent failed but still completed (error status), count should increment
@@ -481,10 +598,14 @@ describe("AgentManager", () => {
     it("does not count agent that fails to start (startAgent throws)", async () => {
       manager = new AgentManager(onComplete);
       // Mock runAgent to throw synchronously (e.g. AgentOutputLog constructor fails)
-      mockModules.mockRunAgent.mockImplementation(() => { throw new Error("start failed"); });
+      mockModules.mockRunAgent.mockImplementation(() => {
+        throw new Error("start failed");
+      });
 
       // spawn catches the error, deletes the record, and re-throws
-      expect(() => manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "fail", modelKey: "test/model" })).toThrow("start failed");
+      expect(() =>
+        manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "fail", modelKey: "test/model" }),
+      ).toThrow("start failed");
 
       // Failed start should not count
       expect(manager.getTotalAgentCount()).toBe(0);
@@ -497,12 +618,20 @@ describe("AgentManager", () => {
       const deferred = makeResolvablePromise();
       mockModules.mockRunAgent.mockReturnValueOnce(deferred.promise);
 
-      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task1", { description: "t1", modelKey: "test/model" });
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task1", {
+        description: "t1",
+        modelKey: "test/model",
+      });
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
 
       // Second agent gets queued (concurrency limit = 1)
-      mockModules.mockRunAgent.mockImplementationOnce(() => { throw new Error("start failed"); });
-      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task2", { description: "t2", modelKey: "test/model" });
+      mockModules.mockRunAgent.mockImplementationOnce(() => {
+        throw new Error("start failed");
+      });
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task2", {
+        description: "t2",
+        modelKey: "test/model",
+      });
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
       // Complete first agent — triggers drainQueue, which tries to start id2
@@ -522,7 +651,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -537,7 +669,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -553,7 +688,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
       record.lifecycle.resultConsumed = true;
@@ -567,7 +705,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -586,7 +727,10 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -603,109 +747,124 @@ describe("AgentManager", () => {
     });
   });
 
-describe("delta estimation", () => {
-  /**
-   * Helper: capture the onAssistantUsage callback passed to runAgent,
-   * so we can invoke it manually with different usage values.
-   */
-  function getOnAssistantUsage() {
-    const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
-    const callbacks = call[3]; // 4th arg is the callbacks object
-    return callbacks.onAssistantUsage;
-  }
+  describe("delta estimation", () => {
+    /**
+     * Helper: capture the onAssistantUsage callback passed to runAgent,
+     * so we can invoke it manually with different usage values.
+     */
+    function getOnAssistantUsage() {
+      const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+      const callbacks = call[3]; // 4th arg is the callbacks object
+      return callbacks.onAssistantUsage;
+    }
 
-  beforeEach(() => {
-    mockStoreState.deltaInputTokens = true;
-  });
+    beforeEach(() => {
+      mockStoreState.deltaInputTokens = true;
+    });
 
-  it("uses full input on first message (no prevInputTokens yet)", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    it("uses full input on first message (no prevInputTokens yet)", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+      const record = manager.getRecord(id)!;
+      const onUsage = getOnAssistantUsage();
 
-    // First usage report: 100 input tokens, no cacheRead
-    onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      // First usage report: 100 input tokens, no cacheRead
+      onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
 
-    // Full input recorded on first message
-    expect(record.stats.lifetimeUsage.input).toBe(100);
-    expect(record.stats.lifetimeUsage.output).toBe(50);
-    expect(record.stats.prevInputTokens).toBe(100);
-  });
+      // Full input recorded on first message
+      expect(record.stats.lifetimeUsage.input).toBe(100);
+      expect(record.stats.lifetimeUsage.output).toBe(50);
+      expect(record.stats.prevInputTokens).toBe(100);
+    });
 
-  it("computes delta when delta enabled and cacheRead is 0", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    it("computes delta when delta enabled and cacheRead is 0", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+      const record = manager.getRecord(id)!;
+      const onUsage = getOnAssistantUsage();
 
-    // First message: 100 input
-    onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(100);
+      // First message: 100 input
+      onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      expect(record.stats.lifetimeUsage.input).toBe(100);
 
-    // Second message: 250 input (150 new tokens added to context)
-    onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(250); // 100 + 150 delta
-    expect(record.stats.lifetimeUsage.output).toBe(80); // 50 + 30
-    expect(record.stats.prevInputTokens).toBe(250);
-  });
+      // Second message: 250 input (150 new tokens added to context)
+      onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      expect(record.stats.lifetimeUsage.input).toBe(250); // 100 + 150 delta
+      expect(record.stats.lifetimeUsage.output).toBe(80); // 50 + 30
+      expect(record.stats.prevInputTokens).toBe(250);
+    });
 
-  it("uses full input when cacheRead > 0 (provider reports caching)", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    it("uses full input when cacheRead > 0 (provider reports caching)", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+      const record = manager.getRecord(id)!;
+      const onUsage = getOnAssistantUsage();
 
-    // First message: 100 input
-    onUsage({ input: 100, output: 50, cacheWrite: 10, cost: 0, cacheRead: 80 });
-    expect(record.stats.lifetimeUsage.input).toBe(100);
+      // First message: 100 input
+      onUsage({ input: 100, output: 50, cacheWrite: 10, cost: 0, cacheRead: 80 });
+      expect(record.stats.lifetimeUsage.input).toBe(100);
 
-    // Second message: 200 input with cacheRead > 0 — delta estimation skipped
-    onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 150 });
-    expect(record.stats.lifetimeUsage.input).toBe(300); // 100 + 200 (full, no delta)
-  });
+      // Second message: 200 input with cacheRead > 0 — delta estimation skipped
+      onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 150 });
+      expect(record.stats.lifetimeUsage.input).toBe(300); // 100 + 200 (full, no delta)
+    });
 
-  it("prevents negative delta when input shrinks (e.g. after compaction)", () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+    it("prevents negative delta when input shrinks (e.g. after compaction)", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+      const record = manager.getRecord(id)!;
+      const onUsage = getOnAssistantUsage();
 
-    // First message: 500 input
-    onUsage({ input: 500, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(500);
+      // First message: 500 input
+      onUsage({ input: 500, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      expect(record.stats.lifetimeUsage.input).toBe(500);
 
-    // After compaction: 200 input (shrunk) — delta would be -300, clamped to 200
-    onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(700); // 500 + 200 (full, delta skipped)
-  });
+      // After compaction: 200 input (shrunk) — delta would be -300, clamped to 200
+      onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      expect(record.stats.lifetimeUsage.input).toBe(700); // 500 + 200 (full, delta skipped)
+    });
 
-  it("skips delta estimation when setting is disabled", () => {
-    mockStoreState.deltaInputTokens = false;
+    it("skips delta estimation when setting is disabled", () => {
+      mockStoreState.deltaInputTokens = false;
 
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-    const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
-    const record = manager.getRecord(id)!;
-    const onUsage = getOnAssistantUsage();
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+      const record = manager.getRecord(id)!;
+      const onUsage = getOnAssistantUsage();
 
-    // First message: 100 input
-    onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(100);
+      // First message: 100 input
+      onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      expect(record.stats.lifetimeUsage.input).toBe(100);
 
-    // Second message: 250 input — delta disabled, so full input used
-    onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-    expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
-  });
+      // Second message: 250 input — delta disabled, so full input used
+      onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
+      expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
+    });
   });
 
   // ── Model error handling (final assistant message stopReason "error") ──
@@ -717,13 +876,18 @@ describe("delta estimation", () => {
 
     it("marks the record error with type, model, and provider error when runAgent reports a modelError", async () => {
       manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult({
-        responseText: "",
-        modelError: "model failed to load into memory",
-        session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }),
-      }));
+      mockModules.mockRunAgent.mockResolvedValue(
+        mockRunResult({
+          responseText: "",
+          modelError: "model failed to load into memory",
+          session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }),
+        }),
+      );
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -738,7 +902,10 @@ describe("delta estimation", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -751,7 +918,10 @@ describe("delta estimation", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ aborted: true, modelError: "boom" }));
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -762,7 +932,10 @@ describe("delta estimation", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ turnLimited: true, modelError: "boom" }));
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       const record = manager.getRecord(id)!;
       await record.execution.promise;
 
@@ -774,9 +947,17 @@ describe("delta estimation", () => {
       const deferred = makeResolvablePromise();
       mockModules.mockRunAgent.mockReturnValue(deferred.promise);
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "task", modelKey: "test/model" });
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
       manager.abort(id, "user");
-      deferred.resolve(mockRunResult({ modelError: "boom", session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }) }));
+      deferred.resolve(
+        mockRunResult({
+          modelError: "boom",
+          session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }),
+        }),
+      );
       await new Promise((r) => setTimeout(r, 10));
 
       expect(manager.getRecord(id)!.lifecycle.status).toBe("stopped");

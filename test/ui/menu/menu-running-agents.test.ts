@@ -14,7 +14,9 @@ import { createMockCtx } from "../../menu-test-helpers.js";
 let selectListCalls: Array<any> = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList { constructor() {} },
+  SettingsList: class MockSettingsList {
+    constructor() {}
+  },
   SelectList: class MockSelectList {
     items: any[];
     maxVisible: number;
@@ -25,15 +27,21 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.maxVisible = maxVisible;
       selectListCalls.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
   },
   Input: class MockInput {
     value = "";
     onSubmit?: (v: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
   },
   matchesKey: vi.fn((data: string, key: string) => {
     const map: Record<string, string[]> = {
@@ -48,7 +56,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
     };
     return (map[key] ?? [key]).includes(data);
   }),
-  truncateToWidth: vi.fn((s: string, w: number) => s.length > w ? s.slice(0, w - 3) + "..." : s),
+  truncateToWidth: vi.fn((s: string, w: number) => (s.length > w ? s.slice(0, w - 3) + "..." : s)),
   visibleWidth: vi.fn((s: string) => s.length),
 }));
 
@@ -63,7 +71,12 @@ function makeRecord(overrides: any = {}): any {
     execution: {},
     result: "some result",
     error: "",
-    stats: { lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 }, toolUses: 10, turnCount: 15, compactionCount: 0 },
+    stats: {
+      lifetimeUsage: { input: 12000, output: 8000, cacheWrite: 3000, cost: 0.024 },
+      toolUses: 10,
+      turnCount: 15,
+      compactionCount: 0,
+    },
     ...overrides,
   };
 }
@@ -133,7 +146,14 @@ describe("buildAgentActionsList — actions submenu", () => {
   });
 
   it("shows View result action for completed agent with result", () => {
-    const list = buildAgentActionsList(createMockCtx(), makeRecord(), noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      makeRecord(),
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-result");
   });
@@ -144,7 +164,14 @@ describe("buildAgentActionsList — actions submenu", () => {
       result: "",
       error: "something went wrong",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-error");
   });
@@ -155,7 +182,14 @@ describe("buildAgentActionsList — actions submenu", () => {
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-snapshot");
   });
@@ -166,19 +200,32 @@ describe("buildAgentActionsList — actions submenu", () => {
       execution: { session: { messages: [] } },
       result: "",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("steer");
     expect(values).toContain("stop");
   });
 
   it("does not show Steer/Stop for completed agent", () => {
-    const list = buildAgentActionsList(createMockCtx(), makeRecord(), noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      makeRecord(),
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).not.toContain("steer");
     expect(values).not.toContain("stop");
   });
-
 });
 
 describe("showTextViewer (via buildAgentActionsList)", () => {
@@ -196,7 +243,14 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       return undefined;
     });
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     await list.onSelect!({ value: "view-result" });
 
     expect(capturedFactory).toBeDefined();
@@ -215,7 +269,14 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       return undefined;
     });
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     await list.onSelect!({ value: "view-error" });
 
     expect(capturedFactory).toBeDefined();
@@ -234,7 +295,14 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       return undefined;
     });
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     await list.onSelect!({ value: "view-snapshot" });
 
     expect(capturedFactory).toBeDefined();
@@ -254,12 +322,19 @@ describe("showTextViewer — component behavior", () => {
       factory = f;
       return undefined;
     });
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     await list.onSelect!({ value: kind === "result" ? "view-result" : "view-error" });
     // Invoke the factory to get the component
     const doneFn = vi.fn();
-    const component = factory!
-      ({ terminal: { rows: 40, cols: 80 } },
+    const component = factory!(
+      { terminal: { rows: 40, cols: 80 } },
       { fg: (_c: string, t: string) => t, bold: (t: string) => t },
       null,
       doneFn,
@@ -370,7 +445,14 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     const onClose = vi.fn();
     mockModules.mockManager.abort.mockReset();
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, onClose);
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      onClose,
+    );
     await list.onSelect!({ value: "stop" });
 
     expect(mockModules.mockManager.abort).toHaveBeenCalledWith("test-id-123", "user");
@@ -385,9 +467,18 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     });
     const ctx = createMockCtx();
     let capturedInput: any = null;
-    const setActive = vi.fn((c: any) => { capturedInput = c; });
+    const setActive = vi.fn((c: any) => {
+      capturedInput = c;
+    });
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, setActive, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      setActive,
+      () => {},
+    );
     await list.onSelect!({ value: "steer" });
 
     expect(setActive).toHaveBeenCalled();
@@ -404,10 +495,19 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     });
     const ctx = createMockCtx();
     let capturedInput: any = null;
-    const setActive = vi.fn((c: any) => { capturedInput = c; });
+    const setActive = vi.fn((c: any) => {
+      capturedInput = c;
+    });
     mockModules.mockManager.steer.mockResolvedValue(true);
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, setActive, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      setActive,
+      () => {},
+    );
     await list.onSelect!({ value: "steer" });
 
     // Submit a steer message
@@ -426,9 +526,18 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     });
     const ctx = createMockCtx();
     let capturedInput: any = null;
-    const setActive = vi.fn((c: any) => { capturedInput = c; });
+    const setActive = vi.fn((c: any) => {
+      capturedInput = c;
+    });
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, setActive, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      setActive,
+      () => {},
+    );
     await list.onSelect!({ value: "steer" });
 
     // Cancel steer
@@ -451,7 +560,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "done",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-conversation");
   });
@@ -462,7 +578,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-conversation");
   });
@@ -473,7 +596,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
       execution: {},
       result: "done",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).not.toContain("view-conversation");
   });
@@ -484,7 +614,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).not.toContain("view-conversation");
     expect(values).toContain("view-snapshot");
@@ -503,7 +640,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
       return undefined;
     });
 
-    const list = buildAgentActionsList(ctx, record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     await list.onSelect!({ value: "view-conversation" });
 
     expect(capturedFactory).toBeDefined();
@@ -515,7 +659,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
       execution: { session: { messages: [{ role: "user", content: "hi" }] } },
       result: "done",
     });
-    const list = buildAgentActionsList(createMockCtx(), record, noopTheme, () => {}, () => {}, () => {});
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      record,
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-conversation");
     expect(values).toContain("view-result");

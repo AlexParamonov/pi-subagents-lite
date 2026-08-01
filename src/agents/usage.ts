@@ -54,6 +54,9 @@ export function formatCost(cost: number): string {
  */
 export function getSessionContextPercent(session: SessionLike | undefined): number | null {
   if (!session) return null;
-  try { return session.getSessionStats().contextUsage?.percent ?? null; }
-  catch { return null; }
+  try {
+    return session.getSessionStats().contextUsage?.percent ?? null;
+  } catch {
+    return null;
+  }
 }

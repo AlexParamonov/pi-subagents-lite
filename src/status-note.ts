@@ -13,8 +13,8 @@ const STOP_NOTES: Record<StopInitiator, string> = {
 export function getStatusNote(lifecycle: AgentLifecycle): string {
   const note =
     lifecycle.status === "stopped"
-      // A stopped agent with no recorded initiator reads as an agent stop.
-      ? STOP_NOTES[lifecycle.stoppedBy ?? "agent"]
+      ? // A stopped agent with no recorded initiator reads as an agent stop.
+        STOP_NOTES[lifecycle.stoppedBy ?? "agent"]
       : STATUS_NOTES[lifecycle.status];
   return note ? ` (${note})` : "";
 }

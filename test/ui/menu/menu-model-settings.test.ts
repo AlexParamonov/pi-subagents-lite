@@ -25,7 +25,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.onCancel = onCancel;
       settingsListCalls.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
     updateValue() {}
   },
@@ -37,15 +39,21 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.items = items;
       selectListInstances.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
   },
   Input: class MockInput {
     value = "";
     onSubmit?: (v: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
   },
 }));
 
@@ -54,7 +62,9 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
     constructor(component: any, options: any) {
       settingsListWrapperCalls.push({ component, options });
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
     invalidate() {}
   },
@@ -69,7 +79,9 @@ vi.mock("../../../src/ui/searchable-select.js", () => ({
       this.onSelect = callbacks.onSelect;
       this.onCancel = callbacks.onCancel;
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
     invalidate() {}
   },
@@ -153,7 +165,8 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "Explore") return { name: "Explore", description: "", model: "openai/gpt-4o" };
-      if (name === "general-purpose") return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514" };
+      if (name === "general-purpose")
+        return { name: "general-purpose", description: "", model: "anthropic/claude-sonnet-4-20250514" };
       return undefined;
     });
     (getAllTypes as any).mockReturnValue(["general-purpose", "Explore"]);

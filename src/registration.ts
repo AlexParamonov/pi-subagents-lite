@@ -27,24 +27,28 @@ export function registerAgentTool(pi: ExtensionAPI): void {
 
   // Use plain string to avoid verbose anyOf in prompt.
   // Available types are listed in description for discoverability.
-  const agentType = types.length > 0
-    ? Type.String({ description: types.join(",") })
-    : Type.String();
+  const agentType = types.length > 0 ? Type.String({ description: types.join(",") }) : Type.String();
 
   // Constrained sampling (strict mode) requires every property in `required`,
   // so optional fields become nullable unions instead of Type.Optional.
   const optional = <T extends TSchema>(base: T) =>
     useConstrained ? Type.Union([base, Type.Null()]) : Type.Optional(base);
 
-  const params = Type.Object({
-    prompt: Type.String(),
-    description: optional(Type.String()),
-    agent: optional(agentType),
-    run_in_background: optional(Type.Boolean()),
-    worktree_path: optional(Type.String()),
-  }, useConstrained
-    ? { additionalProperties: false, required: ["prompt", "description", "agent", "run_in_background", "worktree_path"] }
-    : { additionalProperties: false });
+  const params = Type.Object(
+    {
+      prompt: Type.String(),
+      description: optional(Type.String()),
+      agent: optional(agentType),
+      run_in_background: optional(Type.Boolean()),
+      worktree_path: optional(Type.String()),
+    },
+    useConstrained
+      ? {
+          additionalProperties: false,
+          required: ["prompt", "description", "agent", "run_in_background", "worktree_path"],
+        }
+      : { additionalProperties: false },
+  );
 
   const tool = {
     name: "Agent",
@@ -55,15 +59,13 @@ export function registerAgentTool(pi: ExtensionAPI): void {
 
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
 
-    renderResult: (result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean }, options: { expanded?: boolean }, theme: any) => {
+    renderResult: (
+      result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
+      options: { expanded?: boolean },
+      theme: any,
+    ) => {
       const store = getStore();
-      return renderAgentToolResult(
-        result,
-        options,
-        theme,
-        store.agent.showCost,
-        store.agent.modelDisplayStyle,
-      );
+      return renderAgentToolResult(result, options, theme, store.agent.showCost, store.agent.modelDisplayStyle);
     },
   };
   // @ts-expect-error — description removed to save prompt tokens
@@ -83,9 +85,12 @@ export function registerTools(pi: ExtensionAPI): void {
   const stopAgentTool = {
     name: "StopAgent",
     label: "StopAgent",
-    parameters: Type.Object({
-      agent_id: Type.String(),
-    }, { additionalProperties: false }),
+    parameters: Type.Object(
+      {
+        agent_id: Type.String(),
+      },
+      { additionalProperties: false },
+    ),
     execute: executeStopAgentTool,
     constrainedSampling: CONSTRAINED_SAMPLING,
   };
@@ -121,7 +126,8 @@ export function registerTools(pi: ExtensionAPI): void {
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       // ctx.scopedModels added in pi 0.83.0 — session-scoped model list from --models / enabledModels.
       // Empty array means no scoping (all models usable). Undefined on pi < 0.83.
-      const scoped = (ctx as any).scopedModels as ReadonlyArray<{ model: { provider: string; id: string } }> | undefined;
+      const scoped = (ctx as any).scopedModels as
+        ReadonlyArray<{ model: { provider: string; id: string } }> | undefined;
       const modelOptions = scoped?.length
         ? scoped.map((s) => `${s.model.provider}/${s.model.id}`)
         : ctx.modelRegistry.getAvailable().map((m) => `${m.provider}/${m.id}`);

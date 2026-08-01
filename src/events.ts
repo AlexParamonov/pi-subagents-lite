@@ -65,10 +65,7 @@ export function ensureManagerAndWidget(): void {
 
   // Create widget if missing (uses existing or newly created manager)
   if (!currentWidget) {
-    const newWidget = new AgentWidget(
-      getManager()!,
-      (id: string) => getCoordinator()?.liveView(id),
-    );
+    const newWidget = new AgentWidget(getManager()!, (id: string) => getCoordinator()?.liveView(id));
     setWidget(newWidget);
     // Sync the widget as a config side-effect target. setDeps re-syncs showCost +
     // all widget display settings from current config (absorbs the old
@@ -127,22 +124,20 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
   try {
     widget.setViewerOpen(true);
 
-    await ctx.ui.custom<void>(
-      (tui, theme, kb, done) => {
-        const viewer = new ConversationViewer(
-          tui,
-          record.execution.session!,
-          record,
-          theme,
-          done,
-          () => manager?.abort(record.id, "user"),
-          kb,
-          (msg: string) => manager?.steer(record.id, msg),
-        );
-        viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-        return viewer;
-      },
-    );
+    await ctx.ui.custom<void>((tui, theme, kb, done) => {
+      const viewer = new ConversationViewer(
+        tui,
+        record.execution.session!,
+        record,
+        theme,
+        done,
+        () => manager?.abort(record.id, "user"),
+        kb,
+        (msg: string) => manager?.steer(record.id, msg),
+      );
+      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
+      return viewer;
+    });
   } finally {
     widget.setViewerOpen(false);
   }
@@ -165,7 +160,9 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
     if (isKeyRelease(data)) return undefined;
 
     // Viewer overlay open — don't consume, don't deactivate.
-    if (widget?.isViewerOpen()) { return undefined; }
+    if (widget?.isViewerOpen()) {
+      return undefined;
+    }
 
     // Editor lost focus (dialog, menu, etc.) — deactivate.
     if (widget && !widget.isEditorFocused()) {
@@ -174,21 +171,30 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
     }
 
     if (widget) {
-        if (!widget.isNavActive()) {
-          // ↓ + empty editor + visible agents exist → activate
-          const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
-          if (matchesKey(data, "down") && widget.hasVisibleAgents() && editorEmpty) {
-            widget.navActivate();
-            return { consume: true };
-          }
-        } else {
+      if (!widget.isNavActive()) {
+        // ↓ + empty editor + visible agents exist → activate
+        const editorEmpty = (ctx.ui as any).getEditorText?.() === "";
+        if (matchesKey(data, "down") && widget.hasVisibleAgents() && editorEmpty) {
+          widget.navActivate();
+          return { consume: true };
+        }
+      } else {
         // Nav active
-        if (matchesKey(data, "down")) { widget.navDown(); return { consume: true }; }
-        if (matchesKey(data, "up")) { widget.navUp(); return { consume: true }; }
-        if (matchesKey(data, "escape")) { widget.navDeactivate(); return { consume: true }; }
+        if (matchesKey(data, "down")) {
+          widget.navDown();
+          return { consume: true };
+        }
+        if (matchesKey(data, "up")) {
+          widget.navUp();
+          return { consume: true };
+        }
+        if (matchesKey(data, "escape")) {
+          widget.navDeactivate();
+          return { consume: true };
+        }
         if (matchesKey(data, "enter")) {
           const record = widget.navSelect();
-          openViewer(ctx, record).catch(err => {
+          openViewer(ctx, record).catch((err) => {
             ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
           });
           return { consume: true };
@@ -229,7 +235,6 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     getWidget()?.onTurnStart();
   });
 
-
   // session_start — load config, scan agents, register into registry,
   // then re-register Agent tool with dynamic agent type enum
   // Listen for ctrl+o keypress to sync compact mode (push-based, no polling)
@@ -254,7 +259,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     const currentManager = getManager();
     if (currentManager) {
       const records = currentManager.listAgents();
-      const active = records.filter(r => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
+      const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
         ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
       }

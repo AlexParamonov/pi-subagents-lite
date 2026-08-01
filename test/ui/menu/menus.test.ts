@@ -73,8 +73,16 @@ describe("main menu — submenu navigation", () => {
     resetAgentState();
     vi.clearAllMocks();
     (getAgentConfig as any).mockImplementation((name: string) => {
-      if (name === "Explore") return { name: "Explore", description: "Explore agent", extensions: false, skills: false, systemPrompt: "" };
-      if (name === "general-purpose") return { name: "general-purpose", description: "General-purpose agent", extensions: false, skills: false, systemPrompt: "" };
+      if (name === "Explore")
+        return { name: "Explore", description: "Explore agent", extensions: false, skills: false, systemPrompt: "" };
+      if (name === "general-purpose")
+        return {
+          name: "general-purpose",
+          description: "General-purpose agent",
+          extensions: false,
+          skills: false,
+          systemPrompt: "",
+        };
       return undefined;
     });
   });

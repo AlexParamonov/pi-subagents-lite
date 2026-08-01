@@ -21,7 +21,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.items = items;
       selectListInstances.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
   },
 }));

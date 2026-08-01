@@ -79,23 +79,32 @@ export function shellMock(fns: ShellMockFns = {}) {
     getStore: () => state.store,
     getCoordinator: () => state.coordinator,
     getWidget: () => state.widget,
-    setPiInstance: (pi: any) => { state.pi = pi; },
-    setSessionCtx: (ctx: any) => { state.sessionCtx = ctx; },
-    setManager: (m: any) => { state.manager = m; },
-    setWidget: (w: any) => { state.widget = w; },
-    setCoordinator: (c: any) => { state.coordinator = c; },
+    setPiInstance: (pi: any) => {
+      state.pi = pi;
+    },
+    setSessionCtx: (ctx: any) => {
+      state.sessionCtx = ctx;
+    },
+    setManager: (m: any) => {
+      state.manager = m;
+    },
+    setWidget: (w: any) => {
+      state.widget = w;
+    },
+    setCoordinator: (c: any) => {
+      state.coordinator = c;
+    },
     isInsideSubagentSpawn: () => state.spawnGuard.depth > 0,
-    enterSubagentSpawn: () => { state.spawnGuard.depth++; },
-    exitSubagentSpawn: () => { state.spawnGuard.depth--; },
+    enterSubagentSpawn: () => {
+      state.spawnGuard.depth++;
+    },
+    exitSubagentSpawn: () => {
+      state.spawnGuard.depth--;
+    },
   };
 }
 
-import {
-  existsSync,
-  mkdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -243,22 +252,25 @@ export function createMockSession(): MockSession {
       for (const fn of listeners) fn({ type: "message_start" });
     },
     _fireThinkingStart: () => {
-      for (const fn of listeners) fn({
-        type: "message_update",
-        assistantMessageEvent: { type: "thinking_start" },
-      });
+      for (const fn of listeners)
+        fn({
+          type: "message_update",
+          assistantMessageEvent: { type: "thinking_start" },
+        });
     },
     _fireThinkingDelta: (delta: string) => {
-      for (const fn of listeners) fn({
-        type: "message_update",
-        assistantMessageEvent: { type: "thinking_delta", delta },
-      });
+      for (const fn of listeners)
+        fn({
+          type: "message_update",
+          assistantMessageEvent: { type: "thinking_delta", delta },
+        });
     },
     _fireThinkingEnd: (content: string) => {
-      for (const fn of listeners) fn({
-        type: "message_update",
-        assistantMessageEvent: { type: "thinking_end", content },
-      });
+      for (const fn of listeners)
+        fn({
+          type: "message_update",
+          assistantMessageEvent: { type: "thinking_end", content },
+        });
     },
     _getListeners: () => listeners,
   };
@@ -277,17 +289,18 @@ export function tempDirFixture(prefix = "subagents-test") {
 
   return {
     setup: () => {
-      tmpDir = join(
-        tmpdir(),
-        `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      );
+      tmpDir = join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
       mkdirSync(tmpDir, { recursive: true });
       return tmpDir;
     },
     getDir: () => tmpDir,
     teardown: () => {
       if (tmpDir) {
-        try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        try {
+          rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+          /* ignore */
+        }
       }
     },
   };
@@ -343,10 +356,7 @@ export function tempDirWithFiles(
   files: Array<{ name: string; content: string }>,
   prefix = "agent-test",
 ): { dir: string; cleanup: () => void } {
-  const dir = join(
-    tmpdir(),
-    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+  const dir = join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   for (const file of files) {
     writeFileSync(join(dir, file.name), file.content);
@@ -354,7 +364,11 @@ export function tempDirWithFiles(
   return {
     dir,
     cleanup: () => {
-      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     },
   };
 }

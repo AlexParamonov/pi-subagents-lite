@@ -46,7 +46,10 @@ function stripScaffolding(prompt: string): string {
   result = result.replace(/\n?<\s*project_context\s*>[\s\S]*?<\/\s*project_context\s*>\n?/g, "\n");
 
   // 2. Strip skills block: optional intro text + <available_skills>...</available_skills>
-  result = result.replace(/\n?(?:The following skills provide[\s\S]*?)?<\s*available_skills\s*>[\s\S]*?<\/\s*available_skills\s*>\n?/g, "\n");
+  result = result.replace(
+    /\n?(?:The following skills provide[\s\S]*?)?<\s*available_skills\s*>[\s\S]*?<\/\s*available_skills\s*>\n?/g,
+    "\n",
+  );
 
   // 3. Strip Current date: line
   result = result.replace(/\n?Current date:.*\n?/g, "\n");
@@ -118,7 +121,9 @@ export function buildAgentPrompt(
 
     // Preloaded skills: content tags (not in Pi's formatSkillsForPrompt)
     for (const skill of extras?.skillBlocks ?? []) {
-      skillLines.push(`<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`);
+      skillLines.push(
+        `<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><content>${escapeXml(skill.content)}</content></skill>`,
+      );
     }
 
     const lines = [
@@ -139,12 +144,7 @@ export function buildAgentPrompt(
   // Project context files (AGENTS.md) — placed after agent_instructions, before extras
   let contextSuffix = "";
   if (extras?.contextFiles?.length) {
-    const lines = [
-      "<project_context>",
-      "",
-      "Project-specific instructions and guidelines:",
-      "",
-    ];
+    const lines = ["<project_context>", "", "Project-specific instructions and guidelines:", ""];
     for (const file of extras.contextFiles) {
       lines.push(`<project_instructions path="${escapeXml(file.path)}">`);
       lines.push(file.content);
@@ -157,9 +157,8 @@ export function buildAgentPrompt(
 
   // Build base prompt: mode-specific header if provided, otherwise default
   const activeAgentTag = `<active_agent name="${config.name}"/>`;
-  const rawHeader = mode === "inherit" ? extras?.parentSystemPrompt
-                 : mode === "custom"  ? extras?.customSystemPrompt
-                 : undefined;
+  const rawHeader =
+    mode === "inherit" ? extras?.parentSystemPrompt : mode === "custom" ? extras?.customSystemPrompt : undefined;
   // Parent/custom headers carry pi's scaffolding (context, skills, date, cwd);
   // strip it — we re-add these from the subagent's own config. (rawHeader is
   // undefined in replace mode, so nothing to strip there.)
@@ -174,7 +173,5 @@ export function buildAgentPrompt(
 
 function escapeXml(value: string): string {
   // Only escape < and > — enough for XML-like tags, keeps text readable for LLMs
-  return value
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

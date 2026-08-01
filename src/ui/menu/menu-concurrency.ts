@@ -25,56 +25,56 @@ import { getStore } from "../../shell.js";
 import type { SelectOption } from "../searchable-select.js";
 import type { Theme } from "../types.js";
 
-export async function showConcurrencySettingsMenu(
-  ctx: ExtensionCommandContext,
-  modelOptions: string[],
-): Promise<void> {
+export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   // Build menu items from current store state.
-  const buildItems = (store: ReturnType<typeof getStore>, theme: Theme, modelOptions: string[], onRebuild?: () => void): SettingItem[] => {
+  const buildItems = (
+    store: ReturnType<typeof getStore>,
+    theme: Theme,
+    modelOptions: string[],
+    onRebuild?: () => void,
+  ): SettingItem[] => {
     const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
     const items: SettingItem[] = [];
 
-    
-
     // Submenu factory: pick Edit (→ value input) or Remove for an existing limit.
-    const editOrRemoveSubmenu = (
-      currentLimit: number,
-      onEdit: (parsed: number) => void,
-      onRemove: () => void,
-    ): SettingItem["submenu"] => (_currentValue, subDone) => {
-      const list = new SelectList(
-        [{ value: "edit", label: "Edit limit" }, { value: "remove", label: "Remove limit" }],
-        5, buildSelectListTheme(theme),
-      );
-      const delegator = createDelegatingComponent(list);
-      list.onSelect = (item) => {
-        if (item.value === "edit") {
-          delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, onEdit)(String(currentLimit), subDone));
-        } else {
-          onRemove();
-          subDone();
-          onRebuild?.();
-        }
+    const editOrRemoveSubmenu =
+      (currentLimit: number, onEdit: (parsed: number) => void, onRemove: () => void): SettingItem["submenu"] =>
+      (_currentValue, subDone) => {
+        const list = new SelectList(
+          [
+            { value: "edit", label: "Edit limit" },
+            { value: "remove", label: "Remove limit" },
+          ],
+          5,
+          buildSelectListTheme(theme),
+        );
+        const delegator = createDelegatingComponent(list);
+        list.onSelect = (item) => {
+          if (item.value === "edit") {
+            delegator.setActive(createNumericSubmenu(ctx, { min: 1 }, onEdit)(String(currentLimit), subDone));
+          } else {
+            onRemove();
+            subDone();
+            onRebuild?.();
+          }
+        };
+        list.onCancel = () => subDone();
+        return delegator;
       };
-      list.onCancel = () => subDone();
-      return delegator;
-    };
 
     // Submenu factory: searchable-pick an option, then enter a numeric value.
     // Used for both per-provider and per-model limits; items differ by caller.
-    const addPickThenValueSubmenu = (
-      items: SelectOption[],
-      onPick: (key: string, parsed: number) => void,
-    ): SettingItem["submenu"] => (_currentValue, subDone) =>
-      createSearchableSelect(
-        items,
-        {
-          onSelect: (key) =>
-            createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(key, parsed))("1", subDone),
-          onCancel: () => subDone(),
-        },
-        theme,
-      );
+    const addPickThenValueSubmenu =
+      (items: SelectOption[], onPick: (key: string, parsed: number) => void): SettingItem["submenu"] =>
+      (_currentValue, subDone) =>
+        createSearchableSelect(
+          items,
+          {
+            onSelect: (key) => createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(key, parsed))("1", subDone),
+            onCancel: () => subDone(),
+          },
+          theme,
+        );
 
     // Global default
     items.push({
@@ -121,10 +121,13 @@ export async function showConcurrencySettingsMenu(
         label: "Add per-provider limit...",
         currentValue: "",
         description: "Cap how many agents run at once for a single provider.",
-        submenu: addPickThenValueSubmenu(providers.map((o) => ({ value: o, label: o })), (provider, parsed) => {
-          store.mutate.concurrency.setProvider(provider, parsed);
-          ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
-        }),
+        submenu: addPickThenValueSubmenu(
+          providers.map((o) => ({ value: o, label: o })),
+          (provider, parsed) => {
+            store.mutate.concurrency.setProvider(provider, parsed);
+            ctx.ui.notify(`${provider} concurrency set to ${parsed}`, "info");
+          },
+        ),
       });
     }
 
@@ -194,12 +197,20 @@ export async function showConcurrencySettingsMenu(
     const triggerRebuild = () => rebuild?.(buildItems(getStore(), theme, modelOptions, triggerRebuild));
     const store = getStore();
     const items = buildItems(store, theme, modelOptions, triggerRebuild);
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), (_id, _v) => triggerRebuild(), () => done(undefined));
+    const settingsList = new SettingsList(
+      items,
+      15,
+      buildSettingsListTheme(theme),
+      (_id, _v) => triggerRebuild(),
+      () => done(undefined),
+    );
     return new SettingsListWrapper(settingsList, {
       title: "Concurrency Settings",
       theme,
       onCancel: () => done(undefined),
-      onRebuild: (r) => { rebuild = r; },
+      onRebuild: (r) => {
+        rebuild = r;
+      },
     });
   });
 }

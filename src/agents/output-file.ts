@@ -12,7 +12,6 @@ import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-
 import { formatTokens } from "./usage.js";
 import { summarizeToolArgs } from "../ui/format.js";
 
-
 /** Find the last sentence boundary in text. Returns the index of the
  * terminal punctuation character, or -1 if none found. */
 function findLastSentenceBoundary(text: string): number {
@@ -57,10 +56,7 @@ export function createOutputFilePath(agentId: string, baseDir?: string): string 
  * Write the initial user prompt entry to the output file.
  * Format: <ISO timestamp> [USER] <prompt>
  */
-export function writeInitialEntry(
-  path: string,
-  prompt: string,
-): void {
+export function writeInitialEntry(path: string, prompt: string): void {
   const line = `${timestamp()} [USER] ${prompt}\n`;
   writeFileSync(path, line, "utf-8");
 }
@@ -70,7 +66,11 @@ export function writeInitialEntry(
  * Used for best-effort output file writes that must never throw.
  */
 function safeAppend(path: string, content: string): void {
-  try { appendFileSync(path, content, "utf-8"); } catch { /* ignore write errors */ }
+  try {
+    appendFileSync(path, content, "utf-8");
+  } catch {
+    /* ignore write errors */
+  }
 }
 
 /** Split text into non-empty lines, prefixing each with a timestamp and role tag. */

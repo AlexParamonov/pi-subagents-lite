@@ -13,7 +13,9 @@ let selectListInstances: Array<{
 }> = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList { constructor() {} },
+  SettingsList: class MockSettingsList {
+    constructor() {}
+  },
   SelectList: class MockSelectList {
     items: any[];
     onSelect?: (item: any) => void;
@@ -22,19 +24,36 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.items = items;
       selectListInstances.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
   },
   Input: class MockInput {
     value = "";
     onSubmit?: (v: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
   },
-  Container: class MockContainer { addChild() {} clear() {} render() { return []; } invalidate() {} },
-  Spacer: class MockSpacer { constructor() {} },
-  Text: class MockText { constructor() {} },
+  Container: class MockContainer {
+    addChild() {}
+    clear() {}
+    render() {
+      return [];
+    }
+    invalidate() {}
+  },
+  Spacer: class MockSpacer {
+    constructor() {}
+  },
+  Text: class MockText {
+    constructor() {}
+  },
   fuzzyFilter: vi.fn((_items, _query, _accessor) => []),
   getKeybindings: vi.fn(() => ({ matches: () => false })),
 }));
@@ -42,7 +61,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
 vi.mock("../../../../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
     constructor() {}
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
     invalidate() {}
   },

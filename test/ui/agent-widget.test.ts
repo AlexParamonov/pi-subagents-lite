@@ -115,7 +115,6 @@ function makeActivity(agentId: string): LiveView {
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
 
-
 describe("widget rendering format", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
@@ -297,9 +296,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [a1];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toContain("◈ Agents: 1 active · 5 done · ");
   });
 
@@ -315,9 +312,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toContain("◇ Agents: 1 done · ");
   });
 
@@ -334,9 +329,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).not.toContain("$");
     expect(statusCall[1]).toContain("1 active");
   });
@@ -344,7 +337,7 @@ describe("status bar format", () => {
   it("omits active count when active is 0", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0.50, 3);
+    const manager = makeMockManager([], 0.5, 3);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -353,9 +346,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).not.toContain("active");
     expect(statusCall[1]).toContain("done");
   });
@@ -372,9 +363,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).not.toContain("done");
     expect(statusCall[1]).toContain("active");
   });
@@ -391,9 +380,7 @@ describe("status bar format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toBe("◇ Agents: 1 done");
   });
 });
@@ -422,9 +409,7 @@ describe("status bar cost from accumulator", () => {
     widget.update();
 
     // Status bar should include $1.28 ($1.23 session + $0.05 running)
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toContain("$1.28");
   });
 
@@ -435,7 +420,7 @@ describe("status bar cost from accumulator", () => {
     };
     activity = new Map();
     // Running agent with $0 cost, but session accumulator has $2.50
-    manager = makeMockManager([], 2.50, 1);
+    manager = makeMockManager([], 2.5, 1);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
@@ -446,9 +431,7 @@ describe("status bar cost from accumulator", () => {
     widget.update();
 
     // Should show $2.50 from accumulator
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toContain("$2.50");
   });
 
@@ -458,7 +441,7 @@ describe("status bar cost from accumulator", () => {
       setWidget: vi.fn(),
     };
     activity = new Map();
-    manager = makeMockManager([], 1.50, 1);
+    manager = makeMockManager([], 1.5, 1);
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(false);
     widget.setUICtx(uiCtx);
@@ -469,9 +452,7 @@ describe("status bar cost from accumulator", () => {
     widget.update();
 
     // Should NOT contain $ when cost is hidden
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).not.toContain("$");
   });
 });
@@ -493,9 +474,7 @@ describe("status bar compact format", () => {
     (manager as any).listAgents = () => [a1, a2];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toBe("◈ 2 5Σ $0.12");
   });
 
@@ -512,16 +491,14 @@ describe("status bar compact format", () => {
     (manager as any).listAgents = () => [a1];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toBe("◈ 1 2Σ");
   });
 
   it("compact format omits active count when 0", () => {
     const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
     const activity = new Map();
-    const manager = makeMockManager([], 0.50, 3);
+    const manager = makeMockManager([], 0.5, 3);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setShowCost(true);
     widget.setStatusBarFormat("compact");
@@ -531,9 +508,7 @@ describe("status bar compact format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toBe("◇ 3Σ $0.50");
   });
 
@@ -550,9 +525,7 @@ describe("status bar compact format", () => {
     (manager as any).listAgents = () => [a1];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toBe("◈ 1");
   });
 
@@ -569,9 +542,7 @@ describe("status bar compact format", () => {
     (manager as any).listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find(
-      (c: any[]) => c[0] === "subagents",
-    );
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toContain("◇");
   });
 });
@@ -814,14 +785,14 @@ describe("getLiveView callback", () => {
     // Simulate coordinator's liveView map with real activity data
     const coordinatorViews = new Map<string, LiveView>();
     coordinatorViews.set("a1", {
-      activeTools: new Map([["read_123", "read"], ["bash_456", "bash"]]),
+      activeTools: new Map([
+        ["read_123", "read"],
+        ["bash_456", "bash"],
+      ]),
       responseText: "",
     });
 
-    const widget = new AgentWidget(
-      manager,
-      (id: string) => coordinatorViews.get(id),
-    );
+    const widget = new AgentWidget(manager, (id: string) => coordinatorViews.get(id));
 
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
@@ -839,10 +810,7 @@ describe("getLiveView callback", () => {
     const manager = makeMockManager([]);
     const liveViews = new Map<string, LiveView>();
     // liveViews has no entry for a1
-    const widget = new AgentWidget(
-      manager,
-      (id: string) => liveViews.get(id),
-    );
+    const widget = new AgentWidget(manager, (id: string) => liveViews.get(id));
 
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
@@ -861,10 +829,7 @@ describe("getLiveView callback", () => {
       responseText: "",
     });
 
-    const widget = new AgentWidget(
-      manager,
-      (id: string) => liveViews.get(id),
-    );
+    const widget = new AgentWidget(manager, (id: string) => liveViews.get(id));
 
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
@@ -883,10 +848,7 @@ describe("getLiveView callback", () => {
       responseText: "Here is my response to the user…",
     });
 
-    const widget = new AgentWidget(
-      manager,
-      (id: string) => liveViews.get(id),
-    );
+    const widget = new AgentWidget(manager, (id: string) => liveViews.get(id));
 
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
@@ -1005,7 +967,7 @@ describe("stats visibility integration", () => {
   it("hides cost when showCost is false via statsVisibility", () => {
     widget.setStatsVisibility({ showCost: false });
     const agent = makeRunningAgent("a1");
-    agent.stats.lifetimeUsage.cost = 1.50;
+    agent.stats.lifetimeUsage.cost = 1.5;
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
@@ -1029,7 +991,7 @@ describe("stats visibility integration", () => {
     // Don't set any visibility flags — defaults should show everything
     const agent = makeRunningAgent("a1");
     agent.stats.compactionCount = 1;
-    agent.stats.lifetimeUsage.cost = 0.50;
+    agent.stats.lifetimeUsage.cost = 0.5;
     agent.execution = {
       session: {
         getSessionStats: () => ({ contextUsage: { percent: 60 } }),
@@ -1074,7 +1036,7 @@ describe("turn-based eviction for finished agents", () => {
     widget.markFinished("a1");
 
     // With eviction disabled, markFinished doesn't track (no wasted memory)
-    const ages = (widget as any).finishedTurnAge as Map<string, number>; 
+    const ages = (widget as any).finishedTurnAge as Map<string, number>;
     expect(ages.has("a1")).toBe(false);
   });
 

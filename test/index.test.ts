@@ -11,13 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
-import {
-  createMockExtensionAPI,
-  hasParam,
-  loadExtension,
-  shellMock,
-  type MockExtensionAPI,
-} from "./fixtures";
+import { createMockExtensionAPI, hasParam, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
 
 // Mock external dependencies before any imports
 vi.mock("@sinclair/typebox", () => {
@@ -66,8 +60,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
     clear() {
       this.children = [];
     }
-    invalidate() { /* noop */ }
-    render(_width: number): string[] { return []; }
+    invalidate() {
+      /* noop */
+    }
+    render(_width: number): string[] {
+      return [];
+    }
   },
   Input: class {
     onSubmit: (() => void) | null = null;
@@ -144,10 +142,12 @@ const { mutableStore, spawnGuard } = vi.hoisted(() => ({
   spawnGuard: { depth: 0 },
 }));
 
-vi.mock("../src/shell.js", () => shellMock({
-  store: mutableStore,
-  spawnGuard,
-}));
+vi.mock("../src/shell.js", () =>
+  shellMock({
+    store: mutableStore,
+    spawnGuard,
+  }),
+);
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
@@ -243,7 +243,6 @@ describe("Agent tool schema — stealth", () => {
     expect(wtSchema?.description).toBeUndefined();
   });
 
-
   it("excludes isolated from schema (config-only, not LLM-controlled)", () => {
     expect(hasParam(agentTool()!.parameters, "isolated")).toBe(false);
   });
@@ -283,8 +282,7 @@ describe("tool_call listener — guards", () => {
     await loadExtension(api.api);
   });
 
-  const toolCallHandler = () =>
-    api.listeners.find((l) => l.event === "tool_call")?.handler;
+  const toolCallHandler = () => api.listeners.find((l) => l.event === "tool_call")?.handler;
 
   it("does not mutate event.input.model for non-Agent tools", async () => {
     expect(toolCallHandler()).toBeDefined();
@@ -371,12 +369,9 @@ describe("event listener registration", () => {
   });
 
   it("registers session_shutdown listener", () => {
-    expect(api.listeners.some((l) => l.event === "session_shutdown")).toBe(
-      true,
-    );
+    expect(api.listeners.some((l) => l.event === "session_shutdown")).toBe(true);
   });
 });
-
 
 // worktree_path schema tests (merged from worktree-schema-briefing)
 describe("Agent tool schema — worktree_path", () => {
@@ -401,7 +396,6 @@ describe("Agent tool schema — worktree_path", () => {
   });
 });
 
-
 /* ------------------------------------------------------------------ */
 /*  Subagent spawn guard (prevents shell clobbering)                  */
 /* ------------------------------------------------------------------ */
@@ -410,8 +404,12 @@ describe("subagent spawn guard", () => {
   // Uses the mocked shell from vi.mock above; spawn guard state is shared via vi.hoisted.
   const shell = {
     isInsideSubagentSpawn: () => spawnGuard.depth > 0,
-    enterSubagentSpawn: () => { spawnGuard.depth++; },
-    exitSubagentSpawn: () => { spawnGuard.depth--; },
+    enterSubagentSpawn: () => {
+      spawnGuard.depth++;
+    },
+    exitSubagentSpawn: () => {
+      spawnGuard.depth--;
+    },
   };
 
   beforeEach(() => {

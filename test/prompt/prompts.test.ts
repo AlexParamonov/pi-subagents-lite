@@ -14,7 +14,9 @@ import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
 import type { AgentConfig, EnvInfo } from "../../src/types.ts";
 
 vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>("@earendil-works/pi-coding-agent");
+  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
+    "@earendil-works/pi-coding-agent",
+  );
   return {
     ...actual,
     // Return only <skill> elements — buildAgentPrompt extracts these with regex
@@ -22,14 +24,22 @@ vi.mock("@earendil-works/pi-coding-agent", async () => {
     formatSkillsForPrompt: vi.fn((skills: any[]) => {
       return skills
         .filter((s: any) => !s.disableModelInvocation)
-        .map((s: any) => `<skill><name>${escapeXml(s.name)}</name><description>${escapeXml(s.description)}</description><location>${escapeXml(s.filePath)}</location></skill>`)
+        .map(
+          (s: any) =>
+            `<skill><name>${escapeXml(s.name)}</name><description>${escapeXml(s.description)}</description><location>${escapeXml(s.filePath)}</location></skill>`,
+        )
         .join("\n");
     }),
   };
 });
 
 function escapeXml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 const baseConfig: AgentConfig = {
@@ -51,7 +61,12 @@ describe("buildAgentPrompt", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
         { name: "tdd", description: "TDD workflow", location: "/skills/tdd/SKILL.md", disableModelInvocation: false },
-        { name: "debug", description: "Debugging workflow", location: "/skills/debug/SKILL.md", disableModelInvocation: false },
+        {
+          name: "debug",
+          description: "Debugging workflow",
+          location: "/skills/debug/SKILL.md",
+          disableModelInvocation: false,
+        },
       ],
     });
 
@@ -87,11 +102,14 @@ describe("buildAgentPrompt", () => {
   it("merges both into single available_skills block", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "debug", description: "Debug workflow", location: "/skills/debug/SKILL.md", disableModelInvocation: false },
+        {
+          name: "debug",
+          description: "Debug workflow",
+          location: "/skills/debug/SKILL.md",
+          disableModelInvocation: false,
+        },
       ],
-      skillBlocks: [
-        { name: "tdd", description: "TDD workflow", content: "Full TDD content here" },
-      ],
+      skillBlocks: [{ name: "tdd", description: "TDD workflow", content: "Full TDD content here" }],
     });
 
     // Both in available_skills
@@ -99,7 +117,9 @@ describe("buildAgentPrompt", () => {
     expect(result).toContain("<name>debug</name>");
     expect(result).toContain("<description>Debug workflow</description>");
     expect(result).toContain("<location>/skills/debug/SKILL.md</location>");
-    expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><content>Full TDD content here</content></skill>");
+    expect(result).toContain(
+      "<skill><name>tdd</name><description>TDD workflow</description><content>Full TDD content here</content></skill>",
+    );
     // Single block
     const blockCount = (result.match(/<available_skills>/g) || []).length;
     expect(blockCount).toBe(1);
@@ -110,7 +130,12 @@ describe("buildAgentPrompt", () => {
   it("escapes XML special characters in skill metadata (Pi's full escaping)", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "test", description: 'Use <code> & "quotes"', location: "/path/to/skill", disableModelInvocation: false },
+        {
+          name: "test",
+          description: 'Use <code> & "quotes"',
+          location: "/path/to/skill",
+          disableModelInvocation: false,
+        },
       ],
     });
 
@@ -130,8 +155,18 @@ describe("buildAgentPrompt", () => {
   it("excludes skills with disableModelInvocation=true via formatSkillsForPrompt", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
       skillMetas: [
-        { name: "visible", description: "Visible skill", location: "/skills/visible/SKILL.md", disableModelInvocation: false },
-        { name: "hidden", description: "Hidden skill", location: "/skills/hidden/SKILL.md", disableModelInvocation: true },
+        {
+          name: "visible",
+          description: "Visible skill",
+          location: "/skills/visible/SKILL.md",
+          disableModelInvocation: false,
+        },
+        {
+          name: "hidden",
+          description: "Hidden skill",
+          location: "/skills/hidden/SKILL.md",
+          disableModelInvocation: true,
+        },
       ],
     });
 
@@ -234,7 +269,13 @@ describe("buildAgentPrompt — system prompt modes", () => {
     const customPrompt = "Custom prompt.";
 
     const replaceResult = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
-    const inheritResult = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
+    const inheritResult = buildAgentPrompt(
+      baseConfig,
+      "/test/cwd",
+      env,
+      { parentSystemPrompt: parentPrompt },
+      "inherit",
+    );
     const customResult = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: customPrompt }, "custom");
 
     for (const result of [replaceResult, inheritResult, customResult]) {
@@ -248,14 +289,12 @@ describe("buildAgentPrompt — system prompt modes", () => {
 describe("buildAgentPrompt — context files (AGENTS.md)", () => {
   it("includes project_context block when contextFiles provided", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
-      contextFiles: [
-        { path: "/test/cwd/AGENTS.md", content: "Always use TDD." },
-      ],
+      contextFiles: [{ path: "/test/cwd/AGENTS.md", content: "Always use TDD." }],
     });
 
     expect(result).toContain("<project_context>");
     expect(result).toContain("Project-specific instructions and guidelines:");
-    expect(result).toContain("<project_instructions path=\"/test/cwd/AGENTS.md\">");
+    expect(result).toContain('<project_instructions path="/test/cwd/AGENTS.md">');
     expect(result).toContain("Always use TDD.");
     expect(result).toContain("</project_instructions>");
     expect(result).toContain("</project_context>");
@@ -269,20 +308,16 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
       ],
     });
 
-    expect(result).toContain("<project_instructions path=\"/home/AGENTS.md\">");
+    expect(result).toContain('<project_instructions path="/home/AGENTS.md">');
     expect(result).toContain("Global guidelines.");
-    expect(result).toContain("<project_instructions path=\"/test/cwd/AGENTS.md\">");
+    expect(result).toContain('<project_instructions path="/test/cwd/AGENTS.md">');
     expect(result).toContain("Project guidelines.");
   });
 
   it("places project_context before agent_instructions and after base prompt", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
-      contextFiles: [
-        { path: "/test/cwd/AGENTS.md", content: "Context content." },
-      ],
-      skillBlocks: [
-        { name: "tdd", description: "TDD workflow", content: "TDD content." },
-      ],
+      contextFiles: [{ path: "/test/cwd/AGENTS.md", content: "Context content." }],
+      skillBlocks: [{ name: "tdd", description: "TDD workflow", content: "TDD content." }],
     });
 
     const agentInstructionsStart = result.indexOf("<agent_instructions>");
@@ -311,9 +346,7 @@ describe("buildAgentPrompt — context files (AGENTS.md)", () => {
 
   it("escapes XML in context file paths but not content", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
-      contextFiles: [
-        { path: "/path/<with>/special.md", content: "Use <tag> syntax." },
-      ],
+      contextFiles: [{ path: "/path/<with>/special.md", content: "Use <tag> syntax." }],
     });
 
     // Path in attribute is escaped
@@ -489,7 +522,7 @@ Current working directory: /tmp`;
 
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
 
-    expect(result).toContain("Use <code> blocks & \"quotes\" carefully.");
+    expect(result).toContain('Use <code> blocks & "quotes" carefully.');
     expect(result).toContain("Here's a path: /home/user/file.ts");
   });
 
@@ -500,10 +533,16 @@ Current working directory: /tmp`;
 <project_instructions path="/old/AGENTS.md">Old content.</project_instructions>
 </project_context>`;
 
-    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
-      parentSystemPrompt: parentPrompt,
-      contextFiles: [{ path: "/new/AGENTS.md", content: "New content." }],
-    }, "inherit");
+    const result = buildAgentPrompt(
+      baseConfig,
+      "/test/cwd",
+      env,
+      {
+        parentSystemPrompt: parentPrompt,
+        contextFiles: [{ path: "/new/AGENTS.md", content: "New content." }],
+      },
+      "inherit",
+    );
 
     // Old context stripped
     expect(result).not.toContain("Old content.");
@@ -519,10 +558,16 @@ Current working directory: /tmp`;
 <skill><name>old-skill</name><description>Old</description></skill>
 </available_skills>`;
 
-    const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {
-      parentSystemPrompt: parentPrompt,
-      skillMetas: [{ name: "new-skill", description: "New", location: "/skills/new", disableModelInvocation: false }],
-    }, "inherit");
+    const result = buildAgentPrompt(
+      baseConfig,
+      "/test/cwd",
+      env,
+      {
+        parentSystemPrompt: parentPrompt,
+        skillMetas: [{ name: "new-skill", description: "New", location: "/skills/new", disableModelInvocation: false }],
+      },
+      "inherit",
+    );
 
     // Old skills stripped
     expect(result).not.toContain("old-skill");

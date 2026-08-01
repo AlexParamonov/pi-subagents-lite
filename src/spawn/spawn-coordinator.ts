@@ -23,7 +23,7 @@ import { buildAgentDetails, formatResultContent } from "../agents/tool-execution
 
 /** Coordinator-owned per-agent live display state. Only transient UI state. */
 export interface LiveView {
-  activeTools: Map<string, string>;  // keyed by toolName_timestamp
+  activeTools: Map<string, string>; // keyed by toolName_timestamp
   responseText: string;
 }
 
@@ -77,11 +77,7 @@ export class SpawnCoordinator {
    * Spawn + wire tracking + (foreground) await.
    * Single entry point for LLM tool executor and menu wizard.
    */
-  async spawn(
-    pi: ExtensionAPI,
-    ctx: ExtensionContext,
-    intent: SpawnIntent,
-  ): Promise<SpawnResult> {
+  async spawn(pi: ExtensionAPI, ctx: ExtensionContext, intent: SpawnIntent): Promise<SpawnResult> {
     // Create live view BEFORE spawn so callbacks can close over it
     const liveView: LiveView = {
       activeTools: new Map(),
@@ -201,7 +197,10 @@ export class SpawnCoordinator {
           view.activeTools.set(`${activity.toolName}_${Date.now()}`, activity.toolName);
         } else {
           for (const [key, name] of view.activeTools) {
-            if (name === activity.toolName) { view.activeTools.delete(key); break; }
+            if (name === activity.toolName) {
+              view.activeTools.delete(key);
+              break;
+            }
           }
         }
       },
@@ -258,10 +257,7 @@ export class SpawnCoordinator {
       const spawnCtx = this.backgroundContexts.get(agentId);
       if (spawnCtx?.ui?.notify) {
         try {
-          spawnCtx.ui.notify(
-            `[Subagent "${record.display.type}" ${record.lifecycle.status}] Result available`,
-            "info",
-          );
+          spawnCtx.ui.notify(`[Subagent "${record.display.type}" ${record.lifecycle.status}] Result available`, "info");
         } catch {
           // ctx may also be stale if session was replaced
         }

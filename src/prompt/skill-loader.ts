@@ -20,11 +20,7 @@
 import { readFileSync, realpathSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import {
-  loadSkills,
-  loadSkillsFromDir,
-  type Skill,
-} from "@earendil-works/pi-coding-agent";
+import { loadSkills, loadSkillsFromDir, type Skill } from "@earendil-works/pi-coding-agent";
 import { isUnsafeName } from "../utils.js";
 
 export interface PreloadedSkill {
@@ -64,10 +60,7 @@ export function loadAllSkills(cwd: string): Skill[] {
     dir: join(homedir(), ".agents", "skills"),
     source: "agents",
   });
-  const homeAgentsSkills = filterRootMdFiles(
-    homeAgentsResult.skills,
-    join(homedir(), ".agents", "skills"),
-  );
+  const homeAgentsSkills = filterRootMdFiles(homeAgentsResult.skills, join(homedir(), ".agents", "skills"));
 
   // Pi defaults: ~/.pi/agent/skills and <cwd>/.pi/skills
   const defaultsResult = loadSkills({
@@ -142,7 +135,9 @@ function findGitRoot(dir: string): string {
     try {
       const entries = readdirSync(current);
       if (entries.includes(".git")) return current;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     const parent = resolve(current, "..");
     if (parent === current) return current; // filesystem root
     current = parent;
@@ -151,7 +146,11 @@ function findGitRoot(dir: string): string {
 
 /** Resolve path to canonical form, following symlinks. Falls back to raw path. */
 function canonicalizePath(filePath: string): string {
-  try { return realpathSync(filePath); } catch { return filePath; }
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return filePath;
+  }
 }
 
 export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill[] {
@@ -162,12 +161,20 @@ export function preloadSkills(skillNames: string[], cwd: string): PreloadedSkill
     }
     const match = skills.find((s) => s.name === name);
     if (!match) {
-      return { name, description: "", content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)` };
+      return {
+        name,
+        description: "",
+        content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`,
+      };
     }
     try {
       return { name, description: match.description, content: readFileSync(match.filePath, "utf-8").trim() };
     } catch {
-      return { name, description: "", content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)` };
+      return {
+        name,
+        description: "",
+        content: `(Skill "${name}" not found in .pi/skills/, .agents/skills/, or global skill locations)`,
+      };
     }
   });
 }
@@ -191,5 +198,3 @@ export function loadSkillMeta(skillNames: string[], cwd: string): SkillMeta[] {
     };
   });
 }
-
-

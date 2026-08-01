@@ -24,7 +24,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.onCancel = onCancel;
       settingsListCalls.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
   },
   SelectList: class MockSelectList {
@@ -35,16 +37,24 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.items = items;
       selectListInstances.push(this as any);
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
   },
   Input: class MockInput {
     value = "";
     onSubmit?: (v: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
-    constructor() { inputInstances.push(this as any); }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
+    constructor() {
+      inputInstances.push(this as any);
+    }
   },
 }));
 
@@ -53,7 +63,9 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
     constructor(component: any, options: any) {
       settingsListWrapperCalls.push({ component, options });
     }
-    render() { return []; }
+    render() {
+      return [];
+    }
     handleInput() {}
     invalidate() {}
   },
@@ -82,7 +94,6 @@ describe("showConcurrencySettingsMenu — SettingsList migration", () => {
     expect(ctx.ui.custom).toHaveBeenCalled();
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
-
 
   it("shows default concurrency with current value", async () => {
     mockModules.mockConfig.concurrency = { default: 4 };

@@ -27,9 +27,8 @@ export function createNumericSubmenu(
   onValid?: (parsed: number) => void,
   onEmpty?: () => void,
 ): (initialValue: string, done: (selectedValue?: string) => void) => Component {
-  const opts = typeof optionsOrCallback === "function"
-    ? { onValid: optionsOrCallback }
-    : { onValid, ...optionsOrCallback };
+  const opts =
+    typeof optionsOrCallback === "function" ? { onValid: optionsOrCallback } : { onValid, ...optionsOrCallback };
   const min = opts.min ?? 1;
   const required = opts.required ?? false;
   const fmtLabel = (n: number) => (n === 0 ? "\u2265 0" : `\u2265 ${n}`);

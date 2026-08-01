@@ -64,7 +64,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try {
+    rmSync(tmpDir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
   vi.clearAllMocks();
 });
 
@@ -81,23 +85,31 @@ describe("loadAllSkills", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("tdd");
-    expect(mockLoadSkills).toHaveBeenCalledWith(expect.objectContaining({
-      cwd: tmpDir,
-      includeDefaults: true,
-    }));
+    expect(mockLoadSkills).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: tmpDir,
+        includeDefaults: true,
+      }),
+    );
   });
 
   it("loads ancestor .agents/skills via loadSkillsFromDir", () => {
-    const agentsSkill = makeSkill("agents-skill", "From agents", join(tmpDir, ".agents", "skills", "agents-skill", "SKILL.md"));
+    const agentsSkill = makeSkill(
+      "agents-skill",
+      "From agents",
+      join(tmpDir, ".agents", "skills", "agents-skill", "SKILL.md"),
+    );
     mockLoadSkillsFromDir.mockReturnValue({ skills: [agentsSkill], diagnostics: [] });
 
     const result = loadAllSkills(tmpDir);
 
     expect(result.some((s) => s.name === "agents-skill")).toBe(true);
-    expect(mockLoadSkillsFromDir).toHaveBeenCalledWith(expect.objectContaining({
-      dir: join(tmpDir, ".agents", "skills"),
-      source: "agents",
-    }));
+    expect(mockLoadSkillsFromDir).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dir: join(tmpDir, ".agents", "skills"),
+        source: "agents",
+      }),
+    );
   });
 
   it("filters root .md files from .agents/skills directories", () => {
@@ -241,10 +253,7 @@ describe("loadSkillMeta", () => {
     const tddPath = join(tmpDir, ".pi", "skills", "tdd", "SKILL.md");
     const debugPath = join(tmpDir, ".pi", "skills", "debug", "SKILL.md");
     mockLoadSkills.mockReturnValue({
-      skills: [
-        makeSkill("tdd", "TDD workflow", tddPath),
-        makeSkill("debug", "Debug workflow", debugPath),
-      ],
+      skills: [makeSkill("tdd", "TDD workflow", tddPath), makeSkill("debug", "Debug workflow", debugPath)],
       diagnostics: [],
     });
 
@@ -300,8 +309,12 @@ const env: EnvInfo = {
 };
 
 function createProofSkill() {
-  createSkillDir(tmpDir, "proof-skill", "Skill with secret token",
-    `## Secret Token\n${SECRET_TOKEN}\n\n${BODY_MARKER}`);
+  createSkillDir(
+    tmpDir,
+    "proof-skill",
+    "Skill with secret token",
+    `## Secret Token\n${SECRET_TOKEN}\n\n${BODY_MARKER}`,
+  );
 }
 
 describe("Prompt integration: whitelist excludes body", () => {
@@ -342,7 +355,9 @@ describe("Prompt integration: preload in available_skills with content tag", () 
     const prompt = buildAgentPrompt(baseConfig, tmpDir, env, { skillBlocks: blocks });
 
     expect(prompt).toContain("<available_skills>");
-    expect(prompt).toContain("<skill><name>proof-skill</name><description>Skill with secret token</description><content>");
+    expect(prompt).toContain(
+      "<skill><name>proof-skill</name><description>Skill with secret token</description><content>",
+    );
     expect(prompt).toContain(SECRET_TOKEN);
     expect(prompt).toContain(BODY_MARKER);
     expect(prompt).toContain("</content></skill>");

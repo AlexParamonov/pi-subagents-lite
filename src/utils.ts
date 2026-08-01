@@ -43,7 +43,13 @@ export function safeReadFile(filePath: string): string | undefined {
 
 /** All valid thinking levels. */
 export const VALID_THINKING_LEVELS: readonly ThinkingLevel[] = [
-  "off", "minimal", "low", "medium", "high", "xhigh", "max",
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
 ] as const;
 
 /**

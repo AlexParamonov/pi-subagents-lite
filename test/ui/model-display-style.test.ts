@@ -40,7 +40,7 @@ function defaultConfig(): SubagentsConfig {
 
 function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): { io: ConfigIO; saves: SubagentsConfig[] } {
   const merged: SubagentsConfig = {
-    agent: { ...(defaultConfig().agent), ...(initial.agent ?? {}) },
+    agent: { ...defaultConfig().agent, ...(initial.agent ?? {}) },
     concurrency: { default: 4, ...(initial.concurrency ?? {}) },
   };
   let cur = structuredClone(merged);

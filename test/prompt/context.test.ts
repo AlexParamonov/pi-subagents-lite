@@ -15,9 +15,7 @@ import { extractText, buildSnapshotMarkdown } from "../../src/prompt/context.js"
 
 describe("extractText", () => {
   it("extracts text from a simple content array", () => {
-    const content = [
-      { type: "text", text: "Hello world" },
-    ];
+    const content = [{ type: "text", text: "Hello world" }];
     expect(extractText(content)).toBe("Hello world");
   });
 
@@ -57,9 +55,7 @@ describe("extractText", () => {
 
 describe("buildSnapshotMarkdown", () => {
   it("formats a user message with string content as blockquote", () => {
-    const messages = [
-      { role: "user", content: "What is the weather?", timestamp: 1000 },
-    ];
+    const messages = [{ role: "user", content: "What is the weather?", timestamp: 1000 }];
     const result = buildSnapshotMarkdown(messages);
     expect(result).toBe("> user: What is the weather?\n");
   });
@@ -82,7 +78,14 @@ describe("buildSnapshotMarkdown", () => {
         role: "assistant",
         content: [{ type: "text", text: "The weather is sunny." }],
         timestamp: 2000,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "stop",
         api: "anthropic-messages",
         provider: "anthropic",
@@ -102,7 +105,14 @@ describe("buildSnapshotMarkdown", () => {
           { type: "text", text: "The answer is 42." },
         ],
         timestamp: 2000,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "stop",
         api: "anthropic-messages",
         provider: "anthropic",
@@ -130,7 +140,7 @@ describe("buildSnapshotMarkdown", () => {
       },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe("> Bash: \"ls -la\"\n");
+    expect(result).toBe('> Bash: "ls -la"\n');
   });
 
   it("formats tool result with summarized args from assistant toolCall (read)", () => {
@@ -150,14 +160,21 @@ describe("buildSnapshotMarkdown", () => {
       },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe("> Read: \"src/index.ts\"\n");
+    expect(result).toBe('> Read: "src/index.ts"\n');
   });
 
   it("formats tool result with summarized args from assistant toolCall (write)", () => {
     const messages = [
       {
         role: "assistant",
-        content: [{ type: "toolCall", id: "tc3", name: "write", arguments: { file_path: "/tmp/test.txt", content: "hello\nworld" } }],
+        content: [
+          {
+            type: "toolCall",
+            id: "tc3",
+            name: "write",
+            arguments: { file_path: "/tmp/test.txt", content: "hello\nworld" },
+          },
+        ],
         timestamp: 2000,
       },
       {
@@ -170,14 +187,21 @@ describe("buildSnapshotMarkdown", () => {
       },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe("> Write: \"/tmp/test.txt\", 11 chars\n");
+    expect(result).toBe('> Write: "/tmp/test.txt", 11 chars\n');
   });
 
   it("formats tool result with summarized args from assistant toolCall (edit)", () => {
     const messages = [
       {
         role: "assistant",
-        content: [{ type: "toolCall", id: "tc4", name: "edit", arguments: { path: "src/file.ts", edits: [{ oldText: "foo", newText: "bar" }] } }],
+        content: [
+          {
+            type: "toolCall",
+            id: "tc4",
+            name: "edit",
+            arguments: { path: "src/file.ts", edits: [{ oldText: "foo", newText: "bar" }] },
+          },
+        ],
         timestamp: 2000,
       },
       {
@@ -190,7 +214,7 @@ describe("buildSnapshotMarkdown", () => {
       },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe("> Edit: \"src/file.ts\", 1 edits\n");
+    expect(result).toBe('> Edit: "src/file.ts", 1 edits\n');
   });
 
   it("formats tool result with summarized args from assistant toolCall (grep)", () => {
@@ -210,7 +234,7 @@ describe("buildSnapshotMarkdown", () => {
       },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe("> Grep: \"import\", \"./src\"\n");
+    expect(result).toBe('> Grep: "import", "./src"\n');
   });
 
   it("shows tool name only when no matching toolCall args found", () => {
@@ -255,16 +279,9 @@ describe("buildSnapshotMarkdown", () => {
       },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe([
-      "> user: List files",
-      "",
-      "Running ls...",
-      "",
-      "> Bash: \"ls\"",
-      "",
-      "Here are the files.",
-      "",
-    ].join("\n"));
+    expect(result).toBe(
+      ["> user: List files", "", "Running ls...", "", '> Bash: "ls"', "", "Here are the files.", ""].join("\n"),
+    );
   });
 
   it("returns empty string for empty messages array", () => {
@@ -277,24 +294,36 @@ describe("buildSnapshotMarkdown", () => {
       { role: "custom_notification", content: "something" },
       {
         role: "assistant",
-        content: [{ type: "toolCall", id: "tc1", name: "edit", arguments: { path: "src/file.ts", edits: [{ oldText: "a", newText: "b" }] } }],
+        content: [
+          {
+            type: "toolCall",
+            id: "tc1",
+            name: "edit",
+            arguments: { path: "src/file.ts", edits: [{ oldText: "a", newText: "b" }] },
+          },
+        ],
         timestamp: 1500,
       },
       { role: "toolResult", toolCallId: "tc1", toolName: "edit", content: [], isError: false, timestamp: 2000 },
     ];
     const result = buildSnapshotMarkdown(messages);
-    expect(result).toBe("> user: Hello\n\n> Edit: \"src/file.ts\", 1 edits\n");
+    expect(result).toBe('> user: Hello\n\n> Edit: "src/file.ts", 1 edits\n');
   });
 
   it("handles assistant message with no text content", () => {
     const messages = [
       {
         role: "assistant",
-        content: [
-          { type: "toolCall", id: "tc1", name: "read", arguments: { path: "/test" } },
-        ],
+        content: [{ type: "toolCall", id: "tc1", name: "read", arguments: { path: "/test" } }],
         timestamp: 1000,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "toolUse",
         api: "anthropic-messages",
         provider: "anthropic",

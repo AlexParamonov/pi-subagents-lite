@@ -41,9 +41,15 @@ const mockModules = vi.hoisted(() => ({
   mockIncludeContextFiles: true as boolean,
   mockSystemPromptMode: "replace" as string,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
-  clearLoaderOpts: () => { _loaderOpts.length = 0; },
-  setLoaderExtensions: (exts: any) => { _loaderGetExtensionsResult.extensions = exts; },
-  clearLoaderExtensions: () => { _loaderGetExtensionsResult.extensions = []; },
+  clearLoaderOpts: () => {
+    _loaderOpts.length = 0;
+  },
+  setLoaderExtensions: (exts: any) => {
+    _loaderGetExtensionsResult.extensions = exts;
+  },
+  clearLoaderExtensions: () => {
+    _loaderGetExtensionsResult.extensions = [];
+  },
   mockEnterSubagentSpawn: vi.fn(),
   mockExitSubagentSpawn: vi.fn(),
 }));
@@ -113,7 +119,7 @@ const defaultAgentConfig = {
   extensions: true,
   skills: true,
   systemPrompt: "You are a test agent.",
-  tools: undefined as (true | string[] | false | undefined),
+  tools: undefined as true | string[] | false | undefined,
 };
 
 /**
@@ -173,11 +179,7 @@ describe("runAgent — tool filtering", () => {
 
   it("filters out Agent from active tools", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit",
-      "Agent",
-      "grep",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "Agent", "grep"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -188,11 +190,7 @@ describe("runAgent — tool filtering", () => {
     });
 
     // Verify that excluded tools are filtered out
-    expect(session.setActiveToolsByName).toHaveBeenCalledWith(
-      expect.not.arrayContaining([
-        "Agent",
-      ]),
-    );
+    expect(session.setActiveToolsByName).toHaveBeenCalledWith(expect.not.arrayContaining(["Agent"]));
 
     // Verify the remaining tools are correct
     // tools: undefined → defaults to true → all tools visible (except Agent)
@@ -206,9 +204,7 @@ describe("runAgent — tool filtering", () => {
   it("tools: [read, bash, edit] — whitelist filters out other tools", async () => {
     const session = createMockSession();
     // Simulate: agent wants [read, bash, edit], but session also has write and grep active
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "write", "grep", "Agent",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "write", "grep", "Agent"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -250,9 +246,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
   it("excludeTools: [write] — all tools except write", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "write", "grep", "Agent",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "write", "grep", "Agent"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -276,9 +270,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
   it("excludeTools: [write, grep] — excludes multiple tools", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "write", "grep", "Agent",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "write", "grep", "Agent"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -302,9 +294,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
   it("excludeTools with no matching tools — no filtering needed", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -322,9 +312,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
   it("excludeTools is ignored when tools whitelist is set", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "write", "grep",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "write", "grep"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -344,9 +332,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
   it("excludeTools with ext/* syntax — excludes all tools from extension", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "web_crawl"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -381,9 +367,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
   it("excludeTools with mixed syntax — ext/* and bare names", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "write", "web_search", "web_extract",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "write", "web_search", "web_extract"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
       extensionsResult: {},
@@ -616,9 +600,7 @@ describe("runAgent — extension name-based filtering", () => {
 
   it("passes extensionsOverride that filters to listed extensions", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "glob",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "glob"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
@@ -649,9 +631,7 @@ describe("runAgent — extension name-based filtering", () => {
 
   it("extensionsOverride extracts extension name from ext/tool syntax", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
@@ -679,9 +659,7 @@ describe("runAgent — extension name-based filtering", () => {
 
   it("extensionsOverride filters hook-only extensions not in the list", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetConfig.mockReturnValue({
       ...defaultConfig,
@@ -864,9 +842,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("tools: [read, web_search] allows extension tool by name", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -902,9 +878,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("ext/all syntax: tavily/* expands to all tavily tools", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "web_crawl"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -943,9 +917,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     // agent never sees web_search/web_extract/web_crawl even though the
     // extension is loaded. The allowlist must contain the concrete names.
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "web_crawl"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -973,9 +945,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     const sessionOpts = mockModules.mockCreateAgentSession.mock.calls[0][0];
     // Whitelist semantics: only "read" + the expanded tavily tools register.
     // bash/edit are NOT in the whitelist, so they must not leak into the gate.
-    expect(sessionOpts.tools).toEqual(expect.arrayContaining([
-      "read", "web_search", "web_extract", "web_crawl",
-    ]));
+    expect(sessionOpts.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl"]));
     expect(sessionOpts.tools).not.toContain("bash");
     expect(sessionOpts.tools).not.toContain("edit");
     expect(sessionOpts.tools).not.toContain("tavily/*");
@@ -984,9 +954,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("warning: tool name not found in any loaded extension", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1007,9 +975,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('tool "foobar" not found in any loaded extension'),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tool "foobar" not found in any loaded extension'));
 
     const activeTools = session.setActiveToolsByName.mock.calls[0][0];
     expect(activeTools).toContain("read");
@@ -1019,9 +985,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("warning: extension loaded but none of its tools in tools", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1058,9 +1022,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("warning: ext/all references non-loaded extension", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1092,9 +1054,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("tools: true allows all tools (no filtering)", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "glob",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "glob"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1121,9 +1081,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("tools: false hides all tools", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1145,7 +1103,13 @@ describe("tools field — extension tool names and ext/all syntax", () => {
   it("ext/all combined with named extension tool", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search",
+      "read",
+      "bash",
+      "edit",
+      "web_search",
+      "web_extract",
+      "web_crawl",
+      "exa_search",
     ]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
@@ -1186,9 +1150,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("tools field overrides extensions for visibility", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     // extensions: [tavily] loads tavily, but tools: [read] hides its tools
     mockModules.mockGetAgentConfig.mockReturnValue({
@@ -1227,9 +1189,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
   it("no warning when tools is undefined (falls back to extensions-based filtering)", async () => {
     const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue([
-      "read", "bash", "edit", "web_search", "web_extract", "Agent",
-    ]);
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "Agent"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1283,9 +1243,10 @@ describe("runAgent — grace turns", () => {
     const session = createMockSession();
     let resolvePrompt!: () => void;
     session.prompt = vi.fn(
-      () => new Promise<void>((r) => {
-        resolvePrompt = r;
-      }),
+      () =>
+        new Promise<void>((r) => {
+          resolvePrompt = r;
+        }),
     );
     return { session, resolvePrompt: () => resolvePrompt() };
   }
@@ -1528,9 +1489,7 @@ describe("runAgent — context file gating", () => {
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockIncludeContextFiles = true;
-    mockModules.mockLoadProjectContextFiles.mockReturnValue([
-      { path: "AGENTS.md", content: "project instructions" },
-    ]);
+    mockModules.mockLoadProjectContextFiles.mockReturnValue([{ path: "AGENTS.md", content: "project instructions" }]);
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
@@ -1637,7 +1596,9 @@ describe("runAgent — system prompt modes", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
 
     const ctx = fakeCtx();
-    ctx.getSystemPrompt = vi.fn().mockImplementation(() => { throw new Error("no prompt"); });
+    ctx.getSystemPrompt = vi.fn().mockImplementation(() => {
+      throw new Error("no prompt");
+    });
     ctx.ui = { notify: vi.fn() };
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
@@ -1684,10 +1645,7 @@ describe("runAgent — custom mode", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(fsReadFileSyncSpy).toHaveBeenCalledWith(
-      expect.stringContaining("subagents-lite-prompt.md"),
-      "utf-8",
-    );
+    expect(fsReadFileSyncSpy).toHaveBeenCalledWith(expect.stringContaining("subagents-lite-prompt.md"), "utf-8");
     expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -1700,7 +1658,9 @@ describe("runAgent — custom mode", () => {
   it("falls back when custom file is missing (ENOENT)", async () => {
     const err = new Error("ENOENT") as any;
     err.code = "ENOENT";
-    fsReadFileSyncSpy.mockImplementation(() => { throw err; });
+    fsReadFileSyncSpy.mockImplementation(() => {
+      throw err;
+    });
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
@@ -1710,10 +1670,7 @@ describe("runAgent — custom mode", () => {
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Custom prompt file not found"),
-      "warning",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Custom prompt file not found"), "warning");
     // buildAgentPrompt called without customSystemPrompt
     expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
       expect.anything(),
@@ -1735,10 +1692,7 @@ describe("runAgent — custom mode", () => {
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Custom prompt file is empty"),
-      "warning",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Custom prompt file is empty"), "warning");
     expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -1749,7 +1703,9 @@ describe("runAgent — custom mode", () => {
   });
 
   it("falls back when custom file is unreadable (other error)", async () => {
-    fsReadFileSyncSpy.mockImplementation(() => { throw new Error("permission denied"); });
+    fsReadFileSyncSpy.mockImplementation(() => {
+      throw new Error("permission denied");
+    });
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
@@ -1759,10 +1715,7 @@ describe("runAgent — custom mode", () => {
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to read custom prompt file"),
-      "warning",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Failed to read custom prompt file"), "warning");
   });
 });
 
@@ -1791,9 +1744,10 @@ describe("runAgent — notify buffering", () => {
     const session = createMockSession();
     let resolvePrompt!: () => void;
     session.prompt = vi.fn(
-      () => new Promise<void>((r) => {
-        resolvePrompt = r;
-      }),
+      () =>
+        new Promise<void>((r) => {
+          resolvePrompt = r;
+        }),
     );
     return { session, resolvePrompt: () => resolvePrompt() };
   }
@@ -1850,10 +1804,7 @@ describe("runAgent — notify buffering", () => {
 
     // Should have exactly one warning (mutual exclusion)
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining('both tools and exclude_tools set'),
-      "warning",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("both tools and exclude_tools set"), "warning");
   });
 
   it("uses console.warn fallback when ctx.ui.notify is unavailable", async () => {
@@ -1873,9 +1824,7 @@ describe("runAgent — notify buffering", () => {
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('both tools and exclude_tools set'),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("both tools and exclude_tools set"));
   });
 
   it("console.warn fallback also waits until after turn loop", async () => {
@@ -1906,9 +1855,7 @@ describe("runAgent — notify buffering", () => {
     await promise;
 
     // Now console.warn should have been called
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('both tools and exclude_tools set'),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("both tools and exclude_tools set"));
   });
 });
 
@@ -1942,9 +1889,7 @@ describe("runAgent — model error detection", () => {
   });
 
   it("leaves modelError undefined when the final assistant message completed normally", async () => {
-    sessionWithMessages([
-      { role: "assistant", content: [{ type: "text", text: "done" }], stopReason: "stop" },
-    ]);
+    sessionWithMessages([{ role: "assistant", content: [{ type: "text", text: "done" }], stopReason: "stop" }]);
 
     const result = await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
     expect(result.modelError).toBeUndefined();
@@ -1962,18 +1907,14 @@ describe("runAgent — model error detection", () => {
   });
 
   it("leaves modelError undefined when the final assistant message was aborted", async () => {
-    sessionWithMessages([
-      { role: "assistant", content: [], stopReason: "aborted" },
-    ]);
+    sessionWithMessages([{ role: "assistant", content: [], stopReason: "aborted" }]);
 
     const result = await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
     expect(result.modelError).toBeUndefined();
   });
 
   it("leaves modelError undefined when the error message is empty", async () => {
-    sessionWithMessages([
-      { role: "assistant", content: [], stopReason: "error" },
-    ]);
+    sessionWithMessages([{ role: "assistant", content: [], stopReason: "error" }]);
 
     const result = await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
     expect(result.modelError).toBeUndefined();

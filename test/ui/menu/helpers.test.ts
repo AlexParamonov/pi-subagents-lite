@@ -42,7 +42,6 @@ describe("validateNumeric", () => {
 });
 
 describe("buildSettingsListTheme", () => {
-
   it("label applies accent when selected", () => {
     const theme = buildSettingsListTheme(mockTheme);
     expect(theme.label("test", true)).toBe("[accent:test]");
@@ -80,7 +79,6 @@ describe("buildSettingsListTheme", () => {
 });
 
 describe("buildSelectListTheme", () => {
-
   it("selectedPrefix uses accent color and cursor arrow", () => {
     const theme = buildSelectListTheme(mockTheme);
     expect(theme.selectedPrefix("item")).toBe("[accent:→ ]");

@@ -20,9 +20,18 @@ function buildStatConfig(store: ReturnType<typeof getStore>) {
   return new Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>([
     ["showTools", { label: "Tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
     ["showTurns", { label: "Turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
-    ["showInput", { label: "Input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) }],
-    ["showOutput", { label: "Output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) }],
-    ["showContext", { label: "Context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) }],
+    [
+      "showInput",
+      { label: "Input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) },
+    ],
+    [
+      "showOutput",
+      { label: "Output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) },
+    ],
+    [
+      "showContext",
+      { label: "Context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) },
+    ],
     ["showCost", { label: "Cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) }],
     ["showTime", { label: "Time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) }],
   ]);
@@ -144,7 +153,8 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
         store.mutate.agent.setFinishedEvictTurns(parsed);
         ctx.ui.notify(`Finished agent evict turns set to ${parsed}`, "info");
       }),
-      description: "Turns to keep finished agents visible. 0 = disabled (only timer applies). Error agents linger +2 extra turns.",
+      description:
+        "Turns to keep finished agents visible. 0 = disabled (only timer applies). Error agents linger +2 extra turns.",
     },
     { id: "__sep__", label: " ", currentValue: "" },
     {
@@ -166,17 +176,20 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
 
 /** Stat descriptions keyed by stat id. */
 const STAT_DESCRIPTIONS: Record<string, string> = {
-    showTools: "Show tool count 🛠︎  in the widget.",
-    showTurns: "Show turn count ⟳  in the widget.",
-    showInput: "Show input tokens ↑ in the widget.",
-    showOutput: "Show output tokens ↓ in the widget.",
-    showContext: "Show context-fill percent % in the widget.",
-    showCost: "Show dollar cost $ in the widget.",
-    showTime: "Show elapsed time in the widget.",
+  showTools: "Show tool count 🛠︎  in the widget.",
+  showTurns: "Show turn count ⟳  in the widget.",
+  showInput: "Show input tokens ↑ in the widget.",
+  showOutput: "Show output tokens ↓ in the widget.",
+  showContext: "Show context-fill percent % in the widget.",
+  showCost: "Show dollar cost $ in the widget.",
+  showTime: "Show elapsed time in the widget.",
 };
 
 /** Build SettingsList items for the Stats category. */
-function buildStatsItems(store: ReturnType<typeof getStore>, statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>): SettingItem[] {
+function buildStatsItems(
+  store: ReturnType<typeof getStore>,
+  statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>,
+): SettingItem[] {
   const items: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
     id,
     label: cfg.label,

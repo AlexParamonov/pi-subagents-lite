@@ -536,4 +536,3 @@ describe("navigation highlight clamp on roster shrink", () => {
     expect(widget.highlightedIndex()).toBe(1);
   });
 });
-

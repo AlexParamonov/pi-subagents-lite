@@ -35,7 +35,14 @@ vi.mock("../../src/config/config-io.js", () => ({
 
 // Hoist mock pi so shell mock can return it
 const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
-  mockPi: { sendMessage: vi.fn(), sendUserMessage: vi.fn(), exec: vi.fn(), registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as unknown as ExtensionAPI,
+  mockPi: {
+    sendMessage: vi.fn(),
+    sendUserMessage: vi.fn(),
+    exec: vi.fn(),
+    registerTool: vi.fn(),
+    registerCommand: vi.fn(),
+    on: vi.fn(),
+  } as unknown as ExtensionAPI,
   mockGetPiInstance: vi.fn(() => null as unknown as ExtensionAPI),
 }));
 
@@ -99,7 +106,6 @@ describe("SpawnCoordinator", () => {
     const mod = await import("../../src/spawn/spawn-coordinator.js");
     SpawnCoordinator = mod.SpawnCoordinator;
   });
-
 
   it("spawns a background agent and returns result", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
@@ -218,10 +224,18 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const r1 = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task 1", description: "Test 1", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task 1",
+        description: "Test 1",
+        graceTurns: 6,
+        runInBackground: true,
       });
       const r2 = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task 2", description: "Test 2", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task 2",
+        description: "Test 2",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       coordinator.scheduleNudge(r1.agentId);
@@ -248,10 +262,18 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const r1 = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task 1", description: "Test 1", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task 1",
+        description: "Test 1",
+        graceTurns: 6,
+        runInBackground: true,
       });
       const r2 = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task 2", description: "Test 2", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task 2",
+        description: "Test 2",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       coordinator.scheduleNudge(r1.agentId);
@@ -275,7 +297,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
       result.record.lifecycle.status = "error";
       result.record.error = "model failed to load";
@@ -293,7 +319,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
       result.record.lifecycle.status = "completed";
 
@@ -321,7 +351,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       // Simulate completion
@@ -349,11 +383,17 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       // Make sendMessage throw (simulates stale pi)
-      mockPi.sendMessage.mockImplementation(() => { throw new Error("stale context"); });
+      mockPi.sendMessage.mockImplementation(() => {
+        throw new Error("stale context");
+      });
 
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
@@ -366,7 +406,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       coordinator.scheduleNudge(result.agentId);
@@ -386,7 +430,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
       coordinator.scheduleNudge(result.agentId);
 
@@ -412,7 +460,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       // Coordinator no longer stores pi
@@ -428,7 +480,11 @@ describe("SpawnCoordinator", () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
       });
 
       // Simulate shell being updated (e.g. after reload)
@@ -477,7 +533,11 @@ describe("SpawnCoordinator", () => {
         const coordinator = new SpawnCoordinator(manager as any);
 
         const result = await coordinator.spawn(mockPi, ctx, {
-          type: "builder", prompt: "task", description: "Test", graceTurns: 6, runInBackground: true,
+          type: "builder",
+          prompt: "task",
+          description: "Test",
+          graceTurns: 6,
+          runInBackground: true,
         });
 
         manager.getRecord(result.agentId).lifecycle.status = status;
@@ -498,7 +558,11 @@ describe("SpawnCoordinator", () => {
     it("foreground spawn marks the result as consumed before returning", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "do something", description: "Test fg", graceTurns: 6, runInBackground: false,
+        type: "builder",
+        prompt: "do something",
+        description: "Test fg",
+        graceTurns: 6,
+        runInBackground: false,
       });
 
       expect(result.record.lifecycle.resultConsumed).toBe(true);
@@ -507,7 +571,11 @@ describe("SpawnCoordinator", () => {
     it("background nudge emission marks the result as consumed", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test bg", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test bg",
+        graceTurns: 6,
+        runInBackground: true,
       });
       const record = manager.getRecord(result.agentId);
       // Reset any sendMessage impl leaked from other tests so this test exercises
@@ -527,13 +595,19 @@ describe("SpawnCoordinator", () => {
     it("does not mark consumed when nudge delivery fails", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
       const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder", prompt: "task", description: "Test bg", graceTurns: 6, runInBackground: true,
+        type: "builder",
+        prompt: "task",
+        description: "Test bg",
+        graceTurns: 6,
+        runInBackground: true,
       });
       const record = manager.getRecord(result.agentId);
 
       // sendMessage throws — LLM never received the result. The record must stay
       // unconsumed so cleanup() keeps it around rather than wiping it silently.
-      mockPi.sendMessage.mockImplementation(() => { throw new Error("stale context"); });
+      mockPi.sendMessage.mockImplementation(() => {
+        throw new Error("stale context");
+      });
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 

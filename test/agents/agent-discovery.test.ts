@@ -9,12 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  parseAgentFile,
-  scanAgentFilesInDir,
-  mergeAgents,
-  parseExtensions,
-} from "../../src/agents/agent-discovery.ts";
+import { parseAgentFile, scanAgentFilesInDir, mergeAgents, parseExtensions } from "../../src/agents/agent-discovery.ts";
 import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.ts";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
 
@@ -242,12 +237,10 @@ body
     expect(result.thinking).toBeUndefined();
   });
 
-
   it("parses CRLF", () => {
     const result = parseAgentFile("---\r\nname: x\r\n---\r\nbody", "user");
     expect(result.name).toBe("x");
   });
-
 });
 
 /* ------------------------------------------------------------------ */
@@ -280,9 +273,7 @@ describe("scanAgentFilesInDir", () => {
   });
 
   it("returns empty array when no .md files", async () => {
-    const { dir, cleanup } = tempDirWithFiles([
-      { name: "data.json", content: "{}" },
-    ]);
+    const { dir, cleanup } = tempDirWithFiles([{ name: "data.json", content: "{}" }]);
 
     try {
       const agents = await scanAgentFilesInDir(dir, "user");
@@ -293,9 +284,7 @@ describe("scanAgentFilesInDir", () => {
   });
 
   it("assigns source to all parsed agents", async () => {
-    const { dir, cleanup } = tempDirWithFiles([
-      { name: "agent1.md", content: makeAgentMd({ name: "agent1" }) },
-    ]);
+    const { dir, cleanup } = tempDirWithFiles([{ name: "agent1.md", content: makeAgentMd({ name: "agent1" }) }]);
 
     try {
       const agents = await scanAgentFilesInDir(dir, "project");
@@ -608,6 +597,4 @@ describe("mergeAgents", () => {
     expect(agent.model).toBe("model/shared");
     expect(agent.systemPrompt).toBe("shared prompt");
   });
-
 });
-

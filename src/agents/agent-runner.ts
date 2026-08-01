@@ -86,9 +86,7 @@ function resolvePackageShortName(extPath: string): string | undefined {
       Array.isArray(entries) &&
       entries.some((e) => typeof e === "string" && path.resolve(dir, e) === entry)
     ) {
-      const short = pkg.name.startsWith("@")
-        ? pkg.name.slice(pkg.name.indexOf("/") + 1)
-        : pkg.name;
+      const short = pkg.name.startsWith("@") ? pkg.name.slice(pkg.name.indexOf("/") + 1) : pkg.name;
       return short.toLowerCase();
     }
     return undefined;
@@ -137,10 +135,7 @@ interface RunResult {
  * Subscribe to a session and collect the last assistant message text.
  * Returns an object with a `getText()` getter and an `unsubscribe` function.
  */
-function collectResponseText(
-  session: AgentSession,
-  onTextDelta?: (delta: string, fullText: string) => void,
-) {
+function collectResponseText(session: AgentSession, onTextDelta?: (delta: string, fullText: string) => void) {
   let text = "";
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (event.type === "message_start") {
@@ -307,7 +302,7 @@ async function execGit(pi: ExtensionAPI, args: string[], cwd: string): Promise<s
 async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
   const gitRoot = await execGit(pi, ["rev-parse", "--is-inside-work-tree"], cwd);
   const isGitRepo = gitRoot === "true";
-  const branch = isGitRepo ? (await execGit(pi, ["branch", "--show-current"], cwd)) : null;
+  const branch = isGitRepo ? await execGit(pi, ["branch", "--show-current"], cwd) : null;
 
   return {
     isGitRepo,
@@ -326,7 +321,10 @@ function resolveSystemPromptSources(
   ctx: ExtensionContext,
   cwd: string,
   notify: (msg: string) => void,
-): { mode: SystemPromptMode; extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> } {
+): {
+  mode: SystemPromptMode;
+  extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles">;
+} {
   const store = getStore();
   const mode = store.agent.systemPromptMode;
   const extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {};
@@ -438,11 +436,7 @@ function filterExtensions(
  * Override closure: keeps matching extensions (`invert=false`) or removes them
  * (`invert=true`), warning via `notify` for any requested name that matched nothing.
  */
-function filterOverride(
-  names: Set<string>,
-  invert: boolean,
-  notify?: (msg: string) => void,
-) {
+function filterOverride(names: Set<string>, invert: boolean, notify?: (msg: string) => void) {
   return (result: any) => {
     const { filtered, matched } = filterExtensions(result.extensions, names, invert);
     for (const name of names) {
@@ -462,10 +456,12 @@ export function buildExtOverride(
 ) {
   if (Array.isArray(extensions)) {
     // Whitelist entries may carry a /tool suffix; match on the extension name only.
-    const allowedNames = new Set(extensions.map((ext) => {
-      const slashIdx = ext.indexOf("/");
-      return (slashIdx !== -1 ? ext.slice(0, slashIdx) : ext).toLowerCase();
-    }));
+    const allowedNames = new Set(
+      extensions.map((ext) => {
+        const slashIdx = ext.indexOf("/");
+        return (slashIdx !== -1 ? ext.slice(0, slashIdx) : ext).toLowerCase();
+      }),
+    );
     return filterOverride(allowedNames, false, notify);
   }
 
@@ -489,14 +485,16 @@ function createResourceLoader(
   notify?: (msg: string) => void,
 ) {
   const extensions = config.extensions;
-  const noSkills = config.skills === false
-    || Array.isArray(config.skills)
-    || Array.isArray(agentConfig?.preloadSkills);
+  const noSkills = config.skills === false || Array.isArray(config.skills) || Array.isArray(agentConfig?.preloadSkills);
   const agentDir = getAgentDir();
   const loaderOpts: ConstructorParameters<typeof DefaultResourceLoader>[0] = {
-    cwd, agentDir,
-    noExtensions: extensions === false, noSkills,
-    noPromptTemplates: true, noThemes: true, noContextFiles: true,
+    cwd,
+    agentDir,
+    noExtensions: extensions === false,
+    noSkills,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
     systemPromptOverride: () => systemPrompt,
     appendSystemPromptOverride: () => [],
     extensionsOverride: buildExtOverride(extensions, agentConfig?.excludeExtensions, notify),
@@ -522,13 +520,12 @@ async function initSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
 ) {
-  const model = options.model ?? findModelInRegistry(
-    agentConfig?.model, ctx.modelRegistry, ctx.model,
-  );
+  const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
   const agentDir = getAgentDir();
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
-    cwd, agentDir,
+    cwd,
+    agentDir,
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager: SettingsManager.create(cwd, agentDir),
     model,
@@ -536,7 +533,8 @@ async function initSession(
       registeredTools: getToolNamesForType(type),
       tools: agentConfig?.tools,
       extToolMap,
-    }), resourceLoader: loader,
+    }),
+    resourceLoader: loader,
   };
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
   const result = await createAgentSession(sessionOpts);
@@ -550,7 +548,7 @@ async function initSession(
     const field = (model.compat as any)?.maxTokensField ?? "max_tokens";
     const origOnPayload = result.session.agent.onPayload;
     result.session.agent.onPayload = async (payload, m) => {
-      const applied = origOnPayload ? (await origOnPayload(payload, m)) ?? payload : payload;
+      const applied = origOnPayload ? ((await origOnPayload(payload, m)) ?? payload) : payload;
       const obj = typeof applied === "object" && applied && !Array.isArray(applied) ? applied : {};
       return { ...obj, [field]: maxTokens };
     };
@@ -574,13 +572,13 @@ async function createAndConfigureSession(
 ): Promise<AgentSession> {
   const { session } = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap);
   const baseName = agentConfig?.name ?? type;
-  session.setSessionName(
-    options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName,
-  );
+  session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   await session.bindExtensions({
-    onError: (err) => options.onToolActivity?.({
-      type: "end", toolName: `extension-error:${err.extensionPath}`,
-    }),
+    onError: (err) =>
+      options.onToolActivity?.({
+        type: "end",
+        toolName: `extension-error:${err.extensionPath}`,
+      }),
   });
 
   const filteredTools = resolveVisibleTools({
@@ -598,10 +596,7 @@ async function createAndConfigureSession(
  * Phase 4: Subscribe to turn_end events for graceful max_turns enforcement.
  * Returns an unsubscribe function and state getters.
  */
-function wireTurnTracking(
-  session: AgentSession,
-  options: Pick<RunOptions, "maxTurns" | "graceTurns" | "onTurnEnd">,
-) {
+function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxTurns" | "graceTurns" | "onTurnEnd">) {
   let turnCount = 0;
   const maxTurns = normalizeMaxTurns(options.maxTurns);
   let softLimitReached = false;
@@ -628,12 +623,7 @@ function wireTurnTracking(
 /**
  * Phase 5: Execute the prompt turn loop with event wiring and cleanup.
  */
-async function runTurnLoop(
-  session: AgentSession,
-  prompt: string,
-  options: RunOptions,
-  unsubTurns: () => void,
-) {
+async function runTurnLoop(session: AgentSession, prompt: string, options: RunOptions, unsubTurns: () => void) {
   const unsubEvents = subscribeToSessionEvents(session, options);
   const collector = collectResponseText(session, options.onTextDelta);
   const cleanupAbort = forwardAbortSignal(session, options.signal);
@@ -680,7 +670,9 @@ async function runAgentImpl(
   // between tool_use and tool_result in the session tree (causes Anthropic 400).
   // Flushed after runTurnLoop completes.
   const warnings: string[] = [];
-  const bufferNotify = (msg: string) => { warnings.push(msg); };
+  const bufferNotify = (msg: string) => {
+    warnings.push(msg);
+  };
   if (agentConfig?.excludeTools && Array.isArray(agentConfig.tools)) {
     bufferNotify(`agent "${type}": both tools and exclude_tools set — tools (whitelist) wins`);
   }
@@ -694,16 +686,24 @@ async function runAgentImpl(
   // Resolve system prompt mode + source prompts + context files
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify);
 
-  const systemPrompt = buildPrompt(
-    type, agentConfig, config, effectiveCwd, env,
-    mode, promptExtras,
-  );
+  const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env, mode, promptExtras);
   const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt, bufferNotify);
   const { extToolMap } = await reloadAndMap();
   const session = await createAndConfigureSession(
-    ctx, options, agentConfig, type, effectiveCwd, loader, extToolMap, bufferNotify,
+    ctx,
+    options,
+    agentConfig,
+    type,
+    effectiveCwd,
+    loader,
+    extToolMap,
+    bufferNotify,
   );
-  const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, {
+  const {
+    unsubscribe: unsubTurns,
+    getAborted,
+    getTurnLimited,
+  } = wireTurnTracking(session, {
     ...options,
     maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
   });

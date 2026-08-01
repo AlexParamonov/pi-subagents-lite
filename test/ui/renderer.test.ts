@@ -19,8 +19,12 @@ const textInstances: any[] = [];
 vi.mock("@earendil-works/pi-tui", () => ({
   Container: class {
     children: any[] = [];
-    addChild(c: any) { this.children.push(c); }
-    clear() { this.children = []; }
+    addChild(c: any) {
+      this.children.push(c);
+    }
+    clear() {
+      this.children = [];
+    }
   },
   Spacer: class {},
   Text: class {
@@ -32,7 +36,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
   Box: class {
     children: any[] = [];
-    addChild(c: any) { this.children.push(c); }
+    addChild(c: any) {
+      this.children.push(c);
+    }
   },
 }));
 
@@ -40,7 +46,10 @@ vi.mock("../../src/ui/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
   getDisplayName: vi.fn((type: string) => type.charAt(0).toUpperCase() + type.slice(1)),
-  buildModelThinkingTag: vi.fn((m, t) => { const p = [m, t].filter(Boolean); return p.length ? `(${p.join(" • ")})` : ""; }),
+  buildModelThinkingTag: vi.fn((m, t) => {
+    const p = [m, t].filter(Boolean);
+    return p.length ? `(${p.join(" • ")})` : "";
+  }),
   resolveModelLabel: vi.fn((style, name, id) => (style === "name" ? name : id)?.trim() || undefined),
 }));
 

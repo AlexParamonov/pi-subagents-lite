@@ -53,9 +53,7 @@ export interface AgentConfigFromMd {
  *
  * Returns { frontmatter: Record<string, unknown>, body: string }.
  */
-function parseFrontmatter(
-  content: string,
-): { frontmatter: Record<string, unknown>; body: string } {
+function parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } {
   if (!content) {
     return { frontmatter: {}, body: "" };
   }
@@ -124,7 +122,7 @@ function parseFrontmatter(
     }
 
     // Strip surrounding quotes if present (YAML convention)
-    frontmatter[currentKey] = rawValue.replace(/^['"]|['"]$/g, '');
+    frontmatter[currentKey] = rawValue.replace(/^['"]|['"]$/g, "");
     currentValues = null;
   }
 
@@ -144,7 +142,12 @@ function parseFrontmatter(
 function splitCommaList(value: string): string[] {
   return value
     .split(",")
-    .map((s) => s.trim().replace(/^\[|\]$/g, "").trim())
+    .map((s) =>
+      s
+        .trim()
+        .replace(/^\[|\]$/g, "")
+        .trim(),
+    )
     .filter((s) => s.length > 0);
 }
 
@@ -156,9 +159,7 @@ function splitCommaList(value: string): string[] {
  * - Comma-separated string → string[]
  * - undefined → undefined
  */
-export function parseExtensions(
-  raw: unknown,
-): boolean | string[] | undefined {
+export function parseExtensions(raw: unknown): boolean | string[] | undefined {
   if (raw === false || raw === "false" || raw === "none") {
     return false;
   }
@@ -179,9 +180,7 @@ export function parseExtensions(
  * Unlike parseExtensions, does NOT accept true/"true"/"all" —
  * preload requires an explicit list of skill names.
  */
-export function parsePreloadSkills(
-  raw: unknown,
-): string[] | false | undefined {
+export function parsePreloadSkills(raw: unknown): string[] | false | undefined {
   if (raw === false || raw === "false" || raw === "none") {
     return false;
   }
@@ -199,19 +198,13 @@ export function parsePreloadSkills(
 /* ------------------------------------------------------------------ */
 
 /** Extract a non-empty string value from frontmatter. */
-function parseString(
-  frontmatter: Record<string, unknown>,
-  key: string,
-): string | undefined {
+function parseString(frontmatter: Record<string, unknown>, key: string): string | undefined {
   const v = frontmatter[key];
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
 /** Extract a string array from frontmatter (array or comma-separated string). */
-function parseStringArray(
-  frontmatter: Record<string, unknown>,
-  key: string,
-): string[] | undefined {
+function parseStringArray(frontmatter: Record<string, unknown>, key: string): string[] | undefined {
   const v = frontmatter[key];
   if (Array.isArray(v)) {
     return v.map(String);
@@ -223,10 +216,7 @@ function parseStringArray(
 }
 
 /** Extract a boolean from frontmatter (true/false or "true"/"false"). */
-function parseBoolean(
-  frontmatter: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
+function parseBoolean(frontmatter: Record<string, unknown>, key: string): boolean | undefined {
   const v = frontmatter[key];
   if (v === true || v === "true") return true;
   if (v === false || v === "false") return false;
@@ -234,10 +224,7 @@ function parseBoolean(
 }
 
 /** Extract a number from frontmatter (number or numeric string). */
-function parseNumber(
-  frontmatter: Record<string, unknown>,
-  key: string,
-): number | undefined {
+function parseNumber(frontmatter: Record<string, unknown>, key: string): number | undefined {
   const v = frontmatter[key];
   if (typeof v === "number") return v;
   if (typeof v === "string" && v.length > 0) {
@@ -253,9 +240,7 @@ function parseNumber(
  * without 14 repetitive `if (x !== undefined)` blocks.
  */
 function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([_, v]) => v !== undefined),
-  ) as Partial<T>;
+  return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined)) as Partial<T>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -265,10 +250,7 @@ function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
 /**
  * Parse a single agent .md file into AgentConfigFromMd.
  */
-export function parseAgentFile(
-  content: string,
-  source: "user" | "project",
-): AgentConfigFromMd {
+export function parseAgentFile(content: string, source: "user" | "project"): AgentConfigFromMd {
   const { frontmatter, body } = parseFrontmatter(content);
 
   return {
@@ -310,9 +292,7 @@ export async function scanAgentFilesInDir(
   }
 
   const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-  const mdFiles = entries.filter(
-    (e) => e.isFile() && e.name.endsWith(".md"),
-  );
+  const mdFiles = entries.filter((e) => e.isFile() && e.name.endsWith(".md"));
 
   const agents: AgentConfigFromMd[] = [];
   for (const entry of mdFiles) {
@@ -377,10 +357,7 @@ export function mergeAgents(
  * Apply a list of agent configs onto the result map.
  * Existing agents are merged per-field; new agents are built from scratch.
  */
-function mergeAgentOverrides(
-  result: Map<string, AgentConfig>,
-  agents: AgentConfigFromMd[],
-): void {
+function mergeAgentOverrides(result: Map<string, AgentConfig>, agents: AgentConfigFromMd[]): void {
   for (const md of agents) {
     if (!md.name) continue;
     const existing = result.get(md.name);

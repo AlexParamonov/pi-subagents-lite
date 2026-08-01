@@ -33,7 +33,6 @@ import { showSystemPromptMenu } from "./menu-system-prompt.js";
 import { showSpawnAgentMenu } from "./menu-spawn-wizard.js";
 export { showSpawnAgentMenu };
 
-
 /**
  * Render `items` as a titled SelectList and dispatch the chosen value.
  * Re-loops after each dispatch until the user cancels (Esc or Back).
@@ -56,33 +55,41 @@ async function runSelectMenu(
   }
 }
 
-export async function showSettingsMenu(
-  ctx: ExtensionCommandContext,
-  modelOptions: string[],
-): Promise<void> {
+export async function showSettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   const items: SelectItem[] = [
     { value: "model", label: "Model settings", description: "Set global default and per-type model overrides" },
     { value: "concurrency", label: "Concurrency settings", description: "Set per-model slot limits" },
-    { value: "spawnoptions", label: "Spawn options", description: "Default thinking, max turns, background, grace turns" },
+    {
+      value: "spawnoptions",
+      label: "Spawn options",
+      description: "Default thinking, max turns, background, grace turns",
+    },
     { value: "systemprompt", label: "System prompt", description: "Prompt mode, custom prompt file, AGENTS.md" },
     { value: "widget", label: "Widget settings", description: "Configure widget display options" },
   ];
 
   await runSelectMenu(ctx, "Settings", items, async (choice) => {
     switch (choice) {
-      case "model": await showModelSettingsMenu(ctx, modelOptions); break;
-      case "concurrency": await showConcurrencySettingsMenu(ctx, modelOptions); break;
-      case "spawnoptions": await showSpawnOptionsMenu(ctx); break;
-      case "systemprompt": await showSystemPromptMenu(ctx); break;
-      case "widget": await showWidgetSettingsMenu(ctx); break;
+      case "model":
+        await showModelSettingsMenu(ctx, modelOptions);
+        break;
+      case "concurrency":
+        await showConcurrencySettingsMenu(ctx, modelOptions);
+        break;
+      case "spawnoptions":
+        await showSpawnOptionsMenu(ctx);
+        break;
+      case "systemprompt":
+        await showSystemPromptMenu(ctx);
+        break;
+      case "widget":
+        await showWidgetSettingsMenu(ctx);
+        break;
     }
   });
 }
 
-export async function showAgentsMainMenu(
-  ctx: ExtensionCommandContext,
-  modelOptions: string[],
-): Promise<void> {
+export async function showAgentsMainMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   const items: SelectItem[] = [
     { value: "running", label: "Running agents", description: "List running/queued agents" },
     { value: "spawn", label: "Spawn agent", description: "Manually spawn a new agent" },
@@ -92,10 +99,18 @@ export async function showAgentsMainMenu(
 
   await runSelectMenu(ctx, "Agents", items, async (choice) => {
     switch (choice) {
-      case "running": await showRunningAgentsMenu(ctx); break;
-      case "spawn": await showSpawnAgentMenu(ctx, modelOptions); break;
-      case "settings": await showSettingsMenu(ctx, modelOptions); break;
-      case "debug": await showDebugMenu(ctx); break;
+      case "running":
+        await showRunningAgentsMenu(ctx);
+        break;
+      case "spawn":
+        await showSpawnAgentMenu(ctx, modelOptions);
+        break;
+      case "settings":
+        await showSettingsMenu(ctx, modelOptions);
+        break;
+      case "debug":
+        await showDebugMenu(ctx);
+        break;
     }
   });
 }

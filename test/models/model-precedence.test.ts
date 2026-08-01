@@ -37,7 +37,10 @@ describe("model resolution precedence chain", () => {
   });
 
   it("2 — session global default beats config", () => {
-    const cfg = { ...baseConfig, agent: { default: "config-global", Explore: "config-per-type", forceBackground: false } };
+    const cfg = {
+      ...baseConfig,
+      agent: { default: "config-global", Explore: "config-per-type", forceBackground: false },
+    };
     const r = resolveModel({
       subagentType: "Explore",
       agentConfig: { model: "frontmatter" },
@@ -49,7 +52,10 @@ describe("model resolution precedence chain", () => {
   });
 
   it("3 — config per-type override beats config global", () => {
-    const cfg = { ...baseConfig, agent: { default: "config-global", Explore: "config-per-type", forceBackground: false } };
+    const cfg = {
+      ...baseConfig,
+      agent: { default: "config-global", Explore: "config-per-type", forceBackground: false },
+    };
     const r = resolveModel({
       subagentType: "Explore",
       agentConfig: { model: "frontmatter" },
@@ -90,4 +96,3 @@ describe("model resolution precedence chain", () => {
     expect(r).toBe("parent");
   });
 });
-

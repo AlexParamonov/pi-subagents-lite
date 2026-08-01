@@ -34,9 +34,15 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("discovers a worktree-local agent type when worktreeDir is set", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "feature-reviewer.md", content: makeAgentMd({ name: "feature-reviewer", description: "Reviews feature branches" }) },
-    ], "worktree-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [
+        {
+          name: "feature-reviewer.md",
+          content: makeAgentMd({ name: "feature-reviewer", description: "Reviews feature branches" }),
+        },
+      ],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -60,9 +66,10 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("worktree-local type is NOT found without worktreeDir", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "feature-reviewer.md", content: makeAgentMd({ name: "feature-reviewer" }) },
-    ], "worktree-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [{ name: "feature-reviewer.md", content: makeAgentMd({ name: "feature-reviewer" }) }],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -79,9 +86,10 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("worktree scan adds to session-wide registry, visible to subsequent spawns", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent", description: "WT agent" }) },
-    ], "worktree-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [{ name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent", description: "WT agent" }) }],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -102,12 +110,14 @@ describe("discoverNewAgents — worktree-local agent types", () => {
   });
 
   it("worktree scan does not interfere with existing parent/global discovery", async () => {
-    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([
-      { name: "project-agent.md", content: makeAgentMd({ name: "project-agent", description: "Project" }) },
-    ], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent", description: "WT" }) },
-    ], "worktree-agents");
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles(
+      [{ name: "project-agent.md", content: makeAgentMd({ name: "project-agent", description: "Project" }) }],
+      "project-agents",
+    );
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [{ name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent", description: "WT" }) }],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -145,9 +155,15 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("uses the same parsing rules as the parent scan (frontmatter format, name field)", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent", extensions: "read, bash", thinking: "high", max_turns: "50" }) },
-    ], "worktree-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [
+        {
+          name: "wt-agent.md",
+          content: makeAgentMd({ name: "wt-agent", extensions: "read, bash", thinking: "high", max_turns: "50" }),
+        },
+      ],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -170,9 +186,10 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("parses thinking level max from frontmatter", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "max-thinker.md", content: makeAgentMd({ name: "max-thinker", thinking: "max" }) },
-    ], "worktree-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [{ name: "max-thinker.md", content: makeAgentMd({ name: "max-thinker", thinking: "max" }) }],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -190,9 +207,10 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("returns 0 when worktreeDir is empty string (treated as omitted)", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent" }) },
-    ], "worktree-agents");
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [{ name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent" }) }],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -208,12 +226,14 @@ describe("discoverNewAgents — worktree-local agent types", () => {
   });
 
   it("does not duplicate agents already in the registry", async () => {
-    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([
-      { name: "shared.md", content: makeAgentMd({ name: "shared", description: "From project" }) },
-    ], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles([
-      { name: "wt-shared.md", content: makeAgentMd({ name: "shared", description: "From worktree" }) },
-    ], "worktree-agents");
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles(
+      [{ name: "shared.md", content: makeAgentMd({ name: "shared", description: "From project" }) }],
+      "project-agents",
+    );
+    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+      [{ name: "wt-shared.md", content: makeAgentMd({ name: "shared", description: "From worktree" }) }],
+      "worktree-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);
@@ -242,9 +262,15 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
 
   it("discovers agents from .agents/agents/ directory", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles([
-      { name: "shared-agent.md", content: makeAgentMd({ name: "shared-agent", description: "Shared workspace agent" }) },
-    ], "shared-agents");
+    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles(
+      [
+        {
+          name: "shared-agent.md",
+          content: makeAgentMd({ name: "shared-agent", description: "Shared workspace agent" }),
+        },
+      ],
+      "shared-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir, sharedDir);
@@ -264,12 +290,14 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
   });
 
   it("project agents override shared agents on name clash", async () => {
-    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([
-      { name: "clash.md", content: makeAgentMd({ name: "clash", description: "From project" }) },
-    ], "project-agents");
-    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles([
-      { name: "clash.md", content: makeAgentMd({ name: "clash", description: "From shared" }) },
-    ], "shared-agents");
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles(
+      [{ name: "clash.md", content: makeAgentMd({ name: "clash", description: "From project" }) }],
+      "project-agents",
+    );
+    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles(
+      [{ name: "clash.md", content: makeAgentMd({ name: "clash", description: "From shared" }) }],
+      "shared-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir, sharedDir);
@@ -285,13 +313,15 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
   });
 
   it("shared agents override user agents on name clash", async () => {
-    const { dir: userDir, cleanup: cleanupUser } = tempDirWithFiles([
-      { name: "clash.md", content: makeAgentMd({ name: "clash", description: "From user" }) },
-    ], "user-agents");
+    const { dir: userDir, cleanup: cleanupUser } = tempDirWithFiles(
+      [{ name: "clash.md", content: makeAgentMd({ name: "clash", description: "From user" }) }],
+      "user-agents",
+    );
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles([
-      { name: "clash.md", content: makeAgentMd({ name: "clash", description: "From shared" }) },
-    ], "shared-agents");
+    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles(
+      [{ name: "clash.md", content: makeAgentMd({ name: "clash", description: "From shared" }) }],
+      "shared-agents",
+    );
 
     try {
       setAgentScanDirs(userDir, projectDir, sharedDir);
@@ -309,9 +339,10 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
 
   it("shared agents get source 'project'", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles([
-      { name: "shared-agent.md", content: makeAgentMd({ name: "shared-agent", description: "Shared" }) },
-    ], "shared-agents");
+    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles(
+      [{ name: "shared-agent.md", content: makeAgentMd({ name: "shared-agent", description: "Shared" }) }],
+      "shared-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir, sharedDir);
@@ -341,15 +372,33 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
   });
 
   it("full precedence: default < user < shared < project", async () => {
-    const { dir: userDir, cleanup: cleanupUser } = tempDirWithFiles([
-      { name: "layered.md", content: makeAgentMd({ name: "layered", description: "From user", model: "model/user" }) },
-    ], "user-agents");
-    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([
-      { name: "layered.md", content: makeAgentMd({ name: "layered", description: "From project", _skip: ["model"] }) },
-    ], "project-agents");
-    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles([
-      { name: "layered.md", content: makeAgentMd({ name: "layered", description: "From shared", model: "model/shared" }) },
-    ], "shared-agents");
+    const { dir: userDir, cleanup: cleanupUser } = tempDirWithFiles(
+      [
+        {
+          name: "layered.md",
+          content: makeAgentMd({ name: "layered", description: "From user", model: "model/user" }),
+        },
+      ],
+      "user-agents",
+    );
+    const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles(
+      [
+        {
+          name: "layered.md",
+          content: makeAgentMd({ name: "layered", description: "From project", _skip: ["model"] }),
+        },
+      ],
+      "project-agents",
+    );
+    const { dir: sharedDir, cleanup: cleanupShared } = tempDirWithFiles(
+      [
+        {
+          name: "layered.md",
+          content: makeAgentMd({ name: "layered", description: "From shared", model: "model/shared" }),
+        },
+      ],
+      "shared-agents",
+    );
 
     try {
       setAgentScanDirs(userDir, projectDir, sharedDir);
@@ -367,4 +416,3 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
     }
   });
 });
-

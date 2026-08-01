@@ -7,11 +7,17 @@ import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
+import { formatCost, getSessionContextPercent } from "../agents/usage.js";
 import {
-  formatCost,
-  getSessionContextPercent,
-} from "../agents/usage.js";
-import { formatMs, buildStatsParts, getDisplayName, truncateDesc, describeActivity, buildModelThinkingTag, resolveAgentModelLabel, type StatsVisibility } from "./format.js";
+  formatMs,
+  buildStatsParts,
+  getDisplayName,
+  truncateDesc,
+  describeActivity,
+  buildModelThinkingTag,
+  resolveAgentModelLabel,
+  type StatsVisibility,
+} from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
 // Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
@@ -36,9 +42,7 @@ const WIDGET_REFRESH_INTERVAL = 80;
 const LINGER_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
 const ERROR_LINGER_TURNS = 2;
 
-
 // ---- Types ----
-
 
 export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
@@ -78,7 +82,6 @@ function wrapInDim(theme: Theme, text: string): string {
   const dimOff = dimSample.slice(xIdx + 1);
   return dimOn + text.replaceAll(dimOff, dimOff + dimOn) + dimOff;
 }
-
 
 /** Build the worktree/output continuation line parts for an agent record. */
 function buildWorktreeOutputParts(a: AgentRecord): string[] {
@@ -267,7 +270,10 @@ export class AgentWidget {
   navDown(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
-    if (roster.length === 0) { this.navDeactivate(); return; }
+    if (roster.length === 0) {
+      this.navDeactivate();
+      return;
+    }
     this.clampHighlight();
     this._highlightedIndex = (this._highlightedIndex + 1) % roster.length;
     this.update();
@@ -276,7 +282,10 @@ export class AgentWidget {
   navUp(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
-    if (roster.length === 0) { this.navDeactivate(); return; }
+    if (roster.length === 0) {
+      this.navDeactivate();
+      return;
+    }
     this.clampHighlight();
     this._highlightedIndex = (this._highlightedIndex - 1 + roster.length) % roster.length;
     this.update();
@@ -330,8 +339,10 @@ export class AgentWidget {
     // Editor is the only component with getText() + setText().
     const focused = (this.tui as { focusedComponent?: unknown })?.focusedComponent;
     if (focused == null) return true;
-    return typeof (focused as { getText?: unknown })?.getText === "function"
-      && typeof (focused as { setText?: unknown })?.setText === "function";
+    return (
+      typeof (focused as { getText?: unknown })?.getText === "function" &&
+      typeof (focused as { setText?: unknown })?.setText === "function"
+    );
   }
   /** Set the UI context (grabbed from first tool execution). */
   setUICtx(ctx: UICtx) {
@@ -364,7 +375,13 @@ export class AgentWidget {
   /** Ensure the widget update timer is running. */
   ensureTimer() {
     if (!this.widgetInterval) {
-      this.widgetInterval = setInterval(() => { try { this.update(); } catch (err) { getSessionCtx()?.ui?.notify(`[subagents] Widget timer error: ${err}`, "warning"); } }, WIDGET_REFRESH_INTERVAL);
+      this.widgetInterval = setInterval(() => {
+        try {
+          this.update();
+        } catch (err) {
+          getSessionCtx()?.ui?.notify(`[subagents] Widget timer error: ${err}`, "warning");
+        }
+      }, WIDGET_REFRESH_INTERVAL);
     }
   }
 
@@ -430,17 +447,21 @@ export class AgentWidget {
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
-    const statsParts = buildStatsParts({
-      toolUses: a.stats.toolUses,
-      turnCount: a.stats.turnCount,
-      maxTurns: a.stats.maxTurns,
-      input: a.stats.lifetimeUsage.input,
-      output: a.stats.lifetimeUsage.output,
-      contextPercent: a.stats.contextPercent ?? null,
-      compactions: a.stats.compactionCount,
-      cost: a.stats.lifetimeUsage.cost,
-      durationMs,
-    }, theme, this.statsVisibility);
+    const statsParts = buildStatsParts(
+      {
+        toolUses: a.stats.toolUses,
+        turnCount: a.stats.turnCount,
+        maxTurns: a.stats.maxTurns,
+        input: a.stats.lifetimeUsage.input,
+        output: a.stats.lifetimeUsage.output,
+        contextPercent: a.stats.contextPercent ?? null,
+        compactions: a.stats.compactionCount,
+        cost: a.stats.lifetimeUsage.cost,
+        durationMs,
+      },
+      theme,
+      this.statsVisibility,
+    );
 
     const statsLine = statsParts.join("·");
     const modelTag = this.modelThinkingTag(a);
@@ -456,30 +477,29 @@ export class AgentWidget {
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
-  private buildStatsLine(
-    agent: AgentRecord,
-    theme: Theme,
-  ): string {
-    const parts = buildStatsParts({
-      toolUses: agent.stats.toolUses,
-      turnCount: agent.stats.turnCount,
-      maxTurns: agent.stats.maxTurns,
-      input: agent.stats.lifetimeUsage.input,
-      output: agent.stats.lifetimeUsage.output,
-      contextPercent: agent.execution.session ? getSessionContextPercent(agent.execution.session) : agent.stats.contextPercent ?? null,
-      compactions: agent.stats.compactionCount,
-      cost: agent.stats.lifetimeUsage.cost,
-      durationMs: Date.now() - agent.lifecycle.startedAt,
-    }, theme, this.statsVisibility);
+  private buildStatsLine(agent: AgentRecord, theme: Theme): string {
+    const parts = buildStatsParts(
+      {
+        toolUses: agent.stats.toolUses,
+        turnCount: agent.stats.turnCount,
+        maxTurns: agent.stats.maxTurns,
+        input: agent.stats.lifetimeUsage.input,
+        output: agent.stats.lifetimeUsage.output,
+        contextPercent: agent.execution.session
+          ? getSessionContextPercent(agent.execution.session)
+          : (agent.stats.contextPercent ?? null),
+        compactions: agent.stats.compactionCount,
+        cost: agent.stats.lifetimeUsage.cost,
+        durationMs: Date.now() - agent.lifecycle.startedAt,
+      },
+      theme,
+      this.statsVisibility,
+    );
     return parts.join("·");
   }
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
-  private buildFinishedBlocks(
-    finished: AgentRecord[],
-    theme: Theme,
-    w: number,
-  ): RenderBlock[] {
+  private buildFinishedBlocks(finished: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of finished) {
@@ -499,12 +519,7 @@ export class AgentWidget {
   }
 
   /** Build RenderBlocks for running agents. */
-  private buildRunningBlocks(
-    running: AgentRecord[],
-    theme: Theme,
-    w: number,
-    frame: string,
-  ): RenderBlock[] {
+  private buildRunningBlocks(running: AgentRecord[], theme: Theme, w: number, frame: string): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of running) {
@@ -543,11 +558,7 @@ export class AgentWidget {
   }
 
   /** Build a single RenderBlock for queued agents, or undefined if none. */
-  private buildQueuedBlock(
-    queued: AgentRecord[],
-    theme: Theme,
-    w: number,
-  ): RenderBlock | undefined {
+  private buildQueuedBlock(queued: AgentRecord[], theme: Theme, w: number): RenderBlock | undefined {
     if (queued.length === 0) return undefined;
     const truncate = (line: string) => truncateToWidth(line, w);
     const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`;
@@ -592,11 +603,7 @@ export class AgentWidget {
     }
 
     // All blocks in display order: finished → running → queued.
-    const blocks: RenderBlock[] = [
-      ...finishedBlocks,
-      ...runningBlocks,
-      ...queuedBlocks,
-    ];
+    const blocks: RenderBlock[] = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
 
     // ---- Overflow logic (works with blocks, not lines) ----
 
@@ -618,11 +625,15 @@ export class AgentWidget {
     } else {
       // Pin the highlighted block so it's always visible during navigation.
       // blocks is already [...finishedBlocks, ...runningBlocks, ...queuedBlocks].
-      const pinnedBlock = highlightedBlockIndex >= 0 && highlightedBlockIndex < blocks.length
-        ? blocks[highlightedBlockIndex]
-        : undefined;
+      const pinnedBlock =
+        highlightedBlockIndex >= 0 && highlightedBlockIndex < blocks.length ? blocks[highlightedBlockIndex] : undefined;
       const { visible, overflowLine } = this.applyOverflow(
-        runningBlocks, queuedBlocks, finishedBlocks, maxBody, theme, pinnedBlock,
+        runningBlocks,
+        queuedBlocks,
+        finishedBlocks,
+        maxBody,
+        theme,
+        pinnedBlock,
       );
       // The pinned block is the highlighted one; find it among the visible blocks
       // (it won't appear if it failed to fit).
@@ -784,7 +795,12 @@ export class AgentWidget {
       if (activeCount > 0) parts.push(`${activeCount}`);
       if (doneCount > 0) parts.push(`${doneCount}Σ`);
       if (totalCost > 0) parts.push(formatCost(totalCost));
-      return this.theme ? `${this.theme.fg(iconColor, icon)}${parts.slice(1).map(p => ` ${p}`).join("")}` : parts.join(" ");
+      return this.theme
+        ? `${this.theme.fg(iconColor, icon)}${parts
+            .slice(1)
+            .map((p) => ` ${p}`)
+            .join("")}`
+        : parts.join(" ");
     }
 
     // Full: ◈ Agents: [N active][ · M done][ · $cost]
@@ -793,7 +809,8 @@ export class AgentWidget {
     if (doneCount > 0) suffixParts.push(`${doneCount} done`);
     if (totalCost > 0) suffixParts.push(formatCost(totalCost));
     const agentsLabel = this.theme ? this.theme.fg(iconColor, "Agents") : "Agents";
-    if (suffixParts.length > 0) return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}: ${suffixParts.join(" \u00b7 ")}`;
+    if (suffixParts.length > 0)
+      return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}: ${suffixParts.join(" \u00b7 ")}`;
     return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}`;
   }
 
@@ -857,26 +874,30 @@ export class AgentWidget {
     // Register widget callback once; subsequent updates use requestRender()
     // which re-invokes render() without replacing the component (avoids layout thrashing).
     if (!this.widgetRegistered) {
-      this.uiCtx.setWidget(WIDGET_KEY, (tui, theme) => {
-        this.tui = tui;
-        this.theme = theme;
-        return {
-          render: (_width?: number) => {
-            try {
-              return (this.tui && this.theme) ? this.renderWidget(this.tui, this.theme) : [];
-            } catch (err) {
-              getSessionCtx()?.ui?.notify(`[subagents] Widget render error: ${err}`, "warning");
-              return [];
-            }
-          },
-          invalidate: () => {
-            // Theme changed — force re-registration so factory captures fresh theme.
-            this.widgetRegistered = false;
-            this.tui = undefined;
-            this.theme = undefined;
-          },
-        };
-      }, { placement: "aboveEditor" });
+      this.uiCtx.setWidget(
+        WIDGET_KEY,
+        (tui, theme) => {
+          this.tui = tui;
+          this.theme = theme;
+          return {
+            render: (_width?: number) => {
+              try {
+                return this.tui && this.theme ? this.renderWidget(this.tui, this.theme) : [];
+              } catch (err) {
+                getSessionCtx()?.ui?.notify(`[subagents] Widget render error: ${err}`, "warning");
+                return [];
+              }
+            },
+            invalidate: () => {
+              // Theme changed — force re-registration so factory captures fresh theme.
+              this.widgetRegistered = false;
+              this.tui = undefined;
+              this.theme = undefined;
+            },
+          };
+        },
+        { placement: "aboveEditor" },
+      );
       this.widgetRegistered = true;
     } else {
       // Widget already registered — just request a re-render of existing components.

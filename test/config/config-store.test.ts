@@ -39,10 +39,14 @@ function defaultConfig(): SubagentsConfig {
 }
 
 /** In-memory ConfigIO. Merges initial config with defaults (matches loadConfig behavior). */
-function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): { io: ConfigIO; saves: SubagentsConfig[]; current: () => SubagentsConfig } {
+function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): {
+  io: ConfigIO;
+  saves: SubagentsConfig[];
+  current: () => SubagentsConfig;
+} {
   // Merge with defaults like loadConfig does
   const merged: SubagentsConfig = {
-    agent: { ...(defaultConfig().agent), ...(initial.agent ?? {}) },
+    agent: { ...defaultConfig().agent, ...(initial.agent ?? {}) },
     concurrency: { default: 4, ...(initial.concurrency ?? {}) },
   };
   let cur = structuredClone(merged);
@@ -111,7 +115,16 @@ describe("ConfigStore reads", () => {
 
   it("returns configured values when present", () => {
     const { io } = memIO({
-      agent: { default: "config/default", forceBackground: true, graceTurns: 9, showCost: true, widgetMaxLines: 20, widgetMaxLinesCompact: 7, widgetCompact: true, widgetShortcut: true },
+      agent: {
+        default: "config/default",
+        forceBackground: true,
+        graceTurns: 9,
+        showCost: true,
+        widgetMaxLines: 20,
+        widgetMaxLinesCompact: 7,
+        widgetCompact: true,
+        widgetShortcut: true,
+      },
       concurrency: { default: 2 },
     });
     const store = new ConfigStore(io);
@@ -136,7 +149,10 @@ describe("ConfigStore reads", () => {
 
 describe("ConfigStore model resolution", () => {
   it("session per-type override wins", () => {
-    const { io } = memIO({ agent: { default: "config/default", forceBackground: false, Explore: "config/explore" }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: "config/default", forceBackground: false, Explore: "config/explore" },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     store.mutate.session.setOverride("Explore", "session/explore");
     expect(store.modelFor("Explore", "parent", { model: "frontmatter" })).toBe("session/explore");
@@ -173,7 +189,7 @@ describe("ConfigStore persisted mutations", () => {
     expect(saves).toHaveLength(1);
     expect(saves[0].agent.showCost).toBe(true);
     expect(calls).toContain("setShowCost:true");
-    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
   });
 
   it("setWidgetMaxLines derives compact when unset and syncs the widget", () => {
@@ -191,7 +207,10 @@ describe("ConfigStore persisted mutations", () => {
   });
 
   it("setMaxLines does not overwrite an explicitly-set compact value", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetMaxLinesCompact: 3 }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetMaxLinesCompact: 3 },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     store.mutate.widget.setMaxLines(20);
     expect(store.agentConfigSnapshot().widgetMaxLinesCompact).toBe(3);
@@ -238,7 +257,10 @@ describe("ConfigStore persisted mutations", () => {
   });
 
   it("removeProvider / removeModel delete and re-sync", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4, providers: { llamacpp: 2 }, models: { "a/b": 1 } } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4, providers: { llamacpp: 2 }, models: { "a/b": 1 } },
+    });
     const { m } = managerStub();
     const store = new ConfigStore(io);
     store.setDeps({ manager: m });
@@ -249,7 +271,10 @@ describe("ConfigStore persisted mutations", () => {
   });
 
   it("resetConcurrency restores defaults and re-syncs", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4, providers: { x: 1 } } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4, providers: { x: 1 } },
+    });
     const store = new ConfigStore(io);
     store.mutate.concurrency.reset();
     expect(store.concurrency.default).toBe(4);
@@ -290,7 +315,10 @@ describe("ConfigStore persisted mutations", () => {
 
 describe("ConfigStore model-override clearing", () => {
   it("clearModelOverride removes a single per-type override", () => {
-    const { io, saves } = memIO({ agent: { default: null, forceBackground: false, Explore: "m1", general: "m2" }, concurrency: { default: 4 } });
+    const { io, saves } = memIO({
+      agent: { default: null, forceBackground: false, Explore: "m1", general: "m2" },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     store.mutate.agent.clearModelOverride("Explore");
     expect(store.agentConfigSnapshot().Explore).toBeUndefined();
@@ -300,7 +328,15 @@ describe("ConfigStore model-override clearing", () => {
 
   it("clearAllModelOverrides preserves non-model settings, drops per-type overrides", () => {
     const { io } = memIO({
-      agent: { default: "keep-default", forceBackground: true, graceTurns: 7, showCost: true, widgetMaxLines: 14, Explore: "m1", general: "m2" },
+      agent: {
+        default: "keep-default",
+        forceBackground: true,
+        graceTurns: 7,
+        showCost: true,
+        widgetMaxLines: 14,
+        Explore: "m1",
+        general: "m2",
+      },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -322,7 +358,10 @@ describe("ConfigStore model-override clearing", () => {
 
 describe("ConfigStore session showCost override", () => {
   it("session setShowCost overrides config value", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showCost: false },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     expect(store.agent.showCost).toBe(false);
     store.mutate.session.setShowCost(true);
@@ -339,7 +378,10 @@ describe("ConfigStore session showCost override", () => {
   });
 
   it("session clearShowCost reverts to config value", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showCost: false },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     store.mutate.session.setShowCost(true);
     expect(store.agent.showCost).toBe(true);
@@ -355,26 +397,32 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(true);
     expect(calls).toContain("setShowCost:true");
-    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
   });
 
   it("session clearShowCost syncs config value to widget", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: true }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showCost: true },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
     calls.length = 0;
     store.mutate.session.setShowCost(false);
     expect(calls).toContain("setShowCost:false");
-    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
     calls.length = 0;
     store.mutate.session.clearShowCost();
     expect(calls).toContain("setShowCost:true");
-    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
   });
 
   it("reload clears session showCost override", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: false }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showCost: false },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     store.mutate.session.setShowCost(true);
     expect(store.agent.showCost).toBe(true);
@@ -457,7 +505,19 @@ describe("ConfigStore agent properties", () => {
 
   it("configured values override defaults", () => {
     const { io } = memIO({
-      agent: { default: null, forceBackground: false, includeContextFiles: false, systemPromptMode: "custom", defaultThinking: "high", defaultMaxTurns: 50, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, loadSkillsImplicitly: false, loadExtensionsImplicitly: false, disableDefaultAgents: true },
+      agent: {
+        default: null,
+        forceBackground: false,
+        includeContextFiles: false,
+        systemPromptMode: "custom",
+        defaultThinking: "high",
+        defaultMaxTurns: 50,
+        widgetDescLengthFull: 80,
+        widgetDescLengthCompact: 20,
+        loadSkillsImplicitly: false,
+        loadExtensionsImplicitly: false,
+        disableDefaultAgents: true,
+      },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -516,7 +576,10 @@ describe("ConfigStore agent properties", () => {
   });
 
   it("setDefaultThinking/MaxTurns(undefined) removes the field", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, defaultThinking: "high", defaultMaxTurns: 50 }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, defaultThinking: "high", defaultMaxTurns: 50 },
+      concurrency: { default: 4 },
+    });
     const store = new ConfigStore(io);
     store.mutate.agent.setDefaultThinking(undefined);
     store.mutate.agent.setDefaultMaxTurns(undefined);
@@ -528,7 +591,21 @@ describe("ConfigStore agent properties", () => {
 
   it("clearAllModelOverrides preserves all agent properties", () => {
     const { io } = memIO({
-      agent: { default: "keep", forceBackground: true, includeContextFiles: false, systemPromptMode: "custom", defaultThinking: "low", defaultMaxTurns: 25, widgetDescLengthFull: 80, widgetDescLengthCompact: 20, loadSkillsImplicitly: false, loadExtensionsImplicitly: false, disableDefaultAgents: true, showTools: false, Explore: "m1" },
+      agent: {
+        default: "keep",
+        forceBackground: true,
+        includeContextFiles: false,
+        systemPromptMode: "custom",
+        defaultThinking: "low",
+        defaultMaxTurns: 25,
+        widgetDescLengthFull: 80,
+        widgetDescLengthCompact: 20,
+        loadSkillsImplicitly: false,
+        loadExtensionsImplicitly: false,
+        disableDefaultAgents: true,
+        showTools: false,
+        Explore: "m1",
+      },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -580,7 +657,10 @@ describe("ConfigStore lifecycle", () => {
   });
 
   it("reload re-syncs deps", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showCost: true, widgetCompact: true }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showCost: true, widgetCompact: true },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
@@ -601,7 +681,10 @@ describe("ConfigStore lifecycle", () => {
   });
 
   it("setDeps re-syncs widget settings from current config", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetMaxLines: 30, showCost: true }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetMaxLines: 30, showCost: true },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
@@ -627,7 +710,10 @@ describe("ConfigStore lifecycle", () => {
 
 describe("ConfigStore notifyToolsExpanded", () => {
   it("toggles widget compact mode only when shortcut is enabled and compact is off", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: true, widgetCompact: false }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetShortcut: true, widgetCompact: false },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
@@ -640,7 +726,10 @@ describe("ConfigStore notifyToolsExpanded", () => {
   });
 
   it("is a no-op when widgetShortcut is disabled", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: false }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetShortcut: false },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
@@ -651,7 +740,10 @@ describe("ConfigStore notifyToolsExpanded", () => {
   });
 
   it("is a no-op when widgetCompact is forced on", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, widgetShortcut: true, widgetCompact: true }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, widgetShortcut: true, widgetCompact: true },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
@@ -679,7 +771,16 @@ describe("ConfigStore show* stats visibility", () => {
 
   it("configured false values are respected", () => {
     const { io } = memIO({
-      agent: { default: null, forceBackground: false, showTools: false, showTurns: false, showInput: false, showOutput: false, showContext: false, showTime: false },
+      agent: {
+        default: null,
+        forceBackground: false,
+        showTools: false,
+        showTurns: false,
+        showInput: false,
+        showOutput: false,
+        showContext: false,
+        showTime: false,
+      },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
@@ -702,17 +803,20 @@ describe("ConfigStore show* stats visibility", () => {
     store.mutate.agent.setShowTools(false);
     expect(store.agent.showTools).toBe(false);
     expect(saves).toHaveLength(1);
-    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
   });
 
   it("reload syncs stats visibility to widget", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, showTools: false }, concurrency: { default: 4 } });
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, showTools: false },
+      concurrency: { default: 4 },
+    });
     const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
     store.setDeps({ widget: w });
     calls.length = 0;
     store.reload();
-    expect(calls.some(c => c.startsWith("setStatsVisibility:" ))).toBe(true);
+    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
   });
 });
 

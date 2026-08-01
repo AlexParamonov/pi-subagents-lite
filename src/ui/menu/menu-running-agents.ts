@@ -15,7 +15,15 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Input, matchesKey, SelectList, truncateToWidth, visibleWidth, type Component, type SelectItem } from "@earendil-works/pi-tui";
+import {
+  Input,
+  matchesKey,
+  SelectList,
+  truncateToWidth,
+  visibleWidth,
+  type Component,
+  type SelectItem,
+} from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
@@ -27,30 +35,25 @@ import type { Theme } from "../types.js";
 /**
  * Show a ConversationViewer for an agent's session snapshot.
  */
-async function showConversationViewer(
-  ctx: ExtensionCommandContext,
-  record: AgentRecord,
-): Promise<void> {
+async function showConversationViewer(ctx: ExtensionCommandContext, record: AgentRecord): Promise<void> {
   if (!record.execution?.session) return;
   const manager = getManager();
   const coordinator = getCoordinator();
 
-  await ctx.ui.custom<void>(
-    (tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(
-        tui,
-        record.execution.session!,
-        record,
-        theme,
-        done,
-        () => manager?.abort(record.id, "user"),
-        kb,
-        (msg: string) => manager?.steer(record.id, msg),
-      );
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-      return viewer;
-    },
-  );
+  await ctx.ui.custom<void>((tui, theme, kb, done) => {
+    const viewer = new ConversationViewer(
+      tui,
+      record.execution.session!,
+      record,
+      theme,
+      done,
+      () => manager?.abort(record.id, "user"),
+      kb,
+      (msg: string) => manager?.steer(record.id, msg),
+    );
+    viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
+    return viewer;
+  });
 }
 
 /**
@@ -63,9 +66,7 @@ async function showTextViewer(
   kind: "result" | "error",
   text: string,
 ): Promise<void> {
-  const titleSuffix = kind === "result"
-    ? record.id.slice(0, SHORT_ID_LENGTH)
-    : "Error";
+  const titleSuffix = kind === "result" ? record.id.slice(0, SHORT_ID_LENGTH) : "Error";
   const textLines = text.split("\n");
   const displayName = getDisplayName(record.display.type);
   const chromeLines = 5; // top border + title + sep + footer + bottom border
@@ -87,9 +88,7 @@ async function showTextViewer(
         invalidate() {},
         render(width: number) {
           const innerW = width - 4;
-          const out: string[] = [
-            theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`),
-          ];
+          const out: string[] = [theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`)];
 
           // Title row: │ name · suffix pad │
           const titleStr = theme.bold(theme.fg("accent", `${displayName} \u00b7 ${titleSuffix}`));
@@ -114,9 +113,7 @@ async function showTextViewer(
           }
 
           // Footer
-          const scrollPct = textLines.length <= vp
-            ? "100%"
-            : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
+          const scrollPct = textLines.length <= vp ? "100%" : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
           const count = theme.fg("dim", `${textLines.length} lines \u00b7 ${scrollPct}`);
           const footerText = theme.fg("dim", "q/Esc close");
           const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
@@ -221,10 +218,7 @@ export function buildAgentActionsList(
         const trimmed = value.trim();
         if (trimmed) {
           const sent = await getManager()!.steer(record.id, trimmed);
-          ctx.ui.notify(
-            sent ? `Steer sent to ${shortId}…` : `Steer failed for ${shortId}`,
-            sent ? "info" : "error",
-          );
+          ctx.ui.notify(sent ? `Steer sent to ${shortId}…` : `Steer failed for ${shortId}`, sent ? "info" : "error");
         }
         setActive(list);
       };
@@ -240,30 +234,30 @@ export function buildAgentActionsList(
   return list;
 }
 
-export async function showRunningAgentsMenu(
-  ctx: ExtensionCommandContext,
-): Promise<void> {
+export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const agents = getManager()?.listAgents() ?? [];
   if (agents.length === 0) {
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
-  const running = agents.filter(
-    (r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued",
-  );
+  const running = agents.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const buildAgentItems = (): SelectItem[] => {
       const items: SelectItem[] = agents.map((record) => {
         const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
-        const statusIcon = record.lifecycle.status === "running" ? "\u25B6" :
-          record.lifecycle.status === "completed" ? "\u2713" :
-          record.lifecycle.status === "queued" ? "\u23F3" :
-          record.lifecycle.status === "error" ? "\u2717" : "\u2022";
+        const statusIcon =
+          record.lifecycle.status === "running"
+            ? "\u25B6"
+            : record.lifecycle.status === "completed"
+              ? "\u2713"
+              : record.lifecycle.status === "queued"
+                ? "\u23F3"
+                : record.lifecycle.status === "error"
+                  ? "\u2717"
+                  : "\u2022";
         const descLen = getStore().agent.widgetDescLengthFull;
-        const headline = record.display.description
-          ? truncateDesc(record.display.description, descLen)
-          : "";
+        const headline = record.display.description ? truncateDesc(record.display.description, descLen) : "";
         const suffix = headline ? ` \u2014 ${headline}` : "";
         return {
           value: record.id,
@@ -291,9 +285,16 @@ export async function showRunningAgentsMenu(
       }
       const record = agents.find((r) => r.id === item.value);
       if (record) {
-        const actionsList = buildAgentActionsList(ctx, record, theme, () => {
-          delegator.setActive(agentList);
-        }, delegator.setActive.bind(delegator), () => done(undefined));
+        const actionsList = buildAgentActionsList(
+          ctx,
+          record,
+          theme,
+          () => {
+            delegator.setActive(agentList);
+          },
+          delegator.setActive.bind(delegator),
+          () => done(undefined),
+        );
         delegator.setActive(actionsList);
       }
     };
@@ -304,7 +305,9 @@ export async function showRunningAgentsMenu(
     const sep = "\u2500";
     const title = theme.bold(theme.fg("accent", "Running Agents"));
     return {
-      invalidate() { delegator.invalidate(); },
+      invalidate() {
+        delegator.invalidate();
+      },
       render(width: number) {
         const lines: string[] = [];
         lines.push(sep.repeat(width));
@@ -316,7 +319,9 @@ export async function showRunningAgentsMenu(
         lines.push(sep.repeat(width));
         return lines;
       },
-      handleInput(data: string) { delegator.handleInput?.(data); },
+      handleInput(data: string) {
+        delegator.handleInput?.(data);
+      },
     };
   });
 }

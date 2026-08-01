@@ -126,19 +126,23 @@ export function buildStatsParts(
 ): string[] {
   const parts: string[] = [];
   if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}🛠︎ `);
-  if (visible?.showTurns !== false && args.turnCount != null) parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
+  if (visible?.showTurns !== false && args.turnCount != null)
+    parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
   if (visible?.showInput !== false || visible?.showOutput !== false) {
     const showIn = visible?.showInput !== false;
     const showOut = visible?.showOutput !== false;
     const inputTokens = showIn ? args.input : 0;
     const outputTokens = showOut ? args.output : 0;
     if (inputTokens > 0 || outputTokens > 0) {
-      parts.push(formatSessionTokens(
-        inputTokens, outputTokens,
-        visible?.showContext !== false ? args.contextPercent : null,
-        theme,
-        visible?.showContext !== false ? args.compactions : 0,
-      ));
+      parts.push(
+        formatSessionTokens(
+          inputTokens,
+          outputTokens,
+          visible?.showContext !== false ? args.contextPercent : null,
+          theme,
+          visible?.showContext !== false ? args.compactions : 0,
+        ),
+      );
     }
   }
   if (visible?.showCost !== false && args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
@@ -187,8 +191,8 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       const heredocIdx = cmd.search(/<<\s*['"]?\w+['"]?/);
       const cleanCmd = heredocIdx >= 0 ? cmd.slice(0, heredocIdx).trim() : cmd.trim();
       // Truncate long commands
-      const display = cleanCmd.length > MAX_COMMAND_DISPLAY_LENGTH
-        ? cleanCmd.slice(0, MAX_COMMAND_DISPLAY_LENGTH) + "…" : cleanCmd;
+      const display =
+        cleanCmd.length > MAX_COMMAND_DISPLAY_LENGTH ? cleanCmd.slice(0, MAX_COMMAND_DISPLAY_LENGTH) + "…" : cleanCmd;
       return `(${JSON.stringify(display)})`;
     }
     case "grep":
@@ -203,9 +207,10 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       const keys = Object.keys(rawArgs);
       if (keys.length === 1) {
         const val = rawArgs[keys[0]];
-        const display = typeof val === "string" && val.length > MAX_DEFAULT_STRING_DISPLAY_LENGTH
-          ? JSON.stringify(val.slice(0, MAX_DEFAULT_STRING_DISPLAY_LENGTH) + "...")
-          : JSON.stringify(val);
+        const display =
+          typeof val === "string" && val.length > MAX_DEFAULT_STRING_DISPLAY_LENGTH
+            ? JSON.stringify(val.slice(0, MAX_DEFAULT_STRING_DISPLAY_LENGTH) + "...")
+            : JSON.stringify(val);
         return `(${display})`;
       }
       return ` ${JSON.stringify(rawArgs)}`;
@@ -226,7 +231,11 @@ const TOOL_DISPLAY: Record<string, string> = {
 
 /** Truncate text to a single line, max len chars. */
 function truncateLine(text: string, len = 60): string {
-  const line = text.split("\n").find((l) => l.trim())?.trim() ?? "";
+  const line =
+    text
+      .split("\n")
+      .find((l) => l.trim())
+      ?.trim() ?? "";
   if (line.length <= len) return line;
   return line.slice(0, len) + "\u2026";
 }
@@ -263,7 +272,10 @@ export function describeActivity(activeTools: Map<string, string>, responseText?
 export function fgPreservingNestedStyles(theme: Theme, color: string, text: string): string {
   const styledEmpty = theme.fg(color, "");
   const styleStart = styledEmpty.replace(/\u001b\[(?:0|39)m/g, "");
-  return theme.fg(color, text.replace(/\u001b\[(?:0|39)m/g, (reset) => `${reset}${styleStart}`));
+  return theme.fg(
+    color,
+    text.replace(/\u001b\[(?:0|39)m/g, (reset) => `${reset}${styleStart}`),
+  );
 }
 
 /** Format duration from start/completed timestamps. */
@@ -300,7 +312,11 @@ export function buildModelThinkingTag(
 }
 
 /** Pick the model label based on display style, trimming whitespace. Returns undefined for empty. */
-export function resolveModelLabel(style: "id" | "name", labelName: string | undefined, labelId: string | undefined): string | undefined {
+export function resolveModelLabel(
+  style: "id" | "name",
+  labelName: string | undefined,
+  labelId: string | undefined,
+): string | undefined {
   const label = style === "name" ? labelName : labelId;
   return label?.trim() || undefined;
 }
@@ -308,8 +324,6 @@ export function resolveModelLabel(style: "id" | "name", labelName: string | unde
 /** Resolve model label from an AgentRecord, preferring session model over invocation fallback. */
 export function resolveAgentModelLabel(a: AgentRecord, style: "id" | "name"): string | undefined {
   const model = a.execution.session?.model;
-  const label = model
-    ? (style === "name" ? model.name : model.id)
-    : a.display.invocation?.modelName;
+  const label = model ? (style === "name" ? model.name : model.id) : a.display.invocation?.modelName;
   return label?.trim() || undefined;
 }

@@ -16,13 +16,7 @@ import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
-import {
-  getPiInstance,
-  getSessionCtx,
-  getStore,
-  getCoordinator,
-  getManager,
-} from "../shell.js";
+import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
 
 // ============================================================================
 // Tool result helpers
@@ -101,10 +95,7 @@ export function buildAgentDetails(
 export function formatResultContent(record: AgentRecord): string {
   // Only the nudge path formats error-status records as text: the foreground
   // handler intercepts error status earlier and returns an errorResult instead.
-  const errorNote =
-    record.lifecycle.status === "error" && record.error
-      ? `\n\nError: ${record.error}`
-      : "";
+  const errorNote = record.lifecycle.status === "error" && record.error ? `\n\nError: ${record.error}` : "";
   return (record.result ?? "") + errorNote + getStatusNote(record.lifecycle);
 }
 
@@ -127,7 +118,9 @@ export async function executeAgentTool(
     try {
       const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
       const warnings: string[] = [];
-      const onWarning = (msg: string) => { warnings.push(msg); };
+      const onWarning = (msg: string) => {
+        warnings.push(msg);
+      };
       const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
       if (!validation.ok) {
         for (const msg of warnings) {
@@ -157,9 +150,10 @@ export async function executeAgentTool(
   }
 
   const prompt = params.prompt as string;
-  const description = (params.description as string | undefined) || prompt.split("\n")[0].slice(0, 80) || prompt.slice(0, 80);
+  const description =
+    (params.description as string | undefined) || prompt.split("\n")[0].slice(0, 80) || prompt.slice(0, 80);
   const runInBackground = params.run_in_background as boolean | undefined;
-  const maxTurns = params.max_turns as number | undefined ?? getAgentConfig(resolvedType)?.maxTurns;
+  const maxTurns = (params.max_turns as number | undefined) ?? getAgentConfig(resolvedType)?.maxTurns;
 
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
@@ -169,9 +163,10 @@ export async function executeAgentTool(
   const modelName = model?.id;
 
   // Resolve thinking: explicit param > agent config (frontmatter) > spawn options default > undefined (inherit)
-  const thinkingLevel = parseThinkingLevel(params.thinking as string | undefined)
-    ?? getAgentConfig(resolvedType)?.thinkingLevel
-    ?? getStore().agent.defaultThinking;
+  const thinkingLevel =
+    parseThinkingLevel(params.thinking as string | undefined) ??
+    getAgentConfig(resolvedType)?.thinkingLevel ??
+    getStore().agent.defaultThinking;
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
@@ -219,15 +214,13 @@ export async function executeAgentTool(
  * Format: "short_id (type), short_id (type)" — one line, easy for LLM to parse.
  */
 function formatRunningAgents(): string {
-  const agents = getManager()!.listAgents().filter(
-    (a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued",
-  );
+  const agents = getManager()!
+    .listAgents()
+    .filter((a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued");
 
   if (agents.length === 0) return "none";
 
-  return agents
-    .map((a) => `${a.id.slice(0, SHORT_ID_LENGTH)} (${a.display.type})`)
-    .join(", ");
+  return agents.map((a) => `${a.id.slice(0, SHORT_ID_LENGTH)} (${a.display.type})`).join(", ");
 }
 
 // ============================================================================
@@ -251,9 +244,7 @@ export async function executeStopAgentTool(
 
   if (!record) {
     // Agent not found → return error + list of running agents
-    return errorResult(
-      `Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`,
-    );
+    return errorResult(`Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`);
   }
 
   // Check if already in a terminal state (not running or queued)
@@ -275,10 +266,7 @@ export async function executeStopAgentTool(
 // Tool_call listener — inject model into Agent tool calls
 // =============================================================================
 
-export async function toolCallListener(
-  event: ToolCallEvent,
-  ctx: ExtensionContext,
-): Promise<void> {
+export async function toolCallListener(event: ToolCallEvent, ctx: ExtensionContext): Promise<void> {
   if (event.toolName !== "Agent") return;
 
   const input = event.input;
@@ -287,11 +275,7 @@ export async function toolCallListener(
 
   const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
 
-  const effectiveModel = getStore().modelFor(
-    subagentType ?? "general-purpose",
-    parentModelId,
-    agentConfig,
-  );
+  const effectiveModel = getStore().modelFor(subagentType ?? "general-purpose", parentModelId, agentConfig);
 
   if (effectiveModel) {
     input.model = effectiveModel;

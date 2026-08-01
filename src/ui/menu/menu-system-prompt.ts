@@ -71,7 +71,8 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         label: "Strict schema for Agent tool",
         currentValue: store.agent.agentToolStrictMode ? "ON" : "OFF",
         values: ["ON", "OFF"],
-        description: "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
+        description:
+          "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
       },
     );
 
@@ -92,7 +93,11 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       case "createPromptFile":
         try {
           fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
-          fs.writeFileSync(CUSTOM_PROMPT_PATH, "You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously", "utf-8");
+          fs.writeFileSync(
+            CUSTOM_PROMPT_PATH,
+            "You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously",
+            "utf-8",
+          );
           ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
         } catch (err: any) {
           ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
@@ -119,6 +124,13 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const settingsList = new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title: "System Prompt", theme, onCancel: () => done(undefined), onRebuild: (r) => { rebuild = r; } });
+    return new SettingsListWrapper(settingsList, {
+      title: "System Prompt",
+      theme,
+      onCancel: () => done(undefined),
+      onRebuild: (r) => {
+        rebuild = r;
+      },
+    });
   });
 }

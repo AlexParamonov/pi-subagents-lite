@@ -29,7 +29,7 @@ export function selectByName(name: string): (title: string, items: string[]) => 
   };
   const search = nameMap[name.toLowerCase()] ?? name;
   return (_title: string, items: string[]) => {
-    const match = items.find(item => item.toLowerCase().includes(search.toLowerCase()));
+    const match = items.find((item) => item.toLowerCase().includes(search.toLowerCase()));
     return match ?? undefined;
   };
 }

@@ -5,15 +5,7 @@
  * the SettingsManager dependency — no side effects, just callbacks.
  */
 
-import {
-  Container,
-  type Focusable,
-  fuzzyFilter,
-  getKeybindings,
-  Input,
-  Spacer,
-  Text,
-} from "@earendil-works/pi-tui";
+import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, Text } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import type { Theme } from "./types.js";
 
@@ -75,12 +67,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
     this.searchInput.focused = value;
   }
 
-  constructor(
-    items: SelectOption[],
-    currentValue: string | null,
-    callbacks: SelectDialogCallbacks,
-    theme: Theme,
-  ) {
+  constructor(items: SelectOption[], currentValue: string | null, callbacks: SelectDialogCallbacks, theme: Theme) {
     super();
 
     this.items = items;
@@ -133,20 +120,14 @@ export class SearchableSelectDialog extends Container implements Focusable {
 
     // Up — wrap to bottom
     if (kb.matches(keyData, "tui.select.up")) {
-      this.selectedIndex =
-        this.selectedIndex === 0
-          ? this.filteredItems.length - 1
-          : this.selectedIndex - 1;
+      this.selectedIndex = this.selectedIndex === 0 ? this.filteredItems.length - 1 : this.selectedIndex - 1;
       this.updateList();
       return;
     }
 
     // Down — wrap to top
     if (kb.matches(keyData, "tui.select.down")) {
-      this.selectedIndex =
-        this.selectedIndex === this.filteredItems.length - 1
-          ? 0
-          : this.selectedIndex + 1;
+      this.selectedIndex = this.selectedIndex === this.filteredItems.length - 1 ? 0 : this.selectedIndex + 1;
       this.updateList();
       return;
     }
@@ -160,10 +141,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
 
     // PageDown — jump down one page
     if (kb.matches(keyData, "tui.select.pageDown")) {
-      this.selectedIndex = Math.min(
-        this.filteredItems.length - 1,
-        this.selectedIndex + MAX_VISIBLE,
-      );
+      this.selectedIndex = Math.min(this.filteredItems.length - 1, this.selectedIndex + MAX_VISIBLE);
       this.updateList();
       return;
     }
@@ -201,17 +179,10 @@ export class SearchableSelectDialog extends Container implements Focusable {
     if (!query) {
       this.filteredItems = [...this.items];
     } else {
-      this.filteredItems = fuzzyFilter(
-        this.items,
-        query,
-        (item) => `${item.label} ${item.provider} ${item.value}`,
-      );
+      this.filteredItems = fuzzyFilter(this.items, query, (item) => `${item.label} ${item.provider} ${item.value}`);
     }
     // Clamp selection index
-    this.selectedIndex = Math.min(
-      this.selectedIndex,
-      Math.max(0, this.filteredItems.length - 1),
-    );
+    this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredItems.length - 1));
     this.updateList();
   }
 
@@ -220,19 +191,14 @@ export class SearchableSelectDialog extends Container implements Focusable {
 
     const { filteredItems } = this;
     if (filteredItems.length === 0) {
-      this.listContainer.addChild(
-        new Text(this.theme.fg("muted", "  No matching items"), 0, 0),
-      );
+      this.listContainer.addChild(new Text(this.theme.fg("muted", "  No matching items"), 0, 0));
       return;
     }
 
     // Centered scroll window
     const startIndex = Math.max(
       0,
-      Math.min(
-        this.selectedIndex - Math.floor(MAX_VISIBLE / 2),
-        filteredItems.length - MAX_VISIBLE,
-      ),
+      Math.min(this.selectedIndex - Math.floor(MAX_VISIBLE / 2), filteredItems.length - MAX_VISIBLE),
     );
     const endIndex = Math.min(startIndex + MAX_VISIBLE, filteredItems.length);
 
@@ -255,10 +221,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
 
     // Scroll indicator when not all items visible
     if (startIndex > 0 || endIndex < filteredItems.length) {
-      const scrollInfo = this.theme.fg(
-        "muted",
-        `  (${this.selectedIndex + 1}/${filteredItems.length})`,
-      );
+      const scrollInfo = this.theme.fg("muted", `  (${this.selectedIndex + 1}/${filteredItems.length})`);
       this.listContainer.addChild(new Text(scrollInfo, 0, 0));
     }
   }

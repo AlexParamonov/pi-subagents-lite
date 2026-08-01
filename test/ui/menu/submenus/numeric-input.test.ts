@@ -21,14 +21,22 @@ vi.mock("../../../../src/ui/menu/helpers.js", () => ({
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList { constructor() {} },
+  SettingsList: class MockSettingsList {
+    constructor() {}
+  },
   Input: class MockInput {
     value = "";
     onSubmit?: (value: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
-    constructor() { inputInstances.push(this as any); }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
+    constructor() {
+      inputInstances.push(this as any);
+    }
   },
 }));
 

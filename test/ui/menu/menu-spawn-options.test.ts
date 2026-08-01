@@ -39,8 +39,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
     value = "";
     onSubmit?: (value: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
     constructor() {
       inputInstances.push(this as any);
     }
@@ -66,7 +70,6 @@ describe("showSpawnOptionsMenu — SettingsList integration", () => {
     expect(ctx.ui.custom).toHaveBeenCalled();
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
-
 });
 
 describe("showSpawnOptionsMenu — force background", () => {
@@ -310,4 +313,3 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
-

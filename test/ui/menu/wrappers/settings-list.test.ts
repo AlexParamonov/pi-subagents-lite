@@ -127,7 +127,9 @@ describe("SettingsListWrapper — onRebuild sets items directly", () => {
       title: "T",
       theme,
       onCancel: () => {},
-      onRebuild: (r) => { rebuild = r; },
+      onRebuild: (r) => {
+        rebuild = r;
+      },
     });
     expect(rebuild).toBeDefined();
     rebuild!([{ id: "x", label: "X", currentValue: "x" }]);

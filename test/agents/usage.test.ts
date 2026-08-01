@@ -9,13 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  type LifetimeUsage,
-  addUsage,
-  getLifetimeTotal,
-  formatTokens,
-  formatCost,
-} from "../../src/agents/usage.js";
+import { type LifetimeUsage, addUsage, getLifetimeTotal, formatTokens, formatCost } from "../../src/agents/usage.js";
 
 /* ------------------------------------------------------------------ */
 /*  LifetimeUsage type — cost field                                    */

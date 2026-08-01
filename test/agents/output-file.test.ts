@@ -101,7 +101,10 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "check imports" },
-      { role: "assistant", content: [{ type: "toolCall", id: "call_123", name: "grep", arguments: { pattern: "import", path: "./src" } }] },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_123", name: "grep", arguments: { pattern: "import", path: "./src" } }],
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -138,7 +141,9 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([]);
     const cleanup = streamToOutputFile(session, path, {
-      turnCount: 2, toolUseCount: 3, totalTokens: 15000,
+      turnCount: 2,
+      toolUseCount: 3,
+      totalTokens: 15000,
     });
     cleanup();
 
@@ -228,7 +233,12 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "create file" },
-      { role: "assistant", content: [{ type: "toolCall", name: "write", arguments: { file_path: "/tmp/test.txt", content: "hello world\nline2" } }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "toolCall", name: "write", arguments: { file_path: "/tmp/test.txt", content: "hello world\nline2" } },
+        ],
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -244,7 +254,22 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "edit file" },
-      { role: "assistant", content: [{ type: "toolCall", name: "edit", arguments: { path: "src/file.ts", edits: [{ oldText: "foo", newText: "bar" }, { oldText: "x", newText: "y" }] } }] },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            name: "edit",
+            arguments: {
+              path: "src/file.ts",
+              edits: [
+                { oldText: "foo", newText: "bar" },
+                { oldText: "x", newText: "y" },
+              ],
+            },
+          },
+        ],
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -276,7 +301,10 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "run heredoc" },
-      { role: "assistant", content: [{ type: "toolCall", name: "bash", arguments: { command: "cat <<EOF\nline1\nline2\nEOF" } }] },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", name: "bash", arguments: { command: "cat <<EOF\nline1\nline2\nEOF" } }],
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -310,7 +338,10 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "search with rg" },
-      { role: "assistant", content: [{ type: "toolCall", name: "rg", arguments: { pattern: "function", path: "./src" } }] },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", name: "rg", arguments: { pattern: "function", path: "./src" } }],
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -327,7 +358,10 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "custom tool" },
-      { role: "assistant", content: [{ type: "toolCall", name: "customTool", arguments: { key1: "value1", key2: "value2" } }] },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", name: "customTool", arguments: { key1: "value1", key2: "value2" } }],
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -345,7 +379,13 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "run read" },
-      { role: "toolResult", toolName: "read", content: [{ type: "text", text: "file content here" }], isError: false, timestamp: Date.now() },
+      {
+        role: "toolResult",
+        toolName: "read",
+        content: [{ type: "text", text: "file content here" }],
+        isError: false,
+        timestamp: Date.now(),
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -363,7 +403,13 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "big output" },
-      { role: "toolResult", toolName: "bash", content: [{ type: "text", text: "x".repeat(600) }], isError: false, timestamp: Date.now() },
+      {
+        role: "toolResult",
+        toolName: "bash",
+        content: [{ type: "text", text: "x".repeat(600) }],
+        isError: false,
+        timestamp: Date.now(),
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -382,7 +428,13 @@ describe("streamToOutputFile", () => {
     const exactContent = "y".repeat(500);
     const session = setupSession([
       { role: "user", content: "exactly 500" },
-      { role: "toolResult", toolName: "read", content: [{ type: "text", text: exactContent }], isError: false, timestamp: Date.now() },
+      {
+        role: "toolResult",
+        toolName: "read",
+        content: [{ type: "text", text: exactContent }],
+        isError: false,
+        timestamp: Date.now(),
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -398,7 +450,13 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "501 chars" },
-      { role: "toolResult", toolName: "bash", content: [{ type: "text", text: "z".repeat(501) }], isError: false, timestamp: Date.now() },
+      {
+        role: "toolResult",
+        toolName: "bash",
+        content: [{ type: "text", text: "z".repeat(501) }],
+        isError: false,
+        timestamp: Date.now(),
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();
@@ -414,7 +472,13 @@ describe("streamToOutputFile", () => {
 
     const session = setupSession([
       { role: "user", content: "empty result" },
-      { role: "toolResult", toolName: "bash", content: [{ type: "text", text: "   " }], isError: false, timestamp: Date.now() },
+      {
+        role: "toolResult",
+        toolName: "bash",
+        content: [{ type: "text", text: "   " }],
+        isError: false,
+        timestamp: Date.now(),
+      },
     ]);
     const cleanup = streamToOutputFile(session, path);
     session._fireTurnEnd();

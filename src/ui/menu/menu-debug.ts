@@ -33,9 +33,7 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
     if (!cfg) continue;
     const hidden = cfg.hidden === true ? " [HIDDEN]" : "";
     const model = cfg.model ? `  Model: ${cfg.model}` : "";
-    const tools = cfg.registeredTools
-      ? `  Tools: ${cfg.registeredTools.join(", ")}`
-      : "  Tools: all built-in tools";
+    const tools = cfg.registeredTools ? `  Tools: ${cfg.registeredTools.join(", ")}` : "  Tools: all built-in tools";
     const source = cfg.source ? `  Source: ${cfg.source}` : "";
     lines.push(`  ${name}${hidden}`);
     lines.push(`    ${cfg.description}`);
@@ -82,8 +80,12 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("| `prompt` | The task for the agent (required) |");
   lines.push("| `description` | One-line summary of what the agent should do (required) |");
   lines.push("| `agent` | Which agent type to use (default: general-purpose) |");
-  lines.push("| `thinking` | Optional thinking mode override (e.g., `off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |");
-  lines.push("| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |");
+  lines.push(
+    "| `thinking` | Optional thinking mode override (e.g., `off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |",
+  );
+  lines.push(
+    "| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |",
+  );
   lines.push("| `worktree_path` | Optional path to a git worktree of the parent's repo. See below for details. |");
   lines.push("");
 
@@ -97,10 +99,16 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("Use `worktree_path` to run a subagent in a different git worktree of the parent's repository.");
   lines.push("");
   lines.push("- **Optional.** Omit to run the subagent in the parent's working directory (default behavior).");
-  lines.push("- **Must be a path** inside a git worktree of the parent's repo, including the main checkout. Not a different repo, not a non-git directory.");
+  lines.push(
+    "- **Must be a path** inside a git worktree of the parent's repo, including the main checkout. Not a different repo, not a non-git directory.",
+  );
   lines.push("- **Relative paths** are resolved against the parent's working directory.");
-  lines.push("- **On failure** the validator returns a specific reason (e.g., 'not a worktree of the parent's repository', 'path does not exist') — use this to self-correct.");
-  lines.push("- **Agent type discovery:** The worktree's `.pi/agents/` directory is scanned for agent types when this param is set, so worktree-local types become available to that spawn.");
+  lines.push(
+    "- **On failure** the validator returns a specific reason (e.g., 'not a worktree of the parent's repository', 'path does not exist') — use this to self-correct.",
+  );
+  lines.push(
+    "- **Agent type discovery:** The worktree's `.pi/agents/` directory is scanned for agent types when this param is set, so worktree-local types become available to that spawn.",
+  );
   getPiInstance().sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }
@@ -109,7 +117,11 @@ export async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void>
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const items: SelectItem[] = [
       { value: "agent-types", label: "Agent types", description: "List available agent types and their configs" },
-      { value: "agent-briefing", label: "Agent briefing", description: "Send agent types/capabilities info to LLM (Optional, if having issues)" },
+      {
+        value: "agent-briefing",
+        label: "Agent briefing",
+        description: "Send agent types/capabilities info to LLM (Optional, if having issues)",
+      },
     ];
 
     const selectList = new SelectList(items, 10, buildSelectListTheme(theme));

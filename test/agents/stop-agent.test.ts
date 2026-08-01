@@ -11,13 +11,15 @@ const { mockAbort, mockGetRecord, mockListAgents } = vi.hoisted(() => ({
   mockListAgents: vi.fn(),
 }));
 
-vi.mock("../../src/shell.js", () => shellMock({
-  manager: {
-    abort: mockAbort,
-    getRecord: mockGetRecord,
-    listAgents: mockListAgents,
-  },
-}));
+vi.mock("../../src/shell.js", () =>
+  shellMock({
+    manager: {
+      abort: mockAbort,
+      getRecord: mockGetRecord,
+      listAgents: mockListAgents,
+    },
+  }),
+);
 
 import { executeStopAgentTool } from "../../src/agents/tool-execution.js";
 
@@ -33,10 +35,22 @@ describe("executeStopAgentTool", () => {
   });
 
   it("stops a running agent and returns truncated ID", async () => {
-    mockGetRecord.mockReturnValue({ id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running" }, execution: {}, stats: {} });
+    mockGetRecord.mockReturnValue({
+      id: "abc123def456ghi",
+      display: { type: "builder" },
+      lifecycle: { status: "running" },
+      execution: {},
+      stats: {},
+    });
     mockAbort.mockReturnValue(true);
 
-    const result = await executeStopAgentTool("call_2", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_2",
+      { agent_id: "abc123def456ghi" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(mockAbort).toHaveBeenCalledWith("abc123def456ghi", "agent");
     expect(result.content[0].text).toMatch(/^Stopped agent [a-z0-9]{8}$/);
@@ -44,10 +58,22 @@ describe("executeStopAgentTool", () => {
   });
 
   it("stops a queued agent and returns truncated ID", async () => {
-    mockGetRecord.mockReturnValue({ id: "xyz789xyz789abc", display: { type: "reviewer" }, lifecycle: { status: "queued" }, execution: {}, stats: {} });
+    mockGetRecord.mockReturnValue({
+      id: "xyz789xyz789abc",
+      display: { type: "reviewer" },
+      lifecycle: { status: "queued" },
+      execution: {},
+      stats: {},
+    });
     mockAbort.mockReturnValue(true);
 
-    const result = await executeStopAgentTool("call_3", { agent_id: "xyz789xyz789abc" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_3",
+      { agent_id: "xyz789xyz789abc" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(result.content[0].text).toMatch(/^Stopped agent [a-z0-9]{8}$/);
     expect(result.isError).toBeFalsy();
@@ -61,7 +87,13 @@ describe("executeStopAgentTool", () => {
       { id: "ddd333eee444fff", display: { type: "reviewer" }, lifecycle: { status: "running" } },
     ]);
 
-    const result = await executeStopAgentTool("call_4", { agent_id: "nonexistent-id" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_4",
+      { agent_id: "nonexistent-id" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("nonexistent-id not found");
@@ -70,39 +102,81 @@ describe("executeStopAgentTool", () => {
   });
 
   it("returns info when agent already completed", async () => {
-    mockGetRecord.mockReturnValue({ id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "completed" }, execution: {}, stats: {} });
+    mockGetRecord.mockReturnValue({
+      id: "abc123def456ghi",
+      display: { type: "builder" },
+      lifecycle: { status: "completed" },
+      execution: {},
+      stats: {},
+    });
     mockListAgents.mockReturnValue([
       { id: "aaa111bbb222ccc", display: { type: "explorer" }, lifecycle: { status: "running" } },
     ]);
 
-    const result = await executeStopAgentTool("call_5", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_5",
+      { agent_id: "abc123def456ghi" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("already completed");
   });
 
   it("returns info when agent already stopped", async () => {
-    mockGetRecord.mockReturnValue({ id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "stopped" }, execution: {}, stats: {} });
+    mockGetRecord.mockReturnValue({
+      id: "abc123def456ghi",
+      display: { type: "builder" },
+      lifecycle: { status: "stopped" },
+      execution: {},
+      stats: {},
+    });
     mockListAgents.mockReturnValue([]);
 
-    const result = await executeStopAgentTool("call_6", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_6",
+      { agent_id: "abc123def456ghi" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("already stopped");
   });
 
   it("returns info when agent already aborted", async () => {
-    mockGetRecord.mockReturnValue({ id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "aborted" }, execution: {}, stats: {} });
+    mockGetRecord.mockReturnValue({
+      id: "abc123def456ghi",
+      display: { type: "builder" },
+      lifecycle: { status: "aborted" },
+      execution: {},
+      stats: {},
+    });
     mockListAgents.mockReturnValue([]);
 
-    const result = await executeStopAgentTool("call_7", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_7",
+      { agent_id: "abc123def456ghi" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("already aborted");
   });
 
   it("running agents list shows only running/queued agents", async () => {
-    mockGetRecord.mockReturnValue({ id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "completed" }, execution: {}, stats: {} });
+    mockGetRecord.mockReturnValue({
+      id: "abc123def456ghi",
+      display: { type: "builder" },
+      lifecycle: { status: "completed" },
+      execution: {},
+      stats: {},
+    });
     mockListAgents.mockReturnValue([
       { id: "r1", display: { type: "builder" }, lifecycle: { status: "running" } },
       { id: "r2", display: { type: "reviewer" }, lifecycle: { status: "queued" } },
@@ -110,7 +184,13 @@ describe("executeStopAgentTool", () => {
       { id: "r4", display: { type: "code" }, lifecycle: { status: "stopped" } },
     ]);
 
-    const result = await executeStopAgentTool("call_8", { agent_id: "abc123def456ghi" }, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool(
+      "call_8",
+      { agent_id: "abc123def456ghi" },
+      undefined,
+      undefined,
+      {} as any,
+    );
 
     expect(result.content[0].text).toContain("r1 (builder)");
     expect(result.content[0].text).toContain("r2 (reviewer)");

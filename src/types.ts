@@ -171,5 +171,3 @@ export interface AgentAccumulatedStats {
   /** Last-known context usage percentage (0–100), captured at completion. */
   contextPercent?: number | null;
 }
-
-

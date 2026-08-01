@@ -179,13 +179,7 @@ describe("executeAgentTool — worktree_path validation", () => {
       error: "Path '/etc' is not inside a git repository",
     });
 
-    const result = await executeAgentTool(
-      "tc-2",
-      makeParams({ worktree_path: "/etc" }),
-      undefined,
-      undefined,
-      ctx,
-    );
+    const result = await executeAgentTool("tc-2", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctx);
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("not inside a git repository");
@@ -196,17 +190,14 @@ describe("executeAgentTool — worktree_path validation", () => {
     // Mock validateWorktreePath to invoke the onWarning callback before returning failure
     mockValidateWorktreePath.mockImplementation((_pi, _path, _cwd, onWarning) => {
       onWarning?.("git rev-parse --git-common-dir failed in /etc: EACCES permission denied");
-      return Promise.resolve({ ok: false, error: "worktree_path validation failed: git rev-parse failed: EACCES permission denied" });
+      return Promise.resolve({
+        ok: false,
+        error: "worktree_path validation failed: git rev-parse failed: EACCES permission denied",
+      });
     });
 
     ctx.ui = { notify: vi.fn() };
-    const result = await executeAgentTool(
-      "tc-warn",
-      makeParams({ worktree_path: "/etc" }),
-      undefined,
-      undefined,
-      ctx,
-    );
+    const result = await executeAgentTool("tc-warn", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctx);
 
     expect(result.isError).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
@@ -215,7 +206,6 @@ describe("executeAgentTool — worktree_path validation", () => {
       "warning",
     );
   });
-
 
   it("does not call the validator when worktree_path is omitted", async () => {
     await executeAgentTool("tc-3", makeParams(), undefined, undefined, ctx);
@@ -430,13 +420,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
     resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
 
-    await executeAgentTool(
-      "tc-disc-no-wt",
-      makeParams({ agent: "feature-reviewer" }),
-      undefined,
-      undefined,
-      ctx,
-    );
+    await executeAgentTool("tc-disc-no-wt", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx);
 
     // Should have called discoverNewAgents WITHOUT a worktree dir
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
@@ -505,9 +489,7 @@ describe("formatResultContent", () => {
   });
 
   it("keeps aborted output unchanged", () => {
-    const content = formatResultContent(
-      makeContentRecord({ lifecycle: { status: "aborted", startedAt: Date.now() } }),
-    );
+    const content = formatResultContent(makeContentRecord({ lifecycle: { status: "aborted", startedAt: Date.now() } }));
 
     expect(content).toBe("done (hit the turn limit before completion; output may be incomplete)");
   });
@@ -521,9 +503,7 @@ describe("formatResultContent", () => {
   });
 
   it("does not append a dangling error block when error text is missing", () => {
-    const content = formatResultContent(
-      makeContentRecord({ lifecycle: { status: "error", startedAt: Date.now() } }),
-    );
+    const content = formatResultContent(makeContentRecord({ lifecycle: { status: "error", startedAt: Date.now() } }));
 
     expect(content).toBe("done");
   });

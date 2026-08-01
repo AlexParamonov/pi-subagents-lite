@@ -39,8 +39,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
     value = "";
     onSubmit?: (value: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
     constructor() {
       inputInstances.push(this as any);
     }
@@ -67,15 +71,29 @@ function resetState() {
 
 function setupMockConfig() {
   mockModules.mockConfig.agent = {
-    default: null, forceBackground: false,
-    widgetMaxLines: 12, widgetMaxLinesCompact: 6, widgetCompact: false,
+    default: null,
+    forceBackground: false,
+    widgetMaxLines: 12,
+    widgetMaxLinesCompact: 6,
+    widgetCompact: false,
     widgetShortcut: false,
-    widgetDescLengthFull: 50, widgetDescLengthCompact: 30,
-    showTools: true, showTurns: true, showInput: true, showOutput: true,
-    showContext: true, showCost: false, showTime: true,
-    outputThinkingBufferSize: 0, finishedRetentionMinutes: 10, finishedEvictTurns: 4,
-    modelDisplayStyle: "id", statusBarFormat: "full",
-    widgetShowModel: true, widgetShowThinking: true, widgetNavHint: true,
+    widgetDescLengthFull: 50,
+    widgetDescLengthCompact: 30,
+    showTools: true,
+    showTurns: true,
+    showInput: true,
+    showOutput: true,
+    showContext: true,
+    showCost: false,
+    showTime: true,
+    outputThinkingBufferSize: 0,
+    finishedRetentionMinutes: 10,
+    finishedEvictTurns: 4,
+    modelDisplayStyle: "id",
+    statusBarFormat: "full",
+    widgetShowModel: true,
+    widgetShowThinking: true,
+    widgetNavHint: true,
   };
   mockModules.mockSessionOverrides.default = null;
   mockModules.mockSessionShowCost = undefined;
@@ -363,7 +381,17 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime", "__sep__", "deltaInputTokens"]);
+    expect(ids).toEqual([
+      "showTools",
+      "showTurns",
+      "showInput",
+      "showOutput",
+      "showContext",
+      "showCost",
+      "showTime",
+      "__sep__",
+      "deltaInputTokens",
+    ]);
   });
 
   it("stat toggles update store", async () => {
@@ -406,6 +434,15 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
     const labels = settingsListCalls[0].items.filter((i: any) => i.id !== "__sep__").map((i: any) => i.label);
-    expect(labels).toEqual(["Tools", "Turns", "Input tokens", "Output tokens", "Context %", "Cost", "Time", "Delta input tokens"]);
+    expect(labels).toEqual([
+      "Tools",
+      "Turns",
+      "Input tokens",
+      "Output tokens",
+      "Context %",
+      "Cost",
+      "Time",
+      "Delta input tokens",
+    ]);
   });
 });

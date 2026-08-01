@@ -45,7 +45,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
     onSubmit: ((v: string) => void) | undefined;
     onEscape: (() => void) | undefined;
     handleInput(_data: string) {}
-    render(_w: number): string[] { return ["> "]; }
+    render(_w: number): string[] {
+      return ["> "];
+    }
   },
   Markdown: class {
     constructor(
@@ -62,7 +64,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
     _text: string;
     _color: (t: string) => string;
     _italic: boolean;
-    setText(text: string) { this._text = text; }
+    setText(text: string) {
+      this._text = text;
+    }
     render(width: number): string[] {
       const lines = this._text.split("\n");
       const result: string[] = [];
@@ -74,7 +78,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
       return result;
     }
   },
-  truncateToWidth: vi.fn((s: string, w: number) => s.length > w ? s.slice(0, w - 3) + "..." : s),
+  truncateToWidth: vi.fn((s: string, w: number) => (s.length > w ? s.slice(0, w - 3) + "..." : s)),
   visibleWidth: vi.fn((s: string) => s.length),
   wrapTextWithAnsi: vi.fn((text: string, width: number) => {
     const lines = text.split("\n");
@@ -491,12 +495,14 @@ describe("ConversationViewer", () => {
     });
 
     it("renders tool results with success icon", () => {
-      const session = makeMockSession([{
-        role: "toolResult",
-        content: [{ type: "text", text: "file contents here" }],
-        toolName: "read",
-        isError: false,
-      }]);
+      const session = makeMockSession([
+        {
+          role: "toolResult",
+          content: [{ type: "text", text: "file contents here" }],
+          toolName: "read",
+          isError: false,
+        },
+      ]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
@@ -508,12 +514,14 @@ describe("ConversationViewer", () => {
     });
 
     it("renders tool results with error icon", () => {
-      const session = makeMockSession([{
-        role: "toolResult",
-        content: [{ type: "text", text: "file not found" }],
-        toolName: "read",
-        isError: true,
-      }]);
+      const session = makeMockSession([
+        {
+          role: "toolResult",
+          content: [{ type: "text", text: "file not found" }],
+          toolName: "read",
+          isError: true,
+        },
+      ]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
@@ -526,12 +534,14 @@ describe("ConversationViewer", () => {
 
     it("truncates tool results at 500 chars", () => {
       const longContent = "x".repeat(600); // >500 triggers truncation, but preview fits in viewport
-      const session = makeMockSession([{
-        role: "toolResult",
-        content: [{ type: "text", text: longContent }],
-        toolName: "bash",
-        isError: false,
-      }]);
+      const session = makeMockSession([
+        {
+          role: "toolResult",
+          content: [{ type: "text", text: longContent }],
+          toolName: "bash",
+          isError: false,
+        },
+      ]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
@@ -545,13 +555,15 @@ describe("ConversationViewer", () => {
     });
 
     it("renders thinking blocks in assistant messages", () => {
-      const session = makeMockSession([{
-        role: "assistant",
-        content: [
-          { type: "thinking", thinking: "Let me think about this..." },
-          { type: "text", text: "Here is the answer." },
-        ],
-      }]);
+      const session = makeMockSession([
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Let me think about this..." },
+            { type: "text", text: "Here is the answer." },
+          ],
+        },
+      ]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
@@ -606,7 +618,13 @@ describe("ConversationViewer", () => {
     it("renders a tool result once, inline under its call (no standalone duplicate)", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
-        { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: [{ type: "text", text: "UNIQRESULT" }] },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "uniqtool",
+          isError: false,
+          content: [{ type: "text", text: "UNIQRESULT" }],
+        },
       ]);
       const record = makeMockRecord({ execution: { session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
@@ -626,7 +644,13 @@ describe("ConversationViewer", () => {
       // First render caches the assistant message as a pending tool call.
       viewer.render(80);
       // The tool result then arrives as a new message.
-      session.messages.push({ role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: [{ type: "text", text: "UNIQRESULT" }] });
+      session.messages.push({
+        role: "toolResult",
+        toolCallId: "t1",
+        toolName: "uniqtool",
+        isError: false,
+        content: [{ type: "text", text: "UNIQRESULT" }],
+      });
 
       const text = viewer.render(80).join("\n");
       expect(count(text, "UNIQRESULT")).toBe(1);

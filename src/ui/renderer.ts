@@ -13,9 +13,17 @@ import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag, resol
 // ============================================================================
 
 /** Format agent display name with optional model/thinking level: "Agent (mimo-v2.5-pro · high)" or "Agent". */
-export function agentNameLabel(d: Record<string, unknown>, theme: Theme, modelDisplayStyle: "id" | "name" = "id"): string {
+export function agentNameLabel(
+  d: Record<string, unknown>,
+  theme: Theme,
+  modelDisplayStyle: "id" | "name" = "id",
+): string {
   const typeName = getDisplayName((d.type as string) || "");
-  const modelLabel = resolveModelLabel(modelDisplayStyle, d.modelName as string | undefined, d.modelId as string | undefined);
+  const modelLabel = resolveModelLabel(
+    modelDisplayStyle,
+    d.modelName as string | undefined,
+    d.modelId as string | undefined,
+  );
   const thinkingLevel = d.thinkingLevel as string | undefined;
   const tag = buildModelThinkingTag(modelLabel, thinkingLevel);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
@@ -23,16 +31,19 @@ export function agentNameLabel(d: Record<string, unknown>, theme: Theme, modelDi
 
 /** Build the stats line for an agent result card. */
 export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCost: boolean): string {
-  const parts = buildStatsParts({
-    toolUses: (d.toolUses as number) ?? 0,
-    turnCount: d.turnCount as number | undefined,
-    maxTurns: d.maxTurns as number | undefined,
-    input: (d.input as number) ?? 0,
-    output: (d.output as number) ?? 0,
-    contextPercent: d.contextPercent as number | null,
-    compactions: (d.compactions as number) ?? 0,
-    cost: showCost ? (d.cost as number | undefined) : undefined,
-  }, theme);
+  const parts = buildStatsParts(
+    {
+      toolUses: (d.toolUses as number) ?? 0,
+      turnCount: d.turnCount as number | undefined,
+      maxTurns: d.maxTurns as number | undefined,
+      input: (d.input as number) ?? 0,
+      output: (d.output as number) ?? 0,
+      contextPercent: d.contextPercent as number | null,
+      compactions: (d.compactions as number) ?? 0,
+      cost: showCost ? (d.cost as number | undefined) : undefined,
+    },
+    theme,
+  );
   parts.push(formatMs(d.durationMs as number));
   return parts.join("·");
 }
@@ -42,10 +53,7 @@ export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCos
 // ============================================================================
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
-export function renderAgentToolCall(
-  args: Record<string, unknown>,
-  theme: Theme,
-): Text {
+export function renderAgentToolCall(args: Record<string, unknown>, theme: Theme): Text {
   const typeName = getDisplayName((args.agent as string) || "");
   const label = typeName || "Agent";
   let text = `▸ ${theme.fg("accent", theme.bold(label))}`;
@@ -67,7 +75,7 @@ export function renderAgentToolResult(
   modelDisplayStyle: "id" | "name" = "id",
 ): Text {
   const { expanded } = options;
-  const text = result.content[0]?.type === "text" ? result.content[0].text ?? "" : "";
+  const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
   const d = result.details;
   const icon = result.isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
   const desc = (d?.description as string) || "";
@@ -77,7 +85,12 @@ export function renderAgentToolResult(
     const statsLine = buildStatsLine(d, theme, showCost);
     let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
-      lines += "\n" + text.split("\n").map(l => `  ${l}`).join("\n");
+      lines +=
+        "\n" +
+        text
+          .split("\n")
+          .map((l) => `  ${l}`)
+          .join("\n");
     }
     return new Text(lines, 0, 0);
   }
@@ -129,7 +142,16 @@ export function renderSubagentResult(
 
     if (expanded && text) {
       inner.addChild(new Spacer(1));
-      inner.addChild(new Text(text.split("\n").map(l => `  ${l}`).join("\n"), 0, 0));
+      inner.addChild(
+        new Text(
+          text
+            .split("\n")
+            .map((l) => `  ${l}`)
+            .join("\n"),
+          0,
+          0,
+        ),
+      );
     }
   } else {
     inner.addChild(new Text(buildFallbackResultLine(d, text, theme, modelDisplayStyle), 0, 0));

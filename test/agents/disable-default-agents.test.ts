@@ -90,9 +90,10 @@ describe("discoverNewAgents — disableDefaultAgents", () => {
   });
 
   it("skips defaults when discovering with disableDefaultAgents", async () => {
-    const { dir: projectDir, cleanup } = tempDirWithFiles([
-      { name: "custom.md", content: makeAgentMd({ name: "custom", description: "Custom" }) },
-    ], "project-agents");
+    const { dir: projectDir, cleanup } = tempDirWithFiles(
+      [{ name: "custom.md", content: makeAgentMd({ name: "custom", description: "Custom" }) }],
+      "project-agents",
+    );
 
     try {
       setAgentScanDirs("", projectDir);

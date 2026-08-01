@@ -88,7 +88,10 @@ export async function scanAndMerge(options?: { disableDefaultAgents?: boolean })
  *   parsing and name-uniqueness rules as the parent's project scan.
  * @param options - Optional settings. disableDefaultAgents skips DEFAULT_AGENTS in the merge.
  */
-export async function discoverNewAgents(worktreeDir?: string, options?: { disableDefaultAgents?: boolean }): Promise<number> {
+export async function discoverNewAgents(
+  worktreeDir?: string,
+  options?: { disableDefaultAgents?: boolean },
+): Promise<number> {
   const merged = await scanAndMerge(options);
 
   let count = 0;
@@ -121,7 +124,7 @@ export function resolveType(name: string): string | undefined {
   const lower = name.toLowerCase();
   for (const [key, config] of agents.entries()) {
     if (key.toLowerCase() === lower) return key;
-    if ((config.displayName ?? '').toLowerCase() === lower) return key;
+    if ((config.displayName ?? "").toLowerCase() === lower) return key;
   }
   return undefined;
 }
@@ -134,9 +137,7 @@ export function getAgentConfig(name: string): AgentConfig | undefined {
 
 /** Get all visible type names (for spawning and tool descriptions). */
 export function getAvailableTypes(): string[] {
-  return [...agents.entries()]
-    .filter(([_, config]) => config.hidden !== true)
-    .map(([name]) => name);
+  return [...agents.entries()].filter(([_, config]) => config.hidden !== true).map(([name]) => name);
 }
 
 /** Get all type names including hidden (for UI listing). */
@@ -213,9 +214,7 @@ export function resolveVisibleTools(opts: {
   // Blacklist mode: excludeTools set and tools not set as whitelist
   if (excludeTools && !Array.isArray(tools)) {
     const excludeSet = resolveToolEntries(excludeTools, extToolMap, notify);
-    const filtered = activeTools.filter(t =>
-      !EXCLUDED_TOOL_NAMES.includes(t) && !excludeSet.has(t)
-    );
+    const filtered = activeTools.filter((t) => !EXCLUDED_TOOL_NAMES.includes(t) && !excludeSet.has(t));
     return filtered.length !== activeTools.length ? filtered : null;
   }
 
@@ -231,7 +230,10 @@ export function resolveVisibleTools(opts: {
         // Bare name, not a known built-in — check if it's an extension tool
         let foundInExt = false;
         for (const [, extToolNames] of extToolMap ?? []) {
-          if (extToolNames.includes(entry)) { foundInExt = true; break; }
+          if (extToolNames.includes(entry)) {
+            foundInExt = true;
+            break;
+          }
         }
         if (!foundInExt) {
           notify?.(`tool "${entry}" not found in any loaded extension`);
@@ -250,7 +252,7 @@ export function resolveVisibleTools(opts: {
     // Warn if a loaded extension has none of its tools in `tools`
     if (extToolMap) {
       for (const [extName, extTools] of extToolMap) {
-        const hasAny = extTools.some(t => allowedTools.has(t));
+        const hasAny = extTools.some((t) => allowedTools.has(t));
         if (!hasAny) {
           notify?.(`extension "${extName}" is loaded but none of its tools are in tools: [${tools.join(", ")}]`);
         }
@@ -265,9 +267,9 @@ export function resolveVisibleTools(opts: {
   }
 
   // tools: true or undefined — all tools visible (except excluded)
-  const hasExcluded = activeTools.some(t => EXCLUDED_TOOL_NAMES.includes(t));
+  const hasExcluded = activeTools.some((t) => EXCLUDED_TOOL_NAMES.includes(t));
   if (!hasExcluded) return null;
-  return activeTools.filter(t => !EXCLUDED_TOOL_NAMES.includes(t));
+  return activeTools.filter((t) => !EXCLUDED_TOOL_NAMES.includes(t));
 }
 
 /**
@@ -292,8 +294,7 @@ export function resolveSessionAllowedTools(opts: {
   // and raw wildcard entries ("tavily/*") never leak as bogus allowedToolNames.
   // registeredTools is not a base here.
   if (Array.isArray(opts.tools)) {
-    return [...resolveToolEntries(opts.tools, opts.extToolMap)]
-      .filter(t => !EXCLUDED_TOOL_NAMES.includes(t));
+    return [...resolveToolEntries(opts.tools, opts.extToolMap)].filter((t) => !EXCLUDED_TOOL_NAMES.includes(t));
   }
 
   // No whitelist (true | undefined): register everything available so
@@ -309,9 +310,7 @@ export function resolveSessionAllowedTools(opts: {
 /** Get built-in tool names for a type (case-insensitive). */
 export function getToolNamesForType(type: string): string[] {
   const config = getAgentConfig(type);
-  return config?.registeredTools?.length
-    ? config.registeredTools
-    : [...BUILTIN_TOOL_NAMES];
+  return config?.registeredTools?.length ? config.registeredTools : [...BUILTIN_TOOL_NAMES];
 }
 
 /** Resolved config shape returned by getConfig. */

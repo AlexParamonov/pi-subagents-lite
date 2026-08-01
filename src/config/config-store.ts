@@ -22,7 +22,6 @@ import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
 import { VALID_SYSTEM_PROMPT_MODES, DEFAULT_CONCURRENCY, loadConfig, saveConfigAtomic } from "./config-io.js";
 
-
 /** Injected persistence adapter. Swap for an in-memory adapter in tests. */
 export interface ConfigIO {
   load(): SubagentsConfig;
@@ -127,7 +126,7 @@ export class ConfigStore {
     return {
       defaultModel: a.default ?? null,
       forceBackground: a.forceBackground === true,
-      showCost: this.sessionShowCost ?? (a.showCost === true),
+      showCost: this.sessionShowCost ?? a.showCost === true,
       graceTurns: a.graceTurns ?? 6,
       widgetMaxLines,
       widgetMaxLinesCompact,
@@ -138,7 +137,9 @@ export class ConfigStore {
       widgetNavHint: a.widgetNavHint !== false,
       widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
       widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
-      systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string) ? (a.systemPromptMode as SystemPromptMode) : "replace",
+      systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string)
+        ? (a.systemPromptMode as SystemPromptMode)
+        : "replace",
       includeContextFiles: a.includeContextFiles ?? true,
       defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
       defaultMaxTurns: a.defaultMaxTurns,
@@ -522,7 +523,10 @@ export class ConfigStore {
   }
 
   /** Update a widget stats visibility flag: mutate config → persist → sync widget. */
-  private setAgentVisibility(key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime", value: boolean): void {
+  private setAgentVisibility(
+    key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime",
+    value: boolean,
+  ): void {
     this.config.agent[key] = value;
     this.persist();
     this.syncWidgetStatsVisibility();

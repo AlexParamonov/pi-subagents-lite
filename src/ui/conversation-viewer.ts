@@ -7,7 +7,16 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { type Component, Input, Markdown, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import {
+  type Component,
+  Input,
+  Markdown,
+  matchesKey,
+  type TUI,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import { getSessionContextPercent } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
@@ -249,23 +258,26 @@ export class ConversationViewer implements Component {
     const statusIcon = th.fg(color, icon);
     // Build stats line like the widget
     const durationMs = (this.record.lifecycle.completedAt ?? Date.now()) - this.record.lifecycle.startedAt;
-    const statsParts = buildStatsParts({
-      toolUses: this.record.stats.toolUses,
-      turnCount: this.record.stats.turnCount,
-      maxTurns: this.record.stats.maxTurns,
-      input: this.record.stats.lifetimeUsage.input,
-      output: this.record.stats.lifetimeUsage.output,
-      contextPercent: getSessionContextPercent(this.session),
-      compactions: this.record.stats.compactionCount,
-      cost: this.record.stats.lifetimeUsage.cost,
-      durationMs,
-    }, th);
+    const statsParts = buildStatsParts(
+      {
+        toolUses: this.record.stats.toolUses,
+        turnCount: this.record.stats.turnCount,
+        maxTurns: this.record.stats.maxTurns,
+        input: this.record.stats.lifetimeUsage.input,
+        output: this.record.stats.lifetimeUsage.output,
+        contextPercent: getSessionContextPercent(this.session),
+        compactions: this.record.stats.compactionCount,
+        cost: this.record.stats.lifetimeUsage.cost,
+        durationMs,
+      },
+      th,
+    );
 
-    const worktreeTag = this.record.display.worktreeLabel ? th.fg("muted", ` @${this.record.display.worktreeLabel}`) : "";
+    const worktreeTag = this.record.display.worktreeLabel
+      ? th.fg("muted", ` @${this.record.display.worktreeLabel}`)
+      : "";
     // Row 1: status icon, name, description, worktree
-    lines.push(row(
-      `${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag}`
-    ));
+    lines.push(row(`${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag}`));
 
     // Row 2: model name + compact usage stats
     const resolvedInvocation = {
@@ -322,14 +334,11 @@ export class ConversationViewer implements Component {
 
       // Prepend scroll position readout only when there's spare width
       const currentLine = Math.min(visibleStart + viewportHeight, totalContentLines);
-      const scrollPct = totalContentLines <= viewportHeight
-        ? 100
-        : Math.round((currentLine / totalContentLines) * 100);
+      const scrollPct = totalContentLines <= viewportHeight ? 100 : Math.round((currentLine / totalContentLines) * 100);
       const count = th.fg("dim", `(${currentLine}/${totalContentLines} · ${scrollPct}%)`);
       const withCount = [count, ...actions].join(sep);
-      const footerLeft = visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
-        ? withCount
-        : actions.join(sep);
+      const footerLeft =
+        visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW ? withCount : actions.join(sep);
 
       const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
       lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
@@ -345,10 +354,14 @@ export class ConversationViewer implements Component {
   }
 
   /** Stoppable only when a stop handler exists and the agent is still active. */
-  private isStoppable(): boolean { return !!this.onStop && this.isActive(); }
+  private isStoppable(): boolean {
+    return !!this.onStop && this.isActive();
+  }
 
   /** Steerable only when a steer handler exists and the agent is still active. */
-  private canSteer(): boolean { return !!this.onSteer && this.isActive(); }
+  private canSteer(): boolean {
+    return !!this.onSteer && this.isActive();
+  }
 
   /** Open the inline steering composer and route subsequent input to it. */
   private openComposer(): void {
@@ -469,9 +482,7 @@ export class ConversationViewer implements Component {
 
   private renderUserMessage(msg: any, width: number): string[] {
     const th = this.theme;
-    const text = typeof msg.content === "string"
-      ? msg.content
-      : extractText(msg.content);
+    const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
     if (!text.trim()) return [];
     const wrapped = wrapTextWithAnsi(text.trim(), width - 2);
     const inner: string[] = [];
@@ -550,9 +561,7 @@ export class ConversationViewer implements Component {
     const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
     const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
     const result = tc.id ? toolResults.get(tc.id) : undefined;
-    const bg = result
-      ? (result.isError ? "toolErrorBg" : "toolSuccessBg")
-      : "toolPendingBg";
+    const bg = result ? (result.isError ? "toolErrorBg" : "toolSuccessBg") : "toolPendingBg";
     const inner: string[] = [];
     const toolLine = ` ${th.bold(label)} `;
     for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
@@ -568,11 +577,7 @@ export class ConversationViewer implements Component {
   }
 
   /** Render the output of a tool call result, with truncation for large outputs. */
-  private renderToolCallResult(
-    result: { content: unknown[]; isError: boolean },
-    bg: string,
-    width: number,
-  ): string[] {
+  private renderToolCallResult(result: { content: unknown[]; isError: boolean }, bg: string, width: number): string[] {
     const th = this.theme;
     const resultText = extractText(result.content);
     if (!resultText.trim()) return [];
@@ -648,10 +653,17 @@ export class ConversationViewer implements Component {
       } else {
         let msgLines: string[];
         switch (messages[i].role) {
-          case "user": msgLines = this.renderUserMessage(messages[i], width); break;
-          case "assistant": msgLines = this.renderAssistantMessage(messages[i], width, toolResults, renderedToolResults); break;
-          case "toolResult": msgLines = this.renderToolResult(messages[i], width, renderedToolResults); break;
-          default: msgLines = [];
+          case "user":
+            msgLines = this.renderUserMessage(messages[i], width);
+            break;
+          case "assistant":
+            msgLines = this.renderAssistantMessage(messages[i], width, toolResults, renderedToolResults);
+            break;
+          case "toolResult":
+            msgLines = this.renderToolResult(messages[i], width, renderedToolResults);
+            break;
+          default:
+            msgLines = [];
         }
         this.messageCache.set(i, msgLines);
         lines.push(...msgLines);
@@ -683,5 +695,5 @@ export class ConversationViewer implements Component {
     }
 
     return lines;
-}
+  }
 }

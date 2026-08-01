@@ -11,14 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  existsSync,
-  mkdirSync,
-  symlinkSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, symlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -30,10 +23,7 @@ import {
 
 // ── helpers ──────────────────────────────────────────────────────
 
-function makePi(
-  gitCommonDirResults: Map<string, string | null>,
-  showToplevelResults?: Map<string, string | null>,
-) {
+function makePi(gitCommonDirResults: Map<string, string | null>, showToplevelResults?: Map<string, string | null>) {
   return {
     exec: vi.fn(async (cmd: string, args: string[], opts?: any) => {
       if (cmd === "git" && args[0] === "rev-parse") {
@@ -69,7 +59,11 @@ function makeTempDir(prefix = "wt-test"): { dir: string; cleanup: () => void } {
   return {
     dir: resolved,
     cleanup: () => {
-      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     },
   };
 }
@@ -103,9 +97,7 @@ describe("validateWorktreePath", () => {
       [parentCwd, commonDir],
       [worktreePath, commonDir],
     ]);
-    const toplevelResults = new Map<string, string | null>([
-      [worktreePath, worktreePath],
-    ]);
+    const toplevelResults = new Map<string, string | null>([[worktreePath, worktreePath]]);
 
     const result = await validateWorktreePath(makePi(gitResults, toplevelResults), worktreePath, parentCwd);
 
@@ -264,9 +256,7 @@ describe("validateWorktreePath", () => {
       [parentCwd, commonDir],
       [worktreePath, commonDir],
     ]);
-    const toplevelResults = new Map<string, string | null>([
-      [worktreePath, worktreePath],
-    ]);
+    const toplevelResults = new Map<string, string | null>([[worktreePath, worktreePath]]);
 
     const result = await validateWorktreePath(makePi(gitResults, toplevelResults), worktreePath, parentCwd);
 
@@ -286,9 +276,7 @@ describe("validateWorktreePath", () => {
       [parentCwd, commonDir],
       [subPath, commonDir],
     ]);
-    const toplevelResults = new Map<string, string | null>([
-      [subPath, worktreeRoot],
-    ]);
+    const toplevelResults = new Map<string, string | null>([[subPath, worktreeRoot]]);
 
     const result = await validateWorktreePath(makePi(gitResults, toplevelResults), subPath, parentCwd);
 
@@ -546,9 +534,7 @@ describe("worktree deletion mid-run", () => {
     // through the promise chain's .catch() (status → "error") rather than
     // throwing synchronously (which would delete the record in spawn's
     // try-catch and re-throw to the parent).
-    mockRunAgent.mockRejectedValue(
-      new Error("ENOENT: no such file or directory, cwd '/deleted/worktree'"),
-    );
+    mockRunAgent.mockRejectedValue(new Error("ENOENT: no such file or directory, cwd '/deleted/worktree'"));
 
     // Minimal mock for AgentManager dependencies
     const mockCtx = {
@@ -562,13 +548,10 @@ describe("worktree deletion mid-run", () => {
 
     // Spawn should not throw — the error is caught inside startAgent.
     // The agent record transitions to "error" status.
-    const agentId = manager.spawn(
-      { exec: vi.fn() } as any,
-      mockCtx,
-      "general-purpose",
-      "test prompt",
-      { description: "test", worktreePath: "/deleted/worktree" },
-    );
+    const agentId = manager.spawn({ exec: vi.fn() } as any, mockCtx, "general-purpose", "test prompt", {
+      description: "test",
+      worktreePath: "/deleted/worktree",
+    });
 
     // Wait for the promise microtasks to settle (runAgent mock rejects/throws,
     // promise chain sets status in .catch(), runs .finally()).

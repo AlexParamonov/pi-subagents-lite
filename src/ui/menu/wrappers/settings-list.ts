@@ -70,7 +70,9 @@ export class SettingsListWrapper implements Component {
       };
       const inBounds = (i: number) => i >= 0 && i < list.items.length;
       Object.defineProperty(list, "selectedIndex", {
-        get() { return list[_rawIndex] ?? 0; },
+        get() {
+          return list[_rawIndex] ?? 0;
+        },
         set(idx) {
           const items = list.items;
           const cur = list[_rawIndex] ?? 0;

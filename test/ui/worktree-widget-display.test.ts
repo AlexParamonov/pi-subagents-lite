@@ -166,9 +166,7 @@ describe("widget worktree label — full mode", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     // Both @ feature and tail -f should be on the same continuation line
-    const combinedLine = lines.find(
-      (l: string) => l.includes("@feature") && l.includes("tail -f"),
-    );
+    const combinedLine = lines.find((l: string) => l.includes("@feature") && l.includes("tail -f"));
     expect(combinedLine).toBeDefined();
   });
 

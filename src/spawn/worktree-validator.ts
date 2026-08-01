@@ -46,7 +46,11 @@ export type WorktreeValidationResult = WorktreeValidationSuccess | WorktreeValid
  * Minimal interface for the pi exec function — only what the validator needs.
  */
 interface PiExec {
-  exec(cmd: string, args: string[], opts?: { cwd?: string; timeout?: number }): Promise<{ code: number; stdout: string; stderr: string }>;
+  exec(
+    cmd: string,
+    args: string[],
+    opts?: { cwd?: string; timeout?: number },
+  ): Promise<{ code: number; stdout: string; stderr: string }>;
 }
 
 /**
@@ -80,14 +84,10 @@ async function getGitCommonDir(
 
 /** Resolve a git path and normalize it for reliable cross-platform comparison. */
 function normalizeGitPath(gitPath: string, cwd: string): string {
-  const isWindowsStyle = /^[A-Za-z]:[\\/]/.test(gitPath)
-    || /^[A-Za-z]:[\\/]/.test(cwd)
-    || /^\\\\/.test(gitPath)
-    || /^\\\\/.test(cwd);
+  const isWindowsStyle =
+    /^[A-Za-z]:[\\/]/.test(gitPath) || /^[A-Za-z]:[\\/]/.test(cwd) || /^\\\\/.test(gitPath) || /^\\\\/.test(cwd);
   const pathApi = isWindowsStyle ? path.win32 : path;
-  const absolutePath = pathApi.isAbsolute(gitPath)
-    ? gitPath
-    : pathApi.resolve(cwd, gitPath);
+  const absolutePath = pathApi.isAbsolute(gitPath) ? gitPath : pathApi.resolve(cwd, gitPath);
   const normalizedPath = pathApi.normalize(absolutePath).replace(/\\/g, "/");
 
   return isWindowsStyle ? normalizedPath.toLowerCase() : normalizedPath;
@@ -122,9 +122,7 @@ export async function validateWorktreePath(
   }
 
   // Step 2: Resolve relative paths against parent cwd
-  const resolved = path.isAbsolute(worktreePath)
-    ? worktreePath
-    : path.resolve(parentCwd, worktreePath);
+  const resolved = path.isAbsolute(worktreePath) ? worktreePath : path.resolve(parentCwd, worktreePath);
 
   // Step 3: Check existence
   if (!existsSync(resolved)) {
@@ -146,7 +144,12 @@ export async function validateWorktreePath(
   }
 
   // Step 5: Get and compare git-common-dir for parent and target
-  const parentResult = await getGitCommonDir(pi, parentCwd, WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO, onWarning);
+  const parentResult = await getGitCommonDir(
+    pi,
+    parentCwd,
+    WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO,
+    onWarning,
+  );
   if (!parentResult.ok) return parentResult;
 
   const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO, onWarning);
@@ -163,7 +166,10 @@ export async function validateWorktreePath(
   // Step 6: Get the worktree root via git rev-parse --show-toplevel
   let worktreeRoot: string;
   try {
-    const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd: realPath, timeout: GIT_EXEC_TIMEOUT_MS });
+    const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], {
+      cwd: realPath,
+      timeout: GIT_EXEC_TIMEOUT_MS,
+    });
     if (result.code !== 0) {
       worktreeRoot = realPath;
     } else {

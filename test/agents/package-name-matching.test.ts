@@ -23,7 +23,7 @@ function createPkgDir(pkgName: string, entry: string, piExtensions: string[]): {
   writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
   const dirPart = entry.includes("/") ? entry.replace(/\/[^/]+$/, "") : "";
   if (dirPart) mkdirSync(join(dir, dirPart), { recursive: true });
-  writeFileSync(join(dir, entry), "export default () => {};" );
+  writeFileSync(join(dir, entry), "export default () => {};");
   return { dir, extPath: join(dir, entry) };
 }
 
@@ -80,9 +80,7 @@ describe("extension matching by package name — whitelist", () => {
 
     const override = buildExtOverride(["Pi-Subagents"], undefined, undefined);
     const result = override!({
-      extensions: [
-        { path: extPath, tools: new Map([["my_tool", {}]]) },
-      ],
+      extensions: [{ path: extPath, tools: new Map([["my_tool", {}]]) }],
       errors: [],
       runtime: {},
     });
@@ -95,9 +93,7 @@ describe("extension matching by package name — whitelist", () => {
 
     const override = buildExtOverride(["pi-subagents"], undefined, undefined);
     const result = override!({
-      extensions: [
-        { path: extPath, tools: new Map([["my_tool", {}]]) },
-      ],
+      extensions: [{ path: extPath, tools: new Map([["my_tool", {}]]) }],
       errors: [],
       runtime: {},
     });
@@ -110,9 +106,7 @@ describe("extension matching by package name — whitelist", () => {
 
     const override = buildExtOverride(["pi-subagents"], undefined, undefined);
     const result = override!({
-      extensions: [
-        { path: extPath, tools: new Map([["my_tool", {}]]) },
-      ],
+      extensions: [{ path: extPath, tools: new Map([["my_tool", {}]]) }],
       errors: [],
       runtime: {},
     });
@@ -125,9 +119,7 @@ describe("extension matching by package name — whitelist", () => {
 
     const override = buildExtOverride(["my-pkg"], undefined, undefined);
     const result = override!({
-      extensions: [
-        { path: extPath, tools: new Map([["my_tool", {}]]) },
-      ],
+      extensions: [{ path: extPath, tools: new Map([["my_tool", {}]]) }],
       errors: [],
       runtime: {},
     });
@@ -142,7 +134,7 @@ describe("extension matching by package name — whitelist", () => {
     const manifest = { name: "@scope/pi-subagents", pi: { extensions: ["./dist/index.js"] } };
     writeFileSync(join(nmDir, "package.json"), JSON.stringify(manifest));
     mkdirSync(join(nmDir, "dist"), { recursive: true });
-    writeFileSync(join(nmDir, "dist", "index.js"), "export default () => {};" );
+    writeFileSync(join(nmDir, "dist", "index.js"), "export default () => {};");
     const extPath = join(nmDir, "dist", "index.js");
 
     const override = buildExtOverride(["pi-subagents"], undefined, undefined);
@@ -223,9 +215,7 @@ describe("warnings for unmatched extension names", () => {
     const warnings: string[] = [];
     const override = buildExtOverride(["nonexistent"], undefined, (msg) => warnings.push(msg));
     override!({
-      extensions: [
-        { path: "/some/other/index.ts", tools: new Map([["other_tool", {}]]) },
-      ],
+      extensions: [{ path: "/some/other/index.ts", tools: new Map([["other_tool", {}]]) }],
       errors: [],
       runtime: {},
     });
@@ -238,9 +228,7 @@ describe("warnings for unmatched extension names", () => {
     const warnings: string[] = [];
     const override = buildExtOverride(true, ["nonexistent"], (msg) => warnings.push(msg));
     override!({
-      extensions: [
-        { path: "/some/other/index.ts", tools: new Map([["other_tool", {}]]) },
-      ],
+      extensions: [{ path: "/some/other/index.ts", tools: new Map([["other_tool", {}]]) }],
       errors: [],
       runtime: {},
     });
@@ -269,15 +257,13 @@ describe("malformed package.json", () => {
     const dir = mkdtempSync(join(tmpdir(), "pkg-name-test-"));
     writeFileSync(join(dir, "package.json"), "not valid json {{{");
     mkdirSync(join(dir, "my-extension"), { recursive: true });
-    writeFileSync(join(dir, "my-extension", "index.ts"), "export default () => {};" );
+    writeFileSync(join(dir, "my-extension", "index.ts"), "export default () => {};");
     tmpDirs.push(dir);
 
     const extPath = join(dir, "my-extension", "index.ts");
     const override = buildExtOverride(["my-extension"], undefined, undefined);
     const result = override!({
-      extensions: [
-        { path: extPath, tools: new Map([["my_tool", {}]]) },
-      ],
+      extensions: [{ path: extPath, tools: new Map([["my_tool", {}]]) }],
       errors: [],
       runtime: {},
     });

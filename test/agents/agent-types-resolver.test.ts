@@ -125,9 +125,7 @@ describe("resolveVisibleTools — allowlist mode", () => {
       notify,
     });
     expect(result).toEqual(["read"]);
-    expect(notify).toHaveBeenCalledWith(
-      expect.stringContaining('tool "foobar" not found in any loaded extension'),
-    );
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('tool "foobar" not found in any loaded extension'));
   });
 
   it("warns when extension is loaded but none of its tools are in tools", () => {
@@ -469,8 +467,7 @@ describe("resolveSessionAllowedTools", () => {
   ]);
 
   it("tools: false — no tools allowed", () => {
-    expect(resolveSessionAllowedTools({ registeredTools: builtins, tools: false, extToolMap }))
-      .toEqual([]);
+    expect(resolveSessionAllowedTools({ registeredTools: builtins, tools: false, extToolMap })).toEqual([]);
   });
 
   it("tools: string[] — only whitelisted builtins and extension tools register (no leak)", () => {
@@ -479,9 +476,7 @@ describe("resolveSessionAllowedTools", () => {
       tools: ["read", "tavily/*", "exa_search"],
       extToolMap,
     });
-    expect(result).toEqual(expect.arrayContaining([
-      "read", "web_search", "web_extract", "web_crawl", "exa_search",
-    ]));
+    expect(result).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl", "exa_search"]));
     expect(result).toHaveLength(5);
     // Builtins not in the whitelist must NOT leak into the registry gate.
     expect(result).not.toContain("bash");
@@ -514,9 +509,9 @@ describe("resolveSessionAllowedTools", () => {
       tools: true,
       extToolMap,
     });
-    expect(result).toEqual(expect.arrayContaining([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search",
-    ]));
+    expect(result).toEqual(
+      expect.arrayContaining(["read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search"]),
+    );
     expect(result).toHaveLength(7);
   });
 
@@ -526,9 +521,9 @@ describe("resolveSessionAllowedTools", () => {
       tools: undefined,
       extToolMap,
     });
-    expect(result).toEqual(expect.arrayContaining([
-      "read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search",
-    ]));
+    expect(result).toEqual(
+      expect.arrayContaining(["read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search"]),
+    );
   });
 
   it("excludes EXCLUDED_TOOL_NAMES so the Agent tool never enters the registry", () => {

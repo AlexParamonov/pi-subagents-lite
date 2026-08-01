@@ -60,12 +60,20 @@ vi.mock("../src/agents/agent-discovery.js", () => ({
 
 vi.mock("../src/agents/agent-manager.js", () => ({
   AgentManager: class AgentManager {
-    listAgents() { return []; }
-    getAgent() { return undefined; }
+    listAgents() {
+      return [];
+    }
+    getAgent() {
+      return undefined;
+    }
     setConcurrency() {}
-    getTotalAgentCost() { return 0; }
+    getTotalAgentCost() {
+      return 0;
+    }
     setOnComplete() {}
-    dispose() { return Promise.resolve(); }
+    dispose() {
+      return Promise.resolve();
+    }
   },
 }));
 

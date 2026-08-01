@@ -32,8 +32,6 @@ const DEFAULT_RETENTION_MINUTES = 10;
 /** UUID prefix length for agent IDs stored in the agents map (uniqueness). */
 const AGENT_ID_PREFIX_LENGTH = 17;
 
-
-
 /** Default per-model concurrency limit when not specified in config. */
 const DEFAULT_CONCURRENCY_LIMIT = 4;
 
@@ -46,7 +44,11 @@ function isTerminalStatus(status: AgentStatus): boolean {
  * Format the model error recorded on a failed run: the subagent type, the
  * resolved model (provider/id), and the provider's error message.
  */
-function formatModelError(type: SubagentType, model: { provider: string; id: string } | undefined, providerError: string): string {
+function formatModelError(
+  type: SubagentType,
+  model: { provider: string; id: string } | undefined,
+  providerError: string,
+): string {
   return model ? `${type} (${model.provider}/${model.id}): ${providerError}` : `${type}: ${providerError}`;
 }
 
@@ -201,13 +203,7 @@ export class AgentManager {
    * Spawn an agent and return its ID immediately (for background use).
    * If the per-model concurrency limit is reached, the agent is queued.
    */
-  spawn(
-    pi: ExtensionAPI,
-    ctx: ExtensionContext,
-    type: SubagentType,
-    prompt: string,
-    options: SpawnOptions,
-  ): string {
+  spawn(pi: ExtensionAPI, ctx: ExtensionContext, type: SubagentType, prompt: string, options: SpawnOptions): string {
     const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
     const abortController = new AbortController();
     const args: SpawnArgs = { pi, ctx, type, prompt, options };
@@ -329,10 +325,13 @@ export class AgentManager {
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
           // Precedence: an abort during a model error wins; a model error outranks a turn limit.
-          record.lifecycle.status = aborted ? "aborted"
-            : modelError ? "error"
-            : turnLimited ? "turn_limited"
-            : "completed";
+          record.lifecycle.status = aborted
+            ? "aborted"
+            : modelError
+              ? "error"
+              : turnLimited
+                ? "turn_limited"
+                : "completed";
         }
         record.result = responseText;
         if (modelError) {
@@ -361,7 +360,9 @@ export class AgentManager {
               toolUseCount: record.stats.toolUses,
               totalTokens: getLifetimeTotal(record.stats.lifetimeUsage),
             });
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
           record.execution.outputLog = undefined;
         }
 
@@ -377,7 +378,11 @@ export class AgentManager {
 
   /** Fire the onComplete callback, ignoring any errors from the callback itself. */
   private notifyComplete(record: AgentRecord): void {
-    try { this.onComplete?.(record); } catch { /* ignore */ }
+    try {
+      this.onComplete?.(record);
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Tally session cost/count for a completed agent, then notify. */
@@ -425,7 +430,12 @@ export class AgentManager {
         const deltaEnabled = getStore().agent.deltaInputTokens;
         const cacheRead = usage.cacheRead;
         let inputDelta = usage.input;
-        if (deltaEnabled && cacheRead === 0 && record.stats.prevInputTokens != null && usage.input > record.stats.prevInputTokens) {
+        if (
+          deltaEnabled &&
+          cacheRead === 0 &&
+          record.stats.prevInputTokens != null &&
+          usage.input > record.stats.prevInputTokens
+        ) {
           inputDelta = usage.input - record.stats.prevInputTokens;
         }
         record.stats.prevInputTokens = usage.input;
@@ -463,9 +473,8 @@ export class AgentManager {
         this.notifyComplete(record);
       }
     }
-    this.queue = this.queue.filter(e => !started.has(e.id));
+    this.queue = this.queue.filter((e) => !started.has(e.id));
   }
-
 
   /**
    * Send a steering message to a running agent.
@@ -498,9 +507,7 @@ export class AgentManager {
   }
 
   listAgents(): AgentRecord[] {
-    return [...this.agents.values()].sort(
-      (a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt,
-    );
+    return [...this.agents.values()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
   }
 
   abort(id: string, stoppedBy?: StopInitiator): boolean {
@@ -516,7 +523,7 @@ export class AgentManager {
    */
   private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator): boolean {
     if (record.lifecycle.status === "queued") {
-      this.queue = this.queue.filter(q => q.id !== record.id);
+      this.queue = this.queue.filter((q) => q.id !== record.id);
     } else if (record.lifecycle.status !== "running") {
       return false;
     } else {

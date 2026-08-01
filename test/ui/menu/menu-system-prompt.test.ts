@@ -32,8 +32,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
     value = "";
     onSubmit?: (value: string) => void;
     onEscape?: () => void;
-    setValue(v: string) { this.value = v; }
-    getValue() { return this.value; }
+    setValue(v: string) {
+      this.value = v;
+    }
+    getValue() {
+      return this.value;
+    }
     constructor() {}
   },
 }));
@@ -56,7 +60,6 @@ describe("showSystemPromptMenu — SettingsList integration", () => {
     expect(ctx.ui.custom).toHaveBeenCalled();
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
-
 });
 
 describe("showSystemPromptMenu — system prompt mode", () => {
@@ -152,7 +155,9 @@ describe("showSystemPromptMenu — Create prompt file", () => {
 
   it("shows error notification when file creation fails", async () => {
     existsSyncSpy.mockReturnValue(false);
-    mkdirSyncSpy.mockImplementation(() => { throw new Error("permission denied"); });
+    mkdirSyncSpy.mockImplementation(() => {
+      throw new Error("permission denied");
+    });
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     settingsListCalls[0].onChange("createPromptFile", "Create");
@@ -267,7 +272,6 @@ describe("showSystemPromptMenu — item order", () => {
     vi.clearAllMocks();
     settingsListCalls = [];
   });
-
 
   it("includes createPromptFile when systemPromptMode is custom", async () => {
     mockModules.mockConfig.agent.systemPromptMode = "custom";
