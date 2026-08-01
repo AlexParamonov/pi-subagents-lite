@@ -134,14 +134,11 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
-    );
-    expect(notifyCall).toBeDefined();
-    expect(notifyCall[0]).toContain("general-purpose");
-    expect(notifyCall[0]).toContain("General-purpose agent");
-    expect(notifyCall[0]).toContain("Explore");
-    expect(notifyCall[0]).toContain("Explore agent");
+    // The notification text we show the user is the observable outcome.
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("general-purpose"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("General-purpose agent"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Explore"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Explore agent"), "info");
   });
 
   it("marks hidden types with [HIDDEN]", async () => {
@@ -153,10 +150,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("secret-agent"),
-    );
-    expect(notifyCall[0]).toContain("[HIDDEN]");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("[HIDDEN]"), "info");
   });
 
   it("shows model when config has one", async () => {
@@ -168,10 +162,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
-    );
-    expect(notifyCall[0]).toContain("Model: claude-sonnet-4-20250514");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Model: claude-sonnet-4-20250514"), "info");
   });
 
   it("shows registered tools when present", async () => {
@@ -183,10 +174,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
-    );
-    expect(notifyCall[0]).toContain("Tools: file_read, file_write");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: file_read, file_write"), "info");
   });
 
   it("shows 'all built-in tools' when registeredTools is absent", async () => {
@@ -197,10 +185,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
-    );
-    expect(notifyCall[0]).toContain("Tools: all built-in tools");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: all built-in tools"), "info");
   });
 
   it("skips types where getAgentConfig returns undefined", async () => {
@@ -212,11 +197,8 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
-    );
-    expect(notifyCall[0]).toContain("known");
-    expect(notifyCall[0]).not.toContain("unknown");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("known"), "info");
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("unknown"), "info");
   });
 
   it("shows source when present", async () => {
@@ -228,10 +210,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    const notifyCall = ctx.ui.notify.mock.calls.find(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Available agent types"),
-    );
-    expect(notifyCall[0]).toContain("Source: .pi/agents/ext-agent.md");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Source: .pi/agents/ext-agent.md"), "info");
   });
 });
 
@@ -273,32 +252,32 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
-    const message = mockSendUserMessage.mock.calls[0][0];
-    expect(message).toContain("General Purpose");
-    expect(message).toContain("Explore");
+    // The briefing message sent to the LLM is the observable outcome.
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("General Purpose"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("Explore"));
   });
 
   it("includes tool and model info when present", async () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
-    const message = mockSendUserMessage.mock.calls[0][0];
-    expect(message).toContain("**Tools:** file_read, file_write");
-    expect(message).toContain("**Default model:** claude-sonnet-4-20250514");
-    expect(message).toContain("**Max turns:** 50");
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("**Tools:** file_read, file_write"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(
+      expect.stringContaining("**Default model:** claude-sonnet-4-20250514"),
+    );
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("**Max turns:** 50"));
   });
 
   it("includes the parameters table with all required parameters", async () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
-    const message = mockSendUserMessage.mock.calls[0][0];
-    expect(message).toContain("prompt");
-    expect(message).toContain("description");
-    expect(message).toContain("agent");
-    expect(message).toContain("thinking");
-    expect(message).toContain("run_in_background");
-    expect(message).toContain("worktree_path");
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("prompt"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("description"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("agent"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("thinking"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("run_in_background"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("worktree_path"));
   });
 
   it("notifies the user after sending the briefing", async () => {
@@ -312,19 +291,17 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
-    const message = mockSendUserMessage.mock.calls[0][0];
-    expect(message).toContain("worktree_path");
-    expect(message).toContain("git worktree of the parent");
-    expect(message).toContain("Relative paths");
-    expect(message).toContain(".pi/agents/");
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("worktree_path"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("git worktree of the parent"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("Relative paths"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining(".pi/agents/"));
   });
 
   it("includes usage guidelines for background agents", async () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
-    const message = mockSendUserMessage.mock.calls[0][0];
-    expect(message).toContain("run_in_background");
-    expect(message).toContain("do NOT poll");
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("run_in_background"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("do NOT poll"));
   });
 });

@@ -54,8 +54,12 @@ vi.mock("../../src/shell.js", () => ({
 
 function makeMockManager() {
   const records = new Map<string, any>();
+  // Capture forwarded spawn arguments (named fields, not positional indices) so
+  // tests assert the coordinator's output to the manager without call indexing.
+  const spawnCalls: Array<{ pi: any; ctx: any; type: string; prompt: string; options: any }> = [];
   return {
     spawn: vi.fn((pi: any, ctx: any, type: string, prompt: string, options: any) => {
+      spawnCalls.push({ pi, ctx, type, prompt, options });
       const id = `agent-${records.size}`;
       const record: any = {
         id,
@@ -75,6 +79,7 @@ function makeMockManager() {
       return id;
     }),
     getRecord: vi.fn((id: string) => records.get(id)),
+    getSpawnCalls: vi.fn(() => spawnCalls),
     listAgents: vi.fn(() => [...records.values()]),
     abort: vi.fn(() => true),
     steer: vi.fn(async () => true),
@@ -118,10 +123,12 @@ describe("SpawnCoordinator", () => {
     });
 
     expect(result.agentId).toBeTruthy();
+    // Args forwarded to the spawn manager are the coordinator's observable output.
     expect(manager.spawn).toHaveBeenCalledTimes(1);
-    expect(manager.spawn.mock.calls[0][2]).toBe("builder");
-    expect(manager.spawn.mock.calls[0][3]).toBe("do something");
-    expect(manager.spawn.mock.calls[0][4].isBackground).toBe(true);
+    const spawn = manager.getSpawnCalls()[0];
+    expect(spawn.type).toBe("builder");
+    expect(spawn.prompt).toBe("do something");
+    expect(spawn.options.isBackground).toBe(true);
   });
 
   it("spawns a foreground agent and awaits its promise", async () => {
@@ -136,7 +143,7 @@ describe("SpawnCoordinator", () => {
 
     expect(result.agentId).toBeTruthy();
     expect(result.record).toBeTruthy();
-    expect(manager.spawn.mock.calls[0][4].isBackground).toBe(false);
+    expect(manager.getSpawnCalls()[0].options.isBackground).toBe(false);
   });
 
   it("creates a live view on spawn", async () => {
@@ -310,6 +317,7 @@ describe("SpawnCoordinator", () => {
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      // The nudge message we send the user IS the observable outcome.
       const content = mockPi.sendMessage.mock.calls[0][0].content as string;
       // Header (status) and result content still present; error text appended
       expect(content).toBe('[Subagent "builder" agent-0 error]\n\ndone\n\nError: model failed to load');
@@ -331,6 +339,7 @@ describe("SpawnCoordinator", () => {
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      // The nudge message we send the user IS the observable outcome.
       const content = mockPi.sendMessage.mock.calls[0][0].content as string;
       expect(content).toBe('[Subagent "builder" agent-0 completed]\n\ndone');
     });
@@ -547,6 +556,7 @@ describe("SpawnCoordinator", () => {
         vi.advanceTimersByTime(200);
 
         expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+        // The nudge message header mirrors the lifecycle status — the message IS the outcome.
         const content = mockPi.sendMessage.mock.calls[0][0].content;
         const shortId = result.agentId.slice(0, 8);
         expect(content).toContain(`[Subagent "builder" ${shortId} ${expected}]`);

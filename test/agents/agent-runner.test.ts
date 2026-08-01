@@ -147,10 +147,17 @@ function resetMocks() {
  */
 function createMockSession() {
   const listeners: Array<(event: any) => void> = [];
+  // Track active tools as real session state (a fake, not a call record) so
+  // tests assert the observable outcome of tool filtering rather than the
+  // internal call structure of setActiveToolsByName.
+  let activeTools: string[] | undefined;
   return {
     setSessionName: vi.fn(),
     getActiveToolNames: vi.fn(),
-    setActiveToolsByName: vi.fn(),
+    setActiveToolsByName: vi.fn((tools: string[]) => {
+      activeTools = tools;
+    }),
+    getActiveTools: vi.fn(() => activeTools),
     bindExtensions: vi.fn(),
     subscribe: vi.fn((listener: (event: any) => void) => {
       listeners.push(listener);
@@ -189,16 +196,14 @@ describe("runAgent — tool filtering", () => {
       pi: fakePi,
     });
 
-    // Verify that excluded tools are filtered out
-    expect(session.setActiveToolsByName).toHaveBeenCalledWith(expect.not.arrayContaining(["Agent"]));
-
-    // Verify the remaining tools are correct
+    // The session's active-tool list is the observable outcome of filtering.
     // tools: undefined → defaults to true → all tools visible (except Agent)
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toContain("read");
-    expect(activeToolsCall).toContain("bash");
-    expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).toContain("grep");
+    const activeTools = session.getActiveTools()!;
+    expect(activeTools).toEqual(expect.not.arrayContaining(["Agent"]));
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).toContain("grep");
   });
 
   it("tools: [read, bash, edit] — whitelist filters out other tools", async () => {
@@ -222,15 +227,14 @@ describe("runAgent — tool filtering", () => {
       pi: fakePi,
     });
 
-    // write and grep not in tools whitelist → should be rejected
-    expect(session.setActiveToolsByName).toHaveBeenCalled();
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toContain("read");
-    expect(activeToolsCall).toContain("bash");
-    expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).not.toContain("write");
-    expect(activeToolsCall).not.toContain("grep");
-    expect(activeToolsCall).not.toContain("Agent");
+    // write and grep not in tools whitelist → rejected in the active-tool state
+    const activeTools = session.getActiveTools()!;
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).not.toContain("write");
+    expect(activeTools).not.toContain("grep");
+    expect(activeTools).not.toContain("Agent");
   });
 });
 
@@ -258,14 +262,13 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(session.setActiveToolsByName).toHaveBeenCalled();
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toContain("read");
-    expect(activeToolsCall).toContain("bash");
-    expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).toContain("grep");
-    expect(activeToolsCall).not.toContain("write");
-    expect(activeToolsCall).not.toContain("Agent");
+    const activeTools = session.getActiveTools()!;
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).toContain("grep");
+    expect(activeTools).not.toContain("write");
+    expect(activeTools).not.toContain("Agent");
   });
 
   it("excludeTools: [write, grep] — excludes multiple tools", async () => {
@@ -282,14 +285,13 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(session.setActiveToolsByName).toHaveBeenCalled();
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toContain("read");
-    expect(activeToolsCall).toContain("bash");
-    expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).not.toContain("write");
-    expect(activeToolsCall).not.toContain("grep");
-    expect(activeToolsCall).not.toContain("Agent");
+    const activeTools = session.getActiveTools()!;
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).not.toContain("write");
+    expect(activeTools).not.toContain("grep");
+    expect(activeTools).not.toContain("Agent");
   });
 
   it("excludeTools with no matching tools — no filtering needed", async () => {
@@ -306,8 +308,8 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // No filtering needed — write not in active tools
-    expect(session.setActiveToolsByName).not.toHaveBeenCalled();
+    // No filtering needed — write not in active tools, session state stays untouched
+    expect(session.getActiveTools()).toBeUndefined();
   });
 
   it("excludeTools is ignored when tools whitelist is set", async () => {
@@ -325,9 +327,8 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // tools whitelist wins — only read and bash visible
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toEqual(["read", "bash"]);
+    // tools whitelist wins — only read and bash visible in the active-tool state
+    expect(session.getActiveTools()).toEqual(["read", "bash"]);
   });
 
   it("excludeTools with ext/* syntax — excludes all tools from extension", async () => {
@@ -354,15 +355,14 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(session.setActiveToolsByName).toHaveBeenCalled();
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toContain("read");
-    expect(activeToolsCall).toContain("bash");
-    expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).not.toContain("web_search");
-    expect(activeToolsCall).not.toContain("web_extract");
-    expect(activeToolsCall).not.toContain("web_crawl");
-    expect(activeToolsCall).not.toContain("Agent");
+    const activeTools = session.getActiveTools()!;
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).not.toContain("web_search");
+    expect(activeTools).not.toContain("web_extract");
+    expect(activeTools).not.toContain("web_crawl");
+    expect(activeTools).not.toContain("Agent");
   });
 
   it("excludeTools with mixed syntax — ext/* and bare names", async () => {
@@ -388,15 +388,14 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(session.setActiveToolsByName).toHaveBeenCalled();
-    const activeToolsCall = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeToolsCall).toContain("read");
-    expect(activeToolsCall).toContain("bash");
-    expect(activeToolsCall).toContain("edit");
-    expect(activeToolsCall).not.toContain("write");
-    expect(activeToolsCall).not.toContain("web_search");
-    expect(activeToolsCall).not.toContain("web_extract");
-    expect(activeToolsCall).not.toContain("Agent");
+    const activeTools = session.getActiveTools()!;
+    expect(activeTools).toContain("read");
+    expect(activeTools).toContain("bash");
+    expect(activeTools).toContain("edit");
+    expect(activeTools).not.toContain("write");
+    expect(activeTools).not.toContain("web_search");
+    expect(activeTools).not.toContain("web_extract");
+    expect(activeTools).not.toContain("Agent");
   });
 });
 
@@ -866,7 +865,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).toContain("web_search");
     // web_extract not in tools list -> filtered out
@@ -903,7 +902,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).toContain("web_search");
     expect(activeTools).toContain("web_extract");
@@ -918,7 +917,13 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     // extension is loaded. The allowlist must contain the concrete names.
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "web_crawl"]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    // Capture the session-factory config so the allowlist (the registry gate)
+    // is asserted on the captured value, not on mock call indexing.
+    let sessionOpts: any;
+    mockModules.mockCreateAgentSession.mockImplementation((opts: any) => {
+      sessionOpts = opts;
+      return Promise.resolve({ session, extensionsResult: {} });
+    });
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       extensions: ["tavily"],
@@ -942,7 +947,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const sessionOpts = mockModules.mockCreateAgentSession.mock.calls[0][0];
+    // sessionOpts was captured when createAgentSession was invoked above.
     // Whitelist semantics: only "read" + the expanded tavily tools register.
     // bash/edit are NOT in the whitelist, so they must not leak into the gate.
     expect(sessionOpts.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl"]));
@@ -977,7 +982,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tool "foobar" not found in any loaded extension'));
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).not.toContain("foobar");
     expect(activeTools).not.toContain("web_search");
@@ -1013,7 +1018,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       expect.stringContaining('extension "tavily" is loaded but none of its tools are in tools'),
     );
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).toContain("bash");
     expect(activeTools).not.toContain("web_search");
@@ -1047,7 +1052,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       expect.stringContaining('extension "tavily" is not loaded, "tavily/*" will have no effect'),
     );
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).not.toContain("web_search");
   });
@@ -1075,8 +1080,8 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // tools: true -> no filtering (except excluded tools)
-    expect(session.setActiveToolsByName).not.toHaveBeenCalled();
+    // tools: true -> no filtering (except excluded tools), session state untouched
+    expect(session.getActiveTools()).toBeUndefined();
   });
 
   it("tools: false hides all tools", async () => {
@@ -1096,8 +1101,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
-    expect(activeTools).toEqual([]);
+    expect(session.getActiveTools()).toEqual([]);
   });
 
   it("ext/all combined with named extension tool", async () => {
@@ -1139,7 +1143,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).toContain("web_search");
     expect(activeTools).toContain("web_extract");
@@ -1175,7 +1179,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).not.toContain("web_search");
     expect(activeTools).not.toContain("web_extract");
@@ -1217,7 +1221,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     expect(warnSpy).not.toHaveBeenCalled();
 
     // Falls back to extensions-based filtering: all tavily tools allowed, Agent filtered out
-    const activeTools = session.setActiveToolsByName.mock.calls[0][0];
+    const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("web_search");
     expect(activeTools).toContain("web_extract");
     expect(activeTools).not.toContain("Agent");
