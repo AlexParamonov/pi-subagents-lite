@@ -527,7 +527,7 @@ async function initSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
   settingsManager: SettingsManager,
-): Promise<{ session: AgentSession }> {
+): Promise<AgentSession> {
   const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
   const agentDir = getAgentDir();
@@ -546,23 +546,24 @@ async function initSession(
   };
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
   const result = await createAgentSession(sessionOpts);
+  const session = result.session;
   // Mark transient Codex stream errors as retryable.
-  enableCodexStreamErrorRetry(result.session);
+  enableCodexStreamErrorRetry(session);
 
   // Inject max_tokens into provider request payloads.
   // Spawn-time value wins over agent config (frontmatter).
   const maxTokens = options.maxTokens ?? agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
     const field = (model.compat as any)?.maxTokensField ?? "max_tokens";
-    const origOnPayload = result.session.agent.onPayload;
-    result.session.agent.onPayload = async (payload, m) => {
+    const origOnPayload = session.agent.onPayload;
+    session.agent.onPayload = async (payload, m) => {
       const applied = origOnPayload ? ((await origOnPayload(payload, m)) ?? payload) : payload;
       const obj = typeof applied === "object" && applied && !Array.isArray(applied) ? applied : {};
       return { ...obj, [field]: maxTokens };
     };
   }
 
-  return result;
+  return session;
 }
 
 /**
@@ -579,7 +580,7 @@ async function createAndConfigureSession(
   settingsManager: SettingsManager,
   notify: (msg: string) => void,
 ): Promise<AgentSession> {
-  const { session } = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap, settingsManager);
+  const session = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap, settingsManager);
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   await session.bindExtensions({
