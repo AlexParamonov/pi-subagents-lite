@@ -21,7 +21,7 @@ import {
 } from "../types.js";
 import type { SubagentType } from "./types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
-import { errorMessage } from "../utils.js";
+import { errorMessage, toSingleLine } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
 const CLEANUP_INTERVAL_MS = 60_000;
@@ -49,7 +49,7 @@ function formatModelError(
   model: { provider: string; id: string } | undefined,
   providerError: string,
 ): string {
-  const sanitizedError = providerError.replace(/[\r\n]+/g, " ").trim();
+  const sanitizedError = toSingleLine(providerError);
   return model ? `${type} (${model.provider}/${model.id}): ${sanitizedError}` : `${type}: ${sanitizedError}`;
 }
 

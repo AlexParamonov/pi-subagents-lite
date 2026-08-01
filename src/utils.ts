@@ -62,11 +62,18 @@ export function parseThinkingLevel(raw: string | undefined): ThinkingLevel | und
 }
 
 /**
+ * Collapse newlines and carriage returns into single spaces and trim, so a
+ * message renders on one line (line-based TUI output breaks on raw CR/LF).
+ */
+export function toSingleLine(msg: string): string {
+  return msg.replace(/[\r\n]+/g, " ").trim();
+}
+
+/**
  * Safely extract a human-readable error message from an unknown exception.
  */
 export function errorMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.replace(/[\r\n]+/g, " ").trim();
+  return toSingleLine(err instanceof Error ? err.message : String(err));
 }
 
 /**
