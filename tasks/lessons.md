@@ -19,6 +19,7 @@
 - Existing tests that mock away the real path mask the bug. Assert constructor args, not just downstream behavior.
 - When a range edit targets code that shifted since the last read, it can clobber adjacent signatures. Re-read before multi-line replaces; check the parse after.
 - When a replace range ends with the same line as the next surviving line, the edit tool flags boundary duplication — verify and delete the stray duplicate before running tests.
+- Replacing `setTimeout` sleeps in concurrency tests: await the chained completion promise (`record.execution.promise`) instead. It resolves only after `.finally` runs, so queue drain and completion side effects are guaranteed observed. Faster and no flake on slow CI.
 
 ### Delegation
 - Delegate immediately without pre-reading files — agent explores itself.
