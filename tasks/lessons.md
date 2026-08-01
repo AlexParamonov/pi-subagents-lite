@@ -3,102 +3,73 @@
 ## General
 
 ### Worktrees
-- Clean up after merge: commit/discard untracked files first. Verify path exists before spawning reviewers.
+- Clean up after merge first (commit/discard untracked files). Verify the worktree path, branch, and checkout state before spawning builder/reviewers.
+- Read files through the worktree path, never the main checkout; verify `git status` after writing any file.
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
-- Always verify worktree branch exists and is checked out before spawning builder.
-- Read files through the worktree path, never the main checkout. Verify `git status` after writing any file.
 
 ### Testing
-- Always `bun run test` after merging to main; clean merge ≠ passing tests.
-- Acceptance tests match planned interface (plan.md), not guessed implementation.
-- Test public interfaces and behavior, not implementation details or hardcoded data.
-- User manual testing result ("all works") → record and proceed, don't insist on automated loop.
-- When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh.
-- Tests must interact through component tree, not captured mock references.
-- Export testable functions early to avoid mock ceremony.
-- Existing tests that mock away the real path mask the bug. Assert constructor args, not just downstream behavior.
-- When a range edit targets code that shifted since the last read, it can clobber adjacent signatures. Re-read before multi-line replaces; check the parse after.
-- When a replace range ends with the same line as the next surviving line, the edit tool flags boundary duplication — verify and delete the stray duplicate before running tests.
-- Replacing `setTimeout` sleeps in concurrency tests: await the chained completion promise (`record.execution.promise`) instead. It resolves only after `.finally` runs, so queue drain and completion side effects are guaranteed observed. Faster and no flake on slow CI.
-- Assertions that check the test's own setup (e.g. "the dir we never created doesn't exist") are dead weight — they pass even with broken code under test. Drop them, then prune imports they leave unused.
-- afterEach cleanup must remove the whole temp base dir, not one sibling — partial cleanup leaks on repeated runs and signals the test author didn't track resource ownership.
+- Run `bun run test` after merging to main — a clean merge ≠ passing tests.
+- Test public interfaces and behavior: acceptance tests match plan.md, not guessed implementation. Don't assert implementation details or the test's own setup — dead weight that passes even when the code under test is broken; prune imports they leave unused.
+- Don't mock away the real path — assert constructor args, not just downstream behavior. Export testable functions early to avoid mock ceremony; interact through the component tree, not captured mock references.
+- Re-read before multi-line replaces on code that shifted since the last read — stale ranges clobber adjacent signatures. A replace ending on the same line as the next surviving line flags boundary duplication; delete the stray duplicate before running tests.
+- Replace `setTimeout` sleeps with awaiting the chained completion promise (`record.execution.promise`) — it resolves after `.finally`, so queue drain and side effects are guaranteed observed. Faster, no flake on slow CI.
+- afterEach cleanup must remove the whole temp base dir, not one sibling — partial cleanup leaks on repeated runs.
+- When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh. Manual "all works" → record and proceed, don't insist on the automated loop.
 
 ### Delegation
-- Delegate immediately without pre-reading files — agent explores itself.
-- For simple tasks, propose 2-3 name/design alternatives upfront.
-- Wave-level arch review catches incomplete feature branches.
-- Parallel sub-agents writing design docs: mandate distinct output paths per agent.
-- Parallel slice execution (2+ slices) consistently saves time.
+- Delegate immediately without pre-reading files — the agent explores itself. For simple tasks, propose 2-3 name/design alternatives upfront.
+- Parallel sub-agents writing docs: mandate distinct output paths. Parallel slices (2+) consistently save time. Wave-level arch review catches incomplete feature branches.
 
 ### Verification
-- When merge agent reports success, verify the actual merge commit exists.
-- Don't assume — verify. Code review catches silent production bugs.
-- `ExtensionAPI` (pi) rejects calls to old ctx. Add try-catch around sendMessage for defense-in-depth.
-- A trailing `?? N` fallback on optional config fields looks dead but is forced by `T | undefined` static type. Run typecheck before removing "redundant" fallbacks.
-- A cast before `??` on an `unknown` value is NOT redundant: `unknown ?? T` stays `unknown`, so the cast is the narrowing. Reviewer said `(params.x as number | undefined) ?? fallback` "adds no safety" — typecheck proved dropping it breaks the downstream `number | undefined` assignment. Verify narrowing claims with the typechecker before simplifying casts.
-- Never use `general-purpose` when workflow specifies a specialized agent type. Check workflow docs for exact `agent` values before spawning.
+- Don't assume — verify: confirm the merge commit actually exists; code review catches silent production bugs.
+- Never use `general-purpose` when the workflow specifies a specialized agent type.
+- `ExtensionAPI` rejects calls to old ctx — wrap sendMessage in try-catch for defense-in-depth.
 
-### Config & Refactoring
-- When adding config overrides respecting "explicit vs default", make source fields optional from the start. Type system enforces precedence, not runtime equality checks.
-- When adding new visibility/config alongside existing similar config, trace ALL existing mutation paths for the old config.
-- Check if any WIP branches might land before merge — gives builder context for conflict resolution.
-- Only extract mock factories with ≥1 consumer in the current slice. Speculative extraction is waste.
-- Diff old paths before merging to ensure all side effects are preserved.
-- Module-level singletons still require vi.mock(). Accept module singleton as sufficient if composition root goal is otherwise achieved.
-- A result field whose only consumer's check is implied by a sibling field is dead weight: `gateApplied && !projectTrusted` reduces to `!projectTrusted` because false trust can only arise when the gate applied. Delete the flag, return the bare boolean, and let the tests pin the guarantee through the surviving field.
+### Types & Refactoring
+- Run typecheck before removing "redundant" fallbacks: `?? N` on optional config is forced by `T | undefined`; a cast before `??` on `unknown` is the narrowing (`unknown ?? T` stays `unknown`). Verify narrowing claims with the typechecker before simplifying casts.
+- Make source fields optional from the start for explicit-vs-default overrides — the type system enforces precedence, not runtime equality checks. Trace ALL mutation paths of existing config when adding similar config.
+- A result field whose check is implied by a sibling is dead weight: `gateApplied && !projectTrusted` ≡ `!projectTrusted`. Delete the flag, return the bare boolean, pin the guarantee through the surviving field.
+- Check for WIP branches that might land before merging. Diff old paths before merging to preserve side effects.
+- Only extract mock factories with ≥1 consumer in the current slice. Module-level singletons still require vi.mock().
+- Prefer public API for cross-package access — private fields break silently on upstream changes.
 
-### pi-ai API
-- `deliverAs: "steer"` only queues while the parent agent is running. If the agent is idle when the message arrives, pi drops it silently.
-- `deliverAs: "followUp"` waits for the agent to finish, then delivers. Use this for notifications that must arrive regardless of agent state.
-- Check `ctx.isIdle()` at call time to pick the right delivery mode. Don't assume agent state from caller context.
-
-### Subagent Session Lifecycle
-- Subagents are built with `createAgentSession`, which runs its own `DefaultResourceLoader.reload()` and `session.bindExtensions()`. That re-executes EVERY extension factory and re-fires `session_start`/`session_shutdown` in the subagent's context, NOT just the parent's.
-- An extension that writes parent-owned state in its factory or `session_start` handler (module-level shell singletons like `pi`/`ctx`) will have that state clobbered by every subagent spawn. Last subagent to load wins, so later reads route to a dead/wrong session. Failures are silent because misrouted `sendMessage` swallows internally.
-- Fix: bracket the subagent entry point (`runAgent`) with a nesting-depth flag. Make the factory + `session_start`/`session_shutdown` handlers a no-op while a subagent is in flight. Parent reload still refreshes the shell (flag is false outside `runAgent`). `dispose()` gates deferred work after `session_shutdown`.
-- `AgentSession.dispose()` does NOT emit `session_shutdown` (only the interactive runtime's `teardownCurrent` does). So subagent cleanup won't dispose parent state, but subagent `bindExtensions` WILL fire the parent's `session_start` handler.
+### pi-ai API & Subagent Lifecycle
+- `deliverAs: "steer"` only queues while the parent runs — if idle, pi drops it silently. `followUp` waits for the agent to finish. Check `ctx.isIdle()` at call time.
+- `createAgentSession` runs its own resource reload + `bindExtensions`, re-executing EVERY extension factory and re-firing session_start/shutdown in the subagent context. Extensions writing parent-owned state there get clobbered per spawn (last wins, silent failures). Fix: bracket `runAgent` with a nesting-depth flag; no-op the factory and session handlers while a subagent is in flight.
+- `AgentSession.dispose()` does NOT emit session_shutdown; subagent `bindExtensions` DOES fire the parent's session_start.
 
 ### Extension Tools
-- Registry/allowlist gates reject before you can patch the result. When tools/resources are silently missing, find the gate first (search where the set is built and filtered), and seed it at construction — pushing names in after construction cannot resurrect filtered-out entries. `setActiveToolsByName` silently ignoring unknown names is the tell that the registry, not activation, is the bug.
-- Seeding `createAgentSession({ tools })` with concrete extension tool names (expanding `tavily/*` before session creation). Pi's `tools` option is a registry allowlist gate, not just an initial-active list.
-- Whitelist must gate builtins too. Seeding gate with `registeredTools` as unconditional base leaks unlisted builtins and raw wildcard literals as bogus tool names. Gate must derive from whitelist expansion alone in whitelist mode.
-- Confirmed against pi source: `agent-session.ts:_refreshToolRegistry` (~2454-2545) and `sdk.ts` (~245-251). `options.tools` becomes both `allowedToolNames` and `initialActiveToolNames`.
+- When tools/resources are silently missing, find the gate first (where the set is built/filtered). Seeding happens at construction; `setActiveToolsByName` silently ignoring names = registry bug. Seed `createAgentSession({ tools })` with concrete names (expand `tavily/*` before creation). Verified in pi source: `agent-session.ts:_refreshToolRegistry`.
+- The allowlist gate must derive from whitelist expansion alone in whitelist mode and gate builtins too — an unconditional `registeredTools` base leaks unlisted builtins and raw wildcard literals.
+- Cross-repo trust gate coverage is narrower than it reads: `.pi/` resources + `.agents/skills` are gated via SettingsManager, but root `AGENTS.md`/`CLAUDE.md` load unconditionally through `loadProjectContextFiles({ cwd, agentDir })` (no trust param). SYSTEM.md is inert anyway — `systemPromptOverride` + `appendSystemPromptOverride: () => []` fully replace the loader's prompt. Subagent prompts are always subagents-lite's own build (replace/inherit/custom).
 
-### SettingsList
-- Supports: toggles, submenus, section separators (`__sep__` items), static display.
-- Does NOT support: multi-step dialogs, action buttons, dynamic item sets.
-- Never call `ctx.ui.input/select/custom` from within active SettingsList. Design submenu-Component layer before touching complex menus.
-- Dispatcher menus → `ctx.ui.select` with `while(true)` loop. SettingsList only for cursor-persistence menus. SettingsList + async select submenus don't mix.
-
-### Menus & Components
-- Proxy pattern (`createDelegatingComponent`) chains submenus cleanly. Shared submenu components earned keep with 2-3 uses each.
-- When submenu callbacks chain Components, verify returned Component is renderable, not immediately closed.
-- Breaking `extensionPackageName` into memoizing wrapper + pure resolver clarifies concerns. `.has()` presence check solves negative caching bugs cleanly. Use `.has()` for nullable caches, not value-guard patterns.
+### SettingsList & Menus
+- SettingsList: toggles, submenus, separators, static display. No multi-step dialogs, action buttons, or dynamic sets. Never call `ctx.ui.input/select/custom` inside it; dispatcher menus use `ctx.ui.select` + `while(true)` loop.
+- Proxy pattern (`createDelegatingComponent`) chains submenus cleanly; verify the returned Component is renderable, not immediately closed. Use `.has()` presence checks for nullable caches.
+- Use library helpers (`getSupportedThinkingLevels`, `clampThinkingLevel`) instead of reimplementing filtering. Submenu lazy evaluation works for dynamic option lists.
 
 ### Issue Design
-- Prototype code blocks in issue.md (state machine, key handler) give builder a clear contract.
-- Call out overflow behavior as a hard gate in the AC.
-- Prefer public API for cross-package access — private fields break silently on upstream changes.
-- Specify test location and approach in the issue or builder prompt. "Test frontmatter parsing of max" not "cover max in tests".
-- Single meaningful behavior test beats multiple implementation tests on a one-liner.
+- Prototype state machines/key handlers in issue.md as a contract; call out overflow behavior as a hard AC gate. Specify test location and approach ("test frontmatter parsing of max"). Single meaningful behavior test beats multiple implementation tests on a one-liner.
+- Grill thoroughly — scope was corrected twice on allow-several-repos.
 
 ### Buffer & Error Patterns
-- Buffer-then-flush pattern is the simplest fix for ordering/corruption issues. When deferring side effects, always consider error paths. try/finally guarantees flush.
-- When nudges stop working, restart harness rather than debugging live state.
+- Buffer-then-flush is the simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
+- When nudges stop working, restart the harness rather than debugging live state.
 
 ### Package Management
-- When bumping versions, always run the package manager to regenerate lockfiles. Never hand-edit bun.lock.
-- Keep `@ts-expect-error` comments focused — one error per directive.
+- Regenerate lockfiles with the package manager when bumping versions; never hand-edit bun.lock.
+- Releasing: keep `[Unreleased]` as an empty running header and insert the versioned section below it — don't rename it to the version.
+- Keep `@ts-expect-error` focused — one error per directive.
 
 ### Cross-Platform
-- `process.env.HOME` is unreliable on Windows. Use SDK's `getAgentDir()` or `os.homedir()` instead.
-- Check existing PRs for reference implementations before grilling alternatives — PR #12 already solved this issue.
+- `process.env.HOME` is unreliable on Windows — use `os.homedir()` or SDK's `getAgentDir()`.
+- Check existing PRs for reference implementations before grilling alternatives (PR #12 already solved it).
 
 ### Refactor Scope
-- Refactor agent should stay within issue scope. Mock pattern improvements are out-of-scope for a trust-gate issue.
-- If refactor hits a vitest ordering issue (vi.mock vs vi.hoisted), stop and move on — the code works.
+- Stay within issue scope — mock-pattern improvements are out of scope for a trust-gate issue.
+- If a refactor hits a vitest ordering issue (vi.mock vs vi.hoisted), stop and move on — the code works.
 
-### Model-Aware UI Filtering
-- Use library-provided helpers (getSupportedThinkingLevels, clampThinkingLevel) instead of reimplementing filtering logic.
-- Submenu pattern (lazy evaluation) works well for dynamic option lists — avoids SettingsList rebuild complexity.
-- Grill thoroughly: user corrected scope twice (no Model settings change, non-reasoning shows only off).
+## allow-several-repos - 2026-08-02
+- **Worked:** grilling settled the design pre-issue (extension-only, trust-gate via pi's building blocks); builder verified SDK exports from node_modules; review feedback verified against code before applying; refactor stayed in scope; manual tester covered all 7 scenarios.
+- **Failed:** three review rounds (ADR duplicate bullet, incomplete temp cleanup, stale test data, setTimeout pattern); misleading `worktreeDir` name from the same-repo-only era.
+- **Next time:** name vars by current semantics, not historical ones. (Remainder already in General.)
