@@ -8,10 +8,17 @@
  * `defaultProjectTrust` setting; anything other than "always" means untrusted.
  *
  * The SDK building blocks are injected as deps so the branching logic stays
- * unit-testable; the extension wires the real functions at the call site.
+ * unit-testable; createSubagentTrustDeps wires the real functions at the
+ * call site.
  */
 
-import type { DefaultProjectTrust, ProjectTrustDecision } from "@earendil-works/pi-coding-agent";
+import {
+  hasTrustRequiringProjectResources,
+  ProjectTrustStore,
+  SettingsManager,
+  type DefaultProjectTrust,
+  type ProjectTrustDecision,
+} from "@earendil-works/pi-coding-agent";
 
 /** The trust primitives the gate is built from. Injected for testability. */
 export interface SubagentTrustDeps {
@@ -21,6 +28,20 @@ export interface SubagentTrustDeps {
   getTrustDecision: (cwd: string) => ProjectTrustDecision;
   /** pi's SettingsManager.getDefaultProjectTrust: global default. */
   getDefaultProjectTrust: () => DefaultProjectTrust;
+}
+
+/**
+ * Wire the real pi building blocks behind the trust gate. agentDir is where
+ * trust decisions are stored; parentCwd is the parent session's working dir
+ * (source of the global defaultProjectTrust setting).
+ */
+export function createSubagentTrustDeps(agentDir: string, parentCwd: string): SubagentTrustDeps {
+  const trustStore = new ProjectTrustStore(agentDir);
+  return {
+    hasTrustRequiringProjectResources,
+    getTrustDecision: (cwd) => trustStore.get(cwd),
+    getDefaultProjectTrust: () => SettingsManager.create(parentCwd, agentDir).getDefaultProjectTrust(),
+  };
 }
 
 export interface SubagentTrustResult {
@@ -51,5 +72,6 @@ export function resolveSubagentTrust(opts: {
 }
 
 /** Warning surfaced when a spawn proceeds into an untrusted cross-repo target. */
-export const UNTRUSTED_PROJECT_WARNING = (targetPath: string): string =>
-  `Target project at ${targetPath} is not trusted: its project resources (.pi/ settings, extensions, skills, prompts, themes, system prompt files, .agents/skills) will be ignored for this subagent`;
+export function untrustedProjectWarning(targetPath: string): string {
+  return `Target project at ${targetPath} is not trusted: its project resources (.pi/ settings, extensions, skills, prompts, themes, system prompt files, .agents/skills) will be ignored for this subagent`;
+}

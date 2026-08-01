@@ -7,21 +7,14 @@ import { getStatusNote } from "../status-note.js";
  * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
  */
 
-import {
-  getAgentDir,
-  hasTrustRequiringProjectResources,
-  ProjectTrustStore,
-  SettingsManager,
-  type ExtensionContext,
-  type ToolCallEvent,
-} from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionContext, type ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
-import { resolveSubagentTrust, UNTRUSTED_PROJECT_WARNING } from "../spawn/project-trust.js";
+import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "../spawn/project-trust.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
@@ -149,16 +142,12 @@ export async function executeAgentTool(
       const trust = resolveSubagentTrust({
         targetPath: validatedWorktreePath!,
         sameRepo: validation.sameRepo === true,
-        deps: {
-          hasTrustRequiringProjectResources,
-          getTrustDecision: (cwd) => new ProjectTrustStore(agentDir).get(cwd),
-          getDefaultProjectTrust: () => SettingsManager.create(parentCwd, agentDir).getDefaultProjectTrust(),
-        },
+        deps: createSubagentTrustDeps(agentDir, parentCwd),
       });
       projectTrusted = trust.projectTrusted;
       if (trust.gateApplied && !trust.projectTrusted) {
         if (ctx.ui?.notify) {
-          ctx.ui.notify(`[pi-subagents-lite] ${UNTRUSTED_PROJECT_WARNING(validatedWorktreePath!)}`, "warning");
+          ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(validatedWorktreePath!)}`, "warning");
         }
       }
     } catch (err: unknown) {

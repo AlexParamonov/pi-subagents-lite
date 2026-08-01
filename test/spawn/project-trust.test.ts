@@ -19,7 +19,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveSubagentTrust, type SubagentTrustDeps } from "../../src/spawn/project-trust.js";
+import {
+  resolveSubagentTrust,
+  createSubagentTrustDeps,
+  type SubagentTrustDeps,
+} from "../../src/spawn/project-trust.js";
 
 function makeDeps(overrides: Partial<SubagentTrustDeps> = {}): SubagentTrustDeps {
   return {
@@ -157,21 +161,10 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
     rmSync(baseDir, { recursive: true, force: true });
   });
 
-  async function realDeps() {
-    const { hasTrustRequiringProjectResources, ProjectTrustStore, SettingsManager } =
-      await import("@earendil-works/pi-coding-agent");
-    const store = new ProjectTrustStore(agentDir);
-    return {
-      hasTrustRequiringProjectResources,
-      getTrustDecision: (cwd: string) => store.get(cwd),
-      getDefaultProjectTrust: () => SettingsManager.create(parentDir, agentDir).getDefaultProjectTrust(),
-    };
-  }
-
   it("gates an undecided target with .pi resources when the global default is ask", async () => {
     mkdirSync(join(targetDir, ".pi"), { recursive: true });
     writeFileSync(join(targetDir, ".pi", "settings.json"), "{}");
-    const deps = await realDeps();
+    const deps = createSubagentTrustDeps(agentDir, parentDir);
 
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
 
@@ -182,7 +175,7 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
     mkdirSync(join(targetDir, ".pi"), { recursive: true });
     writeFileSync(join(targetDir, ".pi", "settings.json"), "{}");
     writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProjectTrust: "always" }));
-    const deps = await realDeps();
+    const deps = createSubagentTrustDeps(agentDir, parentDir);
 
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
 
@@ -194,7 +187,7 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
     writeFileSync(join(targetDir, ".pi", "settings.json"), "{}");
     const { ProjectTrustStore } = await import("@earendil-works/pi-coding-agent");
     new ProjectTrustStore(agentDir).set(targetDir, true);
-    const deps = await realDeps();
+    const deps = createSubagentTrustDeps(agentDir, parentDir);
 
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
 
@@ -202,7 +195,7 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
   });
 
   it("does not gate a target without trust-requiring resources", async () => {
-    const deps = await realDeps();
+    const deps = createSubagentTrustDeps(agentDir, parentDir);
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
     expect(result).toEqual({ projectTrusted: true, gateApplied: false });
   });

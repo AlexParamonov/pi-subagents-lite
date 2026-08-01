@@ -48,7 +48,8 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
 
 vi.mock("../../src/spawn/project-trust.js", () => ({
   resolveSubagentTrust: mockResolveSubagentTrust,
-  UNTRUSTED_PROJECT_WARNING: (p: string) => `Target project at ${p} is not trusted`,
+  createSubagentTrustDeps: vi.fn(),
+  untrustedProjectWarning: (p: string) => `Target project at ${p} is not trusted`,
 }));
 
 vi.mock("../../src/agents/agent-types.js", () => ({
