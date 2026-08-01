@@ -4,28 +4,36 @@
  * This file MUST be imported as the FIRST import in each menu test file.
  * It sets up vi.mock() calls for all menu dependencies.
  *
- * The mockModules object is returned so test files can access mock state.
+ * The mutable mock state is created through vi.hoisted() so the vi.mock()
+ * factories below can reference it regardless of hoist order. Tests mutate
+ * the shared mockModules object; a single resetConfig() restores every
+ * field to its default in afterEach hooks, so a failing test can never leak
+ * stale state into later tests.
  */
 
 import { vi } from "vitest";
 
-// Create the mock modules object
-export const mockModules = {
-  mockConfig: {
+// Create the mutable mock state via vi.hoisted so the vi.mock factories
+// (which vitest hoists above the rest of the module) can reference it.
+const hoisted = vi.hoisted(() => {
+  const mockConfig = {
     agent: { default: null, forceBackground: false } as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
-  },
-  mockSessionOverrides: { default: null } as Record<string, any>,
-  mockSessionShowCost: undefined as boolean | undefined,
-  mockManager: {
+  };
+
+  const mockSessionOverrides = { default: null } as Record<string, any>;
+  const mockSessionShowCost = undefined as boolean | undefined;
+
+  const mockManager = {
     setConcurrency: vi.fn(),
     listAgents: vi.fn(() => []),
     getRecord: vi.fn(),
     abort: vi.fn(),
     steer: vi.fn(),
     spawn: vi.fn(() => "agent-id-123"),
-  },
-  mockSessionCtx: {
+  };
+
+  const mockSessionCtx = {
     modelRegistry: {
       find: vi.fn((provider: string, modelId: string) => {
         const known: Record<string, any> = {
@@ -45,13 +53,45 @@ export const mockModules = {
     },
     model: { provider: "test", id: "parent-model" },
     cwd: "/test",
-  },
-  mockPiExec: vi.fn(),
-  mockPiInstance: null as any,
+  };
+
+  const mockPiExec = vi.fn();
+
+  return {
+    mockConfig,
+    mockSessionOverrides,
+    mockSessionShowCost,
+    mockManager,
+    mockSessionCtx,
+    mockPiExec,
+    mockPiInstance: { sendUserMessage: vi.fn(), exec: mockPiExec } as any,
+  };
+});
+
+export const mockModules = {
+  mockConfig: hoisted.mockConfig,
+  mockSessionOverrides: hoisted.mockSessionOverrides,
+  mockSessionShowCost: hoisted.mockSessionShowCost,
+  mockManager: hoisted.mockManager,
+  mockSessionCtx: hoisted.mockSessionCtx,
+  mockPiExec: hoisted.mockPiExec,
+  mockPiInstance: hoisted.mockPiInstance,
 };
 
-// Set up the Pi instance mock
-mockModules.mockPiInstance = { sendUserMessage: vi.fn(), exec: mockModules.mockPiExec };
+/**
+ * Restore every field of the shared mockModules state to its default.
+ * Wire this into an afterEach hook in each menu test file so stale state
+ * from a failed test never leaks into later tests.
+ */
+export function resetConfig(): void {
+  mockModules.mockConfig = {
+    agent: { default: null, forceBackground: false } as Record<string, any>,
+    concurrency: { default: 4 } as Record<string, any>,
+  };
+  mockModules.mockSessionOverrides = { default: null } as Record<string, any>;
+  mockModules.mockSessionShowCost = undefined;
+  resetSelectDialogInstances();
+}
 
 // --- vi.mock() calls ---
 

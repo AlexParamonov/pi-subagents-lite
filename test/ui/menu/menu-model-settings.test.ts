@@ -5,8 +5,8 @@
  * Cost display toggle removed (still in widget settings → usage stats).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig, getAllTypes } from "../../../src/agents/agent-types.js";
 
@@ -94,6 +94,8 @@ function resetAgentState(): void {
   mockModules.mockSessionOverrides = { default: null };
   mockModules.mockSessionShowCost = undefined;
 }
+
+afterEach(() => resetConfig());
 
 describe("showModelSettingsMenu — SettingsList migration", () => {
   beforeEach(() => {

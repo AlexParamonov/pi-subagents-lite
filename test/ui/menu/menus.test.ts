@@ -5,13 +5,15 @@
  * Each iteration creates a fresh SelectList; submenu closes it before opening.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 
 // Import
 import { showAgentsMainMenu, showSettingsMenu } from "../../../src/ui/menu/menus.js";
+
+afterEach(() => resetConfig());
 
 function resetAgentState(): void {
   mockModules.mockConfig.agent = { default: null, forceBackground: false };

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import { mockModules } from "../../menu-mock-setup.js";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
 // Capture SettingsList constructor calls from pi-tui
@@ -44,6 +44,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
 
 // Import AFTER mock setup
 import { showSystemPromptMenu } from "../../../src/ui/menu/menu-system-prompt.js";
+
+afterEach(() => resetConfig());
 
 describe("showSystemPromptMenu — SettingsList integration", () => {
   beforeEach(() => {

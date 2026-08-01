@@ -5,8 +5,8 @@
  * SettingsList maintains internal cursor state (fixes cursor position reset).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
 // Capture SettingsList constructor calls from pi-tui
@@ -53,6 +53,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
 
 // Import AFTER mock setup
 import { showSpawnOptionsMenu } from "../../../src/ui/menu/menu-spawn-options.js";
+
+afterEach(() => resetConfig());
 
 describe("showSpawnOptionsMenu — SettingsList integration", () => {
   beforeEach(() => {

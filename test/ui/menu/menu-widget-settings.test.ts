@@ -7,8 +7,8 @@
  * Pattern: capture constructor calls, verify structure, test onChange directly.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 
@@ -124,6 +124,8 @@ function createDispatchCtx(choice: string) {
     modelRegistry: { getAvailable: vi.fn(() => []) },
   };
 }
+
+afterEach(() => resetConfig());
 
 describe("showWidgetSettingsMenu — SelectList top-level", () => {
   beforeEach(() => {

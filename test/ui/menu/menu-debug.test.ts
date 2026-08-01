@@ -5,8 +5,8 @@
  * The debug menu is a SelectList with 2 items that execute actions on select.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAllTypes, getAvailableTypes, getAgentConfig } from "../../../src/agents/agent-types.js";
 
@@ -73,6 +73,8 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
 
 // Import AFTER mock setup
 import { showDebugMenu } from "../../../src/ui/menu/menu-debug.js";
+
+afterEach(() => resetConfig());
 
 describe("showDebugMenu — SelectList migration", () => {
   beforeEach(() => {

@@ -4,8 +4,8 @@
  * After migration: uses ctx.ui.custom with SettingsList (not ctx.ui.select/runMenuLoop).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig as resetMenuMockConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
 let settingsListCalls: Array<any> = [];
@@ -73,6 +73,8 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
 
 // Import AFTER mock setup
 import { showConcurrencySettingsMenu } from "../../../src/ui/menu/menu-concurrency.js";
+
+afterEach(() => resetMenuMockConfig());
 
 function resetConfig(): void {
   mockModules.mockConfig.concurrency = { default: 4 };

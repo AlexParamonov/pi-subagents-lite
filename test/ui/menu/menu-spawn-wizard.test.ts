@@ -7,8 +7,8 @@
  *   Step 3: SettingsList for options + spawn
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules, selectDialogInstances, resetSelectDialogInstances } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, selectDialogInstances, resetSelectDialogInstances, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
@@ -158,6 +158,8 @@ function createMockWizardCtx(stepResults: (string | undefined)[]) {
 async function completeWizard(ctx: ReturnType<typeof createMockCtx>) {
   await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
 }
+
+afterEach(() => resetConfig());
 
 describe("showSpawnAgentMenu — wizard flow", () => {
   beforeEach(() => {

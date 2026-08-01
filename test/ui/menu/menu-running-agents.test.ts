@@ -6,8 +6,8 @@
  * Selecting an agent opens an actions submenu (also SelectList).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mockModules } from "../../menu-mock-setup.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
 // Capture SelectList constructor calls
@@ -81,6 +81,8 @@ function makeRecord(overrides: any = {}): any {
   };
 }
 const noopTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+
+afterEach(() => resetConfig());
 
 describe("showRunningAgentsMenu — SelectList migration", () => {
   beforeEach(() => {
