@@ -35,6 +35,7 @@
 - Don't assume — verify. Code review catches silent production bugs.
 - `ExtensionAPI` (pi) rejects calls to old ctx. Add try-catch around sendMessage for defense-in-depth.
 - A trailing `?? N` fallback on optional config fields looks dead but is forced by `T | undefined` static type. Run typecheck before removing "redundant" fallbacks.
+- A cast before `??` on an `unknown` value is NOT redundant: `unknown ?? T` stays `unknown`, so the cast is the narrowing. Reviewer said `(params.x as number | undefined) ?? fallback` "adds no safety" — typecheck proved dropping it breaks the downstream `number | undefined` assignment. Verify narrowing claims with the typechecker before simplifying casts.
 - Never use `general-purpose` when workflow specifies a specialized agent type. Check workflow docs for exact `agent` values before spawning.
 
 ### Config & Refactoring
