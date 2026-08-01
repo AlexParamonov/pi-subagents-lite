@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-02
+
+### Added
+
+- **Transient Codex stream error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are now retried automatically instead of failing the run.
+- **Cross-repo `worktree_path` targets.** `worktree_path` accepts a path inside any git repository on disk: a linked worktree of the parent's repo, its main checkout, or a different repo. Paths outside any git repo are rejected.
+
+### Changed
+
+- **Cross-repo spawns gated by project trust.** Spawning into a different git repo loads the target's project resources only when pi's trust decision (nearest ancestor) or the global `defaultProjectTrust` setting allows it. An untrusted target still spawns, but its resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, `.pi/agents` types are not discovered, and a warning is surfaced. Same-repo paths are never gated.
+
+### Fixed
+
+- **Git path normalization on Windows.** Worktree paths use backslash separators on Windows so `git rev-parse` resolves correctly.
+- **Newlines sanitized in error messages.** Prevents TUI layout breakage when error text contains `\n` or `\r` characters.
+
 ## [1.6.1] - 2026-08-01
 
 ### Changed
