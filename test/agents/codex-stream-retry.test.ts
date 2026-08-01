@@ -7,7 +7,7 @@
  *   - is a no-op when _isRetryableError is absent
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { enableCodexStreamErrorRetry } from "../../src/agents/codex-stream-retry.js";
 
 // ------------------------------------------------------------------
