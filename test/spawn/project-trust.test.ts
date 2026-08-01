@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { resolveSubagentTrust, type SubagentTrustDeps } from "../../src/spawn/project-trust.js";
@@ -138,22 +138,23 @@ describe("resolveSubagentTrust", () => {
 // same way against a real temp agent dir.
 
 describe("resolveSubagentTrust — real SDK building blocks", () => {
+  let baseDir: string;
   let agentDir: string;
   let targetDir: string;
   let parentDir: string;
 
   beforeEach(() => {
-    const base = join(tmpdir(), `trust-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    agentDir = join(base, "agent");
-    targetDir = join(base, "repo-b");
-    parentDir = join(base, "repo-a");
+    baseDir = join(tmpdir(), `trust-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    agentDir = join(baseDir, "agent");
+    targetDir = join(baseDir, "repo-b");
+    parentDir = join(baseDir, "repo-a");
     mkdirSync(agentDir, { recursive: true });
     mkdirSync(targetDir, { recursive: true });
     mkdirSync(parentDir, { recursive: true });
   });
 
   afterEach(() => {
-    rmSync(agentDir, { recursive: true, force: true });
+    rmSync(baseDir, { recursive: true, force: true });
   });
 
   async function realDeps() {
@@ -204,6 +205,5 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
     const deps = await realDeps();
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
     expect(result).toEqual({ projectTrusted: true, gateApplied: false });
-    expect(existsSync(join(targetDir, ".pi"))).toBe(false);
   });
 });

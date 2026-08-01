@@ -35,8 +35,6 @@ Eleven extra characters in the schema per turn. Negligible token cost.
   information gain over `worktree_path`; longer to type and to render.
 - **`worktree_cwd`** — noun-stacked hybrid. Rejected: category mismatch;
   "worktree" is a path concept, "cwd" is a session concept, they don't compose.
-- **`worktree_cwd`** — noun-stacked hybrid. Rejected: category mismatch;
-  "worktree" is a path concept, "cwd" is a session concept, they don't compose.
 
 ## Amendment (2025): any git repository, gated by trust
 
