@@ -296,6 +296,7 @@ export class AgentManager {
       thinkingLevel: options.thinkingLevel,
       cwd: options.worktreePath,
       graceTurns: options.graceTurns,
+      projectTrusted: options.projectTrusted,
       signal: record.execution.abortController!.signal,
       ...this.createRecordCallbacks(record, options),
       onTurnEnd: (turnCount) => {

@@ -7,13 +7,21 @@ import { getStatusNote } from "../status-note.js";
  * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
  */
 
-import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
+import {
+  getAgentDir,
+  hasTrustRequiringProjectResources,
+  ProjectTrustStore,
+  SettingsManager,
+  type ExtensionContext,
+  type ToolCallEvent,
+} from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
+import { resolveSubagentTrust, UNTRUSTED_PROJECT_WARNING } from "../spawn/project-trust.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
@@ -114,6 +122,9 @@ export async function executeAgentTool(
   const rawWorktreePath = params.worktree_path as string | undefined;
   let validatedWorktreePath: string | undefined;
   let worktreeLabel: string | undefined;
+  // Default trusted: only cross-repo targets with trust-requiring resources
+  // can flip this to false (resolved below).
+  let projectTrusted = true;
   if (rawWorktreePath && rawWorktreePath.trim() !== "") {
     try {
       const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
@@ -130,6 +141,26 @@ export async function executeAgentTool(
       }
       validatedWorktreePath = validation.resolvedPath;
       worktreeLabel = validation.label;
+
+      // Cross-repo targets are gated by pi's trust framework. Same-repo paths
+      // are never gated; an untrusted target still spawns but with its project
+      // resources ignored and a warning surfaced.
+      const agentDir = getAgentDir();
+      const trust = resolveSubagentTrust({
+        targetPath: validatedWorktreePath!,
+        sameRepo: validation.sameRepo === true,
+        deps: {
+          hasTrustRequiringProjectResources,
+          getTrustDecision: (cwd) => new ProjectTrustStore(agentDir).get(cwd),
+          getDefaultProjectTrust: () => SettingsManager.create(parentCwd, agentDir).getDefaultProjectTrust(),
+        },
+      });
+      projectTrusted = trust.projectTrusted;
+      if (trust.gateApplied && !trust.projectTrusted) {
+        if (ctx.ui?.notify) {
+          ctx.ui.notify(`[pi-subagents-lite] ${UNTRUSTED_PROJECT_WARNING(validatedWorktreePath!)}`, "warning");
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return errorResult(`worktree_path validation failed: ${msg}`);
@@ -140,8 +171,9 @@ export async function executeAgentTool(
   let resolvedType = resolveType(type);
   if (!resolvedType) {
     // Not found in registry — try scanning filesystem for agents added during the session.
-    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
-    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
+    // When worktree_path is set, also scan the target's .pi/agents/ directory — unless
+    // the target is an untrusted cross-repo project (its agent types stay hidden).
+    const worktreeDir = projectTrusted && validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
     await discoverNewAgents(worktreeDir);
     resolvedType = resolveType(type);
   }
@@ -181,6 +213,7 @@ export async function executeAgentTool(
     graceTurns: getStore().agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
+    projectTrusted,
     invocation: { modelName, thinkingLevel, maxTurns },
     runInBackground: runInBackground || getStore().agent.forceBackground,
   });
