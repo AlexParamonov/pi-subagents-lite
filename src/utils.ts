@@ -65,7 +65,8 @@ export function parseThinkingLevel(raw: string | undefined): ThinkingLevel | und
  * Safely extract a human-readable error message from an unknown exception.
  */
 export function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.replace(/[\r\n]+/g, " ").trim();
 }
 
 /**

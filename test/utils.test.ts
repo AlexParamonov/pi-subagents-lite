@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { isUnsafeName, isSymlink, safeReadFile } from "../src/utils.ts";
+import { errorMessage, isUnsafeName, isSymlink, safeReadFile } from "../src/utils.ts";
 import { tempDirFixture } from "./fixtures";
 
 /* ------------------------------------------------------------------ */
@@ -116,5 +116,40 @@ describe("safeReadFile", () => {
 
   it("returns undefined for a directory", () => {
     expect(safeReadFile(getDir())).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  errorMessage                                                      */
+/* ------------------------------------------------------------------ */
+
+describe("errorMessage", () => {
+  it("extracts message from an Error instance", () => {
+    expect(errorMessage(new Error("something failed"))).toBe("something failed");
+  });
+
+  it("converts non-Error values to string", () => {
+    expect(errorMessage("plain string")).toBe("plain string");
+    expect(errorMessage(42)).toBe("42");
+  });
+
+  it("replaces newlines with spaces so multi-line errors do not break TUI layout", () => {
+    const err = new Error("first line\nsecond line\nthird line");
+    expect(errorMessage(err)).toBe("first line second line third line");
+  });
+
+  it("replaces carriage returns", () => {
+    const err = new Error("line1\r\nline2");
+    expect(errorMessage(err)).toBe("line1 line2");
+  });
+
+  it("collapses consecutive newlines into a single space", () => {
+    const err = new Error("a\n\n\nb");
+    expect(errorMessage(err)).toBe("a b");
+  });
+
+  it("trims leading and trailing whitespace", () => {
+    const err = new Error("  leading and trailing  ");
+    expect(errorMessage(err)).toBe("leading and trailing");
   });
 });

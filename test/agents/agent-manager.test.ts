@@ -896,6 +896,33 @@ describe("AgentManager", () => {
       expect(record.error).toContain("model failed to load into memory");
     });
 
+    it("sanitizes newlines in the provider error so multi-line errors do not break TUI layout", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(
+        mockRunResult({
+          responseText: "",
+          modelError: "first line\nsecond line\r\nthird",
+          session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }),
+        }),
+      );
+
+      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+
+      expect(record.lifecycle.status).toBe("error");
+      expect(record.error).toContain("general-purpose");
+      expect(record.error).toContain("anthropic/claude-sonnet-4");
+      expect(record.error).toContain("first line");
+      expect(record.error).toContain("second line");
+      expect(record.error).toContain("third");
+      expect(record.error).not.toContain("\n");
+      expect(record.error).not.toContain("\r");
+    });
+
     it("keeps completed status when runAgent reports no modelError", async () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());

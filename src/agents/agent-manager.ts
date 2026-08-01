@@ -49,7 +49,8 @@ function formatModelError(
   model: { provider: string; id: string } | undefined,
   providerError: string,
 ): string {
-  return model ? `${type} (${model.provider}/${model.id}): ${providerError}` : `${type}: ${providerError}`;
+  const sanitizedError = providerError.replace(/[\r\n]+/g, " ").trim();
+  return model ? `${type} (${model.provider}/${model.id}): ${sanitizedError}` : `${type}: ${sanitizedError}`;
 }
 
 /** Configuration for per-model concurrency limits. */
