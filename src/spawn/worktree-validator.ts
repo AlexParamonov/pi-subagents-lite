@@ -157,15 +157,16 @@ export async function validateWorktreePath(
   const targetResult = await getGitCommonDir(pi, realPath, onWarning);
   if (!targetResult.ok) return targetResult;
 
-  // Step 5b: same-repo detection. The parent is not required to be in a git
-  // repo (issue: allow-several-repos); a failed parent probe just means the
-  // target is cross-repo and the trust gate may apply.
+  // Step 6: Detect same-repo vs cross-repo against the parent. The parent
+  // is not required to be in a git repo (issue: allow-several-repos); a
+  // failed parent probe just means the target is cross-repo and the trust
+  // gate may apply.
   const parentResult = await getGitCommonDir(pi, parentCwd, onWarning);
   const sameRepo =
     parentResult.ok &&
     normalizeGitPath(parentResult.commonDir, parentCwd) === normalizeGitPath(targetResult.commonDir, realPath);
 
-  // Step 6: Get the worktree root via git rev-parse --show-toplevel
+  // Step 7: Get the worktree root via git rev-parse --show-toplevel
   let worktreeRoot: string;
   try {
     const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], {
@@ -182,10 +183,11 @@ export async function validateWorktreePath(
     worktreeRoot = realPath;
   }
 
-  // Step 7: Normalize and compute display label
+  // Step 8: Compute display label (normalizes internally), then normalize
+  // the returned paths.
+  const label = computeLabel(realPath, worktreeRoot);
   const normalizedRealPath = realPath.replace(/\\/g, "/");
   const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
-  const label = computeLabel(normalizedRealPath, normalizedRoot);
 
   return {
     ok: true,
