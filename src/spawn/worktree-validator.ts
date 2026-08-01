@@ -1,11 +1,15 @@
 /**
  * worktree-validator.ts — Validate, resolve, and label a worktree path.
  *
- * Pure async functions that validate a `worktree_path` value against the parent's
- * git repository. Depends on `pi.exec` for git commands.
+ * Pure async functions that validate a `worktree_path` value: the target must
+ * exist, be a directory, and sit inside a git repository (any repo on disk —
+ * not only worktrees of the parent's repository). Depends on `pi.exec` for
+ * git commands.
  *
- * Validation strategy: compare `git-common-dir` of the parent and target paths.
- * If they share the same common dir, the target is a worktree of the parent's repo.
+ * Same-repo detection: compare `git-common-dir` of the parent and target
+ * paths. The parent is not required to be in a git repo; when it isn't (or
+ * the target lives in a different repo), the result flags `sameRepo: false`
+ * so the caller can apply the cross-repo trust gate.
  */
 
 import * as path from "node:path";
@@ -15,9 +19,7 @@ import { GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 export const WORKTREE_VALIDATION_ERRORS = {
   PATH_DOES_NOT_EXIST: "worktree_path does not exist: the specified path was not found on disk",
   NOT_A_DIRECTORY: "worktree_path is not a directory: the specified path exists but is not a directory",
-  PARENT_NOT_IN_GIT_REPO: "worktree_path validation failed: the parent session is not inside a git repository",
   NOT_IN_GIT_REPO: "worktree_path is not inside a git repository",
-  DIFFERENT_REPO: "worktree_path is not a worktree of the parent's repository",
   GIT_NOT_FOUND: "worktree_path validation failed: git executable not found on this host",
   GIT_TIMEOUT: "worktree_path validation failed: git command timed out",
 } as const;
@@ -31,6 +33,13 @@ export interface WorktreeValidationSuccess {
   worktreeRoot?: string;
   /** Short display label for the widget. */
   label?: string;
+  /**
+   * True when the parent and target share the same git repository.
+   * False when the parent is not in a git repo or the target is in a
+   * different one — the caller then applies the cross-repo trust gate.
+   * Absent when the path was omitted (nothing to gate).
+   */
+  sameRepo?: boolean;
 }
 
 /** Failed validation result. */
@@ -94,16 +103,17 @@ function normalizeGitPath(gitPath: string, cwd: string): string {
 }
 
 /**
- * Validate a worktree path against the parent's git repository.
+ * Validate a worktree path against the git repository it must live in.
  *
  * Resolution order:
  * 1. Empty/whitespace → treated as omitted (return ok with no path)
  * 2. Resolve relative against parent cwd
  * 3. Resolve symlinks (realpath)
  * 4. Check exists + is directory
- * 5. Get and compare git-common-dir for parent and target
- * 6. Get worktree root via --show-toplevel
- * 7. Normalize and compute display label
+ * 5. Check the target is inside a git repository (any repo)
+ * 6. Detect same-repo vs cross-repo against the parent (parent need not be in a repo)
+ * 7. Get worktree root via --show-toplevel
+ * 8. Normalize and compute display label
  *
  * @param pi - Minimal exec interface (pi.exec)
  * @param worktreePath - The raw worktree_path value from the LLM
@@ -143,25 +153,17 @@ export async function validateWorktreePath(
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.PATH_DOES_NOT_EXIST };
   }
 
-  // Step 5: Get and compare git-common-dir for parent and target
-  const parentResult = await getGitCommonDir(
-    pi,
-    parentCwd,
-    WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO,
-    onWarning,
-  );
-  if (!parentResult.ok) return parentResult;
-
+  // Step 5: the target must be inside a git repository (any repo on disk)
   const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO, onWarning);
   if (!targetResult.ok) return targetResult;
 
-  // Compare normalized common dirs — Git may use different separators on Windows.
-  const parentCommonAbs = normalizeGitPath(parentResult.commonDir, parentCwd);
-  const targetCommonAbs = normalizeGitPath(targetResult.commonDir, realPath);
-
-  if (parentCommonAbs !== targetCommonAbs) {
-    return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };
-  }
+  // Step 5b: same-repo detection. The parent is not required to be in a git
+  // repo (issue: allow-several-repos). When the parent isn't, or the target's
+  // common dir differs, the target is cross-repo and the trust gate may apply.
+  const parentResult = await getGitCommonDir(pi, parentCwd, "", onWarning);
+  const sameRepo =
+    parentResult.ok &&
+    normalizeGitPath(parentResult.commonDir, parentCwd) === normalizeGitPath(targetResult.commonDir, realPath);
 
   // Step 6: Get the worktree root via git rev-parse --show-toplevel
   let worktreeRoot: string;
@@ -190,6 +192,7 @@ export async function validateWorktreePath(
     resolvedPath: normalizedRealPath,
     worktreeRoot: normalizedRoot,
     label,
+    sameRepo,
   };
 }
 
