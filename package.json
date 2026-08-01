@@ -42,6 +42,8 @@
     "LICENSE"
   ],
   "scripts": {
+    "format": "prettier --write src/ test/",
+    "format:check": "prettier --check src/ test/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -52,6 +54,7 @@
     ]
   },
   "devDependencies": {
+    "prettier": "^3.9.6",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   }
