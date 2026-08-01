@@ -143,10 +143,8 @@ async function resolveWorktree(
       sameRepo: validation.sameRepo === true,
       deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
     });
-    if (!projectTrusted) {
-      if (ctx.ui?.notify) {
-        ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(resolvedPath)}`, "warning");
-      }
+    if (!projectTrusted && ctx.ui?.notify) {
+      ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(resolvedPath)}`, "warning");
     }
     return {
       ok: true,
