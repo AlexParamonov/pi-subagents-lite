@@ -35,3 +35,26 @@ Eleven extra characters in the schema per turn. Negligible token cost.
   information gain over `worktree_path`; longer to type and to render.
 - **`worktree_cwd`** — noun-stacked hybrid. Rejected: category mismatch;
   "worktree" is a path concept, "cwd" is a session concept, they don't compose.
+
+## Amendment (2025): any git repository, gated by trust
+
+The same-repo constraint is replaced by a trust gate (issue: allow-several-repos).
+`worktree_path` now accepts a path inside **any git repository on disk** — the
+parent's repo (any worktree or the main checkout, which was already accepted by
+the validator), or a different repo entirely. The original "must not be the main
+checkout" wording was inaccurate even before this change: the validator never
+rejected the main checkout, and it stays accepted.
+
+- The parent session is no longer required to be inside a git repository.
+- A path outside any git repo is still rejected (`NOT_IN_GIT_REPO`).
+- Same-repo targets are never gated. Cross-repo targets are gated by pi's
+  existing trust framework: `hasTrustRequiringProjectResources` decides whether
+  the gate applies; `ProjectTrustStore` nearest-ancestor lookup resolves a saved
+  decision; an undecided target falls back to the global `defaultProjectTrust`
+  setting, where anything other than "always" means untrusted. An untrusted
+  target still spawns: its project resources are ignored, its `.pi/agents`
+  types are not discovered, and a warning is surfaced.
+- The `/agents` spawn wizard and its worktree picker are unchanged; they still
+  list same-repo worktrees only.
+- The param name stays `worktree_path`; no new parameter (a generic
+  `working_directory` param remains explicitly out of scope).

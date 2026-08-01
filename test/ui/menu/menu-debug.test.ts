@@ -296,9 +296,10 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-briefing" });
     expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("worktree_path"));
-    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("git worktree of the parent"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("any git repository"));
     expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("Relative paths"));
     expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining(".pi/agents/"));
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("trust"));
   });
 
   it("includes usage guidelines for background agents", async () => {

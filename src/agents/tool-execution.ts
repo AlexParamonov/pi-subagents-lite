@@ -7,13 +7,14 @@ import { getStatusNote } from "../status-note.js";
  * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
  */
 
-import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionContext, type ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
+import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "../spawn/project-trust.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
@@ -103,6 +104,60 @@ export function formatResultContent(record: AgentRecord): string {
 // Tool execute handlers
 // ============================================================================
 
+/**
+ * Validate worktree_path and resolve the cross-repo trust gate for it.
+ * Surfaces validation warnings and the untrusted-target warning via ctx.ui.
+ * Returns an error result for invalid paths (LLM-facing, self-correctable).
+ */
+async function resolveWorktree(
+  ctx: ExtensionContext,
+  rawWorktreePath: string | undefined,
+): Promise<
+  { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean } | { ok: false; error: string }
+> {
+  // Empty/whitespace → omitted: nothing to validate, nothing to gate.
+  if (!rawWorktreePath || rawWorktreePath.trim() === "") {
+    return { ok: true, projectTrusted: true };
+  }
+  try {
+    const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
+    const warnings: string[] = [];
+    const onWarning = (msg: string) => {
+      warnings.push(msg);
+    };
+    const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
+    if (!validation.ok) {
+      for (const msg of warnings) {
+        if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+      }
+      return { ok: false, error: validation.error };
+    }
+
+    const resolvedPath = validation.resolvedPath!; // non-empty paths always resolve
+
+    // Cross-repo targets are gated by pi's trust framework. Same-repo paths
+    // are never gated; an untrusted target still spawns but with its project
+    // resources ignored and a warning surfaced.
+    const projectTrusted = resolveSubagentTrust({
+      targetPath: resolvedPath,
+      sameRepo: validation.sameRepo === true,
+      deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
+    });
+    if (!projectTrusted && ctx.ui?.notify) {
+      ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(resolvedPath)}`, "warning");
+    }
+    return {
+      ok: true,
+      resolvedPath,
+      worktreeLabel: validation.label,
+      projectTrusted,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `worktree_path validation failed: ${msg}` };
+  }
+}
+
 export async function executeAgentTool(
   _toolCallId: string,
   params: Record<string, unknown>,
@@ -112,37 +167,20 @@ export async function executeAgentTool(
 ): Promise<any> {
   // Validate worktree_path early — needed for on-demand agent discovery
   const rawWorktreePath = params.worktree_path as string | undefined;
-  let validatedWorktreePath: string | undefined;
-  let worktreeLabel: string | undefined;
-  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
-    try {
-      const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
-      const warnings: string[] = [];
-      const onWarning = (msg: string) => {
-        warnings.push(msg);
-      };
-      const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
-      if (!validation.ok) {
-        for (const msg of warnings) {
-          if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
-        }
-        return errorResult(validation.error);
-      }
-      validatedWorktreePath = validation.resolvedPath;
-      worktreeLabel = validation.label;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return errorResult(`worktree_path validation failed: ${msg}`);
-    }
-  }
+  const resolved = await resolveWorktree(ctx, rawWorktreePath);
+  if (!resolved.ok) return errorResult(resolved.error);
+  const validatedWorktreePath = resolved.resolvedPath;
+  const worktreeLabel = resolved.worktreeLabel;
+  const projectTrusted = resolved.projectTrusted;
 
   const type = (params.agent as string) || "general-purpose";
   let resolvedType = resolveType(type);
   if (!resolvedType) {
     // Not found in registry — try scanning filesystem for agents added during the session.
-    // When worktree_path is set, also scan the worktree's .pi/agents/ directory.
-    const worktreeDir = validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
-    await discoverNewAgents(worktreeDir);
+    // When worktree_path is set, also scan the target's .pi/agents/ directory — unless
+    // the target is an untrusted cross-repo project (its agent types stay hidden).
+    const targetAgentsDir = projectTrusted && validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
+    await discoverNewAgents(targetAgentsDir);
     resolvedType = resolveType(type);
   }
   if (!resolvedType) {
@@ -181,6 +219,7 @@ export async function executeAgentTool(
     graceTurns: getStore().agent.graceTurns,
     worktreePath: validatedWorktreePath,
     worktreeLabel,
+    projectTrusted,
     invocation: { modelName, thinkingLevel, maxTurns },
     runInBackground: runInBackground || getStore().agent.forceBackground,
   });

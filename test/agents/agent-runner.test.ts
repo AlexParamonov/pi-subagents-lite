@@ -38,6 +38,7 @@ const mockModules = vi.hoisted(() => ({
   mockDefaultResourceLoader: MockDefaultResourceLoader,
   mockGetAgentDir: vi.fn().mockReturnValue("/home/test/.pi/agent"),
   mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
+  mockSettingsManagerCreate: vi.fn(() => ({})),
   mockIncludeContextFiles: true as boolean,
   mockSystemPromptMode: "replace" as string,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
@@ -96,7 +97,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: mockModules.mockCreateAgentSession,
   DefaultResourceLoader: mockModules.mockDefaultResourceLoader,
   SessionManager: { inMemory: vi.fn() },
-  SettingsManager: { create: vi.fn() },
+  SettingsManager: { create: mockModules.mockSettingsManagerCreate },
   getAgentDir: mockModules.mockGetAgentDir,
   loadProjectContextFiles: mockModules.mockLoadProjectContextFiles,
 }));
@@ -1542,6 +1543,63 @@ describe("runAgent — context file gating", () => {
     expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
     // buildAgentPrompt still called (without contextFiles)
     expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalled();
+  });
+});
+describe("runAgent — project trust threading", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  function mockSession() {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    return session;
+  }
+
+  it("creates the settings manager trusted by default (projectTrusted not set)", async () => {
+    mockSession();
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockSettingsManagerCreate).toHaveBeenCalledWith(
+      "/home/test/project", // effectiveCwd
+      "/home/test/.pi/agent",
+      { projectTrusted: true },
+    );
+  });
+
+  it("creates the settings manager untrusted for an untrusted cross-repo target", async () => {
+    mockSession();
+    await runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      cwd: "/repo-b",
+      projectTrusted: false,
+    });
+
+    expect(mockModules.mockSettingsManagerCreate).toHaveBeenCalledWith("/repo-b", "/home/test/.pi/agent", {
+      projectTrusted: false,
+    });
+  });
+
+  it("threads the same settings manager into the resource loader and the session", async () => {
+    const settingsManager = { isProjectTrusted: () => false };
+    mockModules.mockSettingsManagerCreate.mockReturnValue(settingsManager as any);
+
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    let sessionOpts: any;
+    mockModules.mockCreateAgentSession.mockImplementation((opts: any) => {
+      sessionOpts = opts;
+      return Promise.resolve({ session, extensionsResult: {} });
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, projectTrusted: false });
+
+    // The loader opts carry the same manager instance
+    expect(mockModules.getLoaderOpts().settingsManager).toBe(settingsManager);
+    // And the session receives it via the settingsManager option
+    expect(sessionOpts.settingsManager).toBe(settingsManager);
   });
 });
 

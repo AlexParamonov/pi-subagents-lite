@@ -34,7 +34,7 @@ Manage everything from `/agents`: running agents (view, steer, stop), manual spa
 
 ## Tools
 
-- **`Agent`** — spawn a sub-agent. `prompt` is required; `agent` selects a type, `run_in_background` for fire-and-forget, `worktree_path` to run in a git worktree. `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM.
+- **`Agent`** — spawn a sub-agent. `prompt` is required; `agent` selects a type, `run_in_background` for fire-and-forget, `worktree_path` to run in any git repository on disk (a worktree of the parent's repo, its main checkout, or a different repo entirely). `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM.
 - **`StopAgent`** — stop a running agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
 - **`AgentStatus`** — list all agents with type, short ID, and status.
 
@@ -95,6 +95,12 @@ Precedence, highest first:
 6. Parent model
 
 The LLM never passes `model`. Set it once in config or frontmatter and forget.
+
+## Worktree paths and trust
+
+`worktree_path` accepts a path inside **any git repository on disk** — a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
+
+Cross-repo targets are gated by pi's existing trust framework: the target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting — anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, and a warning is surfaced. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
 
 ## System prompt mode
 

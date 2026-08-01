@@ -21,11 +21,20 @@ import { fakeCtx } from "../fixtures.ts";
 /* ------------------------------------------------------------------ */
 
 // Use vi.hoisted so mock factories can reference these at hoisting time
-const { mockValidateWorktreePath, mockSpawn, mockGetRecord, mockDiscoverNewAgents } = vi.hoisted(() => ({
+const {
+  mockValidateWorktreePath,
+  mockSpawn,
+  mockGetRecord,
+  mockDiscoverNewAgents,
+  mockResolveSubagentTrust,
+  mockResolveType,
+} = vi.hoisted(() => ({
   mockValidateWorktreePath: vi.fn(),
   mockSpawn: vi.fn().mockReturnValue("agent-id-123"),
   mockGetRecord: vi.fn(),
   mockDiscoverNewAgents: vi.fn(),
+  mockResolveSubagentTrust: vi.fn(),
+  mockResolveType: vi.fn((type: string) => type),
 }));
 
 vi.mock("../../src/spawn/worktree-validator.js", () => ({
@@ -37,8 +46,14 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
   }),
 }));
 
+vi.mock("../../src/spawn/project-trust.js", () => ({
+  resolveSubagentTrust: mockResolveSubagentTrust,
+  createSubagentTrustDeps: vi.fn(),
+  untrustedProjectWarning: (p: string) => `Target project at ${p} is not trusted`,
+}));
+
 vi.mock("../../src/agents/agent-types.js", () => ({
-  resolveType: vi.fn((type: string) => type),
+  resolveType: mockResolveType,
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
 }));
@@ -93,6 +108,7 @@ vi.mock("../../src/shell.js", () => ({
         graceTurns: intent.graceTurns,
         worktreePath: intent.worktreePath,
         worktreeLabel: intent.worktreeLabel,
+        projectTrusted: intent.projectTrusted,
         isBackground: intent.runInBackground,
       });
       const record = mockGetRecord(id);
@@ -116,7 +132,6 @@ vi.mock("../../src/agents/usage.js", () => ({
 
 // Import after mocks are in place
 import { executeAgentTool, formatResultContent } from "../../src/agents/tool-execution.js";
-import * as agentTypes from "../../src/agents/agent-types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */
@@ -141,6 +156,7 @@ describe("executeAgentTool — worktree_path validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-123",
       display: { type: "general-purpose", description: "Test agent" },
@@ -238,8 +254,6 @@ describe("executeAgentTool — worktree_path validation", () => {
       { error: "Path does not exist", match: "does not exist" },
       { error: "Path is not a directory", match: "not a directory" },
       { error: "Path is not inside a git repository", match: "not inside a git" },
-      { error: "Path is inside a git repository that is not the parent's", match: "not the parent" },
-      { error: "Parent itself is not in a git repository", match: "Parent" },
     ];
 
     for (const { error, match } of rejectionReasons) {
@@ -315,6 +329,7 @@ describe("executeAgentTool — worktree_path with background spawn", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-bg",
       display: { type: "general-purpose", description: "Test agent", worktreeLabel: "feature" },
@@ -372,7 +387,12 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // mockReset clears once-queues leaked by earlier tests in this describe;
+    // re-establish the base identity implementation.
+    mockResolveType.mockReset();
+    mockResolveType.mockImplementation((t: string) => t);
     ctx = fakeCtx();
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-disc",
       result: "Agent completed successfully",
@@ -397,9 +417,8 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     });
 
     // First resolveType call returns undefined (type not known)
-    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    mockResolveType.mockReturnValueOnce(undefined); // first call — not found
+    mockResolveType.mockReturnValueOnce("feature-reviewer"); // after discovery — found
 
     await executeAgentTool(
       "tc-disc",
@@ -416,15 +435,111 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
 
   it("calls discoverNewAgents without worktree dir when type is not known and worktree_path omitted", async () => {
     // First resolveType call returns undefined (type not known)
-    const resolveTypeSpy = vi.spyOn(agentTypes, "resolveType");
-    resolveTypeSpy.mockReturnValueOnce(undefined); // first call — not found
-    resolveTypeSpy.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    mockResolveType.mockReturnValueOnce(undefined); // first call — not found
+    mockResolveType.mockReturnValueOnce("feature-reviewer"); // after discovery — found
 
     await executeAgentTool("tc-disc-no-wt", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx);
 
     // Should have called discoverNewAgents WITHOUT a worktree dir
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
+  });
+});
+describe("executeAgentTool — cross-repo trust gate", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = fakeCtx();
+    ctx.ui = { notify: vi.fn() };
+    mockResolveSubagentTrust.mockReturnValue(true);
+    mockGetRecord.mockReturnValue({
+      id: "agent-id-trust",
+      result: "done",
+      display: { type: "general-purpose", description: "Test agent" },
+      lifecycle: { status: "completed", startedAt: Date.now() - 1000, completedAt: Date.now() },
+      execution: { promise: Promise.resolve("done") },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+      },
+    });
+  });
+
+  function crossRepoValidation(sameRepo: boolean) {
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b",
+      worktreeRoot: "/repo-b",
+      label: "repo-b",
+      sameRepo,
+    });
+  }
+
+  it("passes the validator's sameRepo flag to the trust resolver", async () => {
+    crossRepoValidation(false);
+    await executeAgentTool("tc-tr-1", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
+
+    expect(mockResolveSubagentTrust).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetPath: "/repo-b",
+        sameRepo: false,
+      }),
+    );
+  });
+
+  it("spawns with projectTrusted=false and warns for an untrusted cross-repo target", async () => {
+    crossRepoValidation(false);
+    mockResolveSubagentTrust.mockReturnValue(false);
+    // Force the on-demand discovery path so the .pi/agents skip is observable
+    mockResolveType.mockReturnValueOnce(undefined);
+    mockResolveType.mockReturnValueOnce("general-purpose");
+
+    await executeAgentTool("tc-tr-2", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.projectTrusted).toBe(false);
+    // Warning surfaced to the user
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("not trusted"), "warning");
+    // Target .pi/agents discovery is skipped for untrusted targets
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
+  });
+
+  it("does not warn and spawns trusted for a trusted cross-repo target", async () => {
+    crossRepoValidation(false);
+    mockResolveSubagentTrust.mockReturnValue(true);
+    mockResolveType.mockReturnValueOnce(undefined);
+    mockResolveType.mockReturnValueOnce("general-purpose");
+
+    await executeAgentTool("tc-tr-3", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
+
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.projectTrusted).toBe(true);
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/repo-b/.pi/agents");
+  });
+
+  it("spawns trusted for a same-repo target without consulting trust checks", async () => {
+    crossRepoValidation(true);
+    await executeAgentTool("tc-tr-4", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx);
+
+    expect(mockResolveSubagentTrust).toHaveBeenCalledWith(expect.objectContaining({ sameRepo: true }));
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.projectTrusted).toBe(true);
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+  });
+
+  it("spawns trusted for a cross-repo target with no trust-requiring resources", async () => {
+    crossRepoValidation(false);
+    mockResolveSubagentTrust.mockReturnValue(true);
+
+    await executeAgentTool("tc-tr-5", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
+
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.projectTrusted).toBe(true);
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
   });
 });
 

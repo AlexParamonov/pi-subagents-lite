@@ -112,6 +112,11 @@ interface RunOptions extends RunTunables, RunCallbacks {
   agentId?: string;
   /** Override working directory (resolved worktree path). */
   cwd?: string;
+  /**
+   * Trust state for the target project. False = ignore the target's project
+   * resources (untrusted cross-repo target). Absent/true = load them.
+   */
+  projectTrusted?: boolean;
   /** Parent abort signal — when aborted, the subagent is also stopped. */
   signal?: AbortSignal;
 }
@@ -482,6 +487,7 @@ function createResourceLoader(
   agentConfig: ReturnType<typeof getAgentConfig>,
   cwd: string,
   systemPrompt: string,
+  settingsManager: SettingsManager,
   notify?: (msg: string) => void,
 ) {
   const extensions = config.extensions;
@@ -490,6 +496,7 @@ function createResourceLoader(
   const loaderOpts: ConstructorParameters<typeof DefaultResourceLoader>[0] = {
     cwd,
     agentDir,
+    settingsManager,
     noExtensions: extensions === false,
     noSkills,
     noPromptTemplates: true,
@@ -519,7 +526,8 @@ async function initSession(
   cwd: string,
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
-) {
+  settingsManager: SettingsManager,
+): Promise<AgentSession> {
   const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
   const agentDir = getAgentDir();
@@ -527,7 +535,7 @@ async function initSession(
     cwd,
     agentDir,
     sessionManager: SessionManager.inMemory(cwd),
-    settingsManager: SettingsManager.create(cwd, agentDir),
+    settingsManager,
     model,
     tools: resolveSessionAllowedTools({
       registeredTools: getToolNamesForType(type),
@@ -538,23 +546,24 @@ async function initSession(
   };
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
   const result = await createAgentSession(sessionOpts);
+  const session = result.session;
   // Mark transient Codex stream errors as retryable.
-  enableCodexStreamErrorRetry(result.session);
+  enableCodexStreamErrorRetry(session);
 
   // Inject max_tokens into provider request payloads.
   // Spawn-time value wins over agent config (frontmatter).
   const maxTokens = options.maxTokens ?? agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
     const field = (model.compat as any)?.maxTokensField ?? "max_tokens";
-    const origOnPayload = result.session.agent.onPayload;
-    result.session.agent.onPayload = async (payload, m) => {
+    const origOnPayload = session.agent.onPayload;
+    session.agent.onPayload = async (payload, m) => {
       const applied = origOnPayload ? ((await origOnPayload(payload, m)) ?? payload) : payload;
       const obj = typeof applied === "object" && applied && !Array.isArray(applied) ? applied : {};
       return { ...obj, [field]: maxTokens };
     };
   }
 
-  return result;
+  return session;
 }
 
 /**
@@ -568,9 +577,10 @@ async function createAndConfigureSession(
   cwd: string,
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
+  settingsManager: SettingsManager,
   notify: (msg: string) => void,
 ): Promise<AgentSession> {
-  const { session } = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap);
+  const session = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap, settingsManager);
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   await session.bindExtensions({
@@ -683,11 +693,25 @@ async function runAgentImpl(
   const effectiveCwd = options.cwd ?? ctx.cwd;
   const env = await detectEnv(options.pi, effectiveCwd);
 
+  // One SettingsManager for the whole spawn: its trust state gates both the
+  // resource loader (project extensions/skills/prompts/themes/system prompt
+  // files) and the session context (ctx.isProjectTrusted).
+  const settingsManager = SettingsManager.create(effectiveCwd, getAgentDir(), {
+    projectTrusted: options.projectTrusted !== false,
+  });
+
   // Resolve system prompt mode + source prompts + context files
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify);
 
   const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env, mode, promptExtras);
-  const { loader, reloadAndMap } = createResourceLoader(config, agentConfig, effectiveCwd, systemPrompt, bufferNotify);
+  const { loader, reloadAndMap } = createResourceLoader(
+    config,
+    agentConfig,
+    effectiveCwd,
+    systemPrompt,
+    settingsManager,
+    bufferNotify,
+  );
   const { extToolMap } = await reloadAndMap();
   const session = await createAndConfigureSession(
     ctx,
@@ -697,6 +721,7 @@ async function runAgentImpl(
     effectiveCwd,
     loader,
     extToolMap,
+    settingsManager,
     bufferNotify,
   );
   const {

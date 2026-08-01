@@ -106,6 +106,7 @@ describe("validateWorktreePath", () => {
     expect(success.resolvedPath).toBe(worktreePath);
     expect(success.worktreeRoot).toBe(worktreePath);
     expect(success.label).toBe("feature");
+    expect(success.sameRepo).toBe(true);
   });
 
   it("accepts the main checkout (parent and target share git-common-dir via .git dir)", async () => {
@@ -125,6 +126,7 @@ describe("validateWorktreePath", () => {
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
     expect(success.resolvedPath).toBe(mainCheckout);
+    expect(success.sameRepo).toBe(true);
   });
 
   it("accepts Windows git-common-dir paths with mixed separators", async () => {
@@ -342,9 +344,9 @@ describe("validateWorktreePath", () => {
     expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.NOT_A_DIRECTORY);
   });
 
-  // ── rejection: parent not in git repo ─────────────────────────
+  // ── parent not in git repo ──────────────────────────────────
 
-  it("rejects when parent is not in a git repo", async () => {
+  it("accepts when parent is not in a git repo (target flagged as cross-repo)", async () => {
     const parentCwd = join(tmpDir, "no-git-parent");
     const worktreePath = join(tmpDir, "feature");
     mkdirSync(parentCwd, { recursive: true });
@@ -357,11 +359,11 @@ describe("validateWorktreePath", () => {
 
     const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
 
-    expect(result.ok).toBe(false);
-    // Must assert the specific PARENT_NOT_IN_GIT_REPO constant, not just the
-    // generic "not inside a git repository" substring — the latter also matches
-    // NOT_IN_GIT_REPO (target), which would be the wrong error source.
-    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.PARENT_NOT_IN_GIT_REPO);
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(worktreePath);
+    // Parent not in a repo means the target can never be "the same repo".
+    expect(success.sameRepo).toBe(false);
   });
 
   // ── rejection: target not in git repo ─────────────────────────
@@ -383,9 +385,9 @@ describe("validateWorktreePath", () => {
     expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO);
   });
 
-  // ── rejection: different repo ─────────────────────────────────
+  // ── different repo ────────────────────────────────────────────
 
-  it("rejects when target is in a different git repo", async () => {
+  it("accepts a target in a different git repo, flagged as cross-repo", async () => {
     const parentCwd = join(tmpDir, "parent");
     const worktreePath = join(tmpDir, "other-repo");
     mkdirSync(parentCwd, { recursive: true });
@@ -398,8 +400,10 @@ describe("validateWorktreePath", () => {
 
     const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
 
-    expect(result.ok).toBe(false);
-    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO);
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(worktreePath);
+    expect(success.sameRepo).toBe(false);
   });
 
   // ── rejection: git timeout ────────────────────────────────────
@@ -490,7 +494,7 @@ describe("validateWorktreePath", () => {
     expect(success.resolvedPath).toBe(realPath);
   });
 
-  it("rejects a symlink whose target is in a different repo", async () => {
+  it("accepts a symlink whose target is in a different repo (cross-repo)", async () => {
     const parentCwd = join(tmpDir, "parent");
     const otherRepoPath = join(tmpDir, "other-repo-dir");
     const symlinkPath = join(tmpDir, "sneaky-link");
@@ -505,8 +509,10 @@ describe("validateWorktreePath", () => {
 
     const result = await validateWorktreePath(makePi(gitResults), symlinkPath, parentCwd);
 
-    expect(result.ok).toBe(false);
-    expect((result as WorktreeValidationFailure).error).toBe(WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO);
+    expect(result.ok).toBe(true);
+    const success = result as WorktreeValidationSuccess;
+    expect(success.resolvedPath).toBe(otherRepoPath);
+    expect(success.sameRepo).toBe(false);
   });
 });
 
@@ -553,12 +559,14 @@ describe("worktree deletion mid-run", () => {
       worktreePath: "/deleted/worktree",
     });
 
-    // Wait for the promise microtasks to settle (runAgent mock rejects/throws,
-    // promise chain sets status in .catch(), runs .finally()).
-    await new Promise((r) => setTimeout(r, 0));
-
     const record = manager.getRecord(agentId);
     expect(record).toBeDefined();
+
+    // Await the chained completion promise: it resolves only after the
+    // .catch()/.finally() blocks have run, so the record is in its final
+    // state (lessons.md: no setTimeout sleeps in concurrency tests).
+    await record!.execution.promise;
+
     expect(record!.lifecycle.status).toBe("error");
     expect(record!.error).toContain("ENOENT");
   });

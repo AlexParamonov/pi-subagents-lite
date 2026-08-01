@@ -20,6 +20,8 @@
 - When a range edit targets code that shifted since the last read, it can clobber adjacent signatures. Re-read before multi-line replaces; check the parse after.
 - When a replace range ends with the same line as the next surviving line, the edit tool flags boundary duplication — verify and delete the stray duplicate before running tests.
 - Replacing `setTimeout` sleeps in concurrency tests: await the chained completion promise (`record.execution.promise`) instead. It resolves only after `.finally` runs, so queue drain and completion side effects are guaranteed observed. Faster and no flake on slow CI.
+- Assertions that check the test's own setup (e.g. "the dir we never created doesn't exist") are dead weight — they pass even with broken code under test. Drop them, then prune imports they leave unused.
+- afterEach cleanup must remove the whole temp base dir, not one sibling — partial cleanup leaks on repeated runs and signals the test author didn't track resource ownership.
 
 ### Delegation
 - Delegate immediately without pre-reading files — agent explores itself.
@@ -33,6 +35,7 @@
 - Don't assume — verify. Code review catches silent production bugs.
 - `ExtensionAPI` (pi) rejects calls to old ctx. Add try-catch around sendMessage for defense-in-depth.
 - A trailing `?? N` fallback on optional config fields looks dead but is forced by `T | undefined` static type. Run typecheck before removing "redundant" fallbacks.
+- A cast before `??` on an `unknown` value is NOT redundant: `unknown ?? T` stays `unknown`, so the cast is the narrowing. Reviewer said `(params.x as number | undefined) ?? fallback` "adds no safety" — typecheck proved dropping it breaks the downstream `number | undefined` assignment. Verify narrowing claims with the typechecker before simplifying casts.
 - Never use `general-purpose` when workflow specifies a specialized agent type. Check workflow docs for exact `agent` values before spawning.
 
 ### Config & Refactoring
@@ -42,6 +45,7 @@
 - Only extract mock factories with ≥1 consumer in the current slice. Speculative extraction is waste.
 - Diff old paths before merging to ensure all side effects are preserved.
 - Module-level singletons still require vi.mock(). Accept module singleton as sufficient if composition root goal is otherwise achieved.
+- A result field whose only consumer's check is implied by a sibling field is dead weight: `gateApplied && !projectTrusted` reduces to `!projectTrusted` because false trust can only arise when the gate applied. Delete the flag, return the bare boolean, and let the tests pin the guarantee through the surviving field.
 
 ### pi-ai API
 - `deliverAs: "steer"` only queues while the parent agent is running. If the agent is idle when the message arrives, pi drops it silently.

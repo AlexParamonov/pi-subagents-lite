@@ -35,12 +35,11 @@ _Avoid_: Grace period, extra turns
 ### Worktrees
 
 **Worktree**:
-A linked git worktree of the same repository as the parent, distinguished by its `--git-dir` pointing outside the worktree root. The target of the `worktree_path` Agent tool param.
+A linked git worktree of the same repository as the parent, distinguished by its `--git-dir` pointing outside the worktree root. One possible target of the `worktree_path` Agent tool param (any git repo on disk is accepted).
 _Avoid_: Git worktree, sibling worktree
 
 **Worktree path**:
-The resolved absolute filesystem path passed to the `worktree_path` param. Used as the subagent's working directory for its session, resource loader, and system prompt.
-
+The resolved absolute filesystem path passed to the `worktree_path` param. Must be inside a git repository (any repo on disk, not only the parent's). Used as the subagent's working directory for its session, resource loader, and system prompt.
 **Worktree label**:
 A short human-readable identifier derived from the worktree path. `basename(root)` when targeting the root, else `basename(root)/<relative subpath>`.
 _Avoid_: Worktree name
@@ -59,7 +58,7 @@ _Avoid_: Callback, notification
 
 - An **Agent type** has an optional **Model override**
 - A **Subagent** is spawned from one **Agent type**
-- A **Subagent** may run in a **Worktree** of the parent's repo
+- A **Subagent** may run in a **Worktree** of the parent's repo or in a directory inside any other git repo on disk
 - An **Agent briefing** describes all available **Agent types** to the LLM
 - A **Stealth tool** requires an **Agent briefing** before the LLM can use it
 - An **Activity tracker** is created per spawn and cleaned up on completion

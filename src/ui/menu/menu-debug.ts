@@ -86,7 +86,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push(
     "| `run_in_background` | When `true`, result is auto-delivered — do NOT poll. Continue working while waiting. |",
   );
-  lines.push("| `worktree_path` | Optional path to a git worktree of the parent's repo. See below for details. |");
+  lines.push("| `worktree_path` | Optional path inside any git repository on disk. See below for details. |");
   lines.push("");
 
   // Usage guidelines
@@ -96,18 +96,21 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   lines.push("  → Results are auto-delivered — do NOT poll, the result will arrive when ready");
   lines.push("");
   lines.push("## `worktree_path` Parameter\n");
-  lines.push("Use `worktree_path` to run a subagent in a different git worktree of the parent's repository.");
+  lines.push(
+    "Use `worktree_path` to run a subagent in a directory inside any git repository on disk: a worktree of the parent's repo, its main checkout, or a different repo entirely.",
+  );
   lines.push("");
   lines.push("- **Optional.** Omit to run the subagent in the parent's working directory (default behavior).");
-  lines.push(
-    "- **Must be a path** inside a git worktree of the parent's repo, including the main checkout. Not a different repo, not a non-git directory.",
-  );
+  lines.push("- **Must be a path** inside a git repository (any repo on disk). Not a non-git directory.");
   lines.push("- **Relative paths** are resolved against the parent's working directory.");
   lines.push(
-    "- **On failure** the validator returns a specific reason (e.g., 'not a worktree of the parent's repository', 'path does not exist') — use this to self-correct.",
+    "- **On failure** the validator returns a specific reason (e.g., 'not inside a git repository', 'path does not exist') — use this to self-correct.",
   );
   lines.push(
-    "- **Agent type discovery:** The worktree's `.pi/agents/` directory is scanned for agent types when this param is set, so worktree-local types become available to that spawn.",
+    "- **Agent type discovery:** The target's `.pi/agents/` directory is scanned for agent types when this param is set, so repo-local types become available to that spawn.",
+  );
+  lines.push(
+    "- **Cross-repo trust:** a target in a different git repo is gated by pi's trust framework. An untrusted target still spawns, but its project resources (.pi/ settings, extensions, skills, prompts, themes, SYSTEM.md, .agents/skills) are ignored and its `.pi/agents` types are not discovered.",
   );
   getPiInstance().sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");

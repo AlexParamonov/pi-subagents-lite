@@ -73,6 +73,12 @@ export interface SpawnConfig extends RunTunables {
   modelKey?: string;
   worktreePath?: string;
   worktreeLabel?: string;
+  /**
+   * Whether the subagent session treats the target project as trusted.
+   * Absent/true = load project resources; false = ignore them (untrusted
+   * cross-repo target, resolved by the trust gate).
+   */
+  projectTrusted?: boolean;
   invocation?: AgentInvocation;
 }
 
