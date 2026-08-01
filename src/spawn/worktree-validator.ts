@@ -78,6 +78,21 @@ async function getGitCommonDir(
   }
 }
 
+/** Resolve a git path and normalize it for reliable cross-platform comparison. */
+function normalizeGitPath(gitPath: string, cwd: string): string {
+  const isWindowsStyle = /^[A-Za-z]:[\\/]/.test(gitPath)
+    || /^[A-Za-z]:[\\/]/.test(cwd)
+    || /^\\\\/.test(gitPath)
+    || /^\\\\/.test(cwd);
+  const pathApi = isWindowsStyle ? path.win32 : path;
+  const absolutePath = pathApi.isAbsolute(gitPath)
+    ? gitPath
+    : pathApi.resolve(cwd, gitPath);
+  const normalizedPath = pathApi.normalize(absolutePath).replace(/\\/g, "/");
+
+  return isWindowsStyle ? normalizedPath.toLowerCase() : normalizedPath;
+}
+
 /**
  * Validate a worktree path against the parent's git repository.
  *
@@ -137,13 +152,9 @@ export async function validateWorktreePath(
   const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO, onWarning);
   if (!targetResult.ok) return targetResult;
 
-  // Compare common dirs — must share the same repo
-  const parentCommonAbs = path.isAbsolute(parentResult.commonDir)
-    ? parentResult.commonDir
-    : path.resolve(parentCwd, parentResult.commonDir);
-  const targetCommonAbs = path.isAbsolute(targetResult.commonDir)
-    ? targetResult.commonDir
-    : path.resolve(realPath, targetResult.commonDir);
+  // Compare normalized common dirs — Git may use different separators on Windows.
+  const parentCommonAbs = normalizeGitPath(parentResult.commonDir, parentCwd);
+  const targetCommonAbs = normalizeGitPath(targetResult.commonDir, realPath);
 
   if (parentCommonAbs !== targetCommonAbs) {
     return { ok: false, error: WORKTREE_VALIDATION_ERRORS.DIFFERENT_REPO };

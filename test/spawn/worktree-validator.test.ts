@@ -15,6 +15,7 @@ import {
   existsSync,
   mkdirSync,
   symlinkSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -64,8 +65,9 @@ function makePi(
 function makeTempDir(prefix = "wt-test"): { dir: string; cleanup: () => void } {
   const dir = join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
+  const resolved = realpathSync(dir);
   return {
-    dir,
+    dir: resolved,
     cleanup: () => {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     },
@@ -131,6 +133,40 @@ describe("validateWorktreePath", () => {
     expect(result.ok).toBe(true);
     const success = result as WorktreeValidationSuccess;
     expect(success.resolvedPath).toBe(mainCheckout);
+  });
+
+  it("accepts Windows git-common-dir paths with mixed separators", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, "E:\\projects\\manager\\.git"],
+      [worktreePath, "E:/projects/manager/.git"],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(true);
+    expect((result as WorktreeValidationSuccess).resolvedPath).toBe(worktreePath);
+  });
+
+  it("accepts Windows git-common-dir paths with case differences", async () => {
+    const parentCwd = join(tmpDir, "parent");
+    const worktreePath = join(tmpDir, "feature");
+    mkdirSync(parentCwd, { recursive: true });
+    mkdirSync(worktreePath, { recursive: true });
+
+    const gitResults = new Map<string, string | null>([
+      [parentCwd, "C:\\Users\\Dev\\.git"],
+      [worktreePath, "c:/users/dev/.git"],
+    ]);
+
+    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
+
+    expect(result.ok).toBe(true);
+    expect((result as WorktreeValidationSuccess).resolvedPath).toBe(worktreePath);
   });
 
   it("returns worktree root and non-empty label on success", async () => {
