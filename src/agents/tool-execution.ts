@@ -179,8 +179,8 @@ export async function executeAgentTool(
     // Not found in registry — try scanning filesystem for agents added during the session.
     // When worktree_path is set, also scan the target's .pi/agents/ directory — unless
     // the target is an untrusted cross-repo project (its agent types stay hidden).
-    const worktreeDir = projectTrusted && validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
-    await discoverNewAgents(worktreeDir);
+    const targetAgentsDir = projectTrusted && validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
+    await discoverNewAgents(targetAgentsDir);
     resolvedType = resolveType(type);
   }
   if (!resolvedType) {
