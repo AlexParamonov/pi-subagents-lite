@@ -45,6 +45,7 @@
 - Only extract mock factories with ≥1 consumer in the current slice. Speculative extraction is waste.
 - Diff old paths before merging to ensure all side effects are preserved.
 - Module-level singletons still require vi.mock(). Accept module singleton as sufficient if composition root goal is otherwise achieved.
+- A result field whose only consumer's check is implied by a sibling field is dead weight: `gateApplied && !projectTrusted` reduces to `!projectTrusted` because false trust can only arise when the gate applied. Delete the flag, return the bare boolean, and let the tests pin the guarantee through the surviving field.
 
 ### pi-ai API
 - `deliverAs: "steer"` only queues while the parent agent is running. If the agent is idle when the message arrives, pi drops it silently.
