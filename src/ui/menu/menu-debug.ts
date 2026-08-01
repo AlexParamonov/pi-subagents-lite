@@ -110,7 +110,7 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
     "- **Agent type discovery:** The target's `.pi/agents/` directory is scanned for agent types when this param is set, so repo-local types become available to that spawn.",
   );
   lines.push(
-    "- **Cross-repo trust:** a target in a different git repo is gated by pi's trust framework. An untrusted target still spawns, but its project resources (.pi/ settings, extensions, skills, prompts, themes, SYSTEM.md, .agents/skills) are ignored and its `.pi/agents` types are not discovered.",
+    "- **Cross-repo trust:** a target in a different git repo is gated by pi's trust framework. An untrusted target still spawns, but its project resources (.pi/ settings, extensions, skills, prompts, themes, system prompt files, .agents/skills) are ignored and its `.pi/agents` types are not discovered.",
   );
   getPiInstance().sendUserMessage(lines.join("\n"));
   ctx.ui.notify("Agent briefing sent to LLM", "info");
