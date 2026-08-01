@@ -166,7 +166,7 @@ describe("AgentManager", () => {
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
       deferred1.resolve(mockRunResult());
-      await new Promise((r) => setTimeout(r, 10));
+      await manager.getRecord(id1)!.execution.promise;
 
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
@@ -366,7 +366,7 @@ describe("AgentManager", () => {
       deferred.resolve(mockRunResult());
     });
 
-    it("queues foreground agent when limit is reached", () => {
+    it("queues foreground agent when limit is reached", async () => {
       const config: ConcurrencyConfig = { default: 1, models: { "llamacpp/4b": 1 } };
       manager = new AgentManager(onComplete, config);
 
@@ -393,12 +393,10 @@ describe("AgentManager", () => {
       expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
 
       deferred1.resolve(mockRunResult());
-
-      return new Promise((r) => setTimeout(r, 10)).then(() => {
-        expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
-        expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
-        deferred2.resolve(mockRunResult());
-      });
+      await manager.getRecord(id1)!.execution.promise;
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(2);
+      deferred2.resolve(mockRunResult());
     });
   });
 
@@ -513,7 +511,7 @@ describe("AgentManager", () => {
         turnLimited: false,
       });
 
-      await new Promise((r) => setTimeout(r, 10));
+      await manager.getRecord(id)!.execution.promise;
 
       expect(manager.getTotalAgentCost()).toBe(0.04);
     });
@@ -637,7 +635,7 @@ describe("AgentManager", () => {
       // Complete first agent — triggers drainQueue, which tries to start id2
       deferred.resolve(mockRunResult());
 
-      await new Promise((r) => setTimeout(r, 10));
+      await manager.getRecord(id1)!.execution.promise;
 
       // Agent 1 completed successfully (counted), agent 2 failed to start (not counted)
       expect(manager.getTotalAgentCount()).toBe(1);
@@ -958,7 +956,7 @@ describe("AgentManager", () => {
           session: sessionWithModel({ provider: "anthropic", id: "claude-sonnet-4" }),
         }),
       );
-      await new Promise((r) => setTimeout(r, 10));
+      await manager.getRecord(id)!.execution.promise;
 
       expect(manager.getRecord(id)!.lifecycle.status).toBe("stopped");
     });
