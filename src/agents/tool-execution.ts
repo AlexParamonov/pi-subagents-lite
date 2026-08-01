@@ -138,12 +138,12 @@ async function resolveWorktree(
     // Cross-repo targets are gated by pi's trust framework. Same-repo paths
     // are never gated; an untrusted target still spawns but with its project
     // resources ignored and a warning surfaced.
-    const trust = resolveSubagentTrust({
+    const projectTrusted = resolveSubagentTrust({
       targetPath: resolvedPath,
       sameRepo: validation.sameRepo === true,
       deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
     });
-    if (trust.gateApplied && !trust.projectTrusted) {
+    if (!projectTrusted) {
       if (ctx.ui?.notify) {
         ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(resolvedPath)}`, "warning");
       }
@@ -152,7 +152,7 @@ async function resolveWorktree(
       ok: true,
       resolvedPath,
       worktreeLabel: validation.label,
-      projectTrusted: trust.projectTrusted,
+      projectTrusted,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

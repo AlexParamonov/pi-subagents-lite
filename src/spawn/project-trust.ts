@@ -44,16 +44,11 @@ export function createSubagentTrustDeps(agentDir: string, parentCwd: string): Su
   };
 }
 
-export interface SubagentTrustResult {
-  /** Whether the subagent session should load the target's project resources. */
-  projectTrusted: boolean;
-  /** True when a trust gate actually applied (cross-repo + has resources). */
-  gateApplied: boolean;
-}
-
 /**
  * Resolve whether a spawn into `targetPath` loads the target's project
- * resources. Same-repo targets are never gated; cross-repo targets are gated
+ * resources. Returns true = trusted (load resources), false = untrusted
+ * cross-repo target (the caller ignores its resources and surfaces a
+ * warning). Same-repo targets are never gated; cross-repo targets are gated
  * only when they carry trust-requiring resources.
  */
 export function resolveSubagentTrust(opts: {
@@ -61,14 +56,12 @@ export function resolveSubagentTrust(opts: {
   /** False when the parent and target live in different git repos (or the parent is in none). */
   sameRepo: boolean;
   deps: SubagentTrustDeps;
-}): SubagentTrustResult {
-  if (opts.sameRepo) return { projectTrusted: true, gateApplied: false };
-  if (!opts.deps.hasTrustRequiringProjectResources(opts.targetPath)) {
-    return { projectTrusted: true, gateApplied: false };
-  }
+}): boolean {
+  if (opts.sameRepo) return true;
+  if (!opts.deps.hasTrustRequiringProjectResources(opts.targetPath)) return true;
   const decision = opts.deps.getTrustDecision(opts.targetPath);
-  if (decision !== null) return { projectTrusted: decision, gateApplied: true };
-  return { projectTrusted: opts.deps.getDefaultProjectTrust() === "always", gateApplied: true };
+  if (decision !== null) return decision;
+  return opts.deps.getDefaultProjectTrust() === "always";
 }
 
 /** Warning surfaced when a spawn proceeds into an untrusted cross-repo target. */

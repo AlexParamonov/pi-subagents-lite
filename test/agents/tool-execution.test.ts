@@ -156,7 +156,7 @@ describe("executeAgentTool — worktree_path validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: true, gateApplied: false });
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-123",
       display: { type: "general-purpose", description: "Test agent" },
@@ -329,7 +329,7 @@ describe("executeAgentTool — worktree_path with background spawn", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: true, gateApplied: false });
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-bg",
       display: { type: "general-purpose", description: "Test agent", worktreeLabel: "feature" },
@@ -392,7 +392,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     mockResolveType.mockReset();
     mockResolveType.mockImplementation((t: string) => t);
     ctx = fakeCtx();
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: true, gateApplied: false });
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-disc",
       result: "Agent completed successfully",
@@ -452,7 +452,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     vi.clearAllMocks();
     ctx = fakeCtx();
     ctx.ui = { notify: vi.fn() };
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: true, gateApplied: false });
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-trust",
       result: "done",
@@ -491,7 +491,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
 
   it("spawns with projectTrusted=false and warns for an untrusted cross-repo target", async () => {
     crossRepoValidation(false);
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: false, gateApplied: true });
+    mockResolveSubagentTrust.mockReturnValue(false);
     // Force the on-demand discovery path so the .pi/agents skip is observable
     mockResolveType.mockReturnValueOnce(undefined);
     mockResolveType.mockReturnValueOnce("general-purpose");
@@ -509,7 +509,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
 
   it("does not warn and spawns trusted for a trusted cross-repo target", async () => {
     crossRepoValidation(false);
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: true, gateApplied: true });
+    mockResolveSubagentTrust.mockReturnValue(true);
     mockResolveType.mockReturnValueOnce(undefined);
     mockResolveType.mockReturnValueOnce("general-purpose");
 
@@ -533,7 +533,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
 
   it("spawns trusted for a cross-repo target with no trust-requiring resources", async () => {
     crossRepoValidation(false);
-    mockResolveSubagentTrust.mockReturnValue({ projectTrusted: true, gateApplied: false });
+    mockResolveSubagentTrust.mockReturnValue(true);
 
     await executeAgentTool("tc-tr-5", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
 

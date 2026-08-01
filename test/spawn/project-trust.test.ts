@@ -44,7 +44,7 @@ describe("resolveSubagentTrust", () => {
         getTrustDecision: () => false,
       }),
     });
-    expect(result).toEqual({ projectTrusted: true, gateApplied: false });
+    expect(result).toBe(true);
   });
 
   it("does not gate cross-repo targets without trust-requiring resources", () => {
@@ -53,7 +53,7 @@ describe("resolveSubagentTrust", () => {
       sameRepo: false,
       deps: makeDeps({ hasTrustRequiringProjectResources: () => false }),
     });
-    expect(result).toEqual({ projectTrusted: true, gateApplied: false });
+    expect(result).toBe(true);
   });
 
   it("applies a saved untrusted decision for a cross-repo target", () => {
@@ -65,7 +65,7 @@ describe("resolveSubagentTrust", () => {
         getTrustDecision: () => false,
       }),
     });
-    expect(result).toEqual({ projectTrusted: false, gateApplied: true });
+    expect(result).toBe(false);
   });
 
   it("applies a saved trusted decision for a cross-repo target", () => {
@@ -77,7 +77,7 @@ describe("resolveSubagentTrust", () => {
         getTrustDecision: () => true,
       }),
     });
-    expect(result).toEqual({ projectTrusted: true, gateApplied: true });
+    expect(result).toBe(true);
   });
 
   it("falls back to defaultProjectTrust always → trusted when undecided", () => {
@@ -90,7 +90,7 @@ describe("resolveSubagentTrust", () => {
         getDefaultProjectTrust: () => "always",
       }),
     });
-    expect(result).toEqual({ projectTrusted: true, gateApplied: true });
+    expect(result).toBe(true);
   });
 
   it("treats undecided targets as untrusted when the default is ask", () => {
@@ -103,7 +103,7 @@ describe("resolveSubagentTrust", () => {
         getDefaultProjectTrust: () => "ask",
       }),
     });
-    expect(result).toEqual({ projectTrusted: false, gateApplied: true });
+    expect(result).toBe(false);
   });
 
   it("treats undecided targets as untrusted when the default is never", () => {
@@ -116,7 +116,7 @@ describe("resolveSubagentTrust", () => {
         getDefaultProjectTrust: () => "never",
       }),
     });
-    expect(result).toEqual({ projectTrusted: false, gateApplied: true });
+    expect(result).toBe(false);
   });
 
   it("only asks for the default when the store is undecided", () => {
@@ -132,7 +132,7 @@ describe("resolveSubagentTrust", () => {
         getDefaultProjectTrust,
       }),
     });
-    expect(result.projectTrusted).toBe(true);
+    expect(result).toBe(true);
   });
 });
 
@@ -168,7 +168,7 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
 
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
 
-    expect(result).toEqual({ projectTrusted: false, gateApplied: true });
+    expect(result).toBe(false);
   });
 
   it("loads resources for an undecided target when the global default is always", async () => {
@@ -179,7 +179,7 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
 
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
 
-    expect(result).toEqual({ projectTrusted: true, gateApplied: true });
+    expect(result).toBe(true);
   });
 
   it("respects a saved trusted decision over an ask default", async () => {
@@ -191,12 +191,12 @@ describe("resolveSubagentTrust — real SDK building blocks", () => {
 
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
 
-    expect(result).toEqual({ projectTrusted: true, gateApplied: true });
+    expect(result).toBe(true);
   });
 
   it("does not gate a target without trust-requiring resources", async () => {
     const deps = createSubagentTrustDeps(agentDir, parentDir);
     const result = resolveSubagentTrust({ targetPath: targetDir, sameRepo: false, deps });
-    expect(result).toEqual({ projectTrusted: true, gateApplied: false });
+    expect(result).toBe(true);
   });
 });
