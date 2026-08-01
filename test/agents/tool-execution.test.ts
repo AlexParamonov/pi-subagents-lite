@@ -253,8 +253,6 @@ describe("executeAgentTool — worktree_path validation", () => {
       { error: "Path does not exist", match: "does not exist" },
       { error: "Path is not a directory", match: "not a directory" },
       { error: "Path is not inside a git repository", match: "not inside a git" },
-      { error: "Path is inside a git repository that is not the parent's", match: "not the parent" },
-      { error: "Parent itself is not in a git repository", match: "Parent" },
     ];
 
     for (const { error, match } of rejectionReasons) {

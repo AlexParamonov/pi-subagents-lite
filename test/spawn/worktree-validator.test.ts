@@ -559,12 +559,14 @@ describe("worktree deletion mid-run", () => {
       worktreePath: "/deleted/worktree",
     });
 
-    // Wait for the promise microtasks to settle (runAgent mock rejects/throws,
-    // promise chain sets status in .catch(), runs .finally()).
-    await new Promise((r) => setTimeout(r, 0));
-
     const record = manager.getRecord(agentId);
     expect(record).toBeDefined();
+
+    // Await the chained completion promise: it resolves only after the
+    // .catch()/.finally() blocks have run, so the record is in its final
+    // state (lessons.md: no setTimeout sleeps in concurrency tests).
+    await record!.execution.promise;
+
     expect(record!.lifecycle.status).toBe("error");
     expect(record!.error).toContain("ENOENT");
   });
