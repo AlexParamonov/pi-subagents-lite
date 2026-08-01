@@ -90,6 +90,13 @@ export function resetConfig(): void {
   };
   mockModules.mockSessionOverrides = { default: null } as Record<string, any>;
   mockModules.mockSessionShowCost = undefined;
+  mockModules.mockManager.setConcurrency.mockReset();
+  mockModules.mockManager.listAgents.mockReset();
+  mockModules.mockManager.getRecord.mockReset();
+  mockModules.mockManager.abort.mockReset();
+  mockModules.mockManager.steer.mockReset();
+  mockModules.mockManager.spawn.mockReset();
+  mockModules.mockPiExec.mockReset();
   resetSelectDialogInstances();
 }
 

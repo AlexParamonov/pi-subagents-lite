@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mockModules, resetConfig as resetMenuMockConfig } from "../../menu-mock-setup.js";
+import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
 let settingsListCalls: Array<any> = [];
@@ -74,11 +74,7 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
 // Import AFTER mock setup
 import { showConcurrencySettingsMenu } from "../../../src/ui/menu/menu-concurrency.js";
 
-afterEach(() => resetMenuMockConfig());
-
-function resetConfig(): void {
-  mockModules.mockConfig.concurrency = { default: 4 };
-}
+afterEach(() => resetConfig());
 
 describe("showConcurrencySettingsMenu — SettingsList migration", () => {
   beforeEach(() => {
