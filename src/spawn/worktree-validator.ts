@@ -64,19 +64,19 @@ interface PiExec {
 
 /**
  * Run `git rev-parse --git-common-dir` and return the trimmed result.
- * Returns a failure result if the command fails or git is unavailable.
+ * Returns a failure result when the command fails or git is unavailable;
+ * a non-repo directory yields NOT_IN_GIT_REPO.
  */
 async function getGitCommonDir(
   pi: PiExec,
   cwd: string,
-  notInRepoError: string,
   onWarning?: (msg: string) => void,
 ): Promise<{ ok: true; commonDir: string } | { ok: false; error: string }> {
   try {
     const result = await pi.exec("git", ["rev-parse", "--git-common-dir"], { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
-    if (result.code !== 0) return { ok: false, error: notInRepoError };
+    if (result.code !== 0) return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO };
     const commonDir = result.stdout.trim();
-    if (!commonDir) return { ok: false, error: notInRepoError };
+    if (!commonDir) return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO };
     return { ok: true, commonDir };
   } catch (err: unknown) {
     const msg = String(err instanceof Error ? err.message : err);
@@ -154,13 +154,13 @@ export async function validateWorktreePath(
   }
 
   // Step 5: the target must be inside a git repository (any repo on disk)
-  const targetResult = await getGitCommonDir(pi, realPath, WORKTREE_VALIDATION_ERRORS.NOT_IN_GIT_REPO, onWarning);
+  const targetResult = await getGitCommonDir(pi, realPath, onWarning);
   if (!targetResult.ok) return targetResult;
 
   // Step 5b: same-repo detection. The parent is not required to be in a git
-  // repo (issue: allow-several-repos). When the parent isn't, or the target's
-  // common dir differs, the target is cross-repo and the trust gate may apply.
-  const parentResult = await getGitCommonDir(pi, parentCwd, "", onWarning);
+  // repo (issue: allow-several-repos); a failed parent probe just means the
+  // target is cross-repo and the trust gate may apply.
+  const parentResult = await getGitCommonDir(pi, parentCwd, onWarning);
   const sameRepo =
     parentResult.ok &&
     normalizeGitPath(parentResult.commonDir, parentCwd) === normalizeGitPath(targetResult.commonDir, realPath);
