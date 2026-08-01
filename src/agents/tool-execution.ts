@@ -104,6 +104,62 @@ export function formatResultContent(record: AgentRecord): string {
 // Tool execute handlers
 // ============================================================================
 
+/**
+ * Validate worktree_path and resolve the cross-repo trust gate for it.
+ * Surfaces validation warnings and the untrusted-target warning via ctx.ui.
+ * Returns an error result for invalid paths (LLM-facing, self-correctable).
+ */
+async function resolveWorktree(
+  ctx: ExtensionContext,
+  rawWorktreePath: string | undefined,
+): Promise<
+  { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean } | { ok: false; error: string }
+> {
+  // Empty/whitespace → omitted: nothing to validate, nothing to gate.
+  if (!rawWorktreePath || rawWorktreePath.trim() === "") {
+    return { ok: true, projectTrusted: true };
+  }
+  try {
+    const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
+    const warnings: string[] = [];
+    const onWarning = (msg: string) => {
+      warnings.push(msg);
+    };
+    const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
+    if (!validation.ok) {
+      for (const msg of warnings) {
+        if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+      }
+      return { ok: false, error: validation.error };
+    }
+
+    const resolvedPath = validation.resolvedPath!; // non-empty paths always resolve
+
+    // Cross-repo targets are gated by pi's trust framework. Same-repo paths
+    // are never gated; an untrusted target still spawns but with its project
+    // resources ignored and a warning surfaced.
+    const trust = resolveSubagentTrust({
+      targetPath: resolvedPath,
+      sameRepo: validation.sameRepo === true,
+      deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
+    });
+    if (trust.gateApplied && !trust.projectTrusted) {
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(resolvedPath)}`, "warning");
+      }
+    }
+    return {
+      ok: true,
+      resolvedPath,
+      worktreeLabel: validation.label,
+      projectTrusted: trust.projectTrusted,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `worktree_path validation failed: ${msg}` };
+  }
+}
+
 export async function executeAgentTool(
   _toolCallId: string,
   params: Record<string, unknown>,
@@ -113,48 +169,11 @@ export async function executeAgentTool(
 ): Promise<any> {
   // Validate worktree_path early — needed for on-demand agent discovery
   const rawWorktreePath = params.worktree_path as string | undefined;
-  let validatedWorktreePath: string | undefined;
-  let worktreeLabel: string | undefined;
-  // Default trusted: only cross-repo targets with trust-requiring resources
-  // can flip this to false (resolved below).
-  let projectTrusted = true;
-  if (rawWorktreePath && rawWorktreePath.trim() !== "") {
-    try {
-      const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
-      const warnings: string[] = [];
-      const onWarning = (msg: string) => {
-        warnings.push(msg);
-      };
-      const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
-      if (!validation.ok) {
-        for (const msg of warnings) {
-          if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
-        }
-        return errorResult(validation.error);
-      }
-      validatedWorktreePath = validation.resolvedPath;
-      worktreeLabel = validation.label;
-
-      // Cross-repo targets are gated by pi's trust framework. Same-repo paths
-      // are never gated; an untrusted target still spawns but with its project
-      // resources ignored and a warning surfaced.
-      const agentDir = getAgentDir();
-      const trust = resolveSubagentTrust({
-        targetPath: validatedWorktreePath!,
-        sameRepo: validation.sameRepo === true,
-        deps: createSubagentTrustDeps(agentDir, parentCwd),
-      });
-      projectTrusted = trust.projectTrusted;
-      if (trust.gateApplied && !trust.projectTrusted) {
-        if (ctx.ui?.notify) {
-          ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(validatedWorktreePath!)}`, "warning");
-        }
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return errorResult(`worktree_path validation failed: ${msg}`);
-    }
-  }
+  const resolved = await resolveWorktree(ctx, rawWorktreePath);
+  if (!resolved.ok) return errorResult(resolved.error);
+  const validatedWorktreePath = resolved.resolvedPath;
+  const worktreeLabel = resolved.worktreeLabel;
+  const projectTrusted = resolved.projectTrusted;
 
   const type = (params.agent as string) || "general-purpose";
   let resolvedType = resolveType(type);
