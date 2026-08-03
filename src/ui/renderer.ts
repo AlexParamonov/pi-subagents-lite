@@ -116,8 +116,11 @@ export function renderSubagentResult(
   theme: Theme,
   showCost: boolean,
   modelDisplayStyle: "id" | "name" = "id",
+  hideWhenCollapsed = false,
 ): Container {
   const { expanded } = options;
+  if (hideWhenCollapsed && expanded !== true) return new Container();
+
   const d = message.details;
   const text = (message.content as string)?.trim() || "";
 

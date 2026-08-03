@@ -36,6 +36,7 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   widgetDescLengthFull: 50,
   widgetDescLengthCompact: 30,
   widgetCompact: false,
+  hideBackgroundCompletionsWhenCompact: false,
   widgetShortcut: false,
   widgetShowModel: true,
   widgetShowThinking: true,

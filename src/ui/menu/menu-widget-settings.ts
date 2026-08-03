@@ -165,6 +165,14 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
     },
     {
+      id: "hideBackgroundCompletionsWhenCompact",
+      label: "Hide background completions when compact",
+      currentValue: store.agent.hideBackgroundCompletionsWhenCompact ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description:
+        "Hide background-agent completion cards while tool output is collapsed. Results remain available to the model and Running agents.",
+    },
+    {
       id: "thinkingBuffer",
       label: "Log file thinking buffer",
       currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
@@ -266,6 +274,10 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
+      case "hideBackgroundCompletionsWhenCompact":
+        store.mutate.widget.setHideBackgroundCompletionsWhenCompact(newValue === "ON");
+        ctx.ui.notify(`Hide background completions when compact ${newValue}`, "info");
+        break;
       case "thinkingBuffer":
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
@@ -300,7 +312,11 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   const items: SelectItem[] = [
     { value: "layout", label: "Layout", description: "Compact mode, max lines, description length" },
     { value: "display", label: "Display", description: "Status bar, model/thinking visibility, navigation hint" },
-    { value: "behavior", label: "Behavior", description: "Shortcuts, thinking buffer, finished agent retention" },
+    {
+      value: "behavior",
+      label: "Behavior",
+      description: "Shortcuts, completion cards, thinking buffer, finished agent retention",
+    },
     { value: "stats", label: "Stats", description: "Toggle which usage stats appear in the widget" },
   ];
 

@@ -76,6 +76,7 @@ function setupMockConfig() {
     widgetMaxLines: 12,
     widgetMaxLinesCompact: 6,
     widgetCompact: false,
+    hideBackgroundCompletionsWhenCompact: false,
     widgetShortcut: false,
     widgetDescLengthFull: 50,
     widgetDescLengthCompact: 30,
@@ -319,11 +320,23 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("dispatches to Behavior SettingsList with 5 items", async () => {
+  it("dispatches to Behavior SettingsList with completion visibility", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["finishedRetention", "finishedEvictTurns", "__sep__", "shortcut", "thinkingBuffer"]);
+    expect(ids).toEqual([
+      "finishedRetention",
+      "finishedEvictTurns",
+      "__sep__",
+      "shortcut",
+      "hideBackgroundCompletionsWhenCompact",
+      "thinkingBuffer",
+    ]);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "hideBackgroundCompletionsWhenCompact");
+    expect(item.label).toBe("Hide background completions when compact");
+    expect(item.currentValue).toBe("OFF");
+    expect(item.description).toContain("Results remain available to the model and Running agents");
   });
 
   it("shortcut onChange toggles store", async () => {
@@ -332,6 +345,13 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("shortcut", "ON");
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
+  });
+
+  it("completion visibility onChange toggles store", async () => {
+    const ctx = createDispatchCtx("behavior");
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("hideBackgroundCompletionsWhenCompact", "ON");
+    expect(mockModules.mockConfig.agent.hideBackgroundCompletionsWhenCompact).toBe(true);
   });
 
   it("thinkingBuffer onChange updates numeric value", async () => {

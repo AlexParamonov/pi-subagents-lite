@@ -72,6 +72,32 @@ const SHOW_COST = false;
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
 
+describe("renderSubagentResult — compact completion visibility", () => {
+  beforeEach(() => {
+    textInstances.length = 0;
+  });
+
+  it("renders by default while collapsed", () => {
+    const result = renderSubagentResult({ content: "Result" }, { expanded: false }, noopTheme, SHOW_COST);
+
+    expect(result.children).not.toHaveLength(0);
+  });
+
+  it.each([{ expanded: false }, {}])("returns an empty component when enabled and not expanded (%j)", (options) => {
+    const result = renderSubagentResult({ content: "Result" }, options, noopTheme, SHOW_COST, "id", true);
+
+    expect(result.children).toHaveLength(0);
+    expect(textInstances).toHaveLength(0);
+  });
+
+  it("renders when enabled and expanded", () => {
+    const result = renderSubagentResult({ content: "Result" }, { expanded: true }, noopTheme, SHOW_COST, "id", true);
+
+    expect(result.children).not.toHaveLength(0);
+    expect(textInstances.length).toBeGreaterThan(0);
+  });
+});
+
 describe("renderSubagentResult — worktree path display", () => {
   beforeEach(() => {
     textInstances.length = 0;

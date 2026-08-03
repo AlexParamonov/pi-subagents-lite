@@ -51,7 +51,12 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  Box: class {},
+  Box: class {
+    children: any[] = [];
+    addChild(c: any) {
+      this.children.push(c);
+    }
+  },
   Container: class {
     children: any[] = [];
     addChild(c: any) {
@@ -136,7 +141,14 @@ vi.mock("../src/ui/agent-widget.js", () => ({
 // Mutable state shared between the shell mock and tests.
 const { mutableStore, spawnGuard } = vi.hoisted(() => ({
   mutableStore: {
-    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolStrictMode: false },
+    agent: {
+      graceTurns: 6,
+      forceBackground: false,
+      showCost: false,
+      agentToolStrictMode: false,
+      modelDisplayStyle: "id",
+      hideBackgroundCompletionsWhenCompact: false,
+    },
     modelFor: () => "anthropic/claude-sonnet-4-6",
   },
   spawnGuard: { depth: 0 },
@@ -251,6 +263,32 @@ describe("Agent tool schema — stealth", () => {
 /* ------------------------------------------------------------------ */
 /*  Tool Registration Count                                           */
 /* ------------------------------------------------------------------ */
+
+describe("message renderer registration", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  beforeEach(() => {
+    mutableStore.agent.hideBackgroundCompletionsWhenCompact = false;
+  });
+
+  it("registers the subagent-result renderer", () => {
+    expect(api.messageRenderers.map((r) => r.customType)).toContain("subagent-result");
+  });
+
+  it("uses the persisted setting and renderer expanded state", () => {
+    const renderer = api.messageRenderers.find((r) => r.customType === "subagent-result")!.renderer;
+    const theme = { fg: (_color: string, text: string) => text, bg: (_color: string, text: string) => text };
+
+    mutableStore.agent.hideBackgroundCompletionsWhenCompact = true;
+    expect(renderer({ content: "done" }, { expanded: false }, theme).children).toHaveLength(0);
+    expect(renderer({ content: "done" }, { expanded: true }, theme).children.length).toBeGreaterThan(0);
+  });
+});
 
 describe("tool registration", () => {
   let api: MockExtensionAPI;

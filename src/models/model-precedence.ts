@@ -29,6 +29,8 @@ export interface SubagentsConfig {
     widgetMaxLines?: number;
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
+    /** Hide background completion cards while custom message tool output is collapsed. Default: false. */
+    hideBackgroundCompletionsWhenCompact?: boolean;
     widgetShortcut?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */
     systemPromptMode?: SystemPromptMode;
