@@ -1,4 +1,4 @@
-import { getStatusNote } from "../status-note.js";
+import { getStatusNote, formatStopReason } from "../status-note.js";
 /**
  * tool-execution.ts — Agent tool execution handlers.
  *
@@ -63,6 +63,8 @@ export function buildAgentDetails(
   if (opts?.includeStatus) {
     details.status = record.lifecycle.status;
     details.outputFile = record.display.outputFile;
+    const stopReason = formatStopReason(record.lifecycle);
+    if (stopReason) details.stopReason = stopReason;
   }
 
   if (opts?.includeStats) {

@@ -5,7 +5,8 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
-import type { AgentRecord } from "../types.js";
+import { formatWatchdogSummary } from "../status-note.js";
+import type { AgentRecord, AgentLifecycle } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatCost, getSessionContextPercent } from "../agents/usage.js";
 import {
@@ -419,17 +420,22 @@ export class AgentWidget {
 
   /** Build the icon and status suffix for a finished agent. */
   private finishedIconAndStatus(
-    status: string,
+    lifecycle: AgentLifecycle,
     error: string | undefined,
     theme: Theme,
   ): { icon: string; statusText: string } {
-    switch (status) {
+    switch (lifecycle.status) {
       case "completed":
         return { icon: theme.fg("success", "✓"), statusText: "" };
       case "turn_limited":
         return { icon: theme.fg("warning", "✓"), statusText: theme.fg("warning", " (turn limit)") };
-      case "stopped":
-        return { icon: theme.fg("dim", "■"), statusText: theme.fg("dim", " stopped") };
+      case "stopped": {
+        const summary = formatWatchdogSummary(lifecycle);
+        return {
+          icon: theme.fg("dim", "■"),
+          statusText: summary ? theme.fg("dim", ` stopped (${summary})`) : theme.fg("dim", " stopped"),
+        };
+      }
       case "error": {
         const errMsg = error ? `: ${error.slice(0, 60)}` : "";
         return { icon: theme.fg("error", "✗"), statusText: theme.fg("error", ` error${errMsg}`) };
@@ -444,7 +450,7 @@ export class AgentWidget {
   private renderFinishedLine(a: AgentRecord, theme: Theme): string {
     const name = getDisplayName(a.display.type);
     const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle.status, a.error, theme);
+    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
     const statsParts = buildStatsParts(

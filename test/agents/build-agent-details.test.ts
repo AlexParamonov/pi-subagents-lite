@@ -192,6 +192,32 @@ describe("buildAgentDetails", () => {
     expect(details.tokens).toBeUndefined();
   });
 
+  it("includes the watchdog stop reason when the agent was watchdog-stopped", () => {
+    const record = makeRecord({
+      lifecycle: {
+        status: "stopped",
+        startedAt: 1000,
+        completedAt: 5000,
+        stoppedBy: "watchdog",
+        stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 },
+      },
+    });
+    const details = buildAgentDetails(record, { includeStatus: true });
+
+    expect(details.status).toBe("stopped");
+    expect(details.stopReason).toMatch(/STOPPED BY WATCHDOG/);
+    expect(details.stopReason).toContain("bash");
+  });
+
+  it("omits stopReason for user stops", () => {
+    const record = makeRecord({
+      lifecycle: { status: "stopped", startedAt: 1000, completedAt: 5000, stoppedBy: "user" },
+    });
+    const details = buildAgentDetails(record, { includeStatus: true });
+
+    expect(details.stopReason).toBeUndefined();
+  });
+
   // --- Both options ---
 
   it("includes both stats and status when both options are true", () => {

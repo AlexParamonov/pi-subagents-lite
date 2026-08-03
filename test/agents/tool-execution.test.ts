@@ -622,4 +622,21 @@ describe("formatResultContent", () => {
 
     expect(content).toBe("done");
   });
+
+  it("surfaces the watchdog reason with tool name and duration for watchdog stops", () => {
+    const content = formatResultContent(
+      makeContentRecord({
+        lifecycle: {
+          status: "stopped",
+          startedAt: Date.now(),
+          stoppedBy: "watchdog",
+          stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 46 * 60_000 },
+        },
+      }),
+    );
+
+    expect(content).toContain("STOPPED BY WATCHDOG");
+    expect(content).toContain("bash");
+    expect(content).toContain("46m");
+  });
 });
