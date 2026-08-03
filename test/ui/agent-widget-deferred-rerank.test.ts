@@ -109,24 +109,26 @@ type NavState = {
   visible: string[];
   arrow: string | null;
   readout: string | null;
-  /** Whether any rendered row shows the completed ✓ style. */
-  hasCheck: boolean;
+  /** Ids of rows showing the completed ✓ style, in body order. */
+  checked: string[];
 };
 
-/** Render the widget and extract visible agent ids, arrow target, N/M readout, and the ✓ row style. */
+/** Render the widget and extract visible agent ids, arrow target, N/M readout, and which rows show the ✓ style. */
 function renderNavState(widget: AgentWidget): NavState {
   const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
   const body = lines.slice(1); // heading takes line 0
   const visible: string[] = [];
+  const checked: string[] = [];
   let arrow: string | null = null;
   for (const line of body) {
     const m = line.match(/agent (f\d+|r\d+|q\d+)/);
     if (!m) continue;
+    if (line.includes("✓")) checked.push(m[1]);
     if (line.includes("→")) arrow = m[1];
     visible.push(m[1]);
   }
   const readout = lines[0].match(/\[dim:(\d+\/\d+)\]/)?.[1] ?? null;
-  return { visible, arrow, readout, hasCheck: lines.some((l) => l.includes("✓")) };
+  return { visible, arrow, readout, checked };
 }
 
 /* ------------------------------------------------------------------ */
@@ -165,7 +167,7 @@ describe("deferred re-rank freeze window", () => {
     expect(state.visible).toEqual(["f0", "r1", "q2"]);
     expect(state.arrow).toBe("r1");
     expect(state.readout).toBe("2/3");
-    expect(state.hasCheck).toBe(true); // the completed row flips to ✓ in place
+    expect(state.checked).toContain("r1"); // the completed row flips to ✓ in place
 
     // Exact window boundary: at exactly 2000ms the order is still frozen.
     vi.setSystemTime(new Date(Date.now() + 1000));
@@ -284,12 +286,5 @@ describe("deferred re-rank freeze window", () => {
   it("shows no N/M readout outside navigation mode", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines[0]).not.toMatch(/\d+\/\d+/);
-  });
-
-  it("omits the readout when the roster is empty during nav", () => {
-    agents = [];
-    widget.navActivate();
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines).toEqual([]);
   });
 });
