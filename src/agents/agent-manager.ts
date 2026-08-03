@@ -31,6 +31,9 @@ const CLEANUP_INTERVAL_MS = 60_000;
 /** How often the watchdog scans running agents for stuck state (milliseconds). */
 const WATCHDOG_TICK_MS = 5_000;
 
+/** Milliseconds in one minute (config thresholds and retention are stored in minutes). */
+const MINUTE_MS = 60_000;
+
 /** Age after which a completed agent record is evicted (milliseconds). Default: 10 min. */
 const DEFAULT_RETENTION_MINUTES = 10;
 
@@ -564,7 +567,7 @@ export class AgentManager {
   }
 
   private cleanup() {
-    const cutoff = Date.now() - this.retentionMinutes * 60_000;
+    const cutoff = Date.now() - this.retentionMinutes * MINUTE_MS;
     for (const [id, record] of this.agents) {
       if (!isTerminalStatus(record.lifecycle.status)) continue;
       if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
@@ -584,8 +587,8 @@ export class AgentManager {
   private checkWatchdogs(): void {
     const { toolTimeoutMinutes, idleTimeoutMinutes } = getStore().agent;
     const decisions = this.watchdog.check(
-      toolTimeoutMinutes * 60_000,
-      idleTimeoutMinutes * 60_000,
+      toolTimeoutMinutes * MINUTE_MS,
+      idleTimeoutMinutes * MINUTE_MS,
       (id) => this.agents.get(id)?.lifecycle.status === "running",
     );
     for (const [id, detail] of decisions) {
