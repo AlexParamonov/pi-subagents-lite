@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent-runner.js";
 import { AgentOutputLog } from "./output-file.js";
+import { Watchdog } from "./watchdog.js";
 import { getStore } from "../shell.js";
 import {
   type AgentRecord,
@@ -15,6 +16,7 @@ import {
   type CompactionInfo,
   type RunCallbacks,
   type StopInitiator,
+  type WatchdogStopDetail,
   SHORT_ID_LENGTH,
   type SpawnConfig,
   type ToolActivity,
@@ -25,6 +27,12 @@ import { errorMessage, toSingleLine } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
 const CLEANUP_INTERVAL_MS = 60_000;
+
+/** How often the watchdog scans running agents for stuck state (milliseconds). */
+const WATCHDOG_TICK_MS = 5_000;
+
+/** Milliseconds in one minute (config thresholds and retention are stored in minutes). */
+const MINUTE_MS = 60_000;
 
 /** Age after which a completed agent record is evicted (milliseconds). Default: 10 min. */
 const DEFAULT_RETENTION_MINUTES = 10;
@@ -89,6 +97,9 @@ export interface SpawnOptions extends SpawnConfig, RunCallbacks {
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
   private cleanupInterval: ReturnType<typeof setInterval>;
+  /** Time-based stuck-agent detection state (tool + idle timeouts). */
+  private watchdog = new Watchdog();
+  private watchdogInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
 
@@ -135,6 +146,9 @@ export class AgentManager {
 
     this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
     this.cleanupInterval.unref();
+
+    this.watchdogInterval = setInterval(() => this.checkWatchdogs(), WATCHDOG_TICK_MS);
+    this.watchdogInterval.unref();
   }
 
   /** Update the age cutoff for finished agent retention (minutes). Takes effect at the next cleanup tick. */
@@ -275,6 +289,8 @@ export class AgentManager {
 
     record.lifecycle.status = "running";
     record.lifecycle.startedAt = Date.now();
+    // The idle clock starts here, so a hung pre-session init phase is covered.
+    this.watchdog.start(id);
 
     // Create output log for this agent (creates file + writes [USER] entry)
     record.execution.outputLog = new AgentOutputLog(id, prompt, undefined, this.bufferSize);
@@ -303,7 +319,11 @@ export class AgentManager {
         record.stats.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
       },
-      onTextDelta: options.onTextDelta,
+      onTextDelta: (delta, fullText) => {
+        // Streamed response text counts as activity for the idle watchdog.
+        this.watchdog.recordText(id);
+        options.onTextDelta?.(delta, fullText);
+      },
       onSessionCreated: (session) => {
         record.execution.session = session;
         // Flush any steers that arrived before the session was ready
@@ -424,6 +444,7 @@ export class AgentManager {
     return {
       onToolActivity: (activity) => {
         if (activity.type === "end") record.stats.toolUses++;
+        this.watchdog.recordActivity(record.id, activity);
         options?.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
@@ -512,18 +533,18 @@ export class AgentManager {
     return [...this.agents.values()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
   }
 
-  abort(id: string, stoppedBy?: StopInitiator): boolean {
+  abort(id: string, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
 
-    return this.stopAgent(record, stoppedBy);
+    return this.stopAgent(record, stoppedBy, stopDetail);
   }
 
   /**
    * Stop an agent by aborting its session or removing it from the queue.
    * Returns true if the agent was stopped, false if it wasn't running/queued.
    */
-  private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator): boolean {
+  private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
     if (record.lifecycle.status === "queued") {
       this.queue = this.queue.filter((q) => q.id !== record.id);
     } else if (record.lifecycle.status !== "running") {
@@ -533,6 +554,7 @@ export class AgentManager {
     }
     record.lifecycle.status = "stopped";
     record.lifecycle.stoppedBy = stoppedBy;
+    record.lifecycle.stopDetail = stopDetail;
     record.lifecycle.completedAt = Date.now();
     return true;
   }
@@ -545,7 +567,7 @@ export class AgentManager {
   }
 
   private cleanup() {
-    const cutoff = Date.now() - this.retentionMinutes * 60_000;
+    const cutoff = Date.now() - this.retentionMinutes * MINUTE_MS;
     for (const [id, record] of this.agents) {
       if (!isTerminalStatus(record.lifecycle.status)) continue;
       if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
@@ -557,8 +579,26 @@ export class AgentManager {
     }
   }
 
+  /**
+   * Scan running agents for tool-timeout and idle-timeout violations and stop
+   * the offenders with a watchdog reason. Thresholds are read live from the
+   * config store, so menu changes apply to running agents immediately.
+   */
+  private checkWatchdogs(): void {
+    const { toolTimeoutMinutes, idleTimeoutMinutes } = getStore().agent;
+    const decisions = this.watchdog.check(
+      toolTimeoutMinutes * MINUTE_MS,
+      idleTimeoutMinutes * MINUTE_MS,
+      (id) => this.agents.get(id)?.lifecycle.status === "running",
+    );
+    for (const [id, detail] of decisions) {
+      this.abort(id, "watchdog", detail);
+    }
+  }
+
   dispose() {
     clearInterval(this.cleanupInterval);
+    clearInterval(this.watchdogInterval);
     this.queue = [];
     for (const record of this.agents.values()) {
       record.execution.session?.dispose();

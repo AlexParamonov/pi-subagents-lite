@@ -15,7 +15,7 @@ import { buildSettingsListTheme } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
-import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
+import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES } from "../../config/config-io.js";
 import { getStore } from "../../shell.js";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
@@ -38,6 +38,27 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
       }),
       description: "Extra turns after the soft turn limit before a hard abort.",
+    },
+    {
+      id: "toolTimeout",
+      label: "Tool timeout",
+      currentValue: String(store.agent.toolTimeoutMinutes),
+      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_WATCHDOG_TIMEOUT_MINUTES }, (parsed) => {
+        store.mutate.agent.setToolTimeoutMinutes(parsed);
+        ctx.ui.notify(`Tool timeout set to ${parsed} minutes`, "info");
+      }),
+      description: "Stop an agent when a single tool call runs longer than this. 0 disables the check.",
+    },
+    {
+      id: "idleTimeout",
+      label: "Idle timeout",
+      currentValue: String(store.agent.idleTimeoutMinutes),
+      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_WATCHDOG_TIMEOUT_MINUTES }, (parsed) => {
+        store.mutate.agent.setIdleTimeoutMinutes(parsed);
+        ctx.ui.notify(`Idle timeout set to ${parsed} minutes`, "info");
+      }),
+      description:
+        "Stop an agent with no activity (tool events or streamed text) for longer than this. 0 disables the check.",
     },
     {
       id: "defaultMaxTurns",

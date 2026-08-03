@@ -14,8 +14,10 @@ let inputInstances: Array<{
 
 vi.mock("../../../../src/ui/menu/helpers.js", () => ({
   validateNumeric: (value: string, min: number) => {
-    const parsed = parseInt(value.trim(), 10);
-    if (isNaN(parsed) || parsed < min) return undefined;
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return undefined;
+    const parsed = parseInt(trimmed, 10);
+    if (parsed < min) return undefined;
     return parsed;
   },
 }));

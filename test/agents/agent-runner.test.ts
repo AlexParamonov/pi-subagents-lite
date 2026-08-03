@@ -581,6 +581,22 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     unsub();
   });
 
+  it("forwards toolCallId on tool activity events", () => {
+    const onToolActivity = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onToolActivity });
+    const listeners = session._getListeners();
+
+    listeners[0]({ type: "tool_execution_start", toolCallId: "call_1", toolName: "bash", args: {} });
+    expect(onToolActivity).toHaveBeenCalledWith({ type: "start", toolName: "bash", toolCallId: "call_1" });
+
+    listeners[0]({ type: "tool_execution_end", toolCallId: "call_1", toolName: "bash", result: {}, isError: false });
+    expect(onToolActivity).toHaveBeenCalledWith({ type: "end", toolName: "bash", toolCallId: "call_1" });
+
+    unsub();
+  });
+
   it("returns a noop unsubscribe when no callbacks are provided", () => {
     const session = createMockSession();
     const unsub = subscribeToSessionEvents(session, {});

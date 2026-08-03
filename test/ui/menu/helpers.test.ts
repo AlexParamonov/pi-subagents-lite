@@ -27,6 +27,14 @@ describe("validateNumeric", () => {
     expect(validateNumeric("abc", 2)).toBeUndefined();
   });
 
+  it("returns undefined for input with a non-numeric suffix", () => {
+    expect(validateNumeric("12x", 0)).toBeUndefined();
+  });
+
+  it("returns undefined for decimal input", () => {
+    expect(validateNumeric("12.5", 0)).toBeUndefined();
+  });
+
   it("trims whitespace before parsing", () => {
     expect(validateNumeric("  10  ", 2)).toBe(10);
   });

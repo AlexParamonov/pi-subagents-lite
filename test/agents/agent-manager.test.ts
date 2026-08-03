@@ -38,13 +38,15 @@ vi.mock("../../src/agents/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
 }));
 
-// Controllable mock for getStore(), used by delta estimation tests
-const mockStoreState = { deltaInputTokens: true };
+// Controllable mock for getStore(), used by delta estimation + watchdog tests
+const mockStoreState = { deltaInputTokens: true, toolTimeoutMinutes: 0, idleTimeoutMinutes: 0 };
 
 vi.mock("../../src/shell.js", () => ({
   getStore: () => ({
     agent: {
       deltaInputTokens: mockStoreState.deltaInputTokens,
+      toolTimeoutMinutes: mockStoreState.toolTimeoutMinutes,
+      idleTimeoutMinutes: mockStoreState.idleTimeoutMinutes,
     },
   }),
 }));
@@ -986,6 +988,244 @@ describe("AgentManager", () => {
       await manager.getRecord(id)!.execution.promise;
 
       expect(manager.getRecord(id)!.lifecycle.status).toBe("stopped");
+    });
+  });
+
+  // ── Watchdog ──
+
+  describe("watchdog", () => {
+    /** Capture the onToolActivity callback passed to the last runAgent call. */
+    function getOnToolActivity() {
+      const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+      return call[3].onToolActivity;
+    }
+
+    /** Capture the onTextDelta callback passed to the last runAgent call. */
+    function getOnTextDelta() {
+      const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+      return call[3].onTextDelta;
+    }
+
+    /** Direct access to the manager's per-agent watchdog state (test backdating). */
+    function watchdogState(id: string) {
+      return (manager as any).watchdog.agents.get(id);
+    }
+
+    function spawnRunningAgent(): string {
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      return manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+        description: "task",
+        modelKey: "test/model",
+      });
+    }
+
+    beforeEach(() => {
+      mockStoreState.toolTimeoutMinutes = 0;
+      mockStoreState.idleTimeoutMinutes = 0;
+    });
+
+    it("stops an agent whose tool call runs longer than the tool timeout, recording the reason", () => {
+      vi.useFakeTimers();
+      try {
+        mockStoreState.toolTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
+
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+        // Move the clock past the 45-minute threshold.
+        vi.setSystemTime(Date.now() + 46 * 60_000);
+        (manager as any).checkWatchdogs();
+
+        const record = manager.getRecord(id)!;
+        expect(record.lifecycle.status).toBe("stopped");
+        expect(record.lifecycle.stoppedBy).toBe("watchdog");
+        expect(record.lifecycle.stopDetail).toEqual({ kind: "tool", toolName: "bash", elapsedMs: 46 * 60_000 });
+        expect(record.execution.abortController?.signal.aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("checks watchdogs automatically on its own interval", async () => {
+      vi.useFakeTimers();
+      try {
+        mockStoreState.toolTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+        watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(manager.getRecord(id)?.lifecycle.status).toBe("stopped");
+        manager.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not stop an agent when the tool call completed before the timeout", () => {
+      mockStoreState.toolTimeoutMinutes = 45;
+      manager = new AgentManager(onComplete);
+      const id = spawnRunningAgent();
+
+      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+      // The tool ran long but finished before the check.
+      watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
+      getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
+      (manager as any).checkWatchdogs();
+
+      expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+    });
+
+    it("stops an agent with no activity for longer than the idle timeout", () => {
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
+
+        vi.setSystemTime(Date.now() + 46 * 60_000);
+        (manager as any).checkWatchdogs();
+
+        const record = manager.getRecord(id)!;
+        expect(record.lifecycle.status).toBe("stopped");
+        expect(record.lifecycle.stoppedBy).toBe("watchdog");
+        expect(record.lifecycle.stopDetail).toEqual({ kind: "idle", elapsedMs: 46 * 60_000 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("resets the idle clock on tool events and streamed text", () => {
+      mockStoreState.idleTimeoutMinutes = 45;
+      manager = new AgentManager(onComplete);
+      const id = spawnRunningAgent();
+
+      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+      getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
+      getOnTextDelta()("hello", "hello");
+
+      // 10 minutes of quiet after the activity: still under the 45m threshold.
+      watchdogState(id).lastActivityAt = Date.now() - 10 * 60_000;
+      (manager as any).checkWatchdogs();
+      expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+
+      // 46 minutes of quiet: idle kill.
+      watchdogState(id).lastActivityAt = Date.now() - 46 * 60_000;
+      (manager as any).checkWatchdogs();
+      expect(manager.getRecord(id)?.lifecycle.status).toBe("stopped");
+    });
+
+    it("never stops an agent that keeps producing activity", () => {
+      mockStoreState.idleTimeoutMinutes = 45;
+      manager = new AgentManager(onComplete);
+      const id = spawnRunningAgent();
+
+      for (let i = 0; i < 6; i++) {
+        getOnTextDelta()("tick", "tick");
+        watchdogState(id).lastActivityAt = Date.now() - 30 * 60_000;
+        (manager as any).checkWatchdogs();
+        expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+      }
+    });
+
+    it("applies to foreground and background agents alike", () => {
+      mockStoreState.idleTimeoutMinutes = 45;
+      manager = new AgentManager(onComplete);
+      const fgDeferred = makeResolvablePromise();
+      const bgDeferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(fgDeferred.promise).mockReturnValueOnce(bgDeferred.promise);
+      const fgId = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "fg", {
+        description: "fg",
+        modelKey: "test/model",
+        isBackground: false,
+      });
+      const bgId = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "bg", {
+        description: "bg",
+        modelKey: "test/model",
+        isBackground: true,
+      });
+
+      watchdogState(fgId).lastActivityAt = Date.now() - 46 * 60_000;
+      watchdogState(bgId).lastActivityAt = Date.now() - 46 * 60_000;
+      (manager as any).checkWatchdogs();
+
+      expect(manager.getRecord(fgId)?.lifecycle.status).toBe("stopped");
+      expect(manager.getRecord(bgId)?.lifecycle.status).toBe("stopped");
+    });
+
+    it("never stops queued agents", () => {
+      mockStoreState.idleTimeoutMinutes = 45;
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const first = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(first.promise);
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "first", {
+        description: "first",
+        modelKey: "test/model",
+      });
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "second", {
+        description: "second",
+        modelKey: "test/model",
+      });
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+
+      (manager as any).checkWatchdogs();
+
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+    });
+
+    it("does nothing when both checks are disabled (0)", () => {
+      manager = new AgentManager(onComplete);
+      const id = spawnRunningAgent();
+      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+      watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
+      watchdogState(id).lastActivityAt = Date.now() - 46 * 60_000;
+      (manager as any).checkWatchdogs();
+      expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+    });
+
+    it("records a tool kill when both checks fire at the same instant", () => {
+      mockStoreState.toolTimeoutMinutes = 45;
+      mockStoreState.idleTimeoutMinutes = 45;
+      manager = new AgentManager(onComplete);
+      const id = spawnRunningAgent();
+      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+      watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
+      watchdogState(id).lastActivityAt = Date.now() - 46 * 60_000;
+      (manager as any).checkWatchdogs();
+      expect(manager.getRecord(id)?.lifecycle.stopDetail?.kind).toBe("tool");
+      expect(manager.getRecord(id)?.lifecycle.stopDetail?.toolName).toBe("bash");
+    });
+
+    it("surfaces the watchdog reason through the completion nudge callback", async () => {
+      vi.useFakeTimers();
+      try {
+        mockStoreState.toolTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const deferred = makeResolvablePromise();
+        mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "task",
+          modelKey: "test/model",
+        });
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+        vi.setSystemTime(Date.now() + 46 * 60_000);
+        (manager as any).checkWatchdogs();
+
+        deferred.resolve(mockRunResult());
+        await manager.getRecord(id)!.execution.promise;
+
+        expect(onComplete).toHaveBeenCalledTimes(1);
+        const completed = onComplete.mock.calls[0][0];
+        expect(completed.lifecycle.status).toBe("stopped");
+        expect(completed.lifecycle.stoppedBy).toBe("watchdog");
+        expect(completed.lifecycle.stopDetail).toEqual({ kind: "tool", toolName: "bash", elapsedMs: 46 * 60_000 });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 }); // end describe AgentManager

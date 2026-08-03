@@ -33,6 +33,8 @@ function defaultConfig(): SubagentsConfig {
       showContext: true,
       showCost: false,
       showTime: true,
+      toolTimeoutMinutes: 45,
+      idleTimeoutMinutes: 45,
     },
     concurrency: { default: 4 },
   };
@@ -111,6 +113,19 @@ describe("ConfigStore reads", () => {
     expect(store.agent.widgetShortcut).toBe(false);
     expect(store.agent.defaultModel).toBeNull();
     expect(store.agent.finishedRetentionMinutes).toBe(10);
+    expect(store.agent.toolTimeoutMinutes).toBe(45);
+    expect(store.agent.idleTimeoutMinutes).toBe(45);
+  });
+
+  it("defaults watchdog timeouts to 45 minutes even when the loaded config lacks the fields", () => {
+    // Simulates a config file written before the watchdog feature existed.
+    const io: ConfigIO = {
+      load: () => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } }),
+      save: () => {},
+    };
+    const store = new ConfigStore(io);
+    expect(store.agent.toolTimeoutMinutes).toBe(45);
+    expect(store.agent.idleTimeoutMinutes).toBe(45);
   });
 
   it("returns configured values when present", () => {
@@ -306,6 +321,30 @@ describe("ConfigStore persisted mutations", () => {
     expect(store.agent.finishedRetentionMinutes).toBe(1);
     expect(saves[0].agent.finishedRetentionMinutes).toBe(1);
     expect(retentions).toEqual([1]);
+  });
+
+  it("setToolTimeoutMinutes and setIdleTimeoutMinutes persist and clamp to 0", () => {
+    const { io, saves, current } = memIO();
+    const store = new ConfigStore(io);
+
+    store.mutate.agent.setToolTimeoutMinutes(30);
+    expect(store.agent.toolTimeoutMinutes).toBe(30);
+    expect(saves).toHaveLength(1);
+    expect(current().agent.toolTimeoutMinutes).toBe(30);
+
+    store.mutate.agent.setIdleTimeoutMinutes(60);
+    expect(store.agent.idleTimeoutMinutes).toBe(60);
+    expect(current().agent.idleTimeoutMinutes).toBe(60);
+    expect(saves).toHaveLength(2);
+
+    // 0 is the documented "disable" value and must survive (not clamp to 1).
+    store.mutate.agent.setToolTimeoutMinutes(0);
+    expect(store.agent.toolTimeoutMinutes).toBe(0);
+    expect(current().agent.toolTimeoutMinutes).toBe(0);
+
+    // Negative values clamp to 0 (disabled), never negative.
+    store.mutate.agent.setIdleTimeoutMinutes(-5);
+    expect(store.agent.idleTimeoutMinutes).toBe(0);
   });
 });
 

@@ -47,8 +47,12 @@ export function buildSettingsListTheme(theme: {
  * Extracted from parseNumericInput for use in submenu Components.
  */
 export function validateNumeric(value: string, min: number): number | undefined {
-  const parsed = parseInt(value.trim(), 10);
-  if (isNaN(parsed) || parsed < min) return undefined;
+  const trimmed = value.trim();
+  // Digits only: parseInt would accept "12x" as 12 and truncate "12.5" to 12,
+  // silently swallowing non-numeric input.
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const parsed = parseInt(trimmed, 10);
+  if (parsed < min) return undefined;
   return parsed;
 }
 

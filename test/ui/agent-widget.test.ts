@@ -907,6 +907,43 @@ describe("renderFinishedLine context percent", () => {
   });
 });
 
+describe("renderFinishedLine watchdog stop", () => {
+  it("shows the watchdog reason for a tool-timeout kill", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([]);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setUICtx(uiCtx);
+
+    const agent = makeFinishedAgent("f1");
+    agent.lifecycle.status = "stopped";
+    agent.lifecycle.stoppedBy = "watchdog";
+    agent.lifecycle.stopDetail = { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 };
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.some((l: string) => l.includes("watchdog: bash >45m"))).toBe(true);
+  });
+
+  it("shows a plain stopped line for a user stop (no watchdog summary)", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const activity = new Map();
+    const manager = makeMockManager([]);
+    const widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setUICtx(uiCtx);
+
+    const agent = makeFinishedAgent("f1");
+    agent.lifecycle.status = "stopped";
+    agent.lifecycle.stoppedBy = "user";
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const stoppedLine = lines.find((l: string) => l.includes("Finished agent f1"));
+    expect(stoppedLine).toContain(" stopped");
+    expect(stoppedLine).not.toContain("watchdog");
+  });
+});
+
 // ------------------------------------------------------------------ */
 /*  Stats visibility integration tests                               */
 /* ------------------------------------------------------------------ */

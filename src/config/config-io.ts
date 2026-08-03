@@ -16,6 +16,8 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
 export const CUSTOM_PROMPT_PATH = path.join(CONFIG_DIR, "subagents-lite-prompt.md");
 /** Default number of grace turns before an agent is force-stopped. */
 export const DEFAULT_GRACE_TURNS = 6;
+/** Default watchdog timeout (tool and idle) in minutes. 0 disables a check. */
+export const DEFAULT_WATCHDOG_TIMEOUT_MINUTES = 45;
 
 /** Valid system prompt modes. */
 export const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
@@ -29,6 +31,8 @@ const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   forceBackground: false,
   graceTurns: DEFAULT_GRACE_TURNS,
   widgetMaxLines: 12,
+  toolTimeoutMinutes: DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+  idleTimeoutMinutes: DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
   widgetDescLengthFull: 50,
   widgetDescLengthCompact: 30,
   widgetCompact: false,

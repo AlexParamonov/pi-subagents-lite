@@ -15,10 +15,21 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 // Import after mock is set up
-const { CUSTOM_PROMPT_PATH } = await import("../../src/config/config-io.js");
+const { CUSTOM_PROMPT_PATH, loadConfig } = await import("../../src/config/config-io.js");
 
 describe("config-io home directory resolution", () => {
   it("uses getAgentDir() for CUSTOM_PROMPT_PATH", () => {
     expect(CUSTOM_PROMPT_PATH).toBe(join(MOCK_AGENT_DIR, "subagents-lite-prompt.md"));
+  });
+});
+
+describe("loadConfig defaults", () => {
+  it("bakes in widget and watchdog defaults when no config file exists", () => {
+    // No config file exists under the mocked agent dir, so loadConfig returns
+    // the full DEFAULT_AGENT merge — guards against defaults being dropped.
+    const config = loadConfig();
+    expect(config.agent.widgetMaxLines).toBe(12);
+    expect(config.agent.toolTimeoutMinutes).toBe(45);
+    expect(config.agent.idleTimeoutMinutes).toBe(45);
   });
 });
