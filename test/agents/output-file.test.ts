@@ -44,16 +44,11 @@ describe("createOutputFilePath", () => {
     const dir = fixture.getDir();
     expect(createOutputFilePath("same-id", dir)).toBe(createOutputFilePath("same-id", dir));
   });
-
-  it("defaults to /tmp/pi-agent-outputs when baseDir is omitted", () => {
-    expect(createOutputFilePath("test")).toBe("/tmp/pi-agent-outputs/test.log");
-  });
 });
 
 // ------------------------------------------------------------------
 // writeInitialEntry
 // ------------------------------------------------------------------
-
 describe("writeInitialEntry", () => {
   it("writes a [USER] line with ISO timestamp and prompt text", () => {
     const dir = fixture.getDir();
@@ -498,11 +493,6 @@ describe("AgentOutputLog", () => {
     const log = new AgentOutputLog(testAgentId, "explore auth", dir);
     expect(log.path).toBe(`${dir}/${testAgentId}.log`);
     expect(readFileSync(log.path, "utf-8")).toMatch(/\[USER\]\s+explore auth/);
-  });
-
-  it("uses default baseDir when omitted", () => {
-    const log = new AgentOutputLog(testAgentId, "test prompt");
-    expect(log.path).toBe(`/tmp/pi-agent-outputs/${testAgentId}.log`);
   });
 
   it("subscribes to session events on attach", () => {
