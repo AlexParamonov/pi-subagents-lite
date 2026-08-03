@@ -20,7 +20,13 @@ import type { AgentManager } from "../agents/agent-manager.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
 import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
-import { VALID_SYSTEM_PROMPT_MODES, DEFAULT_CONCURRENCY, loadConfig, saveConfigAtomic } from "./config-io.js";
+import {
+  VALID_SYSTEM_PROMPT_MODES,
+  DEFAULT_CONCURRENCY,
+  DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+  loadConfig,
+  saveConfigAtomic,
+} from "./config-io.js";
 
 /** Injected persistence adapter. Swap for an in-memory adapter in tests. */
 export interface ConfigIO {
@@ -90,6 +96,10 @@ export interface ResolvedAgentSettings {
   readonly modelDisplayStyle: "id" | "name";
   /** Status bar format: 'full' (default) or 'compact'. */
   readonly statusBarFormat: "full" | "compact";
+  /** Stop an agent when a single tool call runs longer than this (minutes). 0 disables. */
+  readonly toolTimeoutMinutes: number;
+  /** Stop an agent showing no activity (tool events, streamed text) for this long (minutes). 0 disables. */
+  readonly idleTimeoutMinutes: number;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -159,6 +169,8 @@ export class ConfigStore {
       finishedEvictTurns: a.finishedEvictTurns ?? 4,
       modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
+      toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+      idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
     };
   }
 
@@ -246,6 +258,14 @@ export class ConfigStore {
       },
       setGraceTurns: (n: number): void => {
         this.config.agent.graceTurns = n;
+        this.persist();
+      },
+      setToolTimeoutMinutes: (n: number): void => {
+        this.config.agent.toolTimeoutMinutes = Math.max(0, n);
+        this.persist();
+      },
+      setIdleTimeoutMinutes: (n: number): void => {
+        this.config.agent.idleTimeoutMinutes = Math.max(0, n);
         this.persist();
       },
       setSystemPromptMode: (mode: SystemPromptMode): void => {

@@ -3,6 +3,8 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "default",
   "forceBackground",
   "graceTurns",
+  "toolTimeoutMinutes",
+  "idleTimeoutMinutes",
   "showCost",
   "showTools",
   "showTurns",
