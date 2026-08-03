@@ -54,6 +54,10 @@ _Avoid_: Agent monitor, agent stats
 A completion notification delivered to the parent session after a background agent finishes. Batched with a 200ms hold to coalesce rapid completions.
 _Avoid_: Callback, notification
 
+**Watchdog**:
+Time-based stuck-agent detection that stops a running agent when a single tool call exceeds the tool timeout, or when the agent produces no activity (tool events or streamed response text) for longer than the idle timeout. Both thresholds are configurable in minutes; a watchdog stop is recorded with a reason distinct from a user stop.
+_Avoid_: Timeout killer, stuck-agent detector
+
 ## Relationships
 
 - An **Agent type** has an optional **Model override**
@@ -64,6 +68,8 @@ _Avoid_: Callback, notification
 - An **Activity tracker** is created per spawn and cleaned up on completion
 - A **Nudge** is emitted when a background agent completes or errors
 - **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
+- A **Watchdog** stops a **Subagent** when a tool call or inactivity exceeds its configured thresholds
+- A **Watchdog** stop records a reason distinct from a user stop
 - A **Worktree path** is the absolute resolved path passed via `worktree_path`
 - A **Worktree label** is derived from a **Worktree path** for compact display
 - The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
