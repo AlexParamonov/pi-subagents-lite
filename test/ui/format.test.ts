@@ -105,11 +105,6 @@ describe("buildStatsParts — visible flag: showTime", () => {
     const parts = buildStatsParts(allStats, mockTheme);
     expect(parts.some((p) => p.includes("1m"))).toBe(true);
   });
-
-  it("includes time by default when durationMs is provided", () => {
-    const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.some((p) => p.includes("1m"))).toBe(true);
-  });
 });
 
 describe("buildStatsParts — all visible flags false", () => {
