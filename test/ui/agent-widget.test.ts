@@ -902,8 +902,9 @@ describe("renderFinishedLine context percent", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines.length).toBeGreaterThan(0);
 
-    const hasActivity = activity.has("a1");
-    expect(hasActivity).toBe(true);
+    // The session's 85% must win over stats.contextPercent's 50% in the stats line
+    expect(lines.some((l: string) => l.includes("85%"))).toBe(true);
+    expect(lines.some((l: string) => l.includes("50%"))).toBe(false);
   });
 });
 
@@ -974,13 +975,25 @@ describe("stats visibility integration", () => {
   it("hides time when showTime is false", () => {
     widget.setStatsVisibility({ showTime: false });
     const agent = makeRunningAgent("a1");
+    agent.lifecycle.startedAt = Date.now() - 65_000; // would render "1m 5s"
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const allText = lines.join(" ");
-    // The running agent started 60s ago so would show "1m" — should be absent
-    expect(allText).not.toMatch(/\d+m \d+s|\d+s/);
+    // The running agent started 65s ago so would show "1m 5s" — should be absent
+    expect(allText).not.toContain("1m 5s");
+  });
+
+  it("shows time when showTime is true (default)", () => {
+    const agent = makeRunningAgent("a1");
+    agent.lifecycle.startedAt = Date.now() - 65_000; // renders "1m 5s"
+    activity.set("a1", makeActivity("a1"));
+    (manager as any).listAgents = () => [agent];
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const allText = lines.join(" ");
+    expect(allText).toContain("1m 5s");
   });
 
   it("hides context percent and compactions when showContext is false", () => {
