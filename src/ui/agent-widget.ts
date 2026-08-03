@@ -693,6 +693,75 @@ export class AgentWidget {
     return this.forceCompact || (this.widgetShortcut && this.compactMode);
   }
 
+  /** Render navigation mode: scroll window with highlighted agent. */
+  private renderNavigationMode(
+    blocks: RenderBlock[],
+    theme: Theme,
+    truncate: (line: string) => string,
+    maxBody: number,
+  ): string[] {
+    const roster = this.buildRoster();
+    const len = roster.length;
+    if (len === 0) return [];
+
+    // Compute scroll window. If overflow exists, reserve 1 line for overflow indicator.
+    let budget = maxBody;
+    let { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster);
+    const hasOverflow = start > 0 || end < len - 1;
+    if (hasOverflow) {
+      budget = maxBody - 1;
+      ({ start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster));
+    }
+
+    // Render visible blocks with highlight
+    const visibleBlocks = blocks.slice(start, end + 1);
+    const visIndex = this._highlightedIndex - start;
+    const lines = this.renderBlocks(visibleBlocks, visIndex, theme);
+
+    // Overflow line: "+N more" where N = hidden agents
+    const hiddenCount = len - (end - start + 1);
+    if (hiddenCount > 0) {
+      lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
+    }
+    return lines;
+  }
+
+  /** Render non-navigation mode: contiguous top→bottom collapse. */
+  private renderNonNavigationMode(
+    blocks: RenderBlock[],
+    theme: Theme,
+    truncate: (line: string) => string,
+    maxBody: number,
+  ): string[] {
+    const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
+
+    if (totalBody <= maxBody) {
+      // Everything fits — render all blocks
+      return this.renderBlocks(blocks, -1, theme);
+    }
+
+    // Collapse from bottom: reserve 1 line for overflow indicator
+    let budget = maxBody - 1;
+    const visible: RenderBlock[] = [];
+    for (const block of blocks) {
+      const height = 1 + block.continuations.length;
+      if (budget >= height) {
+        visible.push(block);
+        budget -= height;
+      } else {
+        break;
+      }
+    }
+    const lines = this.renderBlocks(visible, -1, theme);
+
+    // Overflow line: "+N more"
+    const hiddenCount = blocks.length - visible.length;
+    if (hiddenCount > 0) {
+      lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
+    }
+    return lines;
+  }
+
   private renderWidget(tui: TUI, theme: Theme): string[] {
     const { running, queued, finished } = this.categorizeAgents();
 
@@ -732,66 +801,10 @@ export class AgentWidget {
     const heading = this.buildHeading(theme, headingColor, headingIcon);
     const lines: string[] = [truncate(heading)];
 
-    // Determine highlighted block index for rendering the '>' marker.
-    const highlightedBlockIndex = this.navActive ? this._highlightedIndex : -1;
-
     if (this.navActive) {
-      // Navigation mode: use scroll window
-      const roster = this.buildRoster();
-      const len = roster.length;
-      if (len === 0) return lines;
-
-      // Compute scroll window. If overflow exists, reserve 1 line for overflow indicator.
-      let budget = maxBody;
-      let { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster);
-      const hasOverflow = start > 0 || end < len - 1;
-      if (hasOverflow) {
-        budget = maxBody - 1;
-        ({ start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster));
-      }
-
-      // Visible blocks are blocks[start..end]
-      const visibleBlocks = blocks.slice(start, end + 1);
-
-      // Find the highlighted block in visible blocks
-      const visIndex = this._highlightedIndex - start;
-
-      // Render visible blocks
-      lines.push(...this.renderBlocks(visibleBlocks, visIndex, theme));
-
-      // Overflow line: "+N more" where N = hidden agents
-      const hiddenCount = len - (end - start + 1);
-      if (hiddenCount > 0) {
-        lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
-      }
+      lines.push(...this.renderNavigationMode(blocks, theme, truncate, maxBody));
     } else {
-      // Non-navigation mode: contiguous top→bottom collapse
-      const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
-
-      if (totalBody <= maxBody) {
-        // Everything fits — render all blocks
-        lines.push(...this.renderBlocks(blocks, -1, theme));
-      } else {
-        // Collapse from bottom: reserve 1 line for overflow indicator
-        let budget = maxBody - 1;
-        const visible: RenderBlock[] = [];
-        for (const block of blocks) {
-          const height = 1 + block.continuations.length;
-          if (budget >= height) {
-            visible.push(block);
-            budget -= height;
-          } else {
-            break;
-          }
-        }
-        lines.push(...this.renderBlocks(visible, -1, theme));
-
-        // Overflow line: "+N more"
-        const hiddenCount = blocks.length - visible.length;
-        if (hiddenCount > 0) {
-          lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
-        }
-      }
+      lines.push(...this.renderNonNavigationMode(blocks, theme, truncate, maxBody));
     }
 
     return lines;
