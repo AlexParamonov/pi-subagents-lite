@@ -335,8 +335,8 @@ export class AgentWidget {
     this.update();
   }
 
-  /** Move highlight down one position with scroll logic. */
-  navDown(): void {
+  /** Move the highlight one step (delta −1 = up, +1 = down) with scroll logic; wraps at both ends. */
+  private moveNav(delta: 1 | -1): void {
     if (!this.navActive) return;
     const now = Date.now();
     const roster = this.resolveNavRoster(now, this.liveRoster());
@@ -346,48 +346,31 @@ export class AgentWidget {
     }
     const h = this.resolveHighlight(roster);
     const len = roster.length;
-    const { end } = this.navWindow(h, roster);
-    let next: number;
-    if (h < end) {
-      next = h + 1;
-    } else if (end < len - 1) {
-      next = h + 1;
-      this.scrollAnchor++;
-    } else {
-      next = 0;
-      this.scrollAnchor = 0;
+    const { start, end } = this.navWindow(h, roster);
+
+    // Moving past the window edge scrolls the anchor; past the list end wraps.
+    const atEdge = delta === 1 ? h === end : h === start;
+    const atListEnd = delta === 1 ? end === len - 1 : start === 0;
+    const next = atEdge && atListEnd ? (delta === 1 ? 0 : len - 1) : h + delta;
+    if (atEdge && atListEnd) {
+      this.scrollAnchor = delta === 1 ? 0 : this.bottomScrollStart(roster);
+    } else if (atEdge) {
+      this.scrollAnchor += delta;
     }
     this.lastHighlightIndex = next;
     this.highlightId = roster[next].id;
     this.navLastMove = now;
     this.update();
   }
+
+  /** Move highlight down one position with scroll logic. */
+  navDown(): void {
+    this.moveNav(1);
+  }
+
   /** Move highlight up one position with scroll logic. */
   navUp(): void {
-    if (!this.navActive) return;
-    const now = Date.now();
-    const roster = this.resolveNavRoster(now, this.liveRoster());
-    if (roster.length === 0) {
-      this.navDeactivate();
-      return;
-    }
-    const h = this.resolveHighlight(roster);
-    const len = roster.length;
-    const { start } = this.navWindow(h, roster);
-    let next: number;
-    if (h > start) {
-      next = h - 1;
-    } else if (start > 0) {
-      next = h - 1;
-      this.scrollAnchor--;
-    } else {
-      next = len - 1;
-      this.scrollAnchor = this.bottomScrollStart(roster);
-    }
-    this.lastHighlightIndex = next;
-    this.highlightId = roster[next].id;
-    this.navLastMove = now;
-    this.update();
+    this.moveNav(-1);
   }
 
   /**
