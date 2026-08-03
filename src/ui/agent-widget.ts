@@ -318,7 +318,6 @@ export class AgentWidget {
     }
     this.lastHighlightIndex = index;
     if (this.scrollAnchor > index) this.scrollAnchor = index;
-    if (this.scrollAnchor < 0) this.scrollAnchor = 0;
     return index;
   }
 
