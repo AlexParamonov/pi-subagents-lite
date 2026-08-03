@@ -109,7 +109,6 @@ type NavState = {
   visible: string[];
   arrow: string | null;
   readout: string | null;
-  overflow: number | null;
 };
 
 /** Render the widget and extract visible agent ids, arrow target, N/M readout. */
@@ -124,10 +123,8 @@ function renderNavState(widget: AgentWidget): NavState {
     if (line.includes("→")) arrow = m[1];
     visible.push(m[1]);
   }
-  const more = body.find((l: string) => l.includes("more"));
-  const overflow = more ? Number(more.match(/\+(\d+) more/)?.[1]) : null;
   const readout = lines[0].match(/\[dim:(\d+\/\d+)\]/)?.[1] ?? null;
-  return { visible, arrow, readout, overflow };
+  return { visible, arrow, readout };
 }
 
 /* ------------------------------------------------------------------ */
