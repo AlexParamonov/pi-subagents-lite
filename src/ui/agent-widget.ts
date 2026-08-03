@@ -282,11 +282,12 @@ export class AgentWidget {
 
     // Freeze window: keep the current order, drop evicted ids, append new ids.
     const ordered: AgentRecord[] = [];
+    const known = new Set<string>();
     for (const id of this.navRoster) {
+      known.add(id);
       const rec = liveById.get(id);
       if (rec) ordered.push(rec);
     }
-    const known = new Set(this.navRoster);
     for (const rec of live) {
       if (!known.has(rec.id)) ordered.push(rec);
     }
