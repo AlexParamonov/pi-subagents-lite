@@ -247,14 +247,14 @@ export class AgentWidget {
   // ---- Navigation state machine ----
 
   /** Clamp the navigation highlight and scroll anchor to valid roster bounds. */
-  private clampHighlight(): void {
-    const roster = this.buildRoster();
-    if (roster.length === 0) {
+  private clampHighlight(roster?: AgentRecord[]): void {
+    const r = roster ?? this.buildRoster();
+    if (r.length === 0) {
       this._highlightedIndex = 0;
       this.scrollAnchor = 0;
     } else {
-      if (this._highlightedIndex >= roster.length) {
-        this._highlightedIndex = roster.length - 1;
+      if (this._highlightedIndex >= r.length) {
+        this._highlightedIndex = r.length - 1;
       }
       if (this.scrollAnchor > this._highlightedIndex) {
         this.scrollAnchor = this._highlightedIndex;
@@ -700,6 +700,11 @@ export class AgentWidget {
     const roster = this.buildRoster();
     const len = roster.length;
     if (len === 0) return [];
+
+    // The roster can shrink (turn-based eviction) between nav moves while the
+    // 80 ms refresh keeps rendering without a keypress. Clamp first so a stale
+    // highlight can't point outside the window or slice a broken block range.
+    this.clampHighlight(roster);
 
     // Same budget rule as nav moves: full body, minus one line for the
     // overflow indicator whenever anything is hidden.

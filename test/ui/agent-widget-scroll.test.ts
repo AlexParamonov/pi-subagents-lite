@@ -137,10 +137,16 @@ describe("scroll model state", () => {
   let manager: AgentManager;
   let activity: Map<string, LiveView>;
 
+  // Overflow config (same as the walkthrough tests): 1-line blocks, body = 4
+  // lines → 3 visible + overflow line. Without overflow, navDown never scrolls
+  // and the anchor-reset assertions would pass even if the reset code were deleted.
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
     widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    widget.setMaxLinesCompact(5);
   });
 
   it("scroll anchor resets to 0 on nav activate", () => {
@@ -148,10 +154,14 @@ describe("scroll model state", () => {
     (manager as any).listAgents = () => agents;
 
     widget.navActivate();
-    // Scroll anchor should be 0 (start of roster)
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // First agent should be visible (scroll anchor = 0)
-    expect(lines.some((l: string) => l.includes("Finished agent f0"))).toBe(true);
+    for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): scrolled to bottom window
+    widget.navDeactivate();
+    widget.navActivate();
+
+    // Re-entry must start at the top window, not the previously scrolled one.
+    const state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f0");
   });
 
   it("scroll anchor resets to 0 on nav deactivate", () => {
@@ -159,14 +169,17 @@ describe("scroll model state", () => {
     (manager as any).listAgents = () => agents;
 
     widget.navActivate();
-    // Navigate down to change scroll anchor
-    widget.navDown();
-    widget.navDeactivate();
+    for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): scrolled to bottom window
 
-    // Reactivate - scroll anchor should be reset
+    // Highlight is observable after deactivation via the public query.
+    widget.navDeactivate();
+    expect(widget.highlightedIndex()).toBe(0);
+
+    // Re-entry must start at the top window, not the previously scrolled one.
     widget.navActivate();
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines.some((l: string) => l.includes("Finished agent f0"))).toBe(true);
+    const state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f0");
   });
 });
 
@@ -439,64 +452,122 @@ describe("roster changes during navigation", () => {
   let activity: Map<string, LiveView>;
   let agents: any[];
 
+  // Overflow config so the window actually scrolls before the roster shrinks/grows.
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
-    widget.setMaxLines(12); // body = 11, plenty of room
+    widget.setMaxLinesCompact(5); // body = 4 lines → 3 visible + overflow
 
     agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`f${i}`));
   });
 
-  it("clamps highlight and scroll anchor on shrink", () => {
+  it("renders a valid window right after shrink while navigating (no keypress needed)", () => {
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
-    widget.navDown(); // h=1
-    widget.navDown(); // h=2
-    widget.navDown(); // h=3
+    widget.navActivate();
+    for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): [f2,f3,f4]
+    expect(renderState(widget).visible).toEqual(["f2", "f3", "f4"]);
 
-    // Shrink roster to 2 agents
-    (manager as any).listAgents = () => agents.slice(0, 2);
+    // Turn-based eviction: the 80 ms refresh renders without any nav move.
+    (manager as any).listAgents = () => agents.slice(0, 3);
 
-    // Next nav move should clamp and work
-    widget.navDown(); // Should clamp h to 1, then wrap or move
+    // Clamp on shrink: h=4 → 2, s stays 2 (≤ h). Window [f2], arrow visible.
+    const state = renderState(widget);
+    expect(state.visible).toEqual(["f2"]);
+    expect(state.arrow).toBe("f2");
+    expect(state.overflow).toBe(2);
 
-    expect(widget.highlightedIndex()).toBeLessThan(2);
-    expect(widget.highlightedIndex()).toBeGreaterThanOrEqual(0);
+    // Next move works from the clamped state: (2,2) ↓ wraps to the top.
+    widget.navDown();
+    const after = renderState(widget);
+    expect(after.visible).toEqual(["f0", "f1", "f2"]);
+    expect(after.arrow).toBe("f0");
   });
 
   it("keeps index positions on growth (no auto-follow)", () => {
-    (manager as any).listAgents = () => agents.slice(0, 3);
-
-    widget.navActivate(); // h=0, s=0
-    widget.navDown(); // h=1
-
-    // Grow roster
     (manager as any).listAgents = () => agents;
 
-    // Arrow should stay at index 1 (no auto-follow)
-    expect(widget.highlightedIndex()).toBe(1);
+    widget.navActivate();
+    for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): scrolled to the bottom
+
+    // Grow the roster (new spawn) — arrow and window keep their index positions.
+    const grown = Array.from({ length: 3 }, (_, i) => makeFinishedAgent(`g${i}`));
+    (manager as any).listAgents = () => [...agents, ...grown];
+
+    expect(widget.highlightedIndex()).toBe(4);
+    const state = renderState(widget);
+    expect(state.visible).toEqual(["f2", "f3", "f4"]);
+    expect(state.arrow).toBe("f4");
   });
 
-  it("clamps to last remaining agent when highlighted agent is evicted", () => {
+  it("clamps to last remaining agent when the highlighted agent is evicted", () => {
+    agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
-    widget.navDown(); // h=1
-    widget.navDown(); // h=2
-    widget.navDown(); // h=3
-    widget.navDown(); // h=4
+    widget.navActivate();
+    for (let i = 0; i < 5; i++) widget.navDown(); // (5,3): [f3,f4,f5], arrow on f5
 
-    // Evict agents f2, f3, f4 - highlighted agent (f4) is evicted
-    (manager as any).listAgents = () => agents.slice(0, 2);
+    // Evict f3..f5 including the highlighted agent.
+    (manager as any).listAgents = () => agents.slice(0, 3);
 
-    // Clamp happens on next nav move - highlight clamps to last remaining (f1 = index 1)
-    // Then navDown wraps from end to start
-    widget.navDown(); // clamps h to 1, then wraps to 0
-
+    // Clamp happens on the next nav move — highlight clamps to last remaining (f2),
+    // then ↓ wraps from the end to the start.
+    widget.navDown();
     expect(widget.highlightedIndex()).toBe(0);
+    const state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f0");
+  });
+});
+
+describe("queued agents during navigation", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+  let activity: Map<string, LiveView>;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    activity = new Map();
+    widget = new AgentWidget(manager, (id) => activity.get(id));
+    widget.setCompactMode(true);
+    widget.setWidgetShortcut(true);
+    widget.setMaxLinesCompact(5); // body = 4 lines → 3 visible + overflow
+  });
+
+  it("expands queued agents to individual rows that participate in the window", () => {
+    const finished = Array.from({ length: 4 }, (_, i) => makeFinishedAgent(`f${i}`));
+    const running = [makeRunningAgent("r0")];
+    const queued = Array.from({ length: 3 }, (_, i) => makeQueuedAgent(`q${i}`));
+    (manager as any).listAgents = () => [...finished, ...running, ...queued];
+
+    widget.navActivate(); // (0,0): [f0,f1,f2], +5 more
+    widget.navDown(); // (1,0)
+    widget.navDown(); // (2,0)
+    widget.navDown(); // (3,1): [f1,f2,f3]
+    widget.navDown(); // (4,2): [f2,f3,r0]
+    let state = renderState(widget);
+    expect(state.visible).toEqual(["f2", "f3", "r0"]);
+    expect(state.arrow).toBe("r0");
+    expect(state.overflow).toBe(5);
+
+    // Queued agents are individual 1-line rows in the window, not one aggregated block.
+    widget.navDown(); // (5,3): [f3,r0,q0]
+    state = renderState(widget);
+    expect(state.visible).toEqual(["f3", "r0", "q0"]);
+    expect(state.arrow).toBe("q0");
+
+    widget.navDown(); // (6,4): [r0,q0,q1]
+    widget.navDown(); // (7,5): [q0,q1,q2]
+    state = renderState(widget);
+    expect(state.visible).toEqual(["q0", "q1", "q2"]);
+    expect(state.arrow).toBe("q2");
+    expect(state.overflow).toBe(5); // 8 agents, 3 visible
+
+    // No aggregated "N queued" block anywhere.
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    expect(lines.some((l: string) => /\d+ queued/.test(l))).toBe(false);
   });
 });
