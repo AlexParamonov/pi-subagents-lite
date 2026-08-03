@@ -600,6 +600,8 @@ describe("subscribeToSessionEvents — cost extraction", () => {
   it("returns a noop unsubscribe when no callbacks are provided", () => {
     const session = createMockSession();
     const unsub = subscribeToSessionEvents(session, {});
+    // The noop early-return must not touch the session at all
+    expect(session.subscribe).not.toHaveBeenCalled();
     expect(typeof unsub).toBe("function");
   });
 });

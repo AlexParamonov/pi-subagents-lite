@@ -9,9 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 
-// buildAgentDetails is a pure function. tool-execution.ts's runtime import
-// chain (types, agent-types, usage, worktree-validator, utils, shell ->
-// config-store) never reaches npm packages at runtime — no mocks needed.
+// buildAgentDetails is a pure function. Importing tool-execution.ts is safe
+// without mocks because @earendil-works/pi-coding-agent has no top-level side
+// effects (getAgentDir is a runtime value import, but the package is side-effect free).
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */

@@ -3,7 +3,7 @@
  * validation in the Agent tool execution flow.
  *
  * Verifies:
- *   - Valid worktree_path: validator is called, spawn uses resolved path as cwd
+ *   - Valid worktree_path: validator is called, resolved path passed into spawn options
  *   - Invalid worktree_path: validator error returned to LLM, no spawn
  *   - Omitted worktree_path: no validator call, spawn uses parent cwd
  *   - Error details from validator are surfaced to the LLM
@@ -56,10 +56,6 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: mockResolveType,
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
-}));
-
-vi.mock("../../src/models/model-precedence.js", () => ({
-  resolveModel: vi.fn(() => undefined),
 }));
 
 vi.mock("../../src/utils.js", () => ({
@@ -230,7 +226,7 @@ describe("executeAgentTool — worktree_path validation", () => {
     expect(mockSpawn).toHaveBeenCalled();
   });
 
-  it("uses the resolved worktree path as cwd when validation succeeds", async () => {
+  it("passes the resolved worktree path into spawn options", async () => {
     mockValidateWorktreePath.mockResolvedValue({
       ok: true,
       resolvedPath: "/wt/feature",
@@ -240,10 +236,8 @@ describe("executeAgentTool — worktree_path validation", () => {
 
     await executeAgentTool("tc-4", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx);
 
-    // Verify spawn was called and worktree path was set on the record
-    expect(mockSpawn).toHaveBeenCalledTimes(1);
-    // worktreePath is set on the record's display AFTER spawn, not in spawn options
     // Verify spawn received the worktree path via options
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
     const spawnCall = mockSpawn.mock.calls[0];
     const spawnOptions = spawnCall[4]; // options is 5th arg (pi, ctx, type, prompt, options)
     expect(spawnOptions.worktreePath).toBe("/wt/feature");
@@ -521,7 +515,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/repo-b/.pi/agents");
   });
 
-  it("spawns trusted for a same-repo target without consulting trust checks", async () => {
+  it("passes sameRepo: true and spawns with projectTrusted: true when the resolver returns true", async () => {
     crossRepoValidation(true);
     await executeAgentTool("tc-tr-4", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx);
 
@@ -531,7 +525,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     expect(ctx.ui.notify).not.toHaveBeenCalled();
   });
 
-  it("spawns trusted for a cross-repo target with no trust-requiring resources", async () => {
+  it("spawns trusted for a cross-repo target when the trust resolver returns true (no warning)", async () => {
     crossRepoValidation(false);
     mockResolveSubagentTrust.mockReturnValue(true);
 

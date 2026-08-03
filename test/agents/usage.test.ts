@@ -2,7 +2,6 @@
  * usage.test.ts — Tests for usage tracking utilities.
  *
  * Tests cover:
- *   - LifetimeUsage type includes cost field
  *   - addUsage accumulates cost alongside tokens
  *   - getLifetimeTotal returns input + output only
  *   - Backward compatibility (existing token fields unchanged)
@@ -10,25 +9,6 @@
 
 import { describe, it, expect } from "vitest";
 import { type LifetimeUsage, addUsage, getLifetimeTotal, formatTokens, formatCost } from "../../src/agents/usage.js";
-
-/* ------------------------------------------------------------------ */
-/*  LifetimeUsage type — cost field                                    */
-/* ------------------------------------------------------------------ */
-
-describe("LifetimeUsage", () => {
-  it("includes cost field", () => {
-    const u: LifetimeUsage = { input: 100, output: 50, cacheWrite: 10, cost: 5 };
-    expect(u.cost).toBe(5);
-  });
-
-  it("has correct shape with all fields", () => {
-    const u: LifetimeUsage = { input: 0, output: 0, cacheWrite: 0, cost: 0 };
-    expect(u).toHaveProperty("input");
-    expect(u).toHaveProperty("output");
-    expect(u).toHaveProperty("cacheWrite");
-    expect(u).toHaveProperty("cost");
-  });
-});
 
 /* ------------------------------------------------------------------ */
 /*  addUsage — cost accumulation                                       */

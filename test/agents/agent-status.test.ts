@@ -123,8 +123,10 @@ describe("AgentStatus tool execute behavior", () => {
 
     const result = await executeAgentStatusTool("call_6", {}, undefined, undefined, undefined, {} as any);
 
+    const text = result.content[0].text;
     // Contract: short ID is always 8 characters
-    expect(result.content[0].text).toMatch(/[a-z0-9-]{8} \(reviewer\) completed/);
+    expect(text).toContain("a-very-l (reviewer) completed");
+    expect(text).not.toContain("a-very-long");
   });
 
   it("returns no error flag on success", async () => {

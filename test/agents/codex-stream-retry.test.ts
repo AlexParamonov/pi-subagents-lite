@@ -118,7 +118,7 @@ describe("enableCodexStreamErrorRetry", () => {
     expect(original).toHaveBeenCalledWith(m);
   });
 
-  it("calls original classifier before checking stream patterns", () => {
+  it("delegates stream-pattern messages to the original classifier", () => {
     const original = vi.fn(() => false);
     const session = makeMockSession(original);
     enableCodexStreamErrorRetry(session);
