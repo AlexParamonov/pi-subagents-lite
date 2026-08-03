@@ -36,15 +36,14 @@ export class Watchdog {
 
   /** Feed a tool activity event. Any event resets the idle clock. */
   recordActivity(agentId: string, activity: ToolActivity): void {
-    const state = this.agents.get(agentId);
+    const state = this.touch(agentId);
     if (!state) return;
-    state.lastActivityAt = this.now();
 
     if (activity.type === "start") {
       // Start events always carry a toolCallId in the SDK; without one there is
       // no stable key to track the call by, so it is not watched.
       if (activity.toolCallId) {
-        state.toolCalls.set(activity.toolCallId, { toolName: activity.toolName, startedAt: this.now() });
+        state.toolCalls.set(activity.toolCallId, { toolName: activity.toolName, startedAt: state.lastActivityAt });
       }
     } else if (activity.toolCallId) {
       state.toolCalls.delete(activity.toolCallId);
@@ -62,8 +61,15 @@ export class Watchdog {
 
   /** Reset the idle clock on streamed response text. */
   recordText(agentId: string): void {
+    this.touch(agentId);
+  }
+
+  /** Reset the idle clock for a watched agent; returns its state, or undefined for unknown agents. */
+  private touch(agentId: string): WatchdogAgentState | undefined {
     const state = this.agents.get(agentId);
-    if (state) state.lastActivityAt = this.now();
+    if (!state) return undefined;
+    state.lastActivityAt = this.now();
+    return state;
   }
 
   /**
