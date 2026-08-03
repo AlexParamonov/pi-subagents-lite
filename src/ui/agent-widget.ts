@@ -167,8 +167,8 @@ export class AgentWidget {
   /** Timestamp of the last nav move (↓/↑) or activation; resets the freeze window. */
   private navLastMove = 0;
 
-  /** Last resolved highlight index (cache used to adopt the nearest agent on eviction). */
-  private _highlightedIndex = 0;
+  /** Last resolved highlight position; seeds the nearest-agent adoption when the highlighted agent is evicted. */
+  private lastHighlightIndex = 0;
 
   /** Scroll anchor: index of the first visible block in the window. */
   private scrollAnchor = 0;
@@ -298,11 +298,11 @@ export class AgentWidget {
   private resolveHighlight(roster: AgentRecord[]): number {
     if (roster.length === 0) {
       this.highlightId = null;
-      this._highlightedIndex = 0;
+      this.lastHighlightIndex = 0;
       this.scrollAnchor = 0;
       return 0;
     }
-    let index = this._highlightedIndex;
+    let index = this.lastHighlightIndex;
     const pos = this.highlightId === null ? -1 : roster.findIndex((a) => a.id === this.highlightId);
     if (pos === -1) {
       // No highlight yet, or the highlighted agent was evicted/removed:
@@ -312,7 +312,7 @@ export class AgentWidget {
     } else {
       index = pos;
     }
-    this._highlightedIndex = index;
+    this.lastHighlightIndex = index;
     if (this.scrollAnchor > index) this.scrollAnchor = index;
     if (this.scrollAnchor < 0) this.scrollAnchor = 0;
     return index;
@@ -324,7 +324,7 @@ export class AgentWidget {
     this.navActive = true;
     const now = Date.now();
     const roster = this.resolveNavRoster(now);
-    this._highlightedIndex = 0;
+    this.lastHighlightIndex = 0;
     this.scrollAnchor = 0;
     this.highlightId = roster.length > 0 ? roster[0].id : null;
     this.navLastMove = now;
@@ -353,7 +353,7 @@ export class AgentWidget {
       next = 0;
       this.scrollAnchor = 0;
     }
-    this._highlightedIndex = next;
+    this.lastHighlightIndex = next;
     this.highlightId = roster[next].id;
     this.navLastMove = now;
     this.update();
@@ -380,7 +380,7 @@ export class AgentWidget {
       next = len - 1;
       this.scrollAnchor = this.bottomScrollStart(roster);
     }
-    this._highlightedIndex = next;
+    this.lastHighlightIndex = next;
     this.highlightId = roster[next].id;
     this.navLastMove = now;
     this.update();
@@ -484,7 +484,7 @@ export class AgentWidget {
     this.highlightId = null;
     this.navRoster = [];
     this.navLastMove = 0;
-    this._highlightedIndex = 0;
+    this.lastHighlightIndex = 0;
     this.scrollAnchor = 0;
   }
 
