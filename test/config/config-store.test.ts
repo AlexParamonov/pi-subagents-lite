@@ -65,6 +65,14 @@ function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): {
     current: () => cur,
   };
 }
+/** ConfigIO whose load() returns a minimal config: no default values, so the
+ * store's own `??` fallbacks are what get exercised (not the fixture). */
+function minimalIO(): ConfigIO {
+  return {
+    load: () => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } }),
+    save: () => {},
+  };
+}
 
 function widgetStub(): { w: AgentWidget; calls: string[] } {
   const calls: string[] = [];
@@ -102,13 +110,12 @@ function managerStub(): { m: AgentManager; concurrencies: unknown[]; retentions:
 
 describe("ConfigStore reads", () => {
   it("bakes in scalar defaults when fields are absent", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
-    const store = new ConfigStore(io);
+    // Loaded config carries no default values, so the assertions below pin
+    // the store's own fallbacks — deleting them must fail this test.
+    const store = new ConfigStore(minimalIO());
     expect(store.agent.graceTurns).toBe(6);
     expect(store.agent.showCost).toBe(false);
     expect(store.agent.forceBackground).toBe(false);
-    expect(store.agent.widgetMaxLines).toBe(12);
-    expect(store.agent.widgetMaxLinesCompact).toBe(6);
     expect(store.agent.widgetCompact).toBe(false);
     expect(store.agent.widgetShortcut).toBe(false);
     expect(store.agent.defaultModel).toBeNull();
@@ -117,13 +124,24 @@ describe("ConfigStore reads", () => {
     expect(store.agent.idleTimeoutMinutes).toBe(45);
   });
 
-  it("defaults watchdog timeouts to 45 minutes even when the loaded config lacks the fields", () => {
-    // Simulates a config file written before the watchdog feature existed.
+  it("derives widgetMaxLinesCompact from widgetMaxLines when absent", () => {
+    // widgetMaxLines itself is guaranteed by the loadConfig merge; the store
+    // only defaults the derived compact variant.
     const io: ConfigIO = {
-      load: () => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } }),
+      load: () => ({
+        agent: { default: null, forceBackground: false, widgetMaxLines: 12 },
+        concurrency: { default: 4 },
+      }),
       save: () => {},
     };
     const store = new ConfigStore(io);
+    expect(store.agent.widgetMaxLines).toBe(12);
+    expect(store.agent.widgetMaxLinesCompact).toBe(6);
+  });
+
+  it("defaults watchdog timeouts to 45 minutes even when the loaded config lacks the fields", () => {
+    // Simulates a config file written before the watchdog feature existed.
+    const store = new ConfigStore(minimalIO());
     expect(store.agent.toolTimeoutMinutes).toBe(45);
     expect(store.agent.idleTimeoutMinutes).toBe(45);
   });
@@ -518,7 +536,7 @@ describe("ConfigStore session overrides", () => {
 
 describe("ConfigStore agent properties", () => {
   it("boolean properties default correctly", () => {
-    const store = new ConfigStore(memIO().io);
+    const store = new ConfigStore(minimalIO());
     expect(store.agent.includeContextFiles).toBe(true);
     expect(store.agent.loadSkillsImplicitly).toBe(true);
     expect(store.agent.loadExtensionsImplicitly).toBe(true);
@@ -526,7 +544,7 @@ describe("ConfigStore agent properties", () => {
   });
 
   it("string property defaults to 'replace'", () => {
-    const store = new ConfigStore(memIO().io);
+    const store = new ConfigStore(minimalIO());
     expect(store.agent.systemPromptMode).toBe("replace");
   });
 
@@ -537,7 +555,7 @@ describe("ConfigStore agent properties", () => {
   });
 
   it("widgetDescLength defaults: full=50, compact=30", () => {
-    const store = new ConfigStore(memIO().io);
+    const store = new ConfigStore(minimalIO());
     expect(store.agent.widgetDescLengthFull).toBe(50);
     expect(store.agent.widgetDescLengthCompact).toBe(30);
   });
@@ -761,7 +779,7 @@ describe("ConfigStore notifyToolsExpanded", () => {
     calls.length = 0;
     store.notifyToolsExpanded(true); // expanded -> full
     store.notifyToolsExpanded(false); // collapsed -> compact
-    expect(calls).toContain("setCompactMode:true");
+    expect(calls).toEqual(["setCompactMode:false", "setCompactMode:true"]);
   });
 
   it("is a no-op when widgetShortcut is disabled", () => {
@@ -799,13 +817,14 @@ describe("ConfigStore notifyToolsExpanded", () => {
 
 describe("ConfigStore show* stats visibility", () => {
   it("showTools and deltaInputTokens default to false, rest default to true", () => {
-    const store = new ConfigStore(memIO().io);
+    const store = new ConfigStore(minimalIO());
     expect(store.agent.showTools).toBe(false);
     expect(store.agent.showTurns).toBe(true);
     expect(store.agent.showInput).toBe(true);
     expect(store.agent.showOutput).toBe(true);
     expect(store.agent.showContext).toBe(true);
     expect(store.agent.showTime).toBe(true);
+    expect(store.agent.deltaInputTokens).toBe(false);
   });
 
   it("configured false values are respected", () => {

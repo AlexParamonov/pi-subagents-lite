@@ -2,7 +2,7 @@
  * index.test.ts — Tests for the extension entry point.
  *
  * Tests focus on:
- *   - Tool schema shapes (stealth schemas with description: ".", no promptSnippet/promptGuidelines)
+ *   - Tool schema shapes (no description, no promptSnippet/promptGuidelines)
  *   - Listener guards (only mutates event.input.model for Agent tool)
  *   - Schema field exclusion (no model, inherit_context, schedule, isolation params)
  *
@@ -36,7 +36,7 @@ vi.mock("@sinclair/typebox", () => {
         keyType,
         valueType,
       }),
-      Union: (variants: any[]) => ({ type: "union", variants }),
+      Union: (variants: any[]) => ({ anyOf: variants }),
       Null: () => ({ type: "null" }),
       Literal: (value: string | number | boolean) => ({
         type: "literal",
@@ -157,15 +157,6 @@ vi.mock("../src/shell.js", () =>
  */
 function findTool(api: MockExtensionAPI, name: string) {
   return api.tools.find((t) => t.name === name);
-}
-
-/**
- * Verify stealth schema properties: description ".", no promptSnippet, no promptGuidelines.
- */
-function expectStealthSchema(tool: any) {
-  expect(tool.description).toBe(".");
-  expect(tool.promptSnippet).toBeUndefined();
-  expect(tool.promptGuidelines).toBeUndefined();
 }
 
 /* ------------------------------------------------------------------ */
@@ -554,10 +545,13 @@ describe("constrained sampling — toggle ON", () => {
   it("Agent optional fields use nullable anyOf pattern when toggle is ON", () => {
     const tool = findTool(api, "Agent");
     const props = tool!.parameters.properties;
-    expect(props.description.type).toBe("union");
-    expect(props.agent.type).toBe("union");
-    expect(props.run_in_background.type).toBe("union");
-    expect(props.worktree_path.type).toBe("union");
+    for (const name of ["description", "agent", "run_in_background", "worktree_path"]) {
+      // Real TypeBox emits { anyOf: [...] } for Type.Union (no `type` field).
+      expect(props[name].anyOf).toBeDefined();
+      // Strict-mode JSON schema rejects null values unless the union
+      // explicitly includes the null variant (Type.Null in registration.ts).
+      expect(props[name].anyOf.some((s: any) => s.type === "null")).toBe(true);
+    }
   });
 
   it("Agent schema has additionalProperties: false when toggle is ON", () => {
