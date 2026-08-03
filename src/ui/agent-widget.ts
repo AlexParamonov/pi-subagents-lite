@@ -379,8 +379,6 @@ export class AgentWidget {
     return 0;
   }
 
-  /** @deprecated Use computeWindowEnd instead. */
-
   /** Get the height of a block (header + continuations) for an agent. */
   private getBlockHeight(agent: AgentRecord): number {
     // In compact mode, all blocks are 1 line (header only)
