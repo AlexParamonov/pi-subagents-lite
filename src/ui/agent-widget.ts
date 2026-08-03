@@ -916,11 +916,11 @@ export class AgentWidget {
   ): string {
     const iconText = `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}`;
     if (this.navActive) {
-      const hint = theme.fg("dim", "↑↓ navigate · enter view · esc back");
-      // Position readout first: N = highlighted position (1-based), M = roster size.
-      return navReadout
-        ? `${iconText}  ${theme.fg("dim", `${navReadout.position}/${navReadout.size}`)}  ${hint}`
-        : `${iconText}  ${hint}`;
+      const readout = navReadout
+        ? `${iconText} ${theme.fg("dim", `${navReadout.position}/${navReadout.size}`)}`
+        : iconText;
+      if (!this.navHint) return readout;
+      return `${readout}  ${theme.fg("dim", "↑↓ navigate · enter view · esc back")}`;
     }
     if (!this.navHint) return iconText;
     return `${iconText}  ${theme.fg("dim", "↓ to navigate")}`;
