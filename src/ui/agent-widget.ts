@@ -40,6 +40,9 @@ const STATUS_KEY = "subagents";
 
 /** Widget refresh interval in milliseconds. */
 const WIDGET_REFRESH_INTERVAL = 80;
+
+/** Navigation freeze window: roster order is deferred while the user is actively navigating. */
+const NAV_FREEZE_MS = 2000;
 const LINGER_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
 const ERROR_LINGER_TURNS = 2;
 
@@ -155,8 +158,17 @@ export class AgentWidget {
   /** Navigation mode active. */
   private navActive = false;
 
-  /** Current highlight position in the roster (0 = main). */
-  private _highlightedIndex = 0;
+  /** Highlighted agent id — the highlight's source of truth. */
+  private highlightId: string | null = null;
+
+  /** Current nav roster: ordered agent ids (frozen order mid-freeze, live order when dormant). */
+  private navRoster: string[] = [];
+
+  /** Timestamp of the last nav move (↓/↑) or activation; resets the freeze window. */
+  private navLastMove = 0;
+
+  /** Last resolved highlight position; seeds the nearest-agent adoption when the highlighted agent is evicted. */
+  private lastHighlightIndex = 0;
 
   /** Scroll anchor: index of the first visible block in the window. */
   private scrollAnchor = 0;
@@ -246,83 +258,131 @@ export class AgentWidget {
 
   // ---- Navigation state machine ----
 
-  /** Clamp the navigation highlight and scroll anchor to valid roster bounds. */
-  private clampHighlight(roster?: AgentRecord[]): void {
-    const r = roster ?? this.buildRoster();
-    if (r.length === 0) {
-      this._highlightedIndex = 0;
-      this.scrollAnchor = 0;
-    } else {
-      if (this._highlightedIndex >= r.length) {
-        this._highlightedIndex = r.length - 1;
-      }
-      if (this.scrollAnchor > this._highlightedIndex) {
-        this.scrollAnchor = this._highlightedIndex;
-      }
-      if (this.scrollAnchor < 0) {
-        this.scrollAnchor = 0;
-      }
-    }
-  }
-
-  /** Build the navigation roster: finished, running, queued. */
-  private buildRoster(): AgentRecord[] {
+  /** All visible agents in live display order: finished → running → queued. */
+  private liveRoster(): AgentRecord[] {
     const { finished, running, queued } = this.categorizeAgents();
     return [...finished, ...running, ...queued];
   }
 
-  /** Enter navigation mode. Highlights the first agent (index 0) if agents exist, else main (index 0). */
+  /**
+   * Resolve the current nav roster from a live snapshot (ordered records).
+   * Within the freeze window the order is kept: evicted agents drop, new
+   * agents append at the end in live relative order. When dormant, the
+   * roster is rebuilt in live display order on every call, so a long pause
+   * stays current.
+   */
+  private resolveNavRoster(now: number, live: AgentRecord[]): AgentRecord[] {
+    const liveById = new Map(live.map((a) => [a.id, a]));
+
+    if (now - this.navLastMove > NAV_FREEZE_MS) {
+      // Dormant: live display order IS the roster.
+      this.navRoster = live.map((a) => a.id);
+      return live;
+    }
+
+    // Freeze window: keep the current order, drop evicted ids, append new ids.
+    const ordered: AgentRecord[] = [];
+    const known = new Set<string>();
+    for (const id of this.navRoster) {
+      known.add(id);
+      const rec = liveById.get(id);
+      if (rec) ordered.push(rec);
+    }
+    for (const rec of live) {
+      if (!known.has(rec.id)) ordered.push(rec);
+    }
+    this.navRoster = ordered.map((a) => a.id);
+    return ordered;
+  }
+
+  /**
+   * Resolve the highlight index from highlightId (the source of truth). If the
+   * highlighted agent is absent (evicted/removed), adopt the nearest remaining
+   * agent: index = min(previousIndex, len-1). Clamps the scroll anchor to <= index.
+   */
+  private resolveHighlight(roster: AgentRecord[]): number {
+    if (roster.length === 0) {
+      this.highlightId = null;
+      this.lastHighlightIndex = 0;
+      this.scrollAnchor = 0;
+      return 0;
+    }
+    let index = this.lastHighlightIndex;
+    const pos = this.highlightId === null ? -1 : roster.findIndex((a) => a.id === this.highlightId);
+    if (pos === -1) {
+      // No highlight yet, or the highlighted agent was evicted/removed:
+      // adopt the nearest remaining agent.
+      index = Math.min(index, roster.length - 1);
+      this.highlightId = roster[index].id;
+    } else {
+      index = pos;
+    }
+    this.lastHighlightIndex = index;
+    if (this.scrollAnchor > index) this.scrollAnchor = index;
+    return index;
+  }
+
+  /**
+   * Resolve the current nav state: the roster (possibly frozen) and the
+   * identity-based highlight position, from one live snapshot. Returns the
+   * timestamp that drove the freeze check so callers seed navLastMove with
+   * the same value. Render uses resolveNavRoster directly to reuse the
+   * snapshot it already categorized for the blocks.
+   */
+  private resolveNavState(): { roster: AgentRecord[]; index: number; now: number } {
+    const now = Date.now();
+    const roster = this.resolveNavRoster(now, this.liveRoster());
+    return { roster, index: this.resolveHighlight(roster), now };
+  }
+
+  /** Enter navigation mode. Highlights the first agent if agents exist, else main (index 0). */
   navActivate(): void {
     if (this.navActive) return;
     this.navActive = true;
-    this._highlightedIndex = 0;
+    const now = Date.now();
+    const roster = this.resolveNavRoster(now, this.liveRoster());
+    this.lastHighlightIndex = 0;
     this.scrollAnchor = 0;
+    this.highlightId = roster.length > 0 ? roster[0].id : null;
+    this.navLastMove = now;
+    this.update();
+  }
+
+  /** Move the highlight one step (delta −1 = up, +1 = down) with scroll logic; wraps at both ends. */
+  private moveNav(delta: 1 | -1): void {
+    if (!this.navActive) return;
+    const { roster, index: h, now } = this.resolveNavState();
+    if (roster.length === 0) {
+      this.navDeactivate();
+      return;
+    }
+    const len = roster.length;
+    const { start, end } = this.navWindow(h, roster);
+
+    // Moving past the window edge scrolls the anchor; past the list end wraps.
+    const atEdge = delta === 1 ? h === end : h === start;
+    const atListEnd = delta === 1 ? end === len - 1 : start === 0;
+    const wrap = atEdge && atListEnd;
+    const next = wrap ? (delta === 1 ? 0 : len - 1) : h + delta;
+    if (wrap) {
+      this.scrollAnchor = delta === 1 ? 0 : this.bottomScrollStart(roster);
+    } else if (atEdge) {
+      this.scrollAnchor += delta;
+    }
+    this.lastHighlightIndex = next;
+    this.highlightId = roster[next].id;
+    this.navLastMove = now;
     this.update();
   }
 
   /** Move highlight down one position with scroll logic. */
   navDown(): void {
-    if (!this.navActive) return;
-    const roster = this.buildRoster();
-    if (roster.length === 0) {
-      this.navDeactivate();
-      return;
-    }
-    this.clampHighlight();
-    const len = roster.length;
-    const { end } = this.navWindow(this._highlightedIndex, roster);
-    if (this._highlightedIndex < end) {
-      this._highlightedIndex++;
-    } else if (end < len - 1) {
-      this._highlightedIndex++;
-      this.scrollAnchor++;
-    } else {
-      this._highlightedIndex = 0;
-      this.scrollAnchor = 0;
-    }
-    this.update();
+    this.moveNav(1);
   }
+
   /** Move highlight up one position with scroll logic. */
   navUp(): void {
-    if (!this.navActive) return;
-    const roster = this.buildRoster();
-    if (roster.length === 0) {
-      this.navDeactivate();
-      return;
-    }
-    this.clampHighlight();
-    const len = roster.length;
-    const { start } = this.navWindow(this._highlightedIndex, roster);
-    if (this._highlightedIndex > start) {
-      this._highlightedIndex--;
-    } else if (start > 0) {
-      this._highlightedIndex--;
-      this.scrollAnchor--;
-    } else {
-      this._highlightedIndex = len - 1;
-      this.scrollAnchor = this.bottomScrollStart(len);
-    }
-    this.update();
+    this.moveNav(-1);
   }
 
   /**
@@ -362,20 +422,18 @@ export class AgentWidget {
    * same budget rule as rendering. The highlighted block is always included,
    * even when it alone exceeds the budget.
    */
-  private navWindow(h: number, roster?: AgentRecord[]): { start: number; end: number } {
-    const r = roster ?? this.buildRoster();
-    if (r.length === 0) return { start: 0, end: -1 };
+  private navWindow(h: number, roster: AgentRecord[]): { start: number; end: number } {
+    if (roster.length === 0) return { start: 0, end: -1 };
     const start = Math.min(Math.max(this.scrollAnchor, 0), h);
-    const end = Math.max(this.navWindowEndFrom(start, r), h);
+    const end = Math.max(this.navWindowEndFrom(start, roster), h);
     return { start, end };
   }
 
   /** Compute the scroll anchor that shows the last block at the bottom. */
-  private bottomScrollStart(len: number): number {
-    const roster = this.buildRoster();
+  private bottomScrollStart(roster: AgentRecord[]): number {
     // Smallest start whose nav window still reaches the last block.
-    for (let start = 0; start < len; start++) {
-      if (this.navWindowEndFrom(start, roster) >= len - 1) return start;
+    for (let start = 0; start < roster.length; start++) {
+      if (this.navWindowEndFrom(start, roster) >= roster.length - 1) return start;
     }
     return 0;
   }
@@ -407,18 +465,25 @@ export class AgentWidget {
   }
 
   navSelect(): AgentRecord | null {
-    const roster = this.buildRoster();
-    this.clampHighlight();
-    return roster[this._highlightedIndex] ?? null;
+    const { roster, index } = this.resolveNavState();
+    return roster[index] ?? null;
   }
 
   /** Exit navigation mode, reset highlight and scroll anchor. Triggers re-render. */
   navDeactivate(): void {
     if (!this.navActive) return;
-    this.navActive = false;
-    this._highlightedIndex = 0;
-    this.scrollAnchor = 0;
+    this.resetNavState();
     this.update();
+  }
+
+  /** Reset all navigation state: highlight, roster, freeze timer, scroll anchor. */
+  private resetNavState(): void {
+    this.navActive = false;
+    this.highlightId = null;
+    this.navRoster = [];
+    this.navLastMove = 0;
+    this.lastHighlightIndex = 0;
+    this.scrollAnchor = 0;
   }
 
   /** Query whether navigation mode is active. */
@@ -426,14 +491,16 @@ export class AgentWidget {
     return this.navActive;
   }
 
-  /** Current highlight position (0 = main). */
+  /** Current highlight position (0 = main). Derived from highlightId against the current roster. */
   highlightedIndex(): number {
-    return this._highlightedIndex;
+    if (!this.navActive) return 0;
+    return this.resolveNavState().index;
   }
 
   /** Whether the widget has any visible agents (after turn eviction filtering). */
   hasVisibleAgents(): boolean {
-    return this.buildRoster().length > 0;
+    const { finished, running, queued } = this.categorizeAgents();
+    return finished.length + running.length + queued.length > 0;
   }
 
   /** Whether the ResultViewer overlay is currently open. */
@@ -696,23 +763,26 @@ export class AgentWidget {
   }
 
   /** Render navigation mode: scroll window with highlighted agent. */
-  private renderNavigationMode(blocks: RenderBlock[], theme: Theme, truncate: (line: string) => string): string[] {
-    const roster = this.buildRoster();
+  private renderNavigationMode(
+    roster: AgentRecord[],
+    highlightIndex: number,
+    blockById: Map<string, RenderBlock>,
+    theme: Theme,
+    truncate: (line: string) => string,
+  ): string[] {
     const len = roster.length;
     if (len === 0) return [];
 
-    // The roster can shrink (turn-based eviction) between nav moves while the
-    // 80 ms refresh keeps rendering without a keypress. Clamp first so a stale
-    // highlight can't point outside the window or slice a broken block range.
-    this.clampHighlight(roster);
-
     // Same budget rule as nav moves: full body, minus one line for the
     // overflow indicator whenever anything is hidden.
-    const { start, end } = this.navWindow(this._highlightedIndex, roster);
+    const { start, end } = this.navWindow(highlightIndex, roster);
 
-    // Render visible blocks with highlight
-    const visibleBlocks = blocks.slice(start, end + 1);
-    const visIndex = this._highlightedIndex - start;
+    // Render visible blocks in roster order with the highlight. Blocks are
+    // looked up by id because the frozen order can differ from the live
+    // category order the blocks were built in. The roster comes from the
+    // same snapshot as the blocks, so every id resolves.
+    const visibleBlocks = roster.slice(start, end + 1).map((a) => blockById.get(a.id)!);
+    const visIndex = highlightIndex - start;
     const lines = this.renderBlocks(visibleBlocks, visIndex, theme);
 
     // Overflow line: "+N more" where N = hidden agents
@@ -792,16 +862,36 @@ export class AgentWidget {
     // All blocks in display order: finished → running → queued.
     const blocks: RenderBlock[] = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
 
+    // Resolve nav state first (every render tick): the roster — possibly in
+    // frozen order — and the identity-based highlight. Eviction adoption
+    // happens here, so a stale highlight can never reach the renderer. The
+    // roster is derived from this render's snapshot so blocks and roster
+    // always agree.
+    let navRoster: AgentRecord[] | null = null;
+    let navIndex = 0;
+    if (this.navActive) {
+      navRoster = this.resolveNavRoster(Date.now(), [...finished, ...running, ...queued]);
+      navIndex = this.resolveHighlight(navRoster);
+    }
+
     // ---- Overflow logic (scroll model during nav, contiguous collapse otherwise) ----
 
     const maxBody = this.getMaxBody();
 
-    // Heading with navigation hint
-    const heading = this.buildHeading(theme, headingColor, headingIcon);
+    // Heading with navigation hint and, during nav, the N/M position readout.
+    const navReadout =
+      navRoster && navRoster.length > 0 ? { position: navIndex + 1, size: navRoster.length } : undefined;
+    const heading = this.buildHeading(theme, headingColor, headingIcon, navReadout);
     const lines: string[] = [truncate(heading)];
 
-    if (this.navActive) {
-      lines.push(...this.renderNavigationMode(blocks, theme, truncate));
+    if (this.navActive && navRoster) {
+      // Blocks in roster order: the frozen order can differ from the live
+      // category order the blocks were built in.
+      const blockById = new Map<string, RenderBlock>();
+      for (let i = 0; i < finished.length; i++) blockById.set(finished[i].id, finishedBlocks[i]);
+      for (let i = 0; i < running.length; i++) blockById.set(running[i].id, runningBlocks[i]);
+      for (let i = 0; i < queued.length; i++) blockById.set(queued[i].id, queuedBlocks[i]);
+      lines.push(...this.renderNavigationMode(navRoster, navIndex, blockById, theme, truncate));
     } else {
       lines.push(
         ...this.renderNonNavigationMode(
@@ -817,11 +907,18 @@ export class AgentWidget {
     return lines;
   }
 
-  /** Build the heading line with navigation hint text. */
-  private buildHeading(theme: Theme, color: string, icon: string): string {
+  /** Build the heading line with navigation hint text and, during nav, the N/M readout. */
+  private buildHeading(
+    theme: Theme,
+    color: string,
+    icon: string,
+    navReadout?: { position: number; size: number },
+  ): string {
     const iconText = `${theme.fg(color, icon)} ${theme.fg(color, "Agents")}`;
     if (this.navActive) {
-      return `${iconText}  ${theme.fg("dim", "↑↓ navigate · enter view · esc back")}`;
+      const hint = `${iconText}  ${theme.fg("dim", "↑↓ navigate · enter view · esc back")}`;
+      // Position readout: N = highlighted position (1-based), M = roster size.
+      return navReadout ? `${hint}  ${theme.fg("dim", `${navReadout.position}/${navReadout.size}`)}` : hint;
     }
     if (!this.navHint) return iconText;
     return `${iconText}  ${theme.fg("dim", "↓ to navigate")}`;
@@ -862,11 +959,7 @@ export class AgentWidget {
   /** Clear widget and status bar. */
   private clearWidget() {
     // Deactivate navigation when agents clear
-    if (this.navActive) {
-      this.navActive = false;
-      this._highlightedIndex = 0;
-      this.scrollAnchor = 0;
-    }
+    if (this.navActive) this.resetNavState();
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
