@@ -344,7 +344,6 @@ export class AgentWidget {
   }
 
   /** Compute the visible window [start, end] for the given highlight and budget. */
-  /** Compute the visible window [start, end] for the given highlight and budget. */
   private scrollWindowWithBudget(h: number, budget: number, roster?: AgentRecord[]): { start: number; end: number } {
     const r = roster ?? this.buildRoster();
     if (r.length === 0) return { start: 0, end: -1 };
@@ -727,8 +726,7 @@ export class AgentWidget {
 
     // ---- Overflow logic (scroll model during nav, contiguous collapse otherwise) ----
 
-    const maxBodyLines = this.isCompact() ? this.maxLinesCompact : this.maxLines;
-    const maxBody = maxBodyLines - 1; // heading takes 1 line
+    const maxBody = this.getMaxBody();
 
     // Heading with navigation hint
     const heading = this.buildHeading(theme, headingColor, headingIcon);
