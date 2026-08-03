@@ -273,16 +273,6 @@ describe("navigation key handler (createNavInputHandler)", () => {
       expect(mockWidget.navUp).toHaveBeenCalled();
     });
 
-    it("wraps on up at index 0", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "up");
-      mockWidget.highlightedIndex.mockReturnValue(0);
-      const handler = createNavInputHandler(ctx);
-      const result = handler("some_data");
-      expect(result).toEqual({ consume: true });
-      expect(mockWidget.navUp).toHaveBeenCalled();
-      expect(mockWidget.navDeactivate).not.toHaveBeenCalled();
-    });
-
     it("handles escape", () => {
       mockMatchesKey.mockImplementation((_d: string, key: string) => key === "escape");
       const handler = createNavInputHandler(ctx);

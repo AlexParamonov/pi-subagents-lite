@@ -3,12 +3,15 @@
  * instead of process.env.HOME, so it works on Windows.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterAll } from "vitest";
 import { join } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
-// Windows-style fixture: the fix targets Windows, where HOME may be unset
-// and paths contain backslashes and spaces.
-const MOCK_AGENT_DIR = "C:\\Users\\Pi User\\.pi\\agent";
+// Per-run temp dir: loadConfig() must never read a real user config file,
+// on any OS. A fresh mkdtemp directory guarantees the defaults test below
+// does not depend on the machine's filesystem state.
+const MOCK_AGENT_DIR = mkdtempSync(join(tmpdir(), "pi-subagents-config-"));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => MOCK_AGENT_DIR,
@@ -16,6 +19,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // Import after mock is set up
 const { CUSTOM_PROMPT_PATH, loadConfig } = await import("../../src/config/config-io.js");
+
+afterAll(() => {
+  rmSync(MOCK_AGENT_DIR, { recursive: true, force: true });
+});
 
 describe("config-io home directory resolution", () => {
   it("uses getAgentDir() for CUSTOM_PROMPT_PATH", () => {
@@ -25,7 +32,7 @@ describe("config-io home directory resolution", () => {
 
 describe("loadConfig defaults", () => {
   it("bakes in widget and watchdog defaults when no config file exists", () => {
-    // No config file exists under the mocked agent dir, so loadConfig returns
+    // The temp dir is freshly created and empty, so loadConfig returns
     // the full DEFAULT_AGENT merge — guards against defaults being dropped.
     const config = loadConfig();
     expect(config.agent.widgetMaxLines).toBe(12);

@@ -378,11 +378,19 @@ describe("SpawnCoordinator", () => {
       expect(coordinator.isBackground(result.agentId)).toBe(false);
     });
 
-    it("does not schedule nudge for foreground agents", () => {
+    it("does not schedule nudge for foreground agents", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
-      // Not in backgroundAgentIds
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
 
-      coordinator.onAgentComplete({ id: "agent-1" } as AgentRecord);
+      // The record exists, so only the backgroundAgentIds guard can
+      // prevent the nudge from being scheduled and emitted.
+      coordinator.onAgentComplete(result.record);
 
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
@@ -508,16 +516,30 @@ describe("SpawnCoordinator", () => {
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
-    it("skips nudge silently when shell has no pi", () => {
+    it("skips nudge silently when shell has no pi", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
+      const notify = vi.fn();
+      const ctxWithUi = { ...makeMockCtx(), ui: { notify } } as unknown as ExtensionContext;
 
-      // Simulate shell having no pi
+      const result = await coordinator.spawn(mockPi, ctxWithUi, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      // Simulate shell having no pi at nudge time
       mockGetPiInstance.mockReturnValue(null);
 
-      coordinator.scheduleNudge("agent-999");
+      coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 
+      // The record exists, so without the !pi guard the nudge would reach
+      // the sendMessage try/catch and fall back to ui.notify. Assert both
+      // paths stay silent to pin the guard.
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
     });
 
     it("constructor does not store pi", () => {

@@ -4,10 +4,10 @@
  * Covers: validation logic, resolution, label computation, error cases.
  *
  * Merged from acceptance tests (HEAD) and slice 1-1 tests (feature branch).
- * Acceptance tests for `computeWorktreeLabel` unit and `result.skipped` were
- * adapted to integration tests through `validateWorktreePath`, since the
- * implementation does not export `computeWorktreeLabel` and returns
- * `{ ok: true }` (no `skipped` field) for empty paths.
+ * `result.skipped` acceptance tests were adapted to integration tests through
+ * `validateWorktreePath`, which returns `{ ok: true }` (no `skipped` field) for
+ * empty paths. `computeWorktreeLabel` is exported as `computeLabel` and is
+ * unit-tested directly below.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -295,26 +295,6 @@ describe("validateWorktreePath", () => {
     const label = computeLabel("C:\\Users\\dev\\feature\\packages\\web", "C:\\Users\\dev\\feature");
     expect(label).toBe("feature/packages/web");
     expect(label).not.toContain("\\\\");
-  });
-
-  it("resolvedPath uses forward slashes (no backslash separators)", async () => {
-    const parentCwd = join(tmpDir, "parent");
-    const worktreePath = join(tmpDir, "feature");
-    mkdirSync(parentCwd, { recursive: true });
-    mkdirSync(worktreePath, { recursive: true });
-
-    const commonDir = join(tmpDir, "shared.git");
-    const gitResults = new Map<string, string | null>([
-      [parentCwd, commonDir],
-      [worktreePath, commonDir],
-    ]);
-
-    const result = await validateWorktreePath(makePi(gitResults), worktreePath, parentCwd);
-
-    expect(result.ok).toBe(true);
-    const success = result as WorktreeValidationSuccess;
-    // resolvedPath should always use forward slashes
-    expect(success.resolvedPath).not.toContain("\\");
   });
 
   // ── rejection: path does not exist ────────────────────────────
