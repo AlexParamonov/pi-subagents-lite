@@ -385,6 +385,14 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     inputInstances[0].onSubmit!("abc");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
+
+    inputInstances[0].onSubmit!("12x");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+
+    inputInstances[0].onSubmit!("12.5");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
   });
 
   it("idle timeout submenu pre-fills the current value and accepts 0", async () => {
@@ -416,6 +424,14 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     expect(mockDone).not.toHaveBeenCalled();
 
     inputInstances[0].onSubmit!("abc");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+
+    inputInstances[0].onSubmit!("12x");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+
+    inputInstances[0].onSubmit!("12.5");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
