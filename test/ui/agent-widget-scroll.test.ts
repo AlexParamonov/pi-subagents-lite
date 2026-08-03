@@ -104,6 +104,30 @@ function makeActivity(agentId: string): LiveView {
   return { activeTools: new Map([["read", "reading"]]), responseText: "" };
 }
 
+type RenderedState = {
+  visible: string[];
+  arrow: string | null;
+  overflow: number | null;
+  bodyLines: number;
+};
+
+/** Render the widget and extract visible agent ids, arrow target, overflow count. */
+function renderState(widget: AgentWidget): RenderedState {
+  const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+  const body = lines.slice(1); // heading takes line 0
+  const visible: string[] = [];
+  let arrow: string | null = null;
+  for (const line of body) {
+    const m = line.match(/agent (f\d+|r\d+|q\d+)/);
+    if (!m) continue;
+    if (line.includes("→")) arrow = m[1];
+    visible.push(m[1]);
+  }
+  const more = body.find((l: string) => l.includes("more"));
+  const overflow = more ? Number(more.match(/\+(\d+) more/)?.[1]) : null;
+  return { visible, arrow, overflow, bodyLines: body.length };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Scroll model tests                                                 */
 /* ------------------------------------------------------------------ */
@@ -151,130 +175,159 @@ describe("scroll viewport navigation", () => {
   let manager: AgentManager;
   let activity: Map<string, LiveView>;
 
-  // Create 6 agents with 1-line blocks (compact mode)
-  // With maxLines=12, body = 11 lines, so 5 agents fit (6th overflows)
+  // Walkthrough config from issue.md: 1-line blocks (compact mode),
+  // maxLinesCompact=5 → maxBody=4 → 3 visible blocks + overflow line.
   beforeEach(() => {
     manager = makeMockManager([]);
     activity = new Map();
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
-    widget.setMaxLines(12); // body = 11 lines, 11 agents fit
+    widget.setMaxLinesCompact(5);
   });
 
-  it("arrow moves freely within visible window without scrolling", () => {
+  it("follows the issue walkthrough state by state", () => {
+    const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`f${i}`));
+    (manager as any).listAgents = () => agents;
+
+    // States (h, s) with exact windows from issue.md's scroll model contract, read
+    // as a continuous press sequence (the diagram's ↑ columns start from (4,2),
+    // a second walkthrough; the continuous reading wraps on the first ↑).
+    // Overflow counts follow the issue's "3 visible + 2 hidden" roster (5 agents);
+    // the diagram's "+1 more" entries at bottom-anchored states are typos
+    // (window [2..4] hides 2 agents, not 1).
+    // Every scrolled state must stay within the budget: body ≤ 4.
+    const steps: Array<{ press: "↓" | "↑"; visible: string[]; arrow: string; overflow: number }> = [
+      { press: "↓", visible: ["f0", "f1", "f2"], arrow: "f1", overflow: 2 }, // (1,0)
+      { press: "↓", visible: ["f0", "f1", "f2"], arrow: "f2", overflow: 2 }, // (2,0)
+      { press: "↓", visible: ["f1", "f2", "f3"], arrow: "f3", overflow: 2 }, // (3,1) scroll
+      { press: "↓", visible: ["f2", "f3", "f4"], arrow: "f4", overflow: 2 }, // (4,2) scroll
+      { press: "↓", visible: ["f0", "f1", "f2"], arrow: "f0", overflow: 2 }, // (0,0) wrap
+      { press: "↑", visible: ["f2", "f3", "f4"], arrow: "f4", overflow: 2 }, // (4,2) wrap from top
+      { press: "↑", visible: ["f2", "f3", "f4"], arrow: "f3", overflow: 2 }, // (3,2)
+      { press: "↑", visible: ["f2", "f3", "f4"], arrow: "f2", overflow: 2 }, // (2,2)
+      { press: "↑", visible: ["f1", "f2", "f3"], arrow: "f1", overflow: 2 }, // (1,1) scroll
+      { press: "↑", visible: ["f0", "f1", "f2"], arrow: "f0", overflow: 2 }, // (0,0) scroll
+    ];
+
+    widget.navActivate();
+    expect(renderState(widget)).toEqual({
+      visible: ["f0", "f1", "f2"],
+      arrow: "f0",
+      overflow: 2,
+      bodyLines: 4,
+    });
+
+    for (const step of steps) {
+      if (step.press === "↓") widget.navDown();
+      else widget.navUp();
+      const state = renderState(widget);
+      expect(state.visible).toEqual(step.visible);
+      expect(state.arrow).toBe(step.arrow);
+      expect(state.overflow).toBe(step.overflow);
+      // Budget invariant: widget never renders more than maxBody body lines.
+      expect(state.bodyLines).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it("arrow moves freely within the visible window without scrolling", () => {
     const agents = Array.from({ length: 3 }, (_, i) => makeFinishedAgent(`f${i}`));
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
+    widget.navActivate(); // (0,0): f0 f1 f2, everything fits
+    let state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f0");
+    expect(state.overflow).toBeNull();
 
-    // All 3 agents should be visible
-    let lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines.some((l: string) => l.includes("Finished agent f0"))).toBe(true);
-    expect(lines.some((l: string) => l.includes("Finished agent f1"))).toBe(true);
-    expect(lines.some((l: string) => l.includes("Finished agent f2"))).toBe(true);
+    widget.navDown(); // (1,0): arrow moves, visible set unchanged
+    state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f1");
 
-    // Navigate down - should not scroll with only 3 agents
-    widget.navDown(); // h=1, s=0
-    lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // All still visible, arrow on f1
-    expect(lines.filter((l: string) => l.includes("→")).some((l: string) => l.includes("f1"))).toBe(true);
+    widget.navDown(); // (2,0)
+    state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f2");
   });
 
   it("at bottom edge with collapsed agents below, ↓ scrolls up with arrow pinned to bottom", () => {
-    // 6 agents, compact mode = 1 line each, body = 11 lines
-    // So 11 agents fit without overflow - need to limit body
-    widget.setMaxLines(5); // body = 4 lines, 4 agents fit
-
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0, shows f0-f3
+    widget.navActivate(); // (0,0): f0 f1 f2 +3 more
+    widget.navDown(); // (1,0)
+    widget.navDown(); // (2,0)
+    widget.navDown(); // (3,1): f1 f2 f3 +3 more
 
-    // Navigate to bottom visible agent (index 3)
-    widget.navDown(); // h=1
-    widget.navDown(); // h=2
-    widget.navDown(); // h=3 (bottom edge)
+    let state = renderState(widget);
+    expect(state.visible).toEqual(["f1", "f2", "f3"]);
+    expect(state.arrow).toBe("f3");
+    expect(state.overflow).toBe(3);
 
-    let lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // f0, f1, f2, f3 visible, f4 and f5 hidden
-    expect(lines.some((l: string) => l.includes("f3"))).toBe(true);
-    expect(lines.some((l: string) => l.includes("f4"))).toBe(false);
-
-    // Press ↓ - should scroll, arrow stays on bottom row (now f4)
-    widget.navDown(); // h=4, s=1 (scrolls)
-
-    lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Now f1, f2, f3, f4 visible, f5 hidden
-    expect(lines.some((l: string) => l.includes("f1"))).toBe(true);
-    expect(lines.some((l: string) => l.includes("f4"))).toBe(true);
-    expect(lines.some((l: string) => l.includes("f5"))).toBe(false);
-    // Arrow should be on f4 (bottom row)
-    expect(lines.filter((l: string) => l.includes("→")).some((l: string) => l.includes("f4"))).toBe(true);
+    // ↓ at the bottom edge scrolls: f0 leaves the window, arrow pins to bottom row.
+    widget.navDown(); // (4,2): f2 f3 f4 +3 more
+    state = renderState(widget);
+    expect(state.visible).toEqual(["f2", "f3", "f4"]);
+    expect(state.arrow).toBe("f4");
+    expect(state.overflow).toBe(3);
+    expect(state.bodyLines).toBeLessThanOrEqual(4);
   });
 
   it("at top edge with collapsed agents above, ↑ scrolls down with arrow pinned to top", () => {
-    widget.setMaxLines(5); // body = 4 lines
-
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
+    widget.navActivate(); // (0,0)
+    widget.navDown(); // (1,0)
+    widget.navDown(); // (2,0)
+    widget.navDown(); // (3,1)
+    widget.navDown(); // (4,2): f2 f3 f4 +3 more
+    widget.navUp(); // (3,2)
+    widget.navUp(); // (2,2)
+    widget.navUp(); // (1,1): f1 f2 f3 +3 more, arrow on f1 (top row)
 
-    // Navigate down to scroll (h=4, s=1 - showing f1-f4)
-    widget.navDown(); // h=1
-    widget.navDown(); // h=2
-    widget.navDown(); // h=3
-    widget.navDown(); // h=4, s=1
+    let state = renderState(widget);
+    expect(state.visible).toEqual(["f1", "f2", "f3"]);
+    expect(state.arrow).toBe("f1");
 
-    // Navigate up to top edge (h=1, s=1 - showing f1-f4, arrow on f1)
-    widget.navUp(); // h=3
-    widget.navUp(); // h=2
-    widget.navUp(); // h=1 (top edge, s=1)
-
-    // Press ↑ - should scroll down, arrow stays on top row (now f0)
-    widget.navUp(); // h=0, s=0 (scrolls back to top)
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Now f0, f1, f2, f3 visible
-    expect(lines.some((l: string) => l.includes("f0"))).toBe(true);
-    expect(lines.some((l: string) => l.includes("f1"))).toBe(true);
-    // Arrow should be on f0 (top row)
-    expect(lines.filter((l: string) => l.includes("→")).some((l: string) => l.includes("f0"))).toBe(true);
+    // ↑ at the top edge scrolls: window returns to the top, arrow pins to top row.
+    widget.navUp(); // (0,0): f0 f1 f2 +3 more
+    state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f0");
+    expect(state.overflow).toBe(3);
+    expect(state.bodyLines).toBeLessThanOrEqual(4);
   });
 
   it("↓ at last agent wraps to first with window reset to top", () => {
     const agents = Array.from({ length: 3 }, (_, i) => makeFinishedAgent(`f${i}`));
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
-    widget.navDown(); // h=1
-    widget.navDown(); // h=2 (last agent)
+    widget.navActivate(); // (0,0)
+    widget.navDown(); // (1,0)
+    widget.navDown(); // (2,0): arrow on last agent
+    let state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f2");
 
-    // Press ↓ - should wrap to first
-    widget.navDown(); // h=0, s=0
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Window reset to top
-    expect(lines.filter((l: string) => l.includes("→")).some((l: string) => l.includes("f0"))).toBe(true);
+    widget.navDown(); // wrap → (0,0)
+    state = renderState(widget);
+    expect(state.visible).toEqual(["f0", "f1", "f2"]);
+    expect(state.arrow).toBe("f0");
   });
 
   it("↑ at first agent wraps to last with window anchored at bottom", () => {
-    widget.setMaxLines(5); // body = 4 lines
-
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
-
-    // Press ↑ - should wrap to last, window at bottom
-    widget.navUp(); // h=5, s=2 (bottomScrollStart)
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Window should show f2, f3, f4, f5 (last 4 agents)
-    expect(lines.some((l: string) => l.includes("f5"))).toBe(true);
-    // Arrow should be on f5 (last agent)
-    expect(lines.filter((l: string) => l.includes("→")).some((l: string) => l.includes("f5"))).toBe(true);
+    widget.navActivate(); // (0,0)
+    widget.navUp(); // wrap → (5,3): f3 f4 f5 +3 more, arrow pinned to bottom row
+    const state = renderState(widget);
+    expect(state.visible).toEqual(["f3", "f4", "f5"]);
+    expect(state.arrow).toBe("f5");
+    expect(state.overflow).toBe(3);
+    expect(state.bodyLines).toBeLessThanOrEqual(4);
   });
 });
 
@@ -289,7 +342,7 @@ describe("overflow line format", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
-    widget.setMaxLines(5); // body = 4 lines, 4 agents fit
+    widget.setMaxLinesCompact(5); // body = 4 lines, 4 agents fit
   });
 
   it("shows '+N more' without category breakdown", () => {
@@ -301,8 +354,9 @@ describe("overflow line format", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const overflowLine = lines.find((l: string) => l.includes("more"));
     expect(overflowLine).toBeDefined();
-    // Should be "+2 more" not "+2 more (2 finished)"
-    expect(overflowLine).toContain("+2 more");
+    // Should be "+3 more" (6 agents, 3 visible) — not "+3 more (3 finished)"
+    expect(overflowLine).toContain("+3 more");
+
     expect(overflowLine).not.toContain("finished");
     expect(overflowLine).not.toContain("running");
     expect(overflowLine).not.toContain("queued");
@@ -344,9 +398,9 @@ describe("non-navigation overflow", () => {
     expect(lines.some((l: string) => l.includes("r0"))).toBe(false);
     expect(lines.some((l: string) => l.includes("r1"))).toBe(false);
 
-    // Overflow line should show "+3 more" (r0, r1, queued block = 3 blocks hidden)
+    // r0, r1, and the 3 queued agents are hidden: 5 agents total.
     const overflowLine = lines.find((l: string) => l.includes("more"));
-    expect(overflowLine).toContain("+3 more");
+    expect(overflowLine).toContain("+5 more");
   });
 });
 
@@ -359,30 +413,23 @@ describe("highlighted agent always visible", () => {
     manager = makeMockManager([]);
     activity = new Map();
     widget = new AgentWidget(manager, (id) => activity.get(id));
-    widget.setCompactMode(true);
-    widget.setWidgetShortcut(true);
-    widget.setMaxLines(5); // body = 4 lines
+    // Full mode: a running block is 2 lines (header + activity).
+    widget.setMaxLines(2); // maxBody = 1 — a single running block exceeds it
   });
 
-  it("keeps highlighted agent visible even when it alone exceeds budget", () => {
-    // This test case is for when a single block exceeds the window budget
-    // In compact mode, all blocks are 1 line, so this won't happen
-    // But we should test that the highlighted agent is always in the window
-    const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
+  it("keeps the highlighted agent visible even when its block exceeds the budget", () => {
+    const agents = [makeRunningAgent("r0"), makeRunningAgent("r1")];
     (manager as any).listAgents = () => agents;
 
-    widget.navActivate(); // h=0, s=0
+    widget.navActivate(); // h=0: r0 (2 lines) does not fit the 1-line budget
+    let state = renderState(widget);
+    expect(state.visible).toEqual(["r0"]);
+    expect(state.arrow).toBe("r0");
 
-    // Navigate to agent 5 (would be hidden)
-    for (let i = 0; i < 5; i++) {
-      widget.navDown();
-    }
-    // h=5, should force scroll to show f5
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // f5 should be visible (highlighted)
-    expect(lines.some((l: string) => l.includes("f5"))).toBe(true);
-    expect(lines.filter((l: string) => l.includes("→")).some((l: string) => l.includes("f5"))).toBe(true);
+    widget.navDown(); // h=1, s=1: window moves so r1 is visible
+    state = renderState(widget);
+    expect(state.visible).toEqual(["r1"]);
+    expect(state.arrow).toBe("r1");
   });
 });
 

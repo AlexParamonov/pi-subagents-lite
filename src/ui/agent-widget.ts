@@ -290,7 +290,7 @@ export class AgentWidget {
     }
     this.clampHighlight();
     const len = roster.length;
-    const { end } = this.scrollWindow(this._highlightedIndex);
+    const { end } = this.navWindow(this._highlightedIndex, roster);
     if (this._highlightedIndex < end) {
       this._highlightedIndex++;
     } else if (end < len - 1) {
@@ -312,7 +312,7 @@ export class AgentWidget {
     }
     this.clampHighlight();
     const len = roster.length;
-    const { start } = this.scrollWindow(this._highlightedIndex);
+    const { start } = this.navWindow(this._highlightedIndex, roster);
     if (this._highlightedIndex > start) {
       this._highlightedIndex--;
     } else if (start > 0) {
@@ -343,37 +343,39 @@ export class AgentWidget {
     return end;
   }
 
-  /** Compute the visible window [start, end] for the given highlight and budget. */
-  private scrollWindowWithBudget(h: number, budget: number, roster?: AgentRecord[]): { start: number; end: number } {
-    const r = roster ?? this.buildRoster();
-    if (r.length === 0) return { start: 0, end: -1 };
-    const len = r.length;
-
-    // start = min(max(s, 0), h)
-    let start = Math.min(Math.max(this.scrollAnchor, 0), h);
-
-    // Greedy end from start, ensuring h is included
-    let end = this.computeWindowEnd(start, r, budget);
-    end = Math.max(end, h);
-
-    return { start, end };
+  /**
+   * Greedy window end from `start` under the nav budget rule: the full body
+   * budget, reduced by one line (the overflow indicator) whenever anything
+   * would be hidden. Mirrors rendering so state machine and renderer agree.
+   */
+  private navWindowEndFrom(start: number, roster: AgentRecord[]): number {
+    const maxBody = this.getMaxBody();
+    let end = this.computeWindowEnd(start, roster, maxBody);
+    if (start > 0 || end < roster.length - 1) {
+      end = this.computeWindowEnd(start, roster, maxBody - 1);
+    }
+    return end;
   }
 
-  /** Compute the visible window using the default budget. */
-  private scrollWindow(h: number): { start: number; end: number } {
-    const maxBody = this.getMaxBody();
-    return this.scrollWindowWithBudget(h, maxBody);
+  /**
+   * Compute the visible nav window [start, end] for highlight `h`, using the
+   * same budget rule as rendering. The highlighted block is always included,
+   * even when it alone exceeds the budget.
+   */
+  private navWindow(h: number, roster?: AgentRecord[]): { start: number; end: number } {
+    const r = roster ?? this.buildRoster();
+    if (r.length === 0) return { start: 0, end: -1 };
+    const start = Math.min(Math.max(this.scrollAnchor, 0), h);
+    const end = Math.max(this.navWindowEndFrom(start, r), h);
+    return { start, end };
   }
 
   /** Compute the scroll anchor that shows the last block at the bottom. */
   private bottomScrollStart(len: number): number {
-    const maxBody = this.getMaxBody();
     const roster = this.buildRoster();
-
-    // Linear scan for the smallest start whose window reaches len-1.
+    // Smallest start whose nav window still reaches the last block.
     for (let start = 0; start < len; start++) {
-      const end = this.computeWindowEnd(start, roster, maxBody);
-      if (end >= len - 1) return start;
+      if (this.navWindowEndFrom(start, roster) >= len - 1) return start;
     }
     return 0;
   }
@@ -694,24 +696,14 @@ export class AgentWidget {
   }
 
   /** Render navigation mode: scroll window with highlighted agent. */
-  private renderNavigationMode(
-    blocks: RenderBlock[],
-    theme: Theme,
-    truncate: (line: string) => string,
-    maxBody: number,
-  ): string[] {
+  private renderNavigationMode(blocks: RenderBlock[], theme: Theme, truncate: (line: string) => string): string[] {
     const roster = this.buildRoster();
     const len = roster.length;
     if (len === 0) return [];
 
-    // Compute scroll window. If overflow exists, reserve 1 line for overflow indicator.
-    let budget = maxBody;
-    let { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster);
-    const hasOverflow = start > 0 || end < len - 1;
-    if (hasOverflow) {
-      budget = maxBody - 1;
-      ({ start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster));
-    }
+    // Same budget rule as nav moves: full body, minus one line for the
+    // overflow indicator whenever anything is hidden.
+    const { start, end } = this.navWindow(this._highlightedIndex, roster);
 
     // Render visible blocks with highlight
     const visibleBlocks = blocks.slice(start, end + 1);
@@ -729,6 +721,8 @@ export class AgentWidget {
   /** Render non-navigation mode: contiguous top→bottom collapse. */
   private renderNonNavigationMode(
     blocks: RenderBlock[],
+    totalAgents: number,
+    queuedCount: number,
     theme: Theme,
     truncate: (line: string) => string,
     maxBody: number,
@@ -753,9 +747,11 @@ export class AgentWidget {
       }
     }
     const lines = this.renderBlocks(visible, -1, theme);
-
-    // Overflow line: "+N more"
-    const hiddenCount = blocks.length - visible.length;
+    // Overflow line: "+N more" where N = hidden agents. In non-nav mode the
+    // queued roster is a single aggregated block; count it as its agents.
+    const queuedVisible = queuedCount > 0 && visible.length === blocks.length;
+    const visibleAgents = visible.length + (queuedVisible ? queuedCount - 1 : 0);
+    const hiddenCount = totalAgents - visibleAgents;
     if (hiddenCount > 0) {
       lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
     }
@@ -802,9 +798,18 @@ export class AgentWidget {
     const lines: string[] = [truncate(heading)];
 
     if (this.navActive) {
-      lines.push(...this.renderNavigationMode(blocks, theme, truncate, maxBody));
+      lines.push(...this.renderNavigationMode(blocks, theme, truncate));
     } else {
-      lines.push(...this.renderNonNavigationMode(blocks, theme, truncate, maxBody));
+      lines.push(
+        ...this.renderNonNavigationMode(
+          blocks,
+          finished.length + running.length + queued.length,
+          queued.length,
+          theme,
+          truncate,
+          maxBody,
+        ),
+      );
     }
 
     return lines;
