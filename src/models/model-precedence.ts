@@ -21,6 +21,7 @@ export interface SubagentsConfig {
     default: string | null;
     forceBackground: boolean;
     graceTurns?: number;
+    showCost?: boolean;
     /** Stop an agent when a single tool call runs longer than this (minutes). 0 disables. Default: 45. */
     toolTimeoutMinutes?: number;
     /** Stop an agent showing no activity (tool events, streamed text) for this long (minutes). 0 disables. Default: 45. */
