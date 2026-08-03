@@ -326,10 +326,10 @@ export class AgentWidget {
   }
 
   /** Compute the visible window [start, end] for the given highlight and budget. */
-  private scrollWindowWithBudget(h: number, budget: number): { start: number; end: number } {
-    const roster = this.buildRoster();
-    if (roster.length === 0) return { start: 0, end: -1 };
-    const len = roster.length;
+  private scrollWindowWithBudget(h: number, budget: number, roster?: AgentRecord[]): { start: number; end: number } {
+    const r = roster ?? this.buildRoster();
+    if (r.length === 0) return { start: 0, end: -1 };
+    const len = r.length;
 
     // start = min(max(s, 0), h)
     let start = Math.min(Math.max(this.scrollAnchor, 0), h);
@@ -337,7 +337,7 @@ export class AgentWidget {
     // Greedy end from start
     let end = start - 1;
     for (let i = start; i < len; i++) {
-      const blockHeight = this.getBlockHeight(roster[i]);
+      const blockHeight = this.getBlockHeight(r[i]);
       if (budget >= blockHeight) {
         budget -= blockHeight;
         end = i;
@@ -361,28 +361,21 @@ export class AgentWidget {
   /** Compute the scroll anchor that shows the last block at the bottom. */
   private bottomScrollStart(len: number): number {
     const maxBody = this.getMaxBody();
+    const roster = this.buildRoster();
 
-    // Binary search for the smallest start whose window reaches len-1
-    let lo = 0;
-    let hi = len - 1;
-    while (lo < hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      const windowEnd = this.computeWindowEnd(mid, len, maxBody);
-      if (windowEnd >= len - 1) {
-        hi = mid;
-      } else {
-        lo = mid + 1;
-      }
+    // Linear scan for the smallest start whose window reaches len-1.
+    // Roster sizes are small (typically < 20), so linear is simpler and fast enough.
+    for (let start = 0; start < len; start++) {
+      const windowEnd = this.computeWindowEndFromRoster(start, roster, maxBody);
+      if (windowEnd >= len - 1) return start;
     }
-    return lo;
+    return 0;
   }
 
-  /** Compute the end of a window starting at start, given the budget. */
-  private computeWindowEnd(start: number, len: number, maxBody: number): number {
-    const roster = this.buildRoster();
-    let budget = maxBody;
+  /** Compute the end of a window starting at start, given the roster and budget. */
+  private computeWindowEndFromRoster(start: number, roster: AgentRecord[], budget: number): number {
     let end = start - 1;
-    for (let i = start; i < len; i++) {
+    for (let i = start; i < roster.length; i++) {
       const blockHeight = this.getBlockHeight(roster[i]);
       if (budget >= blockHeight) {
         budget -= blockHeight;
@@ -400,25 +393,18 @@ export class AgentWidget {
     if (this.isCompact()) return 1;
 
     // In full mode, count continuation lines
-    let continuations = 0;
-
     if (agent.lifecycle.status === "running") {
       // Running: activity line always present, worktree optional
-      continuations = 1; // activity line
-      if (agent.display.worktreeLabel || agent.display.outputFile) {
-        continuations++; // worktree line
-      }
-    } else if (agent.lifecycle.status === "queued") {
-      // Queued: no continuations (individual rows during nav)
-      continuations = 0;
-    } else {
-      // Finished: worktree optional
-      if (agent.display.worktreeLabel || agent.display.outputFile) {
-        continuations = 1; // worktree line
-      }
+      return 2 + (agent.display.worktreeLabel || agent.display.outputFile ? 1 : 0);
     }
 
-    return 1 + continuations; // 1 for header + continuations
+    if (agent.lifecycle.status === "queued") {
+      // Queued: no continuations (individual rows during nav)
+      return 1;
+    }
+
+    // Finished: worktree optional
+    return 1 + (agent.display.worktreeLabel || agent.display.outputFile ? 1 : 0);
   }
 
   /** Get the max body lines (total lines minus heading). */
@@ -768,10 +754,10 @@ export class AgentWidget {
       // Compute scroll window with budget that reserves 1 line for overflow indicator
       // The budget is maxBody - 1 when there's overflow, else maxBody
       // We compute the window with full budget first, then adjust if needed
-      const { start: start1, end: end1 } = this.scrollWindowWithBudget(this._highlightedIndex, maxBody);
+      const { start: start1, end: end1 } = this.scrollWindowWithBudget(this._highlightedIndex, maxBody, roster);
       const hasOverflow = start1 > 0 || end1 < len - 1;
       const budget = hasOverflow ? maxBody - 1 : maxBody;
-      const { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget);
+      const { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster);
 
       // Visible blocks are blocks[start..end]
       const visibleBlocks = blocks.slice(start, end + 1);
@@ -785,8 +771,7 @@ export class AgentWidget {
       // Overflow line: "+N more" where N = hidden agents
       const hiddenCount = len - (end - start + 1);
       if (hiddenCount > 0) {
-        const overflowLine = `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
-        lines.push(truncate(overflowLine));
+        lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
       }
     } else {
       // Non-navigation mode: contiguous top→bottom collapse
@@ -813,8 +798,7 @@ export class AgentWidget {
         // Overflow line: "+N more"
         const hiddenCount = blocks.length - visible.length;
         if (hiddenCount > 0) {
-          const overflowLine = `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
-          lines.push(truncate(overflowLine));
+          lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
         }
       }
     }
@@ -857,6 +841,11 @@ export class AgentWidget {
   /** Render a list of blocks. */
   private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number, theme: Theme): string[] {
     return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex, theme));
+  }
+
+  /** Build the overflow line showing hidden agent count. */
+  private buildOverflowLine(hiddenCount: number, theme: Theme): string {
+    return `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
   }
 
   /** Clear widget and status bar. */
