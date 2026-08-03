@@ -727,7 +727,6 @@ export class AgentWidget {
   private renderNonNavigationMode(
     blocks: RenderBlock[],
     totalAgents: number,
-    queuedCount: number,
     theme: Theme,
     truncate: (line: string) => string,
     maxBody: number,
@@ -752,11 +751,10 @@ export class AgentWidget {
       }
     }
     const lines = this.renderBlocks(visible, -1, theme);
-    // Overflow line: "+N more" where N = hidden agents. In non-nav mode the
-    // queued roster is a single aggregated block; count it as its agents.
-    const queuedVisible = queuedCount > 0 && visible.length === blocks.length;
-    const visibleAgents = visible.length + (queuedVisible ? queuedCount - 1 : 0);
-    const hiddenCount = totalAgents - visibleAgents;
+    // Overflow line: "+N more" where N = hidden agents. In this branch the
+    // queued aggregated block is always the last block and never visible
+    // (if it fit, everything fit), so every visible block is one agent.
+    const hiddenCount = totalAgents - visible.length;
     if (hiddenCount > 0) {
       lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
     }
@@ -809,7 +807,6 @@ export class AgentWidget {
         ...this.renderNonNavigationMode(
           blocks,
           finished.length + running.length + queued.length,
-          queued.length,
           theme,
           truncate,
           maxBody,
