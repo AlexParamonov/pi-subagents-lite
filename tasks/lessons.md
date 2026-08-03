@@ -15,6 +15,8 @@
 - Replace `setTimeout` sleeps with awaiting the chained completion promise (`record.execution.promise`) — it resolves after `.finally`, so queue drain and side effects are guaranteed observed. Faster, no flake on slow CI.
 - afterEach cleanup must remove the whole temp base dir, not one sibling — partial cleanup leaks on repeated runs.
 - When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh. Manual "all works" → record and proceed, don't insist on the automated loop.
+- vitest mocks are strict: extending a vi.mock factory (e.g. adding an export) must keep every symbol the production module imports, or the whole file suite breaks with 'No X export on the mock'. Also guard config default merges with a loadConfig-level test — batch edits of literal default objects can silently drop adjacent lines (widgetMaxLines).
+- `parseInt` accepts trailing garbage: validateNumeric("12x") === 12. Tests asserting rejection must use fully non-numeric input ("abc"), not suffixed numbers.
 
 ### Delegation
 - Delegate immediately without pre-reading files — the agent explores itself. For simple tasks, propose 2-3 name/design alternatives upfront.

@@ -315,3 +315,108 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
+
+describe("showSpawnOptionsMenu — watchdog timeouts", () => {
+  beforeEach(() => {
+    mockModules.mockConfig.agent = { default: null, forceBackground: false };
+    mockModules.mockSessionOverrides.default = null;
+    mockModules.mockSessionShowCost = undefined;
+    vi.clearAllMocks();
+    settingsListCalls = [];
+    inputInstances = [];
+  });
+
+  it("shows 'Tool timeout · 45' and 'Idle timeout · 45' right after grace turns", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const items = settingsListCalls[0].items;
+
+    const tt = items.find((i: any) => i.id === "toolTimeout");
+    expect(tt.currentValue).toBe("45");
+    expect(typeof tt.submenu).toBe("function");
+
+    const itm = items.find((i: any) => i.id === "idleTimeout");
+    expect(itm.currentValue).toBe("45");
+    expect(typeof itm.submenu).toBe("function");
+
+    const gtIdx = items.findIndex((i: any) => i.id === "graceTurns");
+    expect(items[gtIdx + 1].id).toBe("toolTimeout");
+    expect(items[gtIdx + 2].id).toBe("idleTimeout");
+  });
+
+  it("shows configured timeout values", async () => {
+    mockModules.mockConfig.agent.toolTimeoutMinutes = 10;
+    mockModules.mockConfig.agent.idleTimeoutMinutes = 20;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const items = settingsListCalls[0].items;
+    expect(items.find((i: any) => i.id === "toolTimeout").currentValue).toBe("10");
+    expect(items.find((i: any) => i.id === "idleTimeout").currentValue).toBe("20");
+  });
+
+  it("tool timeout submenu pre-fills the current value and accepts 0", async () => {
+    mockModules.mockConfig.agent.toolTimeoutMinutes = 5;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const tt = settingsListCalls[0].items.find((i: any) => i.id === "toolTimeout");
+    const mockDone = vi.fn();
+    tt.submenu("5", mockDone);
+    expect(inputInstances[0].value).toBe("5");
+
+    inputInstances[0].onSubmit!("0");
+    expect(mockModules.mockConfig.agent.toolTimeoutMinutes).toBe(0);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(mockDone).toHaveBeenCalledWith("0");
+  });
+
+  it("tool timeout submenu rejects negative and non-numeric input", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const tt = settingsListCalls[0].items.find((i: any) => i.id === "toolTimeout");
+    const mockDone = vi.fn();
+    tt.submenu("45", mockDone);
+
+    inputInstances[0].onSubmit!("-1");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+
+    inputInstances[0].onSubmit!("abc");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+
+  it("idle timeout submenu pre-fills the current value and accepts 0", async () => {
+    mockModules.mockConfig.agent.idleTimeoutMinutes = 5;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const itm = settingsListCalls[0].items.find((i: any) => i.id === "idleTimeout");
+    const mockDone = vi.fn();
+    itm.submenu("5", mockDone);
+    expect(inputInstances[0].value).toBe("5");
+
+    inputInstances[0].onSubmit!("0");
+    expect(mockModules.mockConfig.agent.idleTimeoutMinutes).toBe(0);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(mockDone).toHaveBeenCalledWith("0");
+  });
+
+  it("idle timeout submenu rejects negative and non-numeric input", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const itm = settingsListCalls[0].items.find((i: any) => i.id === "idleTimeout");
+    const mockDone = vi.fn();
+    itm.submenu("45", mockDone);
+
+    inputInstances[0].onSubmit!("-1");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+
+    inputInstances[0].onSubmit!("abc");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mockDone).not.toHaveBeenCalled();
+  });
+});

@@ -143,6 +143,7 @@ vi.mock("../src/prompt/context.js", () => ({
 vi.mock("../src/config/config-io.js", () => ({
   saveConfigAtomic: vi.fn(),
   DEFAULT_GRACE_TURNS: 6,
+  DEFAULT_WATCHDOG_TIMEOUT_MINUTES: 45,
   CUSTOM_PROMPT_PATH: "/home/test/.pi/agent/subagents-lite-prompt.md",
   DEFAULT_CONFIG: {
     agent: { default: null, forceBackground: false },
@@ -166,6 +167,8 @@ vi.mock("../src/shell.js", () => {
         forceBackground: a.forceBackground === true,
         showCost: mockModules.mockSessionShowCost ?? a.showCost === true,
         graceTurns: a.graceTurns ?? 6,
+        toolTimeoutMinutes: a.toolTimeoutMinutes ?? 45,
+        idleTimeoutMinutes: a.idleTimeoutMinutes ?? 45,
         widgetMaxLines,
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
@@ -280,6 +283,12 @@ vi.mock("../src/shell.js", () => {
         },
         setGraceTurns(n: number) {
           mockModules.mockConfig.agent.graceTurns = n;
+        },
+        setToolTimeoutMinutes(n: number) {
+          mockModules.mockConfig.agent.toolTimeoutMinutes = n;
+        },
+        setIdleTimeoutMinutes(n: number) {
+          mockModules.mockConfig.agent.idleTimeoutMinutes = n;
         },
         setSystemPromptMode(mode: string) {
           mockModules.mockConfig.agent.systemPromptMode = mode;
