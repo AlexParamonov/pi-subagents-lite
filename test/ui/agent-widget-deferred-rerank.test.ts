@@ -29,10 +29,10 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
 }));
 
-function makeMockManager(agents: any[]): AgentManager {
+function makeMockManager(getAgents: () => any[]): AgentManager {
   return {
     // Mirror the real manager: newest first (sorted by startedAt desc).
-    listAgents: () => [...agents].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt),
+    listAgents: () => [...getAgents()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt),
     getAgent: () => undefined,
     setConcurrency: () => {},
     getTotalAgentCost: () => 0,
@@ -143,11 +143,9 @@ describe("deferred re-rank freeze window", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
-    manager = makeMockManager([]);
-    widget = new AgentWidget(manager, () => undefined);
     agents = [makeFinishedAgent("f0"), makeRunningAgent("r1"), makeQueuedAgent("q2")];
-    // Mirror the real manager: newest first (sorted by startedAt desc).
-    (manager as any).listAgents = () => [...agents].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
+    manager = makeMockManager(() => agents);
+    widget = new AgentWidget(manager, () => undefined);
   });
 
   afterEach(() => {
@@ -266,7 +264,6 @@ describe("deferred re-rank freeze window", () => {
 
   it("moves the highlight to the nearest remaining agent when the highlighted agent is evicted", () => {
     agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => [...agents].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
 
     widget.navActivate();
     for (let i = 0; i < 4; i++) widget.navDown(); // f4 at index 4, t=0
@@ -292,7 +289,7 @@ describe("deferred re-rank freeze window", () => {
   });
 
   it("omits the readout when the roster is empty during nav", () => {
-    (manager as any).listAgents = () => [];
+    agents = [];
     widget.navActivate();
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines).toEqual([]);
