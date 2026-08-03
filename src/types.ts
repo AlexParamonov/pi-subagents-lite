@@ -15,6 +15,8 @@ export type ThinkingLevel = ModelThinkingLevel;
 export interface ToolActivity {
   type: "start" | "end";
   toolName: string;
+  /** SDK tool call id; absent on synthetic events (e.g. extension-error end). */
+  toolCallId?: string;
 }
 
 /**
@@ -101,8 +103,17 @@ export interface CompactionInfo {
 /** Possible agent lifecycle statuses. */
 export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
 
-/** Who initiated an agent stop: "user" via UI menu, or "agent" via StopAgent tool. */
-export type StopInitiator = "user" | "agent";
+/** Who initiated an agent stop: "user" via UI menu, "agent" via StopAgent tool, or "watchdog" (stuck-agent detection). */
+export type StopInitiator = "user" | "agent" | "watchdog";
+
+/** Structured reason for a watchdog stop: which check fired, and the offending tool for tool kills. */
+export interface WatchdogStopDetail {
+  kind: "tool" | "idle";
+  /** Tool that exceeded the tool timeout (tool kills only). */
+  toolName?: string;
+  /** Elapsed duration at kill time (ms). */
+  elapsedMs: number;
+}
 
 /**
  * Lifecycle state: when the agent started, completed, and its current status.
@@ -113,6 +124,8 @@ export interface AgentLifecycle {
   startedAt: number;
   completedAt?: number;
   stoppedBy?: StopInitiator;
+  /** Reason detail for watchdog stops (tool name + elapsed). Absent for user/agent stops. */
+  stopDetail?: WatchdogStopDetail;
   /**
    * Whether the result has been read by the LLM (foreground return or background nudge).
    * cleanup() preserves terminal records until this is set, so a completed background

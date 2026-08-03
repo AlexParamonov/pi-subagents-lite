@@ -223,10 +223,10 @@ export function subscribeToSessionEvents(
   }
   return session.subscribe((event: AgentSessionEvent) => {
     if (event.type === "tool_execution_start") {
-      options.onToolActivity?.({ type: "start", toolName: event.toolName });
+      options.onToolActivity?.({ type: "start", toolName: event.toolName, toolCallId: event.toolCallId });
     }
     if (event.type === "tool_execution_end") {
-      options.onToolActivity?.({ type: "end", toolName: event.toolName });
+      options.onToolActivity?.({ type: "end", toolName: event.toolName, toolCallId: event.toolCallId });
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
       const msg = event.message as unknown as Record<string, unknown>;
