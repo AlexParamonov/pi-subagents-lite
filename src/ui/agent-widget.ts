@@ -258,16 +258,20 @@ export class AgentWidget {
 
   // ---- Navigation state machine ----
 
+  /** All visible agents in live display order: finished → running → queued. */
+  private liveRoster(): AgentRecord[] {
+    const { finished, running, queued } = this.categorizeAgents();
+    return [...finished, ...running, ...queued];
+  }
+
   /**
-   * Resolve the current nav roster (ordered live records) from the manager.
+   * Resolve the current nav roster from a live snapshot (ordered records).
    * Within the freeze window the order is kept: evicted agents drop, new
    * agents append at the end in live relative order. When dormant, the
    * roster is rebuilt in live display order on every call, so a long pause
    * stays current.
    */
-  private resolveNavRoster(now: number): AgentRecord[] {
-    const { finished, running, queued } = this.categorizeAgents();
-    const live = [...finished, ...running, ...queued];
+  private resolveNavRoster(now: number, live: AgentRecord[]): AgentRecord[] {
     const liveById = new Map(live.map((a) => [a.id, a]));
 
     if (now - this.navLastMove > NAV_FREEZE_MS) {
@@ -323,7 +327,7 @@ export class AgentWidget {
     if (this.navActive) return;
     this.navActive = true;
     const now = Date.now();
-    const roster = this.resolveNavRoster(now);
+    const roster = this.resolveNavRoster(now, this.liveRoster());
     this.lastHighlightIndex = 0;
     this.scrollAnchor = 0;
     this.highlightId = roster.length > 0 ? roster[0].id : null;
@@ -335,7 +339,7 @@ export class AgentWidget {
   navDown(): void {
     if (!this.navActive) return;
     const now = Date.now();
-    const roster = this.resolveNavRoster(now);
+    const roster = this.resolveNavRoster(now, this.liveRoster());
     if (roster.length === 0) {
       this.navDeactivate();
       return;
@@ -362,7 +366,7 @@ export class AgentWidget {
   navUp(): void {
     if (!this.navActive) return;
     const now = Date.now();
-    const roster = this.resolveNavRoster(now);
+    const roster = this.resolveNavRoster(now, this.liveRoster());
     if (roster.length === 0) {
       this.navDeactivate();
       return;
@@ -466,7 +470,7 @@ export class AgentWidget {
   }
 
   navSelect(): AgentRecord | null {
-    const roster = this.resolveNavRoster(Date.now());
+    const roster = this.resolveNavRoster(Date.now(), this.liveRoster());
     const index = this.resolveHighlight(roster);
     return roster[index] ?? null;
   }
@@ -496,7 +500,7 @@ export class AgentWidget {
   /** Current highlight position (0 = main). Derived from highlightId against the current roster. */
   highlightedIndex(): number {
     if (!this.navActive) return 0;
-    const roster = this.resolveNavRoster(Date.now());
+    const roster = this.resolveNavRoster(Date.now(), this.liveRoster());
     return this.resolveHighlight(roster);
   }
 
@@ -782,12 +786,9 @@ export class AgentWidget {
 
     // Render visible blocks in roster order with the highlight. Blocks are
     // looked up by id because the frozen order can differ from the live
-    // category order the blocks were built in.
-    const visibleBlocks: RenderBlock[] = [];
-    for (let i = start; i <= end; i++) {
-      const block = blockById.get(roster[i].id);
-      if (block) visibleBlocks.push(block);
-    }
+    // category order the blocks were built in. The roster comes from the
+    // same snapshot as the blocks, so every id resolves.
+    const visibleBlocks = roster.slice(start, end + 1).map((a) => blockById.get(a.id)!);
     const visIndex = highlightIndex - start;
     const lines = this.renderBlocks(visibleBlocks, visIndex, theme);
 
@@ -870,11 +871,13 @@ export class AgentWidget {
 
     // Resolve nav state first (every render tick): the roster — possibly in
     // frozen order — and the identity-based highlight. Eviction adoption
-    // happens here, so a stale highlight can never reach the renderer.
+    // happens here, so a stale highlight can never reach the renderer. The
+    // roster is derived from this render's snapshot so blocks and roster
+    // always agree.
     let navRoster: AgentRecord[] | null = null;
     let navIndex = 0;
     if (this.navActive) {
-      navRoster = this.resolveNavRoster(Date.now());
+      navRoster = this.resolveNavRoster(Date.now(), [...finished, ...running, ...queued]);
       navIndex = this.resolveHighlight(navRoster);
     }
 
