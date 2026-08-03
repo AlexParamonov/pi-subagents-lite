@@ -158,6 +158,9 @@ export class AgentWidget {
   /** Current highlight position in the roster (0 = main). */
   private _highlightedIndex = 0;
 
+  /** Scroll anchor: index of the first visible block in the window. */
+  private scrollAnchor = 0;
+
   /** Viewer overlay open — prevents deactivation while ResultViewer is displayed. */
   private viewerOpen = false;
 
@@ -243,13 +246,22 @@ export class AgentWidget {
 
   // ---- Navigation state machine ----
 
-  /** Clamp the navigation highlight to valid roster bounds. */
+  /** Clamp the navigation highlight and scroll anchor to valid roster bounds. */
   private clampHighlight(): void {
     const roster = this.buildRoster();
     if (roster.length === 0) {
       this._highlightedIndex = 0;
-    } else if (this._highlightedIndex >= roster.length) {
-      this._highlightedIndex = roster.length - 1;
+      this.scrollAnchor = 0;
+    } else {
+      if (this._highlightedIndex >= roster.length) {
+        this._highlightedIndex = roster.length - 1;
+      }
+      if (this.scrollAnchor > this._highlightedIndex) {
+        this.scrollAnchor = this._highlightedIndex;
+      }
+      if (this.scrollAnchor < 0) {
+        this.scrollAnchor = 0;
+      }
     }
   }
 
@@ -259,15 +271,16 @@ export class AgentWidget {
     return [...finished, ...running, ...queued];
   }
 
-  /** Enter navigation mode. Highlights the first agent (index 1) if agents exist, else main (index 0). */
+  /** Enter navigation mode. Highlights the first agent (index 0) if agents exist, else main (index 0). */
   navActivate(): void {
     if (this.navActive) return;
     this.navActive = true;
     this._highlightedIndex = 0;
+    this.scrollAnchor = 0;
     this.update();
   }
 
-  /** Move highlight down one position. Wraps from last agent to main. */
+  /** Move highlight down one position with scroll logic. */
   navDown(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
@@ -276,10 +289,20 @@ export class AgentWidget {
       return;
     }
     this.clampHighlight();
-    this._highlightedIndex = (this._highlightedIndex + 1) % roster.length;
+    const len = roster.length;
+    const { end } = this.scrollWindow(this._highlightedIndex);
+    if (this._highlightedIndex < end) {
+      this._highlightedIndex++;
+    } else if (end < len - 1) {
+      this._highlightedIndex++;
+      this.scrollAnchor++;
+    } else {
+      this._highlightedIndex = 0;
+      this.scrollAnchor = 0;
+    }
     this.update();
   }
-  /** Move highlight up one position. Wraps from main to last agent. */
+  /** Move highlight up one position with scroll logic. */
   navUp(): void {
     if (!this.navActive) return;
     const roster = this.buildRoster();
@@ -288,8 +311,120 @@ export class AgentWidget {
       return;
     }
     this.clampHighlight();
-    this._highlightedIndex = (this._highlightedIndex - 1 + roster.length) % roster.length;
+    const len = roster.length;
+    const { start } = this.scrollWindow(this._highlightedIndex);
+    if (this._highlightedIndex > start) {
+      this._highlightedIndex--;
+    } else if (start > 0) {
+      this._highlightedIndex--;
+      this.scrollAnchor--;
+    } else {
+      this._highlightedIndex = len - 1;
+      this.scrollAnchor = this.bottomScrollStart(len);
+    }
     this.update();
+  }
+
+  /** Compute the visible window [start, end] for the given highlight and budget. */
+  private scrollWindowWithBudget(h: number, budget: number): { start: number; end: number } {
+    const roster = this.buildRoster();
+    if (roster.length === 0) return { start: 0, end: -1 };
+    const len = roster.length;
+
+    // start = min(max(s, 0), h)
+    let start = Math.min(Math.max(this.scrollAnchor, 0), h);
+
+    // Greedy end from start
+    let end = start - 1;
+    for (let i = start; i < len; i++) {
+      const blockHeight = this.getBlockHeight(roster[i]);
+      if (budget >= blockHeight) {
+        budget -= blockHeight;
+        end = i;
+      } else {
+        break;
+      }
+    }
+
+    // end = max(end, h) - ensure h is in the window
+    end = Math.max(end, h);
+
+    return { start, end };
+  }
+
+  /** Compute the visible window using the default budget. */
+  private scrollWindow(h: number): { start: number; end: number } {
+    const maxBody = this.getMaxBody();
+    return this.scrollWindowWithBudget(h, maxBody);
+  }
+
+  /** Compute the scroll anchor that shows the last block at the bottom. */
+  private bottomScrollStart(len: number): number {
+    const maxBody = this.getMaxBody();
+
+    // Binary search for the smallest start whose window reaches len-1
+    let lo = 0;
+    let hi = len - 1;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const windowEnd = this.computeWindowEnd(mid, len, maxBody);
+      if (windowEnd >= len - 1) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return lo;
+  }
+
+  /** Compute the end of a window starting at start, given the budget. */
+  private computeWindowEnd(start: number, len: number, maxBody: number): number {
+    const roster = this.buildRoster();
+    let budget = maxBody;
+    let end = start - 1;
+    for (let i = start; i < len; i++) {
+      const blockHeight = this.getBlockHeight(roster[i]);
+      if (budget >= blockHeight) {
+        budget -= blockHeight;
+        end = i;
+      } else {
+        break;
+      }
+    }
+    return end;
+  }
+
+  /** Get the height of a block (header + continuations) for an agent. */
+  private getBlockHeight(agent: AgentRecord): number {
+    // In compact mode, all blocks are 1 line (header only)
+    if (this.isCompact()) return 1;
+
+    // In full mode, count continuation lines
+    let continuations = 0;
+
+    if (agent.lifecycle.status === "running") {
+      // Running: activity line always present, worktree optional
+      continuations = 1; // activity line
+      if (agent.display.worktreeLabel || agent.display.outputFile) {
+        continuations++; // worktree line
+      }
+    } else if (agent.lifecycle.status === "queued") {
+      // Queued: no continuations (individual rows during nav)
+      continuations = 0;
+    } else {
+      // Finished: worktree optional
+      if (agent.display.worktreeLabel || agent.display.outputFile) {
+        continuations = 1; // worktree line
+      }
+    }
+
+    return 1 + continuations; // 1 for header + continuations
+  }
+
+  /** Get the max body lines (total lines minus heading). */
+  private getMaxBody(): number {
+    const maxBodyLines = this.isCompact() ? this.maxLinesCompact : this.maxLines;
+    return maxBodyLines - 1; // heading takes 1 line
   }
 
   navSelect(): AgentRecord | null {
@@ -298,11 +433,12 @@ export class AgentWidget {
     return roster[this._highlightedIndex] ?? null;
   }
 
-  /** Exit navigation mode, reset highlight. Triggers re-render. */
+  /** Exit navigation mode, reset highlight and scroll anchor. Triggers re-render. */
   navDeactivate(): void {
     if (!this.navActive) return;
     this.navActive = false;
     this._highlightedIndex = 0;
+    this.scrollAnchor = 0;
     this.update();
   }
 
@@ -611,41 +747,76 @@ export class AgentWidget {
     // All blocks in display order: finished → running → queued.
     const blocks: RenderBlock[] = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
 
-    // ---- Overflow logic (works with blocks, not lines) ----
+    // ---- Overflow logic (scroll model during nav, contiguous collapse otherwise) ----
 
     const maxBodyLines = this.isCompact() ? this.maxLinesCompact : this.maxLines;
     const maxBody = maxBodyLines - 1; // heading takes 1 line
-    const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
 
     // Heading with navigation hint
     const heading = this.buildHeading(theme, headingColor, headingIcon);
     const lines: string[] = [truncate(heading)];
 
     // Determine highlighted block index for rendering the '>' marker.
-    // highlightedIndex maps directly to block index.
     const highlightedBlockIndex = this.navActive ? this._highlightedIndex : -1;
 
-    if (totalBody <= maxBody) {
-      // Everything fits — render all blocks with correct connectors.
-      lines.push(...this.renderBlocks(blocks, highlightedBlockIndex, theme));
+    if (this.navActive) {
+      // Navigation mode: use scroll window
+      const roster = this.buildRoster();
+      const len = roster.length;
+      if (len === 0) return lines;
+
+      // Compute scroll window with budget that reserves 1 line for overflow indicator
+      // The budget is maxBody - 1 when there's overflow, else maxBody
+      // We compute the window with full budget first, then adjust if needed
+      const { start: start1, end: end1 } = this.scrollWindowWithBudget(this._highlightedIndex, maxBody);
+      const hasOverflow = start1 > 0 || end1 < len - 1;
+      const budget = hasOverflow ? maxBody - 1 : maxBody;
+      const { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget);
+
+      // Visible blocks are blocks[start..end]
+      const visibleBlocks = blocks.slice(start, end + 1);
+
+      // Find the highlighted block in visible blocks
+      const visIndex = this._highlightedIndex - start;
+
+      // Render visible blocks
+      lines.push(...this.renderBlocks(visibleBlocks, visIndex, theme));
+
+      // Overflow line: "+N more" where N = hidden agents
+      const hiddenCount = len - (end - start + 1);
+      if (hiddenCount > 0) {
+        const overflowLine = `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
+        lines.push(truncate(overflowLine));
+      }
     } else {
-      // Pin the highlighted block so it's always visible during navigation.
-      // blocks is already [...finishedBlocks, ...runningBlocks, ...queuedBlocks].
-      const pinnedBlock =
-        highlightedBlockIndex >= 0 && highlightedBlockIndex < blocks.length ? blocks[highlightedBlockIndex] : undefined;
-      const { visible, overflowLine } = this.applyOverflow(
-        runningBlocks,
-        queuedBlocks,
-        finishedBlocks,
-        maxBody,
-        theme,
-        pinnedBlock,
-      );
-      // The pinned block is the highlighted one; find it among the visible blocks
-      // (it won't appear if it failed to fit).
-      const visIndex = pinnedBlock ? visible.indexOf(pinnedBlock) : -1;
-      lines.push(...this.renderBlocks(visible, visIndex, theme));
-      if (overflowLine) lines.push(truncate(overflowLine));
+      // Non-navigation mode: contiguous top→bottom collapse
+      const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
+
+      if (totalBody <= maxBody) {
+        // Everything fits — render all blocks
+        lines.push(...this.renderBlocks(blocks, -1, theme));
+      } else {
+        // Collapse from bottom: reserve 1 line for overflow indicator
+        let budget = maxBody - 1;
+        const visible: RenderBlock[] = [];
+        for (const block of blocks) {
+          const height = 1 + block.continuations.length;
+          if (budget >= height) {
+            visible.push(block);
+            budget -= height;
+          } else {
+            break;
+          }
+        }
+        lines.push(...this.renderBlocks(visible, -1, theme));
+
+        // Overflow line: "+N more"
+        const hiddenCount = blocks.length - visible.length;
+        if (hiddenCount > 0) {
+          const overflowLine = `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
+          lines.push(truncate(overflowLine));
+        }
+      }
     }
 
     return lines;
@@ -775,6 +946,7 @@ export class AgentWidget {
     if (this.navActive) {
       this.navActive = false;
       this._highlightedIndex = 0;
+      this.scrollAnchor = 0;
     }
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
