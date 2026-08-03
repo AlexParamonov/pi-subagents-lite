@@ -104,6 +104,13 @@ function managerStub(): { m: AgentManager; concurrencies: unknown[]; retentions:
   return { m: m as unknown as AgentManager, concurrencies, retentions };
 }
 
+/** Parse setStatsVisibility payloads from recorded widget calls. */
+function statsVisibilityPayloads(calls: string[]): any[] {
+  return calls
+    .filter((c) => c.startsWith("setStatsVisibility:"))
+    .map((c) => JSON.parse(c.slice("setStatsVisibility:".length)));
+}
+
 /* ------------------------------------------------------------------ */
 /*  Reads & defaults                                                   */
 /* ------------------------------------------------------------------ */
@@ -222,7 +229,10 @@ describe("ConfigStore persisted mutations", () => {
     expect(saves).toHaveLength(1);
     expect(saves[0].agent.showCost).toBe(true);
     expect(calls).toContain("setShowCost:true");
-    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
+    const payloads = statsVisibilityPayloads(calls);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].showCost).toBe(true);
+    expect(payloads[0].showTools).toBe(false);
   });
 
   it("setWidgetMaxLines derives compact when unset and syncs the widget", () => {
@@ -454,7 +464,10 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(true);
     expect(calls).toContain("setShowCost:true");
-    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
+    const payloads = statsVisibilityPayloads(calls);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].showCost).toBe(true);
+    expect(payloads[0].showTools).toBe(false);
   });
 
   it("session clearShowCost syncs config value to widget", () => {
@@ -468,11 +481,17 @@ describe("ConfigStore session showCost override", () => {
     calls.length = 0;
     store.mutate.session.setShowCost(false);
     expect(calls).toContain("setShowCost:false");
-    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
+    const payloads = statsVisibilityPayloads(calls);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].showCost).toBe(false);
+    expect(payloads[0].showTools).toBe(false);
     calls.length = 0;
     store.mutate.session.clearShowCost();
     expect(calls).toContain("setShowCost:true");
-    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
+    const payloadsAfterClear = statsVisibilityPayloads(calls);
+    expect(payloadsAfterClear).toHaveLength(1);
+    expect(payloadsAfterClear[0].showCost).toBe(true);
+    expect(payloadsAfterClear[0].showTools).toBe(false);
   });
 
   it("reload clears session showCost override", () => {
@@ -861,7 +880,10 @@ describe("ConfigStore show* stats visibility", () => {
     store.mutate.agent.setShowTools(false);
     expect(store.agent.showTools).toBe(false);
     expect(saves).toHaveLength(1);
-    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
+    const payloads = statsVisibilityPayloads(calls);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].showTools).toBe(false);
+    expect(payloads[0].showCost).toBe(false);
   });
 
   it("reload syncs stats visibility to widget", () => {
@@ -874,7 +896,10 @@ describe("ConfigStore show* stats visibility", () => {
     store.setDeps({ widget: w });
     calls.length = 0;
     store.reload();
-    expect(calls.some((c) => c.startsWith("setStatsVisibility:"))).toBe(true);
+    const payloads = statsVisibilityPayloads(calls);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].showTools).toBe(false);
+    expect(payloads[0].showCost).toBe(false);
   });
 });
 

@@ -549,5 +549,12 @@ describe("worktree deletion mid-run", () => {
 
     expect(record!.lifecycle.status).toBe("error");
     expect(record!.error).toContain("ENOENT");
+
+    // Integration collateral: the real manager runs unref'd intervals and
+    // AgentOutputLog wrote /tmp/pi-agent-outputs/<id>.log. Clean both up so
+    // this test leaves nothing behind.
+    const logPath = record!.display.outputFile;
+    manager.dispose();
+    if (typeof logPath === "string") rmSync(logPath, { force: true });
   });
 });
