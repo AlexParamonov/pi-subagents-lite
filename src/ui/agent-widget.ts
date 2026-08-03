@@ -362,8 +362,9 @@ export class AgentWidget {
     // Moving past the window edge scrolls the anchor; past the list end wraps.
     const atEdge = delta === 1 ? h === end : h === start;
     const atListEnd = delta === 1 ? end === len - 1 : start === 0;
-    const next = atEdge && atListEnd ? (delta === 1 ? 0 : len - 1) : h + delta;
-    if (atEdge && atListEnd) {
+    const wrap = atEdge && atListEnd;
+    const next = wrap ? (delta === 1 ? 0 : len - 1) : h + delta;
+    if (wrap) {
       this.scrollAnchor = delta === 1 ? 0 : this.bottomScrollStart(roster);
     } else if (atEdge) {
       this.scrollAnchor += delta;
