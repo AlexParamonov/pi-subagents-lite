@@ -128,17 +128,6 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls[0].items[0].label).toContain("general-purpose");
   });
-
-  it("returns a component that renders with a title", async () => {
-    mockModules.mockManager.listAgents.mockReturnValue([makeRecord()]);
-    const ctx = createMockCtx();
-    await showRunningAgentsMenu(ctx);
-    // Running agents now uses a simple title wrapper instead of SettingsListWrapper
-    // because SettingsListWrapper doesn't work with delegating components.
-    // Verify the menu was opened and a SelectList was created.
-    expect(ctx.ui.custom).toHaveBeenCalled();
-    expect(selectListCalls.length).toBe(1);
-  });
 });
 
 describe("buildAgentActionsList — actions submenu", () => {
@@ -401,13 +390,22 @@ describe("showTextViewer — component behavior", () => {
     const record = makeRecord({ result: longText });
     const { component } = await getComponent(record, "result", longText);
 
-    // Render once to establish state, then scroll up
-    component.render(80);
+    // Initial render auto-scrolls to the bottom of the content
+    const initial = component.render(80).join("\n");
+    expect(initial).toContain("line 49");
+
+    // Up scrolls the visible window toward the top
     component.handleInput("\x1b[A"); // up
     component.handleInput("\x1b[A"); // up again
-    // Should not crash, scroll offset should be bounded
-    const lines = component.render(80);
-    expect(lines.length).toBeGreaterThan(0);
+    const scrolledUp = component.render(80).join("\n");
+    expect(scrolledUp).toContain("line 25");
+    expect(scrolledUp).not.toContain("line 49");
+
+    // Down scrolls back toward the bottom
+    component.handleInput("\x1b[B"); // down
+    const scrolledDown = component.render(80).join("\n");
+    expect(scrolledDown).toContain("line 48");
+    expect(scrolledDown).not.toContain("line 25");
   });
 
   it("jumps to top on g", async () => {
@@ -415,11 +413,15 @@ describe("showTextViewer — component behavior", () => {
     const record = makeRecord({ result: longText });
     const { component } = await getComponent(record, "result", longText);
 
-    component.render(80);
+    component.render(80); // auto-scrolls to bottom
     component.handleInput("G"); // jump to bottom
+    // Last content line stays visible after G
+    expect(component.render(80).join("\n")).toContain("line 49");
+
     component.handleInput("g"); // jump to top
-    // Should not crash
-    expect(() => component.render(80)).not.toThrow();
+    const text = component.render(80).join("\n");
+    expect(text).toContain("line 0");
+    expect(text).not.toContain("line 49");
   });
 
   it("handles single-line text gracefully", async () => {

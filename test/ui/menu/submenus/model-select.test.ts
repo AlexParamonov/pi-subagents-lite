@@ -58,11 +58,20 @@ vi.mock("@earendil-works/pi-tui", () => ({
   getKeybindings: vi.fn(() => ({ matches: () => false })),
 }));
 
+let searchableSelectInstances: Array<{ items: any[]; callbacks: any }> = [];
+
 vi.mock("../../../../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
-    constructor() {}
+    items: any[];
+    callbacks: any;
+    constructor(items: any[], _currentValue: any, callbacks: any, _theme: any) {
+      this.items = items;
+      this.callbacks = callbacks;
+      searchableSelectInstances.push(this as any);
+    }
+    // Distinct sentinel so tests can observe which component the delegator renders
     render() {
-      return [];
+      return ["MODEL-SELECTOR-ACTIVE"];
     }
     handleInput() {}
     invalidate() {}
@@ -82,6 +91,7 @@ import { createModelSelectSubmenu } from "../../../../src/ui/menu/submenus/model
 describe("createModelSelectSubmenu", () => {
   beforeEach(() => {
     selectListInstances = [];
+    searchableSelectInstances = [];
     vi.clearAllMocks();
   });
 
@@ -152,8 +162,12 @@ describe("createModelSelectSubmenu", () => {
     // onSelect not called yet (model selection step pending)
     expect(onSelect).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
-    // Component should still be renderable (delegates to model selector)
-    expect(() => component.render(80)).not.toThrow();
+    // The delegator now renders the searchable model selector, not the mode list
+    expect(component.render(80)).toEqual(["MODEL-SELECTOR-ACTIVE"]);
+    // Picking a model in the selector completes the flow with the chosen mode
+    searchableSelectInstances[0].callbacks.onSelect("openai/gpt-4o");
+    expect(onSelect).toHaveBeenCalledWith("session", "openai/gpt-4o");
+    expect(done).toHaveBeenCalledWith("openai/gpt-4o");
   });
 
   it("transitions to model selection when permanent is selected", () => {
@@ -169,7 +183,8 @@ describe("createModelSelectSubmenu", () => {
     selectListInstances[0].onSelect!({ value: "permanent" });
     expect(onSelect).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
-    expect(() => component.render(80)).not.toThrow();
+    // The delegator now renders the searchable model selector, not the mode list
+    expect(component.render(80)).toEqual(["MODEL-SELECTOR-ACTIVE"]);
   });
 
   it("calls done without onSelect on cancel from mode selection", () => {

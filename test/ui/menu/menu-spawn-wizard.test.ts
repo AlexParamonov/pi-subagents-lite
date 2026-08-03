@@ -58,9 +58,15 @@ let selectListInstances: Array<{
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
     items: any[];
+    onChange: (id: string, newValue: string) => void;
+    onCancel: () => void;
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any) {
       this.items = items;
-      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel });
+      this.onChange = onChange;
+      this.onCancel = onCancel;
+      // Push the instance (not a snapshot) so rebuild() reassignments of
+      // list.items stay observable through settingsListCalls.
+      settingsListCalls.push(this as any);
     }
   },
   Input: class MockInput {
@@ -387,6 +393,9 @@ describe("showSpawnAgentMenu — thinking level", () => {
         };
       return undefined;
     });
+    // Clamp to a distinct value so the rebuilt options list proves the
+    // clamp result was applied (identity would hide a discarded result).
+    mockClampThinkingLevel = (_m: any, level: string) => (level === "high" ? "low" : level);
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const modelItem = settingsListCalls[1].items.find((i: any) => i.id === "model");
@@ -401,6 +410,9 @@ describe("showSpawnAgentMenu — thinking level", () => {
     const [model, level] = vi.mocked(clampThinkingLevel).mock.calls[0];
     expect(model.reasoning).toBe(false);
     expect(level).toBe("high");
+    // The clamp outcome is observable in the rebuilt options list
+    const thinkingItem = settingsListCalls[1].items.find((i: any) => i.id === "thinkingLevel");
+    expect(thinkingItem.currentValue).toBe("low");
   });
 });
 
