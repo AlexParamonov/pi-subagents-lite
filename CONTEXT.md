@@ -86,6 +86,14 @@ Ordered list of navigable entries during navigation mode: `main` (virtual) + age
 in widget render order (finished → running → queued, newest-first within each).
 _Avoid_: Agent list, nav list
 
+**Freeze window**:
+The 2-second period after the last `↑`/`↓` nav move during which the roster keeps its order — a completing agent flips to its live ✓ state in place instead of re-sorting. Membership and row content are never frozen; only ordering is.
+_Avoid_: Debounce period, nav lock
+
+**Re-rank**:
+Rebuilding the roster into live display order (finished → running → queued) once the freeze window elapses; repeats on every render tick while the user stays idle. The highlight follows its agent by id across a re-rank.
+_Avoid_: Re-sort, refresh
+
 **ResultViewer overlay**:
 Read-only markdown viewer showing an agent's conversation snapshot via `buildSnapshotMarkdown`.
 Opened on `Enter` in navigation mode. Overlay owns input while open.
