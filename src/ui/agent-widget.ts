@@ -322,6 +322,19 @@ export class AgentWidget {
     return index;
   }
 
+  /**
+   * Resolve the current nav state: the roster (possibly frozen) and the
+   * identity-based highlight position, from one live snapshot. Returns the
+   * timestamp that drove the freeze check so callers seed navLastMove with
+   * the same value. Render uses resolveNavRoster directly to reuse the
+   * snapshot it already categorized for the blocks.
+   */
+  private resolveNavState(): { roster: AgentRecord[]; index: number; now: number } {
+    const now = Date.now();
+    const roster = this.resolveNavRoster(now, this.liveRoster());
+    return { roster, index: this.resolveHighlight(roster), now };
+  }
+
   /** Enter navigation mode. Highlights the first agent if agents exist, else main (index 0). */
   navActivate(): void {
     if (this.navActive) return;
@@ -338,13 +351,11 @@ export class AgentWidget {
   /** Move the highlight one step (delta −1 = up, +1 = down) with scroll logic; wraps at both ends. */
   private moveNav(delta: 1 | -1): void {
     if (!this.navActive) return;
-    const now = Date.now();
-    const roster = this.resolveNavRoster(now, this.liveRoster());
+    const { roster, index: h, now } = this.resolveNavState();
     if (roster.length === 0) {
       this.navDeactivate();
       return;
     }
-    const h = this.resolveHighlight(roster);
     const len = roster.length;
     const { start, end } = this.navWindow(h, roster);
 
@@ -453,8 +464,7 @@ export class AgentWidget {
   }
 
   navSelect(): AgentRecord | null {
-    const roster = this.resolveNavRoster(Date.now(), this.liveRoster());
-    const index = this.resolveHighlight(roster);
+    const { roster, index } = this.resolveNavState();
     return roster[index] ?? null;
   }
 
@@ -483,8 +493,7 @@ export class AgentWidget {
   /** Current highlight position (0 = main). Derived from highlightId against the current roster. */
   highlightedIndex(): number {
     if (!this.navActive) return 0;
-    const roster = this.resolveNavRoster(Date.now(), this.liveRoster());
-    return this.resolveHighlight(roster);
+    return this.resolveNavState().index;
   }
 
   /** Whether the widget has any visible agents (after turn eviction filtering). */
