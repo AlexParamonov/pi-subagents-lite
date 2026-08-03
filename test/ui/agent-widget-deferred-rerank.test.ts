@@ -109,9 +109,11 @@ type NavState = {
   visible: string[];
   arrow: string | null;
   readout: string | null;
+  /** Whether any rendered row shows the completed ✓ style. */
+  hasCheck: boolean;
 };
 
-/** Render the widget and extract visible agent ids, arrow target, N/M readout. */
+/** Render the widget and extract visible agent ids, arrow target, N/M readout, and the ✓ row style. */
 function renderNavState(widget: AgentWidget): NavState {
   const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
   const body = lines.slice(1); // heading takes line 0
@@ -124,7 +126,7 @@ function renderNavState(widget: AgentWidget): NavState {
     visible.push(m[1]);
   }
   const readout = lines[0].match(/\[dim:(\d+\/\d+)\]/)?.[1] ?? null;
-  return { visible, arrow, readout };
+  return { visible, arrow, readout, hasCheck: lines.some((l) => l.includes("✓")) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -163,8 +165,7 @@ describe("deferred re-rank freeze window", () => {
     expect(state.visible).toEqual(["f0", "r1", "q2"]);
     expect(state.arrow).toBe("r1");
     expect(state.readout).toBe("2/3");
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines.some((l: string) => l.includes("✓"))).toBe(true);
+    expect(state.hasCheck).toBe(true); // the completed row flips to ✓ in place
 
     // Exact window boundary: at exactly 2000ms the order is still frozen.
     vi.setSystemTime(new Date(Date.now() + 1000));
