@@ -255,6 +255,9 @@ describe("showModelSettingsMenu — clear all overrides", () => {
     item.submenu("", done);
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    // Per-type override removed, non-model keys (default) preserved
+    expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
+    expect(mockModules.mockConfig.agent.default).toBe("anthropic/claude-sonnet-4-20250514");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("All model overrides cleared"), "info");
   });
 });

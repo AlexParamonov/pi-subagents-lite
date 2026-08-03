@@ -123,7 +123,9 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     await showDebugMenu(ctx);
     // Simulate selecting "agent-types"
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("No agent types available"), "info");
+    // Empty branch opens no further UI: only the debug menu's custom call
+    expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
   });
 
   it("lists each agent type with its description", async () => {
