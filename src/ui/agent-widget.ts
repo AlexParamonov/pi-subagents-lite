@@ -325,6 +325,25 @@ export class AgentWidget {
     this.update();
   }
 
+  /**
+   * Compute the greedy window end starting from `start`, given the roster and budget.
+   * Returns the highest index (inclusive) that fits within the budget.
+   */
+  private computeWindowEnd(start: number, roster: AgentRecord[], budget: number): number {
+    let end = start - 1;
+    for (let i = start; i < roster.length; i++) {
+      const blockHeight = this.getBlockHeight(roster[i]);
+      if (budget >= blockHeight) {
+        budget -= blockHeight;
+        end = i;
+      } else {
+        break;
+      }
+    }
+    return end;
+  }
+
+  /** Compute the visible window [start, end] for the given highlight and budget. */
   /** Compute the visible window [start, end] for the given highlight and budget. */
   private scrollWindowWithBudget(h: number, budget: number, roster?: AgentRecord[]): { start: number; end: number } {
     const r = roster ?? this.buildRoster();
@@ -334,19 +353,8 @@ export class AgentWidget {
     // start = min(max(s, 0), h)
     let start = Math.min(Math.max(this.scrollAnchor, 0), h);
 
-    // Greedy end from start
-    let end = start - 1;
-    for (let i = start; i < len; i++) {
-      const blockHeight = this.getBlockHeight(r[i]);
-      if (budget >= blockHeight) {
-        budget -= blockHeight;
-        end = i;
-      } else {
-        break;
-      }
-    }
-
-    // end = max(end, h) - ensure h is in the window
+    // Greedy end from start, ensuring h is included
+    let end = this.computeWindowEnd(start, r, budget);
     end = Math.max(end, h);
 
     return { start, end };
@@ -364,28 +372,14 @@ export class AgentWidget {
     const roster = this.buildRoster();
 
     // Linear scan for the smallest start whose window reaches len-1.
-    // Roster sizes are small (typically < 20), so linear is simpler and fast enough.
     for (let start = 0; start < len; start++) {
-      const windowEnd = this.computeWindowEndFromRoster(start, roster, maxBody);
-      if (windowEnd >= len - 1) return start;
+      const end = this.computeWindowEnd(start, roster, maxBody);
+      if (end >= len - 1) return start;
     }
     return 0;
   }
 
-  /** Compute the end of a window starting at start, given the roster and budget. */
-  private computeWindowEndFromRoster(start: number, roster: AgentRecord[], budget: number): number {
-    let end = start - 1;
-    for (let i = start; i < roster.length; i++) {
-      const blockHeight = this.getBlockHeight(roster[i]);
-      if (budget >= blockHeight) {
-        budget -= blockHeight;
-        end = i;
-      } else {
-        break;
-      }
-    }
-    return end;
-  }
+  /** @deprecated Use computeWindowEnd instead. */
 
   /** Get the height of a block (header + continuations) for an agent. */
   private getBlockHeight(agent: AgentRecord): number {
@@ -751,13 +745,14 @@ export class AgentWidget {
       const len = roster.length;
       if (len === 0) return lines;
 
-      // Compute scroll window with budget that reserves 1 line for overflow indicator
-      // The budget is maxBody - 1 when there's overflow, else maxBody
-      // We compute the window with full budget first, then adjust if needed
-      const { start: start1, end: end1 } = this.scrollWindowWithBudget(this._highlightedIndex, maxBody, roster);
-      const hasOverflow = start1 > 0 || end1 < len - 1;
-      const budget = hasOverflow ? maxBody - 1 : maxBody;
-      const { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster);
+      // Compute scroll window. If overflow exists, reserve 1 line for overflow indicator.
+      let budget = maxBody;
+      let { start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster);
+      const hasOverflow = start > 0 || end < len - 1;
+      if (hasOverflow) {
+        budget = maxBody - 1;
+        ({ start, end } = this.scrollWindowWithBudget(this._highlightedIndex, budget, roster));
+      }
 
       // Visible blocks are blocks[start..end]
       const visibleBlocks = blocks.slice(start, end + 1);
