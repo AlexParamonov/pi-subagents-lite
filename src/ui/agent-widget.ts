@@ -474,13 +474,18 @@ export class AgentWidget {
   /** Exit navigation mode, reset highlight and scroll anchor. Triggers re-render. */
   navDeactivate(): void {
     if (!this.navActive) return;
+    this.resetNavState();
+    this.update();
+  }
+
+  /** Reset all navigation state: highlight, roster, freeze timer, scroll anchor. */
+  private resetNavState(): void {
     this.navActive = false;
     this.highlightId = null;
     this.navRoster = [];
     this.navLastMove = 0;
     this._highlightedIndex = 0;
     this.scrollAnchor = 0;
-    this.update();
   }
 
   /** Query whether navigation mode is active. */
@@ -958,14 +963,7 @@ export class AgentWidget {
   /** Clear widget and status bar. */
   private clearWidget() {
     // Deactivate navigation when agents clear
-    if (this.navActive) {
-      this.navActive = false;
-      this.highlightId = null;
-      this.navRoster = [];
-      this.navLastMove = 0;
-      this._highlightedIndex = 0;
-      this.scrollAnchor = 0;
-    }
+    if (this.navActive) this.resetNavState();
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
