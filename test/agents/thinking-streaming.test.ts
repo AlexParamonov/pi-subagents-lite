@@ -56,6 +56,36 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       cleanup();
     });
+    it("does not stream thinking deltas when the buffer size is omitted (default)", () => {
+      const dir = fixture.getDir();
+      const path = createOutputFilePath(testAgentId, dir);
+      writeInitialEntry(path, "test");
+
+      const session = setupSession([
+        { role: "user", content: "test" },
+        { role: "assistant", content: [{ type: "thinking", thinking: "Let me think..." }] },
+      ]);
+
+      // bufferSize omitted — the default (0) must disable live thinking streaming
+      const cleanup = streamToOutputFile(session, path, undefined);
+
+      // Fire thinking_delta event
+      session._fireThinkingDelta("Let me think...");
+
+      // Check that nothing was written yet
+      const contentBefore = readFileSync(path, "utf-8");
+      expect(contentBefore).not.toContain("Let me think...");
+
+      // Fire turn_end to flush everything
+      session._fireTurnEnd();
+
+      // Now thinking should appear (flushed at turn_end)
+      const contentAfter = readFileSync(path, "utf-8");
+      expect(contentAfter).toContain("[THINKING]");
+      expect(contentAfter).toContain("Let me think...");
+
+      cleanup();
+    });
   });
 
   describe("when outputThinkingBufferSize > 0", () => {

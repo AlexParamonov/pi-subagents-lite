@@ -401,10 +401,44 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  subscribeToSessionEvents — cost extraction                         */
+/*  runAgent — codex stream error retry wiring                         */
 /* ------------------------------------------------------------------ */
 
-describe("subscribeToSessionEvents — cost extraction", () => {
+describe("runAgent — codex stream error retry wiring", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("wraps the session's _isRetryableError classifier", async () => {
+    const session: any = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    const originalClassifier = vi.fn().mockReturnValue(false);
+    session._isRetryableError = originalClassifier;
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // The wiring replaced the classifier with a wrapper that delegates to it.
+    expect(session._isRetryableError).not.toBe(originalClassifier);
+    // Transient Codex stream errors are now classified as retryable...
+    expect(
+      session._isRetryableError({ stopReason: "error", errorMessage: "stream disconnected before completion" }),
+    ).toBe(true);
+    expect(originalClassifier).toHaveBeenCalledWith({
+      stopReason: "error",
+      errorMessage: "stream disconnected before completion",
+    });
+    // ...while other errors still fall through to the original classifier.
+    expect(session._isRetryableError({ stopReason: "error", errorMessage: "rate limited" })).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  subscribeToSessionEvents — event forwarding                        */
+/* ------------------------------------------------------------------ */
+
+describe("subscribeToSessionEvents — event forwarding", () => {
   it("extracts u.cost?.total from assistant message_end events", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
@@ -442,6 +476,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
 
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     // Fire message_end with message.usage but no cost
     listeners[0]({
@@ -471,6 +506,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
 
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     listeners[0]({
       type: "message_end",
@@ -499,6 +535,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
 
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     listeners[0]({
       type: "message_end",
@@ -527,6 +564,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
 
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     // Fire user message_end (should be ignored)
     listeners[0]({
@@ -550,6 +588,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
 
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     // Fire non-message_end event
     listeners[0]({
@@ -568,6 +607,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
 
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     // Fire message_end without usage at all
     listeners[0]({
@@ -587,6 +627,7 @@ describe("subscribeToSessionEvents — cost extraction", () => {
 
     const unsub = subscribeToSessionEvents(session, { onToolActivity });
     const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
 
     listeners[0]({ type: "tool_execution_start", toolCallId: "call_1", toolName: "bash", args: {} });
     expect(onToolActivity).toHaveBeenCalledWith({ type: "start", toolName: "bash", toolCallId: "call_1" });
@@ -603,6 +644,29 @@ describe("subscribeToSessionEvents — cost extraction", () => {
     // The noop early-return must not touch the session at all
     expect(session.subscribe).not.toHaveBeenCalled();
     expect(typeof unsub).toBe("function");
+  });
+  it("forwards compaction_end events to onCompaction", () => {
+    const onCompaction = vi.fn();
+    const session = createMockSession();
+
+    const unsub = subscribeToSessionEvents(session, { onCompaction });
+
+    const listeners = session._getListeners();
+    expect(listeners).toHaveLength(1);
+
+    listeners[0]({
+      type: "compaction_end",
+      aborted: false,
+      reason: "threshold",
+      result: { tokensBefore: 150000 },
+    });
+    expect(onCompaction).toHaveBeenCalledWith({ reason: "threshold", tokensBefore: 150000 });
+
+    // Aborted compactions (and missing results) must not fire the callback.
+    listeners[0]({ type: "compaction_end", aborted: true, reason: "threshold", result: undefined });
+    expect(onCompaction).toHaveBeenCalledTimes(1);
+
+    unsub();
   });
 });
 
@@ -1494,6 +1558,32 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model: makeMockModel() });
 
     expect(session.agent.onPayload).toBeUndefined();
+  });
+  it("spawn-time maxTokens wins over agent config", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({
+      id: "llama-3.1-8b",
+      name: "Llama 3.1 8B",
+      provider: "vllm",
+      baseUrl: "http://localhost:8000/v1",
+      compat: { maxTokensField: "max_tokens" },
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model, maxTokens: 2048 });
+
+    const rawPayload = {
+      model: "llama-3.1-8b",
+      messages: [{ role: "user", content: "do something" }],
+      stream: true,
+    };
+    const finalPayload = await session.agent.onPayload(rawPayload, model);
+
+    // The spawn-time value (2048) wins over the agent config's 4096.
+    expect(finalPayload.max_tokens).toBe(2048);
   });
 });
 

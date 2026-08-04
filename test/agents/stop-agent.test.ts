@@ -25,7 +25,7 @@ import { executeStopAgentTool } from "../../src/agents/tool-execution.js";
 
 describe("executeStopAgentTool", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("returns error when agent_id is missing", async () => {

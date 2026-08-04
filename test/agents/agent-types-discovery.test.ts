@@ -84,7 +84,7 @@ describe("discoverNewAgents — worktree-local agent types", () => {
     }
   });
 
-  it("worktree scan adds to session-wide registry, visible to subsequent spawns", async () => {
+  it("worktree-discovered types stay in the session-wide registry when a later discovery runs without the worktree", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
     const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
       [{ name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent", description: "WT agent" }) }],

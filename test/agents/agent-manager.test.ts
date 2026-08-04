@@ -65,7 +65,7 @@ function mockRunResult(overrides?: Partial<ReturnType<typeof mockRunResult>>) {
   };
 }
 
-import { AgentManager } from "../../src/agents/agent-manager.js";
+import { AgentManager, CLEANUP_INTERVAL_MS, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
 import type { ConcurrencyConfig } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {
@@ -81,6 +81,17 @@ describe("AgentManager", () => {
   afterEach(() => {
     manager?.dispose();
   });
+
+  /**
+   * Helper: capture the onAssistantUsage callback passed to the most recent
+   * runAgent call, so tests can drive usage reports through the real
+   * callback → accumulator → total path.
+   */
+  function getOnAssistantUsage() {
+    const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+    const callbacks = call[3]; // 4th arg is the callbacks object
+    return callbacks.onAssistantUsage;
+  }
 
   // ── Concurrency ──
 
@@ -421,36 +432,41 @@ describe("AgentManager", () => {
         description: "test task",
         modelKey: "test/model",
       });
-      manager.getRecord(id)!.stats.lifetimeUsage.cost = 0.05;
+      getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.05, cacheRead: 0 });
       await manager.getRecord(id)!.execution.promise;
 
       expect(manager.getTotalAgentCost()).toBe(0.05);
     });
 
     it("persists cost after agent is evicted from map", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const ctx = fakeCtx();
-      const pi = fakePi();
+        const ctx = fakeCtx();
+        const pi = fakePi();
 
-      const id = manager.spawn(pi, ctx, "general-purpose", "task", {
-        description: "test task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      record.stats.lifetimeUsage.cost = 0.03;
-      await record.execution.promise;
+        const id = manager.spawn(pi, ctx, "general-purpose", "task", {
+          description: "test task",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.03, cacheRead: 0 });
+        await record.execution.promise;
 
-      expect(manager.getTotalAgentCost()).toBe(0.03);
+        expect(manager.getTotalAgentCost()).toBe(0.03);
 
-      // Record is consumed (result read) — eligible for eviction when old.
-      record.lifecycle.resultConsumed = true;
-      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
-      (manager as any).cleanup();
+        // Record is consumed (result read) — eligible for eviction when old.
+        record.lifecycle.resultConsumed = true;
+        // Let the real 60s cleanup interval run until the record is 20 minutes old.
+        vi.advanceTimersByTime(20 * 60_000);
 
-      expect(manager.getRecord(id)).toBeUndefined();
-      expect(manager.getTotalAgentCost()).toBe(0.03);
+        expect(manager.getRecord(id)).toBeUndefined();
+        expect(manager.getTotalAgentCost()).toBe(0.03);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("accumulates cost from multiple agents", async () => {
@@ -461,7 +477,7 @@ describe("AgentManager", () => {
       const pi = fakePi();
 
       const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", { description: "first", modelKey: "test/model" });
-      manager.getRecord(id1)!.stats.lifetimeUsage.cost = 0.02;
+      getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.02, cacheRead: 0 });
       await manager.getRecord(id1)!.execution.promise;
       expect(manager.getTotalAgentCost()).toBe(0.02);
 
@@ -470,7 +486,7 @@ describe("AgentManager", () => {
         description: "second",
         modelKey: "test/model",
       });
-      manager.getRecord(id2)!.stats.lifetimeUsage.cost = 0.05;
+      getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.05, cacheRead: 0 });
       await manager.getRecord(id2)!.execution.promise;
       expect(manager.getTotalAgentCost()).toBe(0.07);
     });
@@ -483,7 +499,7 @@ describe("AgentManager", () => {
       const pi = fakePi();
 
       const id = manager.spawn(pi, ctx, "general-purpose", "task", { description: "failing", modelKey: "test/model" });
-      manager.getRecord(id)!.stats.lifetimeUsage.cost = 0.01;
+      getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.01, cacheRead: 0 });
       await manager.getRecord(id)!.execution.promise;
 
       expect(manager.getTotalAgentCost()).toBe(0.01);
@@ -502,7 +518,7 @@ describe("AgentManager", () => {
         description: "stoppable",
         modelKey: "test/model",
       });
-      manager.getRecord(id)!.stats.lifetimeUsage.cost = 0.04;
+      getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.04, cacheRead: 0 });
 
       manager.abort(id, "agent");
 
@@ -560,25 +576,29 @@ describe("AgentManager", () => {
     });
 
     it("persists count after agent is evicted from map", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "test",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      await record.execution.promise;
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "test",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
 
-      expect(manager.getTotalAgentCount()).toBe(1);
+        expect(manager.getTotalAgentCount()).toBe(1);
 
-      // Evict the record
-      record.lifecycle.resultConsumed = true;
-      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
-      (manager as any).cleanup();
+        // Evict the record via the real 60s cleanup interval.
+        record.lifecycle.resultConsumed = true;
+        vi.advanceTimersByTime(20 * 60_000);
 
-      expect(manager.getRecord(id)).toBeUndefined();
-      expect(manager.getTotalAgentCount()).toBe(1);
+        expect(manager.getRecord(id)).toBeUndefined();
+        expect(manager.getTotalAgentCount()).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("counts agent that fails mid-execution", async () => {
@@ -648,116 +668,126 @@ describe("AgentManager", () => {
 
   describe("cleanup", () => {
     it("preserves unconsumed completed records older than the cutoff", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      await record.execution.promise;
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "task",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
 
-      // Result never consumed by the LLM — must not be evicted, even when old.
-      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
-      (manager as any).cleanup();
+        // Result never consumed by the LLM — must not be evicted, even when old.
+        vi.advanceTimersByTime(20 * 60_000);
 
-      expect(manager.getRecord(id)).toBeDefined();
+        expect(manager.getRecord(id)).toBeDefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("evicts consumed completed records older than the cutoff", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      await record.execution.promise;
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "task",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
 
-      // Once the LLM has read the result, the record is safe to evict when old.
-      record.lifecycle.resultConsumed = true;
-      record.lifecycle.completedAt = Date.now() - 20 * 60_000;
-      (manager as any).cleanup();
+        // Once the LLM has read the result, the record is safe to evict when old.
+        record.lifecycle.resultConsumed = true;
+        vi.advanceTimersByTime(20 * 60_000);
 
-      expect(manager.getRecord(id)).toBeUndefined();
+        expect(manager.getRecord(id)).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("does not evict records younger than the cutoff", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      await record.execution.promise;
-      record.lifecycle.resultConsumed = true;
-      // Just completed — well within the 10-minute retention window.
-      (manager as any).cleanup();
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "task",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
+        record.lifecycle.resultConsumed = true;
+        // Just completed — well within the 10-minute retention window.
+        vi.advanceTimersByTime(CLEANUP_INTERVAL_MS);
 
-      expect(manager.getRecord(id)).toBeDefined();
+        expect(manager.getRecord(id)).toBeDefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("uses configurable retention via setRetentionMinutes", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      await record.execution.promise;
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "task",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
 
-      // Set retention to 1 minute
-      manager.setRetentionMinutes(1);
+        // Set retention to 1 minute
+        manager.setRetentionMinutes(1);
+        record.lifecycle.resultConsumed = true;
+        // Record completed 2 minutes ago — evicted by the second cleanup tick.
+        vi.advanceTimersByTime(2 * 60_000);
 
-      // Record completed 2 minutes ago — should be evicted
-      record.lifecycle.resultConsumed = true;
-      record.lifecycle.completedAt = Date.now() - 2 * 60_000;
-      (manager as any).cleanup();
-
-      expect(manager.getRecord(id)).toBeUndefined();
+        expect(manager.getRecord(id)).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("retention update takes effect at next cleanup", async () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      await record.execution.promise;
+        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
+          description: "task",
+          modelKey: "test/model",
+        });
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
 
-      // Record completed 15 minutes ago — would be evicted with default 10-min retention
-      record.lifecycle.resultConsumed = true;
-      record.lifecycle.completedAt = Date.now() - 15 * 60_000;
+        // Record completed 15 minutes ago — would be evicted with default 10-min retention
+        record.lifecycle.resultConsumed = true;
 
-      // But bump retention to 20 minutes before cleanup
-      manager.setRetentionMinutes(20);
-      (manager as any).cleanup();
+        // But bump retention to 20 minutes before the cleanup tick fires
+        manager.setRetentionMinutes(20);
+        vi.advanceTimersByTime(15 * 60_000);
 
-      // Should survive because retention was raised
-      expect(manager.getRecord(id)).toBeDefined();
+        // Should survive because retention was raised
+        expect(manager.getRecord(id)).toBeDefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
   describe("delta estimation", () => {
-    /**
-     * Helper: capture the onAssistantUsage callback passed to runAgent,
-     * so we can invoke it manually with different usage values.
-     */
-    function getOnAssistantUsage() {
-      const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
-      const callbacks = call[3]; // 4th arg is the callbacks object
-      return callbacks.onAssistantUsage;
-    }
-
     beforeEach(() => {
       mockStoreState.deltaInputTokens = true;
     });
@@ -1006,11 +1036,6 @@ describe("AgentManager", () => {
       return call[3].onTextDelta;
     }
 
-    /** Direct access to the manager's per-agent watchdog state (test backdating). */
-    function watchdogState(id: string) {
-      return (manager as any).watchdog.agents.get(id);
-    }
-
     function spawnRunningAgent(): string {
       const deferred = makeResolvablePromise();
       mockModules.mockRunAgent.mockReturnValue(deferred.promise);
@@ -1033,9 +1058,9 @@ describe("AgentManager", () => {
         const id = spawnRunningAgent();
 
         getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-        // Move the clock past the 45-minute threshold.
-        vi.setSystemTime(Date.now() + 46 * 60_000);
-        (manager as any).checkWatchdogs();
+        // Jump the clock so the next watchdog tick lands 46 minutes after the call started.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
         const record = manager.getRecord(id)!;
         expect(record.lifecycle.status).toBe("stopped");
@@ -1054,9 +1079,10 @@ describe("AgentManager", () => {
         manager = new AgentManager(onComplete);
         const id = spawnRunningAgent();
         getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-        watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
 
-        await vi.advanceTimersByTimeAsync(5_000);
+        // Jump the clock so the next watchdog tick lands 46 minutes after the call started.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        await vi.advanceTimersByTimeAsync(WATCHDOG_TICK_MS);
 
         expect(manager.getRecord(id)?.lifecycle.status).toBe("stopped");
         manager.dispose();
@@ -1066,17 +1092,23 @@ describe("AgentManager", () => {
     });
 
     it("does not stop an agent when the tool call completed before the timeout", () => {
-      mockStoreState.toolTimeoutMinutes = 45;
-      manager = new AgentManager(onComplete);
-      const id = spawnRunningAgent();
+      vi.useFakeTimers();
+      try {
+        mockStoreState.toolTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
 
-      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-      // The tool ran long but finished before the check.
-      watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
-      getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
-      (manager as any).checkWatchdogs();
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+        // The tool ran long but finished before the check: move the clock
+        // (without firing timers) so the end event lands 46 minutes in.
+        vi.setSystemTime(Date.now() + 46 * 60_000);
+        getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
-      expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+        expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("stops an agent with no activity for longer than the idle timeout", () => {
@@ -1086,8 +1118,9 @@ describe("AgentManager", () => {
         manager = new AgentManager(onComplete);
         const id = spawnRunningAgent();
 
-        vi.setSystemTime(Date.now() + 46 * 60_000);
-        (manager as any).checkWatchdogs();
+        // Jump the clock so the next watchdog tick lands 46 minutes after spawn.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
         const record = manager.getRecord(id)!;
         expect(record.lifecycle.status).toBe("stopped");
@@ -1099,105 +1132,139 @@ describe("AgentManager", () => {
     });
 
     it("resets the idle clock on tool events and streamed text", () => {
-      mockStoreState.idleTimeoutMinutes = 45;
-      manager = new AgentManager(onComplete);
-      const id = spawnRunningAgent();
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
 
-      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-      getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
-      getOnTextDelta()("hello", "hello");
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+        getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
+        getOnTextDelta()("hello", "hello");
 
-      // 10 minutes of quiet after the activity: still under the 45m threshold.
-      watchdogState(id).lastActivityAt = Date.now() - 10 * 60_000;
-      (manager as any).checkWatchdogs();
-      expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+        // 10 minutes of quiet after the activity: still under the 45m threshold.
+        vi.setSystemTime(Date.now() + 10 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+        expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
 
-      // 46 minutes of quiet: idle kill.
-      watchdogState(id).lastActivityAt = Date.now() - 46 * 60_000;
-      (manager as any).checkWatchdogs();
-      expect(manager.getRecord(id)?.lifecycle.status).toBe("stopped");
+        // 46 minutes of quiet: idle kill.
+        vi.setSystemTime(Date.now() + 36 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+        expect(manager.getRecord(id)?.lifecycle.status).toBe("stopped");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("never stops an agent that keeps producing activity", () => {
-      mockStoreState.idleTimeoutMinutes = 45;
-      manager = new AgentManager(onComplete);
-      const id = spawnRunningAgent();
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
 
-      for (let i = 0; i < 6; i++) {
-        getOnTextDelta()("tick", "tick");
-        watchdogState(id).lastActivityAt = Date.now() - 30 * 60_000;
-        (manager as any).checkWatchdogs();
-        expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+        for (let i = 0; i < 6; i++) {
+          getOnTextDelta()("tick", "tick");
+          // 30 quiet minutes pass between activities — the watchdog scans
+          // every 5s and must never see 45m of inactivity.
+          vi.setSystemTime(Date.now() + 30 * 60_000 - WATCHDOG_TICK_MS);
+          vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+          expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+        }
+      } finally {
+        vi.useRealTimers();
       }
     });
 
     it("applies to foreground and background agents alike", () => {
-      mockStoreState.idleTimeoutMinutes = 45;
-      manager = new AgentManager(onComplete);
-      const fgDeferred = makeResolvablePromise();
-      const bgDeferred = makeResolvablePromise();
-      mockModules.mockRunAgent.mockReturnValueOnce(fgDeferred.promise).mockReturnValueOnce(bgDeferred.promise);
-      const fgId = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "fg", {
-        description: "fg",
-        modelKey: "test/model",
-        isBackground: false,
-      });
-      const bgId = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "bg", {
-        description: "bg",
-        modelKey: "test/model",
-        isBackground: true,
-      });
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const fgDeferred = makeResolvablePromise();
+        const bgDeferred = makeResolvablePromise();
+        mockModules.mockRunAgent.mockReturnValueOnce(fgDeferred.promise).mockReturnValueOnce(bgDeferred.promise);
+        const fgId = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "fg", {
+          description: "fg",
+          modelKey: "test/model",
+          isBackground: false,
+        });
+        const bgId = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "bg", {
+          description: "bg",
+          modelKey: "test/model",
+          isBackground: true,
+        });
 
-      watchdogState(fgId).lastActivityAt = Date.now() - 46 * 60_000;
-      watchdogState(bgId).lastActivityAt = Date.now() - 46 * 60_000;
-      (manager as any).checkWatchdogs();
+        // Jump the clock so the next watchdog tick lands 46 minutes after spawn.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
-      expect(manager.getRecord(fgId)?.lifecycle.status).toBe("stopped");
-      expect(manager.getRecord(bgId)?.lifecycle.status).toBe("stopped");
+        expect(manager.getRecord(fgId)?.lifecycle.status).toBe("stopped");
+        expect(manager.getRecord(bgId)?.lifecycle.status).toBe("stopped");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("never stops queued agents", () => {
-      mockStoreState.idleTimeoutMinutes = 45;
-      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
-      const first = makeResolvablePromise();
-      mockModules.mockRunAgent.mockReturnValue(first.promise);
-      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "first", {
-        description: "first",
-        modelKey: "test/model",
-      });
-      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "second", {
-        description: "second",
-        modelKey: "test/model",
-      });
-      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+        const first = makeResolvablePromise();
+        mockModules.mockRunAgent.mockReturnValue(first.promise);
+        const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "first", {
+          description: "first",
+          modelKey: "test/model",
+        });
+        const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "second", {
+          description: "second",
+          modelKey: "test/model",
+        });
+        expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
 
-      (manager as any).checkWatchdogs();
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
-      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
-      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+        expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+        expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("does nothing when both checks are disabled (0)", () => {
-      manager = new AgentManager(onComplete);
-      const id = spawnRunningAgent();
-      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-      watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
-      watchdogState(id).lastActivityAt = Date.now() - 46 * 60_000;
-      (manager as any).checkWatchdogs();
-      expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+
+        vi.advanceTimersByTime(46 * 60_000);
+
+        expect(manager.getRecord(id)?.lifecycle.status).toBe("running");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("records a tool kill when both checks fire at the same instant", () => {
-      mockStoreState.toolTimeoutMinutes = 45;
-      mockStoreState.idleTimeoutMinutes = 45;
-      manager = new AgentManager(onComplete);
-      const id = spawnRunningAgent();
-      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-      watchdogState(id).toolCalls.get("call_1").startedAt = Date.now() - 46 * 60_000;
-      watchdogState(id).lastActivityAt = Date.now() - 46 * 60_000;
-      (manager as any).checkWatchdogs();
-      expect(manager.getRecord(id)?.lifecycle.stopDetail?.kind).toBe("tool");
-      expect(manager.getRecord(id)?.lifecycle.stopDetail?.toolName).toBe("bash");
+      vi.useFakeTimers();
+      try {
+        mockStoreState.toolTimeoutMinutes = 45;
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+
+        // Jump the clock so the next watchdog tick lands 46 minutes after the call started.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+
+        expect(manager.getRecord(id)?.lifecycle.stopDetail?.kind).toBe("tool");
+        expect(manager.getRecord(id)?.lifecycle.stopDetail?.toolName).toBe("bash");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("surfaces the watchdog reason through the completion nudge callback", async () => {
@@ -1212,8 +1279,10 @@ describe("AgentManager", () => {
           modelKey: "test/model",
         });
         getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
-        vi.setSystemTime(Date.now() + 46 * 60_000);
-        (manager as any).checkWatchdogs();
+
+        // Jump the clock so the next watchdog tick lands 46 minutes after the call started.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
         deferred.resolve(mockRunResult());
         await manager.getRecord(id)!.execution.promise;
