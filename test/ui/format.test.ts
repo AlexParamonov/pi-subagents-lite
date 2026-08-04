@@ -6,8 +6,8 @@
  * compatibility.
  */
 
-import { describe, it, expect } from "vitest";
-import { buildStatsParts } from "../../src/ui/format.js";
+import { describe, it, expect, beforeEach } from "vitest";
+import { buildStatsParts, getDisplayName } from "../../src/ui/format.js";
 
 const mockTheme = {
   fg: (_color: string, text: string) => text,
@@ -159,5 +159,66 @@ describe("buildStatsParts — cost behavior", () => {
   it("includes cost formatted as dollar amount", () => {
     const parts = buildStatsParts(allStats, mockTheme);
     expect(parts.some((p) => /^\$\d+\.\d{2}$/.test(p))).toBe(true);
+  });
+});
+
+/**
+ * Tests for getDisplayName.
+ *
+ * Verifies that getDisplayName returns the correct display name for both
+ * visible and hidden agents, using the fallback chain displayName ?? name ?? "Agent".
+ */
+
+import { registerAgents } from "../../src/agents/agent-types.js";
+import type { AgentConfig } from "../../src/agents/types.js";
+
+describe("getDisplayName", () => {
+  beforeEach(() => {
+    // Set up test agents
+    const agents = new Map<string, AgentConfig>();
+
+    // Visible agent with displayName
+    agents.set("visible-agent", {
+      name: "visible-agent",
+      displayName: "Visible Agent Display",
+      description: "A visible agent",
+      systemPrompt: "test",
+    });
+
+    // Hidden agent with displayName
+    agents.set("hidden-agent", {
+      name: "hidden-agent",
+      displayName: "Hidden Agent Display",
+      description: "A hidden agent",
+      hidden: true,
+      systemPrompt: "test",
+    });
+
+    // Agent without displayName (should fall back to name)
+    agents.set("no-display-name", {
+      name: "no-display-name",
+      description: "An agent without displayName",
+      systemPrompt: "test",
+    });
+
+    registerAgents(agents);
+  });
+
+  it("returns displayName for visible agents", () => {
+    expect(getDisplayName("visible-agent")).toBe("Visible Agent Display");
+  });
+
+  it("returns displayName for hidden agents", () => {
+    // This test will fail before the fix because getDisplayName uses getConfig()
+    // which calls findActiveConfig() that returns general-purpose for hidden agents
+    expect(getDisplayName("hidden-agent")).toBe("Hidden Agent Display");
+  });
+
+  it("falls back to name when displayName is not set", () => {
+    expect(getDisplayName("no-display-name")).toBe("no-display-name");
+  });
+
+  it("falls back to 'Agent' when agent type is not found", () => {
+    expect(getDisplayName("non-existent-agent")).toBe("Agent");
   });
 });
