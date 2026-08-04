@@ -56,7 +56,9 @@ describe("AgentStatus tool execute behavior", () => {
     const result = await executeAgentStatusTool("call_2", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
-    // Contract: agent entries use "id (type) status" format, short ID is 8 chars
+    // Contract: agent entries use "{shortId} ({type}) {status}" — this regex
+    // matches an 8-char id run but does not pin truncation (see the dedicated
+    // truncation test below).
     expect(text).toMatch(/[a-z0-9]{8} \(builder\) running/);
     expect(text).toContain("Don't poll");
   });
@@ -72,7 +74,8 @@ describe("AgentStatus tool execute behavior", () => {
     const result = await executeAgentStatusTool("call_3", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
-    // Contract: multiple agents comma-separated, each matching the format
+    // Contract: multiple agents comma-separated, each entry matching the
+    // "{id} ({type}) {status}" format (truncation not pinned here).
     expect(text).toMatch(/[a-z0-9]{8} \(builder\) running, [a-z0-9]{8} \(reviewer\) completed/);
     expect(text).toContain("Don't poll");
   });
