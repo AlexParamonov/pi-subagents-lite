@@ -154,8 +154,10 @@ describe("widget worktree label — full mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Should not crash — just no worktree-specific content
+    // No worktree label anywhere: a stray "@undefined" (or any @-prefixed
+    // garbage) must not render.
     expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join(" ")).not.toContain("@");
   });
 
   it("shows worktreeLabel and tail -f on the same continuation line", () => {

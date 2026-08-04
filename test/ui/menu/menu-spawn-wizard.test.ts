@@ -2,7 +2,7 @@
  * menu-spawn-wizard.test.ts — Tests for showSpawnAgentMenu.
  *
  * Wizard approach: 3 sequential ctx.ui.custom calls.
- *   Step 1: SelectList for type selection
+ *   Step 1: SettingsList for type selection
  *   Step 2: Input for prompt entry
  *   Step 3: SettingsList for options + spawn
  */
@@ -36,6 +36,7 @@ let settingsListCalls: Array<{
   theme: any;
   onChange: (id: string, newValue: string) => void;
   onCancel: () => void;
+  options?: any;
 }> = [];
 
 // Capture Input instances created
@@ -60,10 +61,11 @@ vi.mock("@earendil-works/pi-tui", () => ({
     items: any[];
     onChange: (id: string, newValue: string) => void;
     onCancel: () => void;
-    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any) {
+    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
       this.items = items;
       this.onChange = onChange;
       this.onCancel = onCancel;
+      this.options = options;
       // Push the instance (not a snapshot) so rebuild() reassignments of
       // list.items stay observable through settingsListCalls.
       settingsListCalls.push(this as any);
@@ -195,6 +197,8 @@ describe("showSpawnAgentMenu — wizard flow", () => {
     await completeWizard(ctx);
     expect(settingsListCalls.length).toBe(1);
     expect(settingsListCalls[0].items.map((i: any) => i.id)).toEqual(["general-purpose", "Explore"]);
+    // Search must be enabled on the type selector (src passes { enableSearch: true }).
+    expect(settingsListCalls[0].options.enableSearch).toBe(true);
   });
 
   it("creates Input for prompt entry (step 2)", async () => {
@@ -428,7 +432,7 @@ describe("showSpawnAgentMenu — max turns submenu", () => {
     expect(item.currentValue).toBe("25");
   });
 
-  it("shows 'unlimited' when no config and no agent config", async () => {
+  it("shows '(not set)' when no config and no agent config", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "general-purpose")
         return {
@@ -522,7 +526,7 @@ describe("showSpawnAgentMenu — max tokens submenu", () => {
     expect(item.currentValue).toBe("10000");
   });
 
-  it("shows 'unlimited' when no agent config", async () => {
+  it("shows '(not set)' when no agent config", async () => {
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "general-purpose")
         return {
@@ -649,38 +653,38 @@ describe("showSpawnAgentMenu — model", () => {
   });
 });
 
+function setupExecMock(
+  options: { inGitRepo?: boolean; worktrees?: { path: string; branch?: string; detached?: boolean }[] } = {},
+) {
+  const { inGitRepo = true, worktrees = [] } = options;
+  function buildPorcelainOutput(wts: typeof worktrees): string {
+    return wts
+      .map((wt) => {
+        let block = `worktree ${wt.path}`;
+        if (wt.branch) block += `\nbranch refs/heads/${wt.branch}`;
+        else if (wt.detached) block += "\ndetached";
+        return block;
+      })
+      .join("\n\n");
+  }
+  mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
+    if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
+      return inGitRepo
+        ? { code: 0, stdout: "/test/.git", stderr: "" }
+        : { code: 128, stdout: "", stderr: "fatal: not a git repository" };
+    }
+    if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") {
+      if (!inGitRepo) return { code: 128, stdout: "", stderr: "fatal: not a git repository" };
+      return { code: 0, stdout: buildPorcelainOutput(worktrees), stderr: "" };
+    }
+    return { code: 1, stdout: "", stderr: "unknown command" };
+  });
+}
+
 describe("showSpawnAgentMenu — worktree submenu", () => {
   beforeEach(() => {
     setupMocks();
   });
-
-  function setupExecMock(
-    options: { inGitRepo?: boolean; worktrees?: { path: string; branch?: string; detached?: boolean }[] } = {},
-  ) {
-    const { inGitRepo = true, worktrees = [] } = options;
-    function buildPorcelainOutput(wts: typeof worktrees): string {
-      return wts
-        .map((wt) => {
-          let block = `worktree ${wt.path}`;
-          if (wt.branch) block += `\nbranch refs/heads/${wt.branch}`;
-          else if (wt.detached) block += "\ndetached";
-          return block;
-        })
-        .join("\n\n");
-    }
-    mockModules.mockPiExec.mockImplementation(async (_cmd: string, args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
-        return inGitRepo
-          ? { code: 0, stdout: "/test/.git", stderr: "" }
-          : { code: 128, stdout: "", stderr: "fatal: not a git repository" };
-      }
-      if (args[0] === "worktree" && args[1] === "list" && args[2] === "--porcelain") {
-        if (!inGitRepo) return { code: 128, stdout: "", stderr: "fatal: not a git repository" };
-        return { code: 0, stdout: buildPorcelainOutput(worktrees), stderr: "" };
-      }
-      return { code: 1, stdout: "", stderr: "unknown command" };
-    });
-  }
 
   it("shows 'Inherits parent cwd' when in git repo", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test", branch: "main" }] });
@@ -690,7 +694,7 @@ describe("showSpawnAgentMenu — worktree submenu", () => {
     expect(item.currentValue).toBe("Inherits parent cwd");
   });
 
-  it("worktree submenu creates SelectList with worktrees", async () => {
+  it("worktree submenu creates SearchableSelectDialog with worktrees", async () => {
     setupExecMock({
       inGitRepo: true,
       worktrees: [
@@ -769,5 +773,69 @@ describe("showSpawnAgentMenu — spawn action", () => {
     const mockDone = vi.fn();
     item.submenu("", mockDone);
     expect(mockDone).toHaveBeenCalled();
+  });
+
+  it("invokes coordinator.spawn with the collected intent", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    item.submenu("", vi.fn());
+
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
+    const [, , type, prompt, options] = mockModules.mockManager.spawn.mock.calls[0] as [
+      any,
+      any,
+      string,
+      string,
+      Record<string, any>,
+    ];
+    expect(type).toBe("general-purpose");
+    expect(prompt).toBe("fix the bug");
+    expect(options).toMatchObject({
+      description: "fix the bug",
+      model: { provider: "anthropic", id: "claude-sonnet-4-20250514" },
+      modelKey: "anthropic/claude-sonnet-4-20250514",
+      maxTurns: 25,
+      thinkingLevel: "medium",
+      graceTurns: 6,
+      isBackground: false,
+      worktreePath: undefined,
+      invocation: {
+        modelName: "claude-sonnet-4-20250514",
+        thinkingLevel: "medium",
+        maxTurns: 25,
+        runInBackground: false,
+      },
+    });
+  });
+
+  it("passes the selected worktree path to spawn", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    const wtItem = settingsListCalls[1].items.find((i: any) => i.id === "worktree");
+    wtItem.submenu("Inherits parent cwd", vi.fn());
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
+
+    const spawnItem = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    spawnItem.submenu("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
+    const options = mockModules.mockManager.spawn.mock.calls[0][4] as Record<string, any>;
+    expect(options.worktreePath).toBe("/test-feature");
+  });
+
+  it("notifies 'Spawn failed' when the coordinator spawn rejects", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    mockModules.mockManager.spawn.mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    const item = settingsListCalls[1].items.find((i: any) => i.id === "spawn");
+    item.submenu("", vi.fn());
+
+    await vi.waitFor(() => expect(ctx.ui.notify).toHaveBeenCalled());
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Spawn failed: boom"), "error");
   });
 });
