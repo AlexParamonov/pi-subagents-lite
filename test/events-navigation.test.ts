@@ -5,7 +5,7 @@
  * and a minimal ctx. Every assertion exercises the actual handler code.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -126,6 +126,7 @@ const mockWidget: any = {
   highlightedIndex: vi.fn(() => 0),
   hasVisibleAgents: vi.fn(() => true),
   update: vi.fn(),
+  notifyToolsExpansionChanged: vi.fn(),
 };
 
 const mockStore: any = {
@@ -154,6 +155,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     mockWidget.isViewerOpen.mockReturnValue(false);
     mockWidget.isEditorFocused.mockReturnValue(true);
     mockWidget.isNavActive.mockReturnValue(false);
@@ -165,8 +167,13 @@ describe("navigation key handler (createNavInputHandler)", () => {
       ui: {
         getEditorText: vi.fn(() => ""),
         notify: vi.fn(),
+        getToolsExpanded: vi.fn(() => false),
       },
     } as unknown as ExtensionContext;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe("key release ignored", () => {
@@ -293,6 +300,41 @@ describe("navigation key handler (createNavInputHandler)", () => {
       const result = handler("a");
       expect(result).toBeUndefined();
       expect(mockWidget.navDeactivate).toHaveBeenCalled();
+    });
+  });
+
+  describe("ctrl+o handler", () => {
+    it("detects ctrl+o and calls notifyToolsExpanded", () => {
+      mockWidget.isNavActive.mockReturnValue(false);
+      mockWidget.isEditorFocused.mockReturnValue(true);
+      mockMatchesKey.mockImplementation((_data: string, key: string) => key === "ctrl+o");
+      const handler = createNavInputHandler(ctx);
+
+      // Simulate ctrl+o keypress (\u000f)
+      handler("\u000f");
+
+      // Advance timers to trigger setTimeout
+      vi.advanceTimersByTime(0);
+
+      // Should call notifyToolsExpanded
+      expect(mockStore.notifyToolsExpanded).toHaveBeenCalled();
+    });
+
+    it("does not consume ctrl+o input", () => {
+      mockWidget.isNavActive.mockReturnValue(false);
+      mockWidget.isEditorFocused.mockReturnValue(true);
+      const handler = createNavInputHandler(ctx);
+
+      const result = handler("\u000f");
+      expect(result).toBeUndefined();
+    });
+
+    it("ignores ctrl+o when viewer is open", () => {
+      mockWidget.isViewerOpen.mockReturnValue(true);
+      const handler = createNavInputHandler(ctx);
+
+      handler("\u000f");
+      expect(mockStore.notifyToolsExpanded).not.toHaveBeenCalled();
     });
   });
 });

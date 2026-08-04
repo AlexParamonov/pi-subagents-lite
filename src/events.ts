@@ -205,7 +205,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
     }
 
     // ctrl+o = 0x0F (15) — toggles tool expansion
-    if (data === "\u000f") {
+    if (matchesKey(data, "ctrl+o")) {
       // Read state after a tick to let the built-in handler process it first
       setTimeout(() => {
         const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
