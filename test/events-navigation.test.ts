@@ -40,6 +40,12 @@ vi.mock("../src/agents/agent-types.js", () => ({
     maxTurns: undefined,
     thinkingLevel: undefined,
   }),
+  getAgentConfig: (type: string) => ({
+    name: type,
+    displayName: type.charAt(0).toUpperCase() + type.slice(1),
+    description: `Test agent ${type}`,
+    systemPrompt: "test",
+  }),
   registerAgents: vi.fn(),
   getAvailableTypes: vi.fn(() => []),
   setAgentScanDirs: vi.fn(),
