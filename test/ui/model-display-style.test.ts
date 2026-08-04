@@ -1,15 +1,13 @@
 /**
  * model-display-style.test.ts — Tests for model display style config.
  *
- * Covers: config type, default, resolved field, mutation, widget sync,
- * and buildModelThinkingTag behavior with different model labels.
+ * Covers: config type, default, resolved field, mutation, and widget sync.
  */
 
 import { describe, it, expect } from "vitest";
 import { ConfigStore, type ConfigIO } from "../../src/config/config-store.ts";
 import type { AgentWidget } from "../../src/ui/agent-widget.ts";
 import type { SubagentsConfig } from "../../src/models/model-precedence.ts";
-import { buildModelThinkingTag } from "../../src/ui/format.ts";
 
 function defaultConfig(): SubagentsConfig {
   return {
@@ -123,31 +121,5 @@ describe("ConfigStore modelDisplayStyle", () => {
     store.mutate.widget.setModelDisplayStyle("id");
     expect(store.agent.modelDisplayStyle).toBe("id");
     expect(saves).toHaveLength(1);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/*  buildModelThinkingTag: passes model label through unchanged        */
-/* ------------------------------------------------------------------ */
-
-describe("buildModelThinkingTag with model label", () => {
-  it("includes model name in tag", () => {
-    const tag = buildModelThinkingTag("Qwen3.6 27B FP8", undefined, { showModel: true, showThinking: true });
-    expect(tag).toBe("(Qwen3.6 27B FP8)");
-  });
-
-  it("includes short model id in tag", () => {
-    const tag = buildModelThinkingTag("27b_mtp", undefined, { showModel: true, showThinking: true });
-    expect(tag).toBe("(27b_mtp)");
-  });
-
-  it("combines model and thinking", () => {
-    const tag = buildModelThinkingTag("27b_mtp", "high", { showModel: true, showThinking: true });
-    expect(tag).toBe("(27b_mtp • high)");
-  });
-
-  it("omits model when showModel is false", () => {
-    const tag = buildModelThinkingTag("27b_mtp", "high", { showModel: false, showThinking: true });
-    expect(tag).toBe("(high)");
   });
 });

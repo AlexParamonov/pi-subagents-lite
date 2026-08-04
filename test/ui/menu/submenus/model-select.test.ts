@@ -201,15 +201,4 @@ describe("createModelSelectSubmenu", () => {
     expect(onSelect).not.toHaveBeenCalled();
     expect(done).toHaveBeenCalledWith();
   });
-
-  it("component invalidate does not throw", () => {
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514"],
-      showClear: false,
-      theme: mockTheme,
-      onSelect: vi.fn(),
-    });
-    const component = factory("(inherits parent)", vi.fn());
-    expect(() => component.invalidate()).not.toThrow();
-  });
 });

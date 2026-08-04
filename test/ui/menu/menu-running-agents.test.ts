@@ -1,5 +1,5 @@
 /**
- * menu-running-agents-new.test.ts — Tests for showRunningAgentsMenu using SelectList.
+ * menu-running-agents.test.ts — Tests for showRunningAgentsMenu using SelectList.
  *
  * After migration: uses ctx.ui.custom (not ctx.ui.select/runMenuLoop).
  * The running agents menu is a SelectList with dynamic agent entries.
@@ -103,7 +103,10 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     mockModules.mockManager.listAgents.mockReturnValue([]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("No agents have been spawned this session"),
+      "info",
+    );
     expect(ctx.ui.custom).not.toHaveBeenCalled();
   });
 

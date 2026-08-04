@@ -191,7 +191,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     inputInstances = [];
   });
 
-  it("shows 'Default max turns · unlimited' when no default is set", async () => {
+  it("shows 'Default max turns · (not set)' when no default is set", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");

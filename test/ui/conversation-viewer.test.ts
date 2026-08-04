@@ -44,9 +44,14 @@ vi.mock("@earendil-works/pi-tui", () => ({
     focused = false;
     onSubmit: ((v: string) => void) | undefined;
     onEscape: (() => void) | undefined;
-    handleInput(_data: string) {}
+    private text = "";
+    handleInput(data: string) {
+      if (data === "\x1b") this.onEscape?.();
+      else if (data === "\r") this.onSubmit?.(this.text);
+      else this.text += data;
+    }
     render(_w: number): string[] {
-      return ["> "];
+      return ["> " + this.text];
     }
   },
   Markdown: class {
@@ -196,11 +201,11 @@ describe("ConversationViewer", () => {
         return () => {};
       });
 
-      const session = makeMockSession();
+      const session = makeMockSession([{ role: "user", content: "hi" }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
       // Non-message_update events should not trigger render
       subscriber!({ type: "other" });
@@ -212,10 +217,14 @@ describe("ConversationViewer", () => {
       vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(1);
 
-      // Rapid deltas only trigger one render (debounce coalesces)
+      // Rapid deltas coalesce into one render: both fire before the debounce
+      // window elapses, so only a single requestRender follows.
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "!" } });
       vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(2);
+      // The coalesced render shows the accumulated text (second delta included).
+      expect(viewer.render(80).join("\n")).toContain("hello world!");
 
       // Clearing text should trigger render
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
@@ -350,9 +359,10 @@ describe("ConversationViewer", () => {
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
-      // Composer should be open (internal state)
-      const composer = (viewer as any).composer;
-      expect(composer).toBeDefined();
+      // The composer row and its hints are rendered output.
+      const text = viewer.render(80).join("\n");
+      expect(text).toContain("✎ steer");
+      expect(text).toContain("Enter send · Esc cancel");
     });
 
     it("sends steer message on composer submit", () => {
@@ -367,12 +377,12 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r"); // open composer
-
-      // Simulate submit
-      const composer = (viewer as any).composer;
-      composer.onSubmit("do this thing");
+      viewer.handleInput("do this thing"); // type (routed to the composer)
+      viewer.handleInput("\r"); // submit
 
       expect(onSteer).toHaveBeenCalledWith("do this thing");
+      // Submitting closes the composer — the hint row is gone from the render.
+      expect(viewer.render(80).join("\n")).not.toContain("Enter send · Esc cancel");
     });
 
     it("does not open composer when agent is not running", () => {
@@ -388,8 +398,9 @@ describe("ConversationViewer", () => {
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
-      const composer = (viewer as any).composer;
-      expect(composer).toBeUndefined();
+      const text = viewer.render(80).join("\n");
+      expect(text).not.toContain("✎ steer");
+      expect(text).not.toContain("Enter send · Esc cancel");
     });
 
     it("cancels composer on Escape", () => {
@@ -404,82 +415,127 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r"); // open composer
+      viewer.handleInput("\x1b"); // escape routes to the composer's onEscape
 
-      const composer = (viewer as any).composer;
-      composer.onEscape();
-
-      expect((viewer as any).composer).toBeUndefined();
+      const text = viewer.render(80).join("\n");
+      expect(text).not.toContain("Enter send · Esc cancel");
+      expect(text).not.toContain("✎ steer");
     });
   });
 
   describe("scroll behavior", () => {
+    // 30 distinct one-line rows → 33 content lines (fill + 30 + fill + empty)
+    // against a 21-row viewport: maxScroll = 12. Distinct line markers make
+    // the visible window observable through rendered output.
+    const manyLines = Array.from({ length: 30 }, (_, i) => `line${i}`).join("\n");
+    // Content rows sit between the separator under the header and the one
+    // above the footer; rows are `│ <content> │` with trailing padding.
+    function visibleContentLines(viewer: ConversationViewer): string[] {
+      const lines = viewer.render(80);
+      const seps: number[] = [];
+      lines.forEach((l, i) => {
+        if (l.includes("─")) seps.push(i);
+      });
+      return lines
+        .slice(seps[1] + 1, seps[2])
+        .map((l) => l.replace(/^│/, "").replace(/│$/, "").trim())
+        .filter(Boolean);
+    }
+    // Footer readout: `(currentLine/total · pct%)`. With 33 content lines and
+    // a 21-row viewport: top = (21/33 · 64%), one step down = (22/33 · 67%),
+    // bottom = (33/33 · 100%).
+    function readout(viewer: ConversationViewer): string {
+      return (
+        viewer
+          .render(80)
+          .join("\n")
+          .match(/\(\d+\/\d+ · \d+%\)/)?.[0] ?? ""
+      );
+    }
+
     it("scrolls down on down arrow", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      (viewer as any).lastInnerW = 116; // normally set by render()
-      const initialOffset = (viewer as any).scrollOffset;
-      (viewer as any).autoScroll = false; // disable auto-scroll to test raw scroll
+      viewer.render(80); // autoScroll parks at the bottom
+      viewer.handleInput("g"); // top, manual scroll
+      viewer.handleInput("\x1b[B"); // one step down
 
-      viewer.handleInput("\x1b[B");
-      expect((viewer as any).scrollOffset).toBe(initialOffset + 1);
+      expect(readout(viewer)).toBe("(22/33 · 67%)");
+      // The window's last content line advanced past the top window.
+      const visible = visibleContentLines(viewer);
+      expect(visible[visible.length - 1]).toBe("line20");
     });
 
     it("scrolls up on up arrow", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(200) }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      (viewer as any).scrollOffset = 5;
+      viewer.render(80);
+      viewer.handleInput("g");
+      viewer.handleInput("\x1b[B"); // 1
+      viewer.handleInput("\x1b[B"); // 2
+      viewer.handleInput("\x1b[B"); // 3
+      expect(visibleContentLines(viewer)[0]).toBe("line2");
 
-      viewer.handleInput("\x1b[A");
-      expect((viewer as any).scrollOffset).toBe(4);
+      viewer.handleInput("\x1b[A"); // back to 2
+      expect(readout(viewer)).toBe("(23/33 · 70%)");
+      expect(visibleContentLines(viewer)[0]).toBe("line1");
     });
 
     it("jumps to top on 'g'", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(200) }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      (viewer as any).scrollOffset = 10;
-
+      viewer.render(80); // parked at the bottom by autoScroll
       viewer.handleInput("g");
-      expect((viewer as any).scrollOffset).toBe(0);
+
+      const visible = visibleContentLines(viewer);
+      expect(visible[0]).toBe("line0");
+      expect(visible[visible.length - 1]).toBe("line19");
+      expect(readout(viewer)).toBe("(21/33 · 64%)");
     });
 
     it("jumps to bottom on 'G'", () => {
-      // Content long enough to overflow the viewport — with short content
-      // maxScroll is 0 and the G branch has nothing to scroll (vacuous).
-      const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
+      // Content must actually overflow the viewport, or maxScroll is 0 and
+      // the G branch has nothing to scroll (vacuous).
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.render(80); // populates lastInnerW so scroll math sees real content
-      (viewer as any).scrollOffset = 0; // scroll away from the bottom first
-      (viewer as any).autoScroll = false;
+      viewer.render(80); // bottom
+      viewer.handleInput("g"); // top
+      viewer.handleInput("G"); // bottom
 
-      viewer.handleInput("G");
-      // Should be at max scroll
-      const contentLines = (viewer as any).buildContentLines(76);
-      const viewportH = (viewer as any).viewportHeight();
-      const maxScroll = Math.max(0, contentLines.length - viewportH);
-      expect(maxScroll).toBeGreaterThan(0); // content must actually overflow for this to be meaningful
-      expect((viewer as any).scrollOffset).toBe(maxScroll);
+      const visible = visibleContentLines(viewer);
+      expect(visible[0]).toBe("line11");
+      expect(visible[visible.length - 1]).toBe("line29");
+      expect(visible).not.toContain("line0");
+      expect(readout(viewer)).toBe("(33/33 · 100%)");
     });
 
     it("does not scroll past start", () => {
-      const session = makeMockSession([{ role: "user", content: "hello" }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.handleInput("\x1b[A");
-      expect((viewer as any).scrollOffset).toBe(0);
+      viewer.render(80); // bottom
+      viewer.handleInput("g"); // top
+      viewer.handleInput("\x1b[A"); // up at the top — must stay clamped at 0
+      viewer.handleInput("\x1b[A"); // up again
+
+      const visible = visibleContentLines(viewer);
+      expect(visible[0]).toBe("line0");
+      // Readout pins the clamp: a negative offset would drop currentLine below 21.
+      expect(readout(viewer)).toBe("(21/33 · 64%)");
     });
   });
 
