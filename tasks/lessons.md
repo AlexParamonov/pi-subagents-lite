@@ -3,96 +3,74 @@
 ## General
 
 ### Worktrees
-- Clean up after merge first (commit/discard untracked files). Verify the worktree path, branch, and checkout state before spawning builder/reviewers.
-- Read files through the worktree path, never the main checkout; verify `git status` after writing any file.
+- Clean up after merge first. Verify worktree path, branch, and checkout state before spawning agents.
+- Read files through the worktree path, never the main checkout. Verify `git status` after writing.
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
 
 ### Testing
-- Run `bun run test` after merging to main — a clean merge ≠ passing tests.
-- Test public interfaces and behavior: acceptance tests match plan.md, not guessed implementation. Don't assert implementation details or the test's own setup — dead weight that passes even when the code under test is broken; prune imports they leave unused.
-- Don't mock away the real path — assert constructor args, not just downstream behavior. Export testable functions early to avoid mock ceremony; interact through the component tree, not captured mock references.
-- Re-read before multi-line replaces on code that shifted since the last read — stale ranges clobber adjacent signatures. A replace ending on the same line as the next surviving line flags boundary duplication; delete the stray duplicate before running tests.
-- Replace `setTimeout` sleeps with awaiting the chained completion promise (`record.execution.promise`) — it resolves after `.finally`, so queue drain and side effects are guaranteed observed. Faster, no flake on slow CI.
-- afterEach cleanup must remove the whole temp base dir, not one sibling — partial cleanup leaks on repeated runs.
-- When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh. Manual "all works" → record and proceed, don't insist on the automated loop.
-- vitest mocks are strict: extending a vi.mock factory (e.g. adding an export) must keep every symbol the production module imports, or the whole file suite breaks with 'No X export on the mock'. Also guard config default merges with a loadConfig-level test — batch edits of literal default objects can silently drop adjacent lines (widgetMaxLines).
-- `parseInt` accepts trailing garbage: validateNumeric("12x") === 12 and truncates "12.5" to 12, silently swallowing non-numeric input. Fix: require `/^\d+$/` after trim in numeric validation (review round on kill-stuck-agents), and pin it with tests that submit suffixed/decimal strings, not just "abc".
-- When two code paths must agree (state machine vs renderer), share the exact computation — don't duplicate the rule with one path slightly different. On widget-scroll-navigation, nav moves used the full body budget while rendering reserved a line for the overflow indicator: scrolls ran one press late and every scrolled state rendered maxBody+1 lines. Tests passed because they asserted visibility, not exact windows — pin the walkthrough contract as a state table (exact visible set, arrow, overflow count, line budget) and verify it fails under the bug.
-- Config setter traps: `setMaxLines` is a no-op in compact mode (body comes from `maxLinesCompact`) — tests that "limit the body" with the wrong setter run with the default budget and never exercise overflow. Check which getter the production path reads before choosing the setter in test setup.
-- State consumed by render paths must be clamped at the render path, not only in the mutators. Turn-based eviction shrinks the roster between keypresses while the widget refresh keeps rendering: a render reading the raw highlight index after shrink produced an out-of-window arrow and a broken slice until the next nav move. Pin with a test that shrinks the roster and renders WITHOUT a nav move in between. Related: reset-behavior tests are vacuous unless the setup actually scrolls — with a roomy budget, navDown never moves the anchor and "resets to 0" assertions pass even if the reset code is deleted; use the overflow config and scroll to a bottom window first.
+- Run `bun run test` after merging — clean merge ≠ passing tests.
+- Test public interfaces and behavior matching plan.md. Don't assert implementation details; prune unused imports.
+- Don't mock away the real path — assert constructor args, not just downstream behavior. Export testable functions early.
+- Re-read before multi-line replaces on shifted code — stale ranges clobber adjacent signatures.
+- Replace `setTimeout` sleeps with awaiting chained completion promises — faster, no flake.
+- afterEach cleanup must remove the whole temp base dir, not one sibling.
+- When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh. Manual "all works" → record and proceed.
+- vitest mocks are strict: extending a vi.mock factory must keep every symbol the production module imports. Guard config default merges with loadConfig-level tests.
+- `parseInt` accepts trailing garbage. Fix: require `/^\d+$/` after trim in numeric validation.
+- When two code paths must agree, share the exact computation — don't duplicate the rule with slight differences. Pin the contract as a state table.
+- Config setter traps: check which getter the production path reads before choosing the setter in test setup.
+- State consumed by render paths must be clamped at the render path, not only in mutators. Pin with tests that mutate state WITHOUT a nav move in between.
+- Closure capture traps: a factory mock's closure binds its own parameter, so re-assigning the test's variable does nothing — assign explicitly against the outer variable.
+- Recurring vacuous patterns to grep for: tests ending at `.find()` with no expect; global `some()` checks passing from initial state; `expect.any(String)` for branch-specific messages.
 
 ### Delegation
-- Delegate immediately without pre-reading files — the agent explores itself. For simple tasks, propose 2-3 name/design alternatives upfront.
-- Parallel sub-agents writing docs: mandate distinct output paths. Parallel slices (2+) consistently save time. Wave-level arch review catches incomplete feature branches.
+- Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
+- Parallel sub-agents writing docs: mandate distinct output paths. Parallel slices (2+) consistently save time.
 
 ### Verification
-- Don't assume — verify: confirm the merge commit actually exists; code review catches silent production bugs.
+- Don't assume — verify: confirm merge commits exist, code review catches silent production bugs.
 - Never use `general-purpose` when the workflow specifies a specialized agent type.
 - `ExtensionAPI` rejects calls to old ctx — wrap sendMessage in try-catch for defense-in-depth.
+- Keep review loops strictly sequential; verify agent completion order before spawning the next agent.
+- Verify agent output files exist before treating a return as verdict — an empty return with no file means restart, not approval.
 
 ### Types & Refactoring
-- Run typecheck before removing "redundant" fallbacks: `?? N` on optional config is forced by `T | undefined`; a cast before `??` on `unknown` is the narrowing (`unknown ?? T` stays `unknown`). Verify narrowing claims with the typechecker before simplifying casts.
-- Make source fields optional from the start for explicit-vs-default overrides — the type system enforces precedence, not runtime equality checks. Trace ALL mutation paths of existing config when adding similar config.
-- A result field whose check is implied by a sibling is dead weight: `gateApplied && !projectTrusted` ≡ `!projectTrusted`. Delete the flag, return the bare boolean, pin the guarantee through the surviving field.
-- Check for WIP branches that might land before merging. Diff old paths before merging to preserve side effects.
+- Run typecheck before removing "redundant" fallbacks. Verify narrowing claims with the typechecker.
+- Make source fields optional from the start for explicit-vs-default overrides. Trace ALL mutation paths when adding similar config.
+- Delete result fields whose check is implied by a sibling. Return the bare boolean.
+- Check for WIP branches that might land before merging. Diff old paths before merging.
 - Only extract mock factories with ≥1 consumer in the current slice. Module-level singletons still require vi.mock().
 - Prefer public API for cross-package access — private fields break silently on upstream changes.
 
 ### pi-ai API & Subagent Lifecycle
-- `deliverAs: "steer"` only queues while the parent runs — if idle, pi drops it silently. `followUp` waits for the agent to finish. Check `ctx.isIdle()` at call time.
-- `createAgentSession` runs its own resource reload + `bindExtensions`, re-executing EVERY extension factory and re-firing session_start/shutdown in the subagent context. Extensions writing parent-owned state there get clobbered per spawn (last wins, silent failures). Fix: bracket `runAgent` with a nesting-depth flag; no-op the factory and session handlers while a subagent is in flight.
-- `AgentSession.dispose()` does NOT emit session_shutdown; subagent `bindExtensions` DOES fire the parent's session_start.
+- `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for agent to finish. Check `ctx.isIdle()` at call time.
+- `createAgentSession` re-executes EVERY extension factory and re-fires session_start/shutdown in subagent context. Fix: bracket `runAgent` with nesting-depth flag; no-op factory and session handlers while subagent is in flight.
+- `AgentSession.dispose()` does NOT emit session_shutdown; subagent `bindExtensions` DOES fire parent's session_start.
 
 ### Extension Tools
-- When tools/resources are silently missing, find the gate first (where the set is built/filtered). Seeding happens at construction; `setActiveToolsByName` silently ignoring names = registry bug. Seed `createAgentSession({ tools })` with concrete names (expand `tavily/*` before creation). Verified in pi source: `agent-session.ts:_refreshToolRegistry`.
-- The allowlist gate must derive from whitelist expansion alone in whitelist mode and gate builtins too — an unconditional `registeredTools` base leaks unlisted builtins and raw wildcard literals.
-- Cross-repo trust gate coverage is narrower than it reads: `.pi/` resources + `.agents/skills` are gated via SettingsManager, but root `AGENTS.md`/`CLAUDE.md` load unconditionally through `loadProjectContextFiles({ cwd, agentDir })` (no trust param). SYSTEM.md is inert anyway — `systemPromptOverride` + `appendSystemPromptOverride: () => []` fully replace the loader's prompt. Subagent prompts are always subagents-lite's own build (replace/inherit/custom).
+- When tools/resources are silently missing, find the gate first. Seed `createAgentSession({ tools })` with concrete names.
+- Allowlist gate must derive from whitelist expansion alone in whitelist mode and gate builtins too.
+- Cross-repo trust gate coverage is narrower than it reads: `.pi/` resources + `.agents/skills` are gated, but root `AGENTS.md`/`CLAUDE.md` load unconditionally.
 
 ### SettingsList & Menus
-- SettingsList: toggles, submenus, separators, static display. No multi-step dialogs, action buttons, or dynamic sets. Never call `ctx.ui.input/select/custom` inside it; dispatcher menus use `ctx.ui.select` + `while(true)` loop.
-- Proxy pattern (`createDelegatingComponent`) chains submenus cleanly; verify the returned Component is renderable, not immediately closed. Use `.has()` presence checks for nullable caches.
-- Use library helpers (`getSupportedThinkingLevels`, `clampThinkingLevel`) instead of reimplementing filtering. Submenu lazy evaluation works for dynamic option lists.
+- SettingsList: toggles, submenus, separators, static display. No multi-step dialogs. Never call `ctx.ui.input/select/custom` inside it.
+- Proxy pattern (`createDelegatingComponent`) chains submenus cleanly. Use `.has()` presence checks for nullable caches.
+- Use library helpers instead of reimplementing filtering.
 
 ### Issue Design
-- Prototype state machines/key handlers in issue.md as a contract; call out overflow behavior as a hard AC gate. Specify test location and approach ("test frontmatter parsing of max"). Single meaningful behavior test beats multiple implementation tests on a one-liner.
-- Grill thoroughly — scope was corrected twice on allow-several-repos.
+- Prototype state machines/key handlers in issue.md as a contract. Call out overflow behavior as hard AC gate.
 
 ### Buffer & Error Patterns
-- Buffer-then-flush is the simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
+- Buffer-then-flush is simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
 - When nudges stop working, restart the harness rather than debugging live state.
 
 ### Package Management
-- Regenerate lockfiles with the package manager when bumping versions; never hand-edit bun.lock.
-- Releasing: keep `[Unreleased]` as an empty running header and insert the versioned section below it — don't rename it to the version.
-- Keep `@ts-expect-error` focused — one error per directive.
+- Regenerate lockfiles with package manager when bumping versions; never hand-edit bun.lock.
+- Releasing: keep `[Unreleased]` as empty running header, insert versioned section below it.
 
 ### Cross-Platform
 - `process.env.HOME` is unreliable on Windows — use `os.homedir()` or SDK's `getAgentDir()`.
-- Check existing PRs for reference implementations before grilling alternatives (PR #12 already solved it).
+- Check existing PRs for reference implementations before grilling alternatives.
 
 ### Refactor Scope
-- Stay within issue scope — mock-pattern improvements are out of scope for a trust-gate issue.
-- If a refactor hits a vitest ordering issue (vi.mock vs vi.hoisted), stop and move on — the code works.
-
-## allow-several-repos - 2026-08-02
-- **Worked:** grilling settled the design pre-issue (extension-only, trust-gate via pi's building blocks); builder verified SDK exports from node_modules; review feedback verified against code before applying; refactor stayed in scope; manual tester covered all 7 scenarios.
-- **Failed:** three review rounds (ADR duplicate bullet, incomplete temp cleanup, stale test data, setTimeout pattern); misleading `worktreeDir` name from the same-repo-only era.
-- **Next time:** name vars by current semantics, not historical ones. (Remainder already in General.)
-## kill-stuck-agents - 2026-08-02
-- **Worked:** research doc (file:line evidence) made the builder's job deterministic — event hooks, abort chain, config plumbing all pre-traced; pure clock-injectable Watchdog state machine kept the logic unit-testable without SDK mocks; reviewer caught the showCost interface deletion that typecheck silently swallowed via index signature; strict `/^\d+$/` numeric validation fixed a latent parse-int swallow across all menu items.
-- **Failed:** orchestrator sequencing twice — spawned round-2 reviewer before the fix commit landed, and spawned AC reviewer before refactor/merge finished. Both stopped and respawned in order. Refactor pass 1 flake: wall-clock elapsed assertions failed (2760001 vs 2760000) — fixed with the file's established fake-timer pattern.
-- **Next time:** keep review loops strictly sequential (fix commit → re-review → next step); verify agent completion order before spawning the next agent. Manual live-kill scenario untestable (LLM refused to run a deliberate hang) — automated coverage must carry the watchdog logic; note this in manual-test reports.
-
-## widget-scroll-navigation - 2026-08-03
-- **Worked:** aligning on the scroll model with a rendered walkthrough diagram (3 visible + 2 hidden, every keypress state) before writing the issue made the contract unambiguous; the issue's prototype state machine plus state-table test let the reviewer verify the implementation step by step. Randomized property trials (90k) by the reviewer caught nothing the state table missed but proved invariants hold under roster churn. Manual tester drove a real 22-agent overflow with mixed block heights and live eviction — the scenarios unit tests can't reach.
-- **Failed:** the walkthrough diagram contained arithmetic errors the user-approved diagram carried into the issue ("+1 more" at bottom-anchored states where 2 of 5 agents are hidden; one mislabeled wrap state) — the builder had to choose between diagram and prototype contract; reviewer + AC reviewer both re-flagged it. Also: two transient sub-agent failures (empty returns without output) cost two restart cycles; review round 3 found a real budget-divergence bug that visibility-only tests had shipped — exact-window assertions are the only kind that pin a scroll contract.
-- **Next time:** when a diagram encodes a contract, verify its counts and state labels against the prototype before putting it in the issue (or mark the diagram illustrative and the prototype authoritative). Exact-window state-table tests from day one, not visibility assertions. Verify agent output files exist before treating a return as a verdict — an empty return with no file means restart, not approval.
-## widget-nav-deferred-rerank - 2026-08-04
-- **Worked:** grilling the design to a behavioral contract before the issue (freeze applies only to ordering; display truth stays live; identity-based highlight) made the semantics unambiguous — reviewer and AC reviewer both verified against the contract without re-litigating it. The voice-of-reason alternatives menu flagged the materialized-roster staleness trap, and the id-order-list choice survived two review passes. The refactor loop ran three clean rounds with the full suite green after each commit; the merge was conflict-free because main hadn't moved.
-- **Failed:** the first builder spawn returned a fragment instead of a report with zero work landed — restart, not salvage. The test-fixture mock for `AgentManager.listAgents()` returned agents in literal array order, but the real manager sorts newest-first by `startedAt` — the deferred re-rank behavior was unobservable until the mock mirrored the real sort, costing a red-green-debug cycle chasing a correct implementation. The manual tester could not drive a live TUI session; API-level simulation with fake timers carried the verification instead.
-- **Next time:** when a test mocks a data source that has ordering semantics (sort, insertion order), mirror the real implementation's ordering in the mock from the first test, not just the membership. Closure capture traps: a factory mock's closure binds its own parameter, so re-assigning the test's array variable does nothing — assign `listAgents` explicitly against the outer variable. Verify agent output files exist before treating a return as a verdict — an empty return with no file means restart, not approval.
-
-## test-suite-audit - 2026-08-04
-- **Worked:** parallel read-only audits (8 agents, one shared severity taxonomy, disjoint file groups) scaled to 21.7k lines of tests; the FALSE-GUARANTEE criterion ("passes even if the pinned behavior is deleted") produced consistent, verifiable findings across all groups. Mutation verification as the standard: temporarily deleting the pinned src guard and watching the reworked test fail converted "I think this pins X" into proof — every risky fix was mutation-verified before commit. Eliminating private-seam access made tests stronger, not just cleaner: after driving the real 5s/60s intervals via fake timers instead of `(manager as any).checkWatchdogs()`, deleting the constructor's `setInterval` lines fails 49 tests — the interval wiring itself is now pinned, which direct private calls could never catch. Grouping fixes by directory into disjoint worktrees allowed 3-4 parallel builders with zero merge conflicts across three sweeps.
-- **Failed:** audit line numbers drifted before builders started, and two findings were already fixed by parallel branches (deltaInputTokens was reported as a finding but already asserted at a different line) — each builder had to re-locate findings against current src. Two transient builder failures: one returned a fragment with zero work landed (restart, not salvage), one corrupted a file mid-mutation-check (caught by parse error, restored).
-- **Next time:** vitest fake-timer facts (verified by reading vitest source): `setSystemTime` shifts pending timer callAts, and each timer fire sets `clock.now = timer.callAt` — a time jump + `advanceTimersByTime` lands checks at exactly T0+threshold; a short advance after a jump does NOT fire longer intervals (5s advance won't trip a 60s cleanup), so interval-driven tests are structurally safe from the cleanup-eviction trap. When a test mocks a module with defaults or ordering, derive them from the real exported constants rather than reimplementing by hand — the menu mock pinned its own `?? 6`/`?? 45` literals until `DEFAULT_AGENT` was exported. Recurring vacuous patterns to grep for in future audits: tests ending at `.find()` with no expect; global `some()` checks that pass from the initial state; `expect.any(String)` for branch-specific messages; regexes matching both the truncated and untruncated form; absence assertions on contracts already pinned elsewhere.
+- Stay within issue scope.
