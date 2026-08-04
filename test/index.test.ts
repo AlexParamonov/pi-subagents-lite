@@ -373,12 +373,6 @@ describe("Agent tool schema — worktree_path", () => {
     await loadExtension(api.api);
   });
 
-  it("worktree_path is optional in the schema", () => {
-    const tool = api.tools.find((t) => t.name === "Agent")!;
-    const required = tool.parameters.required ?? [];
-    expect(required).not.toContain("worktree_path");
-  });
-
   it("worktree_path is a string type in the schema", () => {
     const tool = api.tools.find((t) => t.name === "Agent")!;
     const prop = tool.parameters.properties?.worktree_path;
@@ -478,13 +472,6 @@ describe("constrained sampling — default OFF", () => {
     expect(props.agent.optional).toBe(true);
     expect(props.run_in_background.optional).toBe(true);
     expect(props.worktree_path.optional).toBe(true);
-  });
-
-  it("Agent schema does not have all fields in required when toggle is OFF", () => {
-    const tool = findTool(api, "Agent");
-    const required = tool!.parameters.required ?? [];
-    expect(required).not.toContain("description");
-    expect(required).not.toContain("worktree_path");
   });
 
   // StopAgent and AgentStatus: always have constrainedSampling

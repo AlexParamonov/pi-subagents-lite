@@ -213,7 +213,6 @@ describe("navigation key handler (createNavInputHandler)", () => {
   describe("activation", () => {
     it("activates on down + empty editor + agents exist", () => {
       mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
-      mockManager.listAgents.mockReturnValue([{ id: "a1" }]);
       (ctx.ui.getEditorText as any).mockReturnValue("");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
@@ -223,7 +222,6 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
     it("does not activate when editor has text", () => {
       mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
-      mockManager.listAgents.mockReturnValue([{ id: "a1" }]);
       (ctx.ui.getEditorText as any).mockReturnValue("hello");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
