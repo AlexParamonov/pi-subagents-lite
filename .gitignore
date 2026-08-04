@@ -20,6 +20,9 @@ npm-debug.log*
 Thumbs.db
 *.pem
 
+# Playwright CLI artifacts
+.playwright-cli/
+
 # Editors
 .vscode/*
 !.vscode/settings.json
