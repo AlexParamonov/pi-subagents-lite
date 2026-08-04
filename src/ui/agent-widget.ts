@@ -116,8 +116,6 @@ export class AgentWidget {
   private theme: Theme | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
-  /** Pending tool expansion state from onTerminalInput (push-based, no polling). */
-  private pendingToolsExpanded: boolean | undefined;
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -206,12 +204,6 @@ export class AgentWidget {
   /** Set whether ctrl+o shortcut is enabled. */
   setWidgetShortcut(enabled: boolean) {
     this.widgetShortcut = enabled;
-  }
-
-  /** Notify widget that tool expansion state changed (push-based, no polling). */
-  notifyToolsExpansionChanged(expanded: boolean) {
-    this.pendingToolsExpanded = expanded;
-    this.update();
   }
 
   /** Set max lines for full mode. */
@@ -1036,14 +1028,6 @@ export class AgentWidget {
       return;
     }
     if (!this.uiCtx) return;
-
-    // Sync compact mode with tool expansion state (ctrl+o)
-    // Tools expanded → widget full, tools collapsed → widget compact
-    // Note: sync is triggered by onTerminalInput detecting ctrl+o, not polling
-    if (this.widgetShortcut && !this.forceCompact && this.pendingToolsExpanded !== undefined) {
-      this.compactMode = !this.pendingToolsExpanded;
-      this.pendingToolsExpanded = undefined;
-    }
 
     const { running, queued, finished } = this.categorizeAgents();
 

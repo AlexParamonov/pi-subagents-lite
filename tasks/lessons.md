@@ -41,6 +41,10 @@
 - Check for WIP branches that might land before merging. Diff old paths before merging.
 - Only extract mock factories with ≥1 consumer in the current slice. Module-level singletons still require vi.mock().
 - Prefer public API for cross-package access — private fields break silently on upstream changes.
+- After extracting a shared mock, prove each consumer reaches it: a mock is vacuous when the importing modules are themselves mocked. Run the file without it before keeping it.
+- When a fix is about which arguments reach a function (e.g. `matchesKey(data, key)`), assert the call args — a mock implementation that ignores args keeps the old bug green.
+- A lib-contract test via `vi.importActual` pins the input formats a delegation fix claims to support (legacy `\u000f` vs kitty/modifyOtherKeys `\x1b[111;5u`).
+- Two mechanisms converging on the same state with the same gates are vestigial duplication: keep the one owned by the authoritative module (ConfigStore per ADR 0004), delete the other.
 
 ### pi-ai API & Subagent Lifecycle
 - `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for agent to finish. Check `ctx.isIdle()` at call time.

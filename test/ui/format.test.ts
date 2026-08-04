@@ -1,13 +1,18 @@
 /**
- * widget-stats-filtering.test.ts — Tests for configurable widget stats filtering.
+ * format.test.ts — Tests for display formatting helpers.
  *
  * buildStatsParts accepts a `visible` parameter controlling which stat
  * parts appear in the output. All flags default to true for backward
  * compatibility.
+ *
+ * getDisplayName resolves the display name for any agent type (visible or
+ * hidden) from the type registry, falling back to name / "Agent".
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildStatsParts, getDisplayName } from "../../src/ui/format.js";
+import { registerAgents } from "../../src/agents/agent-types.js";
+import type { AgentConfig } from "../../src/agents/types.js";
 
 const mockTheme = {
   fg: (_color: string, text: string) => text,
@@ -162,16 +167,6 @@ describe("buildStatsParts — cost behavior", () => {
   });
 });
 
-/**
- * Tests for getDisplayName.
- *
- * Verifies that getDisplayName returns the correct display name for both
- * visible and hidden agents, using the fallback chain displayName ?? name ?? "Agent".
- */
-
-import { registerAgents } from "../../src/agents/agent-types.js";
-import type { AgentConfig } from "../../src/agents/types.js";
-
 describe("getDisplayName", () => {
   beforeEach(() => {
     // Set up test agents
@@ -209,8 +204,7 @@ describe("getDisplayName", () => {
   });
 
   it("returns displayName for hidden agents", () => {
-    // This test will fail before the fix because getDisplayName uses getConfig()
-    // which calls findActiveConfig() that returns general-purpose for hidden agents
+    // Hidden agents resolve from their own config, not general-purpose's "Agent".
     expect(getDisplayName("hidden-agent")).toBe("Hidden Agent Display");
   });
 

@@ -41,7 +41,6 @@ vi.mock("../src/agents/agent-types.js", () => ({
     maxTurns: undefined,
     thinkingLevel: undefined,
   }),
-  getAgentConfig: agentConfigMock(),
   registerAgents: vi.fn(),
   getAvailableTypes: vi.fn(() => []),
   setAgentScanDirs: vi.fn(),
@@ -128,7 +127,6 @@ const mockWidget: any = {
   highlightedIndex: vi.fn(() => 0),
   hasVisibleAgents: vi.fn(() => true),
   update: vi.fn(),
-  notifyToolsExpansionChanged: vi.fn(),
 };
 
 const mockStore: any = {
@@ -306,25 +304,36 @@ describe("navigation key handler (createNavInputHandler)", () => {
   });
 
   describe("ctrl+o handler", () => {
-    it("detects ctrl+o and calls notifyToolsExpanded", () => {
+    beforeEach(() => {
       mockWidget.isNavActive.mockReturnValue(false);
       mockWidget.isEditorFocused.mockReturnValue(true);
       mockMatchesKey.mockImplementation((_data: string, key: string) => key === "ctrl+o");
+    });
+
+    it("passes raw input to matchesKey and syncs expanded state", () => {
+      (ctx.ui.getToolsExpanded as any).mockReturnValue(true);
       const handler = createNavInputHandler(ctx);
 
-      // Simulate ctrl+o keypress (\u000f)
+      // Legacy format: ctrl+o as control character 0x0F
       handler("\u000f");
-
-      // Advance timers to trigger setTimeout
       vi.advanceTimersByTime(0);
 
-      // Should call notifyToolsExpanded
-      expect(mockStore.notifyToolsExpanded).toHaveBeenCalled();
+      expect(mockMatchesKey).toHaveBeenCalledWith("\u000f", "ctrl+o");
+      expect(mockStore.notifyToolsExpanded).toHaveBeenCalledWith(true);
+    });
+
+    it("passes kitty / modifyOtherKeys input format through", () => {
+      const handler = createNavInputHandler(ctx);
+
+      // CSI u: codepoint 111 ('o') with ctrl modifier (5)
+      handler("\x1b[111;5u");
+      vi.advanceTimersByTime(0);
+
+      expect(mockMatchesKey).toHaveBeenCalledWith("\x1b[111;5u", "ctrl+o");
+      expect(mockStore.notifyToolsExpanded).toHaveBeenCalledWith(false);
     });
 
     it("does not consume ctrl+o input", () => {
-      mockWidget.isNavActive.mockReturnValue(false);
-      mockWidget.isEditorFocused.mockReturnValue(true);
       const handler = createNavInputHandler(ctx);
 
       const result = handler("\u000f");
@@ -337,6 +346,16 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
       handler("\u000f");
       expect(mockStore.notifyToolsExpanded).not.toHaveBeenCalled();
+    });
+
+    it("real matchesKey recognizes ctrl+o in every supported format", async () => {
+      const { matchesKey: realMatchesKey } =
+        await vi.importActual<typeof import("@earendil-works/pi-tui")>("@earendil-works/pi-tui");
+
+      expect(realMatchesKey("\u000f", "ctrl+o")).toBe(true); // legacy control char
+      expect(realMatchesKey("\x1b[111;5u", "ctrl+o")).toBe(true); // kitty / modifyOtherKeys
+      expect(realMatchesKey("o", "ctrl+o")).toBe(false); // plain key
+      expect(realMatchesKey("\x03", "ctrl+o")).toBe(false); // unrelated ctrl combo
     });
   });
 });
