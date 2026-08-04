@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/spawn/spawn-coordinator.js";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
@@ -23,12 +24,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
     maxTurns: undefined,
     thinkingLevel: undefined,
   }),
-  getAgentConfig: (type: string) => ({
-    name: type,
-    displayName: type.charAt(0).toUpperCase() + type.slice(1),
-    description: `Test agent ${type}`,
-    systemPrompt: "test",
-  }),
+  getAgentConfig: agentConfigMock(),
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
