@@ -10,14 +10,14 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
 /**
- * All tool names that Pi can provide to a session.
+ * All Pi built-in tool names. This registry must contain every Pi built-in so
+ * validation does not misclassify one as an extension tool. `ls` is a Pi
+ * built-in explicitly activated for restricted sessions.
  *
  * Note: only `read`, `bash`, `edit`, `write` are active by default.
  * `find` and `grep` must be explicitly activated via setActiveToolsByName().
- * `ls` was removed — it's a thin wrapper over bash that adds ~180 tokens/turn
- * with no real benefit.
  */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find"];
+export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();

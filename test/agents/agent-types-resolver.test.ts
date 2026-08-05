@@ -116,6 +116,20 @@ describe("resolveVisibleTools — allowlist mode", () => {
     expect(result).not.toContain("bash");
   });
 
+  it("allows ls in a restricted session without an unknown-tool warning", () => {
+    const notify = vi.fn();
+
+    const result = resolveVisibleTools({
+      activeTools: ["ls"],
+      tools: ["ls"],
+      extToolMap: new Map(),
+      notify,
+    });
+
+    expect(result).toEqual(["ls"]);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
   it("warns about unknown bare tool name not in builtins or extensions", () => {
     const notify = vi.fn();
 
