@@ -5,8 +5,8 @@
  *   - Rendering header with status, duration, tool uses, tokens
  *   - Rendering user/assistant/toolResult messages
  *   - Thinking blocks in assistant messages
- *   - Tool result success/error icons
- *   - Tool result truncation at 4000 chars
+ *   - Tool result success/error backgrounds
+ *   - Tool result truncation at 500 chars
  *   - Scroll behavior (up/down/pageup/pagedown/g/G)
  *   - Close on q/Esc
  *   - Stop key two-press confirmation ('s')
@@ -44,9 +44,14 @@ vi.mock("@earendil-works/pi-tui", () => ({
     focused = false;
     onSubmit: ((v: string) => void) | undefined;
     onEscape: (() => void) | undefined;
-    handleInput(_data: string) {}
+    private text = "";
+    handleInput(data: string) {
+      if (data === "\x1b") this.onEscape?.();
+      else if (data === "\r") this.onSubmit?.(this.text);
+      else this.text += data;
+    }
     render(_w: number): string[] {
-      return ["> "];
+      return ["> " + this.text];
     }
   },
   Markdown: class {
@@ -111,6 +116,17 @@ import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
 const noopTheme: any = {
   fg: (_color: string, text: string) => text,
   bg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+  italic: (text: string) => text,
+};
+
+/**
+ * Theme that marks bg() calls in the rendered output. The tool-result
+ * success/error distinction is a background color, which noopTheme flattens.
+ */
+const bgMarkingTheme: any = {
+  fg: (_color: string, text: string) => text,
+  bg: (color: string, text: string) => `[bg:${color}]${text}[/bg]`,
   bold: (text: string) => text,
   italic: (text: string) => text,
 };
@@ -185,11 +201,11 @@ describe("ConversationViewer", () => {
         return () => {};
       });
 
-      const session = makeMockSession();
+      const session = makeMockSession([{ role: "user", content: "hi" }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
       // Non-message_update events should not trigger render
       subscriber!({ type: "other" });
@@ -201,10 +217,14 @@ describe("ConversationViewer", () => {
       vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(1);
 
-      // Rapid deltas only trigger one render (debounce coalesces)
+      // Rapid deltas coalesce into one render: both fire before the debounce
+      // window elapses, so only a single requestRender follows.
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "!" } });
       vi.runAllTimers();
       expect(mockRequestRender).toHaveBeenCalledTimes(2);
+      // The coalesced render shows the accumulated text (second delta included).
+      expect(viewer.render(80).join("\n")).toContain("hello world!");
 
       // Clearing text should trigger render
       subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
@@ -214,8 +234,9 @@ describe("ConversationViewer", () => {
     });
 
     it("stops processing events after close", () => {
-      let subscriber: () => void;
-      mockSubscribe.mockImplementation((cb: () => void) => {
+      vi.useFakeTimers();
+      let subscriber: (event?: unknown) => void;
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
         subscriber = cb;
         return () => {};
       });
@@ -229,9 +250,16 @@ describe("ConversationViewer", () => {
 
       // Close the viewer (via q key)
       viewer.handleInput("q");
-      subscriber!();
-      // Should not request render after close
+
+      // Fire a render-triggering event after close — the closed guard must
+      // swallow it before it mutates streaming state or schedules a render.
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "x" } });
+      vi.runAllTimers();
+
+      // No render after close, and the event must not leak into state.
       expect(mockRequestRender).not.toHaveBeenCalled();
+      expect((viewer as any).streamingText).toBe("");
+      vi.useRealTimers();
     });
   });
 
@@ -331,9 +359,10 @@ describe("ConversationViewer", () => {
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
-      // Composer should be open (internal state)
-      const composer = (viewer as any).composer;
-      expect(composer).toBeDefined();
+      // The composer row and its hints are rendered output.
+      const text = viewer.render(80).join("\n");
+      expect(text).toContain("✎ steer");
+      expect(text).toContain("Enter send · Esc cancel");
     });
 
     it("sends steer message on composer submit", () => {
@@ -348,12 +377,12 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r"); // open composer
-
-      // Simulate submit
-      const composer = (viewer as any).composer;
-      composer.onSubmit("do this thing");
+      viewer.handleInput("do this thing"); // type (routed to the composer)
+      viewer.handleInput("\r"); // submit
 
       expect(onSteer).toHaveBeenCalledWith("do this thing");
+      // Submitting closes the composer — the hint row is gone from the render.
+      expect(viewer.render(80).join("\n")).not.toContain("Enter send · Esc cancel");
     });
 
     it("does not open composer when agent is not running", () => {
@@ -369,8 +398,9 @@ describe("ConversationViewer", () => {
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
-      const composer = (viewer as any).composer;
-      expect(composer).toBeUndefined();
+      const text = viewer.render(80).join("\n");
+      expect(text).not.toContain("✎ steer");
+      expect(text).not.toContain("Enter send · Esc cancel");
     });
 
     it("cancels composer on Escape", () => {
@@ -385,76 +415,127 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r"); // open composer
+      viewer.handleInput("\x1b"); // escape routes to the composer's onEscape
 
-      const composer = (viewer as any).composer;
-      composer.onEscape();
-
-      expect((viewer as any).composer).toBeUndefined();
+      const text = viewer.render(80).join("\n");
+      expect(text).not.toContain("Enter send · Esc cancel");
+      expect(text).not.toContain("✎ steer");
     });
   });
 
   describe("scroll behavior", () => {
+    // 30 distinct one-line rows → 33 content lines (fill + 30 + fill + empty)
+    // against a 21-row viewport: maxScroll = 12. Distinct line markers make
+    // the visible window observable through rendered output.
+    const manyLines = Array.from({ length: 30 }, (_, i) => `line${i}`).join("\n");
+    // Content rows sit between the separator under the header and the one
+    // above the footer; rows are `│ <content> │` with trailing padding.
+    function visibleContentLines(viewer: ConversationViewer): string[] {
+      const lines = viewer.render(80);
+      const seps: number[] = [];
+      lines.forEach((l, i) => {
+        if (l.includes("─")) seps.push(i);
+      });
+      return lines
+        .slice(seps[1] + 1, seps[2])
+        .map((l) => l.replace(/^│/, "").replace(/│$/, "").trim())
+        .filter(Boolean);
+    }
+    // Footer readout: `(currentLine/total · pct%)`. With 33 content lines and
+    // a 21-row viewport: top = (21/33 · 64%), one step down = (22/33 · 67%),
+    // bottom = (33/33 · 100%).
+    function readout(viewer: ConversationViewer): string {
+      return (
+        viewer
+          .render(80)
+          .join("\n")
+          .match(/\(\d+\/\d+ · \d+%\)/)?.[0] ?? ""
+      );
+    }
+
     it("scrolls down on down arrow", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      (viewer as any).lastInnerW = 116; // normally set by render()
-      const initialOffset = (viewer as any).scrollOffset;
-      (viewer as any).autoScroll = false; // disable auto-scroll to test raw scroll
+      viewer.render(80); // autoScroll parks at the bottom
+      viewer.handleInput("g"); // top, manual scroll
+      viewer.handleInput("\x1b[B"); // one step down
 
-      viewer.handleInput("\x1b[B");
-      expect((viewer as any).scrollOffset).toBe(initialOffset + 1);
+      expect(readout(viewer)).toBe("(22/33 · 67%)");
+      // The window's last content line advanced past the top window.
+      const visible = visibleContentLines(viewer);
+      expect(visible[visible.length - 1]).toBe("line20");
     });
 
     it("scrolls up on up arrow", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(200) }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      (viewer as any).scrollOffset = 5;
+      viewer.render(80);
+      viewer.handleInput("g");
+      viewer.handleInput("\x1b[B"); // 1
+      viewer.handleInput("\x1b[B"); // 2
+      viewer.handleInput("\x1b[B"); // 3
+      expect(visibleContentLines(viewer)[0]).toBe("line2");
 
-      viewer.handleInput("\x1b[A");
-      expect((viewer as any).scrollOffset).toBe(4);
+      viewer.handleInput("\x1b[A"); // back to 2
+      expect(readout(viewer)).toBe("(23/33 · 70%)");
+      expect(visibleContentLines(viewer)[0]).toBe("line1");
     });
 
     it("jumps to top on 'g'", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(200) }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      (viewer as any).scrollOffset = 10;
-
+      viewer.render(80); // parked at the bottom by autoScroll
       viewer.handleInput("g");
-      expect((viewer as any).scrollOffset).toBe(0);
+
+      const visible = visibleContentLines(viewer);
+      expect(visible[0]).toBe("line0");
+      expect(visible[visible.length - 1]).toBe("line19");
+      expect(readout(viewer)).toBe("(21/33 · 64%)");
     });
 
     it("jumps to bottom on 'G'", () => {
-      const session = makeMockSession([{ role: "user", content: "x".repeat(500) }]);
+      // Content must actually overflow the viewport, or maxScroll is 0 and
+      // the G branch has nothing to scroll (vacuous).
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      viewer.render(80); // bottom
+      viewer.handleInput("g"); // top
+      viewer.handleInput("G"); // bottom
 
-      viewer.handleInput("G");
-      // Should be at max scroll
-      const contentLines = (viewer as any).buildContentLines(116);
-      const viewportH = (viewer as any).viewportHeight();
-      const maxScroll = Math.max(0, contentLines.length - viewportH);
-      expect((viewer as any).scrollOffset).toBe(maxScroll);
+      const visible = visibleContentLines(viewer);
+      expect(visible[0]).toBe("line11");
+      expect(visible[visible.length - 1]).toBe("line29");
+      expect(visible).not.toContain("line0");
+      expect(readout(viewer)).toBe("(33/33 · 100%)");
     });
 
     it("does not scroll past start", () => {
-      const session = makeMockSession([{ role: "user", content: "hello" }]);
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.handleInput("\x1b[A");
-      expect((viewer as any).scrollOffset).toBe(0);
+      viewer.render(80); // bottom
+      viewer.handleInput("g"); // top
+      viewer.handleInput("\x1b[A"); // up at the top — must stay clamped at 0
+      viewer.handleInput("\x1b[A"); // up again
+
+      const visible = visibleContentLines(viewer);
+      expect(visible[0]).toBe("line0");
+      // Readout pins the clamp: a negative offset would drop currentLine below 21.
+      expect(readout(viewer)).toBe("(21/33 · 64%)");
     });
   });
 
@@ -494,7 +575,7 @@ describe("ConversationViewer", () => {
       expect(text).toContain("here is the answer");
     });
 
-    it("renders tool results with success icon", () => {
+    it("renders tool results with success background", () => {
       const session = makeMockSession([
         {
           role: "toolResult",
@@ -506,14 +587,16 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, bgMarkingTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
       expect(text).toContain("read");
+      expect(text).toContain("toolSuccessBg");
+      expect(text).not.toContain("toolErrorBg");
     });
 
-    it("renders tool results with error icon", () => {
+    it("renders tool results with error background", () => {
       const session = makeMockSession([
         {
           role: "toolResult",
@@ -525,11 +608,13 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const viewer = new ConversationViewer(tui, session, record, bgMarkingTheme, vi.fn());
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
       expect(text).toContain("read");
+      expect(text).toContain("toolErrorBg");
+      expect(text).not.toContain("toolSuccessBg");
     });
 
     it("truncates tool results at 500 chars", () => {

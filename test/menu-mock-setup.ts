@@ -140,16 +140,20 @@ vi.mock("../src/prompt/context.js", () => ({
   buildSnapshotMarkdown: vi.fn(),
 }));
 
-vi.mock("../src/config/config-io.js", () => ({
-  saveConfigAtomic: vi.fn(),
-  DEFAULT_GRACE_TURNS: 6,
-  DEFAULT_WATCHDOG_TIMEOUT_MINUTES: 45,
-  CUSTOM_PROMPT_PATH: "/home/test/.pi/agent/subagents-lite-prompt.md",
-  DEFAULT_CONFIG: {
-    agent: { default: null, forceBackground: false },
-    concurrency: { default: 4 },
-  },
-}));
+vi.mock("../src/config/config-io.js", async () => {
+  // Re-export the real constants so the shell mock below derives its defaults
+  // from src (DEFAULT_AGENT etc.) instead of hand-copied literals.
+  const actual = await vi.importActual<typeof import("../src/config/config-io.js")>("../src/config/config-io.js");
+  return {
+    ...actual,
+    saveConfigAtomic: vi.fn(),
+    CUSTOM_PROMPT_PATH: "/home/test/.pi/agent/subagents-lite-prompt.md",
+    DEFAULT_CONFIG: {
+      agent: { default: null, forceBackground: false },
+      concurrency: { default: 4 },
+    },
+  };
+});
 
 vi.mock("../src/agents/tool-execution.js", () => ({
   buildAgentDetails: vi.fn(() => ({})),
@@ -157,27 +161,30 @@ vi.mock("../src/agents/tool-execution.js", () => ({
   errorResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], isError: true, details })),
 }));
 
-vi.mock("../src/shell.js", () => {
+vi.mock("../src/shell.js", async () => {
+  // Derive the getter defaults from src's real config constants (via the mocked
+  // config-io module above) so menu tests pin src's defaults, not a hand copy.
+  const { DEFAULT_AGENT } = await import("../src/config/config-io.js");
   const mockStore = {
     get agent() {
       const a = mockModules.mockConfig.agent;
-      const widgetMaxLines = a.widgetMaxLines ?? 12;
+      const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_AGENT.widgetMaxLines;
       return {
         defaultModel: a.default ?? null,
         forceBackground: a.forceBackground === true,
         showCost: mockModules.mockSessionShowCost ?? a.showCost === true,
-        graceTurns: a.graceTurns ?? 6,
-        toolTimeoutMinutes: a.toolTimeoutMinutes ?? 45,
-        idleTimeoutMinutes: a.idleTimeoutMinutes ?? 45,
+        graceTurns: a.graceTurns ?? DEFAULT_AGENT.graceTurns,
+        toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_AGENT.toolTimeoutMinutes,
+        idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_AGENT.idleTimeoutMinutes,
         widgetMaxLines,
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
         hideBackgroundCompletions: a.hideBackgroundCompletions === true,
         widgetShortcut: a.widgetShortcut === true,
-        widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
-        widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
-        systemPromptMode: a.systemPromptMode ?? "replace",
-        includeContextFiles: a.includeContextFiles ?? true,
+        widgetDescLengthFull: a.widgetDescLengthFull ?? DEFAULT_AGENT.widgetDescLengthFull,
+        widgetDescLengthCompact: a.widgetDescLengthCompact ?? DEFAULT_AGENT.widgetDescLengthCompact,
+        systemPromptMode: a.systemPromptMode ?? DEFAULT_AGENT.systemPromptMode,
+        includeContextFiles: a.includeContextFiles ?? DEFAULT_AGENT.includeContextFiles,
         defaultThinking: a.defaultThinking,
         defaultMaxTurns: a.defaultMaxTurns,
         loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
@@ -190,8 +197,8 @@ vi.mock("../src/shell.js", () => {
         showTime: a.showTime !== false,
         deltaInputTokens: a.deltaInputTokens === true,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
-        finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
-        finishedEvictTurns: a.finishedEvictTurns ?? 4,
+        finishedRetentionMinutes: a.finishedRetentionMinutes ?? DEFAULT_AGENT.finishedRetentionMinutes,
+        finishedEvictTurns: a.finishedEvictTurns ?? DEFAULT_AGENT.finishedEvictTurns,
         modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
         statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
         widgetShowModel: a.widgetShowModel !== false,

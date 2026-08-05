@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Watchdog for stuck agents.** Detects agents stuck in long tool calls or idle states and stops them automatically. Configurable timeouts: `watchdogToolTimeoutMinutes` (default 5) and `watchdogIdleTimeoutMinutes` (default 10). Surface in widget, results, and nudges.
+- **Scroll-viewport navigation.** Widget navigation now tracks a scroll window that follows the highlighted agent, keeping the selected row visible when the roster overflows the available space.
+- **Identity-based nav highlight with deferred rerank.** Navigation highlight now tracks agent IDs instead of positional indexes, so the highlight survives roster reordering between renders.
+- **Tool and idle timeout entries in Spawn Options menu.** Configure watchdog timeouts per-agent at spawn time.
 - **Optional background completion hiding.** Widget Behavior settings can hide background-agent completion cards from the TUI; results remain available to the model and Running agents.
+
+### Changed
+
+- **`navHint` setting now respected during active navigation.** The nav hint in the widget heading shows only when not actively navigating.
+- **Widget navigation refactored.** `navUp`/`navDown` merged into `moveNav`, nav state extraction unified behind `resolveNavState`, and rendering split into focused methods.
+
+### Fixed
+
+- **Non-numeric input rejected in numeric menu items.** Prevents entry of invalid characters in timeout and other number fields.
+- **ctrl+o shortcut detection uses `matchesKey`.** Supports all terminal input formats instead of raw character matching.
+- **Hidden agents now display their configured `display_name`.** Previously, hidden agents showed "Agent" instead of their frontmatter `display_name` when spawned.
 
 ## [1.7.0] - 2026-08-02
 

@@ -204,15 +204,14 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
       }
     }
 
-    // ctrl+o = 0x0F (15) — toggles tool expansion
-    if (data === "\u000f") {
-      // Read state after a tick to let the built-in handler process it first
+    // ctrl+o toggles tool expansion — sync compact mode with the new state.
+    // Not consumed: pi's built-in handler owns the actual toggle.
+    if (matchesKey(data, "ctrl+o")) {
+      // Read state after a tick so the built-in handler applies the toggle first.
       setTimeout(() => {
         const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };
         const expanded = ui.getToolsExpanded?.();
         if (expanded !== undefined) {
-          // Widget render hint (tool row state), then config-gated compact toggle.
-          getWidget()?.notifyToolsExpansionChanged(expanded);
           getStore().notifyToolsExpanded(expanded);
         }
       }, 0);

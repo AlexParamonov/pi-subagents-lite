@@ -77,6 +77,7 @@ describe("showSystemPromptMenu — system prompt mode", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const spm = settingsListCalls[0].items.find((i: any) => i.id === "systemPromptMode");
+    expect(spm.currentValue).toBe("replace");
   });
 
   it("shows configured system prompt mode", async () => {
@@ -180,6 +181,7 @@ describe("showSystemPromptMenu — Include AGENTS.md", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const icf = settingsListCalls[0].items.find((i: any) => i.id === "includeContextFiles");
+    expect(icf.currentValue).toBe("ON");
   });
 
   it("shows 'Include AGENTS.md · OFF' when includeContextFiles is false", async () => {
@@ -213,6 +215,7 @@ describe("showSystemPromptMenu — Load skills implicitly", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const lsi = settingsListCalls[0].items.find((i: any) => i.id === "loadSkillsImplicitly");
+    expect(lsi.currentValue).toBe("ON");
   });
 
   it("shows 'Load skills implicitly · OFF' when loadSkillsImplicitly is false", async () => {
@@ -246,6 +249,7 @@ describe("showSystemPromptMenu — Load extensions implicitly", () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
     const lei = settingsListCalls[0].items.find((i: any) => i.id === "loadExtensionsImplicitly");
+    expect(lei.currentValue).toBe("ON");
   });
 
   it("shows 'Load extensions implicitly · OFF' when loadExtensionsImplicitly is false", async () => {

@@ -95,4 +95,21 @@ describe("model resolution precedence chain", () => {
     });
     expect(r).toBe("parent");
   });
+
+  it("skips empty-string candidates at every level, falling back to parent", () => {
+    // Header contract: "first non-null, non-undefined, non-empty-string value".
+    // Empty-string overrides must fall through, not win.
+    const cfg = {
+      ...baseConfig,
+      agent: { default: "", Explore: "", forceBackground: false },
+    };
+    const r = resolveModel({
+      subagentType: "Explore",
+      agentConfig: { model: "" },
+      config: cfg,
+      parentModelId: "parent",
+      sessionOverrides: { default: "", Explore: "" },
+    });
+    expect(r).toBe("parent");
+  });
 });

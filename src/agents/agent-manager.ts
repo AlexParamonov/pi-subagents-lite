@@ -26,10 +26,10 @@ import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage }
 import { errorMessage, toSingleLine } from "../utils.js";
 
 /** How often to check for expired agent records (milliseconds). */
-const CLEANUP_INTERVAL_MS = 60_000;
+export const CLEANUP_INTERVAL_MS = 60_000;
 
 /** How often the watchdog scans running agents for stuck state (milliseconds). */
-const WATCHDOG_TICK_MS = 5_000;
+export const WATCHDOG_TICK_MS = 5_000;
 
 /** Milliseconds in one minute (config thresholds and retention are stored in minutes). */
 const MINUTE_MS = 60_000;

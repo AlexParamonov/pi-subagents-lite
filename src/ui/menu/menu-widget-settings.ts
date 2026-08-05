@@ -162,7 +162,8 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       label: "Ctrl+o shortcut",
       currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
+      description:
+        "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
     },
     {
       id: "hideBackgroundCompletions",

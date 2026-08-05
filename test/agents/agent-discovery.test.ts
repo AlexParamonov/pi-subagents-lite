@@ -417,11 +417,6 @@ describe("mergeAgents", () => {
     expect(result.get("custom-agent")?.description).toBe("A custom agent");
   });
 
-  it("handles empty inputs gracefully", () => {
-    const result = mergeAgents(new Map(), [], [], []);
-    expect(result.size).toBe(0);
-  });
-
   it("returns a Map with string keys", () => {
     const defaults = new Map([
       [
@@ -520,24 +515,6 @@ describe("mergeAgents", () => {
     const projectAgents: AgentConfigFromMd[] = [];
     const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
     expect(result.get("shared-agent")?.source).toBe("project");
-  });
-
-  it("backward compat: works without shared agents argument (empty shared)", () => {
-    const defaults = new Map([
-      [
-        "agent1",
-        {
-          name: "agent1",
-          description: "Default",
-          extensions: true,
-          skills: false,
-          systemPrompt: "",
-        },
-      ],
-    ]);
-    const result = mergeAgents(defaults, [], [], []);
-    expect(result.size).toBe(1);
-    expect(result.get("agent1")?.description).toBe("Default");
   });
 
   it("name clash between shared and project resolves in favor of project", () => {

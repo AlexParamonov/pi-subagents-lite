@@ -8,7 +8,7 @@
  * Pure functions — no module-level state, no side effects.
  */
 
-import { getConfig } from "../agents/agent-types.js";
+import { getAgentConfig } from "../agents/agent-types.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
@@ -152,7 +152,8 @@ export function buildStatsParts(
 
 /** Get display name for any agent type (built-in or custom). */
 export function getDisplayName(type: SubagentType): string {
-  return getConfig(type).displayName;
+  const config = getAgentConfig(type);
+  return config?.displayName ?? config?.name ?? "Agent";
 }
 
 /**

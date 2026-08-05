@@ -1,13 +1,18 @@
 /**
- * widget-stats-filtering.test.ts — Tests for configurable widget stats filtering.
+ * format.test.ts — Tests for display formatting helpers.
  *
  * buildStatsParts accepts a `visible` parameter controlling which stat
  * parts appear in the output. All flags default to true for backward
  * compatibility.
+ *
+ * getDisplayName resolves the display name for any agent type (visible or
+ * hidden) from the type registry, falling back to name / "Agent".
  */
 
-import { describe, it, expect } from "vitest";
-import { buildStatsParts } from "../../src/ui/format.js";
+import { describe, it, expect, beforeEach } from "vitest";
+import { buildStatsParts, getDisplayName } from "../../src/ui/format.js";
+import { registerAgents } from "../../src/agents/agent-types.js";
+import type { AgentConfig } from "../../src/agents/types.js";
 
 const mockTheme = {
   fg: (_color: string, text: string) => text,
@@ -105,11 +110,6 @@ describe("buildStatsParts — visible flag: showTime", () => {
     const parts = buildStatsParts(allStats, mockTheme);
     expect(parts.some((p) => p.includes("1m"))).toBe(true);
   });
-
-  it("includes time by default when durationMs is provided", () => {
-    const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.some((p) => p.includes("1m"))).toBe(true);
-  });
 });
 
 describe("buildStatsParts — all visible flags false", () => {
@@ -164,5 +164,55 @@ describe("buildStatsParts — cost behavior", () => {
   it("includes cost formatted as dollar amount", () => {
     const parts = buildStatsParts(allStats, mockTheme);
     expect(parts.some((p) => /^\$\d+\.\d{2}$/.test(p))).toBe(true);
+  });
+});
+
+describe("getDisplayName", () => {
+  beforeEach(() => {
+    // Set up test agents
+    const agents = new Map<string, AgentConfig>();
+
+    // Visible agent with displayName
+    agents.set("visible-agent", {
+      name: "visible-agent",
+      displayName: "Visible Agent Display",
+      description: "A visible agent",
+      systemPrompt: "test",
+    });
+
+    // Hidden agent with displayName
+    agents.set("hidden-agent", {
+      name: "hidden-agent",
+      displayName: "Hidden Agent Display",
+      description: "A hidden agent",
+      hidden: true,
+      systemPrompt: "test",
+    });
+
+    // Agent without displayName (should fall back to name)
+    agents.set("no-display-name", {
+      name: "no-display-name",
+      description: "An agent without displayName",
+      systemPrompt: "test",
+    });
+
+    registerAgents(agents);
+  });
+
+  it("returns displayName for visible agents", () => {
+    expect(getDisplayName("visible-agent")).toBe("Visible Agent Display");
+  });
+
+  it("returns displayName for hidden agents", () => {
+    // Hidden agents resolve from their own config, not general-purpose's "Agent".
+    expect(getDisplayName("hidden-agent")).toBe("Hidden Agent Display");
+  });
+
+  it("falls back to name when displayName is not set", () => {
+    expect(getDisplayName("no-display-name")).toBe("no-display-name");
+  });
+
+  it("falls back to 'Agent' when agent type is not found", () => {
+    expect(getDisplayName("non-existent-agent")).toBe("Agent");
   });
 });

@@ -25,7 +25,7 @@ import { executeStopAgentTool } from "../../src/agents/tool-execution.js";
 
 describe("executeStopAgentTool", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("returns error when agent_id is missing", async () => {
@@ -77,6 +77,28 @@ describe("executeStopAgentTool", () => {
 
     expect(result.content[0].text).toMatch(/^Stopped agent [a-z0-9]{8}$/);
     expect(result.isError).toBeFalsy();
+  });
+
+  it("returns error when abort fails on a running agent", async () => {
+    mockGetRecord.mockReturnValue({
+      id: "abc123def456ghi",
+      display: { type: "builder" },
+      lifecycle: { status: "running" },
+      execution: {},
+      stats: {},
+    });
+    mockAbort.mockReturnValue(false);
+
+    const result = await executeStopAgentTool(
+      "call_9",
+      { agent_id: "abc123def456ghi" },
+      undefined,
+      undefined,
+      {} as any,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe("Failed to stop agent abc123def456ghi");
   });
 
   it("returns error when agent ID not found, with running agents list", async () => {

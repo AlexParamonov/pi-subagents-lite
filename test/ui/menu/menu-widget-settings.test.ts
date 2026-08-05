@@ -156,14 +156,8 @@ describe("showWidgetSettingsMenu — SelectList top-level", () => {
     const items = selectListCalls[0].items;
     expect(items.map((i: any) => i.label)).toEqual(["Layout", "Display", "Behavior", "Stats"]);
     expect(items.map((i: any) => i.value)).toEqual(["layout", "display", "behavior", "stats"]);
-  });
-
-  it("has descriptions for each category", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    for (const item of selectListCalls[0].items) {
-      expect(typeof item.description).toBe("string");
-    }
+    // Each category also carries a description (folded from the former standalone typeof-check).
+    for (const item of items) expect(typeof item.description).toBe("string");
   });
 
   it("wraps in SettingsListWrapper with title 'Widget Settings'", async () => {

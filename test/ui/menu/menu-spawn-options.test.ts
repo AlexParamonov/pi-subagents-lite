@@ -88,6 +88,7 @@ describe("showSpawnOptionsMenu — force background", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const fb = settingsListCalls[0].items.find((i: any) => i.id === "forceBackground");
+    expect(fb.currentValue).toBe("OFF");
   });
 
   it("shows 'Force background · ON' when enabled", async () => {
@@ -190,7 +191,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     inputInstances = [];
   });
 
-  it("shows 'Default max turns · unlimited' when no default is set", async () => {
+  it("shows 'Default max turns · (not set)' when no default is set", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
@@ -288,6 +289,7 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    expect(dt.currentValue).toBe("inherit");
   });
 
   it("shows configured thinking level", async () => {

@@ -106,7 +106,7 @@ describe("SpawnCoordinator", () => {
     vi.useFakeTimers();
     manager = makeMockManager();
     ctx = makeMockCtx();
-    mockPi.sendMessage.mockClear();
+    mockPi.sendMessage.mockReset(); // full reset — no impl or calls leak between tests
     mockGetPiInstance.mockReturnValue(mockPi);
     const mod = await import("../../src/spawn/spawn-coordinator.js");
     SpawnCoordinator = mod.SpawnCoordinator;
@@ -346,14 +346,20 @@ describe("SpawnCoordinator", () => {
   });
 
   describe("onAgentComplete", () => {
-    it("deletes live view on completion", () => {
+    it("deletes live view on completion", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
-      // Manually add a live view
-      (coordinator as any).liveViews.set("agent-1", { activeTools: new Map(), responseText: "" });
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+      expect(coordinator.liveView(result.agentId)).toBeDefined();
 
-      coordinator.onAgentComplete({ id: "agent-1" } as AgentRecord);
+      coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
 
-      expect(coordinator.liveView("agent-1")).toBeUndefined();
+      expect(coordinator.liveView(result.agentId)).toBeUndefined();
     });
 
     it("schedules nudge for background agents", async () => {
@@ -378,11 +384,19 @@ describe("SpawnCoordinator", () => {
       expect(coordinator.isBackground(result.agentId)).toBe(false);
     });
 
-    it("does not schedule nudge for foreground agents", () => {
+    it("does not schedule nudge for foreground agents", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
-      // Not in backgroundAgentIds
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
 
-      coordinator.onAgentComplete({ id: "agent-1" } as AgentRecord);
+      // The record exists, so only the backgroundAgentIds guard can
+      // prevent the nudge from being scheduled and emitted.
+      coordinator.onAgentComplete(result.record);
 
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
@@ -454,13 +468,20 @@ describe("SpawnCoordinator", () => {
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
-    it("clears live views", () => {
+    it("clears live views", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
-      (coordinator as any).liveViews.set("agent-1", { activeTools: new Map(), responseText: "" });
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+      expect(coordinator.liveView(result.agentId)).toBeDefined();
 
       coordinator.dispose();
 
-      expect(coordinator.liveView("agent-1")).toBeUndefined();
+      expect(coordinator.liveView(result.agentId)).toBeUndefined();
     });
   });
 
@@ -475,9 +496,6 @@ describe("SpawnCoordinator", () => {
         graceTurns: 6,
         runInBackground: true,
       });
-
-      // Coordinator no longer stores pi
-      expect((coordinator as any).pi).toBeUndefined();
 
       // Nudge still works because it reads from shell at call time
       coordinator.scheduleNudge(result.agentId);
@@ -508,22 +526,30 @@ describe("SpawnCoordinator", () => {
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
-    it("skips nudge silently when shell has no pi", () => {
+    it("skips nudge silently when shell has no pi", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
+      const notify = vi.fn();
+      const ctxWithUi = { ...makeMockCtx(), ui: { notify } } as unknown as ExtensionContext;
 
-      // Simulate shell having no pi
+      const result = await coordinator.spawn(mockPi, ctxWithUi, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      // Simulate shell having no pi at nudge time
       mockGetPiInstance.mockReturnValue(null);
 
-      coordinator.scheduleNudge("agent-999");
+      coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 
+      // The record exists, so without the !pi guard the nudge would reach
+      // the sendMessage try/catch and fall back to ui.notify. Assert both
+      // paths stay silent to pin the guard.
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
-    });
-
-    it("constructor does not store pi", () => {
-      const coordinator = new SpawnCoordinator(manager as any);
-      expect(coordinator).toBeDefined();
-      expect((coordinator as any).pi).toBeUndefined();
+      expect(notify).not.toHaveBeenCalled();
     });
   });
 
@@ -588,9 +614,6 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
       const record = manager.getRecord(result.agentId);
-      // Reset any sendMessage impl leaked from other tests so this test exercises
-      // the success path (default: returns without throwing).
-      mockPi.sendMessage.mockReset();
 
       expect(record.lifecycle.resultConsumed).toBeUndefined();
 

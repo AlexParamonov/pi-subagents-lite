@@ -26,7 +26,7 @@ export const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", 
 export const DEFAULT_CONCURRENCY: SubagentsConfig["concurrency"] = { default: 4 };
 
 /** Default agent settings — merged into loaded config so callers get a complete shape. */
-const DEFAULT_AGENT: SubagentsConfig["agent"] = {
+export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   default: null,
   forceBackground: false,
   graceTurns: DEFAULT_GRACE_TURNS,

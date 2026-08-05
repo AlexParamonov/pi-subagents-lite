@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/spawn/spawn-coordinator.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
@@ -27,6 +28,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
     maxTurns: undefined,
     thinkingLevel: undefined,
   }),
+  getAgentConfig: agentConfigMock(),
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
@@ -154,8 +156,10 @@ describe("widget worktree label — full mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Should not crash — just no worktree-specific content
+    // No worktree label anywhere: a stray "@undefined" (or any @-prefixed
+    // garbage) must not render.
     expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join(" ")).not.toContain("@");
   });
 
   it("shows worktreeLabel and tail -f on the same continuation line", () => {

@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/spawn/spawn-coordinator.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
@@ -27,6 +28,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
     maxTurns: undefined,
     thinkingLevel: undefined,
   }),
+  getAgentConfig: agentConfigMock(),
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
@@ -474,7 +476,7 @@ describe("overflow with navigation", () => {
   });
 });
 
-describe("navigation highlight clamp on roster shrink", () => {
+describe("navigation highlight adoption on roster shrink", () => {
   let manager: AgentManager;
   let widget: AgentWidget;
 
@@ -483,8 +485,7 @@ describe("navigation highlight clamp on roster shrink", () => {
     widget = new AgentWidget(manager, () => undefined);
   });
 
-  it("clamps highlight when roster shrinks during navDown", () => {
-    // Start with 5 agents, navigate to index 4
+  it("returns the adopted live record when roster shrinks during navSelect", () => {
     const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
     (manager as any).listAgents = () => agents;
 
@@ -492,44 +493,12 @@ describe("navigation highlight clamp on roster shrink", () => {
     for (let i = 0; i < 4; i++) widget.navDown();
     expect(widget.highlightedIndex()).toBe(4);
 
-    // Roster shrinks to 2 agents (eviction)
     (manager as any).listAgents = () => agents.slice(0, 2);
 
-    // navDown should clamp and then advance
-    widget.navDown();
-    // clamp: 4 -> 1, then +1 % 2 = 0
-    expect(widget.highlightedIndex()).toBe(0);
-  });
-
-  it("clamps highlight when roster shrinks during navUp", () => {
-    const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
-    (manager as any).listAgents = () => agents;
-
-    widget.navActivate();
-    for (let i = 0; i < 4; i++) widget.navDown();
-    expect(widget.highlightedIndex()).toBe(4);
-
-    // Roster shrinks to 2 agents
-    (manager as any).listAgents = () => agents.slice(0, 2);
-
-    // navUp should clamp and then go up
-    widget.navUp();
-    // clamp: 4 -> 1, then (1-1+2) % 2 = 0
-    expect(widget.highlightedIndex()).toBe(0);
-  });
-
-  it("clamps highlight when roster shrinks during navSelect", () => {
-    const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
-    (manager as any).listAgents = () => agents;
-
-    widget.navActivate();
-    for (let i = 0; i < 4; i++) widget.navDown();
-    expect(widget.highlightedIndex()).toBe(4);
-
-    // Roster shrinks to 2 agents
-    (manager as any).listAgents = () => agents.slice(0, 2);
-
-    // navSelect should clamp and return a valid agent
+    // Roster shrinks to 2 agents mid-freeze, no render in between. navSelect
+    // resolves the nav state itself: a4 is gone, so identity-based adoption
+    // picks the nearest remaining agent (index min(4, len-1) = 1) and
+    // returns that live record.
     const selected = widget.navSelect();
     expect(selected).not.toBeNull();
     expect(selected!.id).toBe("a1");

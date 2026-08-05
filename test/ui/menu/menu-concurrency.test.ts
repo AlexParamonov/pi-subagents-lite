@@ -1,5 +1,5 @@
 /**
- * menu-concurrency-new.test.ts — Tests for showConcurrencySettingsMenu using SettingsList.
+ * menu-concurrency.test.ts — Tests for showConcurrencySettingsMenu using SettingsList.
  *
  * After migration: uses ctx.ui.custom with SettingsList (not ctx.ui.select/runMenuLoop).
  */
@@ -268,7 +268,6 @@ describe("showConcurrencySettingsMenu — reset all", () => {
     expect(confirmList).toBeDefined();
     confirmList.onSelect!({ value: "Yes" });
     expect(mockModules.mockConfig.concurrency).toEqual({ default: 4 });
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 });
