@@ -1,6 +1,6 @@
 {
   "name": "pi-subagents-lite",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Lightweight sub-agents for pi — spawn specialized agents with isolated sessions, tools, and models.",
   "keywords": [
     "pi-package",
