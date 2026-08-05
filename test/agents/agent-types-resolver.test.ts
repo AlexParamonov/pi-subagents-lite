@@ -445,6 +445,12 @@ describe("getConfig — global implicit defaults", () => {
       skills: ["tdd"],
       systemPrompt: "test",
     });
+    agents.set("explicit-tools", {
+      name: "explicit-tools",
+      description: "Agent with explicit tools",
+      registeredTools: ["read", "bash", "grep"],
+      systemPrompt: "test",
+    });
     agents.set("no-skills", {
       name: "no-skills",
       description: "Agent with skills disabled",
@@ -513,9 +519,8 @@ describe("getConfig — global implicit defaults", () => {
   });
 
   it("registeredTools uses explicit value when set", () => {
-    const result = getConfig("explicit-skills");
-    // explicit-skills doesn't have registeredTools set, so it should use default
-    expect(result.registeredTools).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+    const result = getConfig("explicit-tools");
+    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
   });
 });
 

@@ -369,7 +369,7 @@ export function getConfig(
     return {
       displayName: rest.displayName ?? rest.name,
       description: rest.description,
-      registeredTools: rest.registeredTools ?? DEFAULT_ACTIVE_TOOL_NAMES,
+      registeredTools: rest.registeredTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES],
       tools: rest.tools,
       ...defaults,
     };
@@ -380,7 +380,7 @@ export function getConfig(
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: DEFAULT_ACTIVE_TOOL_NAMES,
+    registeredTools: [...DEFAULT_ACTIVE_TOOL_NAMES],
     ...defaults,
   };
 }
