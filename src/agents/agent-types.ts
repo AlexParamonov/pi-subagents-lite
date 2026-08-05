@@ -10,14 +10,21 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
 /**
- * All tool names that Pi can provide to a session.
+ * All pi built-in tool names for validation/warning suppression.
  *
- * Note: only `read`, `bash`, `edit`, `write` are active by default.
- * `find` and `grep` must be explicitly activated via setActiveToolsByName().
- * `ls` was removed — it's a thin wrapper over bash that adds ~180 tokens/turn
- * with no real benefit.
+ * This set contains ALL built-in tools (including grep, find, ls)
+ * and is used ONLY for name recognition in agent configs.
+ * For the default active set, see DEFAULT_ACTIVE_TOOL_NAMES.
  */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find"];
+export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+
+/**
+ * Default active tool names for a new pi session.
+ *
+ * These are the tools that are active by default (without explicit activation).
+ * This is the fallback set for agent types without explicit tool config.
+ */
+export const DEFAULT_ACTIVE_TOOL_NAMES: string[] = ["read", "bash", "edit", "write"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
@@ -310,7 +317,7 @@ export function resolveSessionAllowedTools(opts: {
 /** Get built-in tool names for a type (case-insensitive). */
 export function getToolNamesForType(type: string): string[] {
   const config = getAgentConfig(type);
-  return config?.registeredTools?.length ? config.registeredTools : [...BUILTIN_TOOL_NAMES];
+  return config?.registeredTools?.length ? config.registeredTools : [...DEFAULT_ACTIVE_TOOL_NAMES];
 }
 
 /** Resolved config shape returned by getConfig. */
@@ -362,7 +369,7 @@ export function getConfig(
     return {
       displayName: rest.displayName ?? rest.name,
       description: rest.description,
-      registeredTools: rest.registeredTools ?? BUILTIN_TOOL_NAMES,
+      registeredTools: rest.registeredTools ?? DEFAULT_ACTIVE_TOOL_NAMES,
       tools: rest.tools,
       ...defaults,
     };
@@ -373,7 +380,7 @@ export function getConfig(
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: BUILTIN_TOOL_NAMES,
+    registeredTools: DEFAULT_ACTIVE_TOOL_NAMES,
     ...defaults,
   };
 }

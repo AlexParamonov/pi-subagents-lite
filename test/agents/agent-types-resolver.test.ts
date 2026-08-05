@@ -14,7 +14,9 @@ import {
   resolveSessionAllowedTools,
   EXCLUDED_TOOL_NAMES,
   BUILTIN_TOOL_NAMES,
+  DEFAULT_ACTIVE_TOOL_NAMES,
   getConfig,
+  getToolNamesForType,
   registerAgents,
 } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/types.ts";
@@ -34,11 +36,34 @@ describe("BUILTIN_TOOL_NAMES", () => {
     expect(BUILTIN_TOOL_NAMES.length).toBeGreaterThan(0);
   });
 
-  it("includes core built-in tools", () => {
+  it("includes all 7 pi built-in tools (validation set)", () => {
     expect(BUILTIN_TOOL_NAMES).toContain("read");
     expect(BUILTIN_TOOL_NAMES).toContain("bash");
     expect(BUILTIN_TOOL_NAMES).toContain("edit");
     expect(BUILTIN_TOOL_NAMES).toContain("write");
+    expect(BUILTIN_TOOL_NAMES).toContain("grep");
+    expect(BUILTIN_TOOL_NAMES).toContain("find");
+    expect(BUILTIN_TOOL_NAMES).toContain("ls");
+    expect(BUILTIN_TOOL_NAMES).toHaveLength(7);
+  });
+});
+
+describe("DEFAULT_ACTIVE_TOOL_NAMES", () => {
+  it("is exported and has 4 items", () => {
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toHaveLength(4);
+  });
+
+  it("contains pi's default active tools", () => {
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("read");
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("bash");
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("edit");
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("write");
+  });
+
+  it("does not contain grep, find, or ls", () => {
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain("grep");
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain("find");
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain("ls");
   });
 });
 
@@ -126,6 +151,34 @@ describe("resolveVisibleTools — allowlist mode", () => {
     });
     expect(result).toEqual(["read"]);
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('tool "foobar" not found in any loaded extension'));
+  });
+
+  it("does not warn when whitelisting grep, find, or ls (AC-4)", () => {
+    const notify = vi.fn();
+
+    // Whitelisting grep should not warn
+    resolveVisibleTools({
+      activeTools: ["read", "bash", "grep"],
+      tools: ["read", "grep"],
+      notify,
+    });
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "grep" not found'));
+
+    // Whitelisting find should not warn
+    resolveVisibleTools({
+      activeTools: ["read", "bash", "find"],
+      tools: ["read", "find"],
+      notify,
+    });
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "find" not found'));
+
+    // Whitelisting ls should not warn (ls is now in BUILTIN_TOOL_NAMES)
+    resolveVisibleTools({
+      activeTools: ["read", "bash", "ls"],
+      tools: ["read", "ls"],
+      notify,
+    });
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "ls" not found'));
   });
 
   it("warns when extension is loaded but none of its tools are in tools", () => {
@@ -452,6 +505,54 @@ describe("getConfig — global implicit defaults", () => {
     const result = getConfig("nonexistent", true, true);
     expect(result.skills).toBe(true);
     expect(result.extensions).toBe(true);
+  });
+
+  it("registeredTools defaults to DEFAULT_ACTIVE_TOOL_NAMES when not explicitly set", () => {
+    const result = getConfig("implicit-agent");
+    expect(result.registeredTools).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+  });
+
+  it("registeredTools uses explicit value when set", () => {
+    const result = getConfig("explicit-skills");
+    // explicit-skills doesn't have registeredTools set, so it should use default
+    expect(result.registeredTools).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  getToolNamesForType                                              */
+/* ------------------------------------------------------------------ */
+
+describe("getToolNamesForType", () => {
+  beforeEach(() => {
+    const agents = new Map<string, AgentConfig>();
+    agents.set("test-agent", {
+      name: "test-agent",
+      description: "Test agent",
+      systemPrompt: "test",
+    });
+    agents.set("explicit-tools", {
+      name: "explicit-tools",
+      description: "Agent with explicit tools",
+      registeredTools: ["read", "bash"],
+      systemPrompt: "test",
+    });
+    registerAgents(agents);
+  });
+
+  it("returns DEFAULT_ACTIVE_TOOL_NAMES for agent with no explicit registeredTools", () => {
+    const result = getToolNamesForType("test-agent");
+    expect(result).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+  });
+
+  it("returns explicit registeredTools when set", () => {
+    const result = getToolNamesForType("explicit-tools");
+    expect(result).toEqual(["read", "bash"]);
+  });
+
+  it("returns DEFAULT_ACTIVE_TOOL_NAMES for unknown agent type", () => {
+    const result = getToolNamesForType("nonexistent");
+    expect(result).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
   });
 });
 
