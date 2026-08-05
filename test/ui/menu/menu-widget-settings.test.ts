@@ -76,7 +76,7 @@ function setupMockConfig() {
     widgetMaxLines: 12,
     widgetMaxLinesCompact: 6,
     widgetCompact: false,
-    hideBackgroundCompletionsWhenCompact: false,
+    hideBackgroundCompletions: false,
     widgetShortcut: false,
     widgetDescLengthFull: 50,
     widgetDescLengthCompact: 30,
@@ -329,12 +329,12 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
       "finishedEvictTurns",
       "__sep__",
       "shortcut",
-      "hideBackgroundCompletionsWhenCompact",
+      "hideBackgroundCompletions",
       "thinkingBuffer",
     ]);
 
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "hideBackgroundCompletionsWhenCompact");
-    expect(item.label).toBe("Hide background completions when compact");
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "hideBackgroundCompletions");
+    expect(item.label).toBe("Hide background completions");
     expect(item.currentValue).toBe("OFF");
     expect(item.description).toContain("Results remain available to the model and Running agents");
   });
@@ -350,8 +350,8 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
   it("completion visibility onChange toggles store", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    settingsListCalls[0].onChange("hideBackgroundCompletionsWhenCompact", "ON");
-    expect(mockModules.mockConfig.agent.hideBackgroundCompletionsWhenCompact).toBe(true);
+    settingsListCalls[0].onChange("hideBackgroundCompletions", "ON");
+    expect(mockModules.mockConfig.agent.hideBackgroundCompletions).toBe(true);
   });
 
   it("thinkingBuffer onChange updates numeric value", async () => {

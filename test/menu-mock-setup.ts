@@ -172,7 +172,7 @@ vi.mock("../src/shell.js", () => {
         widgetMaxLines,
         widgetMaxLinesCompact: a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2),
         widgetCompact: a.widgetCompact === true,
-        hideBackgroundCompletionsWhenCompact: a.hideBackgroundCompletionsWhenCompact === true,
+        hideBackgroundCompletions: a.hideBackgroundCompletions === true,
         widgetShortcut: a.widgetShortcut === true,
         widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
         widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
@@ -260,7 +260,7 @@ vi.mock("../src/shell.js", () => {
             "widgetDescLengthFull",
             "widgetDescLengthCompact",
             "widgetCompact",
-            "hideBackgroundCompletionsWhenCompact",
+            "hideBackgroundCompletions",
             "widgetShortcut",
             "systemPromptMode",
             "includeContextFiles",
@@ -345,8 +345,8 @@ vi.mock("../src/shell.js", () => {
         setCompact(enabled: boolean) {
           mockModules.mockConfig.agent.widgetCompact = enabled;
         },
-        setHideBackgroundCompletionsWhenCompact(enabled: boolean) {
-          mockModules.mockConfig.agent.hideBackgroundCompletionsWhenCompact = enabled;
+        setHideBackgroundCompletions(enabled: boolean) {
+          mockModules.mockConfig.agent.hideBackgroundCompletions = enabled;
         },
         setMaxLines(lines: number) {
           mockModules.mockConfig.agent.widgetMaxLines = lines;

@@ -22,7 +22,7 @@ function defaultConfig(): SubagentsConfig {
       widgetDescLengthFull: 50,
       widgetDescLengthCompact: 30,
       widgetCompact: false,
-      hideBackgroundCompletionsWhenCompact: false,
+      hideBackgroundCompletions: false,
       widgetShortcut: false,
       systemPromptMode: "replace",
       includeContextFiles: true,
@@ -111,7 +111,7 @@ describe("ConfigStore reads", () => {
     expect(store.agent.widgetMaxLines).toBe(12);
     expect(store.agent.widgetMaxLinesCompact).toBe(6);
     expect(store.agent.widgetCompact).toBe(false);
-    expect(store.agent.hideBackgroundCompletionsWhenCompact).toBe(false);
+    expect(store.agent.hideBackgroundCompletions).toBe(false);
     expect(store.agent.widgetShortcut).toBe(false);
     expect(store.agent.defaultModel).toBeNull();
     expect(store.agent.finishedRetentionMinutes).toBe(10);
@@ -244,14 +244,14 @@ describe("ConfigStore persisted mutations", () => {
     expect(calls).toContain("setForceCompact:true");
   });
 
-  it("setHideBackgroundCompletionsWhenCompact persists", () => {
+  it("setHideBackgroundCompletions persists", () => {
     const { io, saves } = memIO();
     const store = new ConfigStore(io);
 
-    store.mutate.widget.setHideBackgroundCompletionsWhenCompact(true);
+    store.mutate.widget.setHideBackgroundCompletions(true);
 
-    expect(store.agent.hideBackgroundCompletionsWhenCompact).toBe(true);
-    expect(saves[0].agent.hideBackgroundCompletionsWhenCompact).toBe(true);
+    expect(store.agent.hideBackgroundCompletions).toBe(true);
+    expect(saves[0].agent.hideBackgroundCompletions).toBe(true);
   });
 
   it("setShortcut persists but does not sync widget", () => {
@@ -385,7 +385,7 @@ describe("ConfigStore model-override clearing", () => {
         graceTurns: 7,
         showCost: true,
         widgetMaxLines: 14,
-        hideBackgroundCompletionsWhenCompact: true,
+        hideBackgroundCompletions: true,
         Explore: "m1",
         general: "m2",
       },
@@ -401,7 +401,7 @@ describe("ConfigStore model-override clearing", () => {
     expect(snap.graceTurns).toBe(7);
     expect(snap.showCost).toBe(true);
     expect(snap.widgetMaxLines).toBe(14);
-    expect(snap.hideBackgroundCompletionsWhenCompact).toBe(true);
+    expect(snap.hideBackgroundCompletions).toBe(true);
   });
 });
 

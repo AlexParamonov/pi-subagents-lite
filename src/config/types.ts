@@ -18,7 +18,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "widgetDescLengthFull",
   "widgetDescLengthCompact",
   "widgetCompact",
-  "hideBackgroundCompletionsWhenCompact",
+  "hideBackgroundCompletions",
   "widgetShortcut",
   "widgetShowModel",
   "widgetShowThinking",

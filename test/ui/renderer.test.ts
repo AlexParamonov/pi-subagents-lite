@@ -72,30 +72,26 @@ const SHOW_COST = false;
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
 
-describe("renderSubagentResult — compact completion visibility", () => {
+describe("renderSubagentResult — completion visibility", () => {
   beforeEach(() => {
     textInstances.length = 0;
   });
 
-  it("renders by default while collapsed", () => {
+  it("renders by default", () => {
     const result = renderSubagentResult({ content: "Result" }, { expanded: false }, noopTheme, SHOW_COST);
 
     expect(result.children).not.toHaveLength(0);
   });
 
-  it.each([{ expanded: false }, {}])("returns an empty component when enabled and not expanded (%j)", (options) => {
-    const result = renderSubagentResult({ content: "Result" }, options, noopTheme, SHOW_COST, "id", true);
+  it.each([{ expanded: false }, { expanded: true }, {}])(
+    "returns an empty component when hiding is enabled (%j)",
+    (options) => {
+      const result = renderSubagentResult({ content: "Result" }, options, noopTheme, SHOW_COST, "id", true);
 
-    expect(result.children).toHaveLength(0);
-    expect(textInstances).toHaveLength(0);
-  });
-
-  it("renders when enabled and expanded", () => {
-    const result = renderSubagentResult({ content: "Result" }, { expanded: true }, noopTheme, SHOW_COST, "id", true);
-
-    expect(result.children).not.toHaveLength(0);
-    expect(textInstances.length).toBeGreaterThan(0);
-  });
+      expect(result.children).toHaveLength(0);
+      expect(textInstances).toHaveLength(0);
+    },
+  );
 });
 
 describe("renderSubagentResult — worktree path display", () => {

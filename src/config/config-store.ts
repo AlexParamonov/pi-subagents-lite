@@ -50,8 +50,8 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLines: number;
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
-  /** Hide background completion cards whenever custom message output is not expanded. */
-  readonly hideBackgroundCompletionsWhenCompact: boolean;
+  /** Hide background completion cards from the TUI. */
+  readonly hideBackgroundCompletions: boolean;
   readonly widgetShortcut: boolean;
   readonly widgetShowModel: boolean;
   readonly widgetShowThinking: boolean;
@@ -143,7 +143,7 @@ export class ConfigStore {
       widgetMaxLines,
       widgetMaxLinesCompact,
       widgetCompact: a.widgetCompact === true,
-      hideBackgroundCompletionsWhenCompact: a.hideBackgroundCompletionsWhenCompact === true,
+      hideBackgroundCompletions: a.hideBackgroundCompletions === true,
       widgetShortcut: a.widgetShortcut === true,
       widgetShowModel: a.widgetShowModel !== false,
       widgetShowThinking: a.widgetShowThinking !== false,
@@ -343,8 +343,8 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      setHideBackgroundCompletionsWhenCompact: (enabled: boolean): void => {
-        this.config.agent.hideBackgroundCompletionsWhenCompact = enabled;
+      setHideBackgroundCompletions: (enabled: boolean): void => {
+        this.config.agent.hideBackgroundCompletions = enabled;
         this.persist();
       },
       setMaxLines: (lines: number): void => {

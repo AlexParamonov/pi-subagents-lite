@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Optional compact completion hiding.** Widget Behavior settings can hide background-agent completion cards while tool output is collapsed; results remain available to the model and Running agents.
+- **Optional background completion hiding.** Widget Behavior settings can hide background-agent completion cards from the TUI; results remain available to the model and Running agents.
 
 ## [1.7.0] - 2026-08-02
 

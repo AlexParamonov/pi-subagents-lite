@@ -165,12 +165,11 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       description: "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually.",
     },
     {
-      id: "hideBackgroundCompletionsWhenCompact",
-      label: "Hide background completions when compact",
-      currentValue: store.agent.hideBackgroundCompletionsWhenCompact ? "ON" : "OFF",
+      id: "hideBackgroundCompletions",
+      label: "Hide background completions",
+      currentValue: store.agent.hideBackgroundCompletions ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description:
-        "Hide background-agent completion cards while tool output is collapsed. Results remain available to the model and Running agents.",
+      description: "Hide background-agent completion cards. Results remain available to the model and Running agents.",
     },
     {
       id: "thinkingBuffer",
@@ -274,9 +273,9 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
-      case "hideBackgroundCompletionsWhenCompact":
-        store.mutate.widget.setHideBackgroundCompletionsWhenCompact(newValue === "ON");
-        ctx.ui.notify(`Hide background completions when compact ${newValue}`, "info");
+      case "hideBackgroundCompletions":
+        store.mutate.widget.setHideBackgroundCompletions(newValue === "ON");
+        ctx.ui.notify(`Hide background completions ${newValue}`, "info");
         break;
       case "thinkingBuffer":
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
