@@ -166,11 +166,11 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
         "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
     },
     {
-      id: "hideBackgroundCompletions",
-      label: "Hide background completions",
-      currentValue: store.agent.hideBackgroundCompletions ? "ON" : "OFF",
+      id: "showCompletionCards",
+      label: "Show completion cards",
+      currentValue: store.agent.showCompletionCards ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Hide background-agent completion cards.",
+      description: "Show background-agent completion cards in the transcript; turn OFF to hide them.",
     },
     {
       id: "thinkingBuffer",
@@ -274,10 +274,10 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
-      case "hideBackgroundCompletions":
-        store.mutate.widget.setHideBackgroundCompletions(newValue === "ON");
+      case "showCompletionCards":
+        store.mutate.widget.setShowCompletionCards(newValue === "ON");
         refreshChatComponents(ctx);
-        ctx.ui.notify(`Hide background completions ${newValue}`, "info");
+        ctx.ui.notify(`Show completion cards ${newValue}`, "info");
         break;
       case "thinkingBuffer":
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));

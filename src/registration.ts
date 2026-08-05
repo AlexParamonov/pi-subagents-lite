@@ -117,7 +117,7 @@ export function registerTools(pi: ExtensionAPI): void {
       theme,
       store.agent.showCost,
       store.agent.modelDisplayStyle,
-      store.agent.hideBackgroundCompletions,
+      !store.agent.showCompletionCards,
     );
   });
 

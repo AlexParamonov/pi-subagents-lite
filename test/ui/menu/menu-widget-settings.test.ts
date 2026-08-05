@@ -76,7 +76,7 @@ function setupMockConfig() {
     widgetMaxLines: 12,
     widgetMaxLinesCompact: 6,
     widgetCompact: false,
-    hideBackgroundCompletions: false,
+    showCompletionCards: true,
     widgetShortcut: false,
     widgetDescLengthFull: 50,
     widgetDescLengthCompact: 30,
@@ -330,12 +330,12 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
       "finishedEvictTurns",
       "__sep__",
       "shortcut",
-      "hideBackgroundCompletions",
+      "showCompletionCards",
       "thinkingBuffer",
     ]);
 
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "hideBackgroundCompletions");
-    expect(item.label).toBe("Hide background completions");
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "showCompletionCards");
+    expect(item.label).toBe("Show completion cards");
     expect(typeof item.description).toBe("string");
   });
 
@@ -350,8 +350,8 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
   it("completion visibility onChange toggles store and refreshes chat cards", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    settingsListCalls[0].onChange("hideBackgroundCompletions", "ON");
-    expect(mockModules.mockConfig.agent.hideBackgroundCompletions).toBe(true);
+    settingsListCalls[0].onChange("showCompletionCards", "OFF");
+    expect(mockModules.mockConfig.agent.showCompletionCards).toBe(false);
     // Cards already in the transcript only re-render when the host rebuilds them,
     // so the toggle must request a chat refresh...
     expect(ctx.ui.setToolsExpanded).toHaveBeenCalled();

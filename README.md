@@ -133,7 +133,7 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
     "widgetMaxLinesCompact": 6,
     "widgetDescLengthFull": 50,
     "widgetCompact": true,
-    "hideBackgroundCompletions": false,
+    "showCompletionCards": true,
     "widgetShortcut": false,
     "systemPromptMode": "inherit",
     "includeContextFiles": true,

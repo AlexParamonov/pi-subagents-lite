@@ -141,7 +141,7 @@ const { mutableStore, spawnGuard } = vi.hoisted(() => ({
       forceBackground: false,
       showCost: false,
       agentToolStrictMode: false,
-      hideBackgroundCompletions: false,
+      showCompletionCards: true,
     },
     modelFor: () => "anthropic/claude-sonnet-4-6",
   },
@@ -258,7 +258,7 @@ describe("message renderer registration", () => {
   });
 
   beforeEach(() => {
-    mutableStore.agent.hideBackgroundCompletions = false;
+    mutableStore.agent.showCompletionCards = true;
   });
 
   it("registers the subagent-result renderer", () => {
@@ -269,7 +269,7 @@ describe("message renderer registration", () => {
     const renderer = api.messageRenderers.find((r) => r.customType === "subagent-result")!.renderer;
     const theme = { fg: (_color: string, text: string) => text, bg: (_color: string, text: string) => text };
 
-    mutableStore.agent.hideBackgroundCompletions = true;
+    mutableStore.agent.showCompletionCards = false;
     expect(renderer({ content: "done" }, { expanded: false }, theme).children).toHaveLength(0);
     expect(renderer({ content: "done" }, { expanded: true }, theme).children).toHaveLength(0);
   });
