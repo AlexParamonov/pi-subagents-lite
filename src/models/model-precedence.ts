@@ -29,6 +29,8 @@ export interface SubagentsConfig {
     widgetMaxLines?: number;
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
+    /** Show background completion cards in the TUI. Default: true. */
+    showCompletionCards?: boolean;
     widgetShortcut?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */
     systemPromptMode?: SystemPromptMode;

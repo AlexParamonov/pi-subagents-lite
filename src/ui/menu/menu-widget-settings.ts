@@ -166,6 +166,13 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
         "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
     },
     {
+      id: "showCompletionCards",
+      label: "Show completion cards",
+      currentValue: store.agent.showCompletionCards ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Show background-agent completion cards in the transcript; turn OFF to hide them.",
+    },
+    {
       id: "thinkingBuffer",
       label: "Log file thinking buffer",
       currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
@@ -267,6 +274,11 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
+      case "showCompletionCards":
+        store.mutate.widget.setShowCompletionCards(newValue === "ON");
+        refreshChatComponents(ctx);
+        ctx.ui.notify(`Show completion cards ${newValue}`, "info");
+        break;
       case "thinkingBuffer":
         store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
@@ -277,6 +289,19 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         break;
     }
   };
+}
+
+/**
+ * Rebuild cached chat cards via the only host lever: flipping the tool-output
+ * expansion state triggers setExpanded on every expandable chat component, which
+ * re-runs the message renderer (its result is otherwise cached). The double flip
+ * restores the original state. No-op on hosts without the expansion API.
+ */
+function refreshChatComponents(ctx: ExtensionCommandContext): void {
+  if (typeof ctx.ui.getToolsExpanded !== "function" || typeof ctx.ui.setToolsExpanded !== "function") return;
+  const expanded = ctx.ui.getToolsExpanded();
+  ctx.ui.setToolsExpanded(!expanded);
+  ctx.ui.setToolsExpanded(expanded);
 }
 
 /** Show a SettingsList submenu for a specific category. */
@@ -301,7 +326,11 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   const items: SelectItem[] = [
     { value: "layout", label: "Layout", description: "Compact mode, max lines, description length" },
     { value: "display", label: "Display", description: "Status bar, model/thinking visibility, navigation hint" },
-    { value: "behavior", label: "Behavior", description: "Shortcuts, thinking buffer, finished agent retention" },
+    {
+      value: "behavior",
+      label: "Behavior",
+      description: "Shortcuts, completion cards, thinking buffer, finished agent retention",
+    },
     { value: "stats", label: "Stats", description: "Toggle which usage stats appear in the widget" },
   ];
 

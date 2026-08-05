@@ -50,6 +50,7 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLines: number;
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
+  readonly showCompletionCards: boolean;
   readonly widgetShortcut: boolean;
   readonly widgetShowModel: boolean;
   readonly widgetShowThinking: boolean;
@@ -141,6 +142,7 @@ export class ConfigStore {
       widgetMaxLines,
       widgetMaxLinesCompact,
       widgetCompact: a.widgetCompact === true,
+      showCompletionCards: a.showCompletionCards !== false,
       widgetShortcut: a.widgetShortcut === true,
       widgetShowModel: a.widgetShowModel !== false,
       widgetShowThinking: a.widgetShowThinking !== false,
@@ -339,6 +341,10 @@ export class ConfigStore {
         this.config.agent.widgetCompact = enabled;
         this.persist();
         this.syncWidgetSettings();
+      },
+      setShowCompletionCards: (enabled: boolean): void => {
+        this.config.agent.showCompletionCards = enabled;
+        this.persist();
       },
       setMaxLines: (lines: number): void => {
         this.config.agent.widgetMaxLines = lines;

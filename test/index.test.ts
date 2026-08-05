@@ -136,7 +136,13 @@ vi.mock("../src/ui/agent-widget.js", () => ({
 // Mutable state shared between the shell mock and tests.
 const { mutableStore, spawnGuard } = vi.hoisted(() => ({
   mutableStore: {
-    agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolStrictMode: false },
+    agent: {
+      graceTurns: 6,
+      forceBackground: false,
+      showCost: false,
+      agentToolStrictMode: false,
+      showCompletionCards: true,
+    },
     modelFor: () => "anthropic/claude-sonnet-4-6",
   },
   spawnGuard: { depth: 0 },
@@ -236,6 +242,36 @@ describe("Agent tool schema — stealth", () => {
 
   it("excludes isolated from schema (config-only, not LLM-controlled)", () => {
     expect(hasParam(agentTool()!.parameters, "isolated")).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Message Renderer Registration                                     */
+/* ------------------------------------------------------------------ */
+
+describe("message renderer registration", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  beforeEach(() => {
+    mutableStore.agent.showCompletionCards = true;
+  });
+
+  it("registers the subagent-result renderer", () => {
+    expect(api.messageRenderers.map((r) => r.customType)).toContain("subagent-result");
+  });
+
+  it("uses the persisted setting regardless of renderer expanded state", () => {
+    const renderer = api.messageRenderers.find((r) => r.customType === "subagent-result")!.renderer;
+    const theme = { fg: (_color: string, text: string) => text, bg: (_color: string, text: string) => text };
+
+    mutableStore.agent.showCompletionCards = false;
+    expect(renderer({ content: "done" }, { expanded: false }, theme).children).toHaveLength(0);
+    expect(renderer({ content: "done" }, { expanded: true }, theme).children).toHaveLength(0);
   });
 });
 

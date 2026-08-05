@@ -76,6 +76,7 @@ function setupMockConfig() {
     widgetMaxLines: 12,
     widgetMaxLinesCompact: 6,
     widgetCompact: false,
+    showCompletionCards: true,
     widgetShortcut: false,
     widgetDescLengthFull: 50,
     widgetDescLengthCompact: 30,
@@ -102,6 +103,9 @@ function setupMockConfig() {
 /** Create a ctx that dispatches a specific category choice on first custom call. */
 function createDispatchCtx(choice: string) {
   let callCount = 0;
+  // Stateful: setToolsExpanded updates the value getToolsExpanded reads, so the
+  // test can assert the refresh restores the original expansion state.
+  let toolExpanded = false;
   return {
     ui: {
       custom: vi.fn(async (factory: any) => {
@@ -120,6 +124,10 @@ function createDispatchCtx(choice: string) {
         return undefined;
       }),
       notify: vi.fn(),
+      getToolsExpanded: vi.fn(() => toolExpanded),
+      setToolsExpanded: vi.fn((expanded: boolean) => {
+        toolExpanded = expanded;
+      }),
     },
     modelRegistry: { getAvailable: vi.fn(() => []) },
   };
@@ -313,11 +321,22 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("dispatches to Behavior SettingsList with 5 items", async () => {
+  it("dispatches to Behavior SettingsList with completion visibility", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["finishedRetention", "finishedEvictTurns", "__sep__", "shortcut", "thinkingBuffer"]);
+    expect(ids).toEqual([
+      "finishedRetention",
+      "finishedEvictTurns",
+      "__sep__",
+      "shortcut",
+      "showCompletionCards",
+      "thinkingBuffer",
+    ]);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "showCompletionCards");
+    expect(item.label).toBe("Show completion cards");
+    expect(typeof item.description).toBe("string");
   });
 
   it("shortcut onChange toggles store", async () => {
@@ -326,6 +345,18 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("shortcut", "ON");
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
+  });
+
+  it("completion visibility onChange toggles store and refreshes chat cards", async () => {
+    const ctx = createDispatchCtx("behavior");
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("showCompletionCards", "OFF");
+    expect(mockModules.mockConfig.agent.showCompletionCards).toBe(false);
+    // Cards already in the transcript only re-render when the host rebuilds them,
+    // so the toggle must request a chat refresh...
+    expect(ctx.ui.setToolsExpanded).toHaveBeenCalled();
+    // ...and the refresh must leave the user's tool-output expansion state untouched.
+    expect(ctx.ui.getToolsExpanded()).toBe(false);
   });
 
   it("thinkingBuffer onChange updates numeric value", async () => {

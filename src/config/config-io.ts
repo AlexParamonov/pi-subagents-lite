@@ -36,6 +36,7 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   widgetDescLengthFull: 50,
   widgetDescLengthCompact: 30,
   widgetCompact: false,
+  showCompletionCards: true,
   widgetShortcut: false,
   widgetShowModel: true,
   widgetShowThinking: true,

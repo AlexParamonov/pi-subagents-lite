@@ -22,6 +22,7 @@ function defaultConfig(): SubagentsConfig {
       widgetDescLengthFull: 50,
       widgetDescLengthCompact: 30,
       widgetCompact: false,
+      showCompletionCards: true,
       widgetShortcut: false,
       systemPromptMode: "replace",
       includeContextFiles: true,
@@ -124,6 +125,7 @@ describe("ConfigStore reads", () => {
     expect(store.agent.showCost).toBe(false);
     expect(store.agent.forceBackground).toBe(false);
     expect(store.agent.widgetCompact).toBe(false);
+    expect(store.agent.showCompletionCards).toBe(true);
     expect(store.agent.widgetShortcut).toBe(false);
     expect(store.agent.defaultModel).toBeNull();
     expect(store.agent.finishedRetentionMinutes).toBe(10);
@@ -270,6 +272,16 @@ describe("ConfigStore persisted mutations", () => {
     expect(calls).toContain("setForceCompact:true");
   });
 
+  it("setShowCompletionCards persists", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+
+    store.mutate.widget.setShowCompletionCards(false);
+
+    expect(store.agent.showCompletionCards).toBe(false);
+    expect(saves[0].agent.showCompletionCards).toBe(false);
+  });
+
   it("setShortcut persists but does not sync widget", () => {
     const { io, saves } = memIO();
     const { w, calls } = widgetStub();
@@ -401,6 +413,7 @@ describe("ConfigStore model-override clearing", () => {
         graceTurns: 7,
         showCost: true,
         widgetMaxLines: 14,
+        showCompletionCards: true,
         Explore: "m1",
         general: "m2",
       },
@@ -416,6 +429,7 @@ describe("ConfigStore model-override clearing", () => {
     expect(snap.graceTurns).toBe(7);
     expect(snap.showCost).toBe(true);
     expect(snap.widgetMaxLines).toBe(14);
+    expect(snap.showCompletionCards).toBe(true);
   });
 });
 

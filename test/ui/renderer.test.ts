@@ -1,13 +1,3 @@
-/**
- * worktree-renderer.test.ts — Tests for worktree path display in the details pane.
- *
- * Verifies:
- *   - renderSubagentResult includes worktree: path in the result card
- *   - buildFallbackResultLine (via renderSubagentResult without turnCount) includes worktree: path
- *
- * Note: renderer.ts no longer imports shell.ts — showCost is passed as a parameter.
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ------------------------------------------------------------------ */
@@ -71,6 +61,28 @@ const SHOW_COST = false;
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
+
+describe("renderSubagentResult — completion visibility", () => {
+  beforeEach(() => {
+    textInstances.length = 0;
+  });
+
+  it("renders by default", () => {
+    const result = renderSubagentResult({ content: "Result" }, { expanded: false }, noopTheme, SHOW_COST);
+
+    expect(result.children).not.toHaveLength(0);
+  });
+
+  it.each([{ expanded: false }, { expanded: true }, {}])(
+    "returns an empty component when hiding is enabled (%j)",
+    (options) => {
+      const result = renderSubagentResult({ content: "Result" }, options, noopTheme, SHOW_COST, "id", true);
+
+      expect(result.children).toHaveLength(0);
+      expect(textInstances).toHaveLength(0);
+    },
+  );
+});
 
 describe("renderSubagentResult — worktree path display", () => {
   beforeEach(() => {
