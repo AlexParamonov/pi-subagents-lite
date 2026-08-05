@@ -153,31 +153,37 @@ describe("resolveVisibleTools — allowlist mode", () => {
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('tool "foobar" not found in any loaded extension'));
   });
 
-  it("does not warn when whitelisting grep, find, or ls (AC-4)", () => {
+  it("whitelists grep, find, or ls without warning (AC-4)", () => {
     const notify = vi.fn();
 
-    // Whitelisting grep should not warn
-    resolveVisibleTools({
+    // Whitelisting grep should register and activate it
+    const grepResult = resolveVisibleTools({
       activeTools: ["read", "bash", "grep"],
       tools: ["read", "grep"],
       notify,
     });
+    expect(grepResult).toContain("grep");
+    expect(grepResult).not.toContain("bash");
     expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "grep" not found'));
 
-    // Whitelisting find should not warn
-    resolveVisibleTools({
+    // Whitelisting find should register and activate it
+    const findResult = resolveVisibleTools({
       activeTools: ["read", "bash", "find"],
       tools: ["read", "find"],
       notify,
     });
+    expect(findResult).toContain("find");
+    expect(findResult).not.toContain("bash");
     expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "find" not found'));
 
-    // Whitelisting ls should not warn (ls is now in BUILTIN_TOOL_NAMES)
-    resolveVisibleTools({
+    // Whitelisting ls should register and activate it (ls is in BUILTIN_TOOL_NAMES)
+    const lsResult = resolveVisibleTools({
       activeTools: ["read", "bash", "ls"],
       tools: ["read", "ls"],
       notify,
     });
+    expect(lsResult).toContain("ls");
+    expect(lsResult).not.toContain("bash");
     expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "ls" not found'));
   });
 
