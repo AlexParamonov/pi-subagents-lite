@@ -103,6 +103,9 @@ function setupMockConfig() {
 /** Create a ctx that dispatches a specific category choice on first custom call. */
 function createDispatchCtx(choice: string) {
   let callCount = 0;
+  // Stateful: setToolsExpanded updates the value getToolsExpanded reads, so the
+  // test can assert the refresh restores the original expansion state.
+  let toolExpanded = false;
   return {
     ui: {
       custom: vi.fn(async (factory: any) => {
@@ -121,6 +124,10 @@ function createDispatchCtx(choice: string) {
         return undefined;
       }),
       notify: vi.fn(),
+      getToolsExpanded: vi.fn(() => toolExpanded),
+      setToolsExpanded: vi.fn((expanded: boolean) => {
+        toolExpanded = expanded;
+      }),
     },
     modelRegistry: { getAvailable: vi.fn(() => []) },
   };
@@ -340,11 +347,16 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
   });
 
-  it("completion visibility onChange toggles store", async () => {
+  it("completion visibility onChange toggles store and refreshes chat cards", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("hideBackgroundCompletions", "ON");
     expect(mockModules.mockConfig.agent.hideBackgroundCompletions).toBe(true);
+    // Cards already in the transcript only re-render when the host rebuilds them,
+    // so the toggle must request a chat refresh...
+    expect(ctx.ui.setToolsExpanded).toHaveBeenCalled();
+    // ...and the refresh must leave the user's tool-output expansion state untouched.
+    expect(ctx.ui.getToolsExpanded()).toBe(false);
   });
 
   it("thinkingBuffer onChange updates numeric value", async () => {

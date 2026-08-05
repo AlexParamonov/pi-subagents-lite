@@ -170,7 +170,7 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       label: "Hide background completions",
       currentValue: store.agent.hideBackgroundCompletions ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Hide background-agent completion cards; applies from the next completion.",
+      description: "Hide background-agent completion cards.",
     },
     {
       id: "thinkingBuffer",
@@ -276,6 +276,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         break;
       case "hideBackgroundCompletions":
         store.mutate.widget.setHideBackgroundCompletions(newValue === "ON");
+        refreshChatComponents(ctx);
         ctx.ui.notify(`Hide background completions ${newValue}`, "info");
         break;
       case "thinkingBuffer":
@@ -288,6 +289,19 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         break;
     }
   };
+}
+
+/**
+ * Rebuild cached chat cards via the only host lever: flipping the tool-output
+ * expansion state triggers setExpanded on every expandable chat component, which
+ * re-runs the message renderer (its result is otherwise cached). The double flip
+ * restores the original state. No-op on hosts without the expansion API.
+ */
+function refreshChatComponents(ctx: ExtensionCommandContext): void {
+  if (typeof ctx.ui.getToolsExpanded !== "function" || typeof ctx.ui.setToolsExpanded !== "function") return;
+  const expanded = ctx.ui.getToolsExpanded();
+  ctx.ui.setToolsExpanded(!expanded);
+  ctx.ui.setToolsExpanded(expanded);
 }
 
 /** Show a SettingsList submenu for a specific category. */
