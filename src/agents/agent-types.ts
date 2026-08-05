@@ -10,14 +10,22 @@ import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
 
 /**
- * All tool names that Pi can provide to a session.
+ * All pi built-in tool names for validation/warning suppression.
  *
- * Note: only `read`, `bash`, `edit`, `write` are active by default.
- * `find` and `grep` must be explicitly activated via setActiveToolsByName().
- * `ls` was removed — it's a thin wrapper over bash that adds ~180 tokens/turn
- * with no real benefit.
+ * This set contains ALL built-in tools (including grep, find, ls)
+ * and is used ONLY for name recognition in agent configs.
+ * For the default active set, see DEFAULT_ACTIVE_TOOL_NAMES.
  */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find"];
+export const BUILTIN_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+
+/**
+ * Pi's default active session tools, mirroring pi sdk.ts exactly.
+ *
+ * This is the registered-tools fallback for agent types without explicit
+ * tool config. grep/find/ls are NOT included: they activate only when an
+ * agent config whitelists them.
+ */
+export const DEFAULT_ACTIVE_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write"];
 
 /** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
@@ -307,10 +315,14 @@ export function resolveSessionAllowedTools(opts: {
   return [...names];
 }
 
-/** Get built-in tool names for a type (case-insensitive). */
+/**
+ * Registered-tool list for a type: the config's registeredTools, or the
+ * default active set when the config has none. Type resolution is
+ * case-insensitive.
+ */
 export function getToolNamesForType(type: string): string[] {
   const config = getAgentConfig(type);
-  return config?.registeredTools?.length ? config.registeredTools : [...BUILTIN_TOOL_NAMES];
+  return config?.registeredTools?.length ? config.registeredTools : [...DEFAULT_ACTIVE_TOOL_NAMES];
 }
 
 /** Resolved config shape returned by getConfig. */
@@ -362,7 +374,7 @@ export function getConfig(
     return {
       displayName: rest.displayName ?? rest.name,
       description: rest.description,
-      registeredTools: rest.registeredTools ?? BUILTIN_TOOL_NAMES,
+      registeredTools: rest.registeredTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES],
       tools: rest.tools,
       ...defaults,
     };
@@ -373,7 +385,7 @@ export function getConfig(
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: BUILTIN_TOOL_NAMES,
+    registeredTools: [...DEFAULT_ACTIVE_TOOL_NAMES],
     ...defaults,
   };
 }

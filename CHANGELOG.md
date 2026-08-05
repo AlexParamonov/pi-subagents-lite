@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`navHint` setting now respected during active navigation.** The nav hint in the widget heading shows only when not actively navigating.
 - **Widget navigation refactored.** `navUp`/`navDown` merged into `moveNav`, nav state extraction unified behind `resolveNavState`, and rendering split into focused methods.
+- **Subagents without explicit tool config default to pi's active set (`read`, `bash`, `edit`, `write`)** instead of all built-ins; `grep`/`find`/`ls` must be whitelisted in `tools:` to activate.
+
 
 ### Fixed
 
