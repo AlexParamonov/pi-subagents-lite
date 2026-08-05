@@ -1,13 +1,3 @@
-/**
- * worktree-renderer.test.ts — Tests for worktree path display in the details pane.
- *
- * Verifies:
- *   - renderSubagentResult includes worktree: path in the result card
- *   - buildFallbackResultLine (via renderSubagentResult without turnCount) includes worktree: path
- *
- * Note: renderer.ts no longer imports shell.ts — showCost is passed as a parameter.
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ------------------------------------------------------------------ */

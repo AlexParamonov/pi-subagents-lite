@@ -170,7 +170,7 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       label: "Hide background completions",
       currentValue: store.agent.hideBackgroundCompletions ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Hide background-agent completion cards. Results remain available to the model and Running agents.",
+      description: "Hide background-agent completion cards; applies from the next completion.",
     },
     {
       id: "thinkingBuffer",

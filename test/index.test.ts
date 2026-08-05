@@ -51,12 +51,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  Box: class {
-    children: any[] = [];
-    addChild(c: any) {
-      this.children.push(c);
-    }
-  },
+  Box: class {},
   Container: class {
     children: any[] = [];
     addChild(c: any) {
@@ -146,7 +141,6 @@ const { mutableStore, spawnGuard } = vi.hoisted(() => ({
       forceBackground: false,
       showCost: false,
       agentToolStrictMode: false,
-      modelDisplayStyle: "id",
       hideBackgroundCompletions: false,
     },
     modelFor: () => "anthropic/claude-sonnet-4-6",
@@ -252,7 +246,7 @@ describe("Agent tool schema — stealth", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Tool Registration Count                                           */
+/*  Message Renderer Registration                                     */
 /* ------------------------------------------------------------------ */
 
 describe("message renderer registration", () => {
@@ -280,6 +274,10 @@ describe("message renderer registration", () => {
     expect(renderer({ content: "done" }, { expanded: true }, theme).children).toHaveLength(0);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Tool Registration Count                                           */
+/* ------------------------------------------------------------------ */
 
 describe("tool registration", () => {
   let api: MockExtensionAPI;

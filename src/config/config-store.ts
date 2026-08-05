@@ -50,7 +50,6 @@ export interface ResolvedAgentSettings {
   readonly widgetMaxLines: number;
   readonly widgetMaxLinesCompact: number;
   readonly widgetCompact: boolean;
-  /** Hide background completion cards from the TUI. */
   readonly hideBackgroundCompletions: boolean;
   readonly widgetShortcut: boolean;
   readonly widgetShowModel: boolean;

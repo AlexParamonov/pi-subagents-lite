@@ -156,7 +156,7 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
 }
 ```
 
-Widget, stats visibility, and spawn defaults are all under `/agents` > Settings. When `hideBackgroundCompletions` is enabled under Widget settings → Behavior, background-agent completion cards are hidden from the TUI. Their results remain available to the model and through Running agents.
+Widget, stats visibility, and spawn defaults are all under `/agents` > Settings.
 
 Output logs land in `/tmp/pi-agent-outputs/<agentId>.log`, append-only and `tail -f` friendly. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
 
