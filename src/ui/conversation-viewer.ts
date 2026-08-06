@@ -67,7 +67,11 @@ export class ConversationViewer implements Component {
   /** Rendered lines per message index — avoids re-rendering unchanged messages. */
   private messageCache = new Map<number, string[]>();
   /** Message count and width of the last cache population. Mismatch → stale. */
-  private cacheMeta = { count: 0, width: 0 };
+  private cacheMeta: { count: number; width: number; messagesRef: any[] | undefined } = {
+    count: 0,
+    width: 0,
+    messagesRef: undefined,
+  };
   /** Full content lines from the last build — avoids re-iterating cached messages. */
   private cachedContentLines: string[] | undefined;
   /** Number of non-streaming lines in cachedContentLines. */
@@ -387,7 +391,7 @@ export class ConversationViewer implements Component {
   invalidate(): void {
     this.messageCache.clear();
     this.cachedContentLines = undefined;
-    this.cacheMeta = { count: 0, width: 0 };
+    this.cacheMeta = { count: 0, width: 0, messagesRef: undefined };
     this.cachedNonStreamingCount = 0;
   }
 
@@ -461,6 +465,15 @@ export class ConversationViewer implements Component {
         }
       }
     }
+  }
+
+  /**
+   * Update cache metadata after invalidation. Records the current messages array
+   * reference so we can detect array replacement (e.g., after compaction).
+   */
+  private updateCacheMeta(messages: any[], width: number): void {
+    this.cacheMeta = { count: messages.length, width, messagesRef: messages };
+    this.cachedContentLines = undefined;
   }
 
   /** Wrap text to the inner width and return each line as a tool-output row with bg padding. */
@@ -620,17 +633,15 @@ export class ConversationViewer implements Component {
     // Track which tool results have been rendered
     const renderedToolResults = new Set<string>();
 
-    // Invalidate cache if width changed (Markdown wrapping depends on it)
-    if (width !== this.cacheMeta.width) {
+    // Invalidate cache on array replacement or width change (both require full rebuild)
+    if (messages !== this.cacheMeta.messagesRef || width !== this.cacheMeta.width) {
       this.messageCache.clear();
-      this.cacheMeta = { count: messages.length, width };
-      this.cachedContentLines = undefined;
+      this.updateCacheMeta(messages, width);
     } else if (messages.length !== this.cacheMeta.count) {
       // Message count changed — only invalidate entries affected by new messages.
       const newMsgs = messages.slice(this.cacheMeta.count);
       this.invalidateCacheForNewMessages(newMsgs, this.cacheMeta.count, messages);
-      this.cacheMeta.count = messages.length;
-      this.cachedContentLines = undefined; // new messages → full rebuild
+      this.updateCacheMeta(messages, width);
     }
 
     // Fast path: if we have cached content and only streaming text changed,
