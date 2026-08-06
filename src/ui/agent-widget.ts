@@ -95,6 +95,42 @@ function buildWorktreeOutputParts(a: AgentRecord): string[] {
   return parts;
 }
 
+/**
+ * Build continuation line parts for an agent record.
+ * In full mode, includes model/thinking in bare format (no parentheses).
+ * In compact mode, model/thinking stays in header, so not included here.
+ */
+function buildContinuationLineParts(
+  a: AgentRecord,
+  modelDisplayStyle: "id" | "name",
+  statsVisibility: StatsVisibility,
+  isCompact: boolean,
+): string[] {
+  const parts: string[] = [];
+
+  // Worktree label
+  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
+
+  // Model + thinking (bare format, no parentheses) - only in full mode
+  if (!isCompact) {
+    const modelLabel = resolveAgentModelLabel(a, modelDisplayStyle);
+    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
+    const showModel = statsVisibility?.showModel !== false;
+    const showThinking = statsVisibility?.showThinking !== false;
+    const model = showModel ? modelLabel?.trim() : undefined;
+    const thinking = showThinking ? thinkingLevel?.trim() : undefined;
+    const modelThinkingParts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
+    if (modelThinkingParts.length > 0) {
+      parts.push(modelThinkingParts.join(" • "));
+    }
+  }
+
+  // Output file
+  if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
+
+  return parts;
+}
+
 // ---- Widget manager ----
 
 export class AgentWidget {
@@ -621,7 +657,7 @@ export class AgentWidget {
   }
 
   /** Render a finished agent line. */
-  private renderFinishedLine(a: AgentRecord, theme: Theme): string {
+  private renderFinishedLine(a: AgentRecord, theme: Theme, includeModelThinking = false): string {
     const name = getDisplayName(a.display.type);
     const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
@@ -642,9 +678,8 @@ export class AgentWidget {
       theme,
       this.statsVisibility,
     );
-
     const statsLine = statsParts.join("·");
-    const modelTag = this.modelThinkingTag(a);
+    const modelTag = includeModelThinking ? this.modelThinkingTag(a) : "";
     const modelTagPart = modelTag ? ` ${theme.fg("dim", modelTag)}` : "";
     return `${icon} ${theme.fg("dim", name)}${modelTagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
@@ -685,13 +720,13 @@ export class AgentWidget {
     for (const a of finished) {
       const continuations: string[] = [];
       if (!this.isCompact()) {
-        const parts = buildWorktreeOutputParts(a);
+        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.isCompact());
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", `    ${parts.join("  ")}`)));
         }
       }
       blocks.push({
-        header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
+        header: truncate(`  ${this.renderFinishedLine(a, theme, this.isCompact())}`),
         continuations,
       });
     }
@@ -707,23 +742,23 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
-      const tag = this.modelThinkingTag(a);
-      const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = truncateDesc(a.display.description, this.descLengthCompact);
+        const tag = this.modelThinkingTag(a);
+        const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
         });
       } else {
-        // Full: header + continuation lines
+        // Full: header + continuation lines (model/thinking on continuation)
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
-        const parts = buildWorktreeOutputParts(a);
+        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.isCompact());
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
         }
