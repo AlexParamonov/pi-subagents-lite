@@ -805,7 +805,7 @@ export class AgentWidget {
     // same snapshot as the blocks, so every id resolves.
     const visibleBlocks = roster.slice(start, end + 1).map((a) => blockById.get(a.id)!);
     const visIndex = highlightIndex - start;
-    const lines = this.renderBlocks(visibleBlocks, visIndex, theme);
+    const lines = this.renderBlocks(visibleBlocks, visIndex);
 
     // Overflow line: "+N more" where N = hidden agents
     const hiddenCount = len - (end - start + 1);
@@ -827,7 +827,7 @@ export class AgentWidget {
 
     if (totalBody <= maxBody) {
       // Everything fits — render all blocks
-      return this.renderBlocks(blocks, -1, theme);
+      return this.renderBlocks(blocks, -1);
     }
 
     // Collapse from bottom: reserve 1 line for overflow indicator
@@ -842,7 +842,7 @@ export class AgentWidget {
         break;
       }
     }
-    const lines = this.renderBlocks(visible, -1, theme);
+    const lines = this.renderBlocks(visible, -1);
     // Overflow line: "+N more" where N = hidden agents. In this branch the
     // queued aggregated block is always the last block and never visible
     // (if it fit, everything fit), so every visible block is one agent.
@@ -961,18 +961,16 @@ export class AgentWidget {
     return blocks;
   }
 
-  private renderBlock(block: RenderBlock, _isLast: boolean, isHighlighted: boolean, theme: Theme): string[] {
+  private renderBlock(block: RenderBlock, isHighlighted: boolean): string[] {
     let header = block.header;
-    if (isHighlighted) {
-      if (header.startsWith("  ")) {
-        header = "→ " + header.slice(2);
-      }
+    if (isHighlighted && header.startsWith("  ")) {
+      header = "→ " + header.slice(2);
     }
     return [header, ...block.continuations];
   }
   /** Render a list of blocks. */
-  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number, theme: Theme): string[] {
-    return blocks.flatMap((b, i) => this.renderBlock(b, i === blocks.length - 1, i === highlightedBlockIndex, theme));
+  private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number): string[] {
+    return blocks.flatMap((b, i) => this.renderBlock(b, i === highlightedBlockIndex));
   }
 
   /** Build the overflow line showing hidden agent count. */
