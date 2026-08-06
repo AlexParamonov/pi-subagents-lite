@@ -255,7 +255,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
       // model/thinking should be first, worktree should be second
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts[1]).toBe("@my-feature");
@@ -271,7 +271,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
       // model/thinking first, worktree second, outputFile last
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts[1]).toBe("@my-feature");
@@ -288,7 +288,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts.length).toBe(1);
     });
@@ -303,7 +303,23 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: undefined },
       });
+      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
+      expect(parts[0]).toBe("@my-feature");
+      expect(parts.length).toBe(1);
+    });
+
+    it("omits model/thinking by default (placement defaults to 'header')", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          worktreeLabel: "my-feature",
+          outputFile: undefined,
+          invocation: { modelName: "haiku", thinkingLevel: "medium" },
+        },
+      });
       const parts = buildContinuationLineParts(agent, "name");
+      // Default placement is 'header' - model/thinking stays out of the continuation line
       expect(parts[0]).toBe("@my-feature");
       expect(parts.length).toBe(1);
     });
@@ -319,7 +335,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
       });
-      const parts = buildContinuationLineParts(agent, "name");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
       expect(parts[0]).toBe("Haiku");
     });
 
@@ -332,7 +348,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
       });
-      const parts = buildContinuationLineParts(agent, "id");
+      const parts = buildContinuationLineParts(agent, "id", undefined, "continuation");
       expect(parts[0]).toBe("claude-3-haiku");
     });
   });

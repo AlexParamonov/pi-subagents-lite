@@ -124,10 +124,11 @@ describe("modelThinkingPlacement setting", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
-  describe("full mode with placement = '2nd' (default)", () => {
+  describe("full mode with placement = '2nd'", () => {
     beforeEach(() => {
       widget.setCompactMode(false);
-      // Default is "2nd" - model/thinking on continuation line
+      // Placement is set explicitly; the built-in default is now '1st' (header)
+      widget.setModelThinkingPlacement("continuation");
     });
 
     it("places model/thinking on continuation line for running agents", () => {
@@ -226,16 +227,17 @@ describe("modelThinkingPlacement setting", () => {
       expect(typeof widget.setModelThinkingPlacement).toBe("function");
     });
 
-    it("defaults to '2nd'", () => {
-      // Check via rendering behavior - model/thinking should be on continuation
+    it("defaults to '1st'", () => {
+      // Check via rendering behavior - model/thinking should be in header
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Should be on continuation line (default)
-      expect(lines[2]).toContain("haiku • medium");
+      // Should be in header (default)
+      expect(lines[1]).toContain("(haiku • medium)");
+      expect(lines[2]).not.toContain("haiku • medium");
     });
   });
 });

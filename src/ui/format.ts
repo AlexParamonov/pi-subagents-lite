@@ -357,7 +357,7 @@ export function buildContinuationLineParts(
   a: AgentRecord,
   modelDisplayStyle: "id" | "name",
   statsVisibility?: StatsVisibility,
-  modelThinkingPlacement: "header" | "continuation" = "continuation",
+  modelThinkingPlacement: "header" | "continuation" = "header",
 ): string[] {
   const parts: string[] = [];
 

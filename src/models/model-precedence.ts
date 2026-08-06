@@ -74,6 +74,8 @@ export interface SubagentsConfig {
     finishedEvictTurns?: number;
     /** How to display the model label: short ID or full name. Default: 'id'. */
     modelDisplayStyle?: "id" | "name";
+    /** Where model/thinking appears in full mode: 'header' (1st line) or 'continuation' (2nd line). Default: 'header'. */
+    modelThinkingPlacement?: "header" | "continuation";
     /** Status bar format: 'full' (default) or 'compact'. */
     statusBarFormat?: "full" | "compact";
     [agentType: string]: string | null | undefined | boolean | number;

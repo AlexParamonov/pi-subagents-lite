@@ -147,7 +147,7 @@ export class AgentWidget {
   private modelDisplayStyle: "id" | "name" = "id";
 
   /** Model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
-  private modelThinkingPlacement: "header" | "continuation" = "continuation";
+  private modelThinkingPlacement: "header" | "continuation" = "header";
 
   /** Whether model/thinking should appear in header (compact mode or header placement setting). */
   private shouldShowModelThinkingInHeader(): boolean {
