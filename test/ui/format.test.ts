@@ -255,7 +255,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
       // model/thinking should be first, worktree should be second
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts[1]).toBe("@my-feature");
@@ -271,7 +271,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
       // model/thinking first, worktree second, outputFile last
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts[1]).toBe("@my-feature");
@@ -288,7 +288,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts.length).toBe(1);
     });
@@ -303,7 +303,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: undefined },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
       expect(parts[0]).toBe("@my-feature");
       expect(parts.length).toBe(1);
     });
@@ -335,7 +335,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "continuation");
+      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
       expect(parts[0]).toBe("Haiku");
     });
 
@@ -348,7 +348,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
       });
-      const parts = buildContinuationLineParts(agent, "id", undefined, "continuation");
+      const parts = buildContinuationLineParts(agent, "id", undefined, "metadata");
       expect(parts[0]).toBe("claude-3-haiku");
     });
   });

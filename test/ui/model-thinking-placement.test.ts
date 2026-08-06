@@ -2,7 +2,7 @@
  * model-thinking-placement.test.ts — Tests for model/thinking placement setting.
  *
  * Verifies the modelThinkingPlacement setting controls where model/thinking
- * appears in full mode: "1st" (header) or "2nd" (continuation line).
+ * appears in full mode: "1st" (header) or "2nd" (metadata line).
  * Compact mode always shows model/thinking in header.
  */
 
@@ -128,7 +128,7 @@ describe("modelThinkingPlacement setting", () => {
     beforeEach(() => {
       widget.setCompactMode(false);
       // Placement is set explicitly; the built-in default is now '1st' (header)
-      widget.setModelThinkingPlacement("continuation");
+      widget.setModelThinkingPlacement("metadata");
     });
 
     it("places model/thinking on continuation line for running agents", () => {
@@ -196,7 +196,7 @@ describe("modelThinkingPlacement setting", () => {
 
     it("always shows model/thinking in header regardless of placement setting", () => {
       // Set placement to "2nd" but compact mode should ignore it
-      widget.setModelThinkingPlacement("continuation");
+      widget.setModelThinkingPlacement("metadata");
 
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));

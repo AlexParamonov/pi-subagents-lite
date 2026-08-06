@@ -357,13 +357,13 @@ export function buildContinuationLineParts(
   a: AgentRecord,
   modelDisplayStyle: "id" | "name",
   statsVisibility?: StatsVisibility,
-  modelThinkingPlacement: "header" | "continuation" = "header",
+  modelThinkingPlacement: "header" | "metadata" = "header",
 ): string[] {
   const parts: string[] = [];
 
   // Model + thinking (bare format, no parentheses)
-  // Only include on continuation line when placement is "continuation"
-  if (modelThinkingPlacement === "continuation") {
+  // Only include on continuation line when placement is "metadata"
+  if (modelThinkingPlacement === "metadata") {
     const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
     const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
     if (modelThinkingParts.length > 0) {

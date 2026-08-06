@@ -146,8 +146,8 @@ export class AgentWidget {
   /** Model display format: 'id' (short) or 'name' (full). */
   private modelDisplayStyle: "id" | "name" = "id";
 
-  /** Model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
-  private modelThinkingPlacement: "header" | "continuation" = "header";
+  /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
+  private modelThinkingPlacement: "header" | "metadata" = "header";
 
   /** Whether model/thinking should appear in header (compact mode or header placement setting). */
   private shouldShowModelThinkingInHeader(): boolean {
@@ -244,8 +244,8 @@ export class AgentWidget {
   setModelDisplayStyle(style: "id" | "name") {
     this.modelDisplayStyle = style;
   }
-  /** Set model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
-  setModelThinkingPlacement(placement: "header" | "continuation") {
+  /** Set model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
+  setModelThinkingPlacement(placement: "header" | "metadata") {
     this.modelThinkingPlacement = placement;
   }
   /** Register a finished agent for turn-based tracking. No-op when eviction is disabled. */

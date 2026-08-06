@@ -2,7 +2,7 @@
  * continuation-line.test.ts — Tests for continuation line assembly.
  *
  * Verifies that model + thinking metadata appears on the continuation line
- * in full mode when placement is 'continuation', and stays in the header
+ * in full mode when placement is 'metadata', and stays in the header
  * in compact mode or when placement is 'header'.
  */
 
@@ -127,7 +127,7 @@ describe("continuation line assembly", () => {
   describe("full mode", () => {
     beforeEach(() => {
       widget.setCompactMode(false);
-      widget.setModelThinkingPlacement("continuation");
+      widget.setModelThinkingPlacement("metadata");
     });
 
     it("moves model + thinking from header to continuation line for running agents", () => {
@@ -213,7 +213,7 @@ describe("continuation line assembly", () => {
   describe("nav-height consistency", () => {
     beforeEach(() => {
       widget.setCompactMode(false);
-      widget.setModelThinkingPlacement("continuation");
+      widget.setModelThinkingPlacement("metadata");
     });
 
     it("getBlockHeight matches rendered block height for running agent with model but no worktree/outputFile", () => {
