@@ -157,7 +157,7 @@ export function renderSubagentResult(
       );
     }
   } else {
-    inner.addChild(new Text(buildFallbackResultLine(d, text, theme, modelDisplayStyle), 0, 0));
+    inner.addChild(new Text(buildFallbackResultLine(d, theme, modelDisplayStyle), 0, 0));
   }
 
   const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
@@ -173,7 +173,6 @@ export function renderSubagentResult(
 /** Build a fallback result line for subagent-result messages without stats. */
 function buildFallbackResultLine(
   d: Record<string, unknown> | undefined,
-  text: string,
   theme: Theme,
   modelDisplayStyle: "id" | "name" = "id",
 ): string {

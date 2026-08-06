@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent-runner.js";
 import { AgentOutputLog } from "./output-file.js";
 import { Watchdog } from "./watchdog.js";
@@ -17,7 +17,6 @@ import {
   type RunCallbacks,
   type StopInitiator,
   type WatchdogStopDetail,
-  SHORT_ID_LENGTH,
   type SpawnConfig,
   type ToolActivity,
 } from "../types.js";

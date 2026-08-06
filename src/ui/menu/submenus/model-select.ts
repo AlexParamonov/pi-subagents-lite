@@ -9,7 +9,7 @@
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
 import type { Theme } from "../../types.js";
-import { SearchableSelectDialog, type SelectOption } from "../../../ui/searchable-select.js";
+import { SearchableSelectDialog } from "../../../ui/searchable-select.js";
 import { buildModelOptions, buildSelectListTheme, createDelegatingComponent } from "../helpers.js";
 
 export interface ModelSelectSubmenuOptions {

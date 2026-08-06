@@ -29,7 +29,7 @@ import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
 import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
-import { getCoordinator, getManager, getStore } from "../../shell.js";
+import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
 
 /**
@@ -38,7 +38,6 @@ import type { Theme } from "../types.js";
 async function showConversationViewer(ctx: ExtensionCommandContext, record: AgentRecord): Promise<void> {
   if (!record.execution?.session) return;
   const manager = getManager();
-  const coordinator = getCoordinator();
 
   await ctx.ui.custom<void>((tui, theme, kb, done) => {
     const viewer = new ConversationViewer(

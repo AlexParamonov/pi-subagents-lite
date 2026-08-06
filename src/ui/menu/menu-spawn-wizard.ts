@@ -187,7 +187,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
         items,
         10,
         buildSettingsListTheme(theme),
-        (id, value) => {
+        (_id, value) => {
           done(value);
         },
         () => done(undefined),
@@ -289,7 +289,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
             const coordinator = getCoordinator()!;
             try {
-              const result = await coordinator.spawn(getPiInstance(), session!, {
+              await coordinator.spawn(getPiInstance(), session!, {
                 type: resolvedType,
                 prompt: spawnPrompt,
                 description,

@@ -25,7 +25,6 @@ import { makeMarkdownTheme } from "./markdown-theme.js";
 import {
   buildInvocationTags,
   buildStatsParts,
-  describeActivity,
   fgPreservingNestedStyles,
   getDisplayName,
   resolveAgentModelLabel,

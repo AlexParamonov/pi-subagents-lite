@@ -4,15 +4,14 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
-import { registerAgents, getAvailableTypes, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
+import { registerAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
 import { AgentManager } from "./agents/agent-manager.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
-import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./ui/conversation-viewer.js";
+import { ConversationViewer } from "./ui/conversation-viewer.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { toolCallListener } from "./agents/tool-execution.js";
 import { registerAgentTool } from "./registration.js";
 import {
-  getPiInstance,
   getManager,
   getWidget,
   getCoordinator,
@@ -119,7 +118,6 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
   const widget = getWidget();
   if (!widget) return;
   const manager = getManager();
-  const coordinator = getCoordinator();
 
   try {
     widget.setViewerOpen(true);

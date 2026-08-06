@@ -11,7 +11,6 @@ import type { Theme } from "./types.js";
 import type { ModelThinkingPlacement } from "../config/types.js";
 import { formatCost, getSessionContextPercent } from "../agents/usage.js";
 import {
-  formatMs,
   buildStatsParts,
   getDisplayName,
   truncateDesc,

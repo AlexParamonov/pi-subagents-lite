@@ -5,7 +5,7 @@ import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.
 import { executeAgentStatusTool } from "./agents/agent-status.js";
 import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./ui/renderer.js";
 import { showAgentsMainMenu } from "./ui/menu/menus.js";
-import { getPiInstance, getStore } from "./shell.js";
+import { getStore } from "./shell.js";
 
 // Provider-side json_schema enforcement; "prefer" falls back gracefully on
 // providers without strict mode (e.g. local Ollama). Runtime-supported field,

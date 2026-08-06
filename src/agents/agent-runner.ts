@@ -30,7 +30,7 @@ import type { AgentUsage } from "./usage.js";
 import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
-import { preloadSkills, loadSkillMeta, type SkillMeta } from "../prompt/skill-loader.js";
+import { preloadSkills, loadSkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
 import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
