@@ -467,6 +467,15 @@ export class ConversationViewer implements Component {
     }
   }
 
+  /**
+   * Update cache metadata after invalidation. Records the current messages array
+   * reference so we can detect array replacement (e.g., after compaction).
+   */
+  private updateCacheMeta(messages: any[], width: number): void {
+    this.cacheMeta = { count: messages.length, width, messagesRef: messages };
+    this.cachedContentLines = undefined;
+  }
+
   /** Wrap text to the inner width and return each line as a tool-output row with bg padding. */
   private wrapToolOutput(bg: string, text: string, width: number): string[] {
     const th = this.theme;
@@ -624,22 +633,15 @@ export class ConversationViewer implements Component {
     // Track which tool results have been rendered
     const renderedToolResults = new Set<string>();
 
-    // Invalidate cache if messages array was replaced (e.g., after compaction)
-    if (messages !== this.cacheMeta.messagesRef) {
+    // Invalidate cache on array replacement or width change (both require full rebuild)
+    if (messages !== this.cacheMeta.messagesRef || width !== this.cacheMeta.width) {
       this.messageCache.clear();
-      this.cacheMeta = { count: messages.length, width, messagesRef: messages };
-      this.cachedContentLines = undefined;
-    } else if (width !== this.cacheMeta.width) {
-      // Invalidate cache if width changed (Markdown wrapping depends on it)
-      this.messageCache.clear();
-      this.cacheMeta = { count: messages.length, width, messagesRef: messages };
-      this.cachedContentLines = undefined;
+      this.updateCacheMeta(messages, width);
     } else if (messages.length !== this.cacheMeta.count) {
       // Message count changed — only invalidate entries affected by new messages.
       const newMsgs = messages.slice(this.cacheMeta.count);
       this.invalidateCacheForNewMessages(newMsgs, this.cacheMeta.count, messages);
-      this.cacheMeta = { count: messages.length, width, messagesRef: messages };
-      this.cachedContentLines = undefined; // new messages → full rebuild
+      this.updateCacheMeta(messages, width);
     }
 
     // Fast path: if we have cached content and only streaming text changed,
