@@ -1,7 +1,8 @@
 # Dev
-**Package manager:** bun (`bun install`, `bun add`, `bun add -d`)
-**Typecheck:** `bun run typecheck`
-**Tests:** `bun run test` (vitest)
-**Format:** `bun run format` (prettier) / `bun run format:check`
+
+**Package manager:** npm (`npm install`, `npm install <pkg>`, `npm install -D <pkg>`)
+**Typecheck:** `npm run typecheck`
+**Tests:** `npm run test` (vitest)
+**Format:** `npm run format` (prettier) / `npm run format:check`
 
 **Before committing:** run typecheck, tests, and format:check.

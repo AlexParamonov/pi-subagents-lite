@@ -8,7 +8,7 @@
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
 
 ### Testing
-- Run `bun run test` after merging — clean merge ≠ passing tests.
+- Run `npm run test` after merging — clean merge ≠ passing tests.
 - Test public interfaces and behavior matching plan.md. Don't assert implementation details; prune unused imports.
 - Don't mock away the real path — assert constructor args, not just downstream behavior. Export testable functions early.
 - Re-read before multi-line replaces on shifted code — stale ranges clobber adjacent signatures.
@@ -69,7 +69,7 @@
 - When nudges stop working, restart the harness rather than debugging live state.
 
 ### Package Management
-- Regenerate lockfiles with package manager when bumping versions; never hand-edit bun.lock.
+- Regenerate lockfiles with package manager when bumping versions; never hand-edit package-lock.json.
 - Releasing: keep `[Unreleased]` as empty running header, insert versioned section below it.
 
 ### Cross-Platform
