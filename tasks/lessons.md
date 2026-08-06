@@ -78,3 +78,13 @@
 
 ### Refactor Scope
 - Stay within issue scope.
+
+## output-transcript-setting - 2025-01-15
+**What worked:** Single gate design centralizing the decision on `record.outputFile` so all downstream consumers key off one field. Using `??` operator for precedence (agent-level ?? global-level ?? default true) is clean and correct. Voice-of-reason alternatives brainstorm caught design considerations early.
+**What failed:** Initial test coverage for agent-level frontmatter override didn't actually exercise the branch — `getAgentConfig` always returned `undefined` in test context because `registerAgents` was never called. Tests were added but would have passed even if the override logic was deleted. Stale dev-artifact comments accumulated in test files. CHANGELOG entry was forgotten initially.
+**Next time:** When adding tests for mocked functions, verify the mock is actually being called in the test context — a test that would pass if the feature was deleted is worse than no test. Review tests more carefully to ensure they would fail if the feature was broken. Clean up dev comments immediately. Add CHANGELOG entry as part of initial implementation, not as an afterthought.
+
+## move-model-to-continuation - 2025-01-15
+**What worked:** Moving model + thinking to continuation line improves header scannability. Using a shared `buildContinuationLineParts` function for both rendering and height calculation (`getBlockHeight`) prevents nav-mode window math drift. Extracting `resolveAgentModelThinking` removed duplicated resolution logic.
+**What failed:** `getBlockHeight` initially didn't account for the new continuation line showing model/thinking, causing nav-mode overflow math to be wrong. The `hasContinuationLine` predicate initially triplicated logic instead of delegating to the shared function. `buildWorktreeOutputParts` became dead code after the refactor but wasn't removed immediately.
+**Next time:** When adding a new continuation line element, immediately audit `getBlockHeight` and nav-mode math. Single source of truth — if two functions compute the same derived state, one should call the other. Remove dead code in the same commit that makes it dead, not later.
