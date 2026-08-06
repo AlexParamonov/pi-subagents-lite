@@ -20,7 +20,6 @@ export function truncateDesc(text: string, maxLen: number): string {
   return text.length > maxLen ? text.slice(0, maxLen - 3) + "..." : text;
 }
 
-
 // ---- Internal helpers (used by buildStatsParts) ----
 
 /**
@@ -151,7 +150,6 @@ export function getDisplayName(type: SubagentType): string {
   const config = getAgentConfig(type);
   return config?.displayName ?? config?.name ?? "Agent";
 }
-
 
 /** Tool name to human-readable action for activity descriptions. */
 const TOOL_DISPLAY: Record<string, string> = {
