@@ -358,15 +358,15 @@ export function buildContinuationLineParts(
 ): string[] {
   const parts: string[] = [];
 
-  // Worktree label
-  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
-
   // Model + thinking (bare format, no parentheses)
   const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
   const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
   if (modelThinkingParts.length > 0) {
     parts.push(modelThinkingParts.join(" • "));
   }
+
+  // Worktree label
+  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
 
   // Output file
   if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
