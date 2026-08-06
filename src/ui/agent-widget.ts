@@ -19,6 +19,7 @@ import {
   buildModelThinkingParts,
   resolveAgentModelLabel,
   resolveAgentModelThinking,
+  buildContinuationLineParts,
   type StatsVisibility,
 } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
@@ -87,34 +88,6 @@ function wrapInDim(theme: Theme, text: string): string {
   const dimOn = dimSample.slice(0, xIdx);
   const dimOff = dimSample.slice(xIdx + 1);
   return dimOn + text.replaceAll(dimOff, dimOff + dimOn) + dimOff;
-}
-
-/**
- * Build continuation line parts for an agent record.
- * In full mode, includes model/thinking in bare format (no parentheses).
- * In compact mode, model/thinking stays in header, so not included here.
- */
-function buildContinuationLineParts(
-  a: AgentRecord,
-  modelDisplayStyle: "id" | "name",
-  statsVisibility: StatsVisibility,
-): string[] {
-  const parts: string[] = [];
-
-  // Worktree label
-  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
-
-  // Model + thinking (bare format, no parentheses)
-  const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
-  const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
-  if (modelThinkingParts.length > 0) {
-    parts.push(modelThinkingParts.join(" • "));
-  }
-
-  // Output file
-  if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
-
-  return parts;
 }
 
 // ---- Widget manager ----
