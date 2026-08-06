@@ -34,8 +34,8 @@ export const WATCHDOG_TICK_MS = 5_000;
 /** Milliseconds in one minute (config thresholds and retention are stored in minutes). */
 const MINUTE_MS = 60_000;
 
-/** Age after which a completed agent record is evicted (milliseconds). Default: 10 min. */
-const DEFAULT_RETENTION_MINUTES = 10;
+/** Age after which a completed agent record is evicted (milliseconds). Default: 1 min. */
+const DEFAULT_RETENTION_MINUTES = 1;
 
 /** UUID prefix length for agent IDs stored in the agents map (uniqueness). */
 const AGENT_ID_PREFIX_LENGTH = 17;
