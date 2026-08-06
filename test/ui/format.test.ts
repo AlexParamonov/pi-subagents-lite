@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { buildStatsParts, getDisplayName } from "../../src/ui/format.js";
+import { buildStatsParts, getDisplayName, buildContinuationLineParts } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 
@@ -214,5 +214,126 @@ describe("getDisplayName", () => {
 
   it("falls back to 'Agent' when agent type is not found", () => {
     expect(getDisplayName("non-existent-agent")).toBe("Agent");
+  });
+});
+
+/**
+ * Mock factories for buildContinuationLineParts tests.
+ */
+function makeAgentRecord(overrides?: Partial<any>): any {
+  return {
+    id: "test-agent",
+    lifecycle: { status: "running", startedAt: Date.now() - 60000 },
+    display: {
+      type: "builder",
+      description: "Test agent",
+      worktreeLabel: undefined,
+      outputFile: undefined,
+      invocation: { modelName: "haiku", thinkingLevel: "medium" },
+    },
+    execution: { session: { model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" } },
+    stats: {
+      toolUses: 5,
+      compactionCount: 0,
+      lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
+      turnCount: 3,
+      maxTurns: 30,
+    },
+    ...overrides,
+  };
+}
+
+describe("buildContinuationLineParts", () => {
+  describe("part order", () => {
+    it("puts model/thinking before worktreeLabel", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          worktreeLabel: "my-feature",
+          outputFile: undefined,
+          invocation: { modelName: "haiku", thinkingLevel: "medium" },
+        },
+      });
+      const parts = buildContinuationLineParts(agent, "name");
+      // model/thinking should be first, worktree should be second
+      expect(parts[0]).toBe("Haiku • medium");
+      expect(parts[1]).toBe("@my-feature");
+    });
+
+    it("puts outputFile last when all parts present", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          worktreeLabel: "my-feature",
+          outputFile: "/tmp/test.log",
+          invocation: { modelName: "haiku", thinkingLevel: "medium" },
+        },
+      });
+      const parts = buildContinuationLineParts(agent, "name");
+      // model/thinking first, worktree second, outputFile last
+      expect(parts[0]).toBe("Haiku • medium");
+      expect(parts[1]).toBe("@my-feature");
+      expect(parts[2]).toBe("tail -f /tmp/test.log");
+    });
+
+    it("omits worktreeLabel when not present", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          worktreeLabel: undefined,
+          outputFile: undefined,
+          invocation: { modelName: "haiku", thinkingLevel: "medium" },
+        },
+      });
+      const parts = buildContinuationLineParts(agent, "name");
+      expect(parts[0]).toBe("Haiku • medium");
+      expect(parts.length).toBe(1);
+    });
+
+    it("omits model/thinking when not present", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          worktreeLabel: "my-feature",
+          outputFile: undefined,
+        },
+        execution: { session: undefined },
+      });
+      const parts = buildContinuationLineParts(agent, "name");
+      expect(parts[0]).toBe("@my-feature");
+      expect(parts.length).toBe(1);
+    });
+  });
+
+  describe("model display style", () => {
+    it("uses model name when style is 'name'", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          invocation: { modelName: "haiku", thinkingLevel: undefined },
+        },
+        execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
+      });
+      const parts = buildContinuationLineParts(agent, "name");
+      expect(parts[0]).toBe("Haiku");
+    });
+
+    it("uses model id when style is 'id'", () => {
+      const agent = makeAgentRecord({
+        display: {
+          type: "builder",
+          description: "Test",
+          invocation: { modelName: "haiku", thinkingLevel: undefined },
+        },
+        execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
+      });
+      const parts = buildContinuationLineParts(agent, "id");
+      expect(parts[0]).toBe("claude-3-haiku");
+    });
   });
 });
