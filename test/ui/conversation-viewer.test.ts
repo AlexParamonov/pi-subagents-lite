@@ -778,4 +778,98 @@ describe("ConversationViewer", () => {
       expect(unsubscribe).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("cache invalidation on messages array replacement", () => {
+    it("clears cache when messages array is replaced (e.g., after compaction)", () => {
+      // Start with a session that has multiple messages
+      const originalMessages = [
+        { role: "user", content: "original message 1" },
+        { role: "assistant", content: [{ type: "text", text: "original response 1" }] },
+        { role: "user", content: "original message 2" },
+        { role: "assistant", content: [{ type: "text", text: "original response 2" }] },
+      ];
+      // Create a session where messages can be replaced
+      let messagesArray = [...originalMessages];
+      const session = {
+        get messages() {
+          return messagesArray;
+        },
+        subscribe: mockSubscribe,
+      } as any;
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      // First render - populates cache with original messages
+      const firstRender = viewer.render(80).join("\n");
+      expect(firstRender).toContain("original message 1");
+      expect(firstRender).toContain("original response 1");
+
+      // Simulate compaction: replace the messages array with a shorter one
+      messagesArray = [
+        { role: "user", content: "original message 1" },
+        { role: "assistant", content: [{ type: "text", text: "SUMMARIZED response" }] },
+      ];
+
+      // Second render - should show summarized content, not stale cached content
+      const secondRender = viewer.render(80).join("\n");
+      expect(secondRender).toContain("SUMMARIZED response");
+      expect(secondRender).not.toContain("original response 1");
+      expect(secondRender).not.toContain("original response 2");
+    });
+
+    it("detects array replacement via reference change (not just length)", () => {
+      // Start with a session
+      let messagesArray = [
+        { role: "user", content: "msg 1" },
+        { role: "assistant", content: [{ type: "text", text: "resp 1" }] },
+      ];
+      const session = {
+        get messages() {
+          return messagesArray;
+        },
+        subscribe: mockSubscribe,
+      } as any;
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      // First render
+      viewer.render(80);
+
+      // Replace with new array of SAME length but different content (simulating compaction)
+      messagesArray = [
+        { role: "user", content: "msg 1" },
+        { role: "assistant", content: [{ type: "text", text: "COMPACTED" }] },
+      ];
+
+      // Should detect the replacement and clear cache
+      const text = viewer.render(80).join("\n");
+      expect(text).toContain("COMPACTED");
+      expect(text).not.toContain("resp 1");
+    });
+
+    it("preserves cache on append (no array replacement)", () => {
+      // Start with a session
+      const messagesArray = [{ role: "user", content: "msg 1" }];
+      const session = {
+        get messages() {
+          return messagesArray;
+        },
+        subscribe: mockSubscribe,
+      } as any;
+      const record = makeMockRecord({ execution: { session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+
+      // First render
+      const firstRender = viewer.render(80).join("\n");
+      expect(firstRender).toContain("msg 1");
+
+      // Append to same array (no replacement)
+      messagesArray.push({ role: "assistant", content: [{ type: "text", text: "resp 1" }] });
+
+      // Should work correctly with append
+      const secondRender = viewer.render(80).join("\n");
+      expect(secondRender).toContain("msg 1");
+      expect(secondRender).toContain("resp 1");
+    });
+  });
 });
