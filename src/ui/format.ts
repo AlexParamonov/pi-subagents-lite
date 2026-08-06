@@ -13,6 +13,7 @@ import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
+import type { ModelThinkingPlacement } from "../config/types.js";
 
 /** Truncate a description string to `maxLen` characters, appending "..." if truncated. */
 export function truncateDesc(text: string, maxLen: number): string {
@@ -349,15 +350,15 @@ export function resolveAgentModelThinking(a: AgentRecord, style: "id" | "name"):
 }
 
 /** Build continuation line parts for an agent record.
- * In full mode, includes model/thinking in bare format (no parentheses).
- * In compact mode, model/thinking stays in header, so not included here.
- * When modelThinkingPlacement is "header", model/thinking is excluded from continuation line.
+ * Model/thinking is included (bare format, no parentheses) only when
+ * modelThinkingPlacement is "metadata". With "header" placement it stays
+ * in the widget header line.
  */
 export function buildContinuationLineParts(
   a: AgentRecord,
   modelDisplayStyle: "id" | "name",
   statsVisibility?: StatsVisibility,
-  modelThinkingPlacement: "header" | "metadata" = "header",
+  modelThinkingPlacement: ModelThinkingPlacement = "header",
 ): string[] {
   const parts: string[] = [];
 

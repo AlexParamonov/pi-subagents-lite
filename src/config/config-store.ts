@@ -17,7 +17,7 @@ import type { SubagentsConfig, SessionModelOverrides } from "../models/model-pre
 import { resolveModel } from "../models/model-precedence.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
 import type { AgentManager } from "../agents/agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import { CONFIG_AGENT_NON_MODEL_KEYS, type ModelThinkingPlacement } from "./types.js";
 import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
 import {
@@ -97,7 +97,7 @@ export interface ResolvedAgentSettings {
   /** Model display format: 'id' (short) or 'name' (full). */
   readonly modelDisplayStyle: "id" | "name";
   /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
-  readonly modelThinkingPlacement: "header" | "metadata";
+  readonly modelThinkingPlacement: ModelThinkingPlacement;
   /** Status bar format: 'full' (default) or 'compact'. */
   readonly statusBarFormat: "full" | "compact";
   /** Stop an agent when a single tool call runs longer than this (minutes). 0 disables. */
@@ -408,7 +408,7 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      setModelThinkingPlacement: (placement: "header" | "metadata"): void => {
+      setModelThinkingPlacement: (placement: ModelThinkingPlacement): void => {
         this.config.agent.modelThinkingPlacement = placement;
         this.persist();
         this.syncWidgetSettings();

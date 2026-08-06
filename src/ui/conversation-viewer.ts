@@ -29,8 +29,8 @@ import {
   fgPreservingNestedStyles,
   getDisplayName,
   resolveAgentModelLabel,
-  summarizeToolArgs,
 } from "./format.js";
+import { summarizeToolArgs } from "../utils.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */

@@ -14,6 +14,7 @@
 
 import type { ThinkingLevel } from "../types.js";
 import type { SystemPromptMode } from "../agents/types.js";
+import type { ModelThinkingPlacement } from "../config/types.js";
 
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {
@@ -75,7 +76,7 @@ export interface SubagentsConfig {
     /** How to display the model label: short ID or full name. Default: 'id'. */
     modelDisplayStyle?: "id" | "name";
     /** Where model/thinking appears in full mode: 'header' (1st line) or 'metadata' (2nd line). Default: 'header'. */
-    modelThinkingPlacement?: "header" | "metadata";
+    modelThinkingPlacement?: ModelThinkingPlacement;
     /** Status bar format: 'full' (default) or 'compact'. */
     statusBarFormat?: "full" | "compact";
     [agentType: string]: string | null | undefined | boolean | number;

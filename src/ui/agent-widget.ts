@@ -8,6 +8,7 @@ import type { AgentManager } from "../agents/agent-manager.js";
 import { formatWatchdogSummary } from "../status-note.js";
 import type { AgentRecord, AgentLifecycle } from "../types.js";
 import type { Theme } from "./types.js";
+import type { ModelThinkingPlacement } from "../config/types.js";
 import { formatCost, getSessionContextPercent } from "../agents/usage.js";
 import {
   formatMs,
@@ -147,7 +148,7 @@ export class AgentWidget {
   private modelDisplayStyle: "id" | "name" = "id";
 
   /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
-  private modelThinkingPlacement: "header" | "metadata" = "header";
+  private modelThinkingPlacement: ModelThinkingPlacement = "header";
 
   /** Whether model/thinking should appear in header (compact mode or header placement setting). */
   private shouldShowModelThinkingInHeader(): boolean {
@@ -245,7 +246,7 @@ export class AgentWidget {
     this.modelDisplayStyle = style;
   }
   /** Set model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
-  setModelThinkingPlacement(placement: "header" | "metadata") {
+  setModelThinkingPlacement(placement: ModelThinkingPlacement) {
     this.modelThinkingPlacement = placement;
   }
   /** Register a finished agent for turn-based tracking. No-op when eviction is disabled. */
