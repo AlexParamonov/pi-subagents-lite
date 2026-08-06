@@ -227,7 +227,7 @@ describe("metadata line assembly", () => {
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       const blockHeight = (widget as any).getBlockHeight(agent);
 
-      // Running agent: header (1) + continuation with model/thinking (1) + activity line (1) = 3
+      // Running agent: header (1) + metadata line with model/thinking (1) + activity line (1) = 3
       // getBlockHeight counts header + metadata lines (2) + activity is separate in render
       // Actually blockHeight = 2 + hasMetadataLine = 3 (header + metadata line + activity accounted in render)
       // Rendered: heading (1) + header (1) + metadata line (1) + activity (1) = 4 lines
