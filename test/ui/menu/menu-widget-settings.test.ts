@@ -263,7 +263,15 @@ describe("showWidgetSettingsMenu — Display submenu", () => {
     const ctx = createDispatchCtx("display");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["showModel", "modelDisplayStyle", "showThinking", "__sep__", "statusBarFormat", "navHint"]);
+    expect(ids).toEqual([
+      "showModel",
+      "modelDisplayStyle",
+      "showThinking",
+      "modelThinkingPlacement",
+      "__sep__",
+      "statusBarFormat",
+      "navHint",
+    ]);
   });
 
   it("showModel onChange toggles store", async () => {

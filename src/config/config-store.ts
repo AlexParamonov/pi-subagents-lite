@@ -95,6 +95,8 @@ export interface ResolvedAgentSettings {
   readonly finishedEvictTurns: number;
   /** Model display format: 'id' (short) or 'name' (full). */
   readonly modelDisplayStyle: "id" | "name";
+  /** Model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
+  readonly modelThinkingPlacement: "header" | "continuation";
   /** Status bar format: 'full' (default) or 'compact'. */
   readonly statusBarFormat: "full" | "compact";
   /** Stop an agent when a single tool call runs longer than this (minutes). 0 disables. */
@@ -172,6 +174,7 @@ export class ConfigStore {
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
       finishedEvictTurns: a.finishedEvictTurns ?? 4,
       modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
+      modelThinkingPlacement: a.modelThinkingPlacement === "header" ? "header" : "continuation",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
       toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
@@ -404,6 +407,11 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
+      setModelThinkingPlacement: (placement: "header" | "continuation"): void => {
+        this.config.agent.modelThinkingPlacement = placement;
+        this.persist();
+        this.syncWidgetSettings();
+      },
       setStatusBarFormat: (format: "full" | "compact"): void => {
         this.config.agent.statusBarFormat = format;
         this.persist();
@@ -535,6 +543,7 @@ export class ConfigStore {
     w.setFinishedEvictTurns(a.finishedEvictTurns);
     w.setModelDisplayStyle(a.modelDisplayStyle);
     w.setStatusBarFormat(a.statusBarFormat);
+    w.setModelThinkingPlacement(a.modelThinkingPlacement);
   }
 
   /** Push stats visibility flags to the widget. */

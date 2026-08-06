@@ -146,6 +146,9 @@ export class AgentWidget {
   /** Model display format: 'id' (short) or 'name' (full). */
   private modelDisplayStyle: "id" | "name" = "id";
 
+  /** Model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
+  private modelThinkingPlacement: "header" | "continuation" = "continuation";
+
   /** Navigation mode active. */
   private navActive = false;
 
@@ -235,6 +238,10 @@ export class AgentWidget {
   /** Set model display format: 'id' (short) or 'name' (full). */
   setModelDisplayStyle(style: "id" | "name") {
     this.modelDisplayStyle = style;
+  }
+  /** Set model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
+  setModelThinkingPlacement(placement: "header" | "continuation") {
+    this.modelThinkingPlacement = placement;
   }
   /** Register a finished agent for turn-based tracking. No-op when eviction is disabled. */
   markFinished(id: string) {
@@ -429,7 +436,10 @@ export class AgentWidget {
    */
   private hasContinuationLine(a: AgentRecord): boolean {
     if (this.isCompact()) return false;
-    return buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility).length > 0;
+    return (
+      buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.modelThinkingPlacement).length >
+      0
+    );
   }
 
   /** Get the height of a block (header + continuations) for an agent. */
@@ -685,13 +695,20 @@ export class AgentWidget {
     for (const a of finished) {
       const continuations: string[] = [];
       if (!this.isCompact()) {
-        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility);
+        const parts = buildContinuationLineParts(
+          a,
+          this.modelDisplayStyle,
+          this.statsVisibility,
+          this.modelThinkingPlacement,
+        );
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", `    ${parts.join("  ")}`)));
         }
       }
       blocks.push({
-        header: truncate(`  ${this.renderFinishedLine(a, theme, this.isCompact())}`),
+        header: truncate(
+          `  ${this.renderFinishedLine(a, theme, this.isCompact() || this.modelThinkingPlacement === "header")}`,
+        ),
         continuations,
       });
     }
@@ -721,9 +738,16 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines (model/thinking on continuation)
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
+        const tag = this.modelThinkingPlacement === "header" ? this.modelThinkingTag(a) : "";
+        const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
-        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility);
+        const parts = buildContinuationLineParts(
+          a,
+          this.modelDisplayStyle,
+          this.statsVisibility,
+          this.modelThinkingPlacement,
+        );
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
         }
