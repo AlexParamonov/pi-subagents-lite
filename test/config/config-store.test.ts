@@ -992,6 +992,17 @@ describe("ConfigStore modelThinkingPlacement", () => {
     const store = new ConfigStore(io);
     expect(store.agent.modelThinkingPlacement).toBe("continuation");
   });
+  it("clearAllModelOverrides preserves modelThinkingPlacement", () => {
+    const { io } = memIO({
+      agent: { default: "keep", forceBackground: true, modelThinkingPlacement: "continuation", Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    const snap = store.agentConfigSnapshot();
+    expect(snap.modelThinkingPlacement).toBe("continuation");
+    expect(snap.Explore).toBeUndefined();
+  });
 });
 
 /* ------------------------------------------------------------------ */

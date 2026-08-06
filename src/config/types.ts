@@ -35,6 +35,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "finishedRetentionMinutes",
   "finishedEvictTurns",
   "modelDisplayStyle",
+  "modelThinkingPlacement",
   "statusBarFormat",
   "outputTranscript",
 ];
