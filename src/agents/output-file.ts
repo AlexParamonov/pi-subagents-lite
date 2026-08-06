@@ -223,6 +223,21 @@ export function streamToOutputFile(
       flush();
     }
 
+    // Flush before compaction runs so any not-yet-flushed tail still reaches the file
+    if (event.type === "compaction_start") {
+      flush();
+    }
+
+    // Re-anchor writtenCount to the rebuilt array after successful compaction.
+    // Deferred one microtask because on the overflow-retry path pi trims the
+    // trailing error assistant message AFTER emitting compaction_end — anchoring
+    // synchronously would skip the first post-compaction message.
+    if (event.type === "compaction_end" && !event.aborted && event.result) {
+      queueMicrotask(() => {
+        writtenCount = 1;
+      });
+    }
+
     if (bufferSize > 0 && event.type === "message_update") {
       const assistantEvent = event.assistantMessageEvent;
       if (assistantEvent.type === "thinking_start") {

@@ -219,6 +219,96 @@ describe("streamToOutputFile", () => {
     expect(session._getListeners().length).toBe(0);
   });
 
+  // Compaction handling
+
+  it("flushes unwritten messages on compaction_start", () => {
+    const dir = fixture.getDir();
+    const path = createOutputFilePath(testAgentId, dir);
+    writeInitialEntry(path, "test");
+
+    const session = setupSession([
+      { role: "user", content: "test" },
+      { role: "assistant", content: [{ type: "text", text: "message 1" }] },
+      { role: "assistant", content: [{ type: "text", text: "message 2" }] },
+    ]);
+    const cleanup = streamToOutputFile(session, path);
+
+    // Don't fire turn_end - messages 1 and 2 are unwritten
+    // Fire compaction_start - should flush unwritten messages
+    session._fireCompactionStart("threshold");
+
+    const content = readFileSync(path, "utf-8");
+    expect(content).toContain("message 1");
+    expect(content).toContain("message 2");
+    cleanup();
+  });
+
+  it("re-anchors writtenCount after successful compaction", async () => {
+    const dir = fixture.getDir();
+    const path = createOutputFilePath(testAgentId, dir);
+    writeInitialEntry(path, "test");
+
+    const session = setupSession([
+      { role: "user", content: "test" },
+      { role: "assistant", content: [{ type: "text", text: "pre-compaction message" }] },
+    ]);
+    const cleanup = streamToOutputFile(session, path);
+
+    // Flush the pre-compaction message
+    session._fireTurnEnd();
+
+    // Simulate compaction by replacing messages with shorter array
+    const compactedMessages = [
+      { role: "user", content: "test" },
+      { role: "assistant", content: [{ type: "text", text: "summary" }] },
+      { role: "assistant", content: [{ type: "text", text: "post-compaction message" }] },
+    ];
+    Object.defineProperty(session, "messages", { get: () => compactedMessages, configurable: true });
+
+    // Fire compaction_end with successful result
+    session._fireCompactionEnd({
+      reason: "threshold",
+      aborted: false,
+      result: { tokensBefore: 10000, tokensAfter: 2000 },
+    });
+
+    // Wait for microtask to complete (re-anchoring writtenCount)
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    // Fire turn_end to trigger flush of post-compaction message
+    session._fireTurnEnd();
+
+    const content = readFileSync(path, "utf-8");
+    expect(content).toContain("pre-compaction message");
+    expect(content).toContain("summary");
+    expect(content).toContain("post-compaction message");
+    cleanup();
+  });
+
+  it("does not re-anchor on aborted compaction", () => {
+    const dir = fixture.getDir();
+    const path = createOutputFilePath(testAgentId, dir);
+    writeInitialEntry(path, "test");
+
+    const session = setupSession([
+      { role: "user", content: "test" },
+      { role: "assistant", content: [{ type: "text", text: "pre-compaction message" }] },
+    ]);
+    const cleanup = streamToOutputFile(session, path);
+
+    // Flush the pre-compaction message
+    session._fireTurnEnd();
+
+    // Simulate compaction (aborted - messages shouldn't change)
+    session._fireCompactionEnd({ reason: "threshold", aborted: true, result: undefined });
+
+    // Fire turn_end - should not crash or skip messages
+    session._fireTurnEnd();
+
+    const content = readFileSync(path, "utf-8");
+    expect(content).toContain("pre-compaction message");
+    cleanup();
+  });
   // Tool argument summarization
 
   it("summarizes write tool with path and content size", () => {

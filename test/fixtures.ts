@@ -219,6 +219,8 @@ export interface MockSession {
   _fireThinkingDelta: (delta: string) => void;
   _fireThinkingEnd: (content: string) => void;
   _getListeners: () => Array<(event: any) => void>;
+  _fireCompactionStart: (reason: string) => void;
+  _fireCompactionEnd: (event: { reason: string; aborted: boolean; result?: any }) => void;
 }
 
 /**
@@ -271,6 +273,13 @@ export function createMockSession(): MockSession {
           type: "message_update",
           assistantMessageEvent: { type: "thinking_end", content },
         });
+    },
+    _fireCompactionStart: (reason: string) => {
+      for (const fn of listeners) fn({ type: "compaction_start", reason });
+    },
+    _fireCompactionEnd: (event: { reason: string; aborted: boolean; result?: any }) => {
+      for (const fn of listeners)
+        fn({ type: "compaction_end", reason: event.reason, aborted: event.aborted, result: event.result });
     },
     _getListeners: () => listeners,
   };
