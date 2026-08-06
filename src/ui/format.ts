@@ -295,10 +295,10 @@ export function buildInvocationTags(invocation: AgentInvocation | undefined): st
   return tags;
 }
 
-/** Build a parenthesized model/thinking tag for widget display.
+/** Build the visible model/thinking parts (no parentheses) for widget display.
  *
- * Returns `(modelName • thinkingLevel)`, one of them, or empty string
- * when neither is visible or data is undefined. Never returns `()`. */
+ * Returns `[modelName, thinkingLevel]` (empty entries dropped), or `[]`
+ * when neither is visible or data is undefined. */
 export function buildModelThinkingParts(
   modelName: string | undefined,
   thinkingLevel: string | undefined,
@@ -339,4 +339,11 @@ export function resolveAgentModelLabel(a: AgentRecord, style: "id" | "name"): st
   const model = a.execution.session?.model;
   const label = model ? (style === "name" ? model.name : model.id) : a.display.invocation?.modelName;
   return label?.trim() || undefined;
+}
+
+/** Resolve model label and thinking level from an AgentRecord. */
+export function resolveAgentModelThinking(a: AgentRecord, style: "id" | "name"): { model?: string; thinking?: string } {
+  const model = resolveAgentModelLabel(a, style);
+  const thinking = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
+  return { model, thinking };
 }

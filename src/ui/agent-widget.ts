@@ -18,6 +18,7 @@ import {
   buildModelThinkingTag,
   buildModelThinkingParts,
   resolveAgentModelLabel,
+  resolveAgentModelThinking,
   type StatsVisibility,
 } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
@@ -104,9 +105,8 @@ function buildContinuationLineParts(
   if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
 
   // Model + thinking (bare format, no parentheses)
-  const modelLabel = resolveAgentModelLabel(a, modelDisplayStyle);
-  const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
-  const modelThinkingParts = buildModelThinkingParts(modelLabel, thinkingLevel, statsVisibility);
+  const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
+  const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
   if (modelThinkingParts.length > 0) {
     parts.push(modelThinkingParts.join(" • "));
   }
@@ -681,9 +681,8 @@ export class AgentWidget {
 
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
-    const modelLabel = resolveAgentModelLabel(a, this.modelDisplayStyle);
-    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
-    return buildModelThinkingTag(modelLabel, thinkingLevel, this.statsVisibility);
+    const { model, thinking } = resolveAgentModelThinking(a, this.modelDisplayStyle);
+    return buildModelThinkingTag(model, thinking, this.statsVisibility);
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
