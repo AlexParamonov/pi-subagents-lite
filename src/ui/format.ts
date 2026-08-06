@@ -269,8 +269,8 @@ export function resolveModelLabel(
 /** Resolve model label from an AgentRecord, preferring session model over invocation fallback. */
 export function resolveAgentModelLabel(a: AgentRecord, style: "id" | "name"): string | undefined {
   const model = a.execution.session?.model;
-  const label = model ? (style === "name" ? model.name : model.id) : a.display.invocation?.modelName;
-  return label?.trim() || undefined;
+  if (model) return resolveModelLabel(style, model.name, model.id);
+  return a.display.invocation?.modelName?.trim() || undefined;
 }
 
 /** Resolve model label and thinking level from an AgentRecord. */

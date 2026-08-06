@@ -12,13 +12,15 @@ import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-
 import { formatTokens } from "./usage.js";
 import { summarizeToolArgs } from "../utils.js";
 
+/** Punctuation treated as a flush boundary when streaming thinking deltas. */
+const SENTENCE_BOUNDARY_CHARS = ".!?,\n";
+
 /** Find the last sentence boundary in text. Returns the index of the
  * terminal punctuation character, or -1 if none found. */
 function findLastSentenceBoundary(text: string): number {
   // Search backward for the most recent sentence-ending punctuation
   for (let i = text.length - 1; i >= 0; i--) {
-    const ch = text[i];
-    if ([".", "!", "?", ",", "\n"].includes(ch)) {
+    if (SENTENCE_BOUNDARY_CHARS.includes(text[i])) {
       return i;
     }
   }
@@ -26,7 +28,7 @@ function findLastSentenceBoundary(text: string): number {
 }
 
 /** Format the [DONE] summary line with final stats. */
-function formatDoneLine(stats: { turnCount: number; toolUseCount: number; totalTokens: number }): string {
+function formatDoneLine(stats: OutputFinalStats): string {
   const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
   return `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}\n`;
 }
@@ -70,6 +72,98 @@ function safeAppend(path: string, content: string): void {
     appendFileSync(path, content, "utf-8");
   } catch {
     /* ignore write errors */
+  }
+}
+
+/**
+ * Live thinking-block streaming state for the output file.
+ *
+ * Thinking deltas accumulate in a buffer. Once the buffer reaches the
+ * configured size it flushes at the nearest sentence boundary (or at the
+ * limit when none exists). thinking_end carries the full block, so the
+ * streamed character count deduplicates the tail. turn_end flushes the
+ * tail and marks any in-progress block as streamed so the message replay
+ * in flush() skips it.
+ */
+class ThinkingStreamer {
+  private buffer = "";
+  /** Total chars streamed for the current block; deduplicates thinking_end. */
+  private streamedChars = 0;
+  /** Thinking blocks written live; skipped in the final message replay. */
+  private streamedBlocks = 0;
+  /** True between thinking_start and thinking_end. */
+  private blockInProgress = false;
+
+  constructor(
+    private readonly path: string,
+    private readonly bufferSize: number,
+  ) {}
+
+  /** Begin a new thinking block. */
+  onStart(): void {
+    this.streamedChars = 0;
+    this.blockInProgress = true;
+  }
+
+  /** Accumulate a delta, flushing when the buffer reaches the configured size. */
+  onDelta(delta: string): void {
+    this.buffer += delta;
+    if (this.buffer.length < this.bufferSize) return;
+    // Round down to nearest sentence boundary when possible
+    const boundary = findLastSentenceBoundary(this.buffer);
+    if (boundary >= 0) {
+      const flushText = this.buffer.slice(0, boundary + 1);
+      this.buffer = this.buffer.slice(boundary + 1);
+      this.append(`${timestamp()} [THINKING] ${flushText}\n`);
+      this.streamedChars += flushText.length;
+    } else {
+      // No sentence boundary found, flush at buffer limit
+      this.flushTail();
+    }
+  }
+
+  /**
+   * Complete a block. thinking_end carries the full block: flush the
+   * buffered tail first (counted in streamedChars), then stream whatever
+   * remains.
+   */
+  onEnd(fullContent?: string): void {
+    this.flushTail();
+    if (fullContent && fullContent.length > this.streamedChars) {
+      const remaining = fullContent.slice(this.streamedChars);
+      this.append(`${timestamp()} [THINKING] ${remaining}\n`);
+      this.streamedChars = fullContent.length;
+    }
+    this.streamedBlocks++;
+    this.blockInProgress = false;
+  }
+
+  /**
+   * End of turn: flush the tail, and if thinking_end never fired treat the
+   * in-progress block as streamed so the message replay skips it.
+   */
+  endTurn(): void {
+    this.flushTail();
+    if (this.blockInProgress) {
+      this.streamedBlocks++;
+      this.blockInProgress = false;
+    }
+  }
+
+  /** Flush any buffered tail to the file. */
+  flushTail(): void {
+    if (this.buffer.length === 0) return;
+    this.append(`${timestamp()} [THINKING] ${this.buffer}\n`);
+    this.streamedChars += this.buffer.length;
+    this.buffer = "";
+  }
+
+  get blocksStreamed(): number {
+    return this.streamedBlocks;
+  }
+
+  private append(content: string): void {
+    safeAppend(this.path, content);
   }
 }
 
@@ -130,7 +224,7 @@ function formatToolResult(toolName: string, content: ReadonlyArray<Record<string
 function formatMessageLine(
   role: "ASSISTANT" | "TOOL" | "USER",
   content: string | ReadonlyArray<Record<string, unknown>> | undefined,
-  skipThinkingCount: number = 0,
+  skipStreamedThinkingBlocks: number = 0,
 ): string {
   if (typeof content === "string") {
     return splitAndPrefix(content, role);
@@ -147,7 +241,7 @@ function formatMessageLine(
           return formatToolItem(item);
         }
         if (item.type === "thinking" && typeof item.thinking === "string") {
-          if (thinkingSkipped < skipThinkingCount) {
+          if (thinkingSkipped < skipStreamedThinkingBlocks) {
             thinkingSkipped++;
             return ""; // Already streamed, skip
           }
@@ -171,29 +265,18 @@ function formatMessageLine(
 export function streamToOutputFile(
   session: AgentSession,
   path: string,
-  stats?: { turnCount: number; toolUseCount: number; totalTokens: number },
+  stats?: OutputFinalStats,
   bufferSize: number = 0,
 ): () => void {
   let writtenCount = 1; // initial user prompt already written
-  let thinkingBuffer = "";
-  let streamedThinkingBlocks = 0; // thinking blocks written live; skipped in the final flush
-  let streamedThinkingChars = 0; // track total chars streamed for deduplication
-  let thinkingBlockInProgress = false; // true between thinking_start and thinking_end
-
-  const flushThinkingBuffer = () => {
-    if (thinkingBuffer.length > 0) {
-      safeAppend(path, `${timestamp()} [THINKING] ${thinkingBuffer}\n`);
-      streamedThinkingChars += thinkingBuffer.length;
-      thinkingBuffer = "";
-    }
-  };
+  const thinking = new ThinkingStreamer(path, bufferSize);
 
   const flush = () => {
     const messages = session.messages;
     while (writtenCount < messages.length) {
       const msg = messages[writtenCount];
       if (msg.role === "assistant") {
-        const lines = formatMessageLine("ASSISTANT", msg.content as any, streamedThinkingBlocks);
+        const lines = formatMessageLine("ASSISTANT", msg.content as any, thinking.blocksStreamed);
         if (lines) safeAppend(path, lines);
       } else if (msg.role === "user") {
         const text = extractUserText(msg.content as any);
@@ -214,12 +297,7 @@ export function streamToOutputFile(
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (event.type === "turn_end") {
-      flushThinkingBuffer();
-      // If thinking_end never fired, treat this as if it did to avoid duplicates
-      if (thinkingBlockInProgress) {
-        streamedThinkingBlocks++;
-        thinkingBlockInProgress = false;
-      }
+      thinking.endTurn();
       flush();
     }
 
@@ -241,42 +319,18 @@ export function streamToOutputFile(
     if (bufferSize > 0 && event.type === "message_update") {
       const assistantEvent = event.assistantMessageEvent;
       if (assistantEvent.type === "thinking_start") {
-        // Reset counter for new thinking block
-        streamedThinkingChars = 0;
-        thinkingBlockInProgress = true;
+        thinking.onStart();
       } else if (assistantEvent.type === "thinking_delta") {
-        thinkingBuffer += assistantEvent.delta;
-        if (thinkingBuffer.length >= bufferSize) {
-          // Round down to nearest sentence boundary when possible
-          const boundary = findLastSentenceBoundary(thinkingBuffer);
-          if (boundary >= 0) {
-            const flushText = thinkingBuffer.slice(0, boundary + 1);
-            thinkingBuffer = thinkingBuffer.slice(boundary + 1);
-            safeAppend(path, `${timestamp()} [THINKING] ${flushText}\n`);
-            streamedThinkingChars += flushText.length;
-          } else {
-            // No sentence boundary found, flush at buffer limit
-            flushThinkingBuffer();
-          }
-        }
+        thinking.onDelta(assistantEvent.delta);
       } else if (assistantEvent.type === "thinking_end") {
-        // thinking_end carries the full block. Flush the buffered tail first
-        // (counted in streamedThinkingChars), then stream whatever remains.
-        flushThinkingBuffer();
-        if (assistantEvent.content && assistantEvent.content.length > streamedThinkingChars) {
-          const remaining = assistantEvent.content.slice(streamedThinkingChars);
-          safeAppend(path, `${timestamp()} [THINKING] ${remaining}\n`);
-          streamedThinkingChars = assistantEvent.content.length;
-        }
-        streamedThinkingBlocks++;
-        thinkingBlockInProgress = false;
+        thinking.onEnd(assistantEvent.content);
       }
     }
   });
 
   return () => {
     // Final flush
-    flushThinkingBuffer();
+    thinking.flushTail();
     flush();
 
     // Write DONE line
