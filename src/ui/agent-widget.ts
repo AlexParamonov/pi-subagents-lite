@@ -16,8 +16,6 @@ import {
   truncateDesc,
   describeActivity,
   buildModelThinkingTag,
-  buildModelThinkingParts,
-  resolveAgentModelLabel,
   resolveAgentModelThinking,
   buildContinuationLineParts,
   type StatsVisibility,
