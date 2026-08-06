@@ -218,16 +218,15 @@ function formatToolResult(toolName: string, content: ReadonlyArray<Record<string
 }
 
 /**
- * Format a single message content item as log lines.
+ * Format an assistant message's content items as log lines.
  * Handles text, toolUse/toolCall, and thinking content.
  */
 function formatMessageLine(
-  role: "ASSISTANT" | "TOOL" | "USER",
   content: string | ReadonlyArray<Record<string, unknown>> | undefined,
   skipStreamedThinkingBlocks: number = 0,
 ): string {
   if (typeof content === "string") {
-    return splitAndPrefix(content, role);
+    return splitAndPrefix(content, "ASSISTANT");
   }
 
   if (Array.isArray(content)) {
@@ -235,7 +234,7 @@ function formatMessageLine(
     return content
       .map((item) => {
         if (item.type === "text" && typeof item.text === "string") {
-          return splitAndPrefix(item.text, role);
+          return splitAndPrefix(item.text, "ASSISTANT");
         }
         if (item.type === "toolUse" || item.type === "toolCall") {
           return formatToolItem(item);
@@ -276,7 +275,7 @@ export function streamToOutputFile(
     while (writtenCount < messages.length) {
       const msg = messages[writtenCount];
       if (msg.role === "assistant") {
-        const lines = formatMessageLine("ASSISTANT", msg.content as any, thinking.blocksStreamed);
+        const lines = formatMessageLine(msg.content as any, thinking.blocksStreamed);
         if (lines) safeAppend(path, lines);
       } else if (msg.role === "user") {
         const text = extractUserText(msg.content as any);
