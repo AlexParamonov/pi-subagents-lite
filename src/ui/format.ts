@@ -295,6 +295,22 @@ export function buildInvocationTags(invocation: AgentInvocation | undefined): st
   return tags;
 }
 
+/** Build the visible model/thinking parts (no parentheses) for widget display.
+ *
+ * Returns `[modelName, thinkingLevel]` (empty entries dropped), or `[]`
+ * when neither is visible or data is undefined. */
+export function buildModelThinkingParts(
+  modelName: string | undefined,
+  thinkingLevel: string | undefined,
+  visible?: StatsVisibility,
+): string[] {
+  const showModel = visible?.showModel !== false;
+  const showThinking = visible?.showThinking !== false;
+  const model = showModel ? modelName?.trim() : undefined;
+  const thinking = showThinking ? thinkingLevel?.trim() : undefined;
+  return [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
+}
+
 /** Build a parenthesized model/thinking tag for widget display.
  *
  * Returns `(modelName • thinkingLevel)`, one of them, or empty string
@@ -304,11 +320,7 @@ export function buildModelThinkingTag(
   thinkingLevel: string | undefined,
   visible?: StatsVisibility,
 ): string {
-  const showModel = visible?.showModel !== false;
-  const showThinking = visible?.showThinking !== false;
-  const model = showModel ? modelName?.trim() : undefined;
-  const thinking = showThinking ? thinkingLevel?.trim() : undefined;
-  const parts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
+  const parts = buildModelThinkingParts(modelName, thinkingLevel, visible);
   return parts.length > 0 ? `(${parts.join(" • ")})` : "";
 }
 
@@ -327,4 +339,37 @@ export function resolveAgentModelLabel(a: AgentRecord, style: "id" | "name"): st
   const model = a.execution.session?.model;
   const label = model ? (style === "name" ? model.name : model.id) : a.display.invocation?.modelName;
   return label?.trim() || undefined;
+}
+
+/** Resolve model label and thinking level from an AgentRecord. */
+export function resolveAgentModelThinking(a: AgentRecord, style: "id" | "name"): { model?: string; thinking?: string } {
+  const model = resolveAgentModelLabel(a, style);
+  const thinking = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
+  return { model, thinking };
+}
+
+/** Build continuation line parts for an agent record.
+ * In full mode, includes model/thinking in bare format (no parentheses).
+ * In compact mode, model/thinking stays in header, so not included here. */
+export function buildContinuationLineParts(
+  a: AgentRecord,
+  modelDisplayStyle: "id" | "name",
+  statsVisibility?: StatsVisibility,
+): string[] {
+  const parts: string[] = [];
+
+  // Worktree label
+  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
+
+  // Model + thinking (bare format, no parentheses)
+  const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
+  const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
+  if (modelThinkingParts.length > 0) {
+    parts.push(modelThinkingParts.join(" • "));
+  }
+
+  // Output file
+  if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
+
+  return parts;
 }

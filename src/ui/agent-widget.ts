@@ -16,7 +16,8 @@ import {
   truncateDesc,
   describeActivity,
   buildModelThinkingTag,
-  resolveAgentModelLabel,
+  resolveAgentModelThinking,
+  buildContinuationLineParts,
   type StatsVisibility,
 } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
@@ -85,14 +86,6 @@ function wrapInDim(theme: Theme, text: string): string {
   const dimOn = dimSample.slice(0, xIdx);
   const dimOff = dimSample.slice(xIdx + 1);
   return dimOn + text.replaceAll(dimOff, dimOff + dimOn) + dimOff;
-}
-
-/** Build the worktree/output continuation line parts for an agent record. */
-function buildWorktreeOutputParts(a: AgentRecord): string[] {
-  const parts: string[] = [];
-  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
-  if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
-  return parts;
 }
 
 // ---- Widget manager ----
@@ -430,6 +423,15 @@ export class AgentWidget {
     return 0;
   }
 
+  /**
+   * Check if an agent has a continuation line in full mode.
+   * Delegates to buildContinuationLineParts to determine if any parts exist.
+   */
+  private hasContinuationLine(a: AgentRecord): boolean {
+    if (this.isCompact()) return false;
+    return buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility).length > 0;
+  }
+
   /** Get the height of a block (header + continuations) for an agent. */
   private getBlockHeight(agent: AgentRecord): number {
     // In compact mode, all blocks are 1 line (header only)
@@ -437,8 +439,8 @@ export class AgentWidget {
 
     // In full mode, count continuation lines
     if (agent.lifecycle.status === "running") {
-      // Running: activity line always present, worktree optional
-      return 2 + (agent.display.worktreeLabel || agent.display.outputFile ? 1 : 0);
+      // Running: activity line always present, continuation line conditional
+      return 2 + (this.hasContinuationLine(agent) ? 1 : 0);
     }
 
     if (agent.lifecycle.status === "queued") {
@@ -446,8 +448,8 @@ export class AgentWidget {
       return 1;
     }
 
-    // Finished: worktree optional
-    return 1 + (agent.display.worktreeLabel || agent.display.outputFile ? 1 : 0);
+    // Finished: continuation line conditional
+    return 1 + (this.hasContinuationLine(agent) ? 1 : 0);
   }
 
   /** Get the max body lines (total lines minus heading). */
@@ -621,7 +623,7 @@ export class AgentWidget {
   }
 
   /** Render a finished agent line. */
-  private renderFinishedLine(a: AgentRecord, theme: Theme): string {
+  private renderFinishedLine(a: AgentRecord, theme: Theme, includeModelThinking = false): string {
     const name = getDisplayName(a.display.type);
     const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
@@ -642,18 +644,16 @@ export class AgentWidget {
       theme,
       this.statsVisibility,
     );
-
     const statsLine = statsParts.join("·");
-    const modelTag = this.modelThinkingTag(a);
+    const modelTag = includeModelThinking ? this.modelThinkingTag(a) : "";
     const modelTagPart = modelTag ? ` ${theme.fg("dim", modelTag)}` : "";
     return `${icon} ${theme.fg("dim", name)}${modelTagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
   /** Build the parenthesized model/thinking tag for an agent. */
   private modelThinkingTag(a: AgentRecord): string {
-    const modelLabel = resolveAgentModelLabel(a, this.modelDisplayStyle);
-    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
-    return buildModelThinkingTag(modelLabel, thinkingLevel, this.statsVisibility);
+    const { model, thinking } = resolveAgentModelThinking(a, this.modelDisplayStyle);
+    return buildModelThinkingTag(model, thinking, this.statsVisibility);
   }
 
   /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
@@ -685,13 +685,13 @@ export class AgentWidget {
     for (const a of finished) {
       const continuations: string[] = [];
       if (!this.isCompact()) {
-        const parts = buildWorktreeOutputParts(a);
+        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility);
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", `    ${parts.join("  ")}`)));
         }
       }
       blocks.push({
-        header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
+        header: truncate(`  ${this.renderFinishedLine(a, theme, this.isCompact())}`),
         continuations,
       });
     }
@@ -707,23 +707,23 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
-      const tag = this.modelThinkingTag(a);
-      const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
 
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = truncateDesc(a.display.description, this.descLengthCompact);
+        const tag = this.modelThinkingTag(a);
+        const tagPart = tag ? ` ${theme.fg("dim", tag)}` : "";
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
           continuations: [],
         });
       } else {
-        // Full: header + continuation lines
+        // Full: header + continuation lines (model/thinking on continuation)
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
-        const parts = buildWorktreeOutputParts(a);
+        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility);
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
         }
