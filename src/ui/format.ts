@@ -211,12 +211,6 @@ export function fgPreservingNestedStyles(theme: Theme, color: string, text: stri
   );
 }
 
-/** Format duration from start/completed timestamps. */
-export function formatDuration(startedAt: number, completedAt?: number): string {
-  if (completedAt) return formatMs(completedAt - startedAt);
-  return `${formatMs(Date.now() - startedAt)} (running)`;
-}
-
 /** Build invocation display tags from an AgentInvocation. */
 export function buildInvocationTags(invocation: AgentInvocation | undefined): string[] {
   const tags: string[] = [];
