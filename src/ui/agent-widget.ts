@@ -87,14 +87,6 @@ function wrapInDim(theme: Theme, text: string): string {
   return dimOn + text.replaceAll(dimOff, dimOff + dimOn) + dimOff;
 }
 
-/** Build the worktree/output continuation line parts for an agent record. */
-function buildWorktreeOutputParts(a: AgentRecord): string[] {
-  const parts: string[] = [];
-  if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
-  if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
-  return parts;
-}
-
 /**
  * Build continuation line parts for an agent record.
  * In full mode, includes model/thinking in bare format (no parentheses).
@@ -466,6 +458,24 @@ export class AgentWidget {
     return 0;
   }
 
+  /**
+   * Check if an agent has a continuation line in full mode.
+   * Mirrors the logic in buildContinuationLineParts without building the parts.
+   */
+  private hasContinuationLine(a: AgentRecord): boolean {
+    if (this.isCompact()) return false;
+    // Worktree label or output file always produce a continuation line
+    if (a.display.worktreeLabel || a.display.outputFile) return true;
+    // Model/thinking in full mode (when visible)
+    const modelLabel = resolveAgentModelLabel(a, this.modelDisplayStyle);
+    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
+    const showModel = this.statsVisibility?.showModel !== false;
+    const showThinking = this.statsVisibility?.showThinking !== false;
+    const model = showModel ? modelLabel?.trim() : undefined;
+    const thinking = showThinking ? thinkingLevel?.trim() : undefined;
+    return (model !== undefined && model.length > 0) || (thinking !== undefined && thinking.length > 0);
+  }
+
   /** Get the height of a block (header + continuations) for an agent. */
   private getBlockHeight(agent: AgentRecord): number {
     // In compact mode, all blocks are 1 line (header only)
@@ -473,8 +483,8 @@ export class AgentWidget {
 
     // In full mode, count continuation lines
     if (agent.lifecycle.status === "running") {
-      // Running: activity line always present, worktree optional
-      return 2 + (agent.display.worktreeLabel || agent.display.outputFile ? 1 : 0);
+      // Running: activity line always present, continuation line conditional
+      return 2 + (this.hasContinuationLine(agent) ? 1 : 0);
     }
 
     if (agent.lifecycle.status === "queued") {
@@ -482,8 +492,8 @@ export class AgentWidget {
       return 1;
     }
 
-    // Finished: worktree optional
-    return 1 + (agent.display.worktreeLabel || agent.display.outputFile ? 1 : 0);
+    // Finished: continuation line conditional
+    return 1 + (this.hasContinuationLine(agent) ? 1 : 0);
   }
 
   /** Get the max body lines (total lines minus heading). */

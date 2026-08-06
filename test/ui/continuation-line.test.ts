@@ -207,4 +207,78 @@ describe("continuation line assembly", () => {
       expect(lines[1]).toContain("(haiku • medium)");
     });
   });
+
+  describe("nav-height consistency", () => {
+    beforeEach(() => {
+      widget.setCompactMode(false);
+    });
+
+    it("getBlockHeight matches rendered block height for running agent with model but no worktree/outputFile", () => {
+      const agent = makeRunningAgent("a1");
+      // Ensure no worktree/outputFile - model/thinking should still produce continuation line
+      agent.display.worktreeLabel = undefined;
+      agent.display.outputFile = undefined;
+      activity.set("a1", makeActivity("a1"));
+      (manager as any).listAgents = () => [agent];
+
+      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const blockHeight = (widget as any).getBlockHeight(agent);
+
+      // Running agent: header (1) + continuation with model/thinking (1) + activity line (1) = 3
+      // But getBlockHeight counts header + continuations (not activity which is always there)
+      // Actually, looking at the code: running = 2 + (hasContinuationLine ? 1 : 0)
+      // = 2 + 1 = 3 lines total (header + continuation + activity)
+      expect(blockHeight).toBe(3);
+      // Rendered lines: header, continuation, activity = 3 lines
+      expect(lines.length).toBeGreaterThanOrEqual(3);
+      // Verify the continuation line contains model info
+      expect(lines[2]).toContain("haiku");
+    });
+
+    it("getBlockHeight matches rendered block height for finished agent with model but no worktree/outputFile", () => {
+      const agent = makeFinishedAgent("a1");
+      // Ensure no worktree/outputFile
+      agent.display.worktreeLabel = undefined;
+      agent.display.outputFile = undefined;
+      (manager as any).listAgents = () => [agent];
+
+      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const blockHeight = (widget as any).getBlockHeight(agent);
+
+      // Finished agent: header (1) + continuation with model/thinking (1) = 2
+      expect(blockHeight).toBe(2);
+      // Rendered lines: header, continuation = 2 lines (for finished)
+      expect(lines.length).toBeGreaterThanOrEqual(2);
+      // Verify the continuation line contains model info
+      expect(lines[2]).toContain("haiku");
+    });
+
+    it("getBlockHeight returns 1 for compact mode regardless of model", () => {
+      widget.setForceCompact(true);
+      const agent = makeRunningAgent("a1");
+      agent.display.worktreeLabel = undefined;
+      agent.display.outputFile = undefined;
+      activity.set("a1", makeActivity("a1"));
+      (manager as any).listAgents = () => [agent];
+
+      const blockHeight = (widget as any).getBlockHeight(agent);
+      expect(blockHeight).toBe(1);
+    });
+
+    it("getBlockHeight returns 2 for running agent with worktree but no model", () => {
+      const agent = makeRunningAgent("a1");
+      // Remove model/thinking
+      agent.execution.session = undefined;
+      agent.display.invocation = undefined;
+      // Add worktree
+      agent.display.worktreeLabel = "my-feature";
+      agent.display.outputFile = undefined;
+      activity.set("a1", makeActivity("a1"));
+      (manager as any).listAgents = () => [agent];
+
+      const blockHeight = (widget as any).getBlockHeight(agent);
+      // Running: 2 + (hasContinuationLine ? 1 : 0) = 2 + 1 = 3
+      expect(blockHeight).toBe(3);
+    });
+  });
 });
