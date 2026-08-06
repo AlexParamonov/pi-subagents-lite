@@ -350,19 +350,25 @@ export function resolveAgentModelThinking(a: AgentRecord, style: "id" | "name"):
 
 /** Build continuation line parts for an agent record.
  * In full mode, includes model/thinking in bare format (no parentheses).
- * In compact mode, model/thinking stays in header, so not included here. */
+ * In compact mode, model/thinking stays in header, so not included here.
+ * When modelThinkingPlacement is "header", model/thinking is excluded from continuation line.
+ */
 export function buildContinuationLineParts(
   a: AgentRecord,
   modelDisplayStyle: "id" | "name",
   statsVisibility?: StatsVisibility,
+  modelThinkingPlacement: "header" | "continuation" = "continuation",
 ): string[] {
   const parts: string[] = [];
 
   // Model + thinking (bare format, no parentheses)
-  const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
-  const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
-  if (modelThinkingParts.length > 0) {
-    parts.push(modelThinkingParts.join(" • "));
+  // Only include on continuation line when placement is "continuation"
+  if (modelThinkingPlacement === "continuation") {
+    const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
+    const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
+    if (modelThinkingParts.length > 0) {
+      parts.push(modelThinkingParts.join(" • "));
+    }
   }
 
   // Worktree label

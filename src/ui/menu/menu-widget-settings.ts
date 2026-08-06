@@ -114,6 +114,13 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
       values: ["ON", "OFF"],
       description: "Show the thinking level next to each agent in the widget.",
     },
+    {
+      id: "modelThinkingPlacement",
+      label: "Model/thinking placement",
+      currentValue: store.agent.modelThinkingPlacement === "header" ? "1st line" : "2nd line",
+      values: ["1st line", "2nd line"],
+      description: "Show model/thinking on header (1st) or continuation (2nd) line in full mode.",
+    },
     { id: "__sep__", label: " ", currentValue: "" },
     {
       id: "statusBarFormat",
@@ -261,6 +268,10 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
       case "modelDisplayStyle":
         store.mutate.widget.setModelDisplayStyle(newValue === "Name" ? "name" : "id");
         ctx.ui.notify(`Model display ${newValue}`, "info");
+        break;
+      case "modelThinkingPlacement":
+        store.mutate.widget.setModelThinkingPlacement(newValue === "1st line" ? "header" : "continuation");
+        ctx.ui.notify(`Model/thinking placement: ${newValue}`, "info");
         break;
 
       // Stats (deltaInputTokens is not in statConfig)
