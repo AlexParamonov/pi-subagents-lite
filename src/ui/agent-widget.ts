@@ -460,20 +460,11 @@ export class AgentWidget {
 
   /**
    * Check if an agent has a continuation line in full mode.
-   * Mirrors the logic in buildContinuationLineParts without building the parts.
+   * Delegates to buildContinuationLineParts to determine if any parts exist.
    */
   private hasContinuationLine(a: AgentRecord): boolean {
     if (this.isCompact()) return false;
-    // Worktree label or output file always produce a continuation line
-    if (a.display.worktreeLabel || a.display.outputFile) return true;
-    // Model/thinking in full mode (when visible)
-    const modelLabel = resolveAgentModelLabel(a, this.modelDisplayStyle);
-    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
-    const showModel = this.statsVisibility?.showModel !== false;
-    const showThinking = this.statsVisibility?.showThinking !== false;
-    const model = showModel ? modelLabel?.trim() : undefined;
-    const thinking = showThinking ? thinkingLevel?.trim() : undefined;
-    return (model !== undefined && model.length > 0) || (thinking !== undefined && thinking.length > 0);
+    return buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, false).length > 0;
   }
 
   /** Get the height of a block (header + continuations) for an agent. */

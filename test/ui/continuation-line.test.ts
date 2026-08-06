@@ -225,12 +225,12 @@ describe("continuation line assembly", () => {
       const blockHeight = (widget as any).getBlockHeight(agent);
 
       // Running agent: header (1) + continuation with model/thinking (1) + activity line (1) = 3
-      // But getBlockHeight counts header + continuations (not activity which is always there)
-      // Actually, looking at the code: running = 2 + (hasContinuationLine ? 1 : 0)
-      // = 2 + 1 = 3 lines total (header + continuation + activity)
+      // getBlockHeight counts header + continuations (2) + activity is separate in render
+      // Actually blockHeight = 2 + hasContinuationLine = 3 (header + continuation + activity accounted in render)
+      // Rendered: heading (1) + header (1) + continuation (1) + activity (1) = 4 lines
+      // blockHeight should equal rendered lines minus heading
+      expect(lines.length - 1).toBe(blockHeight);
       expect(blockHeight).toBe(3);
-      // Rendered lines: header, continuation, activity = 3 lines
-      expect(lines.length).toBeGreaterThanOrEqual(3);
       // Verify the continuation line contains model info
       expect(lines[2]).toContain("haiku");
     });
@@ -246,9 +246,10 @@ describe("continuation line assembly", () => {
       const blockHeight = (widget as any).getBlockHeight(agent);
 
       // Finished agent: header (1) + continuation with model/thinking (1) = 2
+      // Rendered: heading (1) + header (1) + continuation (1) = 3 lines
+      // blockHeight should equal rendered lines minus heading
+      expect(lines.length - 1).toBe(blockHeight);
       expect(blockHeight).toBe(2);
-      // Rendered lines: header, continuation = 2 lines (for finished)
-      expect(lines.length).toBeGreaterThanOrEqual(2);
       // Verify the continuation line contains model info
       expect(lines[2]).toContain("haiku");
     });
@@ -265,7 +266,7 @@ describe("continuation line assembly", () => {
       expect(blockHeight).toBe(1);
     });
 
-    it("getBlockHeight returns 2 for running agent with worktree but no model", () => {
+    it("getBlockHeight returns 3 for running agent with worktree but no model", () => {
       const agent = makeRunningAgent("a1");
       // Remove model/thinking
       agent.execution.session = undefined;
