@@ -358,7 +358,7 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+      manager.spawn(pi, ctx, "general-purpose", "task 1", {
         description: "task 1",
         modelKey: "llamacpp/4b",
         isBackground: true,
