@@ -15,7 +15,7 @@ import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
-import { buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
+import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
@@ -325,7 +325,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
         },
       },
       {
-        id: "__sep__",
+        id: SEPARATOR_ID,
         label: " ",
         currentValue: "",
       },
@@ -454,7 +454,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
           currentGraceTurns = parsed;
         }),
       },
-      { id: "__sep__", label: " ", currentValue: "" },
+      { id: SEPARATOR_ID, label: " ", currentValue: "" },
       {
         id: "description",
         label: "Description",

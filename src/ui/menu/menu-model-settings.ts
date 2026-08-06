@@ -14,7 +14,7 @@ import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import type { Theme } from "../types.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
-import { buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
+import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createConfirmSubmenu } from "./submenus/confirm.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
@@ -75,8 +75,8 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     });
 
     // Per-type overrides
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
-    items.push({ id: "__sep__", label: "── Per-type overrides ──", currentValue: "────────" });
+    items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
+    items.push({ id: SEPARATOR_ID, label: "── Per-type overrides ──", currentValue: "────────" });
     const types = getAllTypes();
     const typeEntries = types.map((typeName) => {
       const cfg = getAgentConfig(typeName);
@@ -110,7 +110,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       });
     }
 
-    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
+    items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
     // Override another type...
     if (nonOverridden.length > 0) {
       items.push({
@@ -140,7 +140,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       });
     }
 
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
     // Clear session overrides
     const hasSessionOverrides =
       store.sessionDefaultModel != null || getAllTypes().some((type) => store.sessionModelOverride(type) != null);

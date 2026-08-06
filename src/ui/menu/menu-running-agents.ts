@@ -28,7 +28,7 @@ import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
 import { getDisplayName, truncateDesc } from "../format.js";
-import { buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
 
@@ -264,7 +264,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         };
       });
       if (running.length > 0) {
-        items.push({ value: "__sep__", label: " " });
+        items.push({ value: SEPARATOR_ID, label: " " });
         items.push({ value: "__stop-all", label: `Stop ${running.length} running agent(s)` });
       }
       return items;

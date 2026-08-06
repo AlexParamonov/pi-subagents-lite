@@ -12,6 +12,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import {
+  SEPARATOR_ID,
   buildSettingsListTheme,
   buildSelectListTheme,
   buildModelOptions,
@@ -89,8 +90,8 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     });
 
     // Per-provider limits
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
-    items.push({ id: "__sep__", label: "── Per-provider limits ──", currentValue: "────────" });
+    items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
+    items.push({ id: SEPARATOR_ID, label: "── Per-provider limits ──", currentValue: "────────" });
     const providerLimits = store.concurrency.providers;
     for (const provider of Object.keys(providerLimits)) {
       const limit = providerLimits[provider];
@@ -113,7 +114,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       });
     }
 
-    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
+    items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
     // Add per-provider limit (submenu: provider selection → numeric input)
     if (providers.length > 0) {
       items.push({
@@ -132,8 +133,8 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     }
 
     // Per-model limits
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
-    items.push({ id: "__sep__", label: "── Per-model limits ──", currentValue: "────────" });
+    items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
+    items.push({ id: SEPARATOR_ID, label: "── Per-model limits ──", currentValue: "────────" });
     const models = store.concurrency.models;
     for (const modelKey of Object.keys(models)) {
       const limit = models[modelKey];
@@ -157,7 +158,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     }
 
     // Add per-model limit
-    items.push({ id: "__sep__", label: "─────────────────────────", currentValue: "────────" });
+    items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
     if (modelOptions.length > 0) {
       items.push({
         id: "addModelLimit",
@@ -172,7 +173,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     }
 
     // Reset all to defaults
-    items.push({ id: "__sep__", label: " ", currentValue: "" });
+    items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
     items.push({
       id: "resetAll",
       label: "Reset all to defaults",

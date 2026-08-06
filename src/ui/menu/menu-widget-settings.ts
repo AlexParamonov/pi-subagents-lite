@@ -10,7 +10,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SelectList, SettingsList, type SelectItem, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSelectListTheme, buildSettingsListTheme } from "./helpers.js";
+import { SEPARATOR_ID, buildSelectListTheme, buildSettingsListTheme } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
@@ -122,7 +122,7 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
       values: ["1st line", "2nd line"],
       description: "Show model/thinking on header (1st) or metadata (2nd) line in full mode.",
     },
-    { id: "__sep__", label: " ", currentValue: "" },
+    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "statusBarFormat",
       label: "Status bar format",
@@ -164,7 +164,7 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       description:
         "Turns to keep finished agents visible. 0 = disabled (only timer applies). Error agents linger +2 extra turns.",
     },
-    { id: "__sep__", label: " ", currentValue: "" },
+    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "shortcut",
       label: "Ctrl+o shortcut",
@@ -213,7 +213,7 @@ function buildStatsItems(
     values: ["ON", "OFF"],
     description: STAT_DESCRIPTIONS[id],
   }));
-  items.push({ id: "__sep__", label: " ", currentValue: "" });
+  items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
   items.push({
     id: "deltaInputTokens",
     label: "Delta input tokens",

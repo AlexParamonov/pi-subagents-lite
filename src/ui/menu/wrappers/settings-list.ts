@@ -15,6 +15,7 @@
  */
 
 import { type Component, isFocusable } from "@earendil-works/pi-tui";
+import { SEPARATOR_ID } from "../helpers.js";
 
 export interface SettingsListWrapperTheme {
   bold: (text: string) => string;
@@ -56,11 +57,11 @@ export class SettingsListWrapper implements Component {
       list.onCancel = () => closeMenu();
     }
 
-    // Auto-skip __sep__ items when navigating, so the cursor never lands on a
-    // separator section header. Menus push their own __sep__ items.
+    // Auto-skip separator items when navigating, so the cursor never lands on a
+    // section header. Menus push their own SEPARATOR_ID items.
     if (options.onCancel && Array.isArray(list.items)) {
       const _rawIndex = Symbol("rawIndex");
-      const isSep = (item: any) => item?.value === "__sep__" || item?.id === "__sep__";
+      const isSep = (item: any) => item?.value === SEPARATOR_ID || item?.id === SEPARATOR_ID;
       // Starting just past `start`, walk in `step` direction and return the
       // first non-separator index (or an out-of-bounds sentinel if none).
       const firstNonSepFrom = (start: number, step: number): number => {

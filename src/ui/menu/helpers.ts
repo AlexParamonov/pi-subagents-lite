@@ -8,6 +8,12 @@ import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "../types.js";
 import { SearchableSelectDialog, type SelectOption } from "../searchable-select.js";
 import { parseModelKey } from "../../utils.js";
+
+/**
+ * Item id that marks a separator/section-header row in SettingsList/SelectList
+ * item arrays. Menus push these; the SettingsListWrapper skips them.
+ */
+export const SEPARATOR_ID = "__sep__";
 /**
  * Build SelectOption[] from raw "provider/model-id" strings.
  * Includes "(inherits parent)" as the first option.
