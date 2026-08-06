@@ -299,16 +299,28 @@ export function buildInvocationTags(invocation: AgentInvocation | undefined): st
  *
  * Returns `(modelName • thinkingLevel)`, one of them, or empty string
  * when neither is visible or data is undefined. Never returns `()`. */
+export function buildModelThinkingParts(
+  modelName: string | undefined,
+  thinkingLevel: string | undefined,
+  visible?: StatsVisibility,
+): string[] {
+  const showModel = visible?.showModel !== false;
+  const showThinking = visible?.showThinking !== false;
+  const model = showModel ? modelName?.trim() : undefined;
+  const thinking = showThinking ? thinkingLevel?.trim() : undefined;
+  return [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
+}
+
+/** Build a parenthesized model/thinking tag for widget display.
+ *
+ * Returns `(modelName • thinkingLevel)`, one of them, or empty string
+ * when neither is visible or data is undefined. Never returns `()`. */
 export function buildModelThinkingTag(
   modelName: string | undefined,
   thinkingLevel: string | undefined,
   visible?: StatsVisibility,
 ): string {
-  const showModel = visible?.showModel !== false;
-  const showThinking = visible?.showThinking !== false;
-  const model = showModel ? modelName?.trim() : undefined;
-  const thinking = showThinking ? thinkingLevel?.trim() : undefined;
-  const parts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
+  const parts = buildModelThinkingParts(modelName, thinkingLevel, visible);
   return parts.length > 0 ? `(${parts.join(" • ")})` : "";
 }
 

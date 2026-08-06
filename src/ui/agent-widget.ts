@@ -16,6 +16,7 @@ import {
   truncateDesc,
   describeActivity,
   buildModelThinkingTag,
+  buildModelThinkingParts,
   resolveAgentModelLabel,
   type StatsVisibility,
 } from "./format.js";
@@ -96,25 +97,18 @@ function buildContinuationLineParts(
   a: AgentRecord,
   modelDisplayStyle: "id" | "name",
   statsVisibility: StatsVisibility,
-  isCompact: boolean,
 ): string[] {
   const parts: string[] = [];
 
   // Worktree label
   if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
 
-  // Model + thinking (bare format, no parentheses) - only in full mode
-  if (!isCompact) {
-    const modelLabel = resolveAgentModelLabel(a, modelDisplayStyle);
-    const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
-    const showModel = statsVisibility?.showModel !== false;
-    const showThinking = statsVisibility?.showThinking !== false;
-    const model = showModel ? modelLabel?.trim() : undefined;
-    const thinking = showThinking ? thinkingLevel?.trim() : undefined;
-    const modelThinkingParts = [model, thinking].filter((p): p is string => p !== undefined && p.length > 0);
-    if (modelThinkingParts.length > 0) {
-      parts.push(modelThinkingParts.join(" • "));
-    }
+  // Model + thinking (bare format, no parentheses)
+  const modelLabel = resolveAgentModelLabel(a, modelDisplayStyle);
+  const thinkingLevel = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
+  const modelThinkingParts = buildModelThinkingParts(modelLabel, thinkingLevel, statsVisibility);
+  if (modelThinkingParts.length > 0) {
+    parts.push(modelThinkingParts.join(" • "));
   }
 
   // Output file
@@ -464,7 +458,7 @@ export class AgentWidget {
    */
   private hasContinuationLine(a: AgentRecord): boolean {
     if (this.isCompact()) return false;
-    return buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, false).length > 0;
+    return buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility).length > 0;
   }
 
   /** Get the height of a block (header + continuations) for an agent. */
@@ -721,7 +715,7 @@ export class AgentWidget {
     for (const a of finished) {
       const continuations: string[] = [];
       if (!this.isCompact()) {
-        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.isCompact());
+        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility);
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", `    ${parts.join("  ")}`)));
         }
@@ -759,7 +753,7 @@ export class AgentWidget {
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
-        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.isCompact());
+        const parts = buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility);
         if (parts.length > 0) {
           continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
         }
