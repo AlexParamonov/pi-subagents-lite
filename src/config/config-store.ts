@@ -174,7 +174,7 @@ export class ConfigStore {
       finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
       finishedEvictTurns: a.finishedEvictTurns ?? 4,
       modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
-      modelThinkingPlacement: a.modelThinkingPlacement === "header" ? "header" : "continuation",
+      modelThinkingPlacement: a.modelThinkingPlacement === "continuation" ? "continuation" : "header",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
       toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,

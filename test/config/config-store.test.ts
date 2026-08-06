@@ -975,6 +975,26 @@ describe("ConfigStore outputThinkingBufferSize", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  modelThinkingPlacement                                             */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore modelThinkingPlacement", () => {
+  it("defaults to 'header' when absent", () => {
+    const store = new ConfigStore(memIO().io);
+    expect(store.agent.modelThinkingPlacement).toBe("header");
+  });
+
+  it("returns configured 'continuation' when present", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, modelThinkingPlacement: "continuation" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.modelThinkingPlacement).toBe("continuation");
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  statusBarFormat                                                     */
 /* ------------------------------------------------------------------ */
 
