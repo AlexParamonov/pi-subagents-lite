@@ -22,6 +22,7 @@ import {
   type ToolActivity,
 } from "../types.js";
 import type { SubagentType } from "./types.js";
+import { getAgentConfig } from "./agent-types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
 
@@ -293,8 +294,13 @@ export class AgentManager {
     this.watchdog.start(id);
 
     // Create output log for this agent (creates file + writes [USER] entry)
-    record.execution.outputLog = new AgentOutputLog(id, prompt, undefined, this.bufferSize);
-    record.display.outputFile = record.execution.outputLog.path;
+    // Gate on outputTranscript setting: agent frontmatter overrides global config, default true
+    const agentConfig = getAgentConfig(type);
+    const outputTranscript = agentConfig?.outputTranscript ?? getStore().agent.outputTranscript;
+    if (outputTranscript) {
+      record.execution.outputLog = new AgentOutputLog(id, prompt, undefined, this.bufferSize);
+      record.display.outputFile = record.execution.outputLog.path;
+    }
 
     this.onStart?.(record);
 

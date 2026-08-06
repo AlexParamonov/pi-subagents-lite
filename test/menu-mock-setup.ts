@@ -17,7 +17,7 @@ import { vi } from "vitest";
 // (which vitest hoists above the rest of the module) can reference it.
 const hoisted = vi.hoisted(() => {
   const mockConfig = {
-    agent: { default: null, forceBackground: false } as Record<string, any>,
+    agent: { default: null, forceBackground: false, outputTranscript: true } as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
   };
 
@@ -85,7 +85,7 @@ export const mockModules = {
  */
 export function resetConfig(): void {
   mockModules.mockConfig = {
-    agent: { default: null, forceBackground: false } as Record<string, any>,
+    agent: { default: null, forceBackground: false, outputTranscript: true } as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
   };
   mockModules.mockSessionOverrides = { default: null } as Record<string, any>;
@@ -196,6 +196,7 @@ vi.mock("../src/shell.js", async () => {
         showContext: a.showContext !== false,
         showTime: a.showTime !== false,
         deltaInputTokens: a.deltaInputTokens === true,
+        outputTranscript: a.outputTranscript !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? DEFAULT_AGENT.finishedRetentionMinutes,
         finishedEvictTurns: a.finishedEvictTurns ?? DEFAULT_AGENT.finishedEvictTurns,
@@ -346,6 +347,9 @@ vi.mock("../src/shell.js", async () => {
         },
         setFinishedEvictTurns(n: number) {
           mockModules.mockConfig.agent.finishedEvictTurns = n;
+        },
+        setOutputTranscript(enabled: boolean) {
+          mockModules.mockConfig.agent.outputTranscript = enabled;
         },
       },
       widget: {

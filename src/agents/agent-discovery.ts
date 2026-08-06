@@ -36,6 +36,7 @@ export interface AgentConfigFromMd {
   max_turns?: number;
   max_tokens?: number;
   hidden?: boolean;
+  output_transcript?: boolean;
   systemPrompt: string;
   source: "user" | "project";
 }
@@ -268,6 +269,7 @@ export function parseAgentFile(content: string, source: "user" | "project"): Age
     max_turns: parseNumber(frontmatter, "max_turns"),
     max_tokens: parseNumber(frontmatter, "max_tokens"),
     hidden: parseBoolean(frontmatter, "hidden"),
+    output_transcript: parseBoolean(frontmatter, "output_transcript"),
     systemPrompt: body,
     source: source,
   };
@@ -394,6 +396,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     maxTurns: md.max_turns,
     maxTokens: md.max_tokens,
     hidden: md.hidden,
+    outputTranscript: md.output_transcript,
     systemPrompt: md.systemPrompt,
     source: md.source === "project" ? "project" : "global",
   };
