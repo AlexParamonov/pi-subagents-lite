@@ -695,6 +695,24 @@ export class AgentWidget {
     return parts.join("·");
   }
 
+  /** Build the dim-styled continuation line (model/thinking, worktree, output file), or undefined when empty. */
+  private buildContinuationLine(
+    a: AgentRecord,
+    prefix: string,
+    theme: Theme,
+    truncate: (line: string) => string,
+  ): string | undefined {
+    const parts = buildContinuationLineParts(
+      a,
+      this.modelDisplayStyle,
+      this.statsVisibility,
+      this.modelThinkingPlacement,
+    );
+    if (parts.length === 0) return undefined;
+    return truncate(theme.fg("dim", prefix + parts.join("  ")));
+  }
+
+  /** Build RenderBlocks for finished (completed/errored) agents. */
   /** Build RenderBlocks for finished (completed/errored) agents. */
   private buildFinishedBlocks(finished: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
@@ -702,15 +720,8 @@ export class AgentWidget {
     for (const a of finished) {
       const continuations: string[] = [];
       if (!this.isCompact()) {
-        const parts = buildContinuationLineParts(
-          a,
-          this.modelDisplayStyle,
-          this.statsVisibility,
-          this.modelThinkingPlacement,
-        );
-        if (parts.length > 0) {
-          continuations.push(truncate(theme.fg("dim", `    ${parts.join("  ")}`)));
-        }
+        const line = this.buildContinuationLine(a, "    ", theme, truncate);
+        if (line) continuations.push(line);
       }
       blocks.push({
         header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
@@ -745,15 +756,8 @@ export class AgentWidget {
         const tagPart = this.modelThinkingHeaderTag(a, theme);
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
-        const parts = buildContinuationLineParts(
-          a,
-          this.modelDisplayStyle,
-          this.statsVisibility,
-          this.modelThinkingPlacement,
-        );
-        if (parts.length > 0) {
-          continuations.push(truncate(theme.fg("dim", "  │ " + parts.join("  "))));
-        }
+        const line = this.buildContinuationLine(a, "  │ ", theme, truncate);
+        if (line) continuations.push(line);
         continuations.push(truncate(theme.fg("dim", "  └ " + activity)));
         blocks.push({
           header: truncate(headerLine),
