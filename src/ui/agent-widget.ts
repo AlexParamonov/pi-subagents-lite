@@ -713,7 +713,6 @@ export class AgentWidget {
   }
 
   /** Build RenderBlocks for finished (completed/errored) agents. */
-  /** Build RenderBlocks for finished (completed/errored) agents. */
   private buildFinishedBlocks(finished: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
