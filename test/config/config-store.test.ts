@@ -129,7 +129,7 @@ describe("ConfigStore reads", () => {
     expect(store.agent.showCompletionCards).toBe(true);
     expect(store.agent.widgetShortcut).toBe(false);
     expect(store.agent.defaultModel).toBeNull();
-    expect(store.agent.finishedRetentionMinutes).toBe(10);
+    expect(store.agent.finishedRetentionMinutes).toBe(1);
     expect(store.agent.toolTimeoutMinutes).toBe(45);
     expect(store.agent.idleTimeoutMinutes).toBe(45);
   });
@@ -359,9 +359,9 @@ describe("ConfigStore persisted mutations", () => {
     retentions.length = 0;
 
     store.mutate.agent.setFinishedRetentionMinutes(0);
-    expect(store.agent.finishedRetentionMinutes).toBe(1);
-    expect(saves[0].agent.finishedRetentionMinutes).toBe(1);
-    expect(retentions).toEqual([1]);
+    expect(store.agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
+    expect(saves[0].agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
+    expect(retentions).toEqual([1 / 60]);
   });
 
   it("setToolTimeoutMinutes and setIdleTimeoutMinutes persist and clamp to 0", () => {
@@ -984,23 +984,23 @@ describe("ConfigStore modelThinkingPlacement", () => {
     expect(store.agent.modelThinkingPlacement).toBe("header");
   });
 
-  it("returns configured 'continuation' when present", () => {
+  it("returns configured 'metadata' when present", () => {
     const { io } = memIO({
-      agent: { default: null, forceBackground: false, modelThinkingPlacement: "continuation" },
+      agent: { default: null, forceBackground: false, modelThinkingPlacement: "metadata" },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
-    expect(store.agent.modelThinkingPlacement).toBe("continuation");
+    expect(store.agent.modelThinkingPlacement).toBe("metadata");
   });
   it("clearAllModelOverrides preserves modelThinkingPlacement", () => {
     const { io } = memIO({
-      agent: { default: "keep", forceBackground: true, modelThinkingPlacement: "continuation", Explore: "m1" },
+      agent: { default: "keep", forceBackground: true, modelThinkingPlacement: "metadata", Explore: "m1" },
       concurrency: { default: 4 },
     });
     const store = new ConfigStore(io);
     store.mutate.agent.clearAllModelOverrides();
     const snap = store.agentConfigSnapshot();
-    expect(snap.modelThinkingPlacement).toBe("continuation");
+    expect(snap.modelThinkingPlacement).toBe("metadata");
     expect(snap.Explore).toBeUndefined();
   });
 });

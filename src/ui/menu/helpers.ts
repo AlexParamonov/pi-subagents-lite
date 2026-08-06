@@ -48,10 +48,9 @@ export function buildSettingsListTheme(theme: {
  */
 export function validateNumeric(value: string, min: number): number | undefined {
   const trimmed = value.trim();
-  // Digits only: parseInt would accept "12x" as 12 and truncate "12.5" to 12,
-  // silently swallowing non-numeric input.
-  if (!/^\d+$/.test(trimmed)) return undefined;
-  const parsed = parseInt(trimmed, 10);
+  // Accept integers and decimals (e.g. 0.5 for 30 seconds)
+  if (!/^\d*\.?\d+$/.test(trimmed)) return undefined;
+  const parsed = parseFloat(trimmed);
   if (parsed < min) return undefined;
   return parsed;
 }

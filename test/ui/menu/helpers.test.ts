@@ -31,8 +31,8 @@ describe("validateNumeric", () => {
     expect(validateNumeric("12x", 0)).toBeUndefined();
   });
 
-  it("returns undefined for decimal input", () => {
-    expect(validateNumeric("12.5", 0)).toBeUndefined();
+  it("returns parsed float for decimal input", () => {
+    expect(validateNumeric("12.5", 0)).toBe(12.5);
   });
 
   it("trims whitespace before parsing", () => {

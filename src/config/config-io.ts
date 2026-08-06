@@ -18,6 +18,8 @@ export const CUSTOM_PROMPT_PATH = path.join(CONFIG_DIR, "subagents-lite-prompt.m
 export const DEFAULT_GRACE_TURNS = 6;
 /** Default watchdog timeout (tool and idle) in minutes. 0 disables a check. */
 export const DEFAULT_WATCHDOG_TIMEOUT_MINUTES = 45;
+/** Minimum finished retention: 1 second expressed in minutes. */
+export const MIN_FINISHED_RETENTION_MINUTES = 1 / 60;
 
 /** Valid system prompt modes. */
 export const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
@@ -54,9 +56,9 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showTime: true,
   outputTranscript: false,
   deltaInputTokens: false,
-  finishedRetentionMinutes: 10,
+  finishedRetentionMinutes: 1,
   finishedEvictTurns: 4,
-  modelDisplayStyle: "id",
+  modelDisplayStyle: "name",
   modelThinkingPlacement: "header",
   statusBarFormat: "full",
 };

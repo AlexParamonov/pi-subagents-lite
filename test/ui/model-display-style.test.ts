@@ -30,7 +30,7 @@ function defaultConfig(): SubagentsConfig {
       showContext: true,
       showCost: false,
       showTime: true,
-      modelDisplayStyle: "id",
+      modelDisplayStyle: "name",
     },
     concurrency: { default: 4 },
   };
@@ -84,7 +84,7 @@ describe("ConfigStore modelDisplayStyle", () => {
   it("defaults to 'id'", () => {
     const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
     const store = new ConfigStore(io);
-    expect(store.agent.modelDisplayStyle).toBe("id");
+    expect(store.agent.modelDisplayStyle).toBe("name");
   });
 
   it("returns configured value when present", () => {

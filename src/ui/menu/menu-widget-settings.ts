@@ -14,6 +14,7 @@ import { buildSelectListTheme, buildSettingsListTheme } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
+import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
 
 /** Stat visibility config — label and store accessors keyed by stat id. */
 function buildStatConfig(store: ReturnType<typeof getStore>) {
@@ -119,7 +120,7 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
       label: "Model/thinking placement",
       currentValue: store.agent.modelThinkingPlacement === "header" ? "1st line" : "2nd line",
       values: ["1st line", "2nd line"],
-      description: "Show model/thinking on header (1st) or continuation (2nd) line in full mode.",
+      description: "Show model/thinking on header (1st) or metadata (2nd) line in full mode.",
     },
     { id: "__sep__", label: " ", currentValue: "" },
     {
@@ -146,7 +147,7 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       id: "finishedRetention",
       label: "Finished agent retention",
       currentValue: String(store.agent.finishedRetentionMinutes),
-      submenu: createNumericSubmenu(ctx, { min: 1 }, (parsed) => {
+      submenu: createNumericSubmenu(ctx, { min: MIN_FINISHED_RETENTION_MINUTES }, (parsed) => {
         store.mutate.agent.setFinishedRetentionMinutes(parsed);
         ctx.ui.notify(`Finished agent retention set to ${parsed} min`, "info");
       }),
@@ -270,7 +271,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Model display ${newValue}`, "info");
         break;
       case "modelThinkingPlacement":
-        store.mutate.widget.setModelThinkingPlacement(newValue === "1st line" ? "header" : "continuation");
+        store.mutate.widget.setModelThinkingPlacement(newValue === "1st line" ? "header" : "metadata");
         ctx.ui.notify(`Model/thinking placement: ${newValue}`, "info");
         break;
 

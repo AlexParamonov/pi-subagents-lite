@@ -24,6 +24,7 @@ import {
   VALID_SYSTEM_PROMPT_MODES,
   DEFAULT_CONCURRENCY,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+  MIN_FINISHED_RETENTION_MINUTES,
   loadConfig,
   saveConfigAtomic,
 } from "./config-io.js";
@@ -95,8 +96,8 @@ export interface ResolvedAgentSettings {
   readonly finishedEvictTurns: number;
   /** Model display format: 'id' (short) or 'name' (full). */
   readonly modelDisplayStyle: "id" | "name";
-  /** Model/thinking placement in full mode: 'header' (1st line) or 'continuation' (2nd line). */
-  readonly modelThinkingPlacement: "header" | "continuation";
+  /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
+  readonly modelThinkingPlacement: "header" | "metadata";
   /** Status bar format: 'full' (default) or 'compact'. */
   readonly statusBarFormat: "full" | "compact";
   /** Stop an agent when a single tool call runs longer than this (minutes). 0 disables. */
@@ -171,10 +172,10 @@ export class ConfigStore {
       showTime: a.showTime !== false,
       deltaInputTokens: a.deltaInputTokens === true,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
-      finishedRetentionMinutes: a.finishedRetentionMinutes ?? 10,
+      finishedRetentionMinutes: a.finishedRetentionMinutes ?? 1,
       finishedEvictTurns: a.finishedEvictTurns ?? 4,
-      modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
-      modelThinkingPlacement: a.modelThinkingPlacement === "continuation" ? "continuation" : "header",
+      modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
+      modelThinkingPlacement: a.modelThinkingPlacement === "metadata" ? "metadata" : "header",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
       toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
@@ -335,7 +336,7 @@ export class ConfigStore {
         this.persist();
       },
       setFinishedRetentionMinutes: (minutes: number): void => {
-        const n = Math.max(1, minutes);
+        const n = Math.max(MIN_FINISHED_RETENTION_MINUTES, minutes);
         this.config.agent.finishedRetentionMinutes = n;
         this.persist();
         this.manager?.setRetentionMinutes(n);
@@ -407,7 +408,7 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      setModelThinkingPlacement: (placement: "header" | "continuation"): void => {
+      setModelThinkingPlacement: (placement: "header" | "metadata"): void => {
         this.config.agent.modelThinkingPlacement = placement;
         this.persist();
         this.syncWidgetSettings();

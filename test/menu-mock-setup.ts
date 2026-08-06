@@ -200,7 +200,7 @@ vi.mock("../src/shell.js", async () => {
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? DEFAULT_AGENT.finishedRetentionMinutes,
         finishedEvictTurns: a.finishedEvictTurns ?? DEFAULT_AGENT.finishedEvictTurns,
-        modelDisplayStyle: a.modelDisplayStyle === "name" ? "name" : "id",
+        modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
         statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
         widgetShowModel: a.widgetShowModel !== false,
         widgetShowThinking: a.widgetShowThinking !== false,
