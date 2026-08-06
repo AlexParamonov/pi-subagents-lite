@@ -18,7 +18,7 @@ import {
   describeActivity,
   buildModelThinkingTag,
   resolveAgentModelThinking,
-  buildContinuationLineParts,
+  buildMetadataLineParts,
   type StatsVisibility,
 } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
@@ -65,10 +65,10 @@ interface TUI {
   requestRender?(): void;
   hasOverlay?(): boolean;
 }
-/** A visual block: one header line plus zero or more continuation lines. */
+/** A visual block: one header line plus zero or more metadata lines. */
 interface RenderBlock {
   header: string;
-  continuations: string[];
+  metadataLines: string[];
 }
 
 // ---- Re-exports from format.ts (backward compatibility) ----
@@ -437,35 +437,34 @@ export class AgentWidget {
   }
 
   /**
-   * Check if an agent has a continuation line in full mode.
-   * Delegates to buildContinuationLineParts to determine if any parts exist.
+   * Check if an agent has a metadata line in full mode.
+   * Delegates to buildMetadataLineParts to determine if any parts exist.
    */
-  private hasContinuationLine(a: AgentRecord): boolean {
+  private hasMetadataLine(a: AgentRecord): boolean {
     if (this.isCompact()) return false;
     return (
-      buildContinuationLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.modelThinkingPlacement).length >
-      0
+      buildMetadataLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.modelThinkingPlacement).length > 0
     );
   }
 
-  /** Get the height of a block (header + continuations) for an agent. */
+  /** Get the height of a block (header + metadata lines) for an agent. */
   private getBlockHeight(agent: AgentRecord): number {
     // In compact mode, all blocks are 1 line (header only)
     if (this.isCompact()) return 1;
 
-    // In full mode, count continuation lines
+    // In full mode, count metadata lines
     if (agent.lifecycle.status === "running") {
-      // Running: activity line always present, continuation line conditional
-      return 2 + (this.hasContinuationLine(agent) ? 1 : 0);
+      // Running: activity line always present, metadata line conditional
+      return 2 + (this.hasMetadataLine(agent) ? 1 : 0);
     }
 
     if (agent.lifecycle.status === "queued") {
-      // Queued: no continuations (individual rows during nav)
+      // Queued: no metadata lines (individual rows during nav)
       return 1;
     }
 
-    // Finished: continuation line conditional
-    return 1 + (this.hasContinuationLine(agent) ? 1 : 0);
+    // Finished: metadata line conditional
+    return 1 + (this.hasMetadataLine(agent) ? 1 : 0);
   }
 
   /** Get the max body lines (total lines minus heading). */
@@ -665,7 +664,7 @@ export class AgentWidget {
     return `${icon} ${theme.fg("dim", name)}${tagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
-  /** Build the dim-styled model/thinking tag for the header line, or "" when it belongs on the continuation line. */
+  /** Build the dim-styled model/thinking tag for the header line, or "" when it belongs on the metadata line. */
   private modelThinkingHeaderTag(a: AgentRecord, theme: Theme): string {
     if (!this.shouldShowModelThinkingInHeader()) return "";
     const { model, thinking } = resolveAgentModelThinking(a, this.modelDisplayStyle);
@@ -695,19 +694,14 @@ export class AgentWidget {
     return parts.join("·");
   }
 
-  /** Build the dim-styled continuation line (model/thinking, worktree, output file), or undefined when empty. */
-  private buildContinuationLine(
+  /** Build the dim-styled metadata line (model/thinking, worktree, output file), or undefined when empty. */
+  private buildMetadataLine(
     a: AgentRecord,
     prefix: string,
     theme: Theme,
     truncate: (line: string) => string,
   ): string | undefined {
-    const parts = buildContinuationLineParts(
-      a,
-      this.modelDisplayStyle,
-      this.statsVisibility,
-      this.modelThinkingPlacement,
-    );
+    const parts = buildMetadataLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.modelThinkingPlacement);
     if (parts.length === 0) return undefined;
     return truncate(theme.fg("dim", prefix + parts.join("  ")));
   }
@@ -717,14 +711,14 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of finished) {
-      const continuations: string[] = [];
+      const metadataLines: string[] = [];
       if (!this.isCompact()) {
-        const line = this.buildContinuationLine(a, "    ", theme, truncate);
-        if (line) continuations.push(line);
+        const line = this.buildMetadataLine(a, "    ", theme, truncate);
+        if (line) metadataLines.push(line);
       }
       blocks.push({
         header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
-        continuations,
+        metadataLines,
       });
     }
     return blocks;
@@ -747,20 +741,20 @@ export class AgentWidget {
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
-          continuations: [],
+          metadataLines: [],
         });
       } else {
-        // Full: header + continuation lines (model/thinking on continuation)
+        // Full: header + metadata lines (model/thinking on metadata line)
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
         const tagPart = this.modelThinkingHeaderTag(a, theme);
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
-        const continuations: string[] = [];
-        const line = this.buildContinuationLine(a, "  │ ", theme, truncate);
-        if (line) continuations.push(line);
-        continuations.push(truncate(theme.fg("dim", "  └ " + activity)));
+        const metadataLines: string[] = [];
+        const line = this.buildMetadataLine(a, "  │ ", theme, truncate);
+        if (line) metadataLines.push(line);
+        metadataLines.push(truncate(theme.fg("dim", "  └ " + activity)));
         blocks.push({
           header: truncate(headerLine),
-          continuations,
+          metadataLines,
         });
       }
     }
@@ -772,7 +766,7 @@ export class AgentWidget {
     if (queued.length === 0) return undefined;
     const truncate = (line: string) => truncateToWidth(line, w);
     const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`;
-    return { header: truncate(header), continuations: [] };
+    return { header: truncate(header), metadataLines: [] };
   }
 
   /**
@@ -823,7 +817,7 @@ export class AgentWidget {
     truncate: (line: string) => string,
     maxBody: number,
   ): string[] {
-    const totalBody = blocks.reduce((sum, b) => sum + 1 + b.continuations.length, 0);
+    const totalBody = blocks.reduce((sum, b) => sum + 1 + b.metadataLines.length, 0);
 
     if (totalBody <= maxBody) {
       // Everything fits — render all blocks
@@ -834,7 +828,7 @@ export class AgentWidget {
     let budget = maxBody - 1;
     const visible: RenderBlock[] = [];
     for (const block of blocks) {
-      const height = 1 + block.continuations.length;
+      const height = 1 + block.metadataLines.length;
       if (budget >= height) {
         visible.push(block);
         budget -= height;
@@ -956,7 +950,7 @@ export class AgentWidget {
       const name = getDisplayName(a.display.type);
       const desc = truncateDesc(a.display.description, this.descLengthFull);
       const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
-      blocks.push({ header: truncate(header), continuations: [] });
+      blocks.push({ header: truncate(header), metadataLines: [] });
     }
     return blocks;
   }
@@ -966,7 +960,7 @@ export class AgentWidget {
     if (isHighlighted && header.startsWith("  ")) {
       header = "→ " + header.slice(2);
     }
-    return [header, ...block.continuations];
+    return [header, ...block.metadataLines];
   }
   /** Render a list of blocks. */
   private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number): string[] {

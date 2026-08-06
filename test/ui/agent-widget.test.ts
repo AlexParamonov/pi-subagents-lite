@@ -570,11 +570,11 @@ describe("compact mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Full mode: heading + 1 header + 1 activity continuation = 3 lines
+    // Full mode: heading + 1 header + 1 activity metadata line = 3 lines
     expect(lines.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("compact mode renders running agent as single line (no continuations)", () => {
+  it("compact mode renders running agent as single line (no metadata lines)", () => {
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
     const agent = makeRunningAgent("a1");
@@ -582,20 +582,20 @@ describe("compact mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Heading + 1 line for compact agent (no activity continuation line)
+    // Heading + 1 line for compact agent (no activity metadata line)
     expect(lines).toHaveLength(2);
     // The agent line should contain the activity inline
     expect(lines[1]).toContain("reading");
   });
 
-  it("full mode renders running agent with continuation lines", () => {
+  it("full mode renders running agent with metadata lines", () => {
     widget.setCompactMode(false);
     const agent = makeRunningAgent("a1");
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Heading + 1 header + 1 activity continuation
+    // Heading + 1 header + 1 activity metadata line
     expect(lines.length).toBeGreaterThanOrEqual(3);
   });
 });
@@ -800,12 +800,12 @@ describe("getLiveView callback", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // lines[0] = heading, lines[1] = header (└─), lines[2] = activity continuation
+    // lines[0] = heading, lines[1] = header (└─), lines[2] = activity metadata line
     expect(lines.length).toBeGreaterThanOrEqual(3);
-    const continuation = lines[2];
-    expect(continuation).toContain("reading");
-    expect(continuation).toContain("running command");
-    expect(continuation).not.toContain("thinking…");
+    const metadataLine = lines[2];
+    expect(metadataLine).toContain("reading");
+    expect(metadataLine).toContain("running command");
+    expect(metadataLine).not.toContain("thinking…");
   });
 
   it("returns undefined for unknown agent", () => {

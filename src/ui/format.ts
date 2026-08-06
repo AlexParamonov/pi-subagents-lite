@@ -274,12 +274,12 @@ export function resolveAgentModelThinking(a: AgentRecord, style: "id" | "name"):
   return { model, thinking };
 }
 
-/** Build continuation line parts for an agent record.
+/** Build metadata line parts for an agent record.
  * Model/thinking is included (bare format, no parentheses) only when
  * modelThinkingPlacement is "metadata". With "header" placement it stays
  * in the widget header line.
  */
-export function buildContinuationLineParts(
+export function buildMetadataLineParts(
   a: AgentRecord,
   modelDisplayStyle: "id" | "name",
   statsVisibility?: StatsVisibility,
@@ -288,7 +288,7 @@ export function buildContinuationLineParts(
   const parts: string[] = [];
 
   // Model + thinking (bare format, no parentheses)
-  // Only include on continuation line when placement is "metadata"
+  // Only include on metadata line when placement is "metadata"
   if (modelThinkingPlacement === "metadata") {
     const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
     const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);

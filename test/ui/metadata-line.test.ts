@@ -1,7 +1,7 @@
 /**
- * continuation-line.test.ts — Tests for continuation line assembly.
+ * metadata-line.test.ts — Tests for metadata line assembly.
  *
- * Verifies that model + thinking metadata appears on the continuation line
+ * Verifies that model + thinking metadata appears on the metadata line
  * in full mode when placement is 'metadata', and stays in the header
  * in compact mode or when placement is 'header'.
  */
@@ -113,7 +113,7 @@ function makeActivity(agentId: string): LiveView {
   };
 }
 
-describe("continuation line assembly", () => {
+describe("metadata line assembly", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
   let activity: Map<string, LiveView>;
@@ -130,7 +130,7 @@ describe("continuation line assembly", () => {
       widget.setModelThinkingPlacement("metadata");
     });
 
-    it("moves model + thinking from header to continuation line for running agents", () => {
+    it("moves model + thinking from header to metadata line for running agents", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
@@ -139,11 +139,11 @@ describe("continuation line assembly", () => {
 
       // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
-      // Continuation line should contain model/thinking in bare format (no parentheses)
+      // Metadata line should contain model/thinking in bare format (no parentheses)
       expect(lines[2]).toContain("haiku • medium");
     });
 
-    it("moves model + thinking from header to continuation line for finished agents", () => {
+    it("moves model + thinking from header to metadata line for finished agents", () => {
       const agent = makeFinishedAgent("a1");
       (manager as any).listAgents = () => [agent];
 
@@ -151,11 +151,11 @@ describe("continuation line assembly", () => {
 
       // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
-      // Continuation line should contain model/thinking in bare format
+      // Metadata line should contain model/thinking in bare format
       expect(lines[2]).toContain("haiku • medium");
     });
 
-    it("continuation line uses bare format (no parentheses) for model + thinking", () => {
+    it("metadata line uses bare format (no parentheses) for model + thinking", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
@@ -167,7 +167,7 @@ describe("continuation line assembly", () => {
       expect(lines[2]).toContain("haiku • medium");
     });
 
-    it("continuation line combines worktree, model/thinking, and outputFile", () => {
+    it("metadata line combines worktree, model/thinking, and outputFile", () => {
       const agent = makeRunningAgent("a1");
       agent.display.worktreeLabel = "my-feature";
       agent.display.outputFile = "/tmp/test.log";
@@ -176,7 +176,7 @@ describe("continuation line assembly", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Continuation line should have worktree, model/thinking, and outputFile
+      // Metadata line should have worktree, model/thinking, and outputFile
       expect(lines[2]).toContain("@my-feature");
       expect(lines[2]).toContain("haiku • medium");
       expect(lines[2]).toContain("tail -f /tmp/test.log");
@@ -218,7 +218,7 @@ describe("continuation line assembly", () => {
 
     it("getBlockHeight matches rendered block height for running agent with model but no worktree/outputFile", () => {
       const agent = makeRunningAgent("a1");
-      // Ensure no worktree/outputFile - model/thinking should still produce continuation line
+      // Ensure no worktree/outputFile - model/thinking should still produce metadata line
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
       activity.set("a1", makeActivity("a1"));
@@ -228,13 +228,13 @@ describe("continuation line assembly", () => {
       const blockHeight = (widget as any).getBlockHeight(agent);
 
       // Running agent: header (1) + continuation with model/thinking (1) + activity line (1) = 3
-      // getBlockHeight counts header + continuations (2) + activity is separate in render
-      // Actually blockHeight = 2 + hasContinuationLine = 3 (header + continuation + activity accounted in render)
-      // Rendered: heading (1) + header (1) + continuation (1) + activity (1) = 4 lines
+      // getBlockHeight counts header + metadata lines (2) + activity is separate in render
+      // Actually blockHeight = 2 + hasMetadataLine = 3 (header + metadata line + activity accounted in render)
+      // Rendered: heading (1) + header (1) + metadata line (1) + activity (1) = 4 lines
       // blockHeight should equal rendered lines minus heading
       expect(lines.length - 1).toBe(blockHeight);
       expect(blockHeight).toBe(3);
-      // Verify the continuation line contains model info
+      // Verify the metadata line contains model info
       expect(lines[2]).toContain("haiku");
     });
 
@@ -248,12 +248,12 @@ describe("continuation line assembly", () => {
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
       const blockHeight = (widget as any).getBlockHeight(agent);
 
-      // Finished agent: header (1) + continuation with model/thinking (1) = 2
-      // Rendered: heading (1) + header (1) + continuation (1) = 3 lines
+      // Finished agent: header (1) + metadata line with model/thinking (1) = 2
+      // Rendered: heading (1) + header (1) + metadata line (1) = 3 lines
       // blockHeight should equal rendered lines minus heading
       expect(lines.length - 1).toBe(blockHeight);
       expect(blockHeight).toBe(2);
-      // Verify the continuation line contains model info
+      // Verify the metadata line contains model info
       expect(lines[2]).toContain("haiku");
     });
 
@@ -281,7 +281,7 @@ describe("continuation line assembly", () => {
       (manager as any).listAgents = () => [agent];
 
       const blockHeight = (widget as any).getBlockHeight(agent);
-      // Running: 2 + (hasContinuationLine ? 1 : 0) = 2 + 1 = 3
+      // Running: 2 + (hasMetadataLine ? 1 : 0) = 2 + 1 = 3
       expect(blockHeight).toBe(3);
     });
   });

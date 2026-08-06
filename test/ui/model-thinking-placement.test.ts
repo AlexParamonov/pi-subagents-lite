@@ -131,7 +131,7 @@ describe("modelThinkingPlacement setting", () => {
       widget.setModelThinkingPlacement("metadata");
     });
 
-    it("places model/thinking on continuation line for running agents", () => {
+    it("places model/thinking on metadata line for running agents", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
@@ -140,11 +140,11 @@ describe("modelThinkingPlacement setting", () => {
 
       // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
-      // Continuation line should contain model/thinking
+      // Metadata line should contain model/thinking
       expect(lines[2]).toContain("haiku • medium");
     });
 
-    it("places model/thinking on continuation line for finished agents", () => {
+    it("places model/thinking on metadata line for finished agents", () => {
       const agent = makeFinishedAgent("a1");
       (manager as any).listAgents = () => [agent];
 
@@ -152,7 +152,7 @@ describe("modelThinkingPlacement setting", () => {
 
       // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
-      // Continuation line should contain model/thinking
+      // Metadata line should contain model/thinking
       expect(lines[2]).toContain("haiku • medium");
     });
   });
@@ -172,7 +172,7 @@ describe("modelThinkingPlacement setting", () => {
 
       // Header SHOULD contain model/thinking tag
       expect(lines[1]).toContain("(haiku • medium)");
-      // Continuation line should NOT contain model/thinking
+      // Metadata line should NOT contain model/thinking
       expect(lines[2]).not.toContain("haiku • medium");
     });
 
@@ -184,7 +184,7 @@ describe("modelThinkingPlacement setting", () => {
 
       // Header SHOULD contain model/thinking tag
       expect(lines[1]).toContain("(haiku • medium)");
-      // Continuation line should NOT contain model/thinking
+      // Metadata line should NOT contain model/thinking
       expect(lines[2] ?? "").not.toContain("haiku • medium");
     });
   });

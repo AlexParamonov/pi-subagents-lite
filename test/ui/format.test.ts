@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { buildStatsParts, getDisplayName, buildContinuationLineParts } from "../../src/ui/format.js";
+import { buildStatsParts, getDisplayName, buildMetadataLineParts } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 
@@ -218,7 +218,7 @@ describe("getDisplayName", () => {
 });
 
 /**
- * Mock factories for buildContinuationLineParts tests.
+ * Mock factories for buildMetadataLineParts tests.
  */
 function makeAgentRecord(overrides?: Partial<any>): any {
   return {
@@ -243,7 +243,7 @@ function makeAgentRecord(overrides?: Partial<any>): any {
   };
 }
 
-describe("buildContinuationLineParts", () => {
+describe("buildMetadataLineParts", () => {
   describe("part order", () => {
     it("puts model/thinking before worktreeLabel", () => {
       const agent = makeAgentRecord({
@@ -255,7 +255,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
+      const parts = buildMetadataLineParts(agent, "name", undefined, "metadata");
       // model/thinking should be first, worktree should be second
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts[1]).toBe("@my-feature");
@@ -271,7 +271,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
+      const parts = buildMetadataLineParts(agent, "name", undefined, "metadata");
       // model/thinking first, worktree second, outputFile last
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts[1]).toBe("@my-feature");
@@ -288,7 +288,7 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
+      const parts = buildMetadataLineParts(agent, "name", undefined, "metadata");
       expect(parts[0]).toBe("Haiku • medium");
       expect(parts.length).toBe(1);
     });
@@ -303,7 +303,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: undefined },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
+      const parts = buildMetadataLineParts(agent, "name", undefined, "metadata");
       expect(parts[0]).toBe("@my-feature");
       expect(parts.length).toBe(1);
     });
@@ -318,8 +318,8 @@ describe("buildContinuationLineParts", () => {
           invocation: { modelName: "haiku", thinkingLevel: "medium" },
         },
       });
-      const parts = buildContinuationLineParts(agent, "name");
-      // Default placement is 'header' - model/thinking stays out of the continuation line
+      const parts = buildMetadataLineParts(agent, "name");
+      // Default placement is 'header' - model/thinking stays out of the metadata line
       expect(parts[0]).toBe("@my-feature");
       expect(parts.length).toBe(1);
     });
@@ -335,7 +335,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
       });
-      const parts = buildContinuationLineParts(agent, "name", undefined, "metadata");
+      const parts = buildMetadataLineParts(agent, "name", undefined, "metadata");
       expect(parts[0]).toBe("Haiku");
     });
 
@@ -348,7 +348,7 @@ describe("buildContinuationLineParts", () => {
         },
         execution: { session: { model: { id: "claude-3-haiku", name: "Haiku" } } },
       });
-      const parts = buildContinuationLineParts(agent, "id", undefined, "metadata");
+      const parts = buildMetadataLineParts(agent, "id", undefined, "metadata");
       expect(parts[0]).toBe("claude-3-haiku");
     });
   });
