@@ -660,19 +660,15 @@ export class AgentWidget {
       this.statsVisibility,
     );
     const statsLine = statsParts.join("·");
-    const modelTagPart = this.shouldShowModelThinkingInHeader() ? this.modelThinkingHeaderTag(a, theme) : "";
-    return `${icon} ${theme.fg("dim", name)}${modelTagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+    const tagPart = this.modelThinkingHeaderTag(a, theme);
+    return `${icon} ${theme.fg("dim", name)}${tagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
-  /** Build the parenthesized model/thinking tag for an agent. */
-  private modelThinkingTag(a: AgentRecord): string {
-    const { model, thinking } = resolveAgentModelThinking(a, this.modelDisplayStyle);
-    return buildModelThinkingTag(model, thinking, this.statsVisibility);
-  }
-
-  /** Build the formatted model/thinking tag for header display (with theme dim styling). */
+  /** Build the dim-styled model/thinking tag for the header line, or "" when it belongs on the continuation line. */
   private modelThinkingHeaderTag(a: AgentRecord, theme: Theme): string {
-    const tag = this.modelThinkingTag(a);
+    if (!this.shouldShowModelThinkingInHeader()) return "";
+    const { model, thinking } = resolveAgentModelThinking(a, this.modelDisplayStyle);
+    const tag = buildModelThinkingTag(model, thinking, this.statsVisibility);
     return tag ? ` ${theme.fg("dim", tag)}` : "";
   }
 
@@ -736,7 +732,7 @@ export class AgentWidget {
       if (this.isCompact()) {
         // Compact: single line with activity inline, truncated description
         const desc = truncateDesc(a.display.description, this.descLengthCompact);
-        const tagPart = this.shouldShowModelThinkingInHeader() ? this.modelThinkingHeaderTag(a, theme) : "";
+        const tagPart = this.modelThinkingHeaderTag(a, theme);
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
         blocks.push({
           header: truncate(headerLine),
@@ -745,7 +741,7 @@ export class AgentWidget {
       } else {
         // Full: header + continuation lines (model/thinking on continuation)
         const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
-        const tagPart = this.shouldShowModelThinkingInHeader() ? this.modelThinkingHeaderTag(a, theme) : "";
+        const tagPart = this.modelThinkingHeaderTag(a, theme);
         const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
         const continuations: string[] = [];
         const parts = buildContinuationLineParts(
