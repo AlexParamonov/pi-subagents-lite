@@ -1024,9 +1024,9 @@ describe("ConfigStore statusBarFormat", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore outputTranscript", () => {
-  it("defaults to true when absent", () => {
+  it("defaults to false when absent", () => {
     const store = new ConfigStore(memIO().io);
-    expect(store.agent.outputTranscript).toBe(true);
+    expect(store.agent.outputTranscript).toBe(false);
   });
 
   it("returns false when configured false", () => {

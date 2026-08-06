@@ -52,7 +52,7 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showContext: true,
   showCost: false,
   showTime: true,
-  outputTranscript: true,
+  outputTranscript: false,
   deltaInputTokens: false,
   finishedRetentionMinutes: 10,
   finishedEvictTurns: 4,

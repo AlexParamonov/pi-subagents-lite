@@ -97,7 +97,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Output transcript",
       currentValue: store.agent.outputTranscript ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Write streaming JSON-lines transcript to .output file for each agent.",
+      description: "Write streaming JSON-lines transcript to .output file (frontmatter overrides).",
     },
   ];
 

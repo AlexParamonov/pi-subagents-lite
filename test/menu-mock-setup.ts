@@ -17,7 +17,7 @@ import { vi } from "vitest";
 // (which vitest hoists above the rest of the module) can reference it.
 const hoisted = vi.hoisted(() => {
   const mockConfig = {
-    agent: { default: null, forceBackground: false, outputTranscript: true } as Record<string, any>,
+    agent: { default: null, forceBackground: false, outputTranscript: false } as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
   };
 
@@ -85,7 +85,7 @@ export const mockModules = {
  */
 export function resetConfig(): void {
   mockModules.mockConfig = {
-    agent: { default: null, forceBackground: false, outputTranscript: true } as Record<string, any>,
+    agent: { default: null, forceBackground: false, outputTranscript: false } as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
   };
   mockModules.mockSessionOverrides = { default: null } as Record<string, any>;

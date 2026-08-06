@@ -175,7 +175,7 @@ export class ConfigStore {
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
       toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
-      outputTranscript: a.outputTranscript !== false,
+      outputTranscript: a.outputTranscript === true,
     };
   }
 

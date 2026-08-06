@@ -4,7 +4,7 @@
  * Verifies:
  * - Global config outputTranscript controls transcript writing
  * - Agent frontmatter output_transcript overrides global
- * - Default behavior (both absent) writes transcripts (backward compatible)
+ * - Default behavior (both absent) does not write transcripts
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -85,7 +85,7 @@ describe("outputTranscript setting", () => {
   });
 
   describe("global config outputTranscript", () => {
-    it("should create output log when outputTranscript is true (default)", () => {
+    it("should create output log when outputTranscript is true", () => {
       const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test prompt", {
         description: "test",
       });
