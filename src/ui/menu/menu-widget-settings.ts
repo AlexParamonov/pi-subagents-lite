@@ -151,7 +151,7 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
         store.mutate.agent.setFinishedRetentionMinutes(parsed);
         ctx.ui.notify(`Finished agent retention set to ${parsed} min`, "info");
       }),
-      description: "Minutes to keep finished agents visible in the widget before cleanup.",
+      description: "Minutes to keep finished agents visible (decimals OK, min 1 sec).",
     },
     {
       id: "finishedEvictTurns",
