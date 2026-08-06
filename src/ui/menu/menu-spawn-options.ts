@@ -92,6 +92,13 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       values: ["ON", "OFF"],
       description: "Skip auto-loading built-in agent types next session; only .pi/agents types load.",
     },
+    {
+      id: "outputTranscript",
+      label: "Output transcript",
+      currentValue: store.agent.outputTranscript ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Write streaming JSON-lines transcript to .output file for each agent.",
+    },
   ];
 
   const onChange = (id: string, newValue: string) => {
@@ -107,6 +114,10 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       case "disableDefaultAgents":
         store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
         ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
+        break;
+      case "outputTranscript":
+        store.mutate.agent.setOutputTranscript(newValue === "ON");
+        ctx.ui.notify(`Output transcript set to ${newValue}`, "info");
         break;
     }
   };

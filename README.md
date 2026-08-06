@@ -78,6 +78,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `max_turns` | number | unlimited | Soft turn limit, then grace turns before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. |
 | `hidden` | boolean | `false` | Hide from the enum. Still callable by name. |
+| `output_transcript` | boolean | inherit global | Write streaming JSON-lines transcript to `.output` file. |
 
 Tool and extension lists accept built-in names (`read`, `bash`, `edit`, `write`, `grep`), extension tool names (`web_search`), and `ext/*` globs (`tavily/*`). `exclude_tools: [tavily/*]` hides the tools but the extension still loads; use `exclude_extensions: [tavily]` to prevent loading.
 
@@ -140,6 +141,7 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
     "loadSkillsImplicitly": false,
     "loadExtensionsImplicitly": false,
     "disableDefaultAgents": false,
+    "outputTranscript": true,
     "Explore": "xiaomi/mimo-v2.5",
     "builder": "xiaomi/mimo-v2-pro",
     "architecture-reviewer": "zai/glm-5.2",
@@ -159,6 +161,8 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
 Widget, stats visibility, and spawn defaults are all under `/agents` > Settings.
 
 Output logs land in `/tmp/pi-agent-outputs/<agentId>.log`, append-only and `tail -f` friendly. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
+
+Output transcripts are enabled by default and can be disabled globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When disabled, no `.output` file is created and the `tail -f` widget line is hidden.
 
 ## Requirements
 

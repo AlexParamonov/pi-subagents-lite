@@ -60,6 +60,8 @@ export interface SubagentsConfig {
     showContext?: boolean;
     /** Whether to show elapsed time in widget stats line. Default: true. */
     showTime?: boolean;
+    /** Whether to write streaming JSON-lines transcript to .output file. Default: true. */
+    outputTranscript?: boolean;
     /** Max description length in widget full mode. Default: 50. */
     widgetDescLengthFull?: number;
     /** Max description length in widget compact mode. Default: 30. */

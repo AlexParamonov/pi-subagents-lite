@@ -101,6 +101,8 @@ export interface ResolvedAgentSettings {
   readonly toolTimeoutMinutes: number;
   /** Stop an agent showing no activity (tool events, streamed text) for this long (minutes). 0 disables. */
   readonly idleTimeoutMinutes: number;
+  /** Whether to write streaming JSON-lines transcript to .output file. Default: true. */
+  readonly outputTranscript: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -173,6 +175,7 @@ export class ConfigStore {
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
       toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+      outputTranscript: a.outputTranscript !== false,
     };
   }
 
@@ -268,6 +271,10 @@ export class ConfigStore {
       },
       setIdleTimeoutMinutes: (n: number): void => {
         this.config.agent.idleTimeoutMinutes = Math.max(0, n);
+        this.persist();
+      },
+      setOutputTranscript: (enabled: boolean): void => {
+        this.config.agent.outputTranscript = enabled;
         this.persist();
       },
       setSystemPromptMode: (mode: SystemPromptMode): void => {

@@ -36,4 +36,5 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "finishedEvictTurns",
   "modelDisplayStyle",
   "statusBarFormat",
+  "outputTranscript",
 ];
