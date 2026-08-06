@@ -201,6 +201,24 @@ body
     expect(result.hidden).toBe(false);
   });
 
+  it("parses output_transcript as boolean true", () => {
+    const content = makeAgentMd({ output_transcript: "true" });
+    const result = parseAgentFile(content, "user");
+    expect(result.output_transcript).toBe(true);
+  });
+
+  it("parses output_transcript as boolean false", () => {
+    const content = makeAgentMd({ output_transcript: "false" });
+    const result = parseAgentFile(content, "user");
+    expect(result.output_transcript).toBe(false);
+  });
+
+  it("output_transcript is undefined when not specified", () => {
+    const content = makeAgentMd({});
+    const result = parseAgentFile(content, "user");
+    expect(result.output_transcript).toBeUndefined();
+  });
+
   it("parses max_turns as number", () => {
     const content = makeAgentMd({ max_turns: "10" });
     const result = parseAgentFile(content, "user");

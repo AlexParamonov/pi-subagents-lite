@@ -1018,3 +1018,67 @@ describe("ConfigStore statusBarFormat", () => {
     expect(calls).toContain("setStatusBarFormat:compact");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  outputTranscript                                                   */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore outputTranscript", () => {
+  it("defaults to true when absent", () => {
+    const store = new ConfigStore(memIO().io);
+    expect(store.agent.outputTranscript).toBe(true);
+  });
+
+  it("returns false when configured false", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, outputTranscript: false },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.outputTranscript).toBe(false);
+  });
+
+  it("returns true when configured true", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, outputTranscript: true },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.outputTranscript).toBe(true);
+  });
+
+  it("setOutputTranscript persists value", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    saves.length = 0;
+
+    store.mutate.agent.setOutputTranscript(false);
+    expect(store.agent.outputTranscript).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].agent.outputTranscript).toBe(false);
+  });
+
+  it("setOutputTranscript(true) restores transcript", () => {
+    const { io } = memIO({
+      agent: { default: null, forceBackground: false, outputTranscript: false },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    expect(store.agent.outputTranscript).toBe(false);
+
+    store.mutate.agent.setOutputTranscript(true);
+    expect(store.agent.outputTranscript).toBe(true);
+  });
+
+  it("clearAllModelOverrides preserves outputTranscript", () => {
+    const { io } = memIO({
+      agent: { default: "keep", forceBackground: true, outputTranscript: false, Explore: "m1" },
+      concurrency: { default: 4 },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    const snap = store.agentConfigSnapshot();
+    expect(snap.outputTranscript).toBe(false);
+    expect(snap.Explore).toBeUndefined();
+  });
+});

@@ -5,15 +5,12 @@
  * - Global config outputTranscript controls transcript writing
  * - Agent frontmatter output_transcript overrides global
  * - Default behavior (both absent) writes transcripts (backward compatible)
- * - Widget doesn't show tail -f when outputFile is undefined
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AgentManager } from "../../src/agents/agent-manager.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { ConfigStore } from "../../src/config/config-store.js";
-import type { ConfigIO } from "../../src/config/config-store.js";
-import type { SubagentsConfig } from "../../src/models/model-precedence.js";
+
 import { AgentOutputLog } from "../../src/agents/output-file.js";
 import { getStore } from "../../src/shell.js";
 import { getAgentConfig } from "../../src/agents/agent-types.js";
@@ -59,55 +56,13 @@ vi.mock("../../src/shell.js", () => ({
   getStore: vi.fn(() => mockStore),
 }));
 
-// In-memory ConfigIO for testing
-function memIO(initial: Partial<SubagentsConfig> = {}): ConfigIO {
-  const defaults = {
-    agent: {
-      default: null as null,
-      forceBackground: false,
-      graceTurns: 6,
-      widgetMaxLines: 12,
-      widgetDescLengthFull: 50,
-      widgetDescLengthCompact: 30,
-      widgetCompact: false,
-      showCompletionCards: true,
-      widgetShortcut: false,
-      systemPromptMode: "replace" as const,
-      includeContextFiles: true,
-      disableDefaultAgents: false,
-      showTools: false,
-      showTurns: true,
-      showInput: true,
-      showOutput: true,
-      showContext: true,
-      showCost: false,
-      showTime: true,
-      toolTimeoutMinutes: 45,
-      idleTimeoutMinutes: 45,
-      outputTranscript: true,
-    },
-    concurrency: { default: 4 },
-  };
-  let cur = { ...defaults, ...initial, agent: { ...defaults.agent, ...(initial.agent ?? {}) } } as SubagentsConfig;
-  return {
-    load: () => structuredClone(cur),
-    save: (c) => {
-      cur = structuredClone(c);
-    },
-  };
-}
-
 describe("outputTranscript setting", () => {
   let manager: AgentManager;
-  let store: ConfigStore;
+
   let mockPi: ExtensionAPI;
   let mockCtx: ExtensionContext;
 
   beforeEach(() => {
-    const io = memIO();
-    store = new ConfigStore(io);
-
-    // Reset mock store to default
     mockStore.agent.outputTranscript = true;
 
     // Reset getAgentConfig mock to return undefined by default (no agent-level override)
@@ -181,17 +136,6 @@ describe("outputTranscript setting", () => {
       const id = manager.spawn(mockPi, mockCtx, "test-agent", "test prompt", { description: "test" });
       const record = manager.getRecord(id);
       expect(record?.display.outputFile).toBeUndefined();
-    });
-  });
-
-  describe("backward compatibility", () => {
-    it("should write transcripts when both settings are absent (default true)", () => {
-      const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test prompt", {
-        description: "test",
-      });
-
-      const record = manager.getRecord(id);
-      expect(record?.display.outputFile).toBeDefined();
     });
   });
 });
