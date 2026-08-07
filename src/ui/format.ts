@@ -177,9 +177,10 @@ export function describeActivity(activeTools: Map<string, string>, responseText?
     return parts.join(", ") + "\u2026";
   }
 
-  // No tools active — show truncated response text if available
+  // No tools active — show first line of response text if available
   if (responseText && responseText.trim().length > 0) {
-    return responseText.trim();
+    const firstLine = responseText.trim().split("\n")[0] ?? "";
+    return firstLine;
   }
 
   return "thinking\u2026";
