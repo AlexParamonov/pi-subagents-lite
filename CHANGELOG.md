@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Respect pi's `hideThinkingBlock` setting.** Conversation viewer now honors the parent's thinking block visibility setting.
+
+### Changed
+
+- **Widget layout.** Activity expands to remaining width.
+
 
 ## [1.9.0] - 2026-08-06
 

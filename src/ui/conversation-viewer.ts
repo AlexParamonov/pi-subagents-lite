@@ -500,7 +500,7 @@ export class ConversationViewer implements Component {
     const th = this.theme;
     const lines: string[] = [];
     for (const wl of wrapTextWithAnsi(text, width - 4)) {
-      const pad = Math.max(0, width - visibleWidth(`  ${wl} `));
+      const pad = Math.max(0, width - visibleWidth(`  ${wl}`));
       lines.push(th.bg(bg, th.fg("toolOutput", `  ${wl}${" ".repeat(pad)}`)));
     }
     return lines;
