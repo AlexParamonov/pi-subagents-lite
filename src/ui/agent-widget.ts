@@ -717,41 +717,19 @@ export class AgentWidget {
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
-        // Compact: single line; description after model, prioritize stats > description > activity.
+        // Compact: single line; description after model, stats, then activity.
+        // Truncate description to preserve stats visibility; activity fills remainder
+        // and gets cut by truncate() (which cuts from the right).
         const tagPart = this.modelThinkingHeaderTag(a, theme);
         const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  `;
         const fixedWidth = visibleWidth(fixedParts);
         const statsWidth = visibleWidth(`  ${statsLine}`);
-        const availableWidth = w - fixedWidth - statsWidth;
+        const availableForDesc = Math.max(0, w - fixedWidth - statsWidth);
 
-        const desc = a.display.description;
-        const activityMinWidth = 15;
+        const finalDesc = truncateToWidth(a.display.description, availableForDesc);
 
-        let finalDesc: string;
-        let finalActivity: string;
-
-        // Compute description width first.
-        const truncatedDesc = truncateToWidth(desc, Math.max(0, availableWidth));
-        const descWidth = visibleWidth(truncatedDesc);
-
-        if (descWidth < 30 && visibleWidth(activity) > activityMinWidth) {
-          // Description too short; drop activity to give description full width.
-          finalDesc = truncateToWidth(desc, availableWidth);
-          finalActivity = "";
-        } else {
-          // Description gets what it needs; activity gets remaining space.
-          finalDesc = truncatedDesc;
-          const remainingWidth = availableWidth - descWidth;
-          if (remainingWidth >= activityMinWidth) {
-            // Enough space for activity minimum; give activity remaining space.
-            finalActivity = truncateToWidth(activity, remainingWidth);
-          } else {
-            // Not enough space for activity minimum; drop activity.
-            finalActivity = "";
-          }
-        }
-
-        const headerLine = `${fixedParts}${finalDesc}  ${statsLine}  ${theme.fg("dim", finalActivity)}`.trimEnd();
+        // Activity gets full text; truncate() will cut from the right if line exceeds width.
+        const headerLine = `${fixedParts}${finalDesc}  ${statsLine}  ${theme.fg("dim", activity)}`.trimEnd();
         blocks.push({
           header: truncate(headerLine),
           metadataLines: [],
