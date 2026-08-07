@@ -6,6 +6,8 @@
  * Adapted for pi-subagents-lite type shapes.
  */
 
+import { getHideThinkingBlock } from "../pi-settings.js";
+
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
@@ -92,6 +94,9 @@ export class ConversationViewer implements Component {
   /** Debounce timer for streaming renders — avoids fighting the TUI's 16ms loop. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
+  private thinkingVisible: boolean;
+
   constructor(
     private tui: TUI,
     private session: AgentSession,
@@ -105,6 +110,7 @@ export class ConversationViewer implements Component {
     /** Send a steering message to the agent. Omitted -> no compose affordance. */
     private onSteer?: (message: string) => void,
   ) {
+    this.thinkingVisible = getHideThinkingBlock();
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
       try {
@@ -211,6 +217,14 @@ export class ConversationViewer implements Component {
       return;
     }
     if (this.stopArmed) this.stopArmed = false;
+
+    // Toggle thinking visibility with ctrl+T
+    if (data === "\x14") {
+      this.thinkingVisible = !this.thinkingVisible;
+      this.invalidate(); // Clear cache so messages re-render with new visibility
+      this.tui.requestRender();
+      return;
+    }
 
     const viewportHeight = this.viewportHeight();
     const maxScroll = this.scrollMax();
@@ -333,6 +347,7 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
+      actions.push(th.fg("dim", `Th:${this.thinkingVisible ? "vis" : "hid"}`));
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
@@ -340,8 +355,13 @@ export class ConversationViewer implements Component {
       const scrollPct = totalContentLines <= viewportHeight ? 100 : Math.round((currentLine / totalContentLines) * 100);
       const count = th.fg("dim", `(${currentLine}/${totalContentLines} · ${scrollPct}%)`);
       const withCount = [count, ...actions].join(sep);
+      // Always show readout; drop thinking state if needed
       const footerLeft =
-        visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW ? withCount : actions.join(sep);
+        visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
+          ? withCount
+          : visibleWidth(count) + visibleWidth(footerRight) + 1 <= innerW
+            ? count
+            : actions.join(sep);
 
       const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
       lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
@@ -525,11 +545,18 @@ export class ConversationViewer implements Component {
     }
     // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
     if (thinkingParts.length > 0) {
-      const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
-        color: (text: string) => th.fg("thinkingText", text),
-        italic: true,
-      });
-      lines.push(...md.render(width));
+      if (this.thinkingVisible) {
+        const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
+          color: (text: string) => th.fg("thinkingText", text),
+          italic: true,
+        });
+        lines.push(...md.render(width));
+      } else {
+        // Show "Thinking..." label when thinking is hidden
+        const thinkingText = th.fg("thinkingText", "Thinking...");
+        const label = th.italic ? th.italic(thinkingText) : thinkingText;
+        lines.push(label);
+      }
       lines.push("");
     }
     // Assistant text
@@ -695,7 +722,7 @@ export class ConversationViewer implements Component {
     const lines: string[] = [];
 
     // Streaming thinking text — rendered before text, matching assistant message order
-    if (this.streamingThinking.trim()) {
+    if (this.streamingThinking.trim() && this.thinkingVisible) {
       lines.push(...this.ensureThinkingMd().render(width));
     }
 
