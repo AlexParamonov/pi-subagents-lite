@@ -39,6 +39,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
       escape: ["\x1b"],
       q: ["q"],
       s: ["s"],
+      ctrlT: ["\x14"],
     };
     return (map[key] ?? [key]).includes(data);
   }),
@@ -113,6 +114,7 @@ vi.mock("../../src/pi-settings.js", () => ({
 // Import after mocks
 // ---------------------------------------------------------------------------
 
+import { getHideThinkingBlock } from "../../src/pi-settings.js";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
 
 // ---------------------------------------------------------------------------
@@ -185,7 +187,7 @@ function count(haystack: string, needle: string): number {
 
 describe("ConversationViewer", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe("subscription", () => {
@@ -942,6 +944,92 @@ describe("ConversationViewer", () => {
       // Footer should show thinking state
       const text = viewer.render(80).join("\n");
       expect(text).toContain("Th:");
+    });
+
+    it("starts with thinking hidden when hideThinkingBlock setting is true", () => {
+      // Mock the setting to return true (thinking should be hidden)
+      vi.mocked(getHideThinkingBlock).mockReturnValue(true);
+
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+
+      // Thinking should be hidden initially
+      expect((viewer as any).thinkingVisible).toBe(false);
+    });
+
+    it("renders Thinking... label for non-streaming thinking when hideThinkingBlock is true", () => {
+      // Mock the setting to return true (thinking should be hidden)
+      vi.mocked(getHideThinkingBlock).mockReturnValue(true);
+
+      const session = makeMockSession([
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Let me think about this..." },
+            { type: "text", text: "Here is the answer." },
+          ],
+        },
+      ]);
+      const record = makeMockRecord({ execution: { session } });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+
+      // Thinking should be hidden initially
+      expect((viewer as any).thinkingVisible).toBe(false);
+
+      const text = viewer.render(80).join("\n");
+
+      // Should show "Thinking..." label, not the actual thinking content
+      expect(text).toContain("Thinking...");
+      expect(text).not.toContain("Let me think about this...");
+      // But should still show the text content
+      expect(text).toContain("Here is the answer.");
+    });
+
+    it("shows Thinking... label during streaming when thinking is hidden", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+
+      // Hide thinking
+      viewer.handleInput("\x14");
+      expect((viewer as any).thinkingVisible).toBe(false);
+
+      // Simulate streaming thinking
+      (viewer as any).streamingThinking = "Streaming thought...";
+      (viewer as any).ensureThinkingMd().setText("Streaming thought...");
+
+      const text = viewer.render(80).join("\n");
+      expect(text).toContain("Thinking...");
+      expect(text).not.toContain("Streaming thought...");
+    });
+
+    it("shows Thinking... label during streaming when hideThinkingBlock is true initially", () => {
+      // Mock the setting to return true (thinking should be hidden)
+      vi.mocked(getHideThinkingBlock).mockReturnValue(true);
+
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session } });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+
+      // Thinking should be hidden initially
+      expect((viewer as any).thinkingVisible).toBe(false);
+
+      // Simulate streaming thinking
+      (viewer as any).streamingThinking = "Streaming thought...";
+      (viewer as any).ensureThinkingMd().setText("Streaming thought...");
+
+      const text = viewer.render(80).join("\n");
+      expect(text).toContain("Thinking...");
+      expect(text).not.toContain("Streaming thought...");
     });
   });
 });

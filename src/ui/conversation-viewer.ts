@@ -645,7 +645,12 @@ export class ConversationViewer implements Component {
 
     if (messages.length === 0) {
       this.cachedContentLines = undefined;
-      return [th.fg("dim", "(waiting for first message...)")];
+      const lines = [th.fg("dim", "(waiting for first message...)")];
+      const streamingLines = this.buildStreamingLines(width);
+      this.cachedNonStreamingCount = lines.length;
+      lines.push(...streamingLines);
+      this.cachedContentLines = lines;
+      return lines;
     }
 
     // First pass: collect tool results by toolCallId
@@ -720,10 +725,18 @@ export class ConversationViewer implements Component {
   /** Build just the streaming portion (thinking + text + indicator). */
   private buildStreamingLines(width: number): string[] {
     const lines: string[] = [];
+    const th = this.theme;
 
     // Streaming thinking text — rendered before text, matching assistant message order
-    if (this.streamingThinking.trim() && this.thinkingVisible) {
-      lines.push(...this.ensureThinkingMd().render(width));
+    if (this.streamingThinking.trim()) {
+      if (this.thinkingVisible) {
+        lines.push(...this.ensureThinkingMd().render(width));
+      } else {
+        // Show "Thinking..." label when thinking is hidden, matching non-streaming behavior
+        const thinkingText = th.fg("thinkingText", "Thinking...");
+        const label = th.italic ? th.italic(thinkingText) : thinkingText;
+        lines.push(label);
+      }
     }
 
     // Streaming text — rendered live as deltas arrive
