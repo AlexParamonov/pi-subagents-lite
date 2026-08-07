@@ -30,6 +30,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.children.push(c);
     }
   },
+  visibleWidth: (text: string) => text.length,
 }));
 
 vi.mock("../../src/ui/format.js", () => ({

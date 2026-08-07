@@ -29,6 +29,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 
 vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
+  visibleWidth: (text: string) => text.length,
 }));
 
 function makeMockManager(getAgents: () => any[]): AgentManager {

@@ -2,7 +2,7 @@
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import { formatWatchdogSummary } from "../status-note.js";
@@ -717,12 +717,35 @@ export class AgentWidget {
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
-        // Compact: single line with activity inline, truncated description
+        // Compact: single line; stats before desc so stats remain visible,
+        // then prioritize description over activity per issue spec.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
+        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${statsLine}  `;
+        const fixedWidth = visibleWidth(fixedParts);
+        const availableWidth = w - fixedWidth;
+
         const desc = a.display.description;
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const activityMinWidth = 15;
+
+        let finalDesc: string;
+        let finalActivity: string;
+
+        if (availableWidth < 30 + activityMinWidth && visibleWidth(activity) > activityMinWidth) {
+          // Description would be too short if we reserve activity space.
+          // Drop activity reservation to keep description meaningful.
+          finalActivity = "";
+          finalDesc = truncateToWidth(desc, availableWidth);
+        } else {
+          // Reserve at least activityMinWidth for activity.
+          const activityWidth = Math.min(activityMinWidth, visibleWidth(activity));
+          const descWidth = Math.max(0, availableWidth - activityWidth);
+          finalDesc = truncateToWidth(desc, descWidth);
+          finalActivity = truncateToWidth(activity, activityWidth);
+        }
+
+        const headerLine = `${fixedParts}${finalDesc}  ${theme.fg("dim", finalActivity)}`.trimEnd();
         blocks.push({
-          header: truncate(headerLine),
+          header: headerLine,
           metadataLines: [],
         });
       } else {
