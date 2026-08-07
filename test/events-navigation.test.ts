@@ -106,7 +106,6 @@ vi.mock("../src/ui/format.js", () => ({
   formatMs: vi.fn(() => "0s"),
   buildStatsParts: vi.fn(() => []),
   getDisplayName: vi.fn((type: string) => type),
-  truncateDesc: vi.fn((desc: string) => desc),
 }));
 
 const mockManager: any = {

@@ -750,9 +750,13 @@ export class AgentWidget {
         });
       } else {
         // Full: header + metadata lines (model/thinking on metadata line)
+        // Truncate description to preserve stats visibility.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const fullDesc = a.display.description;
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
+        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}    ${statsLine}`;
+        const fixedWidth = visibleWidth(fixedParts);
+        const availableWidth = w - fixedWidth;
+        const truncatedDesc = truncateToWidth(a.display.description, Math.max(0, availableWidth));
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${truncatedDesc}  ${statsLine}`;
         const metadataLines: string[] = [];
         const line = this.buildMetadataLine(a, "  │ ", theme, truncate);
         if (line) metadataLines.push(line);
