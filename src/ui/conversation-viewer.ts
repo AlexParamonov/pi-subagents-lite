@@ -551,6 +551,7 @@ export class ConversationViewer implements Component {
           italic: true,
         });
         lines.push(...md.render(width));
+        lines.push("");
       } else {
         lines.push(...this.renderHiddenThinkingLabel());
       }
