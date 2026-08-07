@@ -63,10 +63,7 @@ export interface SubagentsConfig {
     showTime?: boolean;
     /** Whether to write streaming JSON-lines transcript to .output file. Default: true. */
     outputTranscript?: boolean;
-    /** Max description length in widget full mode. Default: 50. */
-    widgetDescLengthFull?: number;
-    /** Max description length in widget compact mode. Default: 30. */
-    widgetDescLengthCompact?: number;
+
     /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
     outputThinkingBufferSize?: number;
     /** Minutes to retain finished agents in the widget. Default: 10. */

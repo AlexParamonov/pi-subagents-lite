@@ -195,7 +195,7 @@ export function describeActivity(activeTools: Map<string, string>, responseText?
 
   // No tools active — show truncated response text if available
   if (responseText && responseText.trim().length > 0) {
-    return truncateLine(responseText);
+    return responseText.trim();
   }
 
   return "thinking\u2026";

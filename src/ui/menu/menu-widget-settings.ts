@@ -68,26 +68,6 @@ function buildLayoutItems(ctx: ExtensionCommandContext, store: ReturnType<typeof
       }),
       description: "Max body lines in compact widget mode.",
     },
-    {
-      id: "descLengthFull",
-      label: "Description length (full)",
-      currentValue: String(store.agent.widgetDescLengthFull),
-      submenu: createNumericSubmenu(ctx, { min: 5 }, (parsed) => {
-        store.mutate.widget.setDescLengthFull(parsed);
-        ctx.ui.notify(`Description length (full) set to ${parsed}`, "info");
-      }),
-      description: "Max description length shown in full widget mode.",
-    },
-    {
-      id: "descLengthCompact",
-      label: "Description length (compact)",
-      currentValue: String(store.agent.widgetDescLengthCompact),
-      submenu: createNumericSubmenu(ctx, { min: 5 }, (parsed) => {
-        store.mutate.widget.setDescLengthCompact(parsed);
-        ctx.ui.notify(`Description length (compact) set to ${parsed}`, "info");
-      }),
-      description: "Max description length shown in compact widget mode.",
-    },
   ];
 }
 
