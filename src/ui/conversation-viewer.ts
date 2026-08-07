@@ -347,7 +347,7 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
-      actions.push(th.fg("dim", `Thinking: ${this.thinkingVisible ? "show" : "hide"}`));
+      actions.push(th.fg("dim", "C-t: thinking"));
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
