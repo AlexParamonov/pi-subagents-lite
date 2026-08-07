@@ -118,9 +118,9 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
     {
       id: "modelThinkingPlacement",
       label: "Model/thinking placement",
-      currentValue: store.agent.modelThinkingPlacement === "header" ? "1st line" : "2nd line",
-      values: ["1st line", "2nd line"],
-      description: "Show model/thinking on header (1st) or metadata (2nd) line in full mode.",
+      currentValue: store.agent.modelThinkingPlacement === "header" ? "header" : "metadata",
+      values: ["header", "metadata"],
+      description: "Show model/thinking on header or metadata line in full mode.",
     },
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
@@ -271,7 +271,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Model display ${newValue}`, "info");
         break;
       case "modelThinkingPlacement":
-        store.mutate.widget.setModelThinkingPlacement(newValue === "1st line" ? "header" : "metadata");
+        store.mutate.widget.setModelThinkingPlacement(newValue === "header" ? "header" : "metadata");
         ctx.ui.notify(`Model/thinking placement: ${newValue}`, "info");
         break;
 
