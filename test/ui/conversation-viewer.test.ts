@@ -891,21 +891,21 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Initially thinking should be hidden (mock returns false)
-      expect((viewer as any).thinkingVisible).toBe(false);
+      // Initially thinking should be visible (mock returns false for hideThinkingBlock)
+      expect((viewer as any).thinkingVisible).toBe(true);
 
       // Simulate ctrl+T press
       viewer.handleInput("\x14"); // ctrl+T
 
-      expect((viewer as any).thinkingVisible).toBe(true);
+      expect((viewer as any).thinkingVisible).toBe(false);
 
       // Toggle again
       viewer.handleInput("\x14");
 
-      expect((viewer as any).thinkingVisible).toBe(false);
+      expect((viewer as any).thinkingVisible).toBe(true);
     });
 
-    it("hides thinking blocks when thinkingVisible is false", () => {
+    it("shows thinking blocks when thinkingVisible is true", () => {
       const session = makeMockSession([
         {
           role: "assistant",
@@ -920,16 +920,16 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Initially thinking is hidden (mock returns false)
+      // Initially thinking is visible (mock returns false for hideThinkingBlock)
       let text = viewer.render(80).join("\n");
-      expect(text).not.toContain("Let me think");
-      expect(text).toContain("Thinking...");
-
-      // Toggle to show thinking
-      viewer.handleInput("\x14");
-      text = viewer.render(80).join("\n");
       expect(text).toContain("Let me think");
       expect(text).not.toContain("Thinking...");
+
+      // Toggle to hide thinking
+      viewer.handleInput("\x14");
+      text = viewer.render(80).join("\n");
+      expect(text).not.toContain("Let me think");
+      expect(text).toContain("Thinking...");
     });
 
     it("shows thinking visibility state in footer", () => {

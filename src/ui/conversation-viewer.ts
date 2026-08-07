@@ -110,7 +110,7 @@ export class ConversationViewer implements Component {
     /** Send a steering message to the agent. Omitted -> no compose affordance. */
     private onSteer?: (message: string) => void,
   ) {
-    this.thinkingVisible = getHideThinkingBlock();
+    this.thinkingVisible = !getHideThinkingBlock();
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
       try {
