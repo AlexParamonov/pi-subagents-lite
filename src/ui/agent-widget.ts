@@ -745,7 +745,7 @@ export class AgentWidget {
 
         const headerLine = `${fixedParts}${finalDesc}  ${theme.fg("dim", finalActivity)}`.trimEnd();
         blocks.push({
-          header: headerLine,
+          header: truncate(headerLine),
           metadataLines: [],
         });
       } else {
