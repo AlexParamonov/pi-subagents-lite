@@ -10,7 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`outputTranscript` setting.** Global config option and `output_transcript` frontmatter field disable per-agent `.output` transcript writing; agent-level setting overrides global. Spawn Options menu includes toggle.
-- **Model + thinking on continuation line.** In full widget mode, model name and thinking level moved from the header line to the continuation line for cleaner, more scannable headers. Compact mode unchanged.
+- **Model/thinking placement setting.** Controls where model name and thinking level appear in the widget: `header`, `metadata`, or `none`. Defaults to `metadata` in full mode, `header` in compact.
+- **CI automation for GitHub releases.** Pushing a version tag now automatically creates a GitHub release.
+
+### Changed
+
+- **Migrated from Bun to npm.** Project now uses npm for package management; lockfile is `package-lock.json`.
+- **Default changes.** `modelDisplayStyle` now defaults to `name`; `finishedRetentionMinutes` defaults to 1 (was 10); `outputTranscript` defaults to `false`.
+- **`finishedRetentionMinutes` setting accepts decimals.** decimal values are allowed.
+
+### Fixed
+
+- **ConversationViewer cache invalidated on message replacement.** Ensures stale conversation state doesn't persist when messages array is replaced.
+- **Model/thinking placement defaults aligned.** Internal defaults now match user-visible defaults.
+- **Output-file streaming survives session compaction.** File output continues correctly after session compaction events.
+- **Widget block height matches rendered lines.** `getBlockHeight` now accounts for metadata line presence.
+
 ## [1.8.0] - 2026-08-05
 
 ### Added
