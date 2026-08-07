@@ -552,10 +552,7 @@ export class ConversationViewer implements Component {
         });
         lines.push(...md.render(width));
       } else {
-        // Show "Thinking..." label when thinking is hidden
-        const thinkingText = th.fg("thinkingText", "Thinking...");
-        const label = th.italic ? th.italic(thinkingText) : thinkingText;
-        lines.push(label);
+        lines.push(...this.renderHiddenThinkingLabel());
       }
       lines.push("");
     }
@@ -732,10 +729,7 @@ export class ConversationViewer implements Component {
       if (this.thinkingVisible) {
         lines.push(...this.ensureThinkingMd().render(width));
       } else {
-        // Show "Thinking..." label when thinking is hidden, matching non-streaming behavior
-        const thinkingText = th.fg("thinkingText", "Thinking...");
-        const label = th.italic ? th.italic(thinkingText) : thinkingText;
-        lines.push(label);
+        lines.push(...this.renderHiddenThinkingLabel());
       }
     }
 
@@ -745,5 +739,16 @@ export class ConversationViewer implements Component {
     }
 
     return lines;
+  }
+
+  /**
+   * Render the "Thinking..." label shown when thinking blocks are hidden.
+   * Matches pi's behavior: italic styling with thinkingText color.
+   */
+  private renderHiddenThinkingLabel(): string[] {
+    const th = this.theme;
+    const thinkingText = th.fg("thinkingText", "Thinking...");
+    const label = th.italic ? th.italic(thinkingText) : thinkingText;
+    return [label, ""];
   }
 }

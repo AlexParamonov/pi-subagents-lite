@@ -895,16 +895,22 @@ describe("ConversationViewer", () => {
 
       // Initially thinking should be visible (mock returns false for hideThinkingBlock)
       expect((viewer as any).thinkingVisible).toBe(true);
+      let text = viewer.render(80).join("\n");
+      expect(text).toContain("Th:vis");
 
       // Simulate ctrl+T press
       viewer.handleInput("\x14"); // ctrl+T
 
       expect((viewer as any).thinkingVisible).toBe(false);
+      text = viewer.render(80).join("\n");
+      expect(text).toContain("Th:hid");
 
       // Toggle again
       viewer.handleInput("\x14");
 
       expect((viewer as any).thinkingVisible).toBe(true);
+      text = viewer.render(80).join("\n");
+      expect(text).toContain("Th:vis");
     });
 
     it("shows thinking blocks when thinkingVisible is true", () => {
@@ -991,6 +997,13 @@ describe("ConversationViewer", () => {
     });
 
     it("shows Thinking... label during streaming when thinking is hidden", () => {
+      vi.useFakeTimers();
+      let subscriber: (event?: unknown) => void;
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+        subscriber = cb;
+        return () => {};
+      });
+
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { session } });
       const tui = makeTui();
@@ -1001,18 +1014,30 @@ describe("ConversationViewer", () => {
       viewer.handleInput("\x14");
       expect((viewer as any).thinkingVisible).toBe(false);
 
-      // Simulate streaming thinking
-      (viewer as any).streamingThinking = "Streaming thought...";
-      (viewer as any).ensureThinkingMd().setText("Streaming thought...");
+      // Simulate streaming thinking via session events
+      subscriber!({
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_delta", delta: "Streaming thought..." },
+      });
+      vi.runAllTimers();
 
       const text = viewer.render(80).join("\n");
       expect(text).toContain("Thinking...");
       expect(text).not.toContain("Streaming thought...");
+
+      vi.useRealTimers();
     });
 
     it("shows Thinking... label during streaming when hideThinkingBlock is true initially", () => {
       // Mock the setting to return true (thinking should be hidden)
       vi.mocked(getHideThinkingBlock).mockReturnValue(true);
+
+      vi.useFakeTimers();
+      let subscriber: (event?: unknown) => void;
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+        subscriber = cb;
+        return () => {};
+      });
 
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { session } });
@@ -1023,13 +1048,18 @@ describe("ConversationViewer", () => {
       // Thinking should be hidden initially
       expect((viewer as any).thinkingVisible).toBe(false);
 
-      // Simulate streaming thinking
-      (viewer as any).streamingThinking = "Streaming thought...";
-      (viewer as any).ensureThinkingMd().setText("Streaming thought...");
+      // Simulate streaming thinking via session events
+      subscriber!({
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_delta", delta: "Streaming thought..." },
+      });
+      vi.runAllTimers();
 
       const text = viewer.render(80).join("\n");
       expect(text).toContain("Thinking...");
       expect(text).not.toContain("Streaming thought...");
+
+      vi.useRealTimers();
     });
   });
 });
