@@ -717,12 +717,12 @@ export class AgentWidget {
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
-        // Compact: single line; stats before desc so stats remain visible,
-        // then prioritize description over activity per issue spec.
+        // Compact: single line; description after model, prioritize stats > description > activity.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${statsLine}  `;
+        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  `;
         const fixedWidth = visibleWidth(fixedParts);
-        const availableWidth = w - fixedWidth;
+        const statsWidth = visibleWidth(`  ${statsLine}`);
+        const availableWidth = w - fixedWidth - statsWidth;
 
         const desc = a.display.description;
         const activityMinWidth = 15;
@@ -743,7 +743,7 @@ export class AgentWidget {
           finalActivity = truncateToWidth(activity, activityWidth);
         }
 
-        const headerLine = `${fixedParts}${finalDesc}  ${theme.fg("dim", finalActivity)}`.trimEnd();
+        const headerLine = `${fixedParts}${finalDesc}  ${statsLine}  ${theme.fg("dim", finalActivity)}`.trimEnd();
         blocks.push({
           header: truncate(headerLine),
           metadataLines: [],
