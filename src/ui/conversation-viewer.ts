@@ -6,6 +6,8 @@
  * Adapted for pi-subagents-lite type shapes.
  */
 
+import { getHideThinkingBlock } from "../pi-settings.js";
+
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
@@ -92,6 +94,9 @@ export class ConversationViewer implements Component {
   /** Debounce timer for streaming renders — avoids fighting the TUI's 16ms loop. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
+  private thinkingVisible: boolean;
+
   constructor(
     private tui: TUI,
     private session: AgentSession,
@@ -105,6 +110,7 @@ export class ConversationViewer implements Component {
     /** Send a steering message to the agent. Omitted -> no compose affordance. */
     private onSteer?: (message: string) => void,
   ) {
+    this.thinkingVisible = !getHideThinkingBlock();
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe((event) => {
       try {
@@ -211,6 +217,14 @@ export class ConversationViewer implements Component {
       return;
     }
     if (this.stopArmed) this.stopArmed = false;
+
+    // Toggle thinking visibility with ctrl+T
+    if (data === "\x14") {
+      this.thinkingVisible = !this.thinkingVisible;
+      this.invalidate(); // Clear cache so messages re-render with new visibility
+      this.tui.requestRender();
+      return;
+    }
 
     const viewportHeight = this.viewportHeight();
     const maxScroll = this.scrollMax();
@@ -333,6 +347,7 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
+      actions.push(th.fg("dim", `Th:${this.thinkingVisible ? "vis" : "hid"}`));
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
@@ -340,8 +355,13 @@ export class ConversationViewer implements Component {
       const scrollPct = totalContentLines <= viewportHeight ? 100 : Math.round((currentLine / totalContentLines) * 100);
       const count = th.fg("dim", `(${currentLine}/${totalContentLines} · ${scrollPct}%)`);
       const withCount = [count, ...actions].join(sep);
+      // Always show readout; drop thinking state if needed
       const footerLeft =
-        visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW ? withCount : actions.join(sep);
+        visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
+          ? withCount
+          : visibleWidth(count) + visibleWidth(footerRight) + 1 <= innerW
+            ? count
+            : actions.join(sep);
 
       const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
       lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
@@ -525,11 +545,15 @@ export class ConversationViewer implements Component {
     }
     // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
     if (thinkingParts.length > 0) {
-      const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
-        color: (text: string) => th.fg("thinkingText", text),
-        italic: true,
-      });
-      lines.push(...md.render(width));
+      if (this.thinkingVisible) {
+        const md = new Markdown(thinkingParts.join("\n\n").trim(), 1, 0, makeMarkdownTheme(th), {
+          color: (text: string) => th.fg("thinkingText", text),
+          italic: true,
+        });
+        lines.push(...md.render(width));
+      } else {
+        lines.push(...this.renderHiddenThinkingLabel());
+      }
       lines.push("");
     }
     // Assistant text
@@ -618,7 +642,12 @@ export class ConversationViewer implements Component {
 
     if (messages.length === 0) {
       this.cachedContentLines = undefined;
-      return [th.fg("dim", "(waiting for first message...)")];
+      const lines = [th.fg("dim", "(waiting for first message...)")];
+      const streamingLines = this.buildStreamingLines(width);
+      this.cachedNonStreamingCount = lines.length;
+      lines.push(...streamingLines);
+      this.cachedContentLines = lines;
+      return lines;
     }
 
     // First pass: collect tool results by toolCallId
@@ -693,10 +722,15 @@ export class ConversationViewer implements Component {
   /** Build just the streaming portion (thinking + text + indicator). */
   private buildStreamingLines(width: number): string[] {
     const lines: string[] = [];
+    const th = this.theme;
 
     // Streaming thinking text — rendered before text, matching assistant message order
     if (this.streamingThinking.trim()) {
-      lines.push(...this.ensureThinkingMd().render(width));
+      if (this.thinkingVisible) {
+        lines.push(...this.ensureThinkingMd().render(width));
+      } else {
+        lines.push(...this.renderHiddenThinkingLabel());
+      }
     }
 
     // Streaming text — rendered live as deltas arrive
@@ -705,5 +739,16 @@ export class ConversationViewer implements Component {
     }
 
     return lines;
+  }
+
+  /**
+   * Render the "Thinking..." label shown when thinking blocks are hidden.
+   * Matches pi's behavior: italic styling with thinkingText color.
+   */
+  private renderHiddenThinkingLabel(): string[] {
+    const th = this.theme;
+    const thinkingText = th.fg("thinkingText", "Thinking...");
+    const label = th.italic ? th.italic(thinkingText) : thinkingText;
+    return [label, ""];
   }
 }
