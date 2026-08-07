@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [1.9.0] - 2026-08-06
+
 ### Added
 
 - **`outputTranscript` setting.** Global config option and `output_transcript` frontmatter field disable per-agent `.output` transcript writing; agent-level setting overrides global. Spawn Options menu includes toggle.
