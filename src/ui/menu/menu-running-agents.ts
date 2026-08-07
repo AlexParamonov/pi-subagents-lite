@@ -27,7 +27,7 @@ import {
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
-import { getDisplayName, truncateDesc } from "../format.js";
+import { getDisplayName } from "../format.js";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
@@ -255,8 +255,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
                 : record.lifecycle.status === "error"
                   ? "\u2717"
                   : "\u2022";
-        const descLen = getStore().agent.widgetDescLengthFull;
-        const headline = record.display.description ? truncateDesc(record.display.description, descLen) : "";
+        const headline = record.display.description ? record.display.description : "";
         const suffix = headline ? ` \u2014 ${headline}` : "";
         return {
           value: record.id,

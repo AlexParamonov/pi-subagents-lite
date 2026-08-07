@@ -29,6 +29,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 
 vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
+  visibleWidth: (text: string) => text.length,
 }));
 
 function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
@@ -650,86 +651,6 @@ describe("max lines configuration", () => {
   });
 });
 
-describe("description length configuration", () => {
-  let widget: AgentWidget;
-  let manager: AgentManager;
-  let activity: Map<string, LiveView>;
-
-  beforeEach(() => {
-    manager = makeMockManager([]);
-    activity = new Map();
-    widget = new AgentWidget(manager, (id) => activity.get(id));
-  });
-
-  it("compact mode truncates description using descLengthCompact setting", () => {
-    widget.setCompactMode(true);
-    widget.setWidgetShortcut(true);
-    widget.setDescLengthCompact(15);
-    const agent = makeRunningAgent("a1");
-    agent.display.description = "This is a very long description that should be truncated";
-    activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    const agentLine = lines[1];
-    // Description should be truncated (contains ...) and full text should be absent
-    expect(agentLine).toContain("...");
-    expect(agentLine).not.toContain("This is a very long description that should be truncated");
-  });
-
-  it("full mode truncates description using descLengthFull setting", () => {
-    widget.setDescLengthFull(20);
-    const agent = makeRunningAgent("a1");
-    agent.display.description = "This is a very long description that should be truncated";
-    activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    const agentLine = lines[1];
-    // Description should be truncated (contains ...) and full text should be absent
-    expect(agentLine).toContain("...");
-    expect(agentLine).not.toContain("This is a very long description that should be truncated");
-  });
-
-  it("finished agent truncates description using descLengthFull setting", () => {
-    widget.setDescLengthFull(25);
-    const agent = makeFinishedAgent("a1");
-    agent.display.description = "This is a very long description that should be truncated";
-    (manager as any).listAgents = () => [agent];
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    const agentLine = lines[1];
-    // Description should be truncated (contains ...) and full text should be absent
-    expect(agentLine).toContain("...");
-    expect(agentLine).not.toContain("This is a very long description that should be truncated");
-  });
-
-  it("compact mode shows full description when shorter than limit", () => {
-    widget.setCompactMode(true);
-    widget.setWidgetShortcut(true);
-    widget.setDescLengthCompact(50);
-    const agent = makeRunningAgent("a1");
-    agent.display.description = "Short desc";
-    activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines[1]).toContain("Short desc");
-    expect(lines[1]).not.toContain("...");
-  });
-
-  it("full mode shows full description when shorter than limit", () => {
-    widget.setDescLengthFull(100);
-    const agent = makeRunningAgent("a1");
-    agent.display.description = "Short desc";
-    activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
-
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    expect(lines[1]).toContain("Short desc");
-  });
-});
-
 describe("formatMs", () => {
   it("formats hours, minutes, and seconds", () => {
     expect(formatMs(3661000)).toBe("1h 1m 1s");
@@ -1217,5 +1138,30 @@ describe("turn-based eviction for finished agents", () => {
     // Reappearing starts fresh: the stale entry was pruned, so age is 0 again.
     (manager as any).listAgents = () => [makeFinishedAgent("gone")];
     expect(renderState(widget).visible).toEqual(["gone"]);
+  });
+});
+
+describe("description truncation", () => {
+  it("does not truncate descriptions to 50 chars when terminal is wide", () => {
+    const agent = makeRunningAgent("test-1");
+    agent.display.description = "a".repeat(100);
+    const testManager = makeMockManager([agent]);
+    const widget = new AgentWidget(testManager, () => undefined);
+
+    // Render the widget with wide terminal
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    // Find the line with the description
+    const descLine = lines.find((l: string) => l.includes("aaa"));
+    expect(descLine).toBeDefined();
+    // The description should not be truncated to 50 chars
+    expect(descLine).toContain(agent.display.description);
+  });
+
+  it("descLengthFull and descLengthCompact properties are removed", () => {
+    const testManager = makeMockManager([]);
+    const widget = new AgentWidget(testManager, () => undefined);
+    expect((widget as any).descLengthFull).toBeUndefined();
+    expect((widget as any).descLengthCompact).toBeUndefined();
   });
 });

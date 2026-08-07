@@ -83,8 +83,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
-    setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
-    setDescLengthCompact: (n: number) => calls.push(`setDescLengthCompact:${n}`),
+
     setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
     setFinishedEvictTurns: (n: number) => calls.push(`setFinishedEvictTurns:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
@@ -588,12 +587,6 @@ describe("ConfigStore agent properties", () => {
     expect(store.agent.defaultMaxTurns).toBeUndefined();
   });
 
-  it("widgetDescLength defaults: full=50, compact=30", () => {
-    const store = new ConfigStore(minimalIO());
-    expect(store.agent.widgetDescLengthFull).toBe(50);
-    expect(store.agent.widgetDescLengthCompact).toBe(30);
-  });
-
   it("configured values override defaults", () => {
     const { io } = memIO({
       agent: {
@@ -603,8 +596,7 @@ describe("ConfigStore agent properties", () => {
         systemPromptMode: "custom",
         defaultThinking: "high",
         defaultMaxTurns: 50,
-        widgetDescLengthFull: 80,
-        widgetDescLengthCompact: 20,
+
         loadSkillsImplicitly: false,
         loadExtensionsImplicitly: false,
         disableDefaultAgents: true,
@@ -616,8 +608,7 @@ describe("ConfigStore agent properties", () => {
     expect(store.agent.systemPromptMode).toBe("custom");
     expect(store.agent.defaultThinking).toBe("high");
     expect(store.agent.defaultMaxTurns).toBe(50);
-    expect(store.agent.widgetDescLengthFull).toBe(80);
-    expect(store.agent.widgetDescLengthCompact).toBe(20);
+
     expect(store.agent.loadSkillsImplicitly).toBe(false);
     expect(store.agent.loadExtensionsImplicitly).toBe(false);
     expect(store.agent.disableDefaultAgents).toBe(true);
@@ -643,27 +634,6 @@ describe("ConfigStore agent properties", () => {
     expect(store.agent.loadExtensionsImplicitly).toBe(false);
     expect(store.agent.disableDefaultAgents).toBe(true);
     expect(saves).toHaveLength(7);
-  });
-
-  it("setDescLengthFull/Compact persist and sync widget", () => {
-    const { io, saves } = memIO();
-    const { w, calls } = widgetStub();
-    const store = new ConfigStore(io);
-    store.setDeps({ widget: w });
-    calls.length = 0;
-    saves.length = 0;
-
-    store.mutate.widget.setDescLengthFull(80);
-    expect(store.agent.widgetDescLengthFull).toBe(80);
-    expect(saves).toHaveLength(1);
-    expect(calls).toContain("setDescLengthFull:80");
-
-    calls.length = 0;
-    saves.length = 0;
-    store.mutate.widget.setDescLengthCompact(20);
-    expect(store.agent.widgetDescLengthCompact).toBe(20);
-    expect(saves).toHaveLength(1);
-    expect(calls).toContain("setDescLengthCompact:20");
   });
 
   it("setDefaultThinking/MaxTurns(undefined) removes the field", () => {
@@ -706,26 +676,12 @@ describe("ConfigStore agent properties", () => {
     expect(snap.systemPromptMode).toBe("custom");
     expect(snap.defaultThinking).toBe("low");
     expect(snap.defaultMaxTurns).toBe(25);
-    expect(snap.widgetDescLengthFull).toBe(80);
-    expect(snap.widgetDescLengthCompact).toBe(20);
+
     expect(snap.loadSkillsImplicitly).toBe(false);
     expect(snap.loadExtensionsImplicitly).toBe(false);
     expect(snap.disableDefaultAgents).toBe(true);
     expect(snap.showTools).toBe(false);
     expect(snap.Explore).toBeUndefined();
-  });
-
-  it("reload syncs desc length settings to widget", () => {
-    const { io, current } = memIO();
-    const { w, calls } = widgetStub();
-    const store = new ConfigStore(io);
-    store.setDeps({ widget: w });
-    calls.length = 0;
-    current().agent.widgetDescLengthFull = 100;
-    current().agent.widgetDescLengthCompact = 15;
-    store.reload();
-    expect(calls).toContain("setDescLengthFull:100");
-    expect(calls).toContain("setDescLengthCompact:15");
   });
 });
 

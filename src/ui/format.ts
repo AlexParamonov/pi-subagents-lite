@@ -15,11 +15,6 @@ import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 import type { ModelThinkingPlacement } from "../config/types.js";
 
-/** Truncate a description string to `maxLen` characters, appending "..." if truncated. */
-export function truncateDesc(text: string, maxLen: number): string {
-  return text.length > maxLen ? text.slice(0, maxLen - 3) + "..." : text;
-}
-
 // ---- Internal helpers (used by buildStatsParts) ----
 
 /**
@@ -162,17 +157,6 @@ const TOOL_DISPLAY: Record<string, string> = {
   find: "searching",
 };
 
-/** Truncate text to a single line, max len chars. */
-function truncateLine(text: string, len = 60): string {
-  const line =
-    text
-      .split("\n")
-      .find((l) => l.trim())
-      ?.trim() ?? "";
-  if (line.length <= len) return line;
-  return line.slice(0, len) + "\u2026";
-}
-
 /** Build a human-readable activity string from currently-running tools or response text. */
 export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
   if (activeTools.size > 0) {
@@ -195,7 +179,7 @@ export function describeActivity(activeTools: Map<string, string>, responseText?
 
   // No tools active — show truncated response text if available
   if (responseText && responseText.trim().length > 0) {
-    return truncateLine(responseText);
+    return responseText.trim();
   }
 
   return "thinking\u2026";

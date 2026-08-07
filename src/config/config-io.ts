@@ -35,8 +35,7 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   widgetMaxLines: 12,
   toolTimeoutMinutes: DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
   idleTimeoutMinutes: DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
-  widgetDescLengthFull: 50,
-  widgetDescLengthCompact: 30,
+
   widgetCompact: false,
   showCompletionCards: true,
   widgetShortcut: false,

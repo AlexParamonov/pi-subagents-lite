@@ -56,8 +56,7 @@ export interface ResolvedAgentSettings {
   readonly widgetShowModel: boolean;
   readonly widgetShowThinking: boolean;
   readonly widgetNavHint: boolean;
-  readonly widgetDescLengthFull: number;
-  readonly widgetDescLengthCompact: number;
+
   /** System prompt mode: replace (default), inherit parent, or custom file. */
   readonly systemPromptMode: SystemPromptMode;
   /** Whether to include AGENTS.md context files in the subagent system prompt. */
@@ -152,8 +151,7 @@ export class ConfigStore {
       widgetShowModel: a.widgetShowModel !== false,
       widgetShowThinking: a.widgetShowThinking !== false,
       widgetNavHint: a.widgetNavHint !== false,
-      widgetDescLengthFull: a.widgetDescLengthFull ?? 50,
-      widgetDescLengthCompact: a.widgetDescLengthCompact ?? 30,
+
       systemPromptMode: VALID_SYSTEM_PROMPT_MODES.has(a.systemPromptMode as string)
         ? (a.systemPromptMode as SystemPromptMode)
         : "replace",
@@ -370,16 +368,7 @@ export class ConfigStore {
         this.persist();
         this.syncWidgetSettings();
       },
-      setDescLengthFull: (n: number): void => {
-        this.config.agent.widgetDescLengthFull = n;
-        this.persist();
-        this.syncWidgetSettings();
-      },
-      setDescLengthCompact: (n: number): void => {
-        this.config.agent.widgetDescLengthCompact = n;
-        this.persist();
-        this.syncWidgetSettings();
-      },
+
       // Note: persists only. Does NOT syncWidgetSettings — matches the existing
       // behavior, where toggling the shortcut takes effect on next reload rather
       // than immediately. Flagged for a follow-up (the other three widget
@@ -538,8 +527,7 @@ export class ConfigStore {
     w.setWidgetShortcut(a.widgetShortcut);
     w.setMaxLines(a.widgetMaxLines);
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
-    w.setDescLengthFull(a.widgetDescLengthFull);
-    w.setDescLengthCompact(a.widgetDescLengthCompact);
+
     w.setNavHint(a.widgetNavHint);
     w.setFinishedEvictTurns(a.finishedEvictTurns);
     w.setModelDisplayStyle(a.modelDisplayStyle);

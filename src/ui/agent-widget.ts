@@ -2,7 +2,7 @@
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSessionCtx } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import { formatWatchdogSummary } from "../status-note.js";
@@ -13,7 +13,6 @@ import { formatCost, getSessionContextPercent } from "../agents/usage.js";
 import {
   buildStatsParts,
   getDisplayName,
-  truncateDesc,
   describeActivity,
   buildModelThinkingTag,
   resolveAgentModelThinking,
@@ -125,12 +124,6 @@ export class AgentWidget {
   /** Maximum lines for compact mode. */
   private maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2);
 
-  /** Max description length in full mode. */
-  private descLengthFull = 50;
-
-  /** Max description length in compact mode. */
-  private descLengthCompact = 30;
-
   /** Whether to show navigation hint text in the heading. */
   private navHint = true;
 
@@ -215,16 +208,6 @@ export class AgentWidget {
   /** Set max lines for compact mode. */
   setMaxLinesCompact(lines: number) {
     this.maxLinesCompact = lines;
-  }
-
-  /** Set max description length for full mode. */
-  setDescLengthFull(len: number) {
-    this.descLengthFull = len;
-  }
-
-  /** Set max description length for compact mode. */
-  setDescLengthCompact(len: number) {
-    this.descLengthCompact = len;
   }
 
   /** Set whether to show navigation hint text in the heading. */
@@ -637,9 +620,8 @@ export class AgentWidget {
   }
 
   /** Render a finished agent line. */
-  private renderFinishedLine(a: AgentRecord, theme: Theme): string {
+  private renderFinishedLine(a: AgentRecord, theme: Theme, w: number): string {
     const name = getDisplayName(a.display.type);
-    const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -660,7 +642,8 @@ export class AgentWidget {
     );
     const statsLine = statsParts.join("·");
     const tagPart = this.modelThinkingHeaderTag(a, theme);
-    return `${icon} ${theme.fg("dim", name)}${tagPart}  ${theme.fg("dim", fullDesc)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+
+    return `${icon} ${theme.fg("dim", name)}${tagPart}  ${theme.fg("dim", a.display.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
   /** Build the dim-styled model/thinking tag for the header line, or "" when it belongs on the metadata line. */
@@ -716,7 +699,7 @@ export class AgentWidget {
         if (line) metadataLines.push(line);
       }
       blocks.push({
-        header: truncate(`  ${this.renderFinishedLine(a, theme)}`),
+        header: truncate(`  ${this.renderFinishedLine(a, theme, w)}`),
         metadataLines,
       });
     }
@@ -734,19 +717,46 @@ export class AgentWidget {
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       if (this.isCompact()) {
-        // Compact: single line with activity inline, truncated description
-        const desc = truncateDesc(a.display.description, this.descLengthCompact);
+        // Compact: single line; stats before desc so stats remain visible,
+        // then prioritize description over activity per issue spec.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${desc}  ${statsLine}  ${theme.fg("dim", activity)}`;
+        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${statsLine}  `;
+        const fixedWidth = visibleWidth(fixedParts);
+        const availableWidth = w - fixedWidth;
+
+        const desc = a.display.description;
+        const activityMinWidth = 15;
+
+        let finalDesc: string;
+        let finalActivity: string;
+
+        if (availableWidth < 30 + activityMinWidth && visibleWidth(activity) > activityMinWidth) {
+          // Description would be too short if we reserve activity space.
+          // Drop activity reservation to keep description meaningful.
+          finalActivity = "";
+          finalDesc = truncateToWidth(desc, availableWidth);
+        } else {
+          // Reserve at least activityMinWidth for activity.
+          const activityWidth = Math.min(activityMinWidth, visibleWidth(activity));
+          const descWidth = Math.max(0, availableWidth - activityWidth);
+          finalDesc = truncateToWidth(desc, descWidth);
+          finalActivity = truncateToWidth(activity, activityWidth);
+        }
+
+        const headerLine = `${fixedParts}${finalDesc}  ${theme.fg("dim", finalActivity)}`.trimEnd();
         blocks.push({
           header: truncate(headerLine),
           metadataLines: [],
         });
       } else {
         // Full: header + metadata lines (model/thinking on metadata line)
-        const fullDesc = truncateDesc(a.display.description, this.descLengthFull);
+        // Truncate description to preserve stats visibility.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${fullDesc}  ${statsLine}`;
+        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}    ${statsLine}`;
+        const fixedWidth = visibleWidth(fixedParts);
+        const availableWidth = w - fixedWidth;
+        const truncatedDesc = truncateToWidth(a.display.description, Math.max(0, availableWidth));
+        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${truncatedDesc}  ${statsLine}`;
         const metadataLines: string[] = [];
         const line = this.buildMetadataLine(a, "  │ ", theme, truncate);
         if (line) metadataLines.push(line);
@@ -768,10 +778,6 @@ export class AgentWidget {
     return { header: truncate(header), metadataLines: [] };
   }
 
-  /**
-   * Render the widget content. Called from the registered widget's render() callback,
-   * reading live state each time instead of capturing it in a closure.
-   */
   /** Whether the widget should render in compact mode. */
   private isCompact(): boolean {
     return this.forceCompact || (this.widgetShortcut && this.compactMode);
@@ -947,7 +953,7 @@ export class AgentWidget {
     const blocks: RenderBlock[] = [];
     for (const a of queued) {
       const name = getDisplayName(a.display.type);
-      const desc = truncateDesc(a.display.description, this.descLengthFull);
+      const desc = a.display.description;
       const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), metadataLines: [] });
     }

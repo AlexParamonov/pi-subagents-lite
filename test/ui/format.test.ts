@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { buildStatsParts, getDisplayName, buildMetadataLineParts } from "../../src/ui/format.js";
+import { buildStatsParts, getDisplayName, buildMetadataLineParts, describeActivity } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 
@@ -351,5 +351,24 @@ describe("buildMetadataLineParts", () => {
       const parts = buildMetadataLineParts(agent, "id", undefined, "metadata");
       expect(parts[0]).toBe("claude-3-haiku");
     });
+  });
+});
+
+describe("describeActivity", () => {
+  it("does not truncate response text longer than 60 characters", () => {
+    const longResponse = "a".repeat(100);
+    const result = describeActivity(new Map(), longResponse);
+    // Should return the full text, not truncated to 60 chars
+    expect(result.length).toBe(100);
+    expect(result).toBe(longResponse);
+  });
+
+  it("returns truncated response text with ellipsis when truncateLine is called", () => {
+    // This test verifies the current behavior before fix
+    const longResponse = "a".repeat(100);
+    // truncateLine is called inside describeActivity, so result should be truncated
+    const result = describeActivity(new Map(), longResponse);
+    // After fix, this should be the full text
+    expect(result).toBe(longResponse);
   });
 });

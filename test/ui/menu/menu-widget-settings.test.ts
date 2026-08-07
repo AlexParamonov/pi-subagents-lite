@@ -187,7 +187,7 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["compact", "maxLines", "maxLinesCompact", "descLengthFull", "descLengthCompact"]);
+    expect(ids).toEqual(["compact", "maxLines", "maxLinesCompact"]);
   });
 
   it("compact item shows correct value", async () => {
