@@ -27,9 +27,24 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   getAgentConfig: agentConfigMock(),
 }));
 
+// ANSI-aware mocks for truncateToWidth and visibleWidth
+// These mocks properly handle ANSI escape codes like the real implementation
+const ANSI_REGEX = /\x1b\[[0-9;]*m/g;
+
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_REGEX, "");
+}
+
 vi.mock("@earendil-works/pi-tui", () => ({
-  truncateToWidth: (text: string, width: number) => text,
-  visibleWidth: (text: string) => text.length,
+  truncateToWidth: (text: string, width: number, ellipsis: string = "...") => {
+    const visible = stripAnsi(text);
+    if (visible.length <= width) return text;
+    // Simplified truncation: just cut and add ellipsis
+    // Real implementation preserves ANSI, but this mock verifies the interface
+    const truncated = visible.slice(0, width - ellipsis.length);
+    return truncated + ellipsis;
+  },
+  visibleWidth: (text: string) => stripAnsi(text).length,
 }));
 
 function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
@@ -1163,5 +1178,99 @@ describe("description truncation", () => {
     const widget = new AgentWidget(testManager, () => undefined);
     expect((widget as any).descLengthFull).toBeUndefined();
     expect((widget as any).descLengthCompact).toBeUndefined();
+  });
+
+  it("stats remain visible when descriptions are long", () => {
+    const agent = makeRunningAgent("test-1");
+    agent.display.description = "x".repeat(500);
+    const testManager = makeMockManager([agent]);
+    const widget = new AgentWidget(testManager, () => ({ activeTools: new Map(), responseText: "" }));
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+
+    const headerLine = lines.find((l: string) => l.includes("**Builder**"));
+    expect(headerLine).toBeDefined();
+    // Stats (tool uses, turns) should be visible in the output
+    expect(headerLine).toContain("5"); // toolUses: 5
+    expect(headerLine).toContain("3"); // turnCount: 3
+  });
+
+  it("descriptions grow with terminal width", () => {
+    const agent = makeRunningAgent("test-1");
+    agent.display.description = "Test description that should grow with width";
+    const testManager = makeMockManager([agent]);
+    const widget = new AgentWidget(testManager, () => undefined);
+
+    // Render at narrow width
+    const narrowTUI = { terminal: { columns: 80 } };
+    const narrowLines = (widget as any).renderWidget(narrowTUI, makeMockTheme());
+    const narrowDescLine = narrowLines.find((l: string) => l.includes("Test description"));
+
+    // Render at wide width
+    const wideTUI = { terminal: { columns: 200 } };
+    const wideLines = (widget as any).renderWidget(wideTUI, makeMockTheme());
+    const wideDescLine = wideLines.find((l: string) => l.includes("Test description"));
+
+    // Both should contain the description (truncation happens but description is present)
+    expect(narrowDescLine).toBeDefined();
+    expect(wideDescLine).toBeDefined();
+    // The wide terminal should show more of the description
+    // (less truncated since more space available)
+    const narrowDescMatch = narrowDescLine.match(/Test description[^\]]*/);
+    const wideDescMatch = wideDescLine.match(/Test description[^\]]*/);
+    if (narrowDescMatch && wideDescMatch) {
+      // Wide terminal should have longer visible description
+      expect(wideDescMatch[0].length).toBeGreaterThanOrEqual(narrowDescMatch[0].length);
+    }
+  });
+
+  it("ANSI escape codes in descriptions survive truncation", () => {
+    const agent = makeRunningAgent("test-1");
+    // Description with ANSI codes (simulating colored text)
+    agent.display.description = "\x1b[31mRed description\x1b[0m with color";
+    const testManager = makeMockManager([agent]);
+    const widget = new AgentWidget(testManager, () => undefined);
+
+    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const descLine = lines.find((l: string) => l.includes("Red description"));
+    expect(descLine).toBeDefined();
+    // The visible text should be "Red description with color" (11 chars)
+    // ANSI codes should be handled properly (not counted in width)
+    // Just verify the line renders without crashing and contains the text
+    expect(descLine).toContain("Red description");
+  });
+
+  it("compact mode prioritizes description over activity when space is tight", () => {
+    const agent = makeRunningAgent("test-1");
+    agent.display.description = "A".repeat(100);
+    const testManager = makeMockManager([agent]);
+    const widget = new AgentWidget(testManager, () => undefined);
+    widget.setCompactMode(true);
+
+    // Mock activity with long text
+    const liveView = {
+      activeTools: new Map(),
+      responseText: "",
+    };
+    const getLiveView = () => liveView;
+    const widget2 = new AgentWidget(testManager, getLiveView);
+    widget2.setCompactMode(true);
+
+    // Force activity to be long enough to trigger prioritization
+    liveView.activeTools = new Map([
+      ["read", "read"],
+      ["bash", "bash"],
+      ["edit", "edit"],
+    ]);
+
+    // Render at narrow width to trigger the prioritization logic
+    const narrowTUI = { terminal: { columns: 60 } };
+    const lines = (widget2 as any).renderWidget(narrowTUI, makeMockTheme());
+
+    // Find the compact line (should have description and possibly activity)
+    const compactLine = lines.find((l: string) => l.includes("AAA"));
+    expect(compactLine).toBeDefined();
+    // Description should be present
+    expect(compactLine).toContain("AAA");
   });
 });

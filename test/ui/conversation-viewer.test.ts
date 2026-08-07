@@ -895,22 +895,22 @@ describe("ConversationViewer", () => {
 
       // Initially thinking should be visible (mock returns false for hideThinkingBlock)
       expect((viewer as any).thinkingVisible).toBe(true);
-      let text = viewer.render(80).join("\n");
-      expect(text).toContain("Th:vis");
+      let text = viewer.render(120).join("\n");
+      expect(text).toContain("Thinking: show");
 
       // Simulate ctrl+T press
       viewer.handleInput("\x14"); // ctrl+T
 
       expect((viewer as any).thinkingVisible).toBe(false);
-      text = viewer.render(80).join("\n");
-      expect(text).toContain("Th:hid");
+      text = viewer.render(120).join("\n");
+      expect(text).toContain("Thinking: hide");
 
       // Toggle again
       viewer.handleInput("\x14");
 
       expect((viewer as any).thinkingVisible).toBe(true);
-      text = viewer.render(80).join("\n");
-      expect(text).toContain("Th:vis");
+      text = viewer.render(120).join("\n");
+      expect(text).toContain("Thinking: show");
     });
 
     it("shows thinking blocks when thinkingVisible is true", () => {
@@ -948,8 +948,8 @@ describe("ConversationViewer", () => {
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
       // Footer should show thinking state
-      const text = viewer.render(80).join("\n");
-      expect(text).toContain("Th:");
+      const text = viewer.render(120).join("\n");
+      expect(text).toContain("Thinking: show");
     });
 
     it("starts with thinking hidden when hideThinkingBlock setting is true", () => {
