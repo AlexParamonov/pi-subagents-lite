@@ -730,17 +730,25 @@ export class AgentWidget {
         let finalDesc: string;
         let finalActivity: string;
 
-        if (availableWidth < 30 + activityMinWidth && visibleWidth(activity) > activityMinWidth) {
-          // Description would be too short if we reserve activity space.
-          // Drop activity reservation to keep description meaningful.
-          finalActivity = "";
+        // Compute description width first.
+        const truncatedDesc = truncateToWidth(desc, Math.max(0, availableWidth));
+        const descWidth = visibleWidth(truncatedDesc);
+
+        if (descWidth < 30 && visibleWidth(activity) > activityMinWidth) {
+          // Description too short; drop activity to give description full width.
           finalDesc = truncateToWidth(desc, availableWidth);
+          finalActivity = "";
         } else {
-          // Reserve at least activityMinWidth for activity.
-          const activityWidth = Math.min(activityMinWidth, visibleWidth(activity));
-          const descWidth = Math.max(0, availableWidth - activityWidth);
-          finalDesc = truncateToWidth(desc, descWidth);
-          finalActivity = truncateToWidth(activity, activityWidth);
+          // Description gets what it needs; activity gets remaining space.
+          finalDesc = truncatedDesc;
+          const remainingWidth = availableWidth - descWidth;
+          if (remainingWidth >= activityMinWidth) {
+            // Enough space for activity minimum; give activity remaining space.
+            finalActivity = truncateToWidth(activity, remainingWidth);
+          } else {
+            // Not enough space for activity minimum; drop activity.
+            finalActivity = "";
+          }
         }
 
         const headerLine = `${fixedParts}${finalDesc}  ${statsLine}  ${theme.fg("dim", finalActivity)}`.trimEnd();
