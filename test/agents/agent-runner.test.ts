@@ -419,18 +419,18 @@ describe("runAgent — codex stream error retry wiring", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // The wiring replaced the classifier with a wrapper that delegates to it.
+    // The wiring replaced the classifier with a wrapper.
     expect(session._isRetryableError).not.toBe(originalClassifier);
-    // Transient Codex stream errors are now classified as retryable...
+    // Transient Codex stream errors are classified as retryable by our pattern...
     expect(
       session._isRetryableError({ stopReason: "error", errorMessage: "stream disconnected before completion" }),
     ).toBe(true);
-    expect(originalClassifier).toHaveBeenCalledWith({
-      stopReason: "error",
-      errorMessage: "stream disconnected before completion",
-    });
-    // ...while other errors still fall through to the original classifier.
+    // ...without calling the original (our pattern matches first).
+    expect(originalClassifier).not.toHaveBeenCalled();
+    // Other errors fall through to the original classifier.
+    originalClassifier.mockClear();
     expect(session._isRetryableError({ stopReason: "error", errorMessage: "rate limited" })).toBe(false);
+    expect(originalClassifier).toHaveBeenCalled();
   });
 });
 

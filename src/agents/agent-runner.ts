@@ -35,7 +35,7 @@ import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } fr
 import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
-import { enableCodexStreamErrorRetry } from "./codex-stream-retry.js";
+import { patchRetryClassifier } from "./stream-retry.js";
 
 // Cache: extension path → unscoped package name (lowercased), or undefined if not found
 const packageNameCache = new Map<string, string | undefined>();
@@ -547,8 +547,8 @@ async function initSession(
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
   const result = await createAgentSession(sessionOpts);
   const session = result.session;
-  // Mark transient Codex stream errors as retryable.
-  enableCodexStreamErrorRetry(session);
+  // Patch retry classifier with our custom patterns.
+  patchRetryClassifier(session);
 
   // Inject max_tokens into provider request payloads.
   // Spawn-time value wins over agent config (frontmatter).

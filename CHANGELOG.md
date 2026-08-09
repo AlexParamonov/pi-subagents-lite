@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+### Fixed
+
+- **Qwen quota retry.** Qwen `insufficient_quota` errors containing "Allocated quota exceeded" are now retried instead of failing immediately. These may be transient false positives when the quota check is eventually consistent.
 ## [1.10.0] - 2026-08-09
 
 ### Added
