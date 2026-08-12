@@ -1478,6 +1478,85 @@ describe("AgentManager", () => {
     });
   });
 
+  describe("interrupt binding lifecycle guards", () => {
+    it("abort of the parent signal invokes the stop path exactly once, with stoppedBy user", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+      const id = spawnForeground("task", { signal: controller.signal });
+
+      const abortSpy = vi.spyOn(manager, "abort");
+      controller.abort();
+
+      expect(abortSpy).toHaveBeenCalledTimes(1);
+      expect(abortSpy).toHaveBeenCalledWith(id, "user");
+      abortSpy.mockRestore();
+      await manager.getRecord(id)!.execution.promise;
+    });
+
+    it("detaches the binding at settlement — a later abort never reaches the stop path", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+      const id = spawnForeground("task", { signal: controller.signal });
+      const record = manager.getRecord(id)!;
+      expect(await record.execution.promise).toBe("done");
+
+      const abortSpy = vi.spyOn(manager, "abort");
+      controller.abort();
+      expect(abortSpy).not.toHaveBeenCalled();
+      expect(record.lifecycle.status).toBe("completed");
+      abortSpy.mockRestore();
+    });
+
+    it("detaches the binding when the agent is stopped — a later abort never reaches the stop path", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+      const id = spawnForeground("task", { signal: controller.signal });
+
+      manager.abort(id, "agent");
+      const abortSpy = vi.spyOn(manager, "abort");
+      controller.abort();
+      expect(abortSpy).not.toHaveBeenCalled();
+      abortSpy.mockRestore();
+      await manager.getRecord(id)!.execution.promise;
+    });
+
+    it("detaches all bindings on dispose — a later abort never reaches the stop path", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+      spawnForeground("task", { signal: controller.signal });
+
+      manager.dispose();
+      const abortSpy = vi.spyOn(manager, "abort");
+      controller.abort();
+      expect(abortSpy).not.toHaveBeenCalled();
+      abortSpy.mockRestore();
+    });
+
+    it("detaches the binding when a queued start fails during drain", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(firstRun.promise).mockImplementationOnce(() => {
+        throw new Error("start failed");
+      });
+      const controller = new AbortController();
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second", { signal: controller.signal });
+
+      firstRun.resolve(mockRunResult());
+      await manager.getRecord(id1)!.execution.promise;
+      expect(manager.getRecord(id2)!.lifecycle.status).toBe("error");
+
+      const abortSpy = vi.spyOn(manager, "abort");
+      controller.abort();
+      expect(abortSpy).not.toHaveBeenCalled();
+      abortSpy.mockRestore();
+    });
+  });
+
   describe("already-aborted signal at spawn", () => {
     it("records an already-aborted spawn as stopped without ever starting it", async () => {
       manager = new AgentManager(onComplete);
