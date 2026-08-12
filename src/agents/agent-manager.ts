@@ -108,10 +108,10 @@ export class AgentManager {
   /** Parent-interrupt bindings by record, removed at every terminal transition. */
   private parentBindings = new WeakMap<AgentRecord, { signal: AbortSignal; handler: () => void }>();
 
-  /** Session-level cumulative agent cost. Survives agent eviction. */
+  /** Session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   private totalAgentCost = 0;
 
-  /** Session-level completed agent count. Survives agent eviction. */
+  /** Session-level completed agent count. Survives record removal (Clear/dispose). */
   private totalAgentCount = 0;
 
   /** Per-model concurrency slots keyed by "provider/modelId". */
@@ -473,12 +473,12 @@ export class AgentManager {
     this.onComplete = cb;
   }
 
-  /** Get the session-level cumulative agent cost. Survives agent eviction. */
+  /** Get the session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   getTotalAgentCost(): number {
     return this.totalAgentCost;
   }
 
-  /** Get the session-level completed agent count. Survives agent eviction. */
+  /** Get the session-level completed agent count. Survives record removal (Clear/dispose). */
   getTotalAgentCount(): number {
     return this.totalAgentCount;
   }

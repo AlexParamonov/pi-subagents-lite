@@ -89,7 +89,7 @@ export interface ResolvedAgentSettings {
   readonly deltaInputTokens: boolean;
   /** Buffer size for streaming thinking blocks to output file. 0 = disabled. */
   readonly outputThinkingBufferSize: number;
-  /** Minutes to retain finished agents before cleanup eviction. */
+  /** Minutes a finished agent stays visible in the widget after completion. */
   readonly finishedRetentionMinutes: number;
   /** Turns to keep finished agents visible. 0 = disabled. */
   readonly finishedEvictTurns: number;

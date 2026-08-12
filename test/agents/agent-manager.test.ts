@@ -1528,7 +1528,9 @@ describe("AgentManager", () => {
       await manager.getRecord(id1)!.execution.promise;
 
       expect(manager.clear(id1)).toBe(true);
+      expect(manager.getRecord(id1)).toBeUndefined(); // cleared: removed from the map
       expect(manager.clear(id2)).toBe(false); // running or queued
+      expect(manager.getRecord(id2)).toBeDefined(); // rejected: no state change
       expect(manager.clear("no-such-id")).toBe(false);
 
       deferred2.resolve(mockRunResult());
