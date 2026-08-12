@@ -323,16 +323,10 @@ export class AgentManager {
       graceTurns: options.graceTurns,
       projectTrusted: options.projectTrusted,
       signal: record.execution.abortController!.signal,
-      ...this.createRecordCallbacks(record, options),
-      onTurnEnd: (turnCount) => {
+      ...this.recordRunCallbacks(record, options, (turnCount) => {
         record.stats.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
-      },
-      onTextDelta: (delta, fullText) => {
-        // Streamed response text counts as activity for the idle watchdog.
-        this.watchdog.recordText(id);
-        options.onTextDelta?.(delta, fullText);
-      },
+      }),
       onSessionCreated: (session) => {
         record.execution.session = session;
         // Flush any steers that arrived before the session was ready
@@ -528,6 +522,28 @@ export class AgentManager {
     };
   }
 
+  /**
+   * Record-tracking callback overlay shared by a first run and a continuation:
+   * accumulates stats, feeds the watchdog, and forwards to the caller's own
+   * callbacks. writeTurnCount is the per-path policy — the first run records
+   * the absolute count, a continuation adds to the previous total.
+   */
+  private recordRunCallbacks(
+    record: AgentRecord,
+    forward: Pick<RunCallbacks, "onToolActivity" | "onTextDelta" | "onAssistantUsage" | "onCompaction"> | undefined,
+    writeTurnCount: (turnCount: number) => void,
+  ) {
+    return {
+      ...this.createRecordCallbacks(record, forward),
+      onTextDelta: (delta: string, fullText: string) => {
+        // Streamed response text counts as activity for the idle watchdog.
+        this.watchdog.recordText(record.id);
+        forward?.onTextDelta?.(delta, fullText);
+      },
+      onTurnEnd: writeTurnCount,
+    };
+  }
+
   private drainQueue() {
     const started = new Set<string>();
     for (const entry of this.queue) {
@@ -624,22 +640,12 @@ export class AgentManager {
 
     const previousTurns = record.stats.turnCount ?? 0;
     const promise = continueAgentSession(session, message, {
-      ...this.createRecordCallbacks(record, {
-        // Re-bridge tool activity to the spawn-time live-view callbacks so the
-        // widget shows real activity while a continued agent runs.
-        onToolActivity: (activity) => record.execution.liveViewCallbacks?.onToolActivity?.(activity),
+      ...this.recordRunCallbacks(record, record.execution.liveViewCallbacks, (turnCount) => {
+        record.stats.turnCount = previousTurns + turnCount;
       }),
-      onTextDelta: (delta, fullText) => {
-        // Streamed response text counts as activity for the idle watchdog.
-        this.watchdog.recordText(record.id);
-        record.execution.liveViewCallbacks?.onTextDelta?.(delta, fullText);
-      },
       maxTurns: record.stats.maxTurns,
       graceTurns: getStore().agent.graceTurns ?? DEFAULT_GRACE_TURNS,
       signal: abortController.signal,
-      onTurnEnd: (turnCount: number) => {
-        record.stats.turnCount = previousTurns + turnCount;
-      },
     });
     this.attachSettlementChain(record, promise, concurrencySlot);
     // The run proceeds asynchronously; the caller only learns the wiring
