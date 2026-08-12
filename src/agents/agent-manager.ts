@@ -351,7 +351,7 @@ export class AgentManager {
   /**
    * Wire the shared settlement chain (status precedence, error formatting,
    * tally, slot release, gate open) onto a run promise. Used by both the
-   * first run (startAgent) and continuations (steer) so the two paths
+   * first run (startAgent) and continuations (continueSettledAgent) so the two paths
    * cannot drift. openGate is idempotent, so a continuation's second call
    * is a no-op — the gate resolver is dropped at the first settlement.
    */
