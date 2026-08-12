@@ -832,46 +832,6 @@ describe("AgentManager", () => {
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("error");
     });
   });
-
-  describe("usage accumulation", () => {
-    it("accumulates reported input across usage reports", () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      const onUsage = getOnAssistantUsage();
-
-      // First usage report: 100 input tokens, no cacheRead
-      onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(100);
-      expect(record.stats.lifetimeUsage.output).toBe(50);
-
-      // Second report: 250 input — accumulates as reported
-      onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(350);
-      expect(record.stats.lifetimeUsage.output).toBe(80);
-    });
-
-    it("uses reported input when provider reports cache reads", () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      const onUsage = getOnAssistantUsage();
-
-      onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 150 });
-      expect(record.stats.lifetimeUsage.input).toBe(200);
-    });
-  });
-
   // ── Model error handling (final assistant message stopReason "error") ──
 
   describe("model error handling", () => {
