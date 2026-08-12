@@ -139,7 +139,7 @@ export class ConversationViewer implements Component {
           }
         }
       } catch (err) {
-        // Swallow — session events after viewer closure must not crash the menu
+        // Swallow — a throw here would crash the host menu; events can arrive after closure, before dispose.
       }
     });
   }

@@ -196,7 +196,6 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     getWidget()?.setUICtx(ctx.ui as unknown as UICtx);
   });
 
-  // Listen for ctrl+o keypress to sync compact mode (push-based, no polling)
   let unregisterTerminalInput: (() => void) | undefined;
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
@@ -204,6 +203,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    // ctrl+o syncs compact mode with tool expansion (push-based, no polling)
     if (ctx.hasUI && !unregisterTerminalInput) {
       unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));
     }

@@ -9,10 +9,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "./types.js";
 
-/**
- * True if the name has characters outside the whitelist
- * (alphanumeric, hyphen, underscore, dot — no leading dot).
- */
+/** True if the name has characters outside the whitelist (alphanumeric, hyphen, underscore, dot — no leading dot). */
 export function isUnsafeName(name: string): boolean {
   return !name || name.length > 128 || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name);
 }
