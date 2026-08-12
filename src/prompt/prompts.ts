@@ -141,7 +141,7 @@ export function buildAgentPrompt(
   // Agent's own system prompt wrapped in <agent_instructions> tags
   const agentInstructions = `\n<agent_instructions>\n${config.systemPrompt}\n</agent_instructions>`;
 
-  // Project context files (AGENTS.md) — placed after agent_instructions, before extras
+  // Project context files (AGENTS.md) — placed before active_agent and agent_instructions
   let contextSuffix = "";
   if (extras?.contextFiles?.length) {
     const lines = ["<project_context>", "", "Project-specific instructions and guidelines:", ""];
