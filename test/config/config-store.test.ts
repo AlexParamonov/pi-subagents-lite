@@ -95,14 +95,12 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
   return { w: w as unknown as AgentWidget, calls };
 }
 
-function managerStub(): { m: AgentManager; concurrencies: unknown[]; retentions: number[] } {
+function managerStub(): { m: AgentManager; concurrencies: unknown[] } {
   const concurrencies: unknown[] = [];
-  const retentions: number[] = [];
   const m = {
     setConcurrency: (c: unknown) => concurrencies.push(c),
-    setRetentionMinutes: (n: number) => retentions.push(n),
   };
-  return { m: m as unknown as AgentManager, concurrencies, retentions };
+  return { m: m as unknown as AgentManager, concurrencies };
 }
 
 /** Parse setStatsVisibility payloads from recorded widget calls. */
@@ -336,31 +334,23 @@ describe("ConfigStore persisted mutations", () => {
     expect(store.concurrency.providers).toEqual({});
   });
 
-  it("setFinishedRetentionMinutes persists and calls manager", () => {
+  it("setFinishedRetentionMinutes persists the value", () => {
     const { io, saves } = memIO();
-    const { m, retentions } = managerStub();
     const store = new ConfigStore(io);
-    store.setDeps({ manager: m });
-    retentions.length = 0;
 
     store.mutate.agent.setFinishedRetentionMinutes(15);
     expect(store.agent.finishedRetentionMinutes).toBe(15);
     expect(saves).toHaveLength(1);
     expect(saves[0].agent.finishedRetentionMinutes).toBe(15);
-    expect(retentions).toEqual([15]);
   });
 
   it("setFinishedRetentionMinutes clamps to minimum 1", () => {
     const { io, saves } = memIO();
-    const { m, retentions } = managerStub();
     const store = new ConfigStore(io);
-    store.setDeps({ manager: m });
-    retentions.length = 0;
 
     store.mutate.agent.setFinishedRetentionMinutes(0);
     expect(store.agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
     expect(saves[0].agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
-    expect(retentions).toEqual([1 / 60]);
   });
 
   it("setToolTimeoutMinutes and setIdleTimeoutMinutes persist and clamp to 0", () => {
@@ -715,16 +705,6 @@ describe("ConfigStore lifecycle", () => {
     store.reload();
     expect(calls).toContain("setShowCost:true");
     expect(calls).toContain("setForceCompact:true");
-  });
-
-  it("reload re-syncs retention to manager", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false, finishedRetentionMinutes: 20 } });
-    const { m, retentions } = managerStub();
-    const store = new ConfigStore(io);
-    store.setDeps({ manager: m });
-    retentions.length = 0;
-    store.reload();
-    expect(retentions).toContain(20);
   });
 
   it("setDeps re-syncs widget settings from current config", () => {

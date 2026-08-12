@@ -25,17 +25,11 @@ import { getAgentConfig } from "./agent-types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
 
-/** How often to check for expired agent records (milliseconds). */
-export const CLEANUP_INTERVAL_MS = 60_000;
-
 /** How often the watchdog scans running agents for stuck state (milliseconds). */
 export const WATCHDOG_TICK_MS = 5_000;
 
-/** Milliseconds in one minute (config thresholds and retention are stored in minutes). */
+/** Milliseconds in one minute (config timeout thresholds are stored in minutes). */
 const MINUTE_MS = 60_000;
-
-/** Age after which a completed agent record is evicted (milliseconds). Default: 1 min. */
-const DEFAULT_RETENTION_MINUTES = 1;
 
 /** Exact error message for queued agents that never start because the manager disposed (US-9). */
 const DISPOSE_QUEUED_MESSAGE = "Agent manager disposed before the queued agent could start.";
@@ -99,7 +93,6 @@ export interface SpawnOptions extends SpawnConfig, RunCallbacks {
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
-  private cleanupInterval: ReturnType<typeof setInterval>;
   /** Time-based stuck-agent detection state (tool + idle timeouts). */
   private watchdog = new Watchdog();
   private watchdogInterval: ReturnType<typeof setInterval>;
@@ -120,9 +113,6 @@ export class AgentManager {
 
   /** Session-level completed agent count. Survives agent eviction. */
   private totalAgentCount = 0;
-
-  /** Retention cutoff in minutes for finished agents. Updated at runtime via setRetentionMinutes. */
-  private retentionMinutes = DEFAULT_RETENTION_MINUTES;
 
   /** Per-model concurrency slots keyed by "provider/modelId". */
   private concurrencySlots = new Map<string, ConcurrencySlot>();
@@ -156,16 +146,8 @@ export class AgentManager {
       this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
     }
 
-    this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
-    this.cleanupInterval.unref();
-
     this.watchdogInterval = setInterval(() => this.checkWatchdogs(), WATCHDOG_TICK_MS);
     this.watchdogInterval.unref();
-  }
-
-  /** Update the age cutoff for finished agent retention (minutes). Takes effect at the next cleanup tick. */
-  setRetentionMinutes(minutes: number): void {
-    this.retentionMinutes = Math.max(1, minutes);
   }
 
   /**
@@ -608,6 +590,18 @@ export class AgentManager {
     return [...this.agents.values()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
   }
 
+  /**
+   * Remove a terminal record: dispose its session and detach any parent
+   * interrupt binding (ADR-0006). Running/queued records are rejected — Stop is
+   * the action there. Clear is the only per-record removal besides dispose().
+   */
+  clear(id: string): boolean {
+    const record = this.agents.get(id);
+    if (!record || !isTerminalStatus(record.lifecycle.status)) return false;
+    this.removeRecord(id, record);
+    return true;
+  }
+
   abort(id: string, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
@@ -654,19 +648,6 @@ export class AgentManager {
     this.agents.delete(id);
   }
 
-  private cleanup() {
-    const cutoff = Date.now() - this.retentionMinutes * MINUTE_MS;
-    for (const [id, record] of this.agents) {
-      if (!isTerminalStatus(record.lifecycle.status)) continue;
-      if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
-      // Keep the record until the LLM has read the result (foreground return or
-      // background nudge). Otherwise a completed background agent can be wiped
-      // before its nudge is emitted.
-      if (!record.lifecycle.resultConsumed) continue;
-      this.removeRecord(id, record);
-    }
-  }
-
   /**
    * Scan running agents for tool-timeout and idle-timeout violations and stop
    * the offenders with a watchdog reason. Thresholds are read live from the
@@ -685,7 +666,6 @@ export class AgentManager {
   }
 
   dispose() {
-    clearInterval(this.cleanupInterval);
     clearInterval(this.watchdogInterval);
     this.queue = [];
     for (const record of this.agents.values()) {

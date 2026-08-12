@@ -69,7 +69,7 @@ function mockRunResult(overrides?: Partial<ReturnType<typeof mockRunResult>>) {
   };
 }
 
-import { AgentManager, CLEANUP_INTERVAL_MS, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
+import { AgentManager, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
 import type { ConcurrencyConfig } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {
@@ -442,39 +442,6 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.05);
     });
 
-    // DEPRECATED: superseded by the "settled-record persistence" tests — records are never
-    // timer-evicted (ADR-0006), so "after eviction" is no longer a state.
-    it("persists cost after agent is evicted from map", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const ctx = fakeCtx();
-        const pi = fakePi();
-
-        const id = manager.spawn(pi, ctx, "general-purpose", "task", {
-          description: "test task",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        getOnAssistantUsage()({ input: 0, output: 0, cacheWrite: 0, cost: 0.03, cacheRead: 0 });
-        await record.execution.promise;
-
-        expect(manager.getTotalAgentCost()).toBe(0.03);
-
-        // Record is consumed (result read) — eligible for eviction when old.
-        record.lifecycle.resultConsumed = true;
-        // Let the real 60s cleanup interval run until the record is 20 minutes old.
-        vi.advanceTimersByTime(20 * 60_000);
-
-        expect(manager.getRecord(id)).toBeUndefined();
-        expect(manager.getTotalAgentCost()).toBe(0.03);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
     it("accumulates cost from multiple agents", async () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValueOnce(mockRunResult());
@@ -581,34 +548,6 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCount()).toBe(2);
     });
 
-    // DEPRECATED: superseded by the "settled-record persistence" tests — records are never
-    // timer-evicted (ADR-0006), so "after eviction" is no longer a state.
-    it("persists count after agent is evicted from map", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-          description: "test",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        await record.execution.promise;
-
-        expect(manager.getTotalAgentCount()).toBe(1);
-
-        // Evict the record via the real 60s cleanup interval.
-        record.lifecycle.resultConsumed = true;
-        vi.advanceTimersByTime(20 * 60_000);
-
-        expect(manager.getRecord(id)).toBeUndefined();
-        expect(manager.getTotalAgentCount()).toBe(1);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
     it("counts agent that fails mid-execution", async () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockRejectedValueOnce(new Error("boom"));
@@ -670,129 +609,6 @@ describe("AgentManager", () => {
       // Agent 1 completed successfully (counted), agent 2 failed to start (not counted)
       expect(manager.getTotalAgentCount()).toBe(1);
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("error");
-    });
-  });
-  // DEPRECATED: manager timer eviction (cleanup / setRetentionMinutes / resultConsumed) is
-  // removed — terminal records are never timer-evicted. Superseded by the
-  // "settled-record persistence" tests (ADR-0006).
-  describe("cleanup", () => {
-    it("preserves unconsumed completed records older than the cutoff", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-          description: "task",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        await record.execution.promise;
-
-        // Result never consumed by the LLM — must not be evicted, even when old.
-        vi.advanceTimersByTime(20 * 60_000);
-
-        expect(manager.getRecord(id)).toBeDefined();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("evicts consumed completed records older than the cutoff", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-          description: "task",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        await record.execution.promise;
-
-        // Once the LLM has read the result, the record is safe to evict when old.
-        record.lifecycle.resultConsumed = true;
-        vi.advanceTimersByTime(20 * 60_000);
-
-        expect(manager.getRecord(id)).toBeUndefined();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("does not evict records younger than the cutoff", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-          description: "task",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        await record.execution.promise;
-        record.lifecycle.resultConsumed = true;
-        // Just completed — well within the 10-minute retention window.
-        vi.advanceTimersByTime(CLEANUP_INTERVAL_MS);
-
-        expect(manager.getRecord(id)).toBeDefined();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("uses configurable retention via setRetentionMinutes", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-          description: "task",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        await record.execution.promise;
-
-        // Set retention to 1 minute
-        manager.setRetentionMinutes(1);
-        record.lifecycle.resultConsumed = true;
-        // Record completed 2 minutes ago — evicted by the second cleanup tick.
-        vi.advanceTimersByTime(2 * 60_000);
-
-        expect(manager.getRecord(id)).toBeUndefined();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("retention update takes effect at next cleanup", async () => {
-      vi.useFakeTimers();
-      try {
-        manager = new AgentManager(onComplete);
-        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-        const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-          description: "task",
-          modelKey: "test/model",
-        });
-        const record = manager.getRecord(id)!;
-        await record.execution.promise;
-
-        // Record completed 15 minutes ago — would be evicted with default 10-min retention
-        record.lifecycle.resultConsumed = true;
-
-        // But bump retention to 20 minutes before the cleanup tick fires
-        manager.setRetentionMinutes(20);
-        vi.advanceTimersByTime(15 * 60_000);
-
-        // Should survive because retention was raised
-        expect(manager.getRecord(id)).toBeDefined();
-      } finally {
-        vi.useRealTimers();
-      }
     });
   });
 
@@ -1700,6 +1516,24 @@ describe("AgentManager", () => {
       deferred.resolve(mockRunResult());
     });
 
+    it("returns true for a terminal record and false for active or unknown ids", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const deferred1 = makeResolvablePromise();
+      const deferred2 = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(deferred1.promise).mockReturnValueOnce(deferred2.promise);
+
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      deferred1.resolve(mockRunResult());
+      await manager.getRecord(id1)!.execution.promise;
+
+      expect(manager.clear(id1)).toBe(true);
+      expect(manager.clear(id2)).toBe(false); // running or queued
+      expect(manager.clear("no-such-id")).toBe(false);
+
+      deferred2.resolve(mockRunResult());
+    });
+
     it("opens the completion gate when a stopped-but-settling record is cleared", async () => {
       manager = new AgentManager(onComplete);
       const deferred = makeResolvablePromise();
@@ -1726,6 +1560,21 @@ describe("AgentManager", () => {
 
       deferred.resolve(mockRunResult({ aborted: true, responseText: "partial" }));
     });
+
+    it("detaches the parent binding when a finished record is cleared", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+
+      const id = spawnForeground("task", { signal: controller.signal });
+      await manager.getRecord(id)!.execution.promise;
+
+      expect(manager.clear(id)).toBe(true);
+      const abortSpy = vi.spyOn(manager, "abort");
+      controller.abort();
+      expect(abortSpy).not.toHaveBeenCalled();
+      abortSpy.mockRestore();
+    });
   });
 
   // ── Wave 1: settled-record persistence (slice 1-4, ADR-0006) ──
@@ -1736,8 +1585,7 @@ describe("AgentManager", () => {
       try {
         manager = new AgentManager(onComplete);
         mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-        // Drive the real spawn path so the coordinator marks the result consumed —
-        // the old cleanup timer only evicted consumed records.
+        // Drive the real spawn path — same route as a foreground tool spawn.
         const { SpawnCoordinator } = await import("../../src/spawn/spawn-coordinator.js");
         const coordinator = new SpawnCoordinator(manager);
         const { agentId } = await coordinator.spawn(fakePi(), fakeCtx(), {

@@ -596,67 +596,6 @@ describe("SpawnCoordinator", () => {
     });
   });
 
-  // DEPRECATED: the resultConsumed lifecycle field is removed (ADR-0005) — the completion gate
-  // (execution.promise) opens at the terminal state and the coordinator awaits it. Superseded
-  // by the "completion gate — foreground wait" tests.
-  describe("result consumption", () => {
-    it("foreground spawn marks the result as consumed before returning", async () => {
-      const coordinator = new SpawnCoordinator(manager as any);
-      const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder",
-        prompt: "do something",
-        description: "Test fg",
-        graceTurns: 6,
-        runInBackground: false,
-      });
-
-      expect(result.record.lifecycle.resultConsumed).toBe(true);
-    });
-
-    it("background nudge emission marks the result as consumed", async () => {
-      const coordinator = new SpawnCoordinator(manager as any);
-      const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder",
-        prompt: "task",
-        description: "Test bg",
-        graceTurns: 6,
-        runInBackground: true,
-      });
-      const record = manager.getRecord(result.agentId);
-
-      expect(record.lifecycle.resultConsumed).toBeUndefined();
-
-      coordinator.scheduleNudge(result.agentId);
-      vi.advanceTimersByTime(200);
-
-      // sendMessage delivered the full result to the LLM — record is safe to evict.
-      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      expect(record.lifecycle.resultConsumed).toBe(true);
-    });
-
-    it("does not mark consumed when nudge delivery fails", async () => {
-      const coordinator = new SpawnCoordinator(manager as any);
-      const result = await coordinator.spawn(mockPi, ctx, {
-        type: "builder",
-        prompt: "task",
-        description: "Test bg",
-        graceTurns: 6,
-        runInBackground: true,
-      });
-      const record = manager.getRecord(result.agentId);
-
-      // sendMessage throws — LLM never received the result. The record must stay
-      // unconsumed so cleanup() keeps it around rather than wiping it silently.
-      mockPi.sendMessage.mockImplementation(() => {
-        throw new Error("stale context");
-      });
-      coordinator.scheduleNudge(result.agentId);
-      vi.advanceTimersByTime(200);
-
-      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      expect(record.lifecycle.resultConsumed).toBeUndefined();
-    });
-  });
   describe("completion gate — foreground wait", () => {
     it("blocks a foreground spawn until the completion gate opens", async () => {
       const manager = makeMockManager({ pendingGate: true });

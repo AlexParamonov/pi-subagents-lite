@@ -337,7 +337,6 @@ export class ConfigStore {
         const n = Math.max(MIN_FINISHED_RETENTION_MINUTES, minutes);
         this.config.agent.finishedRetentionMinutes = n;
         this.persist();
-        this.manager?.setRetentionMinutes(n);
       },
       setFinishedEvictTurns: (turns: number): void => {
         this.config.agent.finishedEvictTurns = turns;
@@ -575,6 +574,5 @@ export class ConfigStore {
       this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();
-    this.manager?.setRetentionMinutes(this.agent.finishedRetentionMinutes);
   }
 }
