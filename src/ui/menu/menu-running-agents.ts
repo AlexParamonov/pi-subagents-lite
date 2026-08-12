@@ -7,7 +7,7 @@
  *
  * Exports:
  *   - showRunningAgentsMenu: list running/queued/completed agents
- *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop)
+ *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop, clear)
  *
  * Private helpers (single-consumer, co-located):
  *   - showConversationViewer: show ConversationViewer for agent snapshot
@@ -31,6 +31,11 @@ import { getDisplayName } from "../format.js";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
+
+/** Running or queued — the only non-terminal statuses (ADR-0006: active work is never cleared). */
+function isActive(record: AgentRecord): boolean {
+  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
+}
 
 /**
  * Show a ConversationViewer for an agent's session snapshot.
@@ -173,7 +178,7 @@ export function buildAgentActionsList(
 ): SelectList {
   const items: SelectItem[] = [];
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  const isRunning = record.lifecycle.status === "running" || record.lifecycle.status === "queued";
+  const isRunning = isActive(record);
   const hasSession = !!record.execution.session;
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
@@ -193,6 +198,8 @@ export function buildAgentActionsList(
   if (isRunning) {
     items.push({ value: "steer", label: "Steer" });
     items.push({ value: "stop", label: "Stop" });
+  } else {
+    items.push({ value: "clear", label: "Clear" });
   }
 
   if (items.length === 0) {
@@ -227,6 +234,10 @@ export function buildAgentActionsList(
       getManager()?.abort(record.id, "user");
       ctx.ui.notify(`Stopped ${shortId}`, "info");
       onClose();
+    } else if (item.value === "clear") {
+      getManager()?.clear(record.id);
+      ctx.ui.notify(`Cleared ${shortId}`, "info");
+      onClose();
     }
   };
   list.onCancel = () => done();
@@ -239,7 +250,8 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
-  const running = agents.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
+  const running = agents.filter(isActive);
+  const finished = agents.filter((r) => !isActive(r));
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const buildAgentItems = (): SelectItem[] => {
@@ -266,6 +278,10 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         items.push({ value: SEPARATOR_ID, label: " " });
         items.push({ value: "__stop-all", label: `Stop ${running.length} running agent(s)` });
       }
+      if (finished.length > 0) {
+        items.push({ value: SEPARATOR_ID, label: " " });
+        items.push({ value: "__clear-all-finished", label: "Clear all finished" });
+      }
       return items;
     };
 
@@ -278,6 +294,14 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
           getManager()?.abort(r.id, "user");
         }
         ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
+        done(undefined);
+        return;
+      }
+      if (item.value === "__clear-all-finished") {
+        for (const r of finished) {
+          getManager()?.clear(r.id);
+        }
+        ctx.ui.notify(`Cleared ${finished.length} finished agent(s)`, "info");
         done(undefined);
         return;
       }

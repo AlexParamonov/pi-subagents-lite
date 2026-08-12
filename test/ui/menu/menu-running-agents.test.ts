@@ -118,9 +118,9 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls.length).toBe(1);
-    expect(selectListCalls[0].items.length).toBe(2);
-    expect(selectListCalls[0].items[0].value).toBe("agent-1");
-    expect(selectListCalls[0].items[1].value).toBe("agent-2");
+    // Bulk rows (separator, Clear all finished) follow the agent entries
+    const agentItems = selectListCalls[0].items.filter((i: any) => i.value.startsWith("agent-"));
+    expect(agentItems.map((i: any) => i.value)).toEqual(["agent-1", "agent-2"]);
   });
 
   it("includes agent type in label", async () => {
