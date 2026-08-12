@@ -90,13 +90,13 @@ export class SpawnCoordinator {
     };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
 
-    // SpawnConfig fields pass through unchanged; only type/prompt/runInBackground
-    // need translation. The parent signal rides through the spread — SpawnOptions
-    // declares the same field with the same meaning.
-    const { type, prompt, runInBackground, ...config } = intent;
+    // SpawnConfig fields pass through unchanged; only the intent-only fields
+    // (type/prompt/runInBackground/signal) are forwarded explicitly.
+    const { type, prompt, runInBackground, signal, ...config } = intent;
     const spawnOptions: SpawnOptions = {
       ...config,
       isBackground: runInBackground,
+      signal,
       ...liveViewCallbacks,
     };
 
