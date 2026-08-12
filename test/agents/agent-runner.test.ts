@@ -2211,6 +2211,62 @@ describe("continueAgentSession", () => {
     expect(result.modelError).toBeUndefined();
   });
 
+  /**
+   * Realistic continuation session: the first run's history is already in
+   * `messages`, and the prompt appends the continuation's own messages.
+   * extractText is mocked to return real text so the fallback scan is exercised.
+   */
+  function sessionWithPriorRun(continuationMessages: any[]) {
+    const session = createMockSession();
+    session.messages = [
+      { role: "user", content: "first task" },
+      { role: "assistant", content: [{ type: "text", text: "first run answer" }], stopReason: "stop" },
+    ];
+    session.prompt = vi.fn(async () => {
+      session.messages.push({ role: "user", content: "keep going" }, ...continuationMessages);
+    });
+    mockModules.mockExtractText.mockImplementation((content: any) =>
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content.map((c: any) => c.text ?? "").join("")
+          : "",
+    );
+    return session;
+  }
+
+  it("does not surface the prior run's text when the continuation ends in a model error", async () => {
+    const session = sessionWithPriorRun([
+      { role: "assistant", content: [], stopReason: "error", errorMessage: "provider boom" },
+    ]);
+
+    const result = await continueAgentSession(session, "keep going", {});
+
+    // The failed continuation produced no text of its own; the first run's
+    // "first run answer" must not leak into the result.
+    expect(result.responseText).toBe("");
+    expect(result.modelError).toBe("provider boom");
+  });
+
+  it("does not surface the prior run's text when the continuation is aborted without text", async () => {
+    const session = sessionWithPriorRun([{ role: "assistant", content: [], stopReason: "aborted" }]);
+
+    const result = await continueAgentSession(session, "keep going", {});
+
+    expect(result.responseText).toBe("");
+    expect(result.modelError).toBeUndefined();
+  });
+
+  it("still falls back to the continuation's own assistant text when the collector captured nothing", async () => {
+    const session = sessionWithPriorRun([
+      { role: "assistant", content: [{ type: "text", text: "continued answer" }], stopReason: "stop" },
+    ]);
+
+    const result = await continueAgentSession(session, "keep going", {});
+
+    expect(result.responseText).toBe("continued answer");
+  });
+
   it("returns the session so the manager can re-attach it to the record", async () => {
     const session = createMockSession();
     session.prompt = vi.fn(async () => {});

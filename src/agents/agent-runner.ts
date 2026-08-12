@@ -168,8 +168,8 @@ function collectResponseText(session: AgentSession, onTextDelta?: (delta: string
   return { getText: () => text, unsubscribe };
 }
 
-function getLastAssistantText(session: AgentSession): string {
-  for (let i = session.messages.length - 1; i >= 0; i--) {
+function getLastAssistantText(session: AgentSession, fromIndex = 0): string {
+  for (let i = session.messages.length - 1; i >= fromIndex; i--) {
     const msg = session.messages[i];
     if (msg.role !== "assistant") continue;
     const text = extractText(msg.content).trim();
@@ -607,6 +607,10 @@ async function runTurnLoop(
   const unsubEvents = subscribeToSessionEvents(session, options);
   const collector = collectResponseText(session, options.onTextDelta);
   const cleanupAbort = forwardAbortSignal(session, options.signal);
+  // Messages already in the session before this prompt belong to earlier runs;
+  // the fallback must not surface their text when this run fails (model error
+  // or abort with no output) — that would resurrect a prior run's result.
+  const messageStart = session.messages.length;
   try {
     await session.prompt(prompt);
   } finally {
@@ -615,7 +619,7 @@ async function runTurnLoop(
     collector.unsubscribe();
     cleanupAbort();
   }
-  return collector.getText().trim() || getLastAssistantText(session);
+  return collector.getText().trim() || getLastAssistantText(session, messageStart);
 }
 
 /**

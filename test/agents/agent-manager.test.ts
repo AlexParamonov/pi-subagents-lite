@@ -2150,6 +2150,8 @@ describe("AgentManager", () => {
       );
       await vi.waitFor(() => expect(record.execution.settled).toBe(true));
       expect(record.lifecycle.status).toBe("error");
+      // The failed continuation must not leave the first run's result visible.
+      expect(record.result).toBe("");
       expect(record.error).toContain("general-purpose");
       expect(record.error).toContain("anthropic/claude-sonnet-4");
       expect(record.error).toContain("model failed to load into memory");
