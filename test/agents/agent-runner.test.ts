@@ -168,8 +168,11 @@ function createMockSession() {
       };
     }),
     prompt: vi.fn(),
-    steer: vi.fn(),
-    abort: vi.fn(),
+    // Must resolve: the real AgentSession returns Promise<void> for both. A
+    // bare vi.fn() returning undefined let the missing steer/abort rejection
+    // handling pass unnoticed — keep these promise-shaped.
+    steer: vi.fn(async () => {}),
+    abort: vi.fn(async () => {}),
     messages: [],
     _getListeners: () => listeners,
   };
@@ -1439,6 +1442,87 @@ describe("runAgent — grace turns", () => {
     resolvePrompt();
     const result = await promise;
     expect(result.aborted).toBe(true);
+  });
+
+  it("attaches rejection handlers to steer and abort", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    // Both calls fire from inside a subscribe callback, so a rejected promise
+    // escapes the run entirely instead of failing it — under
+    // --unhandled-rejections=throw that takes down the host process. Rejection
+    // is realistic here: steer/abort target a session already tearing down.
+    //
+    // Asserted via a .catch spy rather than process.on("unhandledRejection"):
+    // vitest's runner intercepts unhandled rejections, so the leak version of
+    // this test passed and reported nothing. That couples the test to `.catch`
+    // specifically — rewriting the guard as try/await/catch would need this
+    // updated.
+    const steerPromise = Promise.reject(new Error("session closing"));
+    const abortPromise = Promise.reject(new Error("already aborting"));
+    // Mark handled before spying: the guard only attaches its handler a few
+    // ticks later, and the gap would otherwise make the test itself leak.
+    // spyOn installs an own `catch` afterwards, so the guard still hits the spy.
+    steerPromise.catch(() => {});
+    abortPromise.catch(() => {});
+    const steerCatch = vi.spyOn(steerPromise, "catch");
+    const abortCatch = vi.spyOn(abortPromise, "catch");
+    session.steer = vi.fn(() => steerPromise);
+    session.abort = vi.fn(() => abortPromise);
+
+    const promise = runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      maxTurns: 1,
+      graceTurns: 1,
+    });
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+
+    // Turn 1 steers, turn 2 hard-aborts.
+    for (let i = 0; i < 2; i++) {
+      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    }
+
+    expect(steerCatch).toHaveBeenCalled();
+    expect(abortCatch).toHaveBeenCalled();
+
+    resolvePrompt();
+    const result = await promise;
+    // A rejected abort() must not change the reported outcome.
+    expect(result.aborted).toBe(true);
+  });
+
+  it("handles a rejected abort fired from the parent signal", async () => {
+    const { session, resolvePrompt } = createPendingPromptSession();
+    session.getActiveToolNames.mockReturnValue(["read"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    const controller = new AbortController();
+    const promise = runAgent(fakeCtx(), "test-agent", "do something", {
+      pi: fakePi,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => {
+      expect(session.prompt).toHaveBeenCalled();
+    });
+
+    // forwardAbortSignal fires abort() from a signal listener, so a rejection
+    // escapes the run. See "attaches rejection handlers to steer and abort"
+    // for why this is a .catch spy and not an unhandledRejection assertion.
+    const abortPromise = Promise.reject(new Error("already aborting"));
+    abortPromise.catch(() => {});
+    const abortCatch = vi.spyOn(abortPromise, "catch");
+    session.abort = vi.fn(() => abortPromise);
+
+    controller.abort();
+
+    expect(session.abort).toHaveBeenCalled();
+    expect(abortCatch).toHaveBeenCalled();
+
+    resolvePrompt();
+    await promise;
   });
 
   it("agent completes gracefully within grace period", async () => {

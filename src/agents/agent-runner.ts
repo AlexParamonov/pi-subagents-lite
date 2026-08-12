@@ -187,7 +187,13 @@ function getFinalModelError(session: AgentSession): string | undefined {
  */
 function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => void {
   if (!signal) return () => {};
-  const onAbort = () => session.abort();
+  // abort() returns a promise and this fires from an event listener, so a
+  // rejection escapes the run rather than failing it. Node re-throws a
+  // listener's returned rejected promise as an uncaught exception, and the
+  // parent is already going down when this runs.
+  const onAbort = () => {
+    void session.abort().catch(() => {});
+  };
   signal.addEventListener("abort", onAbort, { once: true });
   return () => signal.removeEventListener("abort", onAbort);
 }
@@ -620,10 +626,17 @@ function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxT
     if (maxTurns == null) return;
     if (!softLimitReached && turnCount >= maxTurns) {
       softLimitReached = true;
-      session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
+      // steer() returns a promise and fires from a subscribe callback: a
+      // rejection would escape the run. It only costs the graceful wrap-up;
+      // the hard abort below still fires.
+      void session
+        .steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.")
+        .catch(() => {});
     } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
       aborted = true;
-      session.abort();
+      // `aborted` is already set, so a rejected abort() cannot change the
+      // reported outcome — only swallow the rejection.
+      void session.abort().catch(() => {});
     }
   });
 
