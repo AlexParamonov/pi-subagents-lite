@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agent menu clear actions.** Individual `Clear` action removes a settled agent. `Clear all`/`Clear done` bulk-removes all/done agents from the widget.
 - **Time-based finished retention.** Replaced turn-based eviction with a configurable time window. Finished agents stay visible for `finishedRetentionMinutes` (default 1 min) instead of a fixed number of turns.
 - **Transient transport error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are retried automatically instead of failing the run.
+- **Continue settled agents.** `steer()` now resumes a settled agent (completed, errored, aborted, stopped, turn-limited) that still has a live session, instead of requiring a re-spawn. The viewer footer/composer switches from "steer" to "continue" for settled agents.
 
 ### Fixed
 
