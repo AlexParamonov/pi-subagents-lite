@@ -834,7 +834,7 @@ describe("AgentManager", () => {
   });
 
   describe("usage accumulation", () => {
-    it("accumulates full input on every usage report", () => {
+    it("accumulates reported input across usage reports", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
@@ -850,7 +850,7 @@ describe("AgentManager", () => {
       expect(record.stats.lifetimeUsage.input).toBe(100);
       expect(record.stats.lifetimeUsage.output).toBe(50);
 
-      // Second report: 250 input — full value accumulates (no delta estimation)
+      // Second report: 250 input — accumulates as reported
       onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
       expect(record.stats.lifetimeUsage.input).toBe(350);
       expect(record.stats.lifetimeUsage.output).toBe(80);
