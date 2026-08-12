@@ -608,6 +608,10 @@ export class AgentManager {
     const previousTurns = record.stats.turnCount ?? 0;
     const promise = continueAgentSession(session, message, {
       ...this.createRecordCallbacks(record),
+      onTextDelta: () => {
+        // Streamed response text counts as activity for the idle watchdog.
+        this.watchdog.recordText(id);
+      },
       maxTurns: record.stats.maxTurns,
       graceTurns: getStore().agent.graceTurns ?? DEFAULT_GRACE_TURNS,
       signal: record.execution.abortController!.signal,

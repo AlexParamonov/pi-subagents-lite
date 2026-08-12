@@ -405,6 +405,7 @@ describe("ConversationViewer", () => {
       // Enter opens the composer with the continue hint.
       viewer.handleInput("\r");
       const composed = viewer.render(120).join("\n");
+      expect(composed).toContain("✎ continue");
       expect(composed).not.toContain("✎ steer");
 
       // Submitting sends through the same onSteer callback.

@@ -2226,6 +2226,42 @@ describe("AgentManager", () => {
       }
     });
 
+    it("feeds streamed text to the idle watchdog during a continuation", async () => {
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+        const id = spawnForeground("task");
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
+
+        const contRun = makeResolvablePromise();
+        mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+        await manager.steer(id, "keep going");
+        const contCallbacks = mockModules.mockContinueAgentSession.mock.calls[0][2];
+
+        // Streamed response text resets the idle clock: 30 quiet minutes
+        // after each delta must never accumulate 45m of inactivity.
+        for (let i = 0; i < 3; i++) {
+          contCallbacks.onTextDelta?.("tick", "tick");
+          vi.setSystemTime(Date.now() + 30 * 60_000 - WATCHDOG_TICK_MS);
+          vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+          expect(record.lifecycle.status).toBe("running");
+        }
+
+        // 46 minutes of quiet after the last delta: idle kill.
+        vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+        expect(record.lifecycle.status).toBe("stopped");
+        expect(record.lifecycle.stoppedBy).toBe("watchdog");
+
+        contRun.resolve(mockRunResult());
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("steer on a running agent still delegates to session.steer (unchanged)", async () => {
       manager = new AgentManager(onComplete);
       const deferred = makeResolvablePromise();

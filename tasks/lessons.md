@@ -11,6 +11,7 @@
 - vi.fn() with an arrow implementation is not a constructor — a `new`ed mock needs a `function` implementation.
 - Cost accumulators: assert with toBeCloseTo (0.1 + 0.05 ≠ 0.15 in floats), and remember usage callbacks report per-message cost, not cumulative.
 - Per-message usage callbacks must be driven BEFORE the run settles — post-settlement the tally already read the old total.
+- When a new run path (e.g. continuation) reuses callback wiring, mirror every first-run callback: a dropped onTextDelta silently breaks idle-watchdog feeding for streamed text.
 - vitest writes transformed modules under TMPDIR; a shared machine pruning /tmp mid-run produces flaky ENOENT import failures — run with TMPDIR set to a stable local dir.
 - Test behavior, not implementation details: assert constructor args and call args, not downstream effects; export testable functions early.
 - Replace `setTimeout` sleeps with awaiting chained completion promises — faster, no flake.
