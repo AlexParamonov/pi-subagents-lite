@@ -2,7 +2,7 @@
  * stream-retry.test.ts — Tests for patching the retry classifier.
  *
  * Verifies that patchRetryClassifier:
- *   - marks transient stream errors as retryable
+ *   - marks transient transport errors as retryable
  *   - marks quota errors as retryable
  *   - preserves non-retryable errors
  *   - is a no-op when _isRetryableError is absent
@@ -36,7 +36,7 @@ function msg(opts: { stopReason?: string; errorMessage?: string } = {}): any {
 // ------------------------------------------------------------------
 
 describe("patchRetryClassifier", () => {
-  // ── Stream errors become retryable ──
+  // ── Transient transport errors become retryable ──
 
   it("marks 'stream disconnected before completion' as retryable", () => {
     const session = makeMockSession(() => false);
@@ -59,6 +59,25 @@ describe("patchRetryClassifier", () => {
     patchRetryClassifier(session);
 
     const m = msg({ stopReason: "error", errorMessage: "invalid SSE data JSON" });
+    expect(session._isRetryableError(m)).toBe(true);
+  });
+
+  it("marks 'stream_read_error: upstream closed the response' as retryable", () => {
+    const session = makeMockSession(() => false);
+    patchRetryClassifier(session);
+
+    const m = msg({ stopReason: "error", errorMessage: "stream_read_error: upstream closed the response" });
+    expect(session._isRetryableError(m)).toBe(true);
+  });
+
+  it("marks Codex EOF transport errors as retryable", () => {
+    const session = makeMockSession(() => false);
+    patchRetryClassifier(session);
+
+    const m = msg({
+      stopReason: "error",
+      errorMessage: 'Codex error: Post "https://chatgpt.com/backend-api/codex/responses": EOF',
+    });
     expect(session._isRetryableError(m)).toBe(true);
   });
 
@@ -127,6 +146,14 @@ describe("patchRetryClassifier", () => {
     patchRetryClassifier(session);
 
     const m = msg({ stopReason: "error", errorMessage: "model not found" });
+    expect(session._isRetryableError(m)).toBe(false);
+  });
+
+  it("does not mark 'upstream closed the response' as retryable (no transport prefix)", () => {
+    const session = makeMockSession(() => false);
+    patchRetryClassifier(session);
+
+    const m = msg({ stopReason: "error", errorMessage: "upstream closed the response" });
     expect(session._isRetryableError(m)).toBe(false);
   });
 

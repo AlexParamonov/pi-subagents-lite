@@ -8,15 +8,18 @@
  * quota errors that should be retried.
  *
  * Patterns:
- * - Stream errors: "stream disconnected before completion", SSE parse errors
+ * - Transient transport errors: stream/socket/network/transport read/write/connect/
+ *   disconnect/close/reset/lost/timeout failures, bare EOF/ECONNRESET/ETIMEDOUT/EPIPE
+ *   codes, SSE parse errors
  * - Quota errors: "Allocated quota exceeded" (may be transient false positive)
  *
  * If upstream removes or renames `_isRetryableError`, this is a no-op.
  */
 
-// Stream transport errors (Codex and others)
-const STREAM_ERROR_PATTERN =
-  /stream disconnected before completion|stream closed before response\.completed|invalid SSE data JSON/i;
+// Connection-level failures are safe to retry: the request may never have reached
+// the provider, so replaying it cannot double-execute work.
+const TRANSIENT_TRANSPORT_ERROR_PATTERN =
+  /\b(?:stream|socket|network|transport)(?:[_\s-]+(?:read|write|connect(?:ion)?|disconnect(?:ed|ion)?|closed?|reset|lost|timeout))(?:[_\s-]+error)?\b|\b(?:EOF|ECONNRESET|ETIMEDOUT|EPIPE)\b|invalid SSE data JSON/i;
 
 // Quota errors that may be transient. "Allocated quota exceeded" can be a false
 // positive when the quota check is eventually consistent. Other providers may
@@ -48,7 +51,7 @@ export function patchRetryClassifier(session: unknown): void {
   retrySession._isRetryableError = (message) => {
     if (message.stopReason === "error" && typeof message.errorMessage === "string") {
       if (QUOTA_ERROR_PATTERN.test(message.errorMessage)) return true;
-      if (STREAM_ERROR_PATTERN.test(message.errorMessage)) return true;
+      if (TRANSIENT_TRANSPORT_ERROR_PATTERN.test(message.errorMessage)) return true;
     }
     return original.call(retrySession, message);
   };
