@@ -193,7 +193,10 @@ export async function executeAgentTool(
   const description =
     (params.description as string | undefined) || prompt.split("\n")[0].slice(0, 80) || prompt.slice(0, 80);
   const runInBackground = params.run_in_background as boolean | undefined;
-  const maxTurns = (params.max_turns as number | undefined) ?? getAgentConfig(resolvedType)?.maxTurns;
+  const maxTurns =
+    (params.max_turns as number | undefined) ??
+    getAgentConfig(resolvedType)?.maxTurns ??
+    getStore().agent.defaultMaxTurns;
 
   const modelStr = params.model as string | undefined;
   const model = findModelInRegistry(modelStr, ctx.modelRegistry, ctx.model);
