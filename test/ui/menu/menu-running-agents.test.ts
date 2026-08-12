@@ -118,7 +118,7 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls.length).toBe(1);
-    // Bulk rows (separator, Clear all finished) follow the agent entries
+    // Bulk rows (separator, Clear all / Clear done) follow the agent entries
     const agentItems = selectListCalls[0].items.filter((i: any) => i.value.startsWith("agent-"));
     expect(agentItems.map((i: any) => i.value)).toEqual(["agent-1", "agent-2"]);
   });
@@ -686,6 +686,7 @@ describe("clear actions for finished agents", () => {
     vi.clearAllMocks();
     mockModules.mockManager.listAgents.mockReset().mockReturnValue([]);
     mockModules.mockManager.clear.mockReset();
+    mockModules.mockManager.abort.mockReset();
   });
 
   it("shows a Clear action for finished records", () => {
@@ -737,7 +738,7 @@ describe("clear actions for finished agents", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("shows a Clear all finished row when finished records exist", async () => {
+  it("shows a Clear all row when finished records exist", async () => {
     mockModules.mockManager.listAgents.mockReturnValue([
       makeRecord({ id: "agent-1" }),
       makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
@@ -745,35 +746,107 @@ describe("clear actions for finished agents", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
     const labels = selectListCalls[0].items.map((i: any) => i.label);
-    expect(labels.some((l) => l.includes("Clear all finished"))).toBe(true);
+    expect(labels).toContain("Clear all");
   });
 
-  it("does not show a Clear all finished row when no finished records exist", async () => {
+  it("hides both bulk clear rows when only active records exist", async () => {
     mockModules.mockManager.listAgents.mockReturnValue([
       makeRecord({ id: "agent-1", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-2", lifecycle: { status: "queued", startedAt: Date.now() - 20000 }, result: "" }),
     ]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
     const labels = selectListCalls[0].items.map((i: any) => i.label);
-    expect(labels.some((l) => l.includes("Clear all finished"))).toBe(false);
+    expect(labels).not.toContain("Clear all");
+    expect(labels).not.toContain("Clear done");
   });
 
-  it("Clear all finished removes every finished record and leaves active ones", async () => {
+  it("Clear all removes every terminal record and leaves active ones", async () => {
     mockModules.mockManager.listAgents.mockReturnValue([
-      makeRecord({ id: "agent-1" }),
+      makeRecord({ id: "agent-1" }), // completed
       makeRecord({ id: "agent-2", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
-      makeRecord({ id: "agent-3", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-3", lifecycle: { status: "error", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-4", lifecycle: { status: "turn_limited", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-5", lifecycle: { status: "aborted", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-6", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
     ]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
 
-    const row = selectListCalls[0].items.find((i: any) => i.label.includes("Clear all finished"));
+    const row = selectListCalls[0].items.find((i: any) => i.label === "Clear all");
+    expect(row).toBeDefined();
+
+    const list = selectListCalls[0];
+    await list.onSelect!(row);
+    for (const id of ["agent-1", "agent-2", "agent-3", "agent-4", "agent-5"]) {
+      expect(mockModules.mockManager.clear).toHaveBeenCalledWith(id);
+    }
+    expect(mockModules.mockManager.clear).not.toHaveBeenCalledWith("agent-6");
+  });
+
+  it("shows a Clear done row when a completed record exists", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1" }), // completed
+      makeRecord({ id: "agent-2", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    expect(labels).toContain("Clear all");
+    expect(labels).toContain("Clear done");
+  });
+
+  it("hides Clear done when no completed record exists", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    expect(labels).toContain("Clear all");
+    expect(labels).not.toContain("Clear done");
+  });
+
+  it("Clear done removes only completed records", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1" }), // completed
+      makeRecord({ id: "agent-2", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-3", lifecycle: { status: "error", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-4", lifecycle: { status: "turn_limited", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-5", lifecycle: { status: "aborted", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-6", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+
+    const row = selectListCalls[0].items.find((i: any) => i.label === "Clear done");
     expect(row).toBeDefined();
 
     const list = selectListCalls[0];
     await list.onSelect!(row);
     expect(mockModules.mockManager.clear).toHaveBeenCalledWith("agent-1");
-    expect(mockModules.mockManager.clear).toHaveBeenCalledWith("agent-2");
-    expect(mockModules.mockManager.clear).not.toHaveBeenCalledWith("agent-3");
+    for (const id of ["agent-2", "agent-3", "agent-4", "agent-5", "agent-6"]) {
+      expect(mockModules.mockManager.clear).not.toHaveBeenCalledWith(id);
+    }
+  });
+
+  it("Stop all running row stops active records and leaves terminal ones", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1" }), // completed
+      makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-3", lifecycle: { status: "queued", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+
+    const row = selectListCalls[0].items.find((i: any) => i.label === "Stop 2 running agent(s)");
+    expect(row).toBeDefined();
+
+    const list = selectListCalls[0];
+    await list.onSelect!(row);
+    expect(mockModules.mockManager.abort).toHaveBeenCalledWith("agent-2", "user");
+    expect(mockModules.mockManager.abort).toHaveBeenCalledWith("agent-3", "user");
+    expect(mockModules.mockManager.abort).not.toHaveBeenCalledWith("agent-1", "user");
   });
 });

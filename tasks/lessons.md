@@ -21,6 +21,7 @@
 - Config setter traps: check which getter the production path reads before choosing the setter in test setup.
 - State consumed by render paths must be clamped at the render path, not only in mutators. Pin with tests that mutate state WITHOUT a nav move in between.
 - Closure capture traps: a factory mock's closure binds its own parameter, so re-assigning the test's variable does nothing — assign explicitly against the outer variable.
+- Name collisions with framework callbacks are silent scope bugs: a module-level `const done` in showRunningAgentsMenu was shadowed by `ctx.ui.custom((_tui, _theme, _kb, done) => …)`'s completion callback, so `done.length > 0` read the function's arity (real pi: 1, always true → row always shown; test mock `() => {}`: 0 → row always hidden). The test mock's different arity caught it. Never name a snapshot variable after a callback parameter in scope; when a value should be a count, don't read `.length` off something that might be a function.
 - Recurring vacuous patterns to grep for: tests ending at `.find()` with no expect; global `some()` checks passing from initial state; `expect.any(String)` for branch-specific messages.
 - When shipping wording adjusted from a spec's provisional text, update the spec's Further Notes in the same pass. Slice 1-3 shipped the never-started agent note uppercase ("STOPPED BY YOU…") while the spec still recorded the lowercase provisional; the review loop caught the drift.
 
