@@ -357,6 +357,21 @@ describe("ConfigStore persisted mutations", () => {
     expect(saves[0].agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
   });
 
+  it("clamps a hand-edited finishedRetentionMinutes of 0 or negative at load", () => {
+    // The setter clamps, but a hand-edited config flows through the load path
+    // unclamped: 0 would hide every finished row in the widget (0 is not a valid window).
+    for (const edited of [0, -5]) {
+      const { io } = memIO({ agent: { finishedRetentionMinutes: edited } });
+      const { w, calls } = widgetStub();
+      const store = new ConfigStore(io);
+      store.setDeps({ widget: w });
+
+      expect(store.agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
+      // The widget receives the clamped window, not the degenerate value.
+      expect(calls).toContain(`setFinishedRetentionMinutes:${1 / 60}`);
+    }
+  });
+
   it("setToolTimeoutMinutes and setIdleTimeoutMinutes persist and clamp to 0", () => {
     const { io, saves, current } = memIO();
     const store = new ConfigStore(io);

@@ -112,3 +112,7 @@
 ## widget-time-filter - 2026-08-12
 **What failed:** The widget's finished-filter default window (1 minute) sat exactly on the `completedAt: Date.now() - 60000` fixture shared across seven widget test files — the filter's later `Date.now()` puts such agents just outside the window, so tests that never set the window flaked (passed in isolation on same-millisecond luck, failed in the full run). Fix: move the shared fixtures safely inside the window (`- 30000`).
 **Next time:** When a component gains a time-based filter with a default window, audit every shared finished-agent fixture for boundary placement before running the suite — fixtures at exactly the window edge are latent flakes. Same-ms passes in isolation are luck, not determinism.
+
+## config-load-path-clamps - 2026-08-12 (arch review FLAG)
+**What failed:** `finishedRetentionMinutes` was clamped in the setter and the menu input but not in the resolution getter — a hand-edited config with `0` (legacy `finishedEvictTurns: 0` meant "disabled") flowed unclamped to the widget, hiding every finished row. Arch review caught it as an entry-point asymmetry.
+**Next time:** When a config value has a min/max constraint, enforce it at every entry point in one pass: setter, load/default-merge, and resolution getter. Grep for every place the raw value is read. A constraint enforced in two of three paths is a trap, not a fix.

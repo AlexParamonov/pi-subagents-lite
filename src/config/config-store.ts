@@ -168,7 +168,7 @@ export class ConfigStore {
       showTime: a.showTime !== false,
       deltaInputTokens: a.deltaInputTokens === true,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
-      finishedRetentionMinutes: a.finishedRetentionMinutes ?? 1,
+      finishedRetentionMinutes: Math.max(MIN_FINISHED_RETENTION_MINUTES, a.finishedRetentionMinutes ?? 1),
       modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
       modelThinkingPlacement: a.modelThinkingPlacement === "metadata" ? "metadata" : "header",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
