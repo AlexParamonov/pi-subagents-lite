@@ -85,7 +85,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
 
     setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
-    setFinishedEvictTurns: (n: number) => calls.push(`setFinishedEvictTurns:${n}`),
+    setFinishedRetentionMinutes: (n: number) => calls.push(`setFinishedRetentionMinutes:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
     setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
     setModelDisplayStyle: (s: string) => calls.push(`setModelDisplayStyle:${s}`),
@@ -334,14 +334,18 @@ describe("ConfigStore persisted mutations", () => {
     expect(store.concurrency.providers).toEqual({});
   });
 
-  it("setFinishedRetentionMinutes persists the value", () => {
+  it("setFinishedRetentionMinutes persists the value and syncs the widget", () => {
     const { io, saves } = memIO();
+    const { w, calls } = widgetStub();
     const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
 
     store.mutate.agent.setFinishedRetentionMinutes(15);
     expect(store.agent.finishedRetentionMinutes).toBe(15);
     expect(saves).toHaveLength(1);
     expect(saves[0].agent.finishedRetentionMinutes).toBe(15);
+    // Pushed to the widget so the window applies on the next render without restart.
+    expect(calls).toContain("setFinishedRetentionMinutes:15");
   });
 
   it("setFinishedRetentionMinutes clamps to minimum 1", () => {
@@ -709,7 +713,13 @@ describe("ConfigStore lifecycle", () => {
 
   it("setDeps re-syncs widget settings from current config", () => {
     const { io } = memIO({
-      agent: { default: null, forceBackground: false, widgetMaxLines: 30, showCost: true },
+      agent: {
+        default: null,
+        forceBackground: false,
+        widgetMaxLines: 30,
+        showCost: true,
+        finishedRetentionMinutes: 3,
+      },
       concurrency: { default: 4 },
     });
     const { w, calls } = widgetStub();
@@ -717,6 +727,7 @@ describe("ConfigStore lifecycle", () => {
     store.setDeps({ widget: w });
     expect(calls).toContain("setMaxLines:30");
     expect(calls).toContain("setShowCost:true");
+    expect(calls).toContain("setFinishedRetentionMinutes:3");
   });
 
   it("dispose drops deps so mutations no longer sync", () => {

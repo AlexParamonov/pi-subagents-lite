@@ -94,7 +94,7 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
     lifecycle: {
       status: "completed",
       startedAt: Date.now() - 120000,
-      completedAt: Date.now() - 60000,
+      completedAt: Date.now() - 30000,
     },
     execution: { session: { model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" } },
     stats: {

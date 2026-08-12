@@ -89,7 +89,6 @@ function setupMockConfig() {
     showTime: true,
     outputThinkingBufferSize: 0,
     finishedRetentionMinutes: 1,
-    finishedEvictTurns: 4,
     modelDisplayStyle: "name",
     statusBarFormat: "full",
     widgetShowModel: true,
@@ -333,14 +332,7 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual([
-      "finishedRetention",
-      "finishedEvictTurns",
-      "__sep__",
-      "shortcut",
-      "showCompletionCards",
-      "thinkingBuffer",
-    ]);
+    expect(ids).toEqual(["finishedRetention", "__sep__", "shortcut", "showCompletionCards", "thinkingBuffer"]);
 
     const item = settingsListCalls[0].items.find((i: any) => i.id === "showCompletionCards");
     expect(item.label).toBe("Show completion cards");
@@ -387,13 +379,6 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedRetention");
-    expect(typeof item.submenu).toBe("function");
-  });
-
-  it("finishedEvictTurns has submenu", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedEvictTurns");
     expect(typeof item.submenu).toBe("function");
   });
 
