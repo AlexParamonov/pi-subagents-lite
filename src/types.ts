@@ -165,7 +165,7 @@ export interface AgentExecutionState {
    * False at spawn and while a continuation is running; true after every
    * settlement. Guards continuation against racing settlement cleanup.
    */
-  settled?: boolean;
+  settled: boolean;
   /**
    * Lifetime cost already added to the session total (tallyCompletion
    * baseline). Undefined until the first settlement; continuations add only
