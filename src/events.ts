@@ -56,8 +56,6 @@ export function ensureManagerAndWidget(): void {
     newManager.setOnComplete((record) => {
       // Delegate completion side-effects to coordinator
       coordinator.onAgentComplete(record);
-      // Track finished agent for turn-based eviction
-      getWidget()?.markFinished(record.id);
       getWidget()?.update();
     });
   }
@@ -229,7 +227,6 @@ export function setupEventListeners(pi: ExtensionAPI): void {
       ensureManagerAndWidget();
     }
     getWidget()?.setUICtx(ctx.ui as unknown as UICtx);
-    getWidget()?.onTurnStart();
   });
 
   // session_start — load config, scan agents, register into registry,

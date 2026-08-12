@@ -200,7 +200,6 @@ vi.mock("../src/shell.js", async () => {
         outputTranscript: a.outputTranscript !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? DEFAULT_AGENT.finishedRetentionMinutes,
-        finishedEvictTurns: a.finishedEvictTurns ?? DEFAULT_AGENT.finishedEvictTurns,
         modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
         statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
         widgetShowModel: a.widgetShowModel !== false,
@@ -345,9 +344,6 @@ vi.mock("../src/shell.js", async () => {
         },
         setFinishedRetentionMinutes(n: number) {
           mockModules.mockConfig.agent.finishedRetentionMinutes = n;
-        },
-        setFinishedEvictTurns(n: number) {
-          mockModules.mockConfig.agent.finishedEvictTurns = n;
         },
         setOutputTranscript(enabled: boolean) {
           mockModules.mockConfig.agent.outputTranscript = enabled;

@@ -56,7 +56,6 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   outputTranscript: false,
   deltaInputTokens: false,
   finishedRetentionMinutes: 1,
-  finishedEvictTurns: 4,
   modelDisplayStyle: "name",
   modelThinkingPlacement: "header",
   statusBarFormat: "full",
@@ -76,8 +75,11 @@ export function loadConfig(): SubagentsConfig {
 
   // @ts-expect-error TS2783: spread may override 'default', which is intentional (loaded value wins)
   const concurrency = { default: 4, ...(raw.concurrency ?? {}) } as SubagentsConfig["concurrency"];
+  const agent = { ...DEFAULT_AGENT, ...raw.agent };
+  // Legacy pre-ADR-0006 key: normalize without error, touching no other keys (US-15).
+  delete agent.finishedEvictTurns;
   return {
-    agent: { ...DEFAULT_AGENT, ...raw.agent },
+    agent,
     concurrency,
   };
 }
