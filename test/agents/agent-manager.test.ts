@@ -47,9 +47,8 @@ vi.mock("../../src/agents/agent-types.js", () => ({
   getAgentConfig: mockModules.mockGetAgentConfig,
 }));
 
-// Controllable mock for getStore(), used by delta estimation + watchdog tests
+// Controllable mock for getStore(), used by watchdog tests
 const mockStoreState = {
-  deltaInputTokens: true,
   toolTimeoutMinutes: 0,
   idleTimeoutMinutes: 0,
   outputThinkingBufferSize: 0,
@@ -58,9 +57,6 @@ const mockStoreState = {
 
 // Shared agent object so getStore() returns the same reference each time.
 const mockStoreAgent = {
-  get deltaInputTokens() {
-    return mockStoreState.deltaInputTokens;
-  },
   get toolTimeoutMinutes() {
     return mockStoreState.toolTimeoutMinutes;
   },
@@ -837,12 +833,8 @@ describe("AgentManager", () => {
     });
   });
 
-  describe("delta estimation", () => {
-    beforeEach(() => {
-      mockStoreState.deltaInputTokens = true;
-    });
-
-    it("uses full input on first message (no prevInputTokens yet)", () => {
+  describe("usage accumulation", () => {
+    it("accumulates reported input across usage reports", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
@@ -855,36 +847,16 @@ describe("AgentManager", () => {
 
       // First usage report: 100 input tokens, no cacheRead
       onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-
-      // Full input recorded on first message
       expect(record.stats.lifetimeUsage.input).toBe(100);
       expect(record.stats.lifetimeUsage.output).toBe(50);
-      expect(record.stats.prevInputTokens).toBe(100);
-    });
 
-    it("computes delta when delta enabled and cacheRead is 0", () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      const onUsage = getOnAssistantUsage();
-
-      // First message: 100 input
-      onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(100);
-
-      // Second message: 250 input (150 new tokens added to context)
+      // Second report: 250 input — accumulates as reported
       onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(250); // 100 + 150 delta
-      expect(record.stats.lifetimeUsage.output).toBe(80); // 50 + 30
-      expect(record.stats.prevInputTokens).toBe(250);
+      expect(record.stats.lifetimeUsage.input).toBe(350);
+      expect(record.stats.lifetimeUsage.output).toBe(80);
     });
 
-    it("uses full input when cacheRead > 0 (provider reports caching)", () => {
+    it("uses reported input when provider reports cache reads", () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
 
@@ -895,55 +867,8 @@ describe("AgentManager", () => {
       const record = manager.getRecord(id)!;
       const onUsage = getOnAssistantUsage();
 
-      // First message: 100 input
-      onUsage({ input: 100, output: 50, cacheWrite: 10, cost: 0, cacheRead: 80 });
-      expect(record.stats.lifetimeUsage.input).toBe(100);
-
-      // Second message: 200 input with cacheRead > 0 — delta estimation skipped
       onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 150 });
-      expect(record.stats.lifetimeUsage.input).toBe(300); // 100 + 200 (full, no delta)
-    });
-
-    it("prevents negative delta when input shrinks (e.g. after compaction)", () => {
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      const onUsage = getOnAssistantUsage();
-
-      // First message: 500 input
-      onUsage({ input: 500, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(500);
-
-      // After compaction: 200 input (shrunk) — delta would be -300, clamped to 200
-      onUsage({ input: 200, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(700); // 500 + 200 (full, delta skipped)
-    });
-
-    it("skips delta estimation when setting is disabled", () => {
-      mockStoreState.deltaInputTokens = false;
-
-      manager = new AgentManager(onComplete);
-      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-
-      const id = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", {
-        description: "task",
-        modelKey: "test/model",
-      });
-      const record = manager.getRecord(id)!;
-      const onUsage = getOnAssistantUsage();
-
-      // First message: 100 input
-      onUsage({ input: 100, output: 50, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(100);
-
-      // Second message: 250 input — delta disabled, so full input used
-      onUsage({ input: 250, output: 30, cacheWrite: 0, cost: 0, cacheRead: 0 });
-      expect(record.stats.lifetimeUsage.input).toBe(350); // 100 + 250 (full, no delta)
+      expect(record.stats.lifetimeUsage.input).toBe(200);
     });
   });
 

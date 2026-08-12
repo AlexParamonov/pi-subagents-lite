@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Time-based finished retention.** Replaced turn-based eviction with a configurable time window. Finished agents stay visible for `finishedRetentionMinutes` (default 1 min) instead of a fixed number of turns.
 - **Transient transport error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are retried automatically instead of failing the run.
 
+### Removed
+
+- **`deltaInputTokens` setting and delta estimation.** Removed the toggle and the per-message input-delta calculation. pi-ai already normalizes `usage.input` to new tokens only (it subtracts cache reads), so the estimation double-subtracted and produced wrong token counts.
+
 ### Fixed
 
 - **`outputThinkingBufferSize` read live from config.** Value is now read from the config store at runtime instead of being captured at startup.

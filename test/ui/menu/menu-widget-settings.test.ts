@@ -397,21 +397,11 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     (getAgentConfig as any).mockImplementation(() => undefined);
   });
 
-  it("dispatches to Stats SettingsList with 9 items", async () => {
+  it("dispatches to Stats SettingsList with 7 items", async () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual([
-      "showTools",
-      "showTurns",
-      "showInput",
-      "showOutput",
-      "showContext",
-      "showCost",
-      "showTime",
-      "__sep__",
-      "deltaInputTokens",
-    ]);
+    expect(ids).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime"]);
   });
 
   it("stat toggles update store", async () => {
@@ -425,14 +415,6 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     expect(mockModules.mockConfig.agent.showCost).toBe(true);
     onChange("showTime", "OFF");
     expect(mockModules.mockConfig.agent.showTime).toBe(false);
-  });
-
-  it("deltaInputTokens toggle updates store", async () => {
-    mockModules.mockConfig.agent.deltaInputTokens = false;
-    const ctx = createDispatchCtx("stats");
-    await showWidgetSettingsMenu(ctx);
-    settingsListCalls[0].onChange("deltaInputTokens", "ON");
-    expect(mockModules.mockConfig.agent.deltaInputTokens).toBe(true);
   });
 
   it("stat items show correct ON/OFF values", async () => {
@@ -454,15 +436,6 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
     const labels = settingsListCalls[0].items.filter((i: any) => i.id !== "__sep__").map((i: any) => i.label);
-    expect(labels).toEqual([
-      "Tools",
-      "Turns",
-      "Input tokens",
-      "Output tokens",
-      "Context %",
-      "Cost",
-      "Time",
-      "Delta input tokens",
-    ]);
+    expect(labels).toEqual(["Tools", "Turns", "Input tokens", "Output tokens", "Context %", "Cost", "Time"]);
   });
 });

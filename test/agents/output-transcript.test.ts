@@ -46,9 +46,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 const mockStore = {
   agent: {
     outputTranscript: true,
-    deltaInputTokens: true,
     toolTimeoutMinutes: 0,
-    idleTimeoutMinutes: 0,
   },
 };
 

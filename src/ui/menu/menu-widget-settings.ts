@@ -16,25 +16,75 @@ import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
 
-/** Stat visibility config — label and store accessors keyed by stat id. */
-function buildStatConfig(store: ReturnType<typeof getStore>) {
-  return new Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>([
-    ["showTools", { label: "Tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
-    ["showTurns", { label: "Turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
+/** One stat visibility toggle: menu label, description, and store get/set accessors. */
+type StatToggleConfig = { label: string; description: string; get: () => boolean; set: (v: boolean) => void };
+
+/** Stat visibility config — label, description, and store accessors keyed by stat id. */
+function buildStatConfig(store: ReturnType<typeof getStore>): Map<string, StatToggleConfig> {
+  return new Map<string, StatToggleConfig>([
+    [
+      "showTools",
+      {
+        label: "Tools",
+        description: "Show tool count 🛠︎  in the widget.",
+        get: () => store.agent.showTools,
+        set: (v) => store.mutate.agent.setShowTools(v),
+      },
+    ],
+    [
+      "showTurns",
+      {
+        label: "Turns",
+        description: "Show turn count ⟳  in the widget.",
+        get: () => store.agent.showTurns,
+        set: (v) => store.mutate.agent.setShowTurns(v),
+      },
+    ],
     [
       "showInput",
-      { label: "Input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) },
+      {
+        label: "Input tokens",
+        description: "Show input tokens ↑ in the widget.",
+        get: () => store.agent.showInput,
+        set: (v) => store.mutate.agent.setShowInput(v),
+      },
     ],
     [
       "showOutput",
-      { label: "Output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) },
+      {
+        label: "Output tokens",
+        description: "Show output tokens ↓ in the widget.",
+        get: () => store.agent.showOutput,
+        set: (v) => store.mutate.agent.setShowOutput(v),
+      },
     ],
     [
       "showContext",
-      { label: "Context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) },
+      {
+        label: "Context %",
+        description: "Show context-fill percent % in the widget.",
+        get: () => store.agent.showContext,
+        set: (v) => store.mutate.agent.setShowContext(v),
+      },
     ],
-    ["showCost", { label: "Cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) }],
-    ["showTime", { label: "Time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) }],
+    [
+      "showCost",
+      {
+        label: "Cost",
+        description: "Show dollar cost $ in the widget.",
+        get: () => store.agent.showCost,
+        set: (v) => store.mutate.agent.setShowCost(v),
+      },
+    ],
+    [
+      "showTime",
+      {
+        label: "Time",
+        description: "Show elapsed time in the widget.",
+        get: () => store.agent.showTime,
+        set: (v) => store.mutate.agent.setShowTime(v),
+      },
+    ],
   ]);
 }
 
@@ -156,36 +206,14 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
   ];
 }
 
-const STAT_DESCRIPTIONS: Record<string, string> = {
-  showTools: "Show tool count 🛠︎  in the widget.",
-  showTurns: "Show turn count ⟳  in the widget.",
-  showInput: "Show input tokens ↑ in the widget.",
-  showOutput: "Show output tokens ↓ in the widget.",
-  showContext: "Show context-fill percent % in the widget.",
-  showCost: "Show dollar cost $ in the widget.",
-  showTime: "Show elapsed time in the widget.",
-};
-
-function buildStatsItems(
-  store: ReturnType<typeof getStore>,
-  statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>,
-): SettingItem[] {
-  const items: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
+function buildStatsItems(statConfig: Map<string, StatToggleConfig>): SettingItem[] {
+  return [...statConfig.entries()].map(([id, cfg]) => ({
     id,
     label: cfg.label,
     currentValue: cfg.get() ? "ON" : "OFF",
     values: ["ON", "OFF"],
-    description: STAT_DESCRIPTIONS[id],
+    description: cfg.description,
   }));
-  items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-  items.push({
-    id: "deltaInputTokens",
-    label: "Delta input tokens",
-    currentValue: store.agent.deltaInputTokens ? "ON" : "OFF",
-    values: ["ON", "OFF"],
-    description: "Estimate input token delta for vLLM (no cache reporting).",
-  });
-  return items;
 }
 
 function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>) {
@@ -236,12 +264,6 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
       case "modelThinkingPlacement":
         store.mutate.widget.setModelThinkingPlacement(newValue === "header" ? "header" : "metadata");
         ctx.ui.notify(`Model/thinking placement: ${newValue}`, "info");
-        break;
-
-      // Stats (deltaInputTokens is not in statConfig)
-      case "deltaInputTokens":
-        store.mutate.agent.setDeltaInputTokens(newValue === "ON");
-        ctx.ui.notify(`Delta input tokens ${newValue}`, "info");
         break;
 
       // Behavior
@@ -327,7 +349,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         break;
       case "stats": {
         const statConfig = buildStatConfig(store);
-        await showCategorySubmenu(ctx, "Stats", () => buildStatsItems(store, statConfig));
+        await showCategorySubmenu(ctx, "Stats", () => buildStatsItems(statConfig));
         break;
       }
     }

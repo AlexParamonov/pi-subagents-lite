@@ -196,7 +196,6 @@ vi.mock("../src/shell.js", async () => {
         showOutput: a.showOutput !== false,
         showContext: a.showContext !== false,
         showTime: a.showTime !== false,
-        deltaInputTokens: a.deltaInputTokens === true,
         outputTranscript: a.outputTranscript !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? DEFAULT_AGENT.finishedRetentionMinutes,
@@ -262,7 +261,6 @@ vi.mock("../src/shell.js", async () => {
             "showOutput",
             "showContext",
             "showTime",
-            "deltaInputTokens",
             "widgetMaxLines",
             "widgetMaxLinesCompact",
             "widgetDescLengthFull",
@@ -335,9 +333,6 @@ vi.mock("../src/shell.js", async () => {
         },
         setShowTime(enabled: boolean) {
           mockModules.mockConfig.agent.showTime = enabled;
-        },
-        setDeltaInputTokens(enabled: boolean) {
-          mockModules.mockConfig.agent.deltaInputTokens = enabled;
         },
         setOutputThinkingBufferSize(size: number) {
           mockModules.mockConfig.agent.outputThinkingBufferSize = size;
