@@ -37,9 +37,6 @@ function isActive(record: AgentRecord): boolean {
   return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
 }
 
-/**
- * Show a ConversationViewer for an agent's session snapshot.
- */
 async function showConversationViewer(ctx: ExtensionCommandContext, record: AgentRecord): Promise<void> {
   if (!record.execution?.session) return;
   const manager = getManager();
@@ -60,10 +57,6 @@ async function showConversationViewer(ctx: ExtensionCommandContext, record: Agen
   });
 }
 
-/**
- * Show a simple bordered text viewer for static result/error text.
- * Scrollable with up/down, PgUp/PgDn, g/G. Escape-safe rendering.
- */
 async function showTextViewer(
   ctx: ExtensionCommandContext,
   record: AgentRecord,

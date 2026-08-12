@@ -93,7 +93,6 @@ export interface SessionModelOverrides {
   [agentType: string]: string | null | undefined;
 }
 
-/** Options for resolveModel. */
 export interface ResolveModelOptions {
   /** The type of subagent being spawned. */
   subagentType: string;
@@ -116,7 +115,6 @@ export interface ResolveModelOptions {
 export function resolveModel(options: ResolveModelOptions): string {
   const { subagentType, agentConfig, config, parentModelId, sessionOverrides } = options;
 
-  // Precedence chain: session > config > frontmatter > parent
   // Cast agent values: index signature includes number (graceTurns), but models are always strings
   const candidates: Array<string | boolean | null | undefined> = [
     sessionOverrides?.[subagentType],
@@ -129,10 +127,6 @@ export function resolveModel(options: ResolveModelOptions): string {
   return candidates.find(isValidValue) ?? parentModelId;
 }
 
-/**
- * Check if a value is a valid non-empty model string.
- * Returns true for non-null, non-undefined, non-empty strings.
- */
 function isValidValue(value: string | boolean | null | undefined): value is string {
   return typeof value === "string" && value.length > 0;
 }

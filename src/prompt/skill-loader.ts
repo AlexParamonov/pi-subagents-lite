@@ -39,30 +39,18 @@ export interface SkillMeta {
   content?: string;
 }
 
-/**
- * Load all skills in correct precedence order.
- *
- * Precedence (first match wins by name):
- *   1. Ancestor .agents/skills directories (cwd → git root)
- *   2. ~/.agents/skills
- *   3. Pi defaults: ~/.pi/agent/skills, <cwd>/.pi/skills
- *
- * Deduplication: by canonical path (symlink dedup) and by name (first match wins).
- */
+/** Load all skills in precedence order, deduped by canonical path and name (first match wins). */
 export function loadAllSkills(cwd: string): Skill[] {
   const resolvedCwd = resolve(cwd);
 
-  // Ancestor .agents/skills (highest precedence)
   const ancestorsSkills = loadAncestorAgentsSkills(resolvedCwd);
 
-  // ~/.agents/skills
   const homeAgentsResult = loadSkillsFromDir({
     dir: join(homedir(), ".agents", "skills"),
     source: "agents",
   });
   const homeAgentsSkills = filterRootMdFiles(homeAgentsResult.skills, join(homedir(), ".agents", "skills"));
 
-  // Pi defaults: ~/.pi/agent/skills and <cwd>/.pi/skills
   const defaultsResult = loadSkills({
     cwd: resolvedCwd,
     agentDir: join(homedir(), ".pi", "agent"),
@@ -128,7 +116,6 @@ function filterRootMdFiles(skills: Skill[], skillsRoot: string): Skill[] {
   });
 }
 
-/** Walk up from dir to find the git root (directory containing .git). */
 function findGitRoot(dir: string): string {
   let current = resolve(dir);
   while (true) {

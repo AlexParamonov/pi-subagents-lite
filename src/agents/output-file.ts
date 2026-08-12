@@ -15,10 +15,7 @@ import { summarizeToolArgs } from "../utils.js";
 /** Punctuation treated as a flush boundary when streaming thinking deltas. */
 const SENTENCE_BOUNDARY_CHARS = ".!?,\n";
 
-/** Find the last sentence boundary in text. Returns the index of the
- * terminal punctuation character, or -1 if none found. */
 function findLastSentenceBoundary(text: string): number {
-  // Search backward for the most recent sentence-ending punctuation
   for (let i = text.length - 1; i >= 0; i--) {
     if (SENTENCE_BOUNDARY_CHARS.includes(text[i])) {
       return i;
@@ -27,7 +24,6 @@ function findLastSentenceBoundary(text: string): number {
   return -1;
 }
 
-/** Format the [DONE] summary line with final stats. */
 function formatDoneLine(stats: OutputFinalStats): string {
   const tokensStr = `${formatTokens(stats.totalTokens)} tokens`;
   return `${timestamp()} [DONE] ${stats.turnCount} turns, ${stats.toolUseCount} tool uses, ${tokensStr}\n`;
@@ -35,18 +31,13 @@ function formatDoneLine(stats: OutputFinalStats): string {
 /** Max content length for full tool result display — longer results get a summary line. */
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 500;
 
-/** Get an ISO 8601 timestamp string suitable for log output. */
 function timestamp(): string {
   return new Date().toISOString();
 }
 
 /**
- * Create the output file path for an agent.
- * Default path: /tmp/pi-agent-outputs/<agentId>.log
- * Ensures the parent directory exists with 0o700 permissions.
- *
- * @param baseDir - Optional base directory (defaults to /tmp/pi-agent-outputs).
- *                    Provided for testability; production callers omit it.
+ * Create the output file path, ensuring the parent dir exists (0o700).
+ * @param baseDir - Overrides the default /tmp/pi-agent-outputs; used for testability.
  */
 export function createOutputFilePath(agentId: string, baseDir?: string): string {
   const dir = baseDir ?? "/tmp/pi-agent-outputs";
@@ -54,19 +45,12 @@ export function createOutputFilePath(agentId: string, baseDir?: string): string 
   return join(dir, `${agentId}.log`);
 }
 
-/**
- * Write the initial user prompt entry to the output file.
- * Format: <ISO timestamp> [USER] <prompt>
- */
 export function writeInitialEntry(path: string, prompt: string): void {
   const line = `${timestamp()} [USER] ${prompt}\n`;
   writeFileSync(path, line, "utf-8");
 }
 
-/**
- * Safe append — silently ignores write errors.
- * Used for best-effort output file writes that must never throw.
- */
+/** Best-effort append that never throws. */
 function safeAppend(path: string, content: string): void {
   try {
     appendFileSync(path, content, "utf-8");
@@ -91,7 +75,6 @@ class ThinkingStreamer {
   private streamedChars = 0;
   /** Thinking blocks written live; skipped in the final message replay. */
   private streamedBlocks = 0;
-  /** True between thinking_start and thinking_end. */
   private blockInProgress = false;
 
   constructor(
@@ -99,13 +82,11 @@ class ThinkingStreamer {
     private readonly bufferSize: number,
   ) {}
 
-  /** Begin a new thinking block. */
   onStart(): void {
     this.streamedChars = 0;
     this.blockInProgress = true;
   }
 
-  /** Accumulate a delta, flushing when the buffer reaches the configured size. */
   onDelta(delta: string): void {
     this.buffer += delta;
     if (this.buffer.length < this.bufferSize) return;
@@ -150,7 +131,6 @@ class ThinkingStreamer {
     }
   }
 
-  /** Flush any buffered tail to the file. */
   flushTail(): void {
     if (this.buffer.length === 0) return;
     this.append(`${timestamp()} [THINKING] ${this.buffer}\n`);
@@ -167,7 +147,6 @@ class ThinkingStreamer {
   }
 }
 
-/** Split text into non-empty lines, prefixing each with a timestamp and role tag. */
 function splitAndPrefix(text: string, role: string): string {
   return text
     .split("\n")
@@ -176,7 +155,6 @@ function splitAndPrefix(text: string, role: string): string {
     .join("");
 }
 
-/** Format a toolUse/toolCall content item as a single log line. */
 function formatToolItem(item: Record<string, unknown>): string {
   const name = (item.name ?? item.toolName ?? "unknown") as string;
   // pi-ai ToolCall uses `arguments`, legacy/anthropic format uses `input`
@@ -185,7 +163,6 @@ function formatToolItem(item: Record<string, unknown>): string {
   return `${timestamp()} [TOOL] ${name}${argsStr}\n`;
 }
 
-/** Extract text from a user message's content (string or array of items). */
 function extractUserText(content: string | ReadonlyArray<Record<string, unknown>> | undefined): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -194,12 +171,6 @@ function extractUserText(content: string | ReadonlyArray<Record<string, unknown>
   return "";
 }
 
-/**
- * Format a tool result message as log line(s), truncating if content is too long.
- *
- * - If content length ≤ MAX_TOOL_RESULT_DISPLAY_LENGTH chars: each line is prefixed with [TOOL_RESULT]
- * - If content length > MAX_TOOL_RESULT_DISPLAY_LENGTH chars: single summary line `[TOOL_RESULT] <toolName>: <N> chars`
- */
 function formatToolResult(toolName: string, content: ReadonlyArray<Record<string, unknown>> | undefined): string {
   if (!content || !Array.isArray(content)) return "";
 
@@ -217,10 +188,6 @@ function formatToolResult(toolName: string, content: ReadonlyArray<Record<string
   return splitAndPrefix(text, "TOOL_RESULT");
 }
 
-/**
- * Format an assistant message's content items as log lines.
- * Handles text, toolUse/toolCall, and thinking content.
- */
 function formatMessageLine(
   content: string | ReadonlyArray<Record<string, unknown>> | undefined,
   skipStreamedThinkingBlocks: number = 0,
@@ -255,11 +222,8 @@ function formatMessageLine(
   return "";
 }
 /**
- * Subscribe to session events and flush new messages to the output file
- * on each turn_end. Returns a cleanup function that writes the DONE line
- * and unsubscribes.
- *
- * The optional stats parameter provides final summary data for the DONE line.
+ * Stream session messages to the file on each turn_end. The returned cleanup
+ * writes the DONE line and unsubscribes.
  */
 export function streamToOutputFile(
   session: AgentSession,
@@ -328,15 +292,12 @@ export function streamToOutputFile(
   });
 
   return () => {
-    // Final flush
     thinking.flushTail();
     flush();
 
-    // Write DONE line
     const doneStats = stats ?? { turnCount: 0, toolUseCount: 0, totalTokens: 0 };
     safeAppend(path, formatDoneLine(doneStats));
 
-    // Unsubscribe from session events
     unsubscribe();
   };
 }

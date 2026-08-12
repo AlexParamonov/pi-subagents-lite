@@ -11,20 +11,12 @@ import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import { getManager } from "../shell.js";
 
-/**
- * Format a single agent record as "short_id (type) status".
- */
 function formatAgent(record: AgentRecord): string {
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
   return `${shortId} (${record.display.type}) ${record.lifecycle.status}`;
 }
 
-/**
- * Execute the AgentStatus tool.
- *
- * Returns a formatted list of all agents with their type, short ID, and status,
- * followed by a nudge message telling the model not to poll.
- */
+/** List all agents with type, short ID, and status, plus a don't-poll nudge. */
 export async function executeAgentStatusTool(
   _toolCallId: string,
   _params: Record<string, unknown>,

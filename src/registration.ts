@@ -12,21 +12,17 @@ import { getStore } from "./shell.js";
 // not yet declared in pi's ToolDefinition type.
 const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
 
-// ============================================================================
-// Agent tool registration helper — dynamic enum for agent types
-// ============================================================================
+// --- Agent tool registration — dynamic enum for agent types ---
 
 /**
  * Register (or re-register) the Agent tool with current agent types.
- * At init time only defaults exist; call again from session_start after
- * user/project agents are loaded to update the enum.
+ * Call again from session_start after user/project agents load.
  */
 export function registerAgentTool(pi: ExtensionAPI): void {
   const types = getAvailableTypes();
   const useConstrained = getStore().agent.agentToolStrictMode;
 
-  // Use plain string to avoid verbose anyOf in prompt.
-  // Available types are listed in description for discoverability.
+  // Plain string (not anyOf) keeps the prompt concise; types listed in description for discoverability.
   const agentType = types.length > 0 ? Type.String({ description: types.join(",") }) : Type.String();
 
   // Constrained sampling (strict mode) requires every property in `required`,
@@ -72,16 +68,11 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   pi.registerTool(tool);
 }
 
-// ============================================================================
-// Tool/Command/Message registration
-// ============================================================================
+// --- Tool/Command/Message registration ---
 
-/** Register all tools, commands, and message renderers. */
 export function registerTools(pi: ExtensionAPI): void {
-  // Agent tool — stealth schema with dynamic agent type enum
   registerAgentTool(pi);
 
-  // StopAgent tool — stealth schema, stop a running agent by ID
   const stopAgentTool = {
     name: "StopAgent",
     label: "StopAgent",
@@ -97,7 +88,6 @@ export function registerTools(pi: ExtensionAPI): void {
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(stopAgentTool);
 
-  // AgentStatus tool — stealth schema, list all agents and their statuses
   const agentStatusTool = {
     name: "AgentStatus",
     label: "AgentStatus",
@@ -121,7 +111,6 @@ export function registerTools(pi: ExtensionAPI): void {
     );
   });
 
-  // Command registration
   pi.registerCommand("agents", {
     description: "Manage subagents: agent briefing, model settings, concurrency, running agents, agent types",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {

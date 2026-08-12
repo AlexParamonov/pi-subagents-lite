@@ -1,17 +1,11 @@
-/**
- * Type definitions for the subagent system.
- */
-
 import type { Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
 import type { SubagentType, AgentInvocation } from "./agents/types.js";
 
-/** Thinking level for agent models (sourced from @earendil-works/pi-ai). */
 export type ThinkingLevel = ModelThinkingLevel;
 
-/** Tool activity event: start/end of a tool invocation. */
 export interface ToolActivity {
   type: "start" | "end";
   toolName: string;
@@ -36,13 +30,9 @@ export interface AgentRecord {
   id: string;
   result?: string;
   error?: string;
-  /** Lifecycle state: status, timestamps. */
   lifecycle: AgentLifecycle;
-  /** Display-oriented info: type, description, output file, invocation. */
   display: AgentDisplayInfo;
-  /** Execution internals: session, abort controller, pending steers. */
   execution: AgentExecutionState;
-  /** Accumulated statistics: usage, tool uses, turns. */
   stats: AgentAccumulatedStats;
 }
 
@@ -87,20 +77,15 @@ export interface SpawnConfig extends RunTunables {
 /** How many characters of agent ID to show in display. */
 export const SHORT_ID_LENGTH = 8;
 
-/** Reason for a context compaction event. */
 export type CompactionReason = "manual" | "threshold" | "overflow";
 
-/** Info payload emitted when a session compacts successfully. */
 export interface CompactionInfo {
   reason: CompactionReason;
   tokensBefore: number;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-object interfaces for decomposed AgentRecord
-// ---------------------------------------------------------------------------
+// --- Sub-object interfaces for decomposed AgentRecord ---
 
-/** Possible agent lifecycle statuses. */
 export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
 
 /** Who initiated an agent stop: "user" via UI menu, "agent" via StopAgent tool, or "watchdog" (stuck-agent detection). */
@@ -142,7 +127,6 @@ export interface AgentDisplayInfo {
   invocation?: AgentInvocation;
   /** The tool_use_id from the original Agent tool call. */
   toolCallId?: string;
-  /** Resolved absolute path of the worktree this agent is running in. */
   worktreePath?: string;
   /** Short display label for the worktree (e.g., "feature" or "feature/packages/web"). */
   worktreeLabel?: string;

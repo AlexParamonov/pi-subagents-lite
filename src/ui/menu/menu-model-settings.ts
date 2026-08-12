@@ -21,7 +21,6 @@ import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 
 export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
-  // Build menu items from current store state.
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] => {
     const items: SettingItem[] = [];
 
@@ -111,7 +110,6 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     }
 
     items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
-    // Override another type...
     if (nonOverridden.length > 0) {
       items.push({
         id: "overrideType",
@@ -124,7 +122,6 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
             {
               onSelect: (typeName) => {
                 const entry = nonOverridden.find((e) => e.typeName === typeName)!;
-                // Delegate to createModelSelectSubmenu for the 2-step model flow
                 const modelSubmenu = createModelSelectSubmenu({
                   modelOptions,
                   showClear: false,

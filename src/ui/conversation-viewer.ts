@@ -39,14 +39,11 @@ const CHROME_LINES_BASE = 7;
 const MIN_VIEWPORT = 3;
 /** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
 export const VIEWPORT_HEIGHT_PCT = 70;
-/** Maximum characters for a single tool result before truncation. */
 const TOOL_RESULT_MAX_CHARS = 500;
-/** Maximum lines to show from a large tool result. */
 const TOOL_RESULT_MAX_LINES = 5;
 /** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
 const STREAM_RENDER_DEBOUNCE_MS = 100;
 
-/** Header status icon and its theme color, per lifecycle status. */
 const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
   running: { icon: "◈", color: "accent" },
   completed: { icon: "✓", color: "success" },
@@ -58,7 +55,6 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
 };
 
 export class ConversationViewer implements Component {
-  /** Model display format: 'id' (short) or 'name' (full). */
   private modelDisplayStyle: "id" | "name" = "id";
   private scrollOffset = 0;
   private autoScroll = true;
@@ -75,7 +71,6 @@ export class ConversationViewer implements Component {
   };
   /** Full content lines from the last build — avoids re-iterating cached messages. */
   private cachedContentLines: string[] | undefined;
-  /** Number of non-streaming lines in cachedContentLines. */
   private cachedNonStreamingCount = 0;
 
   /** Two-press confirm guard for the stop key, so a stray key can't kill the agent. */
@@ -115,7 +110,6 @@ export class ConversationViewer implements Component {
     this.unsubscribe = session.subscribe((event) => {
       try {
         if (this.closed) return;
-        // Only request render when streaming text state changes
         if (event?.type === "message_update") {
           const me = event.assistantMessageEvent;
           const prevThinking = this.streamingThinking;
@@ -140,7 +134,6 @@ export class ConversationViewer implements Component {
               this.ensureTextMd().setText(this.streamingText);
               break;
           }
-          // Only render if streaming state actually changed
           if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
             this.scheduleRender();
           }
@@ -150,7 +143,6 @@ export class ConversationViewer implements Component {
       }
     });
   }
-  /** Lazily initialize the Markdown instance for streaming thinking text. */
   private ensureThinkingMd(): Markdown {
     if (!this.streamingThinkingMd) {
       this.streamingThinkingMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme), {
@@ -161,14 +153,12 @@ export class ConversationViewer implements Component {
     return this.streamingThinkingMd;
   }
 
-  /** Lazily initialize the Markdown instance for streaming response text. */
   private ensureTextMd(): Markdown {
     if (!this.streamingTextMd) {
       this.streamingTextMd = new Markdown("", 1, 0, makeMarkdownTheme(this.theme));
     }
     return this.streamingTextMd;
   }
-  /** Schedule a debounced render for streaming updates. */
   private scheduleRender(): void {
     if (this.renderTimer !== undefined) return; // already scheduled
     this.renderTimer = setTimeout(() => {
@@ -218,7 +208,6 @@ export class ConversationViewer implements Component {
     }
     if (this.stopArmed) this.stopArmed = false;
 
-    // Toggle thinking visibility with ctrl+T
     if (data === "\x14") {
       this.thinkingVisible = !this.thinkingVisible;
       this.invalidate(); // Clear cache so messages re-render with new visibility
@@ -371,22 +360,18 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  /** Agent is still active (running or queued). */
   private isActive(): boolean {
     return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
   }
 
-  /** Stoppable only when a stop handler exists and the agent is still active. */
   private isStoppable(): boolean {
     return !!this.onStop && this.isActive();
   }
 
-  /** Steerable only when a steer handler exists and the agent is still active. */
   private canSteer(): boolean {
     return !!this.onSteer && this.isActive();
   }
 
-  /** Open the inline steering composer and route subsequent input to it. */
   private openComposer(): void {
     const input = new Input();
     input.focused = true;
@@ -426,7 +411,6 @@ export class ConversationViewer implements Component {
       this.unsubscribe = undefined;
     }
   }
-  /** Set model display format: 'id' (short) or 'name' (full). */
   setModelDisplayStyle(style: "id" | "name") {
     this.modelDisplayStyle = style;
   }
@@ -443,7 +427,6 @@ export class ConversationViewer implements Component {
     return CHROME_LINES_BASE + (this.composer ? 1 : 0);
   }
 
-  /** Maximum scroll offset for the current content and viewport. */
   private scrollMax(): number {
     // Derive from a fresh build, not cachedContentLines.length: that cache holds
     // the last slow-path result and goes stale while streaming grows the suffix.
@@ -463,7 +446,6 @@ export class ConversationViewer implements Component {
    * copy would stay stuck in its pending state.
    */
   private invalidateCacheForNewMessages(newMsgs: any[], oldCount: number, allMessages: any[]): void {
-    // Collect toolCallIds from new tool results
     const newToolCallIds = new Set<string>();
     for (const m of newMsgs) {
       if (m.role === "toolResult" && m.toolCallId) {
@@ -472,7 +454,6 @@ export class ConversationViewer implements Component {
     }
     if (newToolCallIds.size === 0) return;
 
-    // Invalidate cached assistant messages that reference any of the new toolCallIds
     for (let i = 0; i < oldCount; i++) {
       if (!this.messageCache.has(i)) continue;
       const msg = allMessages[i];
@@ -486,16 +467,12 @@ export class ConversationViewer implements Component {
     }
   }
 
-  /**
-   * Update cache metadata after invalidation. Records the current messages array
-   * reference so we can detect array replacement (e.g., after compaction).
-   */
+  /** Record the messages array reference so array replacement (e.g. compaction) is detected. */
   private updateCacheMeta(messages: any[], width: number): void {
     this.cacheMeta = { count: messages.length, width, messagesRef: messages };
     this.cachedContentLines = undefined;
   }
 
-  /** Wrap text to the inner width and return each line as a tool-output row with bg padding. */
   private wrapToolOutput(bg: string, text: string, width: number): string[] {
     const th = this.theme;
     const lines: string[] = [];
@@ -506,7 +483,6 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  /** Wrap inner lines with bg-filled top and bottom padding. */
   private wrapInBg(bg: string, inner: string[], width: number): string[] {
     const fill = this.theme.bg(bg, " ".repeat(width));
     return [fill, ...inner, fill];
@@ -612,7 +588,6 @@ export class ConversationViewer implements Component {
     return this.wrapInBg(bg, inner, width);
   }
 
-  /** Render the output of a tool call result, with truncation for large outputs. */
   private renderToolCallResult(result: { content: unknown[]; isError: boolean }, bg: string, width: number): string[] {
     const th = this.theme;
     const resultText = extractText(result.content);
@@ -650,7 +625,6 @@ export class ConversationViewer implements Component {
       return lines;
     }
 
-    // First pass: collect tool results by toolCallId
     const toolResults = new Map<string, { content: unknown[]; isError: boolean; toolName?: string }>();
     for (const msg of messages) {
       if (msg.role === "toolResult" && msg.toolCallId) {
@@ -658,7 +632,6 @@ export class ConversationViewer implements Component {
       }
     }
 
-    // Track which tool results have been rendered
     const renderedToolResults = new Set<string>();
 
     // Invalidate cache on array replacement or width change (both require full rebuild)
@@ -684,7 +657,6 @@ export class ConversationViewer implements Component {
     // Slow path: full rebuild
     const lines: string[] = [];
 
-    // Render all messages with per-message caching
     for (let i = 0; i < messages.length; i++) {
       const cached = this.messageCache.get(i);
       if (cached) {
@@ -719,7 +691,6 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  /** Build just the streaming portion (thinking + text + indicator). */
   private buildStreamingLines(width: number): string[] {
     const lines: string[] = [];
     const th = this.theme;
@@ -733,7 +704,6 @@ export class ConversationViewer implements Component {
       }
     }
 
-    // Streaming text — rendered live as deltas arrive
     if (this.streamingText.trim()) {
       lines.push(...this.ensureTextMd().render(width));
     }

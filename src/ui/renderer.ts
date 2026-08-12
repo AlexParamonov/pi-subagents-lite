@@ -8,9 +8,7 @@ import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
 import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag, resolveModelLabel } from "./format.js";
 
-// ============================================================================
-// Stats rendering helpers
-// ============================================================================
+// --- Stats rendering helpers ---
 
 /** Format agent display name with optional model/thinking level: "Agent (mimo-v2.5-pro · high)" or "Agent". */
 export function agentNameLabel(
@@ -29,7 +27,6 @@ export function agentNameLabel(
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
 
-/** Build the stats line for an agent result card. */
 export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCost: boolean): string {
   const parts = buildStatsParts(
     {
@@ -48,9 +45,7 @@ export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCos
   return parts.join("·");
 }
 
-// ============================================================================
-// Agent tool renderers
-// ============================================================================
+// --- Agent tool renderers ---
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
 export function renderAgentToolCall(args: Record<string, unknown>, theme: Theme): Text {
@@ -66,7 +61,6 @@ export function renderAgentToolCall(args: Record<string, unknown>, theme: Theme)
   return new Text(text, 0, 0);
 }
 
-/** Render the Agent tool result — compact or expanded. */
 export function renderAgentToolResult(
   result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
   options: { expanded?: boolean },
@@ -105,9 +99,7 @@ export function renderAgentToolResult(
   return new Text(`${prefix}${theme.fg("dim", text)}`, 0, 0);
 }
 
-// ============================================================================
-// Message renderer — subagent-result (background agent completion)
-// ============================================================================
+// --- Message renderer — subagent-result ---
 
 /** Render a subagent-result message injected after background agent completion. */
 export function renderSubagentResult(
@@ -170,7 +162,6 @@ export function renderSubagentResult(
   return outer;
 }
 
-/** Build a fallback result line for subagent-result messages without stats. */
 function buildFallbackResultLine(
   d: Record<string, unknown> | undefined,
   theme: Theme,

@@ -27,7 +27,6 @@ export const BUILTIN_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "w
  */
 export const DEFAULT_ACTIVE_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write"];
 
-/** Unified runtime registry of all agents (defaults + user-defined). */
 const agents = new Map<string, AgentConfig>();
 
 /**
@@ -38,45 +37,33 @@ let userAgentDir = "";
 let projectAgentDir = "";
 let sharedAgentDir = "";
 
-/** Options for registerAgents. */
 export interface RegisterAgentsOptions {
   /** When true, skip built-in DEFAULT_AGENTS. */
   disableDefaultAgents?: boolean;
 }
 
-/**
- * Register agents into the unified registry.
- * Starts with DEFAULT_AGENTS, then overlays user agents (overrides defaults with same name).
- * When options.disableDefaultAgents is true, DEFAULT_AGENTS are skipped.
- * Hidden agents (hidden === true) are kept in the registry but excluded from spawning.
- */
+/** Register agents: defaults overlaid by user agents; hidden agents stay registered but unspawnable. */
 export function registerAgents(userAgents: Map<string, AgentConfig>, options?: RegisterAgentsOptions): void {
   agents.clear();
 
-  // Start with defaults (unless disabled)
   if (!options?.disableDefaultAgents) {
     for (const [name, config] of DEFAULT_AGENTS) {
       agents.set(name, config);
     }
   }
 
-  // Overlay user agents (overrides defaults with same name)
   for (const [name, config] of userAgents) {
     agents.set(name, config);
   }
 }
 
-/**
- * Set the agent scan directories for on-demand discovery.
- * Called during session_start alongside scanAndRegisterAgents.
- */
+/** Set scan dirs for on-demand discovery; called during session_start. */
 export function setAgentScanDirs(userDir: string, projectDir: string, sharedDir?: string): void {
   userAgentDir = userDir;
   projectAgentDir = projectDir;
   sharedAgentDir = sharedDir ?? "";
 }
 
-/** Scan user, shared, and project agent directories, merge with defaults. Returns the merged Map. */
 export async function scanAndMerge(options?: { disableDefaultAgents?: boolean }): Promise<Map<string, AgentConfig>> {
   const [userAgents, sharedAgents, projectAgents] = await Promise.all([
     scanAgentFilesInDir(userAgentDir, "user"),
@@ -87,14 +74,9 @@ export async function scanAndMerge(options?: { disableDefaultAgents?: boolean })
   return mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
 }
 /**
- * Scan the known agent directories and register any newly discovered agents
- * that aren't already in the registry. Returns the number of new agents added.
- *
- * @param worktreeDir - Optional absolute path to a worktree's `.pi/agents/` directory.
- *   When set, agents from this directory are also scanned and added to the registry.
- *   Worktree-local types use "project" source attribution and follow the same
- *   parsing and name-uniqueness rules as the parent's project scan.
- * @param options - Optional settings. disableDefaultAgents skips DEFAULT_AGENTS in the merge.
+ * Register newly discovered agents not already in the registry.
+ * @param worktreeDir - Absolute path to a worktree's .pi/agents/; its agents use
+ *   "project" source attribution and follow the parent project's uniqueness rules.
  */
 export async function discoverNewAgents(
   worktreeDir?: string,
@@ -110,7 +92,6 @@ export async function discoverNewAgents(
     }
   }
 
-  // Scan worktree-local agents (only when worktreeDir is provided)
   if (worktreeDir) {
     const worktreeAgents = await scanAgentFilesInDir(worktreeDir, "project");
     const wtMerged = mergeAgents(new Map(), [], [], worktreeAgents);
@@ -156,13 +137,6 @@ export function getAllTypes(): string[] {
 /** Names of tools that subagents must NOT inherit (no sub-subagent policy, ADR 0001). */
 export const EXCLUDED_TOOL_NAMES = ["Agent"];
 
-/**
- * Resolve tool entries (with ext/* syntax) into concrete tool names.
- * Supports:
- *   - bare tool names: "read" → "read"
- *   - ext/* syntax: "tavily/*" → all tools from the tavily extension
- *   - ext/tool syntax: "tavily/web_search" → "web_search"
- */
 function resolveToolEntries(
   entries: string[],
   extToolMap: Map<string, string[]> | undefined,
@@ -227,11 +201,9 @@ export function resolveVisibleTools(opts: {
   }
 
   if (Array.isArray(tools)) {
-    // Whitelist mode: resolve entries with ext/* expansion
     const allBuiltinSet = new Set(BUILTIN_TOOL_NAMES);
     const allowedTools = resolveToolEntries(tools, extToolMap, notify);
 
-    // Warn about unknown entries
     for (const entry of tools) {
       const slashIdx = entry.indexOf("/");
       if (slashIdx === -1 && !allBuiltinSet.has(entry)) {
@@ -257,7 +229,6 @@ export function resolveVisibleTools(opts: {
       }
     }
 
-    // Warn if a loaded extension has none of its tools in `tools`
     if (extToolMap) {
       for (const [extName, extTools] of extToolMap) {
         const hasAny = extTools.some((t) => allowedTools.has(t));
@@ -325,7 +296,6 @@ export function getToolNamesForType(type: string): string[] {
   return config?.registeredTools?.length ? config.registeredTools : [...DEFAULT_ACTIVE_TOOL_NAMES];
 }
 
-/** Resolved config shape returned by getConfig. */
 export interface ResolvedAgentConfig {
   displayName: string;
   description: string;

@@ -94,10 +94,7 @@ export interface StatsVisibility {
 
 /**
  * Build common stats parts: toolUses · turns · input↓ output with context % · cost · time.
- * Shared by AgentWidget and index.ts for consistent stats display.
- *
- * @param visible - Optional visibility flags. All default to true for backward compatibility.
- * @param durationMs - Optional duration in ms. When provided and showTime is not false, appends formatted time.
+ * Shared by the widget, viewer, and renderer for consistent stats display.
  */
 export function buildStatsParts(
   args: {
@@ -157,7 +154,6 @@ const TOOL_DISPLAY: Record<string, string> = {
   find: "searching",
 };
 
-/** Build a human-readable activity string from currently-running tools or response text. */
 export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
@@ -196,7 +192,6 @@ export function fgPreservingNestedStyles(theme: Theme, color: string, text: stri
   );
 }
 
-/** Build invocation display tags from an AgentInvocation. */
 export function buildInvocationTags(invocation: AgentInvocation | undefined): string[] {
   const tags: string[] = [];
   if (!invocation) return [];
@@ -252,7 +247,6 @@ export function resolveAgentModelLabel(a: AgentRecord, style: "id" | "name"): st
   return a.display.invocation?.modelName?.trim() || undefined;
 }
 
-/** Resolve model label and thinking level from an AgentRecord. */
 export function resolveAgentModelThinking(a: AgentRecord, style: "id" | "name"): { model?: string; thinking?: string } {
   const model = resolveAgentModelLabel(a, style);
   const thinking = a.execution.session?.thinkingLevel ?? a.display.invocation?.thinkingLevel;
@@ -272,8 +266,6 @@ export function buildMetadataLineParts(
 ): string[] {
   const parts: string[] = [];
 
-  // Model + thinking (bare format, no parentheses)
-  // Only include on metadata line when placement is "metadata"
   if (modelThinkingPlacement === "metadata") {
     const { model, thinking } = resolveAgentModelThinking(a, modelDisplayStyle);
     const modelThinkingParts = buildModelThinkingParts(model, thinking, statsVisibility);
@@ -282,10 +274,8 @@ export function buildMetadataLineParts(
     }
   }
 
-  // Worktree label
   if (a.display.worktreeLabel) parts.push(`@${a.display.worktreeLabel}`);
 
-  // Output file
   if (a.display.outputFile) parts.push(`tail -f ${a.display.outputFile}`);
 
   return parts;

@@ -29,10 +29,7 @@ export function buildModelOptions(rawOptions: string[]): SelectOption[] {
   return items;
 }
 
-/**
- * Build a SettingsListTheme from a pi-coding-agent Theme.
- * Shared by widget settings and future SettingsList-based menus.
- */
+/** Build a SettingsListTheme from a pi-coding-agent Theme. */
 export function buildSettingsListTheme(theme: {
   fg(color: string, text: string): string;
   bold(text: string): string;
@@ -49,8 +46,7 @@ export function buildSettingsListTheme(theme: {
 }
 
 /**
- * Pure numeric validation. Returns parsed integer ≥ min, or undefined.
- * Extracted from parseNumericInput for use in submenu Components.
+ * Pure numeric validation. Returns parsed number ≥ min, or undefined.
  */
 export function validateNumeric(value: string, min: number): number | undefined {
   const trimmed = value.trim();
@@ -90,7 +86,7 @@ export function createDelegatingComponent(
     set focused(value: boolean) {
       if ((active as any)?.focused != null) (active as any).focused = value;
     },
-    // Proxy SelectList properties so SettingsListWrapper can add "Back" button.
+    // Proxy SelectList properties so SettingsListWrapper can inspect and wire them.
     get items() {
       return (active as any)?.items;
     },
@@ -114,8 +110,7 @@ export function createDelegatingComponent(
 
 /**
  * Build a SelectListTheme from a pi-coding-agent Theme.
- * Produces identical visual style to buildSettingsListTheme:
- *   → cursor, accent colors, muted descriptions.
+ * Produces the same visual style as buildSettingsListTheme: → cursor, accent colors, muted descriptions.
  */
 export function buildSelectListTheme(theme: {
   fg(color: string, text: string): string;

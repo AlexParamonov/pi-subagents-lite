@@ -10,18 +10,12 @@ import type { Theme } from "../../types.js";
 import { buildSelectListTheme } from "../helpers.js";
 
 export interface ConfirmSubmenuOptions {
-  /** Message shown to the user */
   message: string;
   /** Theme from pi-coding-agent (fg, bold, italic) */
   theme: Theme;
-  /** Called when user confirms (selects Yes) */
   onConfirm: () => void;
 }
 
-/**
- * Creates a submenu factory function compatible with SettingsList's submenu callback.
- * Shows a Yes/No SelectList. Calls onConfirm on Yes, done() to close.
- */
 export function createConfirmSubmenu(
   options: ConfirmSubmenuOptions,
 ): (currentValue: string, done: (selectedValue?: string) => void) => Component {

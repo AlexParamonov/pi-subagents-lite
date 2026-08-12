@@ -1,8 +1,6 @@
 /**
- * pi-settings.ts — Read pi's settings file.
- *
- * Wraps reading ~/.pi/agent/settings.json to decouple consumers
- * from pi's file format and path.
+ * pi-settings.ts — Read pi's settings.json, decoupling consumers from pi's
+ * file format and path.
  */
 
 import * as fs from "node:fs";
@@ -17,10 +15,7 @@ export interface PiSettings {
   hideThinkingBlock?: boolean;
 }
 
-/**
- * Read pi's settings.json and return the parsed settings.
- * Returns undefined if the file doesn't exist or can't be parsed.
- */
+/** Parse pi's settings.json; undefined if missing or unparseable. */
 export function readPiSettings(): PiSettings | undefined {
   try {
     const content = fs.readFileSync(getPiSettingsPath(), "utf-8");
@@ -30,10 +25,7 @@ export function readPiSettings(): PiSettings | undefined {
   }
 }
 
-/**
- * Get the hideThinkingBlock setting from pi's settings.
- * Returns false if the setting is not present or can't be read.
- */
+/** True if hideThinkingBlock is set; false if absent or unreadable. */
 export function getHideThinkingBlock(): boolean {
   const settings = readPiSettings();
   return settings?.hideThinkingBlock ?? false;

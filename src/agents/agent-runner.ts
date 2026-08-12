@@ -40,7 +40,6 @@ import { patchRetryClassifier } from "./stream-retry.js";
 // Cache: extension path → unscoped package name (lowercased), or undefined if not found
 const packageNameCache = new Map<string, string | undefined>();
 
-/** Memoized wrapper around resolvePackageShortName. */
 function extensionPackageName(extPath: string): string | undefined {
   // Presence check distinguishes a cached undefined (not-found) from a miss,
   // so each path's package.json is read at most once per process.
@@ -110,7 +109,6 @@ interface RunOptions extends RunTunables, RunCallbacks {
   pi: ExtensionAPI;
   /** Manager-assigned id; suffixes session name to disambiguate parallel spawns (e.g. `Explore#a1b2c3d4`). */
   agentId?: string;
-  /** Override working directory (resolved worktree path). */
   cwd?: string;
   /**
    * Trust state for the target project. False = ignore the target's project
@@ -136,10 +134,6 @@ interface RunResult {
   modelError?: string;
 }
 
-/**
- * Subscribe to a session and collect the last assistant message text.
- * Returns an object with a `getText()` getter and an `unsubscribe` function.
- */
 function collectResponseText(session: AgentSession, onTextDelta?: (delta: string, fullText: string) => void) {
   let text = "";
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
@@ -154,7 +148,6 @@ function collectResponseText(session: AgentSession, onTextDelta?: (delta: string
   return { getText: () => text, unsubscribe };
 }
 
-/** Get the last assistant text from the completed session history. */
 function getLastAssistantText(session: AgentSession): string {
   for (let i = session.messages.length - 1; i >= 0; i--) {
     const msg = session.messages[i];
@@ -181,10 +174,6 @@ function getFinalModelError(session: AgentSession): string | undefined {
   return undefined;
 }
 
-/**
- * Wire an AbortSignal to abort a session.
- * Returns a cleanup function to remove the listener.
- */
 function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => void {
   if (!signal) return () => {};
   // abort() returns a promise and this fires from an event listener, so a
@@ -216,10 +205,6 @@ function usageFromAssistantMessage(msg: Record<string, unknown>): AgentUsage | u
   };
 }
 
-/**
- * Subscribe to shared session events (tool activity, usage, compaction)
- * used by runAgent. Returns an unsubscribe function.
- */
 export function subscribeToSessionEvents(
   session: AgentSession,
   options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
@@ -247,18 +232,7 @@ export function subscribeToSessionEvents(
   });
 }
 
-/**
- * Extract the extension name from an extension's file path.
- *
- * Handles all distribution methods:
- *  - git packages: `.../git/github.com/<user>/<pkg>/...` → "<pkg>"
- *  - npm packages: `.../node_modules/[...]pkg/...` → "pkg"
- *  - local extensions: `~/.pi/agent/extensions/<name>/...` → "<name>"
- *  - direct files: `extensions/<name>.ts` → "<name>"
- *
- * Does NOT depend on internal directory structure (dist/, lib/, src/, etc).
- * Only cares about the package root, which is determined by distribution method.
- */
+/** Extension name from its install path (git/npm/local/direct); independent of dist/lib/src internals. */
 function extractExtensionName(extPath: string): string {
   const parts = extPath.split(path.sep);
 
@@ -296,7 +270,6 @@ function extractExtensionName(extPath: string): string {
   return path.basename(path.dirname(extPath));
 }
 
-/** Run a git command via pi.exec, returning stdout on success or null on failure. */
 async function execGit(pi: ExtensionAPI, args: string[], cwd: string): Promise<string | null> {
   try {
     const result = await pi.exec("git", args, { cwd, timeout: GIT_EXEC_TIMEOUT_MS });
@@ -306,10 +279,7 @@ async function execGit(pi: ExtensionAPI, args: string[], cwd: string): Promise<s
   }
 }
 
-/**
- * Detect environment info using pi.exec() for git detection.
- * Inline replacement for upstream's detectEnv from env.ts.
- */
+/** Inline replacement for upstream's detectEnv — uses pi.exec for git detection. */
 async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
   const gitRoot = await execGit(pi, ["rev-parse", "--is-inside-work-tree"], cwd);
   const isGitRepo = gitRoot === "true";
@@ -324,10 +294,6 @@ async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
 
 // ── runAgent phases ────────────────────────────────────────────────
 
-/**
- * Resolve system prompt mode, fetch the appropriate source prompt, and
- * load project context files. Returns everything buildPrompt needs.
- */
 function resolveSystemPromptSources(
   ctx: ExtensionContext,
   cwd: string,
@@ -340,7 +306,6 @@ function resolveSystemPromptSources(
   const mode = store.agent.systemPromptMode;
   const extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {};
 
-  // Fetch parent system prompt for inherit mode
   if (mode === "inherit") {
     try {
       extras.parentSystemPrompt = ctx.getSystemPrompt();
@@ -349,7 +314,6 @@ function resolveSystemPromptSources(
     }
   }
 
-  // Read custom prompt file for custom mode
   if (mode === "custom") {
     try {
       const content = fs.readFileSync(CUSTOM_PROMPT_PATH, "utf-8").trim();
@@ -367,7 +331,6 @@ function resolveSystemPromptSources(
     }
   }
 
-  // Load AGENTS.md context files when the setting is enabled
   if (store.agent.includeContextFiles) {
     try {
       extras.contextFiles = loadProjectContextFiles({ cwd, agentDir: getAgentDir() });
@@ -379,11 +342,6 @@ function resolveSystemPromptSources(
   return { mode, extras };
 }
 
-/**
- * Phase 1: Resolve system prompt from agent config, skills, and env info.
- *
- * @param resolverExtras  Partial extras from resolveSystemPromptSources (mode-specific prompts + context files).
- */
 function buildPrompt(
   type: SubagentType,
   agentConfig: ReturnType<typeof getAgentConfig>,
@@ -408,7 +366,6 @@ function buildPrompt(
   return buildAgentPrompt({ ...fallback, name: type }, cwd, env, extras, systemPromptMode);
 }
 
-/** Build extension name → tool names map from loaded extensions. */
 function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, unknown> }>) {
   const map = new Map<string, string[]>();
   for (const ext of extensions) {
@@ -419,11 +376,7 @@ function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, un
   return map;
 }
 
-/**
- * Filter extensions by name, tracking which names matched.
- * @param names  Set of names to match against (lowercased).
- * @param invert  When true, removes matching extensions (blacklist). When false, keeps them (whitelist).
- */
+/** Filter extensions by name; invert=true removes matches (blacklist), false keeps them (whitelist). */
 function filterExtensions(
   extensions: Array<{ path: string }>,
   names: Set<string>,
@@ -443,10 +396,7 @@ function filterExtensions(
   return { filtered, matched };
 }
 
-/**
- * Override closure: keeps matching extensions (`invert=false`) or removes them
- * (`invert=true`), warning via `notify` for any requested name that matched nothing.
- */
+/** Extension filter override; warns for requested names that matched nothing. */
 function filterOverride(names: Set<string>, invert: boolean, notify?: (msg: string) => void) {
   return (result: any) => {
     const { filtered, matched } = filterExtensions(result.extensions, names, invert);
@@ -459,7 +409,6 @@ function filterOverride(names: Set<string>, invert: boolean, notify?: (msg: stri
   };
 }
 
-/** Build extension override for whitelist or blacklist filtering. */
 export function buildExtOverride(
   extensions: true | string[] | false | undefined,
   excludeExtensions?: string[],
@@ -484,10 +433,6 @@ export function buildExtOverride(
   return undefined;
 }
 
-/**
- * Phase 2: Build DefaultResourceLoader with extension filtering.
- * Returns the loader and a function that reloads it and builds the ext→tool map.
- */
 function createResourceLoader(
   config: ReturnType<typeof getConfig>,
   agentConfig: ReturnType<typeof getAgentConfig>,
@@ -523,7 +468,6 @@ function createResourceLoader(
   };
 }
 
-/** Create an agent session with the resolved model and thinking level. */
 async function initSession(
   ctx: ExtensionContext,
   options: RunOptions,
@@ -553,11 +497,9 @@ async function initSession(
   if (thinkingLevel) sessionOpts.thinkingLevel = thinkingLevel;
   const result = await createAgentSession(sessionOpts);
   const session = result.session;
-  // Patch retry classifier with our custom patterns.
   patchRetryClassifier(session);
 
-  // Inject max_tokens into provider request payloads.
-  // Spawn-time value wins over agent config (frontmatter).
+  // Inject max_tokens into provider payloads; spawn-time value wins over agent config.
   const maxTokens = options.maxTokens ?? agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
     const field = (model.compat as any)?.maxTokensField ?? "max_tokens";
@@ -572,9 +514,6 @@ async function initSession(
   return session;
 }
 
-/**
- * Phase 3: Create session, bind extensions, filter tools.
- */
 async function createAndConfigureSession(
   ctx: ExtensionContext,
   options: RunOptions,
@@ -608,10 +547,6 @@ async function createAndConfigureSession(
   options.onSessionCreated?.(session);
   return session;
 }
-/**
- * Phase 4: Subscribe to turn_end events for graceful max_turns enforcement.
- * Returns an unsubscribe function and state getters.
- */
 function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxTurns" | "graceTurns" | "onTurnEnd">) {
   let turnCount = 0;
   const maxTurns = normalizeMaxTurns(options.maxTurns);
@@ -643,9 +578,6 @@ function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxT
   return { unsubscribe, getAborted: () => aborted, getTurnLimited: () => softLimitReached };
 }
 
-/**
- * Phase 5: Execute the prompt turn loop with event wiring and cleanup.
- */
 async function runTurnLoop(session: AgentSession, prompt: string, options: RunOptions, unsubTurns: () => void) {
   const unsubEvents = subscribeToSessionEvents(session, options);
   const collector = collectResponseText(session, options.onTextDelta);
@@ -713,7 +645,6 @@ async function runAgentImpl(
     projectTrusted: options.projectTrusted !== false,
   });
 
-  // Resolve system prompt mode + source prompts + context files
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify);
 
   const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env, mode, promptExtras);

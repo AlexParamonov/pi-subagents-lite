@@ -38,7 +38,6 @@ function buildStatConfig(store: ReturnType<typeof getStore>) {
   ]);
 }
 
-/** Build SettingsList items for the Layout category. */
 function buildLayoutItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>): SettingItem[] {
   return [
     {
@@ -71,7 +70,6 @@ function buildLayoutItems(ctx: ExtensionCommandContext, store: ReturnType<typeof
   ];
 }
 
-/** Build SettingsList items for the Display category. */
 function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
   return [
     {
@@ -120,7 +118,6 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
   ];
 }
 
-/** Build SettingsList items for the Behavior category. */
 function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>): SettingItem[] {
   return [
     {
@@ -159,7 +156,6 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
   ];
 }
 
-/** Stat descriptions keyed by stat id. */
 const STAT_DESCRIPTIONS: Record<string, string> = {
   showTools: "Show tool count 🛠︎  in the widget.",
   showTurns: "Show turn count ⟳  in the widget.",
@@ -170,7 +166,6 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
   showTime: "Show elapsed time in the widget.",
 };
 
-/** Build SettingsList items for the Stats category. */
 function buildStatsItems(
   store: ReturnType<typeof getStore>,
   statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>,
@@ -193,7 +188,6 @@ function buildStatsItems(
   return items;
 }
 
-/** Build the onChange handler for a category's SettingsList. */
 function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>) {
   const statConfig = buildStatConfig(store);
   return (id: string, newValue: string) => {
@@ -284,7 +278,6 @@ function refreshChatComponents(ctx: ExtensionCommandContext): void {
   ctx.ui.setToolsExpanded(expanded);
 }
 
-/** Show a SettingsList submenu for a specific category. */
 async function showCategorySubmenu(
   ctx: ExtensionCommandContext,
   title: string,

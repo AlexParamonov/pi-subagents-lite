@@ -8,7 +8,6 @@
 import type { MarkdownTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
 
-/** Build a minimal MarkdownTheme from our Theme. */
 export function makeMarkdownTheme(th: Theme): MarkdownTheme {
   return {
     heading: (t: string) => th.bold(t),

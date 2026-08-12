@@ -24,7 +24,6 @@ export const WORKTREE_VALIDATION_ERRORS = {
   GIT_TIMEOUT: "worktree_path validation failed: git command timed out",
 } as const;
 
-/** Successful validation result. */
 export interface WorktreeValidationSuccess {
   ok: true;
   /** Resolved absolute path (symlinks followed, relative resolved). Undefined when path is empty/omitted. */
@@ -42,7 +41,6 @@ export interface WorktreeValidationSuccess {
   sameRepo?: boolean;
 }
 
-/** Failed validation result. */
 export interface WorktreeValidationFailure {
   ok: false;
   /** Human-readable error describing the specific failure reason. */
@@ -104,21 +102,9 @@ function normalizeGitPath(gitPath: string, cwd: string): string {
 
 /**
  * Validate a worktree path against the git repository it must live in.
- *
- * Resolution order:
- * 1. Empty/whitespace → treated as omitted (return ok with no path)
- * 2. Resolve relative against parent cwd
- * 3. Resolve symlinks (realpath)
- * 4. Check exists + is directory
- * 5. Check the target is inside a git repository (any repo)
- * 6. Detect same-repo vs cross-repo against the parent (parent need not be in a repo)
- * 7. Get worktree root via --show-toplevel
- * 8. Normalize and compute display label
- *
- * @param pi - Minimal exec interface (pi.exec)
- * @param worktreePath - The raw worktree_path value from the LLM
- * @param parentCwd - The parent session's working directory
- * @returns Validation result with resolved path + label, or error
+ * Empty/whitespace is treated as omitted (ok with no path). Returns the
+ * resolved absolute path, worktree root, display label, and same-repo
+ * status against the parent (parent need not be in a repo).
  */
 export async function validateWorktreePath(
   pi: PiExec,
@@ -146,7 +132,6 @@ export async function validateWorktreePath(
     if (!stat.isDirectory()) {
       return { ok: false, error: WORKTREE_VALIDATION_ERRORS.NOT_A_DIRECTORY };
     }
-    // Resolve symlinks — use realpathSync to get the canonical path
     realPath = realpathSync(resolved);
   } catch {
     // stat failed — likely a broken symlink or permission issue
@@ -207,7 +192,6 @@ export async function validateWorktreePath(
  * - Always forward slashes regardless of host OS
  */
 export function computeLabel(resolvedPath: string, worktreeRoot: string): string {
-  // Normalize both paths to forward slashes for cross-platform comparison
   const normalizedResolved = resolvedPath.replace(/\\/g, "/");
   const normalizedRoot = worktreeRoot.replace(/\\/g, "/");
 
@@ -217,7 +201,6 @@ export function computeLabel(resolvedPath: string, worktreeRoot: string): string
     return rootBasename;
   }
 
-  // Compute relative path using posix separator
   const relative = path.posix.relative(normalizedRoot, normalizedResolved);
 
   return `${rootBasename}/${relative}`;

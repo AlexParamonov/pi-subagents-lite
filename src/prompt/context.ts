@@ -1,9 +1,4 @@
-/**
- * context.ts — Message content extraction and conversation snapshot formatting.
- *
- * extractText: pull text from message content blocks.
- * buildSnapshotMarkdown: format agent conversation as markdown for snapshot viewer.
- */
+/** context.ts — Message content extraction and conversation snapshot formatting. */
 
 import { summarizeToolArgs } from "../utils.js";
 
@@ -11,7 +6,6 @@ function isTextBlock(c: unknown): c is { type: "text"; text: string } {
   return typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text";
 }
 
-/** Extract text from a message content block array. */
 export function extractText(content: unknown[]): string {
   return content
     .filter(isTextBlock)
@@ -30,12 +24,8 @@ export function extractText(content: unknown[]): string {
  *
  * Tool arguments live on ToolCall blocks inside AssistantMessage.content (linked by id),
  * not on ToolResultMessage. We pre-build a lookup map.
- *
- * @param messages - Agent session messages (from AgentSession.messages)
- * @returns Formatted markdown string
  */
 export function buildSnapshotMarkdown(messages: readonly any[]): string {
-  // Build toolCallId -> arguments map from assistant messages
   const argsMap = new Map<string, Record<string, unknown>>();
   for (const msg of messages) {
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
@@ -68,7 +58,6 @@ export function buildSnapshotMarkdown(messages: readonly any[]): string {
         const name = msg.toolName ?? "tool";
         const displayName = name.charAt(0).toUpperCase() + name.slice(1);
 
-        // Args live on the ToolCall (assistant message), looked up by toolCallId
         const toolArgs = argsMap.get(msg.toolCallId);
         let summary = summarizeToolArgs(name, toolArgs);
         if (summary) {

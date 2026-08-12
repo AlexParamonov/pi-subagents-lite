@@ -22,24 +22,17 @@ import {
   setCoordinator,
 } from "./shell.js";
 
-// ============================================================================
-// Config loader — session_start handler logic
-// ============================================================================
+// --- Config loader — session_start handler logic ---
 
-/**
- * Ensure the manager and widget singletons exist.
- * Idempotent — safe to call on every session_start.
- */
+/** Idempotent — safe to call on every session_start. */
 export function ensureManagerAndWidget(): void {
   const currentManager = getManager();
   const currentWidget = getWidget();
 
-  // Create manager if missing
   if (!currentManager) {
-    // Coordinator will be created after manager, so use a placeholder onComplete
-    // that we'll replace once coordinator is created.
+    // Coordinator needs the manager, so wire onComplete after creating it.
     const newManager = new AgentManager(
-      undefined, // onComplete wired below
+      undefined,
       getStore().concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
       undefined,
     );
@@ -47,33 +40,23 @@ export function ensureManagerAndWidget(): void {
     // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
     getStore().setDeps({ manager: newManager });
 
-    // Now create coordinator with the real manager
     const coordinator = new SpawnCoordinator(newManager);
     setCoordinator(coordinator);
 
-    // Wire the manager's onComplete to the coordinator
     newManager.setOnComplete((record) => {
-      // Delegate completion side-effects to coordinator
       coordinator.onAgentComplete(record);
       getWidget()?.update();
     });
   }
 
-  // Create widget if missing (uses existing or newly created manager)
   if (!currentWidget) {
     const newWidget = new AgentWidget(getManager()!, (id: string) => getCoordinator()?.liveView(id));
     setWidget(newWidget);
-    // Sync the widget as a config side-effect target. setDeps re-syncs showCost +
-    // all widget display settings from current config (absorbs the old
-    // newWidget.setShowCost(...) + syncWidgetSettings() calls).
+    // Sync widget as config side-effect target — setDeps re-syncs all display settings from config.
     getStore().setDeps({ widget: newWidget });
   }
 }
 
-/**
- * Scan agent files from user, shared, and project directories, merge with defaults,
- * and register into the type registry.
- */
 export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   const agentDir = getAgentDir();
   const userAgentDir = path.join(agentDir, "agents");
@@ -86,8 +69,6 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
 
   const disableDefaults = getStore().agent.disableDefaultAgents;
 
-  // Scan user/shared/project layers and merge with defaults
-  // (skip defaults when disableDefaultAgents is on)
   const merged = await scanAndMerge({ disableDefaultAgents: disableDefaults });
 
   registerAgents(merged, { disableDefaultAgents: disableDefaults });
@@ -101,14 +82,9 @@ export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promis
   await scanAndRegisterAgents(ctx);
 }
 
-// ============================================================================
-// Event listener setup
-// ============================================================================
+// --- Event listener setup ---
 
-/**
- * Open a ConversationViewer overlay for the given agent record.
- * Sets viewerOpen flag on the widget to prevent nav deactivation while open.
- */
+/** Open the viewer overlay; the viewerOpen flag prevents nav deactivation while open. */
 async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Promise<void> {
   if (!record) return;
   if (!record.execution?.session) return;
@@ -138,15 +114,9 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
   }
 }
 
-/**
- * Return type for terminal input listeners.
- */
 type InputListenerResult = { consume: true } | undefined;
 
-/**
- * Factory for the navigation + ctrl+o terminal input handler.
- * Exposed so tests can drive the real handler with a stubbed ctx.
- */
+/** Exposed for tests to drive the real handler with a stubbed ctx. */
 export function createNavInputHandler(ctx: ExtensionContext): (data: string) => InputListenerResult {
   return (data: string) => {
     const widget = getWidget();
@@ -174,7 +144,6 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
           return { consume: true };
         }
       } else {
-        // Nav active
         if (matchesKey(data, "down")) {
           widget.navDown();
           return { consume: true };
@@ -216,7 +185,6 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
   };
 }
 
-/** Register all pi.on() event listeners. */
 export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("tool_call", toolCallListener);
 
@@ -228,8 +196,6 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     getWidget()?.setUICtx(ctx.ui as unknown as UICtx);
   });
 
-  // session_start — load config, scan agents, register into registry,
-  // then re-register Agent tool with dynamic agent type enum
   // Listen for ctrl+o keypress to sync compact mode (push-based, no polling)
   let unregisterTerminalInput: (() => void) | undefined;
 
@@ -238,7 +204,6 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
-    // Register ctrl+o listener
     if (ctx.hasUI && !unregisterTerminalInput) {
       unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));
     }
@@ -246,9 +211,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     getStore().notifyToolsExpanded(false);
   });
 
-  // session_shutdown — abort all, dispose manager
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
-    // Warn if agents were killed
     const currentManager = getManager();
     if (currentManager) {
       const records = currentManager.listAgents();

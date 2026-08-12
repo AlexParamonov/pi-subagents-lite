@@ -28,6 +28,7 @@
 ### Delegation
 - Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
 - Parallel sub-agents writing docs: mandate distinct output paths. Parallel slices (2+) consistently save time.
+- Comment cleanup across many files: delegate per-module with a shared ruleset (delete restating comments, tighten to the non-obvious point, keep why/invariant/ADR-refs and functional markers), then verify the union diff is comment-only by filtering changed lines. Stale consumer names in comments rot — verify with grep before trusting them.
 
 ### Verification
 - Don't assume — verify: confirm merge commits exist, code review catches silent production bugs.

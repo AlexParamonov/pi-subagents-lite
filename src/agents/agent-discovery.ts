@@ -16,11 +16,8 @@ import type { AgentConfig } from "./types.js";
 import type { ThinkingLevel } from "../types.js";
 import { parseThinkingLevel } from "../utils.js";
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                             */
-/* ------------------------------------------------------------------ */
+// --- Types ---
 
-/** Raw agent config as parsed from .md frontmatter. */
 export interface AgentConfigFromMd {
   name?: string;
   display_name?: string;
@@ -41,9 +38,7 @@ export interface AgentConfigFromMd {
   source: "user" | "project";
 }
 
-/* ------------------------------------------------------------------ */
-/*  Simple frontmatter parser                                          */
-/* ------------------------------------------------------------------ */
+// --- Simple frontmatter parser ---
 
 /**
  * Naive YAML frontmatter splitter.
@@ -59,7 +54,6 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, unknow
     return { frontmatter: {}, body: "" };
   }
 
-  // Check for triple-dash delimited frontmatter
   if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
     return { frontmatter: {}, body: content };
   }
@@ -89,7 +83,6 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, unknow
   for (const line of fmRaw.split("\n")) {
     const trimmed = line.trim();
 
-    // Skip empty lines
     if (!trimmed) continue;
 
     // Array item (continuation of previous key)
@@ -135,11 +128,8 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, unknow
   return { frontmatter, body };
 }
 
-/* ------------------------------------------------------------------ */
-/*  parseExtensions                                                    */
-/* ------------------------------------------------------------------ */
+// --- parseExtensions ---
 
-/** Split comma-separated string, trim whitespace, strip brackets, and remove empty entries. */
 function splitCommaList(value: string): string[] {
   return value
     .split(",")
@@ -191,20 +181,16 @@ export function parsePreloadSkills(raw: unknown): string[] | false | undefined {
   if (Array.isArray(raw)) {
     return raw.map(String);
   }
-  return undefined; // true/"true"/"all" not supported
+  return undefined;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Frontmatter value helpers                                          */
-/* ------------------------------------------------------------------ */
+// --- Frontmatter value helpers ---
 
-/** Extract a non-empty string value from frontmatter. */
 function parseString(frontmatter: Record<string, unknown>, key: string): string | undefined {
   const v = frontmatter[key];
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-/** Extract a string array from frontmatter (array or comma-separated string). */
 function parseStringArray(frontmatter: Record<string, unknown>, key: string): string[] | undefined {
   const v = frontmatter[key];
   if (Array.isArray(v)) {
@@ -216,7 +202,6 @@ function parseStringArray(frontmatter: Record<string, unknown>, key: string): st
   return undefined;
 }
 
-/** Extract a boolean from frontmatter (true/false or "true"/"false"). */
 function parseBoolean(frontmatter: Record<string, unknown>, key: string): boolean | undefined {
   const v = frontmatter[key];
   if (v === true || v === "true") return true;
@@ -224,7 +209,6 @@ function parseBoolean(frontmatter: Record<string, unknown>, key: string): boolea
   return undefined;
 }
 
-/** Extract a number from frontmatter (number or numeric string). */
 function parseNumber(frontmatter: Record<string, unknown>, key: string): number | undefined {
   const v = frontmatter[key];
   if (typeof v === "number") return v;
@@ -235,22 +219,12 @@ function parseNumber(frontmatter: Record<string, unknown>, key: string): number 
   return undefined;
 }
 
-/**
- * Build an object containing only the entries whose value is not undefined.
- * Used to transform AgentConfigFromMd fields into a Partial<AgentConfig>
- * without 14 repetitive `if (x !== undefined)` blocks.
- */
 function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined)) as Partial<T>;
 }
 
-/* ------------------------------------------------------------------ */
-/*  parseAgentFile                                                     */
-/* ------------------------------------------------------------------ */
+// --- parseAgentFile ---
 
-/**
- * Parse a single agent .md file into AgentConfigFromMd.
- */
 export function parseAgentFile(content: string, source: "user" | "project"): AgentConfigFromMd {
   const { frontmatter, body } = parseFrontmatter(content);
 
@@ -275,14 +249,9 @@ export function parseAgentFile(content: string, source: "user" | "project"): Age
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  scanAgentFilesInDir                                                */
-/* ------------------------------------------------------------------ */
+// --- scanAgentFilesInDir ---
 
-/**
- * Scan a directory for .md files and parse them into AgentConfigFromMd[].
- * Returns empty array if directory doesn't exist.
- */
+/** Scan a directory for .md agent files; empty array when the directory doesn't exist. */
 export async function scanAgentFilesInDir(
   dirPath: string,
   source: "user" | "project" = "user",
@@ -312,9 +281,7 @@ export async function scanAgentFilesInDir(
   return agents;
 }
 
-/* ------------------------------------------------------------------ */
-/*  mergeAgents                                                        */
-/* ------------------------------------------------------------------ */
+// --- mergeAgents ---
 
 /**
  * Merge default agents with user, shared, and project overrides.
@@ -342,12 +309,10 @@ export function mergeAgents(
 ): Map<string, AgentConfig> {
   const result = new Map<string, AgentConfig>();
 
-  // Start with defaults
   for (const [name, config] of defaults) {
     result.set(name, { ...config });
   }
 
-  // Apply overrides in precedence order: user, then shared, then project
   mergeAgentOverrides(result, userAgents);
   mergeAgentOverrides(result, sharedAgents);
   mergeAgentOverrides(result, projectAgents);
@@ -355,10 +320,7 @@ export function mergeAgents(
   return result;
 }
 
-/**
- * Apply a list of agent configs onto the result map.
- * Existing agents are merged per-field; new agents are built from scratch.
- */
+/** Merge configs onto the map; new agents are built from BASE_DEFAULTS. */
 function mergeAgentOverrides(result: Map<string, AgentConfig>, agents: AgentConfigFromMd[]): void {
   for (const md of agents) {
     if (!md.name) continue;

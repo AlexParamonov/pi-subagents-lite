@@ -8,10 +8,9 @@
  *   hint line below the items itself; SelectList renders inline descriptions)
  * - Bottom separator line
  *
- * The Back button has been removed. Menus still close via Escape, the
- * back-arrow key, and Ctrl-C — the underlying list components call their
- * `onCancel` on those keys, and the wrapper wires that to `closeMenu` for
- * SelectList (SettingsList receives its own `onCancel` at construction).
+ * The Back button was removed; menus close via Escape, back-arrow, and Ctrl-C.
+ * The list components call `onCancel` on those keys, which the wrapper wires
+ * to `closeMenu` for SelectList (SettingsList gets its own at construction).
  */
 
 import { type Component, isFocusable } from "@earendil-works/pi-tui";
@@ -151,7 +150,6 @@ export class SettingsListWrapper implements Component {
     lines.push(this.separatorChar.repeat(width));
     lines.push("");
 
-    // Header (left-aligned with spacing, bold and colored)
     const styledTitle = this.theme.bold(this.theme.fg("accent", this.title));
     lines.push("  " + styledTitle);
     lines.push("");

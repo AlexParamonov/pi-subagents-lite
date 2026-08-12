@@ -17,9 +17,7 @@ import { buildAgentDetails, formatResultContent } from "../agents/tool-execution
  * D6 (Nudge owned here), D2 (peers with AgentManager).
  */
 
-// ============================================================================
-// Types
-// ============================================================================
+// --- Types ---
 
 /** Coordinator-owned per-agent live display state. Only transient UI state. */
 export interface LiveView {
@@ -46,16 +44,12 @@ export interface SpawnResult {
   record: AgentRecord;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
+// --- Constants ---
 
 /** Batch delay for nudges — only emit one update per batch window (ms). */
 const NUDGE_DELAY_MS = 200;
 
-// ============================================================================
-// SpawnCoordinator
-// ============================================================================
+// --- SpawnCoordinator ---
 
 export class SpawnCoordinator {
   /** Per-agent live display state. Widget reads from here + record for stats. */
@@ -70,7 +64,6 @@ export class SpawnCoordinator {
   /** Pending nudge agent IDs, batched within the delay window. */
   private pendingNudges = new Set<string>();
 
-  /** Active nudge timer. */
   private nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Set during dispose to prevent nudge emission after session replacement. */
@@ -102,7 +95,6 @@ export class SpawnCoordinator {
 
     const agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
 
-    // Register live view
     this.liveViews.set(agentId, liveView);
 
     // Ensure widget timer is running so it displays the new agent
@@ -112,7 +104,7 @@ export class SpawnCoordinator {
       widget.ensureTimer();
     }
 
-    // Track background agents + capture ctx for fallback notification
+    // Capture spawning-session ctx for fallback notification
     if (intent.runInBackground) {
       this.backgroundAgentIds.add(agentId);
       this.backgroundContexts.set(agentId, ctx);
@@ -121,7 +113,6 @@ export class SpawnCoordinator {
     const record = this.manager.getRecord(agentId)!;
 
     if (!intent.runInBackground) {
-      // Foreground: await completion
       await record.execution.promise;
 
       // Clean up live view (foreground completion handled inline)
@@ -136,7 +127,6 @@ export class SpawnCoordinator {
     return this.liveViews.get(id);
   }
 
-  /** Check if an agent was spawned as background. */
   isBackground(agentId: string): boolean {
     return this.backgroundAgentIds.has(agentId);
   }
@@ -166,17 +156,14 @@ export class SpawnCoordinator {
    * Owns the completion side-effects: nudge scheduling, live-view cleanup.
    */
   onAgentComplete(record: AgentRecord): void {
-    // Schedule nudge for background agents
     if (this.backgroundAgentIds.has(record.id)) {
       this.scheduleNudge(record.id);
       this.backgroundAgentIds.delete(record.id);
     }
 
-    // Clean up live view
     this.liveViews.delete(record.id);
   }
 
-  /** Dispose: clear timer, live views, and background tracking. */
   dispose(): void {
     if (this.nudgeTimer) {
       clearTimeout(this.nudgeTimer);
@@ -212,7 +199,6 @@ export class SpawnCoordinator {
     };
   }
 
-  /** Emit an individual nudge for a completed background agent. */
   private emitIndividualNudge(agentId: string): void {
     // Skip if disposed — prevents stale pi usage after session replacement
     if (this.disposed) return;

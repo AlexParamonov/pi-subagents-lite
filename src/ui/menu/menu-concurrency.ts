@@ -27,7 +27,6 @@ import type { SelectOption } from "../searchable-select.js";
 import type { Theme } from "../types.js";
 
 export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
-  // Build menu items from current store state.
   const buildItems = (
     store: ReturnType<typeof getStore>,
     theme: Theme,
@@ -115,7 +114,6 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     }
 
     items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
-    // Add per-provider limit (submenu: provider selection → numeric input)
     if (providers.length > 0) {
       items.push({
         id: "addProviderLimit",
@@ -157,7 +155,6 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       });
     }
 
-    // Add per-model limit
     items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
     if (modelOptions.length > 0) {
       items.push({
@@ -172,7 +169,6 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       });
     }
 
-    // Reset all to defaults
     items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
     items.push({
       id: "resetAll",

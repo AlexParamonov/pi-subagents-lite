@@ -19,10 +19,6 @@ export interface ModelSelectSubmenuOptions {
   onSelect: (mode: "session" | "permanent" | "clear", model: string | null) => void;
 }
 
-/**
- * Creates a submenu factory for SettingsList items that need the 2-step
- * model override flow (mode selection → model selection).
- */
 export function createModelSelectSubmenu(
   options: ModelSelectSubmenuOptions,
 ): (currentValue: string, done: (selectedValue?: string) => void) => Component {

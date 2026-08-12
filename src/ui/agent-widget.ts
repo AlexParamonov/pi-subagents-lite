@@ -21,30 +21,26 @@ import {
 } from "./format.js";
 import type { LiveView } from "../spawn/spawn-coordinator.js";
 
-// Re-export Theme so existing consumers (searchable-select, result-viewer) don't break
+// Backward-compat re-export for consumers importing Theme from this module.
 export type { Theme } from "./types.js";
 
 // ---- Constants ----
 
-/** Maximum number of rendered lines before overflow collapse kicks in. */
+/** Overflow collapse kicks in above this many rendered lines. */
 const DEFAULT_MAX_WIDGET_LINES = 12;
 
-/** Braille spinner frames for animated running indicator. */
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/** Widget key used with setWidget(). */
 const WIDGET_KEY = "agents";
 
-/** Status bar key used with setStatus(). */
 const STATUS_KEY = "subagents";
 
-/** Widget refresh interval in milliseconds. */
 const WIDGET_REFRESH_INTERVAL = 80;
 
 /** Navigation freeze window: roster order is deferred while the user is actively navigating. */
 const NAV_FREEZE_MS = 2000;
 
-/** Milliseconds in one minute (finished-retention window is configured in minutes). */
+/** Finished-retention is configured in minutes; convert to ms. */
 const MINUTE_MS = 60_000;
 
 // ---- Types ----
@@ -95,17 +91,13 @@ export class AgentWidget {
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
 
-  /** Whether to show cost in stats and status bar. */
   private showCost = false;
 
-  /** Stats visibility flags. Controls which stats appear in the stats line. */
   private statsVisibility: StatsVisibility = {};
 
-  /** Whether the widget callback is currently registered with the TUI. */
   private widgetRegistered = false;
-  /** Cached TUI reference from widget factory callback, used for requestRender(). */
+  /** TUI from the widget factory callback, used for requestRender(). */
   private tui: TUI | undefined;
-  /** Cached theme reference from widget factory callback. */
   private theme: Theme | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
@@ -119,33 +111,25 @@ export class AgentWidget {
   /** Whether ctrl+o shortcut is enabled (syncs compact with toolsExpanded). */
   private widgetShortcut = false;
 
-  /** Maximum lines for full mode. */
   private maxLines = DEFAULT_MAX_WIDGET_LINES;
 
-  /** Maximum lines for compact mode. */
   private maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2);
 
-  /** Whether to show navigation hint text in the heading. */
   private navHint = true;
 
-  /** Status bar format: 'full' or 'compact'. */
   private statusBarFormat: "full" | "compact" = "full";
 
   /** Retention window in minutes for finished rows. Mirrors the config default; never 0. */
   private finishedRetentionMinutes = 1;
 
-  /** Model display format: 'id' (short) or 'name' (full). */
   private modelDisplayStyle: "id" | "name" = "id";
 
-  /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
   private modelThinkingPlacement: ModelThinkingPlacement = "header";
 
-  /** Whether model/thinking should appear in header (compact mode or header placement setting). */
   private shouldShowModelThinkingInHeader(): boolean {
     return this.isCompact() || this.modelThinkingPlacement === "header";
   }
 
-  /** Navigation mode active. */
   private navActive = false;
 
   /** Highlighted agent id — the highlight's source of truth. */
@@ -171,61 +155,51 @@ export class AgentWidget {
     private getLiveView: (id: string) => LiveView | undefined,
   ) {}
 
-  /** Set whether to show cost in stats and status bar. */
   setShowCost(enabled: boolean) {
     this.showCost = enabled;
   }
 
-  /** Set stats visibility flags. */
   setStatsVisibility(visible: StatsVisibility) {
     this.statsVisibility = visible;
   }
 
-  /** Set compact mode (internal, for sync from ctrl+o). */
+  /** Internal — sync from ctrl+o. */
   setCompactMode(enabled: boolean) {
     if (this.compactMode === enabled) return;
     this.compactMode = enabled;
     this.update();
   }
 
-  /** Set force compact mode — overrides ctrl+o shortcut. */
   setForceCompact(enabled: boolean) {
     this.forceCompact = enabled;
   }
 
-  /** Set whether ctrl+o shortcut is enabled. */
   setWidgetShortcut(enabled: boolean) {
     this.widgetShortcut = enabled;
   }
 
-  /** Set max lines for full mode. */
   setMaxLines(lines: number) {
     this.maxLines = lines;
   }
 
-  /** Set max lines for compact mode. */
   setMaxLinesCompact(lines: number) {
     this.maxLinesCompact = lines;
   }
 
-  /** Set whether to show navigation hint text in the heading. */
   setNavHint(enabled: boolean) {
     this.navHint = enabled;
   }
 
-  /** Set status bar format ('full' or 'compact'). */
   setStatusBarFormat(format: "full" | "compact") {
     this.statusBarFormat = format;
   }
-  /** Set the retention window (minutes) for finished rows. Applied on the next render tick. */
+  /** Retention window (minutes) for finished rows; applied on the next render tick. */
   setFinishedRetentionMinutes(minutes: number) {
     this.finishedRetentionMinutes = minutes;
   }
-  /** Set model display format: 'id' (short) or 'name' (full). */
   setModelDisplayStyle(style: "id" | "name") {
     this.modelDisplayStyle = style;
   }
-  /** Set model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
   setModelThinkingPlacement(placement: ModelThinkingPlacement) {
     this.modelThinkingPlacement = placement;
   }
@@ -239,11 +213,9 @@ export class AgentWidget {
   }
 
   /**
-   * Resolve the current nav roster from a live snapshot (ordered records).
-   * Within the freeze window the order is kept: evicted agents drop, new
-   * agents append at the end in live relative order. When dormant, the
-   * roster is rebuilt in live display order on every call, so a long pause
-   * stays current.
+   * Resolve the nav roster from a live snapshot: keep the frozen order during
+   * the freeze window (evicted drop, new append at the end), otherwise rebuild
+   * in live display order so a long pause stays current.
    */
   private resolveNavRoster(now: number, live: AgentRecord[]): AgentRecord[] {
     const liveById = new Map(live.map((a) => [a.id, a]));
@@ -284,8 +256,6 @@ export class AgentWidget {
     let index = this.lastHighlightIndex;
     const pos = this.highlightId === null ? -1 : roster.findIndex((a) => a.id === this.highlightId);
     if (pos === -1) {
-      // No highlight yet, or the highlighted agent was evicted/removed:
-      // adopt the nearest remaining agent.
       index = Math.min(index, roster.length - 1);
       this.highlightId = roster[index].id;
     } else {
@@ -297,11 +267,9 @@ export class AgentWidget {
   }
 
   /**
-   * Resolve the current nav state: the roster (possibly frozen) and the
-   * identity-based highlight position, from one live snapshot. Returns the
-   * timestamp that drove the freeze check so callers seed navLastMove with
-   * the same value. Render uses resolveNavRoster directly to reuse the
-   * snapshot it already categorized for the blocks.
+   * Resolve nav roster and highlight from one snapshot. Returns `now` so
+   * callers seed navLastMove with the same value; render resolves the roster
+   * directly to reuse the snapshot it already categorized.
    */
   private resolveNavState(): { roster: AgentRecord[]; index: number; now: number } {
     const now = Date.now();
@@ -349,20 +317,15 @@ export class AgentWidget {
     this.update();
   }
 
-  /** Move highlight down one position with scroll logic. */
   navDown(): void {
     this.moveNav(1);
   }
 
-  /** Move highlight up one position with scroll logic. */
   navUp(): void {
     this.moveNav(-1);
   }
 
-  /**
-   * Compute the greedy window end starting from `start`, given the roster and budget.
-   * Returns the highest index (inclusive) that fits within the budget.
-   */
+  /** Greedy highest index (inclusive) that fits within the budget. */
   private computeWindowEnd(start: number, roster: AgentRecord[], budget: number): number {
     let end = start - 1;
     for (let i = start; i < roster.length; i++) {
@@ -403,7 +366,6 @@ export class AgentWidget {
     return { start, end };
   }
 
-  /** Compute the scroll anchor that shows the last block at the bottom. */
   private bottomScrollStart(roster: AgentRecord[]): number {
     // Smallest start whose nav window still reaches the last block.
     for (let start = 0; start < roster.length; start++) {
@@ -412,10 +374,7 @@ export class AgentWidget {
     return 0;
   }
 
-  /**
-   * Check if an agent has a metadata line in full mode.
-   * Delegates to buildMetadataLineParts to determine if any parts exist.
-   */
+  /** Whether the agent has a metadata line in full mode. */
   private hasMetadataLine(a: AgentRecord): boolean {
     if (this.isCompact()) return false;
     return (
@@ -423,12 +382,9 @@ export class AgentWidget {
     );
   }
 
-  /** Get the height of a block (header + metadata lines) for an agent. */
   private getBlockHeight(agent: AgentRecord): number {
-    // In compact mode, all blocks are 1 line (header only)
     if (this.isCompact()) return 1;
 
-    // In full mode, count metadata lines
     if (agent.lifecycle.status === "running") {
       // Running: activity line always present, metadata line conditional
       return 2 + (this.hasMetadataLine(agent) ? 1 : 0);
@@ -439,11 +395,9 @@ export class AgentWidget {
       return 1;
     }
 
-    // Finished: metadata line conditional
     return 1 + (this.hasMetadataLine(agent) ? 1 : 0);
   }
 
-  /** Get the max body lines (total lines minus heading). */
   private getMaxBody(): number {
     const maxBodyLines = this.isCompact() ? this.maxLinesCompact : this.maxLines;
     return maxBodyLines - 1; // heading takes 1 line
@@ -454,14 +408,12 @@ export class AgentWidget {
     return roster[index] ?? null;
   }
 
-  /** Exit navigation mode, reset highlight and scroll anchor. Triggers re-render. */
   navDeactivate(): void {
     if (!this.navActive) return;
     this.resetNavState();
     this.update();
   }
 
-  /** Reset all navigation state: highlight, roster, freeze timer, scroll anchor. */
   private resetNavState(): void {
     this.navActive = false;
     this.highlightId = null;
@@ -471,7 +423,6 @@ export class AgentWidget {
     this.scrollAnchor = 0;
   }
 
-  /** Query whether navigation mode is active. */
   isNavActive(): boolean {
     return this.navActive;
   }
@@ -488,17 +439,14 @@ export class AgentWidget {
     return finished.length + running.length + queued.length > 0;
   }
 
-  /** Whether the ResultViewer overlay is currently open. */
   isViewerOpen(): boolean {
     return this.viewerOpen;
   }
 
-  /** Set whether the ResultViewer overlay is open. */
   setViewerOpen(open: boolean): void {
     this.viewerOpen = open;
   }
 
-  /** Check if the editor currently has focus (no dialog/menu open). */
   isEditorFocused(): boolean {
     // Overlays (ResultViewer, model picker) → not focused.
     if (this.tui?.hasOverlay?.()) return false;
@@ -525,7 +473,6 @@ export class AgentWidget {
     }
   }
 
-  /** Ensure the widget update timer is running. */
   ensureTimer() {
     if (!this.widgetInterval) {
       this.widgetInterval = setInterval(() => {
@@ -538,7 +485,6 @@ export class AgentWidget {
     }
   }
 
-  /** Categorize all agents into running, queued, and finished groups. */
   private categorizeAgents() {
     const allAgents = this.manager.listAgents();
     const running: AgentRecord[] = [];
@@ -556,7 +502,6 @@ export class AgentWidget {
     return { running, queued, finished };
   }
 
-  /** Build the icon and status suffix for a finished agent. */
   private finishedIconAndStatus(
     lifecycle: AgentLifecycle,
     error: string | undefined,
@@ -584,7 +529,6 @@ export class AgentWidget {
     }
   }
 
-  /** Render a finished agent line. */
   private renderFinishedLine(a: AgentRecord, theme: Theme, w: number): string {
     const name = getDisplayName(a.display.type);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
@@ -619,7 +563,6 @@ export class AgentWidget {
     return tag ? ` ${theme.fg("dim", tag)}` : "";
   }
 
-  /** Build the stats line (toolUses · turns · tokens · cost · elapsed) for a running agent. */
   private buildStatsLine(agent: AgentRecord, theme: Theme): string {
     const parts = buildStatsParts(
       {
@@ -641,7 +584,6 @@ export class AgentWidget {
     return parts.join("·");
   }
 
-  /** Build the dim-styled metadata line (model/thinking, worktree, output file), or undefined when empty. */
   private buildMetadataLine(
     a: AgentRecord,
     prefix: string,
@@ -653,7 +595,6 @@ export class AgentWidget {
     return truncate(theme.fg("dim", prefix + parts.join("  ")));
   }
 
-  /** Build RenderBlocks for finished (completed/errored) agents. */
   private buildFinishedBlocks(finished: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -671,7 +612,6 @@ export class AgentWidget {
     return blocks;
   }
 
-  /** Build RenderBlocks for running agents. */
   private buildRunningBlocks(running: AgentRecord[], theme: Theme, w: number, frame: string): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -721,7 +661,6 @@ export class AgentWidget {
     return blocks;
   }
 
-  /** Build a single RenderBlock for queued agents, or undefined if none. */
   private buildQueuedBlock(queued: AgentRecord[], theme: Theme, w: number): RenderBlock | undefined {
     if (queued.length === 0) return undefined;
     const truncate = (line: string) => truncateToWidth(line, w);
@@ -729,12 +668,10 @@ export class AgentWidget {
     return { header: truncate(header), metadataLines: [] };
   }
 
-  /** Whether the widget should render in compact mode. */
   private isCompact(): boolean {
     return this.forceCompact || (this.widgetShortcut && this.compactMode);
   }
 
-  /** Render navigation mode: scroll window with highlighted agent. */
   private renderNavigationMode(
     roster: AgentRecord[],
     highlightIndex: number,
@@ -757,7 +694,6 @@ export class AgentWidget {
     const visIndex = highlightIndex - start;
     const lines = this.renderBlocks(visibleBlocks, visIndex);
 
-    // Overflow line: "+N more" where N = hidden agents
     const hiddenCount = len - (end - start + 1);
     if (hiddenCount > 0) {
       lines.push(truncate(this.buildOverflowLine(hiddenCount, theme)));
@@ -765,7 +701,6 @@ export class AgentWidget {
     return lines;
   }
 
-  /** Render non-navigation mode: contiguous top→bottom collapse. */
   private renderNonNavigationMode(
     blocks: RenderBlock[],
     totalAgents: number,
@@ -776,7 +711,6 @@ export class AgentWidget {
     const totalBody = blocks.reduce((sum, b) => sum + 1 + b.metadataLines.length, 0);
 
     if (totalBody <= maxBody) {
-      // Everything fits — render all blocks
       return this.renderBlocks(blocks, -1);
     }
 
@@ -850,7 +784,6 @@ export class AgentWidget {
 
     const maxBody = this.getMaxBody();
 
-    // Heading with navigation hint and, during nav, the N/M position readout.
     const navReadout =
       navRoster && navRoster.length > 0 ? { position: navIndex + 1, size: navRoster.length } : undefined;
     const heading = this.buildHeading(theme, headingColor, headingIcon, navReadout);
@@ -879,7 +812,6 @@ export class AgentWidget {
     return lines;
   }
 
-  /** Build the heading line with navigation hint text and, during nav, the N/M readout. */
   private buildHeading(
     theme: Theme,
     color: string,
@@ -898,7 +830,6 @@ export class AgentWidget {
     return `${iconText}  ${theme.fg("dim", "↓ to navigate")}`;
   }
 
-  /** Build individual RenderBlocks for each queued agent (used during navigation). */
   private buildQueuedIndividualBlocks(queued: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -918,19 +849,15 @@ export class AgentWidget {
     }
     return [header, ...block.metadataLines];
   }
-  /** Render a list of blocks. */
   private renderBlocks(blocks: RenderBlock[], highlightedBlockIndex: number): string[] {
     return blocks.flatMap((b, i) => this.renderBlock(b, i === highlightedBlockIndex));
   }
 
-  /** Build the overflow line showing hidden agent count. */
   private buildOverflowLine(hiddenCount: number, theme: Theme): string {
     return `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
   }
 
-  /** Clear widget and status bar. */
   private clearWidget() {
-    // Deactivate navigation when agents clear
     if (this.navActive) this.resetNavState();
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
@@ -947,7 +874,6 @@ export class AgentWidget {
     // when there are no agents, so there's no cost to keeping it alive.
   }
 
-  /** Build the status bar text for the current agent state. */
   private buildStatusBarText(activeCount: number, doneCount: number, totalCost: number): string {
     const icon = activeCount > 0 ? "◈" : "◇";
     const iconColor = activeCount > 0 ? "accent" : "dim";
@@ -976,7 +902,6 @@ export class AgentWidget {
     return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}`;
   }
 
-  /** Update the status bar text, only if it changed. */
   private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
     const activeCount = runningCount + queuedCount;
     const doneCount = this.manager.getTotalAgentCount();
@@ -997,7 +922,6 @@ export class AgentWidget {
     }
   }
 
-  /** Force an immediate widget update. */
   update() {
     if (!this.manager) {
       // Widget lost its manager reference (e.g., after session shutdown)
@@ -1012,7 +936,6 @@ export class AgentWidget {
     const hasActive = running.length > 0 || queued.length > 0;
     const hasFinished = finished.length > 0;
 
-    // Nothing to show — clear widget if registered, then early-return
     if (!hasActive && !hasFinished) {
       if (this.widgetRegistered || this.lastStatusText !== undefined) {
         this.clearWidget();
@@ -1054,7 +977,6 @@ export class AgentWidget {
       );
       this.widgetRegistered = true;
     } else {
-      // Widget already registered — just request a re-render of existing components.
       this.tui?.requestRender?.();
     }
   }

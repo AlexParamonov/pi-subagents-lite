@@ -1,6 +1,5 @@
 import type { ThinkingLevel } from "../types.js";
 
-/** Agent type: any string name (built-in defaults or user-defined). */
 export type SubagentType = string;
 
 /** How the subagent system prompt is constructed. */
@@ -39,7 +38,7 @@ export interface AgentConfig {
 
   /** true = this is an embedded default agent (informational) */
   isDefault?: boolean;
-  /** Whether to write streaming JSON-lines transcript to .output file. Undefined = use global config. */
+  /** Whether to write a streaming transcript to the output file. Undefined = use global config. */
   outputTranscript?: boolean;
   /** true = agent is hidden from the schema enum but can still be called by name. */
   hidden?: boolean;

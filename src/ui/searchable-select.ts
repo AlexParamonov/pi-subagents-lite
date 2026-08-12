@@ -9,14 +9,11 @@ import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, 
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import type { Theme } from "./types.js";
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
+// --- Types ---
 
 export interface SelectOption {
   /** The value returned on selection (e.g. "provider/model-id"). */
   value: string;
-  /** Display label. */
   label: string;
   /** Provider name for badge; omitted when the label already conveys it (e.g. provider/type lists). */
   provider?: string;
@@ -27,22 +24,15 @@ interface SelectDialogCallbacks {
   onCancel: () => void;
 }
 
-/* ------------------------------------------------------------------ */
-/*  SearchableSelectDialog                                             */
-/* ------------------------------------------------------------------ */
+// --- SearchableSelectDialog ---
 
 const MAX_VISIBLE = 10;
 
 /**
  * A paginated, searchable selection dialog.
  *
- * Rendering mirrors pi's ModelSelectorComponent:
- *   - Top border
- *   - Search input
- *   - Paginated option list (10 at a time, centered on selection)
- *   - Scroll indicator "(3/47)"
- *   - Bottom border
- *
+ * Rendering mirrors pi's ModelSelectorComponent: border, search input,
+ * paginated list (centered on selection), scroll indicator.
  * Key bindings: up/down/pageup/pagedown/enter/escape + pass-through to search.
  */
 export class SearchableSelectDialog extends Container implements Focusable {
@@ -76,11 +66,9 @@ export class SearchableSelectDialog extends Container implements Focusable {
     this.theme = theme;
     this.filteredItems = [...items];
 
-    // Pre-select current value if present
     const currentIdx = items.findIndex((m) => m.value === currentValue);
     this.selectedIndex = currentIdx >= 0 ? currentIdx : 0;
 
-    // Build UI
     this.addChild(new DynamicBorder());
     this.addChild(new Spacer(1));
 
@@ -102,7 +90,6 @@ export class SearchableSelectDialog extends Container implements Focusable {
     this.updateList();
   }
 
-  /** Handle keyboard input. Delegates non-navigation keys to searchInput. */
   handleInput(keyData: string): void {
     const kb = getKeybindings();
 
@@ -132,21 +119,18 @@ export class SearchableSelectDialog extends Container implements Focusable {
       return;
     }
 
-    // PageUp — jump up one page
     if (kb.matches(keyData, "tui.select.pageUp")) {
       this.selectedIndex = Math.max(0, this.selectedIndex - MAX_VISIBLE);
       this.updateList();
       return;
     }
 
-    // PageDown — jump down one page
     if (kb.matches(keyData, "tui.select.pageDown")) {
       this.selectedIndex = Math.min(this.filteredItems.length - 1, this.selectedIndex + MAX_VISIBLE);
       this.updateList();
       return;
     }
 
-    // Enter — confirm selection
     if (kb.matches(keyData, "tui.select.confirm")) {
       const selected = this.filteredItems[this.selectedIndex];
       if (selected) {
@@ -170,9 +154,7 @@ export class SearchableSelectDialog extends Container implements Focusable {
     // No cached state to invalidate
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Private helpers                                                    */
-  /* ------------------------------------------------------------------ */
+  // --- Private helpers ---
 
   private filterItems(): void {
     const query = this.searchInput.getValue();
@@ -181,7 +163,6 @@ export class SearchableSelectDialog extends Container implements Focusable {
     } else {
       this.filteredItems = fuzzyFilter(this.items, query, (item) => `${item.label} ${item.provider} ${item.value}`);
     }
-    // Clamp selection index
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredItems.length - 1));
     this.updateList();
   }
@@ -219,7 +200,6 @@ export class SearchableSelectDialog extends Container implements Focusable {
       this.listContainer.addChild(new Text(line, 0, 0));
     }
 
-    // Scroll indicator when not all items visible
     if (startIndex > 0 || endIndex < filteredItems.length) {
       const scrollInfo = this.theme.fg("muted", `  (${this.selectedIndex + 1}/${filteredItems.length})`);
       this.listContainer.addChild(new Text(scrollInfo, 0, 0));

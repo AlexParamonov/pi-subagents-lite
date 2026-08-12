@@ -17,7 +17,6 @@ interface WatchdogToolCall {
   startedAt: number;
 }
 
-/** Per-agent watchdog state. */
 interface WatchdogAgentState {
   toolCalls: Map<string, WatchdogToolCall>;
   lastActivityAt: number;
@@ -64,7 +63,7 @@ export class Watchdog {
     this.touch(agentId);
   }
 
-  /** Reset the idle clock for a watched agent; returns its state, or undefined for unknown agents. */
+  /** Reset the idle clock; returns state or undefined for unwatched agents. */
   private touch(agentId: string): WatchdogAgentState | undefined {
     const state = this.agents.get(agentId);
     if (!state) return undefined;

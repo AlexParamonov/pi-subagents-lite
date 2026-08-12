@@ -25,7 +25,6 @@ import { getAgentConfig } from "./agent-types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
 
-/** How often the watchdog scans running agents for stuck state (milliseconds). */
 export const WATCHDOG_TICK_MS = 5_000;
 
 /** Milliseconds in one minute (config timeout thresholds are stored in minutes). */
@@ -37,7 +36,6 @@ const DISPOSE_QUEUED_MESSAGE = "Agent manager disposed before the queued agent c
 /** UUID prefix length for agent IDs stored in the agents map (uniqueness). */
 const AGENT_ID_PREFIX_LENGTH = 17;
 
-/** Default per-model concurrency limit when not specified in config. */
 const DEFAULT_CONCURRENCY_LIMIT = 4;
 
 /** Whether the agent status is terminal (no longer running or queued). */
@@ -45,10 +43,6 @@ function isTerminalStatus(status: AgentStatus): boolean {
   return status !== "running" && status !== "queued";
 }
 
-/**
- * Format the model error recorded on a failed run: the subagent type, the
- * resolved model (provider/id), and the provider's error message.
- */
 function formatModelError(
   type: SubagentType,
   model: { provider: string; id: string } | undefined,
@@ -58,7 +52,6 @@ function formatModelError(
   return model ? `${type} (${model.provider}/${model.id}): ${sanitizedError}` : `${type}: ${sanitizedError}`;
 }
 
-/** Configuration for per-model concurrency limits. */
 export interface ConcurrencyConfig {
   /** Default concurrency limit for models not in the models or providers map. */
   default: number;
@@ -71,7 +64,6 @@ export interface ConcurrencyConfig {
 type OnAgentComplete = (record: AgentRecord) => void;
 type OnAgentStart = (record: AgentRecord) => void;
 
-/** Internal per-model concurrency state. */
 interface ConcurrencySlot {
   limit: number;
   running: number;
@@ -93,7 +85,6 @@ export interface SpawnOptions extends SpawnConfig, RunCallbacks {
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
-  /** Time-based stuck-agent detection state (tool + idle timeouts). */
   private watchdog = new Watchdog();
   private watchdogInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
@@ -120,10 +111,8 @@ export class AgentManager {
   /** Per-provider concurrency slots — shared pool for all models from a provider. */
   private providerSlots = new Map<string, ConcurrencySlot>();
 
-  /** Default concurrency limit for models not in the slots map. */
   private defaultConcurrency: number;
 
-  /** Queue of agents waiting to start, keyed by modelKey. */
   private queue: { id: string; modelKey: string; args: SpawnArgs }[] = [];
 
   constructor(onComplete?: OnAgentComplete, concurrency?: ConcurrencyConfig, onStart?: OnAgentStart) {
@@ -131,12 +120,10 @@ export class AgentManager {
     this.onStart = onStart;
     this.defaultConcurrency = concurrency?.default ?? DEFAULT_CONCURRENCY_LIMIT;
 
-    // Initialize per-provider slots from config (shared pool)
     for (const [provider, limit] of Object.entries(concurrency?.providers ?? {})) {
       this.applyConcurrencyEntry(this.providerSlots, provider, limit);
     }
 
-    // Initialize per-model slots from config
     for (const [modelKey, limit] of Object.entries(concurrency?.models ?? {})) {
       this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
     }
@@ -158,39 +145,29 @@ export class AgentManager {
   setConcurrency(config: ConcurrencyConfig): void {
     this.defaultConcurrency = config.default;
 
-    // Update per-provider slots (shared pool)
     for (const [provider, limit] of Object.entries(config.providers ?? {})) {
       this.applyConcurrencyEntry(this.providerSlots, provider, limit);
     }
 
-    // Remove provider slots no longer in config
     for (const key of this.providerSlots.keys()) {
       if (!(config.providers ?? {})[key]) {
         this.providerSlots.delete(key);
       }
     }
 
-    // Update existing slots and create new ones
     for (const [modelKey, limit] of Object.entries(config.models ?? {})) {
       this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
     }
 
-    // Remove model slots no longer in config
     for (const key of this.concurrencySlots.keys()) {
       if (!(config.models ?? {})[key]) {
         this.concurrencySlots.delete(key);
       }
     }
 
-    // Start queued agents if the new limits allow
     this.drainQueue();
   }
 
-  /**
-   * Update or create a concurrency slot entry.
-   * If the key already exists in the map, updates its limit.
-   * Otherwise, creates a new slot with the given limit and running=0.
-   */
   private applyConcurrencyEntry(map: Map<string, ConcurrencySlot>, key: string, limit: number): void {
     const safeLimit = Math.max(1, limit);
     const existing = map.get(key);
@@ -206,31 +183,24 @@ export class AgentManager {
    * Precedence: per-model slot > per-provider shared slot > default (per-model).
    */
   private getSlot(modelKey: string): ConcurrencySlot {
-    // 1. Check per-model slot
     let slot = this.concurrencySlots.get(modelKey);
     if (slot) return slot;
 
-    // 2. Check per-provider shared slot
     const provider = modelKey.split("/")[0];
     const providerSlot = this.providerSlots.get(provider);
     if (providerSlot) return providerSlot;
 
-    // 3. Create per-model slot with default limit
     slot = { limit: Math.max(1, this.defaultConcurrency), running: 0 };
     this.concurrencySlots.set(modelKey, slot);
     return slot;
   }
 
-  /**
-   * Spawn an agent and return its ID immediately (for background use).
-   * If the per-model concurrency limit is reached, the agent is queued.
-   */
+  /** Spawn an agent, returning its ID immediately; queued when the concurrency limit is reached. */
   spawn(pi: ExtensionAPI, ctx: ExtensionContext, type: SubagentType, prompt: string, options: SpawnOptions): string {
     const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
     const abortController = new AbortController();
     const args: SpawnArgs = { pi, ctx, type, prompt, options };
 
-    // Check concurrency — applies to both foreground and background agents
     let queued = false;
     let concurrencySlot: ConcurrencySlot | undefined;
     if (options.modelKey) {
@@ -281,9 +251,7 @@ export class AgentManager {
     // the subagent — it is recorded as stopped immediately instead (ADR-0005).
     if (options.signal) {
       if (options.signal.aborted) {
-        // Already-aborted signal: the subagent never starts — record it as
-        // stopped immediately (ADR-0005). stopAgent opens the gate and
-        // notifies because a never-started record has no run to settle.
+        // Never-started record: no run will settle it, so stopAgent opens the gate and notifies.
         this.stopAgent(record, "user");
         return id;
       }
@@ -306,11 +274,7 @@ export class AgentManager {
     return id;
   }
 
-  /**
-   * Actually start an agent (called immediately or from queue drain).
-   * When concurrencySlot is provided, the slot's running count is managed
-   * (incremented on start, decremented in finally).
-   */
+  /** Start an agent now or from queue drain; manages the slot's running count when one is held. */
   private startAgent(
     id: string,
     record: AgentRecord,
@@ -327,8 +291,7 @@ export class AgentManager {
     // The idle clock starts here, so a hung pre-session init phase is covered.
     this.watchdog.start(id);
 
-    // Create output log for this agent (creates file + writes [USER] entry)
-    // Gate on outputTranscript setting: agent frontmatter overrides global config, default true
+    // Output transcript: agent frontmatter overrides the global setting (default true).
     const agentConfig = getAgentConfig(type);
     const outputTranscript = agentConfig?.outputTranscript ?? getStore().agent.outputTranscript;
     if (outputTranscript) {
@@ -371,7 +334,6 @@ export class AgentManager {
           }
           record.execution.pendingSteers = undefined;
         }
-        // Attach output log stream to session
         if (record.execution.outputLog) {
           record.execution.outputLog.attach(session);
         }
@@ -409,7 +371,6 @@ export class AgentManager {
         return "";
       })
       .finally(() => {
-        // Finalize output log with final stats
         if (record.execution.outputLog) {
           try {
             record.execution.outputLog.finalize({
@@ -423,7 +384,6 @@ export class AgentManager {
           record.execution.outputLog = undefined;
         }
 
-        // Decrement per-model concurrency count
         if (concurrencySlot) concurrencySlot.running--;
 
         this.tallyCompletion(record);
@@ -436,7 +396,6 @@ export class AgentManager {
       });
   }
 
-  /** Create a record's completion gate and store its resolver for the terminal transition. */
   private createCompletionGate(id: string): Promise<string> {
     let resolve!: (value: string) => void;
     const gate = new Promise<string>((res) => {
@@ -462,7 +421,6 @@ export class AgentManager {
     binding.signal.removeEventListener("abort", binding.handler);
   }
 
-  /** Fire the onComplete callback, ignoring any errors from the callback itself. */
   private notifyComplete(record: AgentRecord): void {
     try {
       this.onComplete?.(record);
@@ -471,7 +429,6 @@ export class AgentManager {
     }
   }
 
-  /** Tally session cost/count for a completed agent, then notify. */
   private tallyCompletion(record: AgentRecord): void {
     this.totalAgentCost += record.stats.lifetimeUsage.cost;
     this.totalAgentCount++;
@@ -492,11 +449,6 @@ export class AgentManager {
     return this.totalAgentCount;
   }
 
-  /**
-   * Build common record-tracking callbacks shared by startAgent.
-   * Updates the record's toolUses, lifetimeUsage, and compactionCount.
-   * When options are provided, also forwards events to the caller.
-   */
   private createRecordCallbacks(
     record: AgentRecord,
     options?: Pick<SpawnOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
@@ -537,7 +489,6 @@ export class AgentManager {
     };
   }
 
-  /** Start queued agents up to the per-model concurrency limits. */
   private drainQueue() {
     const started = new Set<string>();
     for (const entry of this.queue) {
@@ -565,10 +516,7 @@ export class AgentManager {
     this.queue = this.queue.filter((e) => !started.has(e.id));
   }
 
-  /**
-   * Send a steering message to a running agent.
-   * If the session hasn't been created yet, the message is queued.
-   */
+  /** Steer a running agent; queues the message when the session isn't created yet. */
   async steer(id: string, message: string): Promise<boolean> {
     const record = this.agents.get(id);
     if (!record) return false;
@@ -576,7 +524,6 @@ export class AgentManager {
     if (record.lifecycle.status !== "running") return false;
 
     if (!record.execution.session) {
-      // Session not yet created — queue the steer
       if (!record.execution.pendingSteers) record.execution.pendingSteers = [];
       record.execution.pendingSteers.push(message);
       return true;
@@ -618,10 +565,7 @@ export class AgentManager {
     return this.stopAgent(record, stoppedBy, stopDetail);
   }
 
-  /**
-   * Stop an agent by aborting its session or removing it from the queue.
-   * Returns true if the agent was stopped, false if it wasn't running/queued.
-   */
+  /** Abort the session or remove the agent from the queue. Returns false if not running/queued. */
   private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
     const wasQueued = record.lifecycle.status === "queued";
     if (wasQueued) {
@@ -646,7 +590,6 @@ export class AgentManager {
     return true;
   }
 
-  /** Dispose a record's session and remove it from the map. */
   private removeRecord(id: string, record: AgentRecord): void {
     record.execution.session?.dispose();
     record.execution.session = undefined;
@@ -658,11 +601,7 @@ export class AgentManager {
     this.agents.delete(id);
   }
 
-  /**
-   * Scan running agents for tool-timeout and idle-timeout violations and stop
-   * the offenders with a watchdog reason. Thresholds are read live from the
-   * config store, so menu changes apply to running agents immediately.
-   */
+  /** Stop agents violating tool/idle timeouts. Thresholds are read live so menu changes apply to running agents. */
   private checkWatchdogs(): void {
     const { toolTimeoutMinutes, idleTimeoutMinutes } = getStore().agent;
     const decisions = this.watchdog.check(

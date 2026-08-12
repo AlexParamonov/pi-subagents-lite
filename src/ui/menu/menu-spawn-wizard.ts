@@ -22,14 +22,10 @@ import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-inp
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getPiInstance, getSessionCtx, getWidget, getStore, getCoordinator } from "../../shell.js";
 
-// ============================================================================
-// Worktree picker helpers
-// ============================================================================
+// --- Worktree picker helpers ---
 
-/** Timeout for git worktree list command (ms). */
 const WORKTREE_LIST_TIMEOUT_MS = 5000;
 
-/** Max display length for a worktree path before truncation. */
 const WORKTREE_PATH_TRUNCATE_LEN = 60;
 
 interface WorktreeEntry {
@@ -71,7 +67,6 @@ function parseWorktreeList(output: string): WorktreeEntry[] {
   return entries;
 }
 
-/** Truncate a path for display, keeping the tail. */
 function truncatePath(p: string): string {
   if (p.length <= WORKTREE_PATH_TRUNCATE_LEN) return p;
   return "..." + p.slice(p.length - WORKTREE_PATH_TRUNCATE_LEN + 3);
@@ -110,9 +105,7 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
   }
 }
 
-// ============================================================================
-// Spawn agent wizard
-// ============================================================================
+// --- Spawn agent wizard ---
 
 /**
  * Build a submenu for selecting the thinking level based on the current model.

@@ -21,7 +21,6 @@ export const DEFAULT_WATCHDOG_TIMEOUT_MINUTES = 45;
 /** Minimum finished retention: 1 second expressed in minutes. */
 export const MIN_FINISHED_RETENTION_MINUTES = 1 / 60;
 
-/** Valid system prompt modes. */
 export const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
 
 /** Default concurrency config — used for resets. */
@@ -84,7 +83,6 @@ export function loadConfig(): SubagentsConfig {
   };
 }
 
-/** Write config to disk with atomic rename. */
 export function saveConfigAtomic(config: SubagentsConfig): void {
   const tmpPath = CONFIG_PATH + ".tmp";
   try {

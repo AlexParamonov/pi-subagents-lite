@@ -35,7 +35,6 @@ export interface ConfigIO {
   save(config: SubagentsConfig): void;
 }
 
-/** Production adapter wrapping the real config file. */
 export const fileConfigIO: ConfigIO = {
   load: () => loadConfig(),
   save: (c) => saveConfigAtomic(c),
@@ -126,7 +125,6 @@ export class ConfigStore {
 
   // ── Reads ──────────────────────────────────────────────────────
 
-  /** Whether a session-level showCost override is active. */
   get hasSessionShowCost(): boolean {
     return this.sessionShowCost !== undefined;
   }
@@ -219,8 +217,7 @@ export class ConfigStore {
   }
 
   // ── Mutations ──────────────────────────────────────────────────
-  // Each persisted method = mutate + persist (+ side effect). Session methods
-  // are in-memory only: never persisted, no side effects.
+  // Session methods are in-memory only: never persisted, no side effects.
 
   readonly mutate = {
     agent: {
@@ -434,7 +431,7 @@ export class ConfigStore {
       },
     },
     session: {
-      /** Set a session model override for a type (or "default"). Not persisted. */
+      /** Not persisted; key "default" sets the session-wide default. */
       setOverride: (type: string, model: string): void => {
         this.sessionOverrides[type] = model;
       },
@@ -444,13 +441,13 @@ export class ConfigStore {
       clearAll: (): void => {
         this.sessionOverrides = { default: null };
       },
-      /** Set a session showCost override. Not persisted. */
+      /** Not persisted. */
       setShowCost: (enabled: boolean): void => {
         this.sessionShowCost = enabled;
         this.widget?.setShowCost(enabled);
         this.syncWidgetStatsVisibility();
       },
-      /** Clear session showCost override, reverting to config value. */
+      /** Revert to config value. */
       clearShowCost: (): void => {
         this.sessionShowCost = undefined;
         this.widget?.setShowCost(this.config.agent.showCost === true);
@@ -511,7 +508,6 @@ export class ConfigStore {
     this.io.save(this.config);
   }
 
-  /** Push widget display settings (compact, shortcut, max lines) to the widget. */
   private syncWidgetSettings(): void {
     const w = this.widget;
     if (!w) return;
@@ -528,7 +524,6 @@ export class ConfigStore {
     w.setModelThinkingPlacement(a.modelThinkingPlacement);
   }
 
-  /** Push stats visibility flags to the widget. */
   private syncWidgetStatsVisibility(): void {
     const w = this.widget;
     if (!w) return;
@@ -546,7 +541,6 @@ export class ConfigStore {
     });
   }
 
-  /** Update a widget stats visibility flag: mutate config → persist → sync widget. */
   private setAgentVisibility(
     key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime",
     value: boolean,
@@ -560,7 +554,6 @@ export class ConfigStore {
     this.manager?.setConcurrency(this.config.concurrency);
   }
 
-  /** Full re-sync of all present deps. Used by reload/setDeps. */
   private syncAllDeps(): void {
     if (this.widget) {
       this.widget.setShowCost(this.agent.showCost);

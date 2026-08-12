@@ -19,33 +19,22 @@ import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
 
-// ============================================================================
-// Tool result helpers
-// ============================================================================
+// --- Tool result helpers ---
 
-/** Shortcut for a successful tool result. */
 function successResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], details };
 }
 
-/** Shortcut for an error tool result. */
 function errorResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], isError: true as const, details };
 }
 
-// ============================================================================
-// Activity tracking
-// ============================================================================
+// --- Activity tracking ---
 
 /**
- * Build a details Record from an AgentRecord, controlled by options.
- *
- * Always includes `type` and `description`. Optional groups:
- * - `includeStatus`: adds `status`, `outputFile`
- * - `includeStats`: adds turn/token/cost/context/compaction/model fields
- *
- * Consolidates the identical field-selection logic previously duplicated
- * across emitIndividualNudge, executeSpawnForeground, and executeSpawnBackground.
+ * Build a details record from an AgentRecord. Always includes type and
+ * description; includeStatus adds status/outputFile/stopReason, includeStats
+ * adds turn/token/cost/context/compaction/model fields.
  */
 export function buildAgentDetails(
   record: AgentRecord,
@@ -102,14 +91,11 @@ export function formatResultContent(record: AgentRecord): string {
   return (record.result ?? "") + errorNote + getStatusNote(record.lifecycle);
 }
 
-// ============================================================================
-// Tool execute handlers
-// ============================================================================
+// --- Tool execute handlers ---
 
 /**
- * Validate worktree_path and resolve the cross-repo trust gate for it.
- * Surfaces validation warnings and the untrusted-target warning via ctx.ui.
- * Returns an error result for invalid paths (LLM-facing, self-correctable).
+ * Validate worktree_path and gate cross-repo trust, surfacing warnings via
+ * ctx.ui. Errors are LLM-facing and self-correctable.
  */
 async function resolveWorktree(
   ctx: ExtensionContext,
@@ -211,7 +197,6 @@ export async function executeAgentTool(
     getAgentConfig(resolvedType)?.thinkingLevel ??
     getStore().agent.defaultThinking;
 
-  // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
   // Background spawns (explicit or forceBackground) never bind to the parent
   // run's interrupt signal — only foreground spawns can be interrupted.
@@ -237,7 +222,6 @@ export async function executeAgentTool(
   const { agentId, record } = result;
 
   if (isBackground) {
-    // Background: return immediately
     const suffix = `Success! You delegated to an agent. A notification will arrive when done - USER: do not poll, don't check status and don't duplicate the delegated work!\n\nAgent ID: ${agentId}`;
     const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
     const details = buildAgentDetails(record);
@@ -254,9 +238,7 @@ export async function executeAgentTool(
   return successResult(formatResultContent(record), details);
 }
 
-// ============================================================================
-// Running agents list helper (used by executeStopAgentTool)
-// ============================================================================
+// --- Running agents list helper (used by executeStopAgentTool) ---
 
 /**
  * Build a compact list of running (or queued) agents.
@@ -272,9 +254,7 @@ function formatRunningAgents(): string {
   return agents.map((a) => `${a.id.slice(0, SHORT_ID_LENGTH)} (${a.display.type})`).join(", ");
 }
 
-// ============================================================================
-// StopAgent execute handler
-// ============================================================================
+// --- StopAgent execute handler ---
 
 export async function executeStopAgentTool(
   _toolCallId: string,
@@ -292,18 +272,15 @@ export async function executeStopAgentTool(
   const record = getManager()!.getRecord(agentId);
 
   if (!record) {
-    // Agent not found → return error + list of running agents
     return errorResult(`Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`);
   }
 
-  // Check if already in a terminal state (not running or queued)
   if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
     return successResult(
       `Agent ${agentId} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
     );
   }
 
-  // Attempt to stop the running/queued agent
   if (getManager()!.abort(agentId, "agent")) {
     return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
   }
@@ -311,9 +288,7 @@ export async function executeStopAgentTool(
   return errorResult(`Failed to stop agent ${agentId}`);
 }
 
-// ============================================================================
-// Tool_call listener — inject model into Agent tool calls
-// =============================================================================
+// --- Tool_call listener — inject model into Agent tool calls ---
 
 export async function toolCallListener(event: ToolCallEvent, ctx: ExtensionContext): Promise<void> {
   if (event.toolName !== "Agent") return;
