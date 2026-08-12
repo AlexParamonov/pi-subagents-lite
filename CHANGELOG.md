@@ -7,10 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Parent interrupt forwarding.** Foreground subagents are now bound to the parent's interrupt signal. Stopping the parent stops all foreground children. Background agents are not affected.
+- **Agent menu clear actions.** Individual `Clear` action removes a settled agent. `Clear all`/`Clear done` bulk-removes all/done agents from the widget.
+- **Time-based finished retention.** Replaced turn-based eviction with a configurable time window. Finished agents stay visible for `finishedRetentionMinutes` (default 1 min) instead of a fixed number of turns.
+- **Transient transport error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are retried automatically instead of failing the run.
 
 ### Fixed
 
-- **Qwen quota retry.** Qwen `insufficient_quota` errors containing "Allocated quota exceeded" are now retried instead of failing immediately. These may be transient false positives when the quota check is eventually consistent.
+- **`outputThinkingBufferSize` read live from config.** Value is now read from the config store at runtime instead of being captured at startup.
+- **`defaultMaxTurns` fallback in tool execution path.** Prevents failures when max turns is not explicitly set.
+- **Stale concurrency slots cleaned up.** Removing a concurrency limit from config now frees the orphaned slots in-session.
+- **`finishedRetentionMinutes` clamped on load.** Config values below the minimum are clamped at load time.
+- **Rejected abort/steer promises swallowed.** Session abort and steer calls no longer throw unhandled rejections when the session is already closed.
+- **Qwen quota retry.** Qwen `insufficient_quota` errors containing "Allocated quota exceeded" are retried instead of failing immediately. These may be transient false positives when the quota check is eventually consistent.
+
 ## [1.10.0] - 2026-08-09
 
 ### Added
