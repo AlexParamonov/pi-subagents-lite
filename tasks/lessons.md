@@ -1,125 +1,99 @@
 # Lessons Learned
 
-## General
+> Dated wave reports were consolidated into these sections; only lessons that measurably improve the next outcome survive.
 
-### Worktrees
+## Worktrees
 - Clean up after merge first. Verify worktree path, branch, and checkout state before spawning agents.
 - Read files through the worktree path, never the main checkout. Verify `git status` after writing.
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
 
-### Testing
+## Testing
 - Run `npm run test` after merging — clean merge ≠ passing tests.
-- Test public interfaces and behavior matching plan.md. Don't assert implementation details; prune unused imports.
-- Don't mock away the real path — assert constructor args, not just downstream behavior. Export testable functions early.
-- Re-read before multi-line replaces on shifted code — stale ranges clobber adjacent signatures.
+- Test behavior, not implementation details: assert constructor args and call args, not downstream effects; export testable functions early.
 - Replace `setTimeout` sleeps with awaiting chained completion promises — faster, no flake.
 - afterEach cleanup must remove the whole temp base dir, not one sibling.
-- When AC review returns NEEDS_REVISION on recently fixed code, re-review fresh. Manual "all works" → record and proceed.
-- vitest mocks are strict: extending a vi.mock factory must keep every symbol the production module imports. Guard config default merges with loadConfig-level tests.
-- `parseInt` accepts trailing garbage. Fix: require `/^\d+$/` after trim in numeric validation.
-- When two code paths must agree, share the exact computation — don't duplicate the rule with slight differences. Pin the contract as a state table.
-- Config setter traps: check which getter the production path reads before choosing the setter in test setup.
-- State consumed by render paths must be clamped at the render path, not only in mutators. Pin with tests that mutate state WITHOUT a nav move in between.
-- Closure capture traps: a factory mock's closure binds its own parameter, so re-assigning the test's variable does nothing — assign explicitly against the outer variable.
-- Name collisions with framework callbacks are silent scope bugs: a module-level `const done` in showRunningAgentsMenu was shadowed by `ctx.ui.custom((_tui, _theme, _kb, done) => …)`'s completion callback, so `done.length > 0` read the function's arity (real pi: 1, always true → row always shown; test mock `() => {}`: 0 → row always hidden). The test mock's different arity caught it. Never name a snapshot variable after a callback parameter in scope; when a value should be a count, don't read `.length` off something that might be a function.
-- Recurring vacuous patterns to grep for: tests ending at `.find()` with no expect; global `some()` checks passing from initial state; `expect.any(String)` for branch-specific messages.
-- When shipping wording adjusted from a spec's provisional text, update the spec's Further Notes in the same pass. Slice 1-3 shipped the never-started agent note uppercase ("STOPPED BY YOU…") while the spec still recorded the lowercase provisional; the review loop caught the drift.
+- Re-review recently fixed code fresh — don't assume the fix held because it was just touched.
+- vitest mocks are strict: extending a vi.mock factory must keep every symbol the production module imports; module-level singletons still require vi.mock().
+- `parseInt` accepts trailing garbage — require `/^\d+$/` after trim.
+- Closure capture traps: a factory mock's closure binds its own parameter — assign explicitly against the outer variable.
+- Never name a snapshot variable after a callback parameter in scope; don't read `.length` off something that might be a function.
+- Vacuous-test grep list: `.find()` with no expect; global `some()` passing from initial state; `expect.any(String)` for branch-specific messages.
+- Verify the mock is actually called — a test that passes if the feature was deleted is worse than no test.
+- Prove each consumer reaches an extracted shared mock — a mock is vacuous when the importing modules are themselves mocked.
+- When a fix is about which arguments reach a function, assert the call args — a mock that ignores args keeps the old bug green.
+- A lib-contract test via `vi.importActual` pins the input formats a fix claims to support.
+- Boolean flag inversion (hide vs show): write the test FIRST with the correct expected value.
+- Test UI features through public APIs (session events), not private state; exercise both streaming and non-streaming paths.
+- Time-window fixtures at exactly the filter edge are latent flakes — same-ms passes in isolation are luck. When adding a time-based filter, audit shared fixture boundaries.
+- Pin listener lifecycle exactly-once with spy-based detach regression guards.
+- For pi-tui widgets, verify `truncate()` runs on every render path — hard contract.
+- When shipping wording adjusted from a spec's provisional text, update the spec's Further Notes in the same pass.
 
-### Delegation
+## Delegation
 - Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
-- Parallel sub-agents writing docs: mandate distinct output paths. Parallel slices (2+) consistently save time.
-- Comment cleanup across many files: delegate per-module with a shared ruleset (delete restating comments, tighten to the non-obvious point, keep why/invariant/ADR-refs and functional markers), then verify the union diff is comment-only by filtering changed lines. Stale consumer names in comments rot — verify with grep before trusting them.
+- Parallel agents: mandate distinct output paths / disjoint file sets; go sequential when file contention is unavoidable.
+- Comment cleanup across many files: delegate per-module with a shared ruleset, then verify the union diff is comment-only by filtering changed lines. Stale consumer names in comments rot — verify with grep.
 
-### Verification
-- Don't assume — verify: confirm merge commits exist, code review catches silent production bugs.
+## Verification
+- Don't assume — verify: confirm merge commits exist; code review catches silent production bugs.
 - Never use `general-purpose` when the workflow specifies a specialized agent type.
-- `ExtensionAPI` rejects calls to old ctx — wrap sendMessage in try-catch for defense-in-depth.
+- `ExtensionAPI` rejects calls to old ctx — wrap sendMessage in try-catch.
 - Keep review loops strictly sequential; verify agent completion order before spawning the next agent.
-- Verify agent output files exist before treating a return as verdict — an empty return with no file means restart, not approval.
+- Verify agent output files exist before treating a return as verdict — empty return with no file means restart, not approval.
+- Acceptance tests committed before implementation give builders a precise Red target.
+- Review prompts should ask "does the code compute X?" (thresholds, values), not "is the feature implemented?"; reviewers verify each finding against source.
+- For sweep/enumeration claims in plans, grep-verify counts — eyeballing undercounts.
+- Before manual testing, probe the configured model endpoints first; budget a model swap.
 
-### Types & Refactoring
+## Types & Refactoring
 - Run typecheck before removing "redundant" fallbacks. Verify narrowing claims with the typechecker.
 - Make source fields optional from the start for explicit-vs-default overrides. Trace ALL mutation paths when adding similar config.
-- Delete result fields whose check is implied by a sibling. Return the bare boolean.
-- Check for WIP branches that might land before merging. Diff old paths before merging.
-- Only extract mock factories with ≥1 consumer in the current slice. Module-level singletons still require vi.mock().
+- When two code paths must agree, share the exact computation; if two functions compute the same derived state, one should call the other. Pin the contract as a state table.
+- State consumed by render paths must be clamped at the render path, not only in mutators. Pin with tests that mutate state without a nav move in between.
+- Config setter traps: check which getter the production path reads before choosing the setter in test setup.
+- Check for WIP branches that might land before merging.
 - Prefer public API for cross-package access — private fields break silently on upstream changes.
-- After extracting a shared mock, prove each consumer reaches it: a mock is vacuous when the importing modules are themselves mocked. Run the file without it before keeping it.
-- When a fix is about which arguments reach a function (e.g. `matchesKey(data, key)`), assert the call args — a mock implementation that ignores args keeps the old bug green.
-- A lib-contract test via `vi.importActual` pins the input formats a delegation fix claims to support (legacy `\u000f` vs kitty/modifyOtherKeys `\x1b[111;5u`).
-- Two mechanisms converging on the same state with the same gates are vestigial duplication: keep the one owned by the authoritative module (ConfigStore per ADR 0004), delete the other.
+- Two mechanisms converging on the same state with the same gates are vestigial duplication: keep the one owned by the authoritative module, delete the other.
+- Remove dead code in the same commit that makes it dead, not later.
+- Centralize a decision on one authoritative field; downstream consumers key off it.
+- New config setting: audit the full plumbing list in one pass (type, DEFAULT_AGENT, resolution/setter/sync, CONFIG_AGENT_NON_MODEL_KEYS, mirrored internal defaults). When changing a user-visible default, grep for the old value across src/ and test/. A "setting survives clearAllModelOverrides" test belongs with every new setting.
+- Config constraints: enforce at every entry point in one pass (setter, load/default-merge, resolution getter) — enforcing two of three is a trap.
 
-### pi-ai API & Subagent Lifecycle
-- `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for agent to finish. Check `ctx.isIdle()` at call time.
-- `createAgentSession` re-executes EVERY extension factory and re-fires session_start/shutdown in subagent context. Fix: bracket `runAgent` with nesting-depth flag; no-op factory and session handlers while subagent is in flight.
+## pi-ai API & Subagent Lifecycle
+- `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for the agent. Check `ctx.isIdle()` at call time.
+- `createAgentSession` re-executes EVERY extension factory and re-fires session_start/shutdown in subagent context. Bracket `runAgent` with a nesting-depth flag; no-op factory and session handlers while a subagent is in flight.
 - `AgentSession.dispose()` does NOT emit session_shutdown; subagent `bindExtensions` DOES fire parent's session_start.
+- Reading pi's settings.json directly is acceptable when pi APIs don't expose the setting yet.
 
-### Extension Tools
+## Extension Tools
 - When tools/resources are silently missing, find the gate first. Seed `createAgentSession({ tools })` with concrete names.
 - Allowlist gate must derive from whitelist expansion alone in whitelist mode and gate builtins too.
-- Cross-repo trust gate coverage is narrower than it reads: `.pi/` resources + `.agents/skills` are gated, but root `AGENTS.md`/`CLAUDE.md` load unconditionally.
+- Cross-repo trust gate is narrower than it reads: `.pi/` resources + `.agents/skills` are gated, but root `AGENTS.md`/`CLAUDE.md` load unconditionally.
 
-### SettingsList & Menus
+## SettingsList & Menus
 - SettingsList: toggles, submenus, separators, static display. No multi-step dialogs. Never call `ctx.ui.input/select/custom` inside it.
-- Proxy pattern (`createDelegatingComponent`) chains submenus cleanly. Use `.has()` presence checks for nullable caches.
-- Use library helpers instead of reimplementing filtering.
+- Proxy pattern (`createDelegatingComponent`) chains submenus cleanly.
 
-### Issue Design
-- Prototype state machines/key handlers in issue.md as a contract. Call out overflow behavior as hard AC gate.
+## Issue Design
+- Prototype state machines/key handlers in issue.md as a contract. Call out overflow behavior as a hard AC gate.
+- Grill / voice-of-reason shape vague questions into precise issues.
 
-### Buffer & Error Patterns
-- Buffer-then-flush is simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
+## Buffer & Error Patterns
+- Buffer-then-flush is the simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
 - When nudges stop working, restart the harness rather than debugging live state.
-- `session.abort()`/`steer()` return promises fired from event listeners (abort signal, subscribe callbacks). Node's EventTarget re-throws a listener's returned rejected promise as an uncaught exception, so always `void promise.catch(() => {})` at those sites — a bare call leaks. Mock sessions must be promise-shaped too, or missing rejection handling hides behind `undefined` returns.
+- `session.abort()`/`steer()` return promises fired from event listeners; Node's EventTarget re-throws a listener's rejected promise as an uncaught exception — always `void promise.catch(() => {})`. Mock sessions must be promise-shaped too.
 
-### Package Management
-- Regenerate lockfiles with package manager when bumping versions; never hand-edit package-lock.json.
-- Releasing: keep `[Unreleased]` as empty running header, insert versioned section below it.
+## Package Management
+- Regenerate lockfiles with the package manager when bumping versions; never hand-edit package-lock.json.
+- Releasing: keep `[Unreleased]` as an empty running header; insert the versioned section below it.
 
-### Cross-Platform
-- `process.env.HOME` is unreliable on Windows — use `os.homedir()` or SDK's `getAgentDir()`.
-- Check existing PRs for reference implementations before grilling alternatives.
+## Cross-Platform
+- `process.env.HOME` is unreliable on Windows — use `os.homedir()` or the SDK's `getAgentDir()`.
 
-### Refactor Scope
-- Stay within issue scope.
+## Edit tool
+- `append` must not re-include the anchor line's content (it inserts after it). Single-line `replace` with multiple lines swaps one line and inserts the rest. Re-read after failed/stale-anchor edits.
+- Multi-op `replace` calls on adjacent ranges are one wrong anchor away from deleting a neighboring field — verify range endpoints against a fresh read, then run typecheck before the test suite.
 
-## output-transcript-setting - 2025-01-15
-**What worked:** Single gate design centralizing the decision on `record.outputFile` so all downstream consumers key off one field. Using `??` operator for precedence (agent-level ?? global-level ?? default true) is clean and correct. Voice-of-reason alternatives brainstorm caught design considerations early.
-**What failed:** Initial test coverage for agent-level frontmatter override didn't actually exercise the branch — `getAgentConfig` always returned `undefined` in test context because `registerAgents` was never called. Tests were added but would have passed even if the override logic was deleted. Stale dev-artifact comments accumulated in test files. CHANGELOG entry was forgotten initially.
-**Next time:** When adding tests for mocked functions, verify the mock is actually being called in the test context — a test that would pass if the feature was deleted is worse than no test. Review tests more carefully to ensure they would fail if the feature was broken. Clean up dev comments immediately. Add CHANGELOG entry as part of initial implementation, not as an afterthought.
-
-## move-model-to-continuation - 2025-01-15
-**What worked:** Moving model + thinking to continuation line improves header scannability. Using a shared `buildContinuationLineParts` function for both rendering and height calculation (`getBlockHeight`) prevents nav-mode window math drift. Extracting `resolveAgentModelThinking` removed duplicated resolution logic.
-**What failed:** `getBlockHeight` initially didn't account for the new continuation line showing model/thinking, causing nav-mode overflow math to be wrong. The `hasContinuationLine` predicate initially triplicated logic instead of delegating to the shared function. `buildWorktreeOutputParts` became dead code after the refactor but wasn't removed immediately.
-**Next time:** When adding a new continuation line element, immediately audit `getBlockHeight` and nav-mode math. Single source of truth — if two functions compute the same derived state, one should call the other. Remove dead code in the same commit that makes it dead, not later.
-
-## model-thinking-placement-setting - follow-up fixes
-**What failed:** The feature commit added the setting to only 4 of 7 config plumbing locations. It missed the `SubagentsConfig["agent"]` type in `model-precedence.ts` (typechecked only via the index signature), `DEFAULT_AGENT` in `config-io.ts`, and `CONFIG_AGENT_NON_MODEL_KEYS` in `types.ts`. The last one is a silent data-loss bug: `clearAllModelOverrides` rebuilds `config.agent` from that key list, wiping any setting not listed. A second commit changing the user-visible default ("continuation" → "header") updated only the config-store normalization, leaving the widget's private field default and `buildContinuationLineParts` param default stale at "continuation" — dead but misleading, and tests asserted the stale default.
-**Next time:** When adding a config setting, audit the full plumbing list in one pass: `SubagentsConfig` type (`model-precedence.ts`), `DEFAULT_AGENT` (`config-io.ts`), resolution/setter/sync (`config-store.ts`), `CONFIG_AGENT_NON_MODEL_KEYS` (`types.ts`), and every internal default that mirrors the config default. When changing a user-visible default, grep for the old default value across src/ and test/ — internal defaults and tests asserting the old default are part of the change. A test asserting "setting survives clearAllModelOverrides" belongs with every new config setting.
-
-## respect-hide-thinking-setting - 2025-01-15
-**What worked:** Using Option 1 (Settings service abstraction) from alternatives.md was the right choice - it centralized file-read logic and decoupled the viewer from pi's file format. The voice-of-reason step caught this before implementation. Reading pi's settings.json directly is acceptable when pi APIs don't expose the setting yet. Handling ctrl+T in the viewer (local state, no persistence) matches the user's requirement perfectly.
-**What failed:** Critical logic bug in initial implementation - `thinkingVisible = getHideThinkingBlock()` was inverted (hideThinkingBlock: true means hide, but set thinkingVisible = true). Tests validated the buggy behavior. Streaming thinking didn't show "Thinking..." label when hidden (inconsistent with non-streaming). Tests accessed private state directly instead of simulating session events. Multiple review cycles caught these issues.
-**Next time:** When implementing boolean flag inversion (hide vs show), write the test FIRST with the correct expected value, then implement. Don't trust the initial implementation to be correct. For UI features with streaming + non-streaming paths, test both paths explicitly. Tests should simulate behavior through public APIs (session events) not private state manipulation. Use voice-of-reason alternatives earlier to avoid reimplementation.
-
-## fix-agent-widget-progress-truncation - 2025-01-16
-**What worked:** Grill skill shaped a vague question ("should we truncate?") into a precise issue with two distinct fixes. Voice-of-reason alternatives forced explicit consideration of approaches. Code review caught missing compact mode prioritization logic that the builder initially skipped. AC review caught missing test assertions for 3 criteria that looked implemented but weren't tested.
-**What failed:** Builder missed compact mode prioritization in first implementation (caught in review R1). Builder accidentally removed `truncate()` call on compact mode header while implementing prioritization (caught in review R2). Refactor step had to fix incomplete full-mode description truncation that should have been in the initial implementation. AC review required a second round because tests were added but not initially present.
-**Next time:** When the issue specifies prioritization logic with specific thresholds (15-char activity minimum, 30-char description threshold), verify the implementation actually computes those values rather than assuming `truncateToWidth` handles it. The `truncateToWidth` cuts from the right but doesn't implement nuanced prioritization. Review prompt should explicitly ask "does the code compute X threshold?" not just "is the feature implemented?". For pi-tui widgets, always verify `truncate()` is called on every render path - it's a hard contract, not optional.
-
-### Edit tool
-- Edit-tool `append` after an anchor line must not re-include the anchor line's own content (it inserts after it, so including it duplicates the line). Single-line `replace` with multiple `lines` swaps one line and inserts the rest — a trailing `}` in the replacement duplicates the block close. Re-read after each failed/stale-anchor edit; hash typos (e.g. `YQ` vs `QY`) surface as stale anchors, which is the tool telling you the line is wrong.
-- Multi-op `replace` calls on adjacent ranges are one wrong anchor away from deleting a neighboring field: slice 1-4's `resultConsumed` removal accidentally swept the adjacent `started` marker added by slice 1-3 (typecheck caught it, tests didn't — the field has no test of its own at the type level). Verify each op's range endpoints against a fresh read, then run typecheck before the test suite.
-
-## widget-time-filter - 2026-08-12
-**What failed:** The widget's finished-filter default window (1 minute) sat exactly on the `completedAt: Date.now() - 60000` fixture shared across seven widget test files — the filter's later `Date.now()` puts such agents just outside the window, so tests that never set the window flaked (passed in isolation on same-millisecond luck, failed in the full run). Fix: move the shared fixtures safely inside the window (`- 30000`).
-**Next time:** When a component gains a time-based filter with a default window, audit every shared finished-agent fixture for boundary placement before running the suite — fixtures at exactly the window edge are latent flakes. Same-ms passes in isolation are luck, not determinism.
-
-## config-load-path-clamps - 2026-08-12 (arch review FLAG)
-**What failed:** `finishedRetentionMinutes` was clamped in the setter and the menu input but not in the resolution getter — a hand-edited config with `0` (legacy `finishedEvictTurns: 0` meant "disabled") flowed unclamped to the widget, hiding every finished row. Arch review caught it as an entry-point asymmetry.
-**Next time:** When a config value has a min/max constraint, enforce it at every entry point in one pass: setter, load/default-merge, and resolution getter. Grep for every place the raw value is read. A constraint enforced in two of three paths is a trap, not a fix.
-
-## interrupt-foreground-subagents - 2026-08-12
-**What worked:** Parallel slice worktrees with disjoint file sets merged cleanly twice (zero conflicts, byte-identical union verified by merge reviewer). Acceptance tests committed before any implementation gave every builder a precise Red target and made sibling-slice red tests unambiguous. Plan review BLOCKs (dangling gate on clear-while-settling, unremoved startAgent binding) caught real correctness holes before a line of code shipped — the reviewer verified each finding against source. Arch-resolver ratifying DECISION POINTs into spec/wave/issue living docs kept builders on the final contract. Refactor agent's change-for-change's-sake NOOP after a disciplined pass. Spy-based detach regression guards pinned listener lifecycle exactly-once.
-**What failed:** Builders shipped twice with doc-drift (spec Further Notes wording not synced when adjusted; stale comments referencing removed eviction machinery) — both caught by review, both one-line. Two sequential builder agent crashes ("No result provided") at wave start required restarts — no work lost, but a wasted cycle. The wave's only plan-review loop-cap hit came from a genuinely new concern on the second round (startAgent binding), not a repeated failure. Manual tester's anagen-x model proxy was broken (502/Plug crash) — had to swap to a working local model; asserted behaviors are model-independent but the instructed model path couldn't be verified. The 27→30 test-site sweep undercount proved that enumeration claims need grep-based verification, not eyeballing.
-**Next time:** When a provisional wording or removed-machinery comment changes, update the spec/comment in the same commit as the code (the lessons.md entry from slice 1-3 already covers this). Before manual testing, probe the configured model endpoints first; budget a model swap. For sweep/enumeration claims in plans, have the planner grep-verify counts (the reviewer did, caught it). Keep parallel slice file sets disjoint — it made both merges trivial; when file contention is unavoidable, that's when sequential execution earns its keep.
+## Scope
+- Stay within issue scope. When provisional wording or removed-machinery comment changes, update the spec/comment in the same commit.
+- Clean up dev comments immediately; add the CHANGELOG entry as part of the initial implementation.
