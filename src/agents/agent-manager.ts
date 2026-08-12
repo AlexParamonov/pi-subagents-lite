@@ -580,8 +580,16 @@ export class AgentManager {
         return false;
       }
     }
+    return this.continueSettledAgent(record, message);
+  }
 
-    // ── Continuation: a settled agent with a live session ──
+  /**
+   * Continue a settled agent: re-reserve the concurrency slot, reset the
+   * record to running, and prompt the session again. Returns false when the
+   * record cannot be continued (still settling, no session, streaming, or
+   * the model's concurrency slot is full).
+   */
+  private continueSettledAgent(record: AgentRecord, message: string): boolean {
     // settled flips to true only after the previous run chain's .finally, so
     // a continuation cannot race the settlement cleanup (slot release, gate).
     if (!record.execution.settled) return false;
@@ -602,7 +610,8 @@ export class AgentManager {
     }
 
     // Reset the record to running; stats (usage, toolUses, turnCount) carry over.
-    record.execution.abortController = new AbortController();
+    const abortController = new AbortController();
+    record.execution.abortController = abortController;
     record.execution.settled = false;
     record.lifecycle.status = "running";
     record.lifecycle.startedAt = Date.now();
@@ -611,7 +620,7 @@ export class AgentManager {
     record.error = undefined;
     // A stale idle clock from the first run would kill the continuation
     // immediately — restart the watchdog before the new turn begins.
-    this.watchdog.start(id);
+    this.watchdog.start(record.id);
 
     const previousTurns = record.stats.turnCount ?? 0;
     const promise = continueAgentSession(session, message, {
@@ -622,12 +631,12 @@ export class AgentManager {
       }),
       onTextDelta: (delta, fullText) => {
         // Streamed response text counts as activity for the idle watchdog.
-        this.watchdog.recordText(id);
+        this.watchdog.recordText(record.id);
         record.execution.liveViewCallbacks?.onTextDelta?.(delta, fullText);
       },
       maxTurns: record.stats.maxTurns,
       graceTurns: getStore().agent.graceTurns ?? DEFAULT_GRACE_TURNS,
-      signal: record.execution.abortController!.signal,
+      signal: abortController.signal,
       onTurnEnd: (turnCount: number) => {
         record.stats.turnCount = previousTurns + turnCount;
       },
