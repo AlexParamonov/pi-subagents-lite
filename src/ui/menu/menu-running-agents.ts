@@ -252,6 +252,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
   }
   const running = agents.filter(isActive);
   const finished = agents.filter((r) => !isActive(r));
+  const completed = agents.filter((r) => r.lifecycle.status === "completed");
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const buildAgentItems = (): SelectItem[] => {
@@ -280,7 +281,11 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
       }
       if (finished.length > 0) {
         items.push({ value: SEPARATOR_ID, label: " " });
-        items.push({ value: "__clear-all-finished", label: "Clear all finished" });
+        items.push({ value: "__clear-all", label: "Clear all" });
+      }
+      if (completed.length > 0) {
+        items.push({ value: SEPARATOR_ID, label: " " });
+        items.push({ value: "__clear-done", label: "Clear done" });
       }
       return items;
     };
@@ -297,11 +302,19 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         done(undefined);
         return;
       }
-      if (item.value === "__clear-all-finished") {
+      if (item.value === "__clear-all") {
         for (const r of finished) {
           getManager()?.clear(r.id);
         }
         ctx.ui.notify(`Cleared ${finished.length} finished agent(s)`, "info");
+        done(undefined);
+        return;
+      }
+      if (item.value === "__clear-done") {
+        for (const r of completed) {
+          getManager()?.clear(r.id);
+        }
+        ctx.ui.notify(`Cleared ${completed.length} completed agent(s)`, "info");
         done(undefined);
         return;
       }
