@@ -49,6 +49,10 @@ vi.mock("../../src/shell.js", () => ({
       idleTimeoutMinutes: mockStoreState.idleTimeoutMinutes,
     },
   }),
+  // Real coordinator calls (one persistence test drives the real spawn path).
+  getWidget: () => undefined,
+  getPiInstance: () => undefined,
+  getSessionCtx: () => undefined,
 }));
 
 function mockAgentSession(): any {
@@ -438,6 +442,8 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCost()).toBe(0.05);
     });
 
+    // DEPRECATED: superseded by the "settled-record persistence" tests — records are never
+    // timer-evicted (ADR-0006), so "after eviction" is no longer a state.
     it("persists cost after agent is evicted from map", async () => {
       vi.useFakeTimers();
       try {
@@ -575,6 +581,8 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCount()).toBe(2);
     });
 
+    // DEPRECATED: superseded by the "settled-record persistence" tests — records are never
+    // timer-evicted (ADR-0006), so "after eviction" is no longer a state.
     it("persists count after agent is evicted from map", async () => {
       vi.useFakeTimers();
       try {
@@ -664,8 +672,9 @@ describe("AgentManager", () => {
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("error");
     });
   });
-  // ── Cleanup eviction ──
-
+  // DEPRECATED: manager timer eviction (cleanup / setRetentionMinutes / resultConsumed) is
+  // removed — terminal records are never timer-evicted. Superseded by the
+  // "settled-record persistence" tests (ADR-0006).
   describe("cleanup", () => {
     it("preserves unconsumed completed records older than the cutoff", async () => {
       vi.useFakeTimers();
@@ -1292,6 +1301,378 @@ describe("AgentManager", () => {
         expect(completed.lifecycle.status).toBe("stopped");
         expect(completed.lifecycle.stoppedBy).toBe("watchdog");
         expect(completed.lifecycle.stopDetail).toEqual({ kind: "tool", toolName: "bash", elapsedMs: 46 * 60_000 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  // ── Wave 1: parent interrupt binding and completion gate (slice 1-1) ──
+
+  function spawnForeground(prompt: string, options: Record<string, unknown> = {}): string {
+    return manager.spawn(fakePi(), fakeCtx(), "general-purpose", prompt, {
+      description: prompt,
+      modelKey: "test/model",
+      ...options,
+    });
+  }
+
+  describe("parent interrupt binding", () => {
+    it("stops a running foreground subagent with stoppedBy user and preserves partial output", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      const controller = new AbortController();
+
+      const id = spawnForeground("task", { signal: controller.signal });
+      const record = manager.getRecord(id)!;
+      expect(record.lifecycle.status).toBe("running");
+
+      controller.abort();
+      expect(record.lifecycle.status).toBe("stopped");
+      expect(record.lifecycle.stoppedBy).toBe("user");
+
+      // The gate must not open until the run settles and partial output is captured.
+      let gateOpened = false;
+      void record.execution.promise!.then(() => {
+        gateOpened = true;
+      });
+      await Promise.resolve();
+      expect(gateOpened).toBe(false);
+
+      deferred.resolve(mockRunResult({ responseText: "partial output", aborted: true }));
+      await record.execution.promise;
+
+      expect(record.result).toBe("partial output");
+      expect(record.lifecycle.status).toBe("stopped");
+      expect(record.lifecycle.stoppedBy).toBe("user");
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels a queued foreground subagent on parent abort without ever starting it", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+      const controller = new AbortController();
+
+      const id1 = spawnForeground("first", { signal: controller.signal });
+      const id2 = spawnForeground("second", { signal: controller.signal });
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.lifecycle.status).toBe("queued");
+      expect(record2.execution.promise).toBeDefined();
+
+      controller.abort();
+      expect(record2.lifecycle.status).toBe("stopped");
+      expect(record2.lifecycle.stoppedBy).toBe("user");
+      expect(record2.lifecycle.completedAt).toBeDefined();
+      expect(record2.result).toBeUndefined();
+      await record2.execution.promise; // the gate opens on the queued stop
+
+      // The slot frees — the cancelled record must never start.
+      firstRun.resolve(mockRunResult());
+      await manager.getRecord(id1)!.execution.promise;
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
+      expect(manager.getRecord(id2)!.lifecycle.status).toBe("stopped");
+    });
+
+    it("notifies completion exactly once when a queued subagent is stopped, without tallying it", () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+
+      const id1 = spawnForeground("first");
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "bg task", {
+        description: "bg task",
+        modelKey: "test/model",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id2)!.lifecycle.status).toBe("queued");
+
+      // StopAgent tool path: abort with the agent initiator.
+      expect(manager.abort(id2, "agent")).toBe(true);
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.lifecycle.status).toBe("stopped");
+      expect(record2.lifecycle.stoppedBy).toBe("agent");
+      expect(record2.result).toBeUndefined();
+
+      // Queued stops notify directly; they never tally as completed agents.
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(manager.getTotalAgentCount()).toBe(0);
+
+      firstRun.resolve(mockRunResult());
+    });
+
+    it("opens the completion gate when a queued start fails during drain", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(firstRun.promise).mockImplementationOnce(() => {
+        throw new Error("start failed");
+      });
+
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.execution.promise).toBeDefined();
+
+      firstRun.resolve(mockRunResult());
+      await manager.getRecord(id1)!.execution.promise;
+
+      expect(record2.lifecycle.status).toBe("error");
+      await record2.execution.promise;
+    });
+
+    it("one abort of the shared parent signal stops every bound subagent", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred1 = makeResolvablePromise();
+      const deferred2 = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(deferred1.promise).mockReturnValueOnce(deferred2.promise);
+      const controller = new AbortController();
+
+      const id1 = spawnForeground("first", { signal: controller.signal });
+      const id2 = spawnForeground("second", { signal: controller.signal });
+
+      controller.abort();
+      expect(manager.getRecord(id1)!.lifecycle.status).toBe("stopped");
+      expect(manager.getRecord(id1)!.lifecycle.stoppedBy).toBe("user");
+      expect(manager.getRecord(id2)!.lifecycle.status).toBe("stopped");
+      expect(manager.getRecord(id2)!.lifecycle.stoppedBy).toBe("user");
+
+      // Settlement order does not matter — gates open for both.
+      deferred1.resolve(mockRunResult({ responseText: "partial one", aborted: true }));
+      deferred2.resolve(mockRunResult({ responseText: "partial two", aborted: true }));
+      await manager.getRecord(id1)!.execution.promise;
+      await manager.getRecord(id2)!.execution.promise;
+      expect(manager.getRecord(id1)!.result).toBe("partial one");
+      expect(manager.getRecord(id2)!.result).toBe("partial two");
+    });
+
+    it("leaves a settled subagent untouched by a later abort of the parent signal", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+
+      const id = spawnForeground("task", { signal: controller.signal });
+      await manager.getRecord(id)!.execution.promise;
+      expect(manager.getRecord(id)!.lifecycle.status).toBe("completed");
+
+      controller.abort();
+      const record = manager.getRecord(id)!;
+      expect(record.lifecycle.status).toBe("completed");
+      expect(record.lifecycle.stoppedBy).toBeUndefined();
+      expect(record.result).toBe("done");
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it("cleans up the interrupt binding when spawn fails synchronously", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockImplementation(() => {
+        throw new Error("start failed");
+      });
+      const controller = new AbortController();
+
+      expect(() => spawnForeground("task", { signal: controller.signal })).toThrow("start failed");
+      expect(manager.listAgents()).toHaveLength(0);
+
+      // A later abort of the parent signal must be a no-op, not a crash.
+      expect(() => controller.abort()).not.toThrow();
+    });
+  });
+
+  describe("already-aborted signal at spawn", () => {
+    it("records an already-aborted spawn as stopped without ever starting it", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const controller = new AbortController();
+      controller.abort();
+
+      const id = spawnForeground("task", { signal: controller.signal });
+      const record = manager.getRecord(id)!;
+      expect(record.lifecycle.status).toBe("stopped");
+      expect(record.lifecycle.stoppedBy).toBe("user");
+      expect(record.lifecycle.completedAt).toBeDefined();
+      expect(record.lifecycle.started).toBe(false);
+      expect(mockModules.mockRunAgent).not.toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      await record.execution.promise; // gate opens immediately
+    });
+
+    it("removes an already-aborted queued spawn from the queue", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+      const controller = new AbortController();
+      controller.abort();
+
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second", { signal: controller.signal });
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.lifecycle.status).toBe("stopped");
+      expect(record2.lifecycle.started).toBe(false);
+
+      firstRun.resolve(mockRunResult());
+      await manager.getRecord(id1)!.execution.promise;
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(1);
+      expect(manager.getRecord(id2)!.lifecycle.status).toBe("stopped");
+    });
+  });
+
+  describe("completion gate", () => {
+    it("creates the completion gate at spawn for every record", () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      expect(manager.getRecord(id1)!.execution.promise).toBeDefined();
+      expect(manager.getRecord(id2)!.execution.promise).toBeDefined();
+
+      firstRun.resolve(mockRunResult());
+    });
+
+    it("keeps the completion gate separate from the run's own promise", () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const id = spawnForeground("task");
+      expect(manager.getRecord(id)!.execution.promise).not.toBe(deferred.promise);
+
+      deferred.resolve(mockRunResult());
+    });
+
+    it("flips the started marker synchronously when the run starts", () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const id = spawnForeground("task");
+      expect(manager.getRecord(id)!.lifecycle.started).toBe(true);
+
+      deferred.resolve(mockRunResult());
+    });
+  });
+
+  describe("dispose", () => {
+    it("marks a queued foreground subagent error with the dispose message and opens its gate", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.lifecycle.status).toBe("queued");
+
+      manager.dispose();
+      expect(record2.lifecycle.status).toBe("error");
+      expect(record2.error).toBe("Agent manager disposed before the queued agent could start.");
+      expect(record2.lifecycle.completedAt).toBeDefined();
+      await record2.execution.promise; // the waiting tool call resumes
+
+      firstRun.resolve(mockRunResult());
+    });
+
+    it("opens the gate of a running subagent when its run settles after dispose", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const id = spawnForeground("task");
+      const record = manager.getRecord(id)!;
+
+      manager.dispose();
+      deferred.resolve(mockRunResult());
+      await record.execution.promise; // must not dangle
+    });
+  });
+
+  describe("clear", () => {
+    it("removes a finished record and disposes its session", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+
+      const id = spawnForeground("task");
+      await manager.getRecord(id)!.execution.promise;
+      const record = manager.getRecord(id)!;
+      const session = record.execution.session!;
+
+      manager.clear(id);
+
+      expect(manager.getRecord(id)).toBeUndefined();
+      expect(session.dispose).toHaveBeenCalled();
+    });
+
+    it("rejects clear for running and queued records", () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      expect(manager.getRecord(id2)!.lifecycle.status).toBe("queued");
+
+      manager.clear(id1);
+      manager.clear(id2);
+
+      expect(manager.getRecord(id1)).toBeDefined();
+      expect(manager.getRecord(id2)).toBeDefined();
+
+      deferred.resolve(mockRunResult());
+    });
+
+    it("opens the completion gate when a stopped-but-settling record is cleared", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      const controller = new AbortController();
+
+      const id = spawnForeground("task", { signal: controller.signal });
+      const record = manager.getRecord(id)!;
+
+      controller.abort(); // status flips to stopped; the run is still settling
+      expect(record.lifecycle.status).toBe("stopped");
+
+      const gate = record.execution.promise!;
+      let gateOpened = false;
+      void gate.then(() => {
+        gateOpened = true;
+      });
+      await Promise.resolve();
+      expect(gateOpened).toBe(false);
+
+      manager.clear(id);
+      await gate; // the coordinator's await must resume, not dangle
+      expect(manager.getRecord(id)).toBeUndefined();
+
+      deferred.resolve(mockRunResult({ aborted: true, responseText: "partial" }));
+    });
+  });
+
+  // ── Wave 1: settled-record persistence (slice 1-4, ADR-0006) ──
+
+  describe("settled-record persistence", () => {
+    it("keeps a settled record after the old eviction cutoff, even once its result was consumed", async () => {
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+        // Drive the real spawn path so the coordinator marks the result consumed —
+        // the old cleanup timer only evicted consumed records.
+        const { SpawnCoordinator } = await import("../../src/spawn/spawn-coordinator.js");
+        const coordinator = new SpawnCoordinator(manager);
+        const { agentId } = await coordinator.spawn(fakePi(), fakeCtx(), {
+          type: "general-purpose",
+          prompt: "task",
+          description: "task",
+          graceTurns: 6,
+          runInBackground: false,
+        });
+        expect(manager.getRecord(agentId)!.lifecycle.status).toBe("completed");
+
+        vi.advanceTimersByTime(20 * 60_000);
+
+        expect(manager.getRecord(agentId)).toBeDefined();
       } finally {
         vi.useRealTimers();
       }

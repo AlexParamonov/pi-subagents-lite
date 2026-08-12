@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fakeCtx } from "../fixtures.ts";
+import { fakeCtx, makeResolvablePromise } from "../fixtures.ts";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -28,6 +28,7 @@ const {
   mockDiscoverNewAgents,
   mockResolveSubagentTrust,
   mockResolveType,
+  mockStoreState,
 } = vi.hoisted(() => ({
   mockValidateWorktreePath: vi.fn(),
   mockSpawn: vi.fn().mockReturnValue("agent-id-123"),
@@ -35,6 +36,7 @@ const {
   mockDiscoverNewAgents: vi.fn(),
   mockResolveSubagentTrust: vi.fn(),
   mockResolveType: vi.fn((type: string) => type),
+  mockStoreState: { forceBackground: false },
 }));
 
 vi.mock("../../src/spawn/worktree-validator.js", () => ({
@@ -67,7 +69,7 @@ vi.mock("../../src/utils.js", () => ({
 vi.mock("../../src/shell.js", () => ({
   getStore: () => ({
     get agent() {
-      return { graceTurns: 5, forceBackground: false };
+      return { graceTurns: 5, forceBackground: mockStoreState.forceBackground };
     },
     modelFor(type: string, parentModelId: string, agentConfig?: any) {
       // Simplified model resolution for testing
@@ -106,6 +108,7 @@ vi.mock("../../src/shell.js", () => ({
         worktreeLabel: intent.worktreeLabel,
         projectTrusted: intent.projectTrusted,
         isBackground: intent.runInBackground,
+        signal: intent.signal,
       });
       const record = mockGetRecord(id);
       if (!intent.runInBackground && record?.execution?.promise) {
@@ -632,5 +635,143 @@ describe("formatResultContent", () => {
     expect(content).toContain("STOPPED BY WATCHDOG");
     expect(content).toContain("bash");
     expect(content).toContain("46m");
+  });
+  it("appends the stopped note to partial output for a ran-then-stopped agent", () => {
+    const content = formatResultContent(
+      makeContentRecord({
+        result: "partial work",
+        lifecycle: { status: "stopped", startedAt: Date.now(), stoppedBy: "user", started: true },
+      }),
+    );
+
+    expect(content).toContain("partial work");
+    expect(content).toContain("STOPPED BY THE USER");
+    expect(content).toContain("output is partial");
+  });
+
+  it("never claims partial output for a never-started stopped record", () => {
+    const content = formatResultContent(
+      makeContentRecord({
+        result: "",
+        lifecycle: { status: "stopped", startedAt: Date.now(), stoppedBy: "user", started: false },
+      }),
+    );
+
+    expect(content).toContain("before the agent started");
+    expect(content).toContain("NOT attempted");
+    expect(content).not.toContain("output is partial");
+  });
+
+  it("does not append an error block to a stopped record even when the run recorded an error", () => {
+    const content = formatResultContent(
+      makeContentRecord({
+        result: "partial",
+        error: "boom",
+        lifecycle: { status: "stopped", startedAt: Date.now(), stoppedBy: "user" },
+      }),
+    );
+
+    expect(content).toContain("partial");
+    expect(content).not.toContain("Error: boom");
+  });
+});
+
+describe("executeAgentTool — parent signal forwarding", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStoreState.forceBackground = false;
+    ctx = fakeCtx();
+    mockResolveSubagentTrust.mockReturnValue(true);
+    mockGetRecord.mockReturnValue({
+      id: "agent-id-sig",
+      result: "done",
+      display: { type: "general-purpose", description: "Test agent" },
+      lifecycle: { status: "completed", startedAt: Date.now() - 1000, completedAt: Date.now() },
+      execution: { promise: Promise.resolve("done") },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+      },
+    });
+  });
+
+  it("forwards the execute signal to a foreground spawn", async () => {
+    const controller = new AbortController();
+    await executeAgentTool("tc-sig", makeParams(), controller.signal, undefined, ctx);
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.signal).toBe(controller.signal);
+  });
+
+  it("does not forward the signal to an explicit run_in_background spawn", async () => {
+    const controller = new AbortController();
+    await executeAgentTool("tc-bg-sig", makeParams({ run_in_background: true }), controller.signal, undefined, ctx);
+
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.isBackground).toBe(true);
+    expect(spawnOptions.signal).toBeUndefined();
+  });
+
+  it("does not forward the signal when forceBackground is enabled", async () => {
+    mockStoreState.forceBackground = true;
+    const controller = new AbortController();
+    await executeAgentTool("tc-fg-sig", makeParams(), controller.signal, undefined, ctx);
+
+    const spawnOptions = mockSpawn.mock.calls[0][4];
+    expect(spawnOptions.isBackground).toBe(true);
+    expect(spawnOptions.signal).toBeUndefined();
+  });
+});
+
+describe("executeAgentTool — queued foreground spawn", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStoreState.forceBackground = false;
+    ctx = fakeCtx();
+    mockResolveSubagentTrust.mockReturnValue(true);
+  });
+
+  it("returns the real result for a queued foreground spawn, never an early empty string", async () => {
+    const gate = makeResolvablePromise();
+    const record: any = {
+      id: "agent-id-queued",
+      result: undefined,
+      display: { type: "general-purpose", description: "Test agent" },
+      lifecycle: { status: "queued", startedAt: Date.now() },
+      execution: { promise: gate.promise },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+      },
+    };
+    mockGetRecord.mockReturnValue(record);
+
+    let toolSettled = false;
+    const toolResult = executeAgentTool("tc-queued", makeParams(), undefined, undefined, ctx);
+    void toolResult.then(() => {
+      toolSettled = true;
+    });
+
+    // The subagent is queued — the tool call must stay suspended.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(toolSettled).toBe(false);
+
+    // A slot frees: the subagent starts and settles with its full result.
+    record.lifecycle.status = "completed";
+    record.result = "full result text";
+    gate.resolve("full result text");
+    const result = await toolResult;
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toBe("full result text");
+    expect(result.content[0].text).not.toBe("");
   });
 });

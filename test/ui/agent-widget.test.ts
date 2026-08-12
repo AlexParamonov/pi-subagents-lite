@@ -998,6 +998,9 @@ describe("stats visibility integration", () => {
   });
 });
 
+// DEPRECATED: turn-based eviction (markFinished / finishedEvictTurns / linger turns) is removed
+// — one time-based window replaces it. Superseded by the "finished-agent time window" tests
+// (ADR-0006).
 describe("turn-based eviction for finished agents", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
@@ -1272,5 +1275,116 @@ describe("description truncation", () => {
     expect(compactLine).toBeDefined();
     // Description should be present
     expect(compactLine).toContain("AAA");
+  });
+});
+
+describe("finished-agent time window", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+
+  type RenderedState = {
+    visible: string[];
+    arrow: string | null;
+    readout: string | null;
+  };
+
+  /** Render the widget and extract visible agent ids, arrow target, and nav readout. */
+  function renderState(w: AgentWidget): RenderedState {
+    const lines = (w as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const visible: string[] = [];
+    let arrow: string | null = null;
+    for (const line of lines) {
+      const m = line.match(/agent ([\w-]+)/);
+      if (!m) continue;
+      if (line.includes("→")) arrow = m[1];
+      visible.push(m[1]);
+    }
+    const heading = lines[0] ?? "";
+    const readout = heading.match(/\d+\/\d+/)?.[0] ?? null;
+    return { visible, arrow, readout };
+  }
+
+  function finishedAgent(id: string, completedMinutesAgo: number): any {
+    const agent = makeFinishedAgent(id);
+    agent.lifecycle.completedAt = Date.now() - completedMinutesAgo * 60_000;
+    return agent;
+  }
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    widget = new AgentWidget(manager, () => undefined);
+  });
+
+  it("shows a finished agent while it is inside the retention window", () => {
+    widget.setFinishedRetentionMinutes(5);
+    (manager as any).listAgents = () => [finishedAgent("a1", 2)];
+    expect(renderState(widget).visible).toEqual(["a1"]);
+  });
+
+  it("hides a finished agent once the retention window has elapsed", () => {
+    widget.setFinishedRetentionMinutes(5);
+    (manager as any).listAgents = () => [finishedAgent("a1", 10)];
+    expect(renderState(widget).visible).toEqual([]);
+  });
+
+  it("keeps running and queued agents visible regardless of age", () => {
+    widget.setFinishedRetentionMinutes(1);
+    const running = makeRunningAgent("r1");
+    running.lifecycle.startedAt = Date.now() - 30 * 60_000;
+    const queued: any = {
+      id: "q1",
+      display: { type: "builder", description: "Queued agent q1" },
+      lifecycle: { status: "queued", startedAt: Date.now() - 30 * 60_000 },
+      execution: {},
+      stats: {
+        toolUses: 0,
+        compactionCount: 0,
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        turnCount: 1,
+        maxTurns: 30,
+      },
+    };
+    (manager as any).listAgents = () => [running, queued];
+    widget.navActivate(); // queued rows render individually during navigation
+    expect(renderState(widget).visible).toEqual(["r1", "q1"]);
+  });
+
+  it("applies the window uniformly across finished statuses (no linger bonuses)", () => {
+    widget.setFinishedRetentionMinutes(5);
+    const stopped = finishedAgent("s1", 10);
+    stopped.lifecycle.status = "stopped";
+    (manager as any).listAgents = () => [stopped];
+    expect(renderState(widget).visible).toEqual([]);
+  });
+
+  it("hides a finished row from the widget while the menu still lists the record", () => {
+    widget.setFinishedRetentionMinutes(5);
+    const agent = finishedAgent("a1", 10);
+    (manager as any).listAgents = () => [agent];
+    expect(renderState(widget).visible).toEqual([]);
+    expect(manager.listAgents()).toHaveLength(1);
+  });
+
+  it("hides a finished row as time passes the window, on the next render", () => {
+    vi.useFakeTimers();
+    try {
+      const agent = finishedAgent("a1", 2);
+      (manager as any).listAgents = () => [agent];
+      widget.setFinishedRetentionMinutes(5);
+      expect(renderState(widget).visible).toEqual(["a1"]);
+      vi.advanceTimersByTime(4 * 60_000); // now 6 minutes past completion
+      expect(renderState(widget).visible).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies a window change on the next render", () => {
+    const agent = finishedAgent("a1", 2);
+    (manager as any).listAgents = () => [agent];
+    widget.setFinishedRetentionMinutes(5);
+    expect(renderState(widget).visible).toEqual(["a1"]);
+    widget.setFinishedRetentionMinutes(1);
+    expect(renderState(widget).visible).toEqual([]);
   });
 });

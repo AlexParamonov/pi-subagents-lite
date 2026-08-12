@@ -31,6 +31,7 @@ const hoisted = vi.hoisted(() => {
     abort: vi.fn(),
     steer: vi.fn(),
     spawn: vi.fn(() => "agent-id-123"),
+    clear: vi.fn(),
   };
 
   const mockSessionCtx = {
@@ -96,6 +97,7 @@ export function resetConfig(): void {
   mockModules.mockManager.abort.mockReset();
   mockModules.mockManager.steer.mockReset();
   mockModules.mockManager.spawn.mockReset();
+  mockModules.mockManager.clear.mockReset();
   mockModules.mockPiExec.mockReset();
   resetSelectDialogInstances();
 }

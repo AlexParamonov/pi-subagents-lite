@@ -99,3 +99,25 @@ describe("formatWatchdogSummary", () => {
     expect(formatWatchdogSummary({ status: "stopped", startedAt: 0, stoppedBy: "user" })).toBeUndefined();
   });
 });
+
+describe("getStatusNote — never-started stopped records", () => {
+  it("renders the never-started note for a user stop that never started", () => {
+    const note = getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user", started: false });
+    expect(note).toContain("before the agent started");
+    expect(note).toContain("NOT attempted");
+    expect(note).not.toContain("output is partial");
+  });
+
+  it("renders the never-started note for an agent stop that never started", () => {
+    const note = getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "agent", started: false });
+    expect(note).toContain("STOPPED BY YOU");
+    expect(note).toContain("before the agent started");
+    expect(note).not.toContain("output is partial");
+  });
+
+  it("keeps the ran-then-stopped note once the record started", () => {
+    const note = getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user", started: true });
+    expect(note).toContain("before completion");
+    expect(note).toContain("output is partial");
+  });
+});
