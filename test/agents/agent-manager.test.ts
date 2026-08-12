@@ -26,6 +26,8 @@ const mockModules = vi.hoisted(() => ({
     appendFileSync: vi.fn(),
     existsSync: vi.fn(),
   },
+  mockAgentOutputLog: vi.fn(),
+  mockGetAgentConfig: vi.fn(() => undefined),
 }));
 
 vi.mock("node:crypto", () => ({
@@ -37,18 +39,43 @@ vi.mock("node:fs", () => mockModules.fsMock);
 vi.mock("../../src/agents/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
 }));
+vi.mock("../../src/agents/output-file.js", () => ({
+  AgentOutputLog: mockModules.mockAgentOutputLog,
+}));
+
+vi.mock("../../src/agents/agent-types.js", () => ({
+  getAgentConfig: mockModules.mockGetAgentConfig,
+}));
 
 // Controllable mock for getStore(), used by delta estimation + watchdog tests
-const mockStoreState = { deltaInputTokens: true, toolTimeoutMinutes: 0, idleTimeoutMinutes: 0 };
+const mockStoreState = {
+  deltaInputTokens: true,
+  toolTimeoutMinutes: 0,
+  idleTimeoutMinutes: 0,
+  outputThinkingBufferSize: 0,
+  outputTranscript: true,
+};
 
+// Shared agent object so getStore() returns the same reference each time.
+const mockStoreAgent = {
+  get deltaInputTokens() {
+    return mockStoreState.deltaInputTokens;
+  },
+  get toolTimeoutMinutes() {
+    return mockStoreState.toolTimeoutMinutes;
+  },
+  get idleTimeoutMinutes() {
+    return mockStoreState.idleTimeoutMinutes;
+  },
+  get outputThinkingBufferSize() {
+    return mockStoreState.outputThinkingBufferSize;
+  },
+  get outputTranscript() {
+    return mockStoreState.outputTranscript;
+  },
+};
 vi.mock("../../src/shell.js", () => ({
-  getStore: () => ({
-    agent: {
-      deltaInputTokens: mockStoreState.deltaInputTokens,
-      toolTimeoutMinutes: mockStoreState.toolTimeoutMinutes,
-      idleTimeoutMinutes: mockStoreState.idleTimeoutMinutes,
-    },
-  }),
+  getStore: () => ({ agent: mockStoreAgent }),
   // Real coordinator calls (one persistence test drives the real spawn path).
   getWidget: () => undefined,
   getPiInstance: () => undefined,
@@ -79,6 +106,8 @@ describe("AgentManager", () => {
   beforeEach(() => {
     mockModules.resetUuidCounter();
     mockModules.mockRunAgent.mockReset();
+    mockModules.mockAgentOutputLog.mockClear();
+    mockModules.mockGetAgentConfig.mockClear();
     onComplete = vi.fn();
   });
 
@@ -1801,6 +1830,48 @@ describe("AgentManager", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  // ── outputThinkingBufferSize live-read ──
+
+  describe("outputThinkingBufferSize", () => {
+    it("reads bufferSize live from store at spawn time", () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      mockStoreState.outputThinkingBufferSize = 100;
+      mockStoreState.outputTranscript = true;
+
+      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task 1", {
+        description: "task 1",
+        isBackground: true,
+      });
+
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(mockModules.mockAgentOutputLog).toHaveBeenCalledTimes(1);
+      expect(mockModules.mockAgentOutputLog).toHaveBeenCalledWith(
+        id1,
+        "task 1",
+        undefined,
+        100, // store value, not constructor value
+      );
+
+      // Change store value; next spawn should use the new value.
+      mockModules.mockAgentOutputLog.mockClear();
+      mockStoreState.outputThinkingBufferSize = 200;
+
+      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task 2", {
+        description: "task 2",
+        isBackground: true,
+      });
+
+      expect(mockModules.mockAgentOutputLog).toHaveBeenCalledTimes(1);
+      expect(mockModules.mockAgentOutputLog).toHaveBeenCalledWith(
+        id2,
+        "task 2",
+        undefined,
+        200, // updated store value
+      );
     });
   });
 }); // end describe AgentManager

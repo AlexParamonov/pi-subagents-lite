@@ -42,7 +42,6 @@ export function ensureManagerAndWidget(): void {
       undefined, // onComplete wired below
       getStore().concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
       undefined,
-      getStore().agent.outputThinkingBufferSize,
     );
     setManager(newManager);
     // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
