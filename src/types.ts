@@ -127,6 +127,12 @@ export interface AgentLifecycle {
    * agent whose nudge hasn't fired yet isn't evicted before the LLM reads the result.
    */
   resultConsumed?: boolean;
+  /**
+   * Whether the agent ever started running. Set false at spawn, flipped true
+   * synchronously in startAgent before the run — distinguishes never-started
+   * stops from ran-then-stopped ones so the status note is accurate.
+   */
+  started: boolean;
 }
 
 /**
