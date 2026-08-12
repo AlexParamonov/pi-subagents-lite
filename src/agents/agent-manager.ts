@@ -152,9 +152,13 @@ export class AgentManager {
 
   /**
    * Update the concurrency configuration.
-   * Existing slots are updated; new slots are created; removed slots stay
-   * (their running count will drain naturally). The queue is drained after
-   * update so newly expanded limits take effect immediately.
+   * Existing slots are updated; new slots are created; slots whose keys are
+   * absent from the new config are deleted so the new limit takes effect.
+   * In-flight agents that held a reference to a deleted slot still decrement
+   * that orphaned object in their .finally — a brief undercount window where
+   * the running total is not reflected in any live slot. This is acceptable:
+   * the agent completes shortly, and new spawns use the reconciled slots.
+   * The queue is drained after update so newly expanded limits take effect.
    */
   setConcurrency(config: ConcurrencyConfig): void {
     this.defaultConcurrency = config.default;
@@ -164,9 +168,23 @@ export class AgentManager {
       this.applyConcurrencyEntry(this.providerSlots, provider, limit);
     }
 
+    // Remove provider slots no longer in config
+    for (const key of this.providerSlots.keys()) {
+      if (!(config.providers ?? {})[key]) {
+        this.providerSlots.delete(key);
+      }
+    }
+
     // Update existing slots and create new ones
     for (const [modelKey, limit] of Object.entries(config.models ?? {})) {
       this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
+    }
+
+    // Remove model slots no longer in config
+    for (const key of this.concurrencySlots.keys()) {
+      if (!(config.models ?? {})[key]) {
+        this.concurrencySlots.delete(key);
+      }
     }
 
     // Start queued agents if the new limits allow
