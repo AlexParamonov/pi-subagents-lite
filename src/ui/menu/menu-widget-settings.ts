@@ -167,17 +167,15 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
 };
 
 function buildStatsItems(
-  store: ReturnType<typeof getStore>,
   statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>,
 ): SettingItem[] {
-  const items: SettingItem[] = [...statConfig.entries()].map(([id, cfg]) => ({
+  return [...statConfig.entries()].map(([id, cfg]) => ({
     id,
     label: cfg.label,
     currentValue: cfg.get() ? "ON" : "OFF",
     values: ["ON", "OFF"],
     description: STAT_DESCRIPTIONS[id],
   }));
-  return items;
 }
 
 function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>) {
@@ -313,7 +311,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
         break;
       case "stats": {
         const statConfig = buildStatConfig(store);
-        await showCategorySubmenu(ctx, "Stats", () => buildStatsItems(store, statConfig));
+        await showCategorySubmenu(ctx, "Stats", () => buildStatsItems(statConfig));
         break;
       }
     }
