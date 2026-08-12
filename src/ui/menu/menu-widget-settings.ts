@@ -16,28 +16,75 @@ import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
 
-/** One stat visibility toggle: menu label plus store get/set accessors. */
-type StatToggleConfig = { label: string; get: () => boolean; set: (v: boolean) => void };
+/** One stat visibility toggle: menu label, description, and store get/set accessors. */
+type StatToggleConfig = { label: string; description: string; get: () => boolean; set: (v: boolean) => void };
 
-/** Stat visibility config — label and store accessors keyed by stat id. */
+/** Stat visibility config — label, description, and store accessors keyed by stat id. */
 function buildStatConfig(store: ReturnType<typeof getStore>): Map<string, StatToggleConfig> {
   return new Map<string, StatToggleConfig>([
-    ["showTools", { label: "Tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
-    ["showTurns", { label: "Turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
+    [
+      "showTools",
+      {
+        label: "Tools",
+        description: "Show tool count 🛠︎  in the widget.",
+        get: () => store.agent.showTools,
+        set: (v) => store.mutate.agent.setShowTools(v),
+      },
+    ],
+    [
+      "showTurns",
+      {
+        label: "Turns",
+        description: "Show turn count ⟳  in the widget.",
+        get: () => store.agent.showTurns,
+        set: (v) => store.mutate.agent.setShowTurns(v),
+      },
+    ],
     [
       "showInput",
-      { label: "Input tokens", get: () => store.agent.showInput, set: (v) => store.mutate.agent.setShowInput(v) },
+      {
+        label: "Input tokens",
+        description: "Show input tokens ↑ in the widget.",
+        get: () => store.agent.showInput,
+        set: (v) => store.mutate.agent.setShowInput(v),
+      },
     ],
     [
       "showOutput",
-      { label: "Output tokens", get: () => store.agent.showOutput, set: (v) => store.mutate.agent.setShowOutput(v) },
+      {
+        label: "Output tokens",
+        description: "Show output tokens ↓ in the widget.",
+        get: () => store.agent.showOutput,
+        set: (v) => store.mutate.agent.setShowOutput(v),
+      },
     ],
     [
       "showContext",
-      { label: "Context %", get: () => store.agent.showContext, set: (v) => store.mutate.agent.setShowContext(v) },
+      {
+        label: "Context %",
+        description: "Show context-fill percent % in the widget.",
+        get: () => store.agent.showContext,
+        set: (v) => store.mutate.agent.setShowContext(v),
+      },
     ],
-    ["showCost", { label: "Cost", get: () => store.agent.showCost, set: (v) => store.mutate.agent.setShowCost(v) }],
-    ["showTime", { label: "Time", get: () => store.agent.showTime, set: (v) => store.mutate.agent.setShowTime(v) }],
+    [
+      "showCost",
+      {
+        label: "Cost",
+        description: "Show dollar cost $ in the widget.",
+        get: () => store.agent.showCost,
+        set: (v) => store.mutate.agent.setShowCost(v),
+      },
+    ],
+    [
+      "showTime",
+      {
+        label: "Time",
+        description: "Show elapsed time in the widget.",
+        get: () => store.agent.showTime,
+        set: (v) => store.mutate.agent.setShowTime(v),
+      },
+    ],
   ]);
 }
 
@@ -159,23 +206,13 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
   ];
 }
 
-const STAT_DESCRIPTIONS: Record<string, string> = {
-  showTools: "Show tool count 🛠︎  in the widget.",
-  showTurns: "Show turn count ⟳  in the widget.",
-  showInput: "Show input tokens ↑ in the widget.",
-  showOutput: "Show output tokens ↓ in the widget.",
-  showContext: "Show context-fill percent % in the widget.",
-  showCost: "Show dollar cost $ in the widget.",
-  showTime: "Show elapsed time in the widget.",
-};
-
 function buildStatsItems(statConfig: Map<string, StatToggleConfig>): SettingItem[] {
   return [...statConfig.entries()].map(([id, cfg]) => ({
     id,
     label: cfg.label,
     currentValue: cfg.get() ? "ON" : "OFF",
     values: ["ON", "OFF"],
-    description: STAT_DESCRIPTIONS[id],
+    description: cfg.description,
   }));
 }
 
