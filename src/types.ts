@@ -155,6 +155,10 @@ export interface AgentDisplayInfo {
 export interface AgentExecutionState {
   session?: AgentSession;
   abortController?: AbortController;
+  /**
+   * Completion gate, created at spawn, opened exactly once at the terminal
+   * transition; never the run's own promise.
+   */
   promise?: Promise<string>;
   /** Steering messages queued before the session was ready. */
   pendingSteers?: string[];
