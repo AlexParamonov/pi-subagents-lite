@@ -145,15 +145,6 @@ export interface ContinueAgentOptions extends RunCallbacks {
   signal?: AbortSignal;
 }
 
-/** Outcome of a continued run — the same shape as a first run's result. */
-export interface ContinueAgentResult {
-  responseText: string;
-  session: AgentSession;
-  aborted: boolean;
-  turnLimited: boolean;
-  modelError?: string;
-}
-
 function collectResponseText(session: AgentSession, onTextDelta?: (delta: string, fullText: string) => void) {
   let text = "";
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
@@ -168,7 +159,7 @@ function collectResponseText(session: AgentSession, onTextDelta?: (delta: string
   return { getText: () => text, unsubscribe };
 }
 
-function getLastAssistantText(session: AgentSession, fromIndex = 0): string {
+function getLastAssistantText(session: AgentSession, fromIndex: number): string {
   for (let i = session.messages.length - 1; i >= fromIndex; i--) {
     const msg = session.messages[i];
     if (msg.role !== "assistant") continue;
@@ -638,7 +629,7 @@ export async function continueAgentSession(
   session: AgentSession,
   prompt: string,
   options: ContinueAgentOptions = {},
-): Promise<ContinueAgentResult> {
+): Promise<RunResult> {
   const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, options);
   const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
   return {
