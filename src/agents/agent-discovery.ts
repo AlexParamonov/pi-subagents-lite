@@ -34,6 +34,8 @@ export interface AgentConfigFromMd {
   max_tokens?: number;
   hidden?: boolean;
   output_transcript?: boolean;
+  include_context_files?: boolean;
+  include_system_prompt?: boolean;
   systemPrompt: string;
   source: "user" | "project";
 }
@@ -244,6 +246,8 @@ export function parseAgentFile(content: string, source: "user" | "project"): Age
     max_tokens: parseNumber(frontmatter, "max_tokens"),
     hidden: parseBoolean(frontmatter, "hidden"),
     output_transcript: parseBoolean(frontmatter, "output_transcript"),
+    include_context_files: parseBoolean(frontmatter, "include_context_files"),
+    include_system_prompt: parseBoolean(frontmatter, "include_system_prompt"),
     systemPrompt: body,
     source: source,
   };
@@ -359,6 +363,8 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     maxTokens: md.max_tokens,
     hidden: md.hidden,
     outputTranscript: md.output_transcript,
+    includeContextFiles: md.include_context_files,
+    includeSystemPrompt: md.include_system_prompt,
     systemPrompt: md.systemPrompt,
     source: md.source === "project" ? "project" : "global",
   };

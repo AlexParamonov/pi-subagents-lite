@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { parseAgentFile, scanAgentFilesInDir, mergeAgents, parseExtensions } from "../../src/agents/agent-discovery.ts";
 import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.ts";
+import type { AgentConfig } from "../../src/agents/types.ts";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
 
 /* ------------------------------------------------------------------ */
@@ -217,6 +218,56 @@ body
     const content = makeAgentMd({});
     const result = parseAgentFile(content, "user");
     expect(result.output_transcript).toBeUndefined();
+  });
+
+  it("parses include_context_files as boolean true", () => {
+    const content = makeAgentMd({ include_context_files: "true" });
+    const result = parseAgentFile(content, "user");
+    expect(result.include_context_files).toBe(true);
+  });
+
+  it("parses include_context_files as boolean false", () => {
+    const content = makeAgentMd({ include_context_files: "false" });
+    const result = parseAgentFile(content, "user");
+    expect(result.include_context_files).toBe(false);
+  });
+
+  it("include_context_files is undefined when not specified", () => {
+    const content = makeAgentMd({});
+    const result = parseAgentFile(content, "user");
+    expect(result.include_context_files).toBeUndefined();
+  });
+
+  it("parses include_system_prompt as boolean true", () => {
+    const content = makeAgentMd({ include_system_prompt: "true" });
+    const result = parseAgentFile(content, "user");
+    expect(result.include_system_prompt).toBe(true);
+  });
+
+  it("parses include_system_prompt as boolean false", () => {
+    const content = makeAgentMd({ include_system_prompt: "false" });
+    const result = parseAgentFile(content, "user");
+    expect(result.include_system_prompt).toBe(false);
+  });
+
+  it("include_system_prompt is undefined when not specified", () => {
+    const content = makeAgentMd({});
+    const result = parseAgentFile(content, "user");
+    expect(result.include_system_prompt).toBeUndefined();
+  });
+
+  it("ignores non-boolean include_context_files and include_system_prompt without breaking parsing", () => {
+    const content = `---
+name: agent
+include_context_files: sometimes
+include_system_prompt: 42
+---
+body
+`;
+    const result = parseAgentFile(content, "user");
+    expect(result.name).toBe("agent");
+    expect(result.include_context_files).toBeUndefined();
+    expect(result.include_system_prompt).toBeUndefined();
   });
 
   it("parses max_turns as number", () => {
@@ -591,5 +642,32 @@ describe("mergeAgents", () => {
     expect(agent.description).toBe("From shared");
     expect(agent.model).toBe("model/shared");
     expect(agent.systemPrompt).toBe("shared prompt");
+  });
+
+  it("include_context_files / include_system_prompt thread through fromMd with per-layer merge", () => {
+    const defaults = new Map<string, AgentConfig>();
+    const userAgents: AgentConfigFromMd[] = [
+      {
+        name: "explorer",
+        include_context_files: false,
+        source: "user",
+        systemPrompt: "user prompt",
+      },
+    ];
+    const sharedAgents: AgentConfigFromMd[] = [
+      {
+        name: "explorer",
+        include_system_prompt: false,
+        source: "project",
+        systemPrompt: "shared prompt",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [];
+
+    const result = mergeAgents(defaults, userAgents, sharedAgents, projectAgents);
+    const agent = result.get("explorer")!;
+    // Each layer's explicitly-set field survives; unset fields stay undefined (→ global).
+    expect(agent.includeContextFiles).toBe(false);
+    expect(agent.includeSystemPrompt).toBe(false);
   });
 });
