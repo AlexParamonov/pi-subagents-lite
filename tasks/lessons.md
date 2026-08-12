@@ -67,6 +67,7 @@
 ### Buffer & Error Patterns
 - Buffer-then-flush is simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
 - When nudges stop working, restart the harness rather than debugging live state.
+- `session.abort()`/`steer()` return promises fired from event listeners (abort signal, subscribe callbacks). Node's EventTarget re-throws a listener's returned rejected promise as an uncaught exception, so always `void promise.catch(() => {})` at those sites — a bare call leaks. Mock sessions must be promise-shaped too, or missing rejection handling hides behind `undefined` returns.
 
 ### Package Management
 - Regenerate lockfiles with package manager when bumping versions; never hand-edit package-lock.json.
