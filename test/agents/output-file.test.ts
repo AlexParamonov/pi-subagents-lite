@@ -21,9 +21,7 @@ const fixture = tempDirFixture();
 beforeEach(() => fixture.setup());
 afterEach(() => fixture.teardown());
 
-// ------------------------------------------------------------------
-// createOutputFilePath
-// ------------------------------------------------------------------
+// --- createOutputFilePath ---
 
 describe("createOutputFilePath", () => {
   it("returns <baseDir>/<agentId>.log", () => {
@@ -46,9 +44,7 @@ describe("createOutputFilePath", () => {
   });
 });
 
-// ------------------------------------------------------------------
-// writeInitialEntry
-// ------------------------------------------------------------------
+// --- writeInitialEntry ---
 describe("writeInitialEntry", () => {
   it("writes a [USER] line with ISO timestamp and prompt text", () => {
     const dir = fixture.getDir();
@@ -62,9 +58,7 @@ describe("writeInitialEntry", () => {
   });
 });
 
-// ------------------------------------------------------------------
-// streamToOutputFile
-// ------------------------------------------------------------------
+// --- streamToOutputFile ---
 
 describe("streamToOutputFile", () => {
   function setupSession(messages: any[]) {
@@ -573,9 +567,7 @@ describe("streamToOutputFile", () => {
   });
 });
 
-// ------------------------------------------------------------------
-// AgentOutputLog
-// ------------------------------------------------------------------
+// --- AgentOutputLog ---
 
 describe("AgentOutputLog", () => {
   it("creates the output file path and writes initial [USER] entry", () => {

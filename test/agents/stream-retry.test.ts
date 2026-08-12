@@ -11,9 +11,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { patchRetryClassifier } from "../../src/agents/stream-retry.js";
 
-// ------------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------------
+// --- Helpers ---
 
 /** Build a mock session with a controllable _isRetryableError. */
 function makeMockSession(originalRetryable: (msg: any) => boolean = () => false) {
@@ -31,9 +29,7 @@ function msg(opts: { stopReason?: string; errorMessage?: string } = {}): any {
   };
 }
 
-// ------------------------------------------------------------------
-// Tests
-// ------------------------------------------------------------------
+// --- Tests ---
 
 describe("patchRetryClassifier", () => {
   // ── Transient transport errors become retryable ──

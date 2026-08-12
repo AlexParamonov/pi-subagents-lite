@@ -19,9 +19,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
+// --- Mocks ---
 
 const mockSubscribe = vi.fn(() => () => {});
 const mockRequestRender = vi.fn();
@@ -110,16 +108,12 @@ vi.mock("../../src/pi-settings.js", () => ({
   readPiSettings: vi.fn(),
 }));
 
-// ---------------------------------------------------------------------------
-// Import after mocks
-// ---------------------------------------------------------------------------
+// --- Import after mocks ---
 
 import { getHideThinkingBlock } from "../../src/pi-settings.js";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
+// --- Test helpers ---
 
 const noopTheme: any = {
   fg: (_color: string, text: string) => text,
@@ -181,9 +175,7 @@ function count(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+// --- Tests ---
 
 describe("ConversationViewer", () => {
   beforeEach(() => {

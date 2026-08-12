@@ -13,9 +13,7 @@ vi.mock("node:os");
 const mockFs = vi.mocked(fs);
 const mockOs = vi.mocked(os);
 
-// ---------------------------------------------------------------------------
-// Import after mocks
-// ---------------------------------------------------------------------------
+// --- Import after mocks ---
 
 import { readPiSettings, getHideThinkingBlock } from "../../src/pi-settings.js";
 
