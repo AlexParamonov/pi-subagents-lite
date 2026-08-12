@@ -16,9 +16,12 @@ import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
 
+/** One stat visibility toggle: menu label plus store get/set accessors. */
+type StatToggleConfig = { label: string; get: () => boolean; set: (v: boolean) => void };
+
 /** Stat visibility config — label and store accessors keyed by stat id. */
-function buildStatConfig(store: ReturnType<typeof getStore>) {
-  return new Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>([
+function buildStatConfig(store: ReturnType<typeof getStore>): Map<string, StatToggleConfig> {
+  return new Map<string, StatToggleConfig>([
     ["showTools", { label: "Tools", get: () => store.agent.showTools, set: (v) => store.mutate.agent.setShowTools(v) }],
     ["showTurns", { label: "Turns", get: () => store.agent.showTurns, set: (v) => store.mutate.agent.setShowTurns(v) }],
     [
@@ -166,9 +169,7 @@ const STAT_DESCRIPTIONS: Record<string, string> = {
   showTime: "Show elapsed time in the widget.",
 };
 
-function buildStatsItems(
-  statConfig: Map<string, { label: string; get: () => boolean; set: (v: boolean) => void }>,
-): SettingItem[] {
+function buildStatsItems(statConfig: Map<string, StatToggleConfig>): SettingItem[] {
   return [...statConfig.entries()].map(([id, cfg]) => ({
     id,
     label: cfg.label,
