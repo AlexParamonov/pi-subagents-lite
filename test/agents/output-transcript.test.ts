@@ -68,12 +68,7 @@ describe("outputTranscript setting", () => {
     // Reset getAgentConfig mock to return undefined by default (no agent-level override)
     vi.mocked(getAgentConfig).mockReturnValue(undefined);
 
-    manager = new AgentManager(
-      undefined,
-      undefined,
-      undefined,
-      0, // bufferSize
-    );
+    manager = new AgentManager(undefined, undefined, undefined);
 
     mockPi = {} as ExtensionAPI;
     mockCtx = { ui: { notify: vi.fn() } } as unknown as ExtensionContext;
