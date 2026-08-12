@@ -12,6 +12,7 @@ let uuidCounter = 0;
 
 const mockModules = vi.hoisted(() => ({
   mockRunAgent: vi.fn(),
+  mockContinueAgentSession: vi.fn(),
   mockRandomUUID: vi.fn(() => {
     uuidCounter++;
     return `agent-${String(uuidCounter).padStart(8, "0")}`;
@@ -26,7 +27,9 @@ const mockModules = vi.hoisted(() => ({
     appendFileSync: vi.fn(),
     existsSync: vi.fn(),
   },
-  mockAgentOutputLog: vi.fn(),
+  mockAgentOutputLog: vi.fn(function () {
+    return { attach: vi.fn(), finalize: vi.fn(), path: "/tmp/out.log" };
+  }),
   mockGetAgentConfig: vi.fn(() => undefined),
 }));
 
@@ -38,6 +41,7 @@ vi.mock("node:fs", () => mockModules.fsMock);
 
 vi.mock("../../src/agents/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
+  continueAgentSession: mockModules.mockContinueAgentSession,
 }));
 vi.mock("../../src/agents/output-file.js", () => ({
   AgentOutputLog: mockModules.mockAgentOutputLog,
@@ -83,7 +87,13 @@ vi.mock("../../src/shell.js", () => ({
 }));
 
 function mockAgentSession(): any {
-  return { subscribe: vi.fn(), messages: [], dispose: vi.fn() };
+  return {
+    subscribe: vi.fn(),
+    messages: [],
+    dispose: vi.fn(),
+    isStreaming: false,
+    abort: vi.fn(async () => {}),
+  };
 }
 
 function mockRunResult(overrides?: Partial<ReturnType<typeof mockRunResult>>) {
@@ -106,6 +116,7 @@ describe("AgentManager", () => {
   beforeEach(() => {
     mockModules.resetUuidCounter();
     mockModules.mockRunAgent.mockReset();
+    mockModules.mockContinueAgentSession.mockReset();
     mockModules.mockAgentOutputLog.mockClear();
     mockModules.mockGetAgentConfig.mockClear();
     onComplete = vi.fn();
@@ -1872,6 +1883,387 @@ describe("AgentManager", () => {
         undefined,
         200, // updated store value
       );
+    });
+  });
+
+  // ── steer continuation: settled agents with a live session ──
+
+  describe("steer continuation", () => {
+    /** Capture the onTurnEnd callback passed to the most recent runAgent call. */
+    function getOnTurnEnd() {
+      const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+      return call[3].onTurnEnd;
+    }
+
+    /** Capture the onToolActivity callback passed to the most recent runAgent call. */
+    function getOnToolActivity() {
+      const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
+      return call[3].onToolActivity;
+    }
+
+    /** Spawn and settle a completed agent; returns its id. */
+    async function spawnSettled(options: Record<string, unknown> = {}): Promise<string> {
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const id = spawnForeground("first task", options);
+      await manager.getRecord(id)!.execution.promise;
+      return id;
+    }
+
+    it("continues a settled agent by prompting its session, returning true immediately", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(deferred.promise);
+      const id = await spawnSettled();
+      const record = manager.getRecord(id)!;
+      const oldController = record.execution.abortController;
+      const oldStartedAt = record.lifecycle.startedAt;
+      expect(record.lifecycle.status).toBe("completed");
+
+      const steered = await manager.steer(id, "keep going");
+      expect(steered).toBe(true);
+      expect(mockModules.mockContinueAgentSession).toHaveBeenCalledWith(
+        record.execution.session,
+        "keep going",
+        expect.objectContaining({ maxTurns: undefined, graceTurns: 6 }),
+      );
+      // Record is reset to running with a fresh abort controller.
+      expect(record.lifecycle.status).toBe("running");
+      expect(record.lifecycle.startedAt).toBeGreaterThanOrEqual(oldStartedAt);
+      expect(record.lifecycle.completedAt).toBeUndefined();
+      expect(record.result).toBeUndefined();
+      expect(record.error).toBeUndefined();
+      expect(record.execution.settled).toBe(false);
+      expect(record.execution.abortController).not.toBe(oldController);
+
+      deferred.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
+    it("keeps the completion gate untouched across continuation", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(deferred.promise);
+      const id = await spawnSettled();
+      const record = manager.getRecord(id)!;
+      const gate = record.execution.promise;
+
+      await manager.steer(id, "keep going");
+      expect(record.execution.promise).toBe(gate);
+
+      deferred.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
+    it("returns false for a settled agent without a session", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: undefined }));
+      const id = spawnForeground("first task");
+      const record = manager.getRecord(id)!;
+      await record.execution.promise;
+      expect(record.lifecycle.status).toBe("completed");
+
+      await expect(manager.steer(id, "keep going")).resolves.toBe(false);
+      expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
+    });
+
+    it("returns false while the record is still settling (settled guard)", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      const id = spawnForeground("first task");
+      const record = manager.getRecord(id)!;
+      // Simulate a session already created, then stop: status flips to stopped
+      // synchronously while the run is still settling (settled stays false).
+      const session = mockAgentSession();
+      mockModules.mockRunAgent.mock.calls[0][3].onSessionCreated(session);
+      manager.abort(id, "user");
+      expect(record.lifecycle.status).toBe("stopped");
+
+      await expect(manager.steer(id, "keep going")).resolves.toBe(false);
+      expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
+
+      deferred.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
+    it("rejects when the session is streaming", async () => {
+      manager = new AgentManager(onComplete);
+      const id = await spawnSettled();
+      const record = manager.getRecord(id)!;
+      record.execution.session!.isStreaming = true;
+
+      await expect(manager.steer(id, "keep going")).resolves.toBe(false);
+      expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
+    });
+
+    it("re-reserves the concurrency slot and rejects when it is full", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      const secondRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(firstRun.promise).mockReturnValueOnce(secondRun.promise);
+      const idA = spawnForeground("A");
+      const idB = spawnForeground("B");
+      expect(manager.getRecord(idB)!.lifecycle.status).toBe("queued");
+
+      firstRun.resolve(mockRunResult());
+      await manager.getRecord(idA)!.execution.promise;
+      // B drained into the slot after A settled.
+      expect(manager.getRecord(idB)!.lifecycle.status).toBe("running");
+      mockModules.mockContinueAgentSession.mockReturnValue(makeResolvablePromise().promise);
+      await expect(manager.steer(idA, "keep going")).resolves.toBe(false);
+      expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
+
+      secondRun.resolve(mockRunResult());
+      await manager.getRecord(idB)!.execution.promise;
+    });
+
+    it("skips re-reservation entirely when modelKey is undefined", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const deferred = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(deferred.promise);
+      const id = await spawnSettled({ modelKey: undefined });
+
+      await expect(manager.steer(id, "keep going")).resolves.toBe(true);
+      expect(mockModules.mockContinueAgentSession).toHaveBeenCalledTimes(1);
+
+      deferred.resolve(mockRunResult());
+      await vi.waitFor(() => expect(manager.getRecord(id)!.execution.settled).toBe(true));
+    });
+
+    it("releases the slot and drains the queue when the continuation settles", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const idA = await spawnSettled();
+
+      await manager.steer(idA, "keep going");
+      // The continuation holds the slot: a new spawn must queue.
+      const cRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(cRun.promise);
+      const idC = spawnForeground("C");
+      expect(manager.getRecord(idC)!.lifecycle.status).toBe("queued");
+
+      contRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(manager.getRecord(idC)!.lifecycle.status).toBe("running"));
+      cRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(manager.getRecord(idC)!.execution.settled).toBe(true));
+    });
+
+    it("preserves stats and accumulates the turn count across continuation", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const id = spawnForeground("first task");
+      const record = manager.getRecord(id)!;
+      getOnAssistantUsage()({ input: 100, output: 50, cacheWrite: 0, cost: 0.1, cacheRead: 0 });
+      getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "c1" });
+      getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "c1" });
+      getOnTurnEnd()(3);
+      await record.execution.promise;
+      expect(record.stats.lifetimeUsage.cost).toBe(0.1);
+      expect(record.stats.toolUses).toBe(1);
+      expect(record.stats.turnCount).toBe(3);
+
+      await manager.steer(id, "keep going");
+      const contCallbacks = mockModules.mockContinueAgentSession.mock.calls[0][2];
+      contCallbacks.onAssistantUsage({ input: 50, output: 25, cacheWrite: 0, cost: 0.05, cacheRead: 0 });
+      contCallbacks.onToolActivity({ type: "start", toolName: "bash", toolCallId: "c2" });
+      contCallbacks.onToolActivity({ type: "end", toolName: "bash", toolCallId: "c2" });
+      contCallbacks.onTurnEnd(2);
+
+      expect(record.stats.lifetimeUsage.cost).toBeCloseTo(0.15);
+      expect(record.stats.toolUses).toBe(2);
+      expect(record.stats.turnCount).toBe(5); // 3 from the first run + 2 from the continuation
+
+      contRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
+    it("tallies only the cost delta and does not double-count the agent", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const id = spawnForeground("first task");
+      const record = manager.getRecord(id)!;
+      getOnAssistantUsage()({ input: 100, output: 50, cacheWrite: 0, cost: 0.1, cacheRead: 0 });
+      await record.execution.promise;
+      expect(manager.getTotalAgentCost()).toBe(0.1);
+      expect(manager.getTotalAgentCount()).toBe(1);
+
+      const contDeferred = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contDeferred.promise);
+      await manager.steer(id, "keep going");
+      mockModules.mockContinueAgentSession.mock.calls[0][2].onAssistantUsage({
+        input: 200,
+        output: 100,
+        cacheWrite: 0,
+        cost: 0.25,
+        cacheRead: 0,
+      });
+      contDeferred.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+      expect(manager.getTotalAgentCost()).toBe(0.35); // 0.1 first run + only the 0.25 continuation delta (not 0.45)
+      expect(manager.getTotalAgentCount()).toBe(1); // continuation never increments
+    });
+
+    it("notifies completion on every settlement", async () => {
+      manager = new AgentManager(onComplete);
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const id = await spawnSettled();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      await manager.steer(id, "keep going");
+      contRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(manager.getRecord(id)!.execution.settled).toBe(true));
+      expect(onComplete).toHaveBeenCalledTimes(2); // first settlement + continuation
+    });
+
+    it("clears the stale result when the continuation fails", async () => {
+      manager = new AgentManager(onComplete);
+      const id = await spawnSettled();
+      const record = manager.getRecord(id)!;
+      expect(record.result).toBe("done");
+
+      mockModules.mockContinueAgentSession.mockRejectedValue(new Error("boom"));
+      await manager.steer(id, "keep going");
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+      expect(record.result).toBeUndefined(); // no stale result from the prior run
+      expect(record.error).toContain("boom");
+      expect(record.lifecycle.status).toBe("error");
+      expect(onComplete).toHaveBeenCalledTimes(2);
+    });
+
+    it("classifies provider model errors like the first run", async () => {
+      manager = new AgentManager(onComplete);
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const id = await spawnSettled();
+      const record = manager.getRecord(id)!;
+      await manager.steer(id, "keep going");
+      contRun.resolve(
+        mockRunResult({
+          responseText: "",
+          modelError: "model failed to load into memory",
+          session: { ...mockAgentSession(), model: { provider: "anthropic", id: "claude-sonnet-4" } },
+        }),
+      );
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+      expect(record.lifecycle.status).toBe("error");
+      expect(record.error).toContain("general-purpose");
+      expect(record.error).toContain("anthropic/claude-sonnet-4");
+      expect(record.error).toContain("model failed to load into memory");
+    });
+
+    it("forwards Stop through the fresh abort controller during a continuation", async () => {
+      manager = new AgentManager(onComplete);
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const id = await spawnSettled();
+      const record = manager.getRecord(id)!;
+      await manager.steer(id, "keep going");
+      // The runner wires the fresh controller's signal to session.abort();
+      // here we verify the manager hands that controller to the runner.
+      const contSignal = mockModules.mockContinueAgentSession.mock.calls[0][2].signal;
+      expect(contSignal).toBe(record.execution.abortController!.signal);
+
+      manager.abort(id, "user");
+      expect(record.lifecycle.status).toBe("stopped");
+      expect(contSignal.aborted).toBe(true);
+
+      contRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+      expect(record.lifecycle.status).toBe("stopped");
+    });
+
+    it("does not re-attach the parent abort binding on continuation", async () => {
+      manager = new AgentManager(onComplete);
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const controller = new AbortController();
+      const id = await spawnSettled({ signal: controller.signal });
+      const record = manager.getRecord(id)!;
+      await manager.steer(id, "keep going");
+
+      controller.abort();
+      expect(record.lifecycle.status).toBe("running"); // parent interrupt is over
+
+      contRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
+    it("restarts the watchdog clock on continuation", async () => {
+      vi.useFakeTimers();
+      try {
+        mockStoreState.idleTimeoutMinutes = 45;
+        manager = new AgentManager(onComplete);
+        mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+        const id = spawnForeground("task");
+        const record = manager.getRecord(id)!;
+        await record.execution.promise;
+
+        // 44 minutes of quiet after the first run settled.
+        vi.setSystemTime(Date.now() + 44 * 60_000);
+        const contRun = makeResolvablePromise();
+        mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+        await manager.steer(id, "keep going");
+
+        // 2 minutes later (46 total since spawn): a stale clock from spawn
+        // would kill now; the restarted clock must not.
+        vi.setSystemTime(Date.now() + 2 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+        expect(record.lifecycle.status).toBe("running");
+
+        // 44 minutes after the continuation: the restarted clock kills it.
+        vi.setSystemTime(Date.now() + 44 * 60_000 - WATCHDOG_TICK_MS);
+        vi.advanceTimersByTime(WATCHDOG_TICK_MS);
+        expect(record.lifecycle.status).toBe("stopped");
+        expect(record.lifecycle.stoppedBy).toBe("watchdog");
+
+        contRun.resolve(mockRunResult());
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("steer on a running agent still delegates to session.steer (unchanged)", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      const id = spawnForeground("task");
+      const record = manager.getRecord(id)!;
+
+      // No session yet: the message is queued as a pending steer.
+      await expect(manager.steer(id, "early")).resolves.toBe(true);
+      expect(record.execution.pendingSteers).toEqual(["early"]);
+
+      // Session arrives: pending steers flush, live steers delegate.
+      const session = mockAgentSession();
+      session.steer = vi.fn(async () => {});
+      mockModules.mockRunAgent.mock.calls[0][3].onSessionCreated(session);
+      await expect(manager.steer(id, "later")).resolves.toBe(true);
+      expect(session.steer).toHaveBeenCalledWith("later");
+      expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
+
+      deferred.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
+    it("does not continue a record that never settled (queued stop)", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.lifecycle.status).toBe("queued");
+
+      manager.abort(id2, "user");
+      expect(record2.lifecycle.status).toBe("stopped");
+      await expect(manager.steer(id2, "keep going")).resolves.toBe(false);
+      expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
+
+      firstRun.resolve(mockRunResult());
     });
   });
 }); // end describe AgentManager

@@ -8,7 +8,10 @@
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
 
 ## Testing
-- Run `npm run test` after merging — clean merge ≠ passing tests.
+- vi.fn() with an arrow implementation is not a constructor — a `new`ed mock needs a `function` implementation.
+- Cost accumulators: assert with toBeCloseTo (0.1 + 0.05 ≠ 0.15 in floats), and remember usage callbacks report per-message cost, not cumulative.
+- Per-message usage callbacks must be driven BEFORE the run settles — post-settlement the tally already read the old total.
+- vitest writes transformed modules under TMPDIR; a shared machine pruning /tmp mid-run produces flaky ENOENT import failures — run with TMPDIR set to a stable local dir.
 - Test behavior, not implementation details: assert constructor args and call args, not downstream effects; export testable functions early.
 - Replace `setTimeout` sleeps with awaiting chained completion promises — faster, no flake.
 - afterEach cleanup must remove the whole temp base dir, not one sibling.

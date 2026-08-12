@@ -148,6 +148,24 @@ export interface AgentExecutionState {
   pendingSteers?: string[];
   /** Lifecycle wrapper for the output file stream. */
   outputLog?: AgentOutputLog;
+  /**
+   * Model key the spawn reserved a concurrency slot for. Set at spawn; used
+   * to re-reserve the slot when a settled agent is continued. Undefined when
+   * the spawn had no model key (re-reservation is skipped entirely).
+   */
+  modelKey?: string;
+  /**
+   * Whether the run promise chain has fully settled (its .finally ran).
+   * False at spawn and while a continuation is running; true after every
+   * settlement. Guards continuation against racing settlement cleanup.
+   */
+  settled?: boolean;
+  /**
+   * Lifetime cost already added to the session total (tallyCompletion
+   * baseline). Undefined until the first settlement; continuations add only
+   * the delta since the last tally.
+   */
+  talliedCost?: number;
 }
 
 /**

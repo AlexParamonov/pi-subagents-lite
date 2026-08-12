@@ -119,7 +119,7 @@ interface RunOptions extends RunTunables, RunCallbacks {
   signal?: AbortSignal;
 }
 
-interface RunResult {
+export interface RunResult {
   responseText: string;
   session: AgentSession;
   /** True if the agent was hard-aborted (max_turns + grace exceeded). */
@@ -131,6 +131,26 @@ interface RunResult {
    * assistant message has stopReason "error". Absent for normal, aborted,
    * and turn-limited runs, and for transient errors superseded by a later turn.
    */
+  modelError?: string;
+}
+
+/**
+ * Options for resuming a settled session (continueAgentSession).
+ * Carries the same callbacks as a first run; the session itself is reused.
+ */
+export interface ContinueAgentOptions extends RunCallbacks {
+  maxTurns?: number;
+  graceTurns?: number;
+  /** Abort signal forwarded to session.abort() while the prompt runs. */
+  signal?: AbortSignal;
+}
+
+/** Outcome of a continued run — the same shape as a first run's result. */
+export interface ContinueAgentResult {
+  responseText: string;
+  session: AgentSession;
+  aborted: boolean;
+  turnLimited: boolean;
   modelError?: string;
 }
 
@@ -578,7 +598,12 @@ function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxT
   return { unsubscribe, getAborted: () => aborted, getTurnLimited: () => softLimitReached };
 }
 
-async function runTurnLoop(session: AgentSession, prompt: string, options: RunOptions, unsubTurns: () => void) {
+async function runTurnLoop(
+  session: AgentSession,
+  prompt: string,
+  options: { signal?: AbortSignal } & RunCallbacks,
+  unsubTurns: () => void,
+) {
   const unsubEvents = subscribeToSessionEvents(session, options);
   const collector = collectResponseText(session, options.onTextDelta);
   const cleanupAbort = forwardAbortSignal(session, options.signal);
@@ -591,6 +616,34 @@ async function runTurnLoop(session: AgentSession, prompt: string, options: RunOp
     cleanupAbort();
   }
   return collector.getText().trim() || getLastAssistantText(session);
+}
+
+/**
+ * Prompt an existing session after its original run settled (the fork's
+ * continueAgentSession() shape). Wires the same turn tracking, event
+ * subscription, response collection, and abort forwarding as a first run,
+ * then calls session.prompt().
+ *
+ * Unlike runAgent, the session already exists: onSessionCreated is never
+ * called, and there is no session setup (model resolution, resource loader,
+ * tool filtering). The result keeps the runAgent shape (including
+ * modelError) so the manager classifies the continuation exactly like the
+ * first run.
+ */
+export async function continueAgentSession(
+  session: AgentSession,
+  prompt: string,
+  options: ContinueAgentOptions = {},
+): Promise<ContinueAgentResult> {
+  const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, options);
+  const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
+  return {
+    responseText,
+    session,
+    aborted: getAborted(),
+    turnLimited: getTurnLimited(),
+    modelError: getFinalModelError(session),
+  };
 }
 
 // ── main entry ─────────────────────────────────────────────────────

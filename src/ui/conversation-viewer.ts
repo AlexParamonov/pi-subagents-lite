@@ -325,14 +325,14 @@ export class ConversationViewer implements Component {
       // Composer row: the Input renders its own `> ` prompt and cursor.
       lines.push(row(this.composer.render(innerW)[0] ?? ""));
       const composeHint = th.fg("dim", "Enter send · Esc cancel");
-      const composeLeft = th.fg("accent", "✎ steer");
+      const composeLeft = th.fg("accent", this.isActive() ? "✎ steer" : "✎ continue");
       const composeGap = Math.max(1, innerW - visibleWidth(composeLeft) - visibleWidth(composeHint));
       lines.push(row(composeLeft + " ".repeat(composeGap) + composeHint));
     } else {
       // Actions on the left, navigation on the right.
       const sep = th.fg("dim", " · ");
       const actions: string[] = [];
-      if (this.canSteer()) actions.push(th.fg("dim", "Enter steer"));
+      if (this.canSteer()) actions.push(th.fg("dim", this.isActive() ? "Enter steer" : "Enter continue"));
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
@@ -369,7 +369,8 @@ export class ConversationViewer implements Component {
   }
 
   private canSteer(): boolean {
-    return !!this.onSteer && this.isActive();
+    // Offered whenever a session exists — a settled agent can be continued.
+    return !!this.onSteer && !!this.record.execution.session;
   }
 
   private openComposer(): void {
