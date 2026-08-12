@@ -118,9 +118,9 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls.length).toBe(1);
-    expect(selectListCalls[0].items.length).toBe(2);
-    expect(selectListCalls[0].items[0].value).toBe("agent-1");
-    expect(selectListCalls[0].items[1].value).toBe("agent-2");
+    // Bulk rows (separator, Clear all finished) follow the agent entries
+    const agentItems = selectListCalls[0].items.filter((i: any) => i.value.startsWith("agent-"));
+    expect(agentItems.map((i: any) => i.value)).toEqual(["agent-1", "agent-2"]);
   });
 
   it("includes agent type in label", async () => {
@@ -677,5 +677,103 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const values = list.items.map((i: any) => i.value);
     expect(values).toContain("view-conversation");
     expect(values).toContain("view-result");
+  });
+});
+
+describe("clear actions for finished agents", () => {
+  beforeEach(() => {
+    selectListCalls = [];
+    vi.clearAllMocks();
+    mockModules.mockManager.listAgents.mockReset().mockReturnValue([]);
+    mockModules.mockManager.clear.mockReset();
+  });
+
+  it("shows a Clear action for finished records", () => {
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      makeRecord(),
+      noopTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    const values = list.items.map((i: any) => i.value);
+    expect(values).toContain("clear");
+  });
+
+  it("does not show a Clear action for running or queued records", () => {
+    for (const status of ["running", "queued"] as const) {
+      const list = buildAgentActionsList(
+        createMockCtx(),
+        makeRecord({
+          lifecycle: { status, startedAt: Date.now() - 20000 },
+          execution: { session: { messages: [] } },
+          result: "",
+        }),
+        noopTheme,
+        () => {},
+        () => {},
+        () => {},
+      );
+      const values = list.items.map((i: any) => i.value);
+      expect(values).not.toContain("clear");
+      expect(values).toContain("stop");
+    }
+  });
+
+  it("clears the record through the manager when Clear is selected", async () => {
+    const ctx = createMockCtx();
+    const onClose = vi.fn();
+    const list = buildAgentActionsList(
+      ctx,
+      makeRecord(),
+      noopTheme,
+      () => {},
+      () => {},
+      onClose,
+    );
+    await list.onSelect!({ value: "clear" });
+    expect(mockModules.mockManager.clear).toHaveBeenCalledWith("test-id-123");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("shows a Clear all finished row when finished records exist", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1" }),
+      makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    expect(labels.some((l) => l.includes("Clear all finished"))).toBe(true);
+  });
+
+  it("does not show a Clear all finished row when no finished records exist", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    expect(labels.some((l) => l.includes("Clear all finished"))).toBe(false);
+  });
+
+  it("Clear all finished removes every finished record and leaves active ones", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1" }),
+      makeRecord({ id: "agent-2", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+      makeRecord({ id: "agent-3", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+
+    const row = selectListCalls[0].items.find((i: any) => i.label.includes("Clear all finished"));
+    expect(row).toBeDefined();
+
+    const list = selectListCalls[0];
+    await list.onSelect!(row);
+    expect(mockModules.mockManager.clear).toHaveBeenCalledWith("agent-1");
+    expect(mockModules.mockManager.clear).toHaveBeenCalledWith("agent-2");
+    expect(mockModules.mockManager.clear).not.toHaveBeenCalledWith("agent-3");
   });
 });

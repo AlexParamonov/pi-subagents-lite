@@ -31,6 +31,7 @@ const hoisted = vi.hoisted(() => {
     abort: vi.fn(),
     steer: vi.fn(),
     spawn: vi.fn(() => "agent-id-123"),
+    clear: vi.fn(),
   };
 
   const mockSessionCtx = {
@@ -96,6 +97,7 @@ export function resetConfig(): void {
   mockModules.mockManager.abort.mockReset();
   mockModules.mockManager.steer.mockReset();
   mockModules.mockManager.spawn.mockReset();
+  mockModules.mockManager.clear.mockReset();
   mockModules.mockPiExec.mockReset();
   resetSelectDialogInstances();
 }
@@ -198,7 +200,6 @@ vi.mock("../src/shell.js", async () => {
         outputTranscript: a.outputTranscript !== false,
         outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
         finishedRetentionMinutes: a.finishedRetentionMinutes ?? DEFAULT_AGENT.finishedRetentionMinutes,
-        finishedEvictTurns: a.finishedEvictTurns ?? DEFAULT_AGENT.finishedEvictTurns,
         modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
         statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
         widgetShowModel: a.widgetShowModel !== false,
@@ -344,9 +345,6 @@ vi.mock("../src/shell.js", async () => {
         setFinishedRetentionMinutes(n: number) {
           mockModules.mockConfig.agent.finishedRetentionMinutes = n;
         },
-        setFinishedEvictTurns(n: number) {
-          mockModules.mockConfig.agent.finishedEvictTurns = n;
-        },
         setOutputTranscript(enabled: boolean) {
           mockModules.mockConfig.agent.outputTranscript = enabled;
         },
@@ -450,6 +448,9 @@ vi.mock("../src/shell.js", async () => {
           worktreePath: intent.worktreePath,
           worktreeLabel: intent.worktreeLabel,
           invocation: intent.invocation,
+          // Mirror the real coordinator's spread: the signal key exists only
+          // when the intent carried one — menu-wizard spawns never do.
+          ...(intent.signal !== undefined ? { signal: intent.signal } : {}),
         });
         const record = mockModules.mockManager.getRecord(id);
         if (!intent.runInBackground && record?.execution?.promise) {

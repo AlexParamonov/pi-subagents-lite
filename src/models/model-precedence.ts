@@ -66,10 +66,8 @@ export interface SubagentsConfig {
 
     /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
     outputThinkingBufferSize?: number;
-    /** Minutes to retain finished agents in the widget. Default: 10. */
+    /** Minutes to retain finished agents in the widget. Default: 1. */
     finishedRetentionMinutes?: number;
-    /** Turns to keep finished agents visible in the widget. 0 = disabled. Default: 4. */
-    finishedEvictTurns?: number;
     /** How to display the model label: short ID or full name. Default: 'id'. */
     modelDisplayStyle?: "id" | "name";
     /** Where model/thinking appears in full mode: 'header' (1st line) or 'metadata' (2nd line). Default: 'header'. */

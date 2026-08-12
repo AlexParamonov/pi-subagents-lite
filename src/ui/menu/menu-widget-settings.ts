@@ -133,17 +133,6 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       }),
       description: "Minutes to keep finished agents visible (decimals OK, min 1 sec).",
     },
-    {
-      id: "finishedEvictTurns",
-      label: "Finished agent evict turns",
-      currentValue: String(store.agent.finishedEvictTurns),
-      submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
-        store.mutate.agent.setFinishedEvictTurns(parsed);
-        ctx.ui.notify(`Finished agent evict turns set to ${parsed}`, "info");
-      }),
-      description:
-        "Turns to keep finished agents visible. 0 = disabled (only timer applies). Error agents linger +2 extra turns.",
-    },
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "shortcut",
@@ -276,8 +265,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
       case "finishedRetention":
-      case "finishedEvictTurns":
-        // Handled by numeric submenus, not onChange
+        // Handled by the numeric submenu, not onChange
         break;
     }
   };

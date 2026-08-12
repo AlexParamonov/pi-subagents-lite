@@ -89,10 +89,8 @@ export interface ResolvedAgentSettings {
   readonly deltaInputTokens: boolean;
   /** Buffer size for streaming thinking blocks to output file. 0 = disabled. */
   readonly outputThinkingBufferSize: number;
-  /** Minutes to retain finished agents before cleanup eviction. */
+  /** Minutes a finished agent stays visible in the widget after completion. */
   readonly finishedRetentionMinutes: number;
-  /** Turns to keep finished agents visible. 0 = disabled. */
-  readonly finishedEvictTurns: number;
   /** Model display format: 'id' (short) or 'name' (full). */
   readonly modelDisplayStyle: "id" | "name";
   /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
@@ -170,8 +168,7 @@ export class ConfigStore {
       showTime: a.showTime !== false,
       deltaInputTokens: a.deltaInputTokens === true,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
-      finishedRetentionMinutes: a.finishedRetentionMinutes ?? 1,
-      finishedEvictTurns: a.finishedEvictTurns ?? 4,
+      finishedRetentionMinutes: Math.max(MIN_FINISHED_RETENTION_MINUTES, a.finishedRetentionMinutes ?? 1),
       modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
       modelThinkingPlacement: a.modelThinkingPlacement === "metadata" ? "metadata" : "header",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
@@ -337,12 +334,8 @@ export class ConfigStore {
         const n = Math.max(MIN_FINISHED_RETENTION_MINUTES, minutes);
         this.config.agent.finishedRetentionMinutes = n;
         this.persist();
-        this.manager?.setRetentionMinutes(n);
-      },
-      setFinishedEvictTurns: (turns: number): void => {
-        this.config.agent.finishedEvictTurns = turns;
-        this.persist();
-        this.syncWidgetSettings();
+        // Push the window to the widget so it applies on the next render tick.
+        this.widget?.setFinishedRetentionMinutes(n);
       },
     },
     widget: {
@@ -529,7 +522,7 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
 
     w.setNavHint(a.widgetNavHint);
-    w.setFinishedEvictTurns(a.finishedEvictTurns);
+    w.setFinishedRetentionMinutes(a.finishedRetentionMinutes);
     w.setModelDisplayStyle(a.modelDisplayStyle);
     w.setStatusBarFormat(a.statusBarFormat);
     w.setModelThinkingPlacement(a.modelThinkingPlacement);
@@ -575,6 +568,5 @@ export class ConfigStore {
       this.syncWidgetStatsVisibility();
     }
     this.applyConcurrency();
-    this.manager?.setRetentionMinutes(this.agent.finishedRetentionMinutes);
   }
 }

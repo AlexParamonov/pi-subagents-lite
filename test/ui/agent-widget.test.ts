@@ -109,7 +109,7 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
     lifecycle: {
       status: "completed",
       startedAt: Date.now() - 120000,
-      completedAt: Date.now() - 60000,
+      completedAt: Date.now() - 30000,
     },
     execution: {},
     stats: {
@@ -998,164 +998,6 @@ describe("stats visibility integration", () => {
   });
 });
 
-describe("turn-based eviction for finished agents", () => {
-  let widget: AgentWidget;
-  let manager: AgentManager;
-  let activity: Map<string, LiveView>;
-
-  beforeEach(() => {
-    manager = makeMockManager([]);
-    activity = new Map();
-    widget = new AgentWidget(manager, (id) => activity.get(id));
-  });
-
-  type RenderedState = {
-    visible: string[];
-    arrow: string | null;
-    readout: string | null;
-  };
-
-  /** Render the widget and extract visible agent ids, arrow target, and nav readout. */
-  function renderState(widget: AgentWidget): RenderedState {
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    const visible: string[] = [];
-    let arrow: string | null = null;
-    for (const line of lines) {
-      const m = line.match(/agent ([\w-]+)/);
-      if (!m) continue;
-      if (line.includes("→")) arrow = m[1];
-      visible.push(m[1]);
-    }
-    const heading = lines[0] ?? "";
-    const readout = heading.match(/\d+\/\d+/)?.[0] ?? null;
-    return { visible, arrow, readout };
-  }
-
-  it("markFinished is a no-op when eviction is disabled", () => {
-    widget.setFinishedEvictTurns(0);
-    const agent = makeFinishedAgent("a1");
-    (manager as any).listAgents = () => [agent];
-    widget.markFinished("a1");
-
-    // Enable eviction after the fact: an untracked agent is treated as age 0
-    // forever, so it must survive 3 turns. If markFinished had registered it,
-    // age 3 >= threshold 2 would evict it.
-    widget.setFinishedEvictTurns(2);
-    for (let i = 0; i < 3; i++) widget.onTurnStart();
-    expect(renderState(widget).visible).toEqual(["a1"]);
-  });
-
-  it("finished agents age correctly across multiple turns", () => {
-    widget.setFinishedEvictTurns(3);
-    const agent = makeFinishedAgent("a1");
-    (manager as any).listAgents = () => [agent];
-    widget.markFinished("a1");
-
-    // Age 1: still visible (1 < 3); nav readout and arrow show the roster.
-    widget.onTurnStart();
-    widget.navActivate();
-    expect(renderState(widget)).toEqual({ visible: ["a1"], arrow: "a1", readout: "1/1" });
-
-    // Age 2: still visible (2 < 3)
-    widget.onTurnStart();
-    expect(renderState(widget).visible).toEqual(["a1"]);
-
-    // Age 3: evicted (3 >= 3) — nothing left to render, readout disappears
-    widget.onTurnStart();
-    expect(renderState(widget)).toEqual({ visible: [], arrow: null, readout: null });
-  });
-
-  it("finished agents are hidden after finishedEvictTurns turns", () => {
-    widget.setFinishedEvictTurns(2);
-    const agent = makeFinishedAgent("a1");
-    (manager as any).listAgents = () => [agent];
-
-    widget.markFinished("a1");
-    widget.onTurnStart(); // age → 1
-    widget.onTurnStart(); // age → 2
-    expect(renderState(widget).visible).toEqual([]);
-  });
-
-  it("finished agents are shown before finishedEvictTurns threshold", () => {
-    widget.setFinishedEvictTurns(3);
-    const agent = makeFinishedAgent("a1");
-    (manager as any).listAgents = () => [agent];
-
-    widget.markFinished("a1");
-    widget.onTurnStart(); // age → 1
-    expect(renderState(widget).visible).toEqual(["a1"]);
-  });
-
-  for (const status of ["error", "aborted", "turn_limited", "stopped"] as const) {
-    it(`${status} agents get +2 bonus linger turns`, () => {
-      widget.setFinishedEvictTurns(1);
-      const agent = makeFinishedAgent("a1");
-      agent.lifecycle.status = status;
-      (manager as any).listAgents = () => [agent];
-
-      widget.markFinished("a1");
-
-      // Ages 1-3 visible (maxAge = 1 + 2 = 3, age <= 3)
-      widget.onTurnStart(); // age -> 1
-      expect(renderState(widget).visible).toEqual(["a1"]);
-      widget.onTurnStart(); // age -> 2
-      expect(renderState(widget).visible).toEqual(["a1"]);
-      widget.onTurnStart(); // age -> 3
-      expect(renderState(widget).visible).toEqual(["a1"]);
-      // Age 4: hidden (4 <= 3 is false)
-      widget.onTurnStart(); // age -> 4
-      expect(renderState(widget).visible).toEqual([]);
-    });
-  }
-
-  it("setting 0 shows all finished agents (disabled)", () => {
-    // Enable eviction first so markFinished actually registers
-    widget.setFinishedEvictTurns(2);
-    const agent = makeFinishedAgent("a1");
-    (manager as any).listAgents = () => [agent];
-    widget.markFinished("a1");
-    // Then disable eviction
-    widget.setFinishedEvictTurns(0);
-
-    // Even after many turns, agent is visible when evictTurns = 0
-    for (let i = 0; i < 20; i++) widget.onTurnStart();
-    expect(renderState(widget).visible).toEqual(["a1"]);
-  });
-
-  it("manager listAgents is not affected by turn eviction", () => {
-    widget.setFinishedEvictTurns(1);
-    const agent = makeFinishedAgent("a1");
-    (manager as any).listAgents = () => [agent];
-
-    widget.markFinished("a1");
-    widget.onTurnStart();
-
-    // Evicted from the rendered roster...
-    expect(renderState(widget).visible).toEqual([]);
-    // ...but manager.listAgents still returns it
-    expect(manager.listAgents()).toHaveLength(1);
-  });
-
-  it("prunes tracking entries for agents removed from the manager", () => {
-    widget.setFinishedEvictTurns(2);
-    (manager as any).listAgents = () => [makeFinishedAgent("gone")];
-    widget.markFinished("gone");
-
-    // "gone" leaves the manager while its entry keeps aging...
-    (manager as any).listAgents = () => [];
-    widget.onTurnStart(); // age 1
-    widget.onTurnStart(); // age 2
-    widget.onTurnStart(); // age 3 (>= threshold 2 → would be evicted on return)
-
-    // ...and the prune runs inside the render (entries for absent agents drop).
-    expect(renderState(widget).visible).toEqual([]);
-
-    // Reappearing starts fresh: the stale entry was pruned, so age is 0 again.
-    (manager as any).listAgents = () => [makeFinishedAgent("gone")];
-    expect(renderState(widget).visible).toEqual(["gone"]);
-  });
-});
-
 describe("description truncation", () => {
   it("does not truncate descriptions to 50 chars when terminal is wide", () => {
     const agent = makeRunningAgent("test-1");
@@ -1272,5 +1114,125 @@ describe("description truncation", () => {
     expect(compactLine).toBeDefined();
     // Description should be present
     expect(compactLine).toContain("AAA");
+  });
+});
+
+describe("finished-agent time window", () => {
+  let widget: AgentWidget;
+  let manager: AgentManager;
+
+  type RenderedState = {
+    visible: string[];
+    arrow: string | null;
+    readout: string | null;
+  };
+
+  /** Render the widget and extract visible agent ids, arrow target, and nav readout. */
+  function renderState(w: AgentWidget): RenderedState {
+    const lines = (w as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const visible: string[] = [];
+    let arrow: string | null = null;
+    for (const line of lines) {
+      const m = line.match(/agent ([\w-]+)/);
+      if (!m) continue;
+      if (line.includes("→")) arrow = m[1];
+      visible.push(m[1]);
+    }
+    const heading = lines[0] ?? "";
+    const readout = heading.match(/\d+\/\d+/)?.[0] ?? null;
+    return { visible, arrow, readout };
+  }
+
+  function finishedAgent(id: string, completedMinutesAgo: number): any {
+    const agent = makeFinishedAgent(id);
+    agent.lifecycle.completedAt = Date.now() - completedMinutesAgo * 60_000;
+    return agent;
+  }
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    widget = new AgentWidget(manager, () => undefined);
+  });
+
+  it("shows a finished agent while it is inside the retention window", () => {
+    widget.setFinishedRetentionMinutes(5);
+    (manager as any).listAgents = () => [finishedAgent("a1", 2)];
+    expect(renderState(widget).visible).toEqual(["a1"]);
+  });
+
+  it("hides a finished agent once the retention window has elapsed", () => {
+    widget.setFinishedRetentionMinutes(5);
+    (manager as any).listAgents = () => [finishedAgent("a1", 10)];
+    expect(renderState(widget).visible).toEqual([]);
+  });
+
+  it("keeps running and queued agents visible regardless of age", () => {
+    widget.setFinishedRetentionMinutes(1);
+    const running = makeRunningAgent("r1");
+    running.lifecycle.startedAt = Date.now() - 30 * 60_000;
+    const queued: any = {
+      id: "q1",
+      display: { type: "builder", description: "Queued agent q1" },
+      lifecycle: { status: "queued", startedAt: Date.now() - 30 * 60_000 },
+      execution: {},
+      stats: {
+        toolUses: 0,
+        compactionCount: 0,
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        turnCount: 1,
+        maxTurns: 30,
+      },
+    };
+    (manager as any).listAgents = () => [running, queued];
+    widget.navActivate(); // queued rows render individually during navigation
+    expect(renderState(widget).visible).toEqual(["r1", "q1"]);
+  });
+
+  it("applies the window uniformly across finished statuses (no linger bonuses)", () => {
+    widget.setFinishedRetentionMinutes(5);
+    const stopped = finishedAgent("s1", 10);
+    stopped.lifecycle.status = "stopped";
+    (manager as any).listAgents = () => [stopped];
+    expect(renderState(widget).visible).toEqual([]);
+  });
+
+  it("hides a finished row from the widget while the menu still lists the record", () => {
+    widget.setFinishedRetentionMinutes(5);
+    const agent = finishedAgent("a1", 10);
+    (manager as any).listAgents = () => [agent];
+    expect(renderState(widget).visible).toEqual([]);
+    expect(manager.listAgents()).toHaveLength(1);
+  });
+
+  it("hides a finished row as time passes the window, on the next render", () => {
+    vi.useFakeTimers();
+    try {
+      const agent = finishedAgent("a1", 2);
+      (manager as any).listAgents = () => [agent];
+      widget.setFinishedRetentionMinutes(5);
+      expect(renderState(widget).visible).toEqual(["a1"]);
+      vi.advanceTimersByTime(4 * 60_000); // now 6 minutes past completion
+      expect(renderState(widget).visible).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies a window change on the next render", () => {
+    const agent = finishedAgent("a1", 2);
+    (manager as any).listAgents = () => [agent];
+    widget.setFinishedRetentionMinutes(5);
+    expect(renderState(widget).visible).toEqual(["a1"]);
+    widget.setFinishedRetentionMinutes(1);
+    expect(renderState(widget).visible).toEqual([]);
+  });
+
+  it("defaults to a 1-minute window when no setter has been called", () => {
+    // 15s old — inside the default window
+    (manager as any).listAgents = () => [finishedAgent("a1", 0.25)];
+    expect(renderState(widget).visible).toEqual(["a1"]);
+    // 3 min old — outside the default window
+    (manager as any).listAgents = () => [finishedAgent("a1", 3)];
+    expect(renderState(widget).visible).toEqual([]);
   });
 });

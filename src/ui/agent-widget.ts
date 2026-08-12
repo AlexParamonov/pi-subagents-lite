@@ -43,8 +43,9 @@ const WIDGET_REFRESH_INTERVAL = 80;
 
 /** Navigation freeze window: roster order is deferred while the user is actively navigating. */
 const NAV_FREEZE_MS = 2000;
-const LINGER_STATUSES = new Set(["error", "aborted", "turn_limited", "stopped"]);
-const ERROR_LINGER_TURNS = 2;
+
+/** Milliseconds in one minute (finished-retention window is configured in minutes). */
+const MINUTE_MS = 60_000;
 
 // ---- Types ----
 
@@ -130,11 +131,8 @@ export class AgentWidget {
   /** Status bar format: 'full' or 'compact'. */
   private statusBarFormat: "full" | "compact" = "full";
 
-  /** Turn age for finished agents: agent id → turns since completion. */
-  private finishedTurnAge = new Map<string, number>();
-
-  /** Configurable turn threshold for evicting finished agents. 0 = disabled. */
-  private finishedEvictTurns = 0;
+  /** Retention window in minutes for finished rows. Mirrors the config default; never 0. */
+  private finishedRetentionMinutes = 1;
 
   /** Model display format: 'id' (short) or 'name' (full). */
   private modelDisplayStyle: "id" | "name" = "id";
@@ -219,9 +217,9 @@ export class AgentWidget {
   setStatusBarFormat(format: "full" | "compact") {
     this.statusBarFormat = format;
   }
-  /** Set the turn threshold for evicting finished agents. 0 = disabled. */
-  setFinishedEvictTurns(turns: number) {
-    this.finishedEvictTurns = turns;
+  /** Set the retention window (minutes) for finished rows. Applied on the next render tick. */
+  setFinishedRetentionMinutes(minutes: number) {
+    this.finishedRetentionMinutes = minutes;
   }
   /** Set model display format: 'id' (short) or 'name' (full). */
   setModelDisplayStyle(style: "id" | "name") {
@@ -230,10 +228,6 @@ export class AgentWidget {
   /** Set model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
   setModelThinkingPlacement(placement: ModelThinkingPlacement) {
     this.modelThinkingPlacement = placement;
-  }
-  /** Register a finished agent for turn-based tracking. No-op when eviction is disabled. */
-  markFinished(id: string) {
-    if (this.finishedEvictTurns > 0) this.finishedTurnAge.set(id, 0);
   }
 
   // ---- Navigation state machine ----
@@ -488,7 +482,7 @@ export class AgentWidget {
     return this.resolveNavState().index;
   }
 
-  /** Whether the widget has any visible agents (after turn eviction filtering). */
+  /** Whether the widget has any visible agents (after finished-window filtering). */
   hasVisibleAgents(): boolean {
     const { finished, running, queued } = this.categorizeAgents();
     return finished.length + running.length + queued.length > 0;
@@ -531,21 +525,6 @@ export class AgentWidget {
     }
   }
 
-  /**
-   * Called on each new LLM turn (turn_start event).
-   * Increments turn age for all tracked finished agents.
-   */
-  onTurnStart() {
-    for (const [id, age] of this.finishedTurnAge) {
-      this.finishedTurnAge.set(id, age + 1);
-    }
-    try {
-      this.update();
-    } catch (err) {
-      getSessionCtx()?.ui?.notify(`[subagents] onTurnStart error: ${err}`, "warning");
-    }
-  }
-
   /** Ensure the widget update timer is running. */
   ensureTimer() {
     if (!this.widgetInterval) {
@@ -565,30 +544,16 @@ export class AgentWidget {
     const running: AgentRecord[] = [];
     const queued: AgentRecord[] = [];
     const finished: AgentRecord[] = [];
-
-    // Prune finishedTurnAge entries for agents no longer in the manager.
-    if (this.finishedTurnAge.size > 0) {
-      const agentIds = new Set(allAgents.map((a) => a.id));
-      for (const id of this.finishedTurnAge.keys()) {
-        if (!agentIds.has(id)) this.finishedTurnAge.delete(id);
-      }
-    }
+    // One time-based filter for every finished status: keep the row while
+    // completedAt is inside the retention window (ADR-0006).
+    const cutoff = Date.now() - this.finishedRetentionMinutes * MINUTE_MS;
 
     for (const a of allAgents) {
       if (a.lifecycle.status === "running") running.push(a);
       else if (a.lifecycle.status === "queued") queued.push(a);
-      else if (a.lifecycle.completedAt && this.shouldShowFinished(a)) finished.push(a);
+      else if (a.lifecycle.completedAt !== undefined && a.lifecycle.completedAt >= cutoff) finished.push(a);
     }
     return { running, queued, finished };
-  }
-
-  /** Whether a finished agent should still be shown (not yet evicted by turn age). */
-  private shouldShowFinished(a: AgentRecord): boolean {
-    if (this.finishedEvictTurns === 0) return true;
-    const age = this.finishedTurnAge.get(a.id) ?? 0;
-    const isLingerStatus = LINGER_STATUSES.has(a.lifecycle.status);
-    const maxAge = this.finishedEvictTurns + (isLingerStatus ? ERROR_LINGER_TURNS : 0);
-    return isLingerStatus ? age <= maxAge : age < maxAge;
   }
 
   /** Build the icon and status suffix for a finished agent. */

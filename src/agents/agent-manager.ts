@@ -25,17 +25,14 @@ import { getAgentConfig } from "./agent-types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
 
-/** How often to check for expired agent records (milliseconds). */
-export const CLEANUP_INTERVAL_MS = 60_000;
-
 /** How often the watchdog scans running agents for stuck state (milliseconds). */
 export const WATCHDOG_TICK_MS = 5_000;
 
-/** Milliseconds in one minute (config thresholds and retention are stored in minutes). */
+/** Milliseconds in one minute (config timeout thresholds are stored in minutes). */
 const MINUTE_MS = 60_000;
 
-/** Age after which a completed agent record is evicted (milliseconds). Default: 1 min. */
-const DEFAULT_RETENTION_MINUTES = 1;
+/** Exact error message for queued agents that never start because the manager disposed (US-9). */
+const DISPOSE_QUEUED_MESSAGE = "Agent manager disposed before the queued agent could start.";
 
 /** UUID prefix length for agent IDs stored in the agents map (uniqueness). */
 const AGENT_ID_PREFIX_LENGTH = 17;
@@ -96,21 +93,26 @@ export interface SpawnOptions extends SpawnConfig, RunCallbacks {
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
-  private cleanupInterval: ReturnType<typeof setInterval>;
   /** Time-based stuck-agent detection state (tool + idle timeouts). */
   private watchdog = new Watchdog();
   private watchdogInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
 
-  /** Session-level cumulative agent cost. Survives agent eviction. */
+  /** Completion-gate resolvers for every spawned record, keyed by agent id. The gate
+   * (record.execution.promise) is created at spawn and opened exactly once at the record's
+   * terminal transition; the resolver is dropped when the gate opens. Never assigned the
+   * run's own promise (gate invariant). */
+  private gateResolvers = new Map<string, (value: string) => void>();
+
+  /** Parent-interrupt bindings by record, removed at every terminal transition. */
+  private parentBindings = new WeakMap<AgentRecord, { signal: AbortSignal; handler: () => void }>();
+
+  /** Session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   private totalAgentCost = 0;
 
-  /** Session-level completed agent count. Survives agent eviction. */
+  /** Session-level completed agent count. Survives record removal (Clear/dispose). */
   private totalAgentCount = 0;
-
-  /** Retention cutoff in minutes for finished agents. Updated at runtime via setRetentionMinutes. */
-  private retentionMinutes = DEFAULT_RETENTION_MINUTES;
 
   /** Per-model concurrency slots keyed by "provider/modelId". */
   private concurrencySlots = new Map<string, ConcurrencySlot>();
@@ -144,16 +146,8 @@ export class AgentManager {
       this.applyConcurrencyEntry(this.concurrencySlots, modelKey, limit);
     }
 
-    this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
-    this.cleanupInterval.unref();
-
     this.watchdogInterval = setInterval(() => this.checkWatchdogs(), WATCHDOG_TICK_MS);
     this.watchdogInterval.unref();
-  }
-
-  /** Update the age cutoff for finished agent retention (minutes). Takes effect at the next cleanup tick. */
-  setRetentionMinutes(minutes: number): void {
-    this.retentionMinutes = Math.max(1, minutes);
   }
 
   /**
@@ -241,6 +235,8 @@ export class AgentManager {
       lifecycle: {
         status: queued ? "queued" : "running",
         startedAt: Date.now(),
+        // Flipped synchronously in startAgent; distinguishes never-started stops.
+        started: false,
       },
       display: {
         type,
@@ -262,12 +258,35 @@ export class AgentManager {
     };
     this.agents.set(id, record);
 
+    // Completion gate: every record carries one from birth, opened exactly once
+    // at its terminal transition (settlement, queued stop, start failure,
+    // already-aborted spawn, dispose, removal).
+    record.execution.promise = this.createCompletionGate(id);
+
+    // Parent interrupt binding: registered before the queued early-return so
+    // queued subagents are covered too. An already-aborted signal never starts
+    // the subagent — it is recorded as stopped immediately instead (ADR-0005).
+    if (options.signal) {
+      if (options.signal.aborted) {
+        // Already-aborted signal: the subagent never starts — record it as
+        // stopped immediately (ADR-0005). stopAgent opens the gate and
+        // notifies because a never-started record has no run to settle.
+        this.stopAgent(record, "user");
+        return id;
+      }
+      const handler = () => this.abort(id, "user");
+      options.signal.addEventListener("abort", handler, { once: true });
+      this.parentBindings.set(record, { signal: options.signal, handler });
+    }
+
     if (queued) return id;
 
     // startAgent can throw — clean up record so callers don't see an orphan
     try {
       this.startAgent(id, record, args, concurrencySlot);
     } catch (err) {
+      this.detachParentBinding(record);
+      this.openGate(id, "");
       this.agents.delete(id);
       throw err;
     }
@@ -289,6 +308,9 @@ export class AgentManager {
 
     record.lifecycle.status = "running";
     record.lifecycle.startedAt = Date.now();
+    // Set synchronously before the run so a stop before the session exists
+    // still renders as ran-then-stopped, not never-started.
+    record.lifecycle.started = true;
     // The idle clock starts here, so a hung pre-session init phase is covered.
     this.watchdog.start(id);
 
@@ -302,11 +324,6 @@ export class AgentManager {
     }
 
     this.onStart?.(record);
-
-    // Wire parent abort signal to stop the subagent when the parent is interrupted
-    if (options.signal) {
-      options.signal.addEventListener("abort", () => this.abort(id, "agent"), { once: true });
-    }
 
     const promise = runAgent(ctx, type, prompt, {
       pi,
@@ -398,9 +415,38 @@ export class AgentManager {
 
         this.tallyCompletion(record);
         this.drainQueue();
+        // Detach before opening the gate so an abort racing settlement cannot
+        // re-target the record, and the coordinator's await resumes only after
+        // the result text is captured and the completion notify has fired.
+        this.detachParentBinding(record);
+        this.openGate(record.id, record.result ?? "");
       });
+  }
 
-    record.execution.promise = promise;
+  /** Create a record's completion gate and store its resolver for the terminal transition. */
+  private createCompletionGate(id: string): Promise<string> {
+    let resolve!: (value: string) => void;
+    const gate = new Promise<string>((res) => {
+      resolve = res;
+    });
+    this.gateResolvers.set(id, resolve);
+    return gate;
+  }
+
+  /** Open a record's completion gate. Idempotent — the resolver is dropped on first open. */
+  private openGate(id: string, value: string): void {
+    const resolve = this.gateResolvers.get(id);
+    if (!resolve) return;
+    this.gateResolvers.delete(id);
+    resolve(value);
+  }
+
+  /** Remove a record's parent-interrupt binding; a later abort of the signal is a no-op. */
+  private detachParentBinding(record: AgentRecord): void {
+    const binding = this.parentBindings.get(record);
+    if (!binding) return;
+    this.parentBindings.delete(record);
+    binding.signal.removeEventListener("abort", binding.handler);
   }
 
   /** Fire the onComplete callback, ignoring any errors from the callback itself. */
@@ -423,12 +469,12 @@ export class AgentManager {
     this.onComplete = cb;
   }
 
-  /** Get the session-level cumulative agent cost. Survives agent eviction. */
+  /** Get the session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   getTotalAgentCost(): number {
     return this.totalAgentCost;
   }
 
-  /** Get the session-level completed agent count. Survives agent eviction. */
+  /** Get the session-level completed agent count. Survives record removal (Clear/dispose). */
   getTotalAgentCount(): number {
     return this.totalAgentCount;
   }
@@ -496,6 +542,8 @@ export class AgentManager {
         record.lifecycle.status = "error";
         record.error = errorMessage(err);
         record.lifecycle.completedAt = Date.now();
+        this.detachParentBinding(record);
+        this.openGate(record.id, "");
         started.add(entry.id);
         // Failed starts notify the UI but aren't tallied as completed agents
         this.notifyComplete(record);
@@ -538,6 +586,18 @@ export class AgentManager {
     return [...this.agents.values()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
   }
 
+  /**
+   * Remove a terminal record: dispose its session and detach any parent
+   * interrupt binding (ADR-0006). Running/queued records are rejected — Stop is
+   * the action there. Clear is the only per-record removal besides dispose().
+   */
+  clear(id: string): boolean {
+    const record = this.agents.get(id);
+    if (!record || !isTerminalStatus(record.lifecycle.status)) return false;
+    this.removeRecord(id, record);
+    return true;
+  }
+
   abort(id: string, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
@@ -550,7 +610,8 @@ export class AgentManager {
    * Returns true if the agent was stopped, false if it wasn't running/queued.
    */
   private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
-    if (record.lifecycle.status === "queued") {
+    const wasQueued = record.lifecycle.status === "queued";
+    if (wasQueued) {
       this.queue = this.queue.filter((q) => q.id !== record.id);
     } else if (record.lifecycle.status !== "running") {
       return false;
@@ -561,6 +622,14 @@ export class AgentManager {
     record.lifecycle.stoppedBy = stoppedBy;
     record.lifecycle.stopDetail = stopDetail;
     record.lifecycle.completedAt = Date.now();
+    this.detachParentBinding(record);
+    if (!record.lifecycle.started) {
+      // A record that never started has no run whose .finally opens the
+      // gate — open it now and notify directly. Such stops never tally as
+      // completed agents.
+      this.openGate(record.id, "");
+      this.notifyComplete(record);
+    }
     return true;
   }
 
@@ -568,20 +637,12 @@ export class AgentManager {
   private removeRecord(id: string, record: AgentRecord): void {
     record.execution.session?.dispose();
     record.execution.session = undefined;
+    this.detachParentBinding(record);
+    // A stopped record's run can still be settling (stopAgent flips status
+    // synchronously; the gate opens in .finally) — resolve so the coordinator's
+    // await never dangles, then drop the resolver. A later .finally resolve no-ops.
+    this.openGate(id, "");
     this.agents.delete(id);
-  }
-
-  private cleanup() {
-    const cutoff = Date.now() - this.retentionMinutes * MINUTE_MS;
-    for (const [id, record] of this.agents) {
-      if (!isTerminalStatus(record.lifecycle.status)) continue;
-      if ((record.lifecycle.completedAt ?? 0) >= cutoff) continue;
-      // Keep the record until the LLM has read the result (foreground return or
-      // background nudge). Otherwise a completed background agent can be wiped
-      // before its nudge is emitted.
-      if (!record.lifecycle.resultConsumed) continue;
-      this.removeRecord(id, record);
-    }
   }
 
   /**
@@ -602,12 +663,22 @@ export class AgentManager {
   }
 
   dispose() {
-    clearInterval(this.cleanupInterval);
     clearInterval(this.watchdogInterval);
     this.queue = [];
     for (const record of this.agents.values()) {
+      // Queued subagents never start: fail them honestly so the waiting tool
+      // call resumes with an explicit error instead of hanging (US-9).
+      if (record.lifecycle.status === "queued") {
+        record.lifecycle.status = "error";
+        record.error = DISPOSE_QUEUED_MESSAGE;
+        record.lifecycle.completedAt = Date.now();
+        this.openGate(record.id, "");
+      }
       record.execution.session?.dispose();
+      this.detachParentBinding(record);
     }
+    // Running records' gates open when their runs settle after this synchronous
+    // pass — keep their resolvers so .finally can still resolve (no dangling gate).
     this.agents.clear();
   }
 }

@@ -11,6 +11,16 @@ const STOP_NOTES: Record<StopInitiator, string> = {
   agent: "STOPPED BY YOU before completion — output is partial; the task was NOT finished",
   watchdog: "STOPPED BY WATCHDOG — no activity for longer than the idle timeout",
 };
+
+/**
+ * Stop notes for records that never started: no partial output exists to
+ * report, so the note states the task was not attempted instead.
+ */
+const NEVER_STARTED_STOP_NOTES: Record<StopInitiator, string> = {
+  user: "STOPPED BY THE USER before the agent started — the task was NOT attempted",
+  agent: "STOPPED BY YOU before the agent started — the task was NOT attempted",
+  watchdog: "STOPPED BY WATCHDOG before the agent started — the task was NOT attempted",
+};
 /** The recorded detail when a lifecycle records a watchdog kill; undefined for other stops. */
 function watchdogStopDetail(lifecycle: AgentLifecycle): WatchdogStopDetail | undefined {
   return lifecycle.stoppedBy === "watchdog" ? lifecycle.stopDetail : undefined;
@@ -30,6 +40,13 @@ export function formatStopReason(lifecycle: AgentLifecycle): string | undefined 
     : STOP_NOTES.watchdog;
 }
 
+/** The generic stop note for a record: never-started records report the task was not attempted. */
+function stopNote(lifecycle: AgentLifecycle): string {
+  const initiator = lifecycle.stoppedBy ?? "agent";
+  // === false: lifecycles without the marker (older test fixtures) read as started.
+  return lifecycle.started === false ? NEVER_STARTED_STOP_NOTES[initiator] : STOP_NOTES[initiator];
+}
+
 /**
  * Compact one-line watchdog summary for the widget's finished line,
  * e.g. "watchdog: bash >45m" or "watchdog: idle". Undefined for non-watchdog stops.
@@ -44,7 +61,7 @@ export function getStatusNote(lifecycle: AgentLifecycle): string {
   const note =
     lifecycle.status === "stopped"
       ? // A stopped agent with no recorded initiator reads as an agent stop.
-        (formatStopReason(lifecycle) ?? STOP_NOTES[lifecycle.stoppedBy ?? "agent"])
+        (formatStopReason(lifecycle) ?? stopNote(lifecycle))
       : STATUS_NOTES[lifecycle.status];
   return note ? ` (${note})` : "";
 }

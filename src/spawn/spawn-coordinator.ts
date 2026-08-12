@@ -32,6 +32,11 @@ export interface SpawnIntent extends SpawnConfig {
   type: string;
   prompt: string;
   runInBackground: boolean;
+  /**
+   * Parent run's interrupt signal, forwarded to the manager for foreground
+   * spawns only. Background and menu-wizard spawns never carry one.
+   */
+  signal?: AbortSignal;
   /** Narrowed to required — all callers resolve this before spawn. */
   graceTurns: number;
 }
@@ -85,12 +90,13 @@ export class SpawnCoordinator {
     };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
 
-    // Shared config fields (SpawnConfig) pass through unchanged; only the
-    // intent-only fields (type/prompt/runInBackground) need translation.
-    const { type, prompt, runInBackground, ...config } = intent;
+    // SpawnConfig fields pass through unchanged; only the intent-only fields
+    // (type/prompt/runInBackground/signal) are forwarded explicitly.
+    const { type, prompt, runInBackground, signal, ...config } = intent;
     const spawnOptions: SpawnOptions = {
       ...config,
       isBackground: runInBackground,
+      signal,
       ...liveViewCallbacks,
     };
 
@@ -117,10 +123,6 @@ export class SpawnCoordinator {
     if (!intent.runInBackground) {
       // Foreground: await completion
       await record.execution.promise;
-
-      // Foreground tool handler reads the result inline on return — mark it
-      // consumed so the cleanup timer may evict the record once it ages out.
-      record.lifecycle.resultConsumed = true;
 
       // Clean up live view (foreground completion handled inline)
       this.liveViews.delete(agentId);
@@ -247,10 +249,6 @@ export class SpawnCoordinator {
           triggerTurn: true,
         },
       );
-
-      // Full result delivered to the LLM — record is now safe for the cleanup
-      // timer to evict once it ages out.
-      record.lifecycle.resultConsumed = true;
     } catch (error) {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.

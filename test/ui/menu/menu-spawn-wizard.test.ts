@@ -807,6 +807,9 @@ describe("showSpawnAgentMenu — spawn action", () => {
         runInBackground: false,
       },
     });
+    // Menu-wizard spawns have no parent run — the intent carries no signal,
+    // so the coordinator spread must not produce a signal option.
+    expect(options).not.toHaveProperty("signal");
   });
 
   it("passes the selected worktree path to spawn", async () => {

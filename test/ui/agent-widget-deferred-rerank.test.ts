@@ -74,7 +74,7 @@ function makeFinishedAgent(id: string): any {
   return {
     id,
     display: { type: "builder", description: `Finished agent ${id}` },
-    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 60000 },
+    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000 },
     execution: {},
     stats: {
       toolUses: 10,

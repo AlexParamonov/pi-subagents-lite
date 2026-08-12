@@ -94,7 +94,7 @@ function makeFinishedAgent(id: string, type: string = "builder", worktreeLabel?:
     lifecycle: {
       status: "completed",
       startedAt: Date.now() - 120000,
-      completedAt: Date.now() - 60000,
+      completedAt: Date.now() - 30000,
     },
     execution: {},
     stats: {

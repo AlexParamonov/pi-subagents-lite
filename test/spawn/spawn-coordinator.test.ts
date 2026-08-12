@@ -52,20 +52,25 @@ vi.mock("../../src/shell.js", () => ({
   getWidget: () => null,
 }));
 
-function makeMockManager() {
+function makeMockManager(opts: { pendingGate?: boolean } = {}) {
   const records = new Map<string, any>();
   // Capture forwarded spawn arguments (named fields, not positional indices) so
   // tests assert the coordinator's output to the manager without call indexing.
-  const spawnCalls: Array<{ pi: any; ctx: any; type: string; prompt: string; options: any }> = [];
+  const spawnCalls: Array<{ id: string; pi: any; ctx: any; type: string; prompt: string; options: any }> = [];
+  // Completion-gate resolvers for records whose gate the test holds open.
+  const gateResolvers = new Map<string, (value: any) => void>();
   return {
     spawn: vi.fn((pi: any, ctx: any, type: string, prompt: string, options: any) => {
-      spawnCalls.push({ pi, ctx, type, prompt, options });
       const id = `agent-${records.size}`;
+      spawnCalls.push({ id, pi, ctx, type, prompt, options });
+      const promise = opts.pendingGate
+        ? new Promise<any>((resolve) => gateResolvers.set(id, resolve))
+        : Promise.resolve("done");
       const record: any = {
         id,
         display: { type, description: options.description },
         lifecycle: { status: options.isBackground ? "running" : "running", startedAt: Date.now() },
-        execution: { promise: Promise.resolve("done") },
+        execution: { promise },
         stats: {
           lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
           toolUses: 0,
@@ -80,6 +85,7 @@ function makeMockManager() {
     }),
     getRecord: vi.fn((id: string) => records.get(id)),
     getSpawnCalls: vi.fn(() => spawnCalls),
+    getGateResolver: vi.fn((id: string) => gateResolvers.get(id)),
     listAgents: vi.fn(() => [...records.values()]),
     abort: vi.fn(() => true),
     steer: vi.fn(async () => true),
@@ -590,62 +596,87 @@ describe("SpawnCoordinator", () => {
     });
   });
 
-  describe("result consumption", () => {
-    it("foreground spawn marks the result as consumed before returning", async () => {
+  describe("completion gate — foreground wait", () => {
+    it("blocks a foreground spawn until the completion gate opens", async () => {
+      const manager = makeMockManager({ pendingGate: true });
       const coordinator = new SpawnCoordinator(manager as any);
-      const result = await coordinator.spawn(mockPi, ctx, {
+      let settled = false;
+      const spawnPromise = coordinator.spawn(mockPi, ctx, {
         type: "builder",
         prompt: "do something",
         description: "Test fg",
         graceTurns: 6,
         runInBackground: false,
       });
+      void spawnPromise.then(() => {
+        settled = true;
+      });
 
-      expect(result.record.lifecycle.resultConsumed).toBe(true);
+      // Gate still closed — the foreground call must stay suspended.
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      const id = manager.getSpawnCalls()[0].id;
+      manager.getGateResolver(id)("done");
+      const result = await spawnPromise;
+
+      expect(result.agentId).toBe(id);
+      expect(settled).toBe(true);
     });
 
-    it("background nudge emission marks the result as consumed", async () => {
+    it("returns immediately for background spawns regardless of the gate", async () => {
+      const manager = makeMockManager({ pendingGate: true });
       const coordinator = new SpawnCoordinator(manager as any);
       const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder",
-        prompt: "task",
+        prompt: "do something",
         description: "Test bg",
         graceTurns: 6,
         runInBackground: true,
       });
-      const record = manager.getRecord(result.agentId);
 
-      expect(record.lifecycle.resultConsumed).toBeUndefined();
-
-      coordinator.scheduleNudge(result.agentId);
-      vi.advanceTimersByTime(200);
-
-      // sendMessage delivered the full result to the LLM — record is safe to evict.
-      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      expect(record.lifecycle.resultConsumed).toBe(true);
+      expect(result.agentId).toBeTruthy();
     });
 
-    it("does not mark consumed when nudge delivery fails", async () => {
+    it("carries the parent signal through to the manager spawn options", async () => {
+      const controller = new AbortController();
+      const coordinator = new SpawnCoordinator(manager as any);
+      await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "do something",
+        description: "Test fg",
+        graceTurns: 6,
+        runInBackground: false,
+        signal: controller.signal,
+      });
+
+      expect(manager.getSpawnCalls()[0].options.signal).toBe(controller.signal);
+    });
+  });
+
+  describe("nudge content — queued background stop", () => {
+    it("delivers exactly one Stopped nudge carrying the never-started note", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
       const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder",
         prompt: "task",
-        description: "Test bg",
+        description: "Test",
         graceTurns: 6,
         runInBackground: true,
       });
       const record = manager.getRecord(result.agentId);
+      record.lifecycle.status = "stopped";
+      record.lifecycle.started = false;
+      record.result = undefined;
 
-      // sendMessage throws — LLM never received the result. The record must stay
-      // unconsumed so cleanup() keeps it around rather than wiping it silently.
-      mockPi.sendMessage.mockImplementation(() => {
-        throw new Error("stale context");
-      });
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
-      expect(record.lifecycle.resultConsumed).toBeUndefined();
+      const content = mockPi.sendMessage.mock.calls[0][0].content as string;
+      expect(content).toContain("stopped");
+      expect(content).toContain("before the agent started");
+      expect(content).not.toContain("output is partial");
     });
   });
 });
