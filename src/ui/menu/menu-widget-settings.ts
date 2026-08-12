@@ -265,6 +265,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
       case "finishedRetention":
+        // Handled by the numeric submenu, not onChange
         break;
     }
   };

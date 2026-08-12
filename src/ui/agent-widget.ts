@@ -44,6 +44,9 @@ const WIDGET_REFRESH_INTERVAL = 80;
 /** Navigation freeze window: roster order is deferred while the user is actively navigating. */
 const NAV_FREEZE_MS = 2000;
 
+/** Milliseconds in one minute (finished-retention window is configured in minutes). */
+const MINUTE_MS = 60_000;
+
 // ---- Types ----
 
 export type UICtx = {
@@ -543,7 +546,7 @@ export class AgentWidget {
     const finished: AgentRecord[] = [];
     // One time-based filter for every finished status: keep the row while
     // completedAt is inside the retention window (ADR-0006).
-    const cutoff = Date.now() - this.finishedRetentionMinutes * 60_000;
+    const cutoff = Date.now() - this.finishedRetentionMinutes * MINUTE_MS;
 
     for (const a of allAgents) {
       if (a.lifecycle.status === "running") running.push(a);
