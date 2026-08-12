@@ -40,6 +40,13 @@ export function formatStopReason(lifecycle: AgentLifecycle): string | undefined 
     : STOP_NOTES.watchdog;
 }
 
+/** The generic stop note for a record: never-started records report the task was not attempted. */
+function stopNote(lifecycle: AgentLifecycle): string {
+  const initiator = lifecycle.stoppedBy ?? "agent";
+  // === false: lifecycles without the marker (older test fixtures) read as started.
+  return lifecycle.started === false ? NEVER_STARTED_STOP_NOTES[initiator] : STOP_NOTES[initiator];
+}
+
 /**
  * Compact one-line watchdog summary for the widget's finished line,
  * e.g. "watchdog: bash >45m" or "watchdog: idle". Undefined for non-watchdog stops.
@@ -54,10 +61,7 @@ export function getStatusNote(lifecycle: AgentLifecycle): string {
   const note =
     lifecycle.status === "stopped"
       ? // A stopped agent with no recorded initiator reads as an agent stop.
-        (formatStopReason(lifecycle) ??
-        (lifecycle.started === false
-          ? NEVER_STARTED_STOP_NOTES[lifecycle.stoppedBy ?? "agent"]
-          : STOP_NOTES[lifecycle.stoppedBy ?? "agent"]))
+        (formatStopReason(lifecycle) ?? stopNote(lifecycle))
       : STATUS_NOTES[lifecycle.status];
   return note ? ` (${note})` : "";
 }
