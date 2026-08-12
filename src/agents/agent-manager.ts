@@ -126,12 +126,7 @@ export class AgentManager {
   /** Queue of agents waiting to start, keyed by modelKey. */
   private queue: { id: string; modelKey: string; args: SpawnArgs }[] = [];
 
-  constructor(
-    onComplete?: OnAgentComplete,
-    concurrency?: ConcurrencyConfig,
-    onStart?: OnAgentStart,
-    private bufferSize: number = 0,
-  ) {
+  constructor(onComplete?: OnAgentComplete, concurrency?: ConcurrencyConfig, onStart?: OnAgentStart) {
     this.onComplete = onComplete;
     this.onStart = onStart;
     this.defaultConcurrency = concurrency?.default ?? DEFAULT_CONCURRENCY_LIMIT;
@@ -337,7 +332,7 @@ export class AgentManager {
     const agentConfig = getAgentConfig(type);
     const outputTranscript = agentConfig?.outputTranscript ?? getStore().agent.outputTranscript;
     if (outputTranscript) {
-      record.execution.outputLog = new AgentOutputLog(id, prompt, undefined, this.bufferSize);
+      record.execution.outputLog = new AgentOutputLog(id, prompt, undefined, getStore().agent.outputThinkingBufferSize);
       record.display.outputFile = record.execution.outputLog.path;
     }
 

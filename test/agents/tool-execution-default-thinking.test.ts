@@ -28,7 +28,7 @@ const { mockGetAgentConfig, mockSpawn, mockGetRecord, mockDiscoverNewAgents, moc
     mockGetRecord: vi.fn(),
     mockDiscoverNewAgents: vi.fn(),
     mockValidateWorktreePath: vi.fn(),
-    storeState: { defaultThinking: undefined as string | undefined },
+    storeState: { defaultThinking: undefined as string | undefined, defaultMaxTurns: undefined as number | undefined },
   }));
 
 const VALID_THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -58,6 +58,7 @@ vi.mock("../../src/shell.js", () => ({
         graceTurns: 5,
         forceBackground: false,
         defaultThinking: storeState.defaultThinking,
+        defaultMaxTurns: storeState.defaultMaxTurns,
       };
     },
     modelFor: vi.fn(() => undefined),
@@ -75,6 +76,7 @@ vi.mock("../../src/shell.js", () => ({
     spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
       mockSpawn(_pi, _ctx, intent.type, intent.prompt, {
         thinkingLevel: intent.thinkingLevel,
+        maxTurns: intent.maxTurns,
       });
       const record = mockGetRecord("agent-id-123");
       if (!intent.runInBackground && record?.execution?.promise) {
@@ -106,6 +108,7 @@ import { executeAgentTool, toolCallListener } from "../../src/agents/tool-execut
 beforeEach(() => {
   vi.clearAllMocks();
   storeState.defaultThinking = undefined;
+  storeState.defaultMaxTurns = undefined;
   mockGetAgentConfig.mockReturnValue({ maxTurns: 25, thinkingLevel: undefined });
 });
 
@@ -217,5 +220,72 @@ describe("executeAgentTool — defaultThinking fallback", () => {
     await executeAgentTool("tc-4", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 
     expect(spawnThinkingLevel()).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  executeAgentTool — defaultMaxTurns fallback                        */
+/* ------------------------------------------------------------------ */
+
+describe("executeAgentTool — defaultMaxTurns fallback", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    ctx = fakeCtx();
+    mockGetRecord.mockReturnValue({
+      id: "agent-id-123",
+      display: { type: "general-purpose", description: "Test agent" },
+      lifecycle: { status: "running", startedAt: Date.now() },
+      execution: { promise: Promise.resolve("done") },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+      },
+    });
+  });
+
+  function spawnMaxTurns(): unknown {
+    return mockSpawn.mock.calls[0]?.[4]?.maxTurns;
+  }
+
+  it("falls back to store defaultMaxTurns when no explicit param and no frontmatter", async () => {
+    storeState.defaultMaxTurns = 50;
+    mockGetAgentConfig.mockReturnValue({ maxTurns: undefined, thinkingLevel: undefined });
+
+    await executeAgentTool("tc-mt-1", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
+
+    expect(spawnMaxTurns()).toBe(50);
+  });
+
+  it("prefers explicit max_turns param over store defaultMaxTurns", async () => {
+    storeState.defaultMaxTurns = 50;
+
+    await executeAgentTool(
+      "tc-mt-2",
+      { agent: "general-purpose", prompt: "do it", max_turns: 10 },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(spawnMaxTurns()).toBe(10);
+  });
+
+  it("prefers agent frontmatter maxTurns over store defaultMaxTurns", async () => {
+    storeState.defaultMaxTurns = 50;
+    mockGetAgentConfig.mockReturnValue({ maxTurns: 30, thinkingLevel: undefined });
+
+    await executeAgentTool("tc-mt-3", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
+
+    expect(spawnMaxTurns()).toBe(30);
+  });
+
+  it("keeps maxTurns undefined when nothing is configured", async () => {
+    mockGetAgentConfig.mockReturnValue({ maxTurns: undefined, thinkingLevel: undefined });
+
+    await executeAgentTool("tc-mt-4", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
+
+    expect(spawnMaxTurns()).toBeUndefined();
   });
 });
