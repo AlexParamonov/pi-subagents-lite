@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **`deltaInputTokens` setting and delta estimation.** Removed the toggle and the per-message input-delta calculation. pi-ai already normalizes `usage.input` to new tokens only (it subtracts cache reads), so the estimation double-subtracted and produced wrong token counts.
+- **`deltaInputTokens` setting and delta estimation.** Removed the vLLM-specific workaround that estimated input token deltas by subtracting consecutive `usage.input` values.
 
 ### Fixed
 
