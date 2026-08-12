@@ -22,6 +22,7 @@
 - State consumed by render paths must be clamped at the render path, not only in mutators. Pin with tests that mutate state WITHOUT a nav move in between.
 - Closure capture traps: a factory mock's closure binds its own parameter, so re-assigning the test's variable does nothing — assign explicitly against the outer variable.
 - Recurring vacuous patterns to grep for: tests ending at `.find()` with no expect; global `some()` checks passing from initial state; `expect.any(String)` for branch-specific messages.
+- When shipping wording adjusted from a spec's provisional text, update the spec's Further Notes in the same pass. Slice 1-3 shipped the never-started agent note uppercase ("STOPPED BY YOU…") while the spec still recorded the lowercase provisional; the review loop caught the drift.
 
 ### Delegation
 - Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
