@@ -383,6 +383,202 @@ describe("AgentManager", () => {
       deferred.resolve(mockRunResult());
     });
 
+    it("removes per-model slot when model entry is removed from config", () => {
+      // Set up: per-model limit of 1 for llamacpp/4b
+      const config: ConcurrencyConfig = { default: 4, models: { "llamacpp/4b": 1 } };
+      manager = new AgentManager(onComplete, config);
+
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const ctx = fakeCtx();
+      const pi = fakePi();
+
+      // First agent starts (limit is 1)
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+
+      // Remove the per-model limit — should fall back to default (4)
+      manager.setConcurrency({ default: 4, models: {} });
+
+      // New agents should now spawn under default limit, not the old per-model limit
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id4 = manager.spawn(pi, ctx, "general-purpose", "task 4", {
+        description: "task 4",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+
+      // All should be running (default limit is 4, old per-model limit of 1 is gone)
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id4)?.lifecycle.status).toBe("running");
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(4);
+
+      deferred.resolve(mockRunResult());
+    });
+
+    it("removes per-provider slot when provider entry is removed from config", () => {
+      // Set up: per-provider limit of 1 for llamacpp
+      const config: ConcurrencyConfig = { default: 4, providers: { llamacpp: 1 }, models: {} };
+      manager = new AgentManager(onComplete, config);
+
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const ctx = fakeCtx();
+      const pi = fakePi();
+
+      // First agent starts (provider limit is 1)
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+
+      // Remove the per-provider limit — should fall back to default (4)
+      manager.setConcurrency({ default: 4, providers: {}, models: {} });
+
+      // New agents should now spawn under default limit
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/27b",
+        isBackground: true,
+      });
+      const id4 = manager.spawn(pi, ctx, "general-purpose", "task 4", {
+        description: "task 4",
+        modelKey: "llamacpp/3b",
+        isBackground: true,
+      });
+
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id4)?.lifecycle.status).toBe("running");
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(4);
+
+      deferred.resolve(mockRunResult());
+    });
+
+    it("reset to defaults clears per-model and per-provider slots", () => {
+      // Set up: per-model and per-provider limits
+      const config: ConcurrencyConfig = {
+        default: 4,
+        providers: { llamacpp: 2 },
+        models: { "llamacpp/4b": 1, "claude/sonnet": 2 },
+      };
+      manager = new AgentManager(onComplete, config);
+
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+
+      const ctx = fakeCtx();
+      const pi = fakePi();
+
+      // Spawn one agent per model to establish slots
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "claude/sonnet",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+
+      // Reset to defaults: no per-model or per-provider overrides
+      manager.setConcurrency({ default: 4 });
+
+      // New spawns should use default limit for all models
+      const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
+        description: "task 3",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id4 = manager.spawn(pi, ctx, "general-purpose", "task 4", {
+        description: "task 4",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      const id5 = manager.spawn(pi, ctx, "general-purpose", "task 5", {
+        description: "task 5",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+
+      // id1 + id3 + id4 + id5 = 4 running for llamacpp/4b (default limit 4)
+      expect(manager.getRecord(id3)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id4)?.lifecycle.status).toBe("running");
+      expect(manager.getRecord(id5)?.lifecycle.status).toBe("running");
+      expect(mockModules.mockRunAgent).toHaveBeenCalledTimes(5);
+
+      deferred.resolve(mockRunResult());
+    });
+
+    it("running agent under removed slot still settles without error", async () => {
+      // Agent running under a per-model limit; slot is removed while agent runs.
+      // The agent must complete and decrement its (now orphaned) slot gracefully.
+      const config: ConcurrencyConfig = { default: 4, models: { "llamacpp/4b": 1 } };
+      manager = new AgentManager(onComplete, config);
+
+      const deferred1 = makeResolvablePromise();
+      const deferred2 = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(deferred1.promise).mockReturnValueOnce(deferred2.promise);
+
+      const ctx = fakeCtx();
+      const pi = fakePi();
+
+      const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
+        description: "task 1",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+
+      // Remove the per-model limit while agent is still running
+      manager.setConcurrency({ default: 4, models: {} });
+
+      // Spawn a new agent — should use default limit now (not blocked by old slot)
+      const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
+        description: "task 2",
+        modelKey: "llamacpp/4b",
+        isBackground: true,
+      });
+      expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
+
+      // Complete the original agent — must not throw
+      deferred1.resolve(mockRunResult());
+      await manager.getRecord(id1)!.execution.promise;
+
+      expect(manager.getRecord(id1)?.lifecycle.status).toBe("completed");
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      // Clean up id2
+      deferred2.resolve(mockRunResult());
+    });
     it("queues foreground agent when limit is reached", async () => {
       const config: ConcurrencyConfig = { default: 1, models: { "llamacpp/4b": 1 } };
       manager = new AgentManager(onComplete, config);
