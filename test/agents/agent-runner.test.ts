@@ -104,7 +104,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, subscribeToSessionEvents } from "../../src/agents/agent-runner.js";
+import { runAgent, subscribeToSessionEvents, resolveEffectiveSystemPromptMode } from "../../src/agents/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",
@@ -1735,6 +1735,206 @@ describe("runAgent — context file gating", () => {
     expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
     // buildAgentPrompt still called (without contextFiles)
     expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalled();
+  });
+  it("includeContextFiles: false on the agent overrides the global ON setting", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockIncludeContextFiles = true;
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeContextFiles: false,
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockLoadProjectContextFiles).not.toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.not.objectContaining({ contextFiles: expect.anything() }),
+      expect.anything(),
+    );
+  });
+
+  it("includeContextFiles: true on the agent overrides the global OFF setting", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockIncludeContextFiles = false;
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeContextFiles: true,
+    });
+    mockModules.mockLoadProjectContextFiles.mockReturnValue([{ path: "AGENTS.md", content: "project instructions" }]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        contextFiles: [{ path: "AGENTS.md", content: "project instructions" }],
+      }),
+      expect.anything(),
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — per-agent system prompt overrides (include_system_prompt) */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — include_system_prompt overrides", () => {
+  let fsReadFileSyncSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+    fsReadFileSyncSpy = vi.spyOn(fs, "readFileSync");
+  });
+
+  afterEach(() => {
+    fsReadFileSyncSpy.mockRestore();
+  });
+
+  function mockSession() {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    return session;
+  }
+
+  it("includeSystemPrompt: true inherits the parent when global mode is replace", async () => {
+    mockModules.mockSystemPromptMode = "replace";
+    mockSession();
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeSystemPrompt: true,
+    });
+    const ctx = fakeCtx();
+    ctx.getSystemPrompt = vi.fn().mockReturnValue("parent prompt content");
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(ctx.getSystemPrompt).toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ parentSystemPrompt: "parent prompt content" }),
+      "inherit",
+    );
+  });
+
+  it("includeSystemPrompt: true inherits the parent when global mode is inherit", async () => {
+    mockModules.mockSystemPromptMode = "inherit";
+    mockSession();
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeSystemPrompt: true,
+    });
+    const ctx = fakeCtx();
+    ctx.getSystemPrompt = vi.fn().mockReturnValue("parent prompt content");
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ parentSystemPrompt: "parent prompt content" }),
+      "inherit",
+    );
+  });
+
+  it("includeSystemPrompt: true uses the custom prompt when global mode is custom", async () => {
+    mockModules.mockSystemPromptMode = "custom";
+    mockSession();
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeSystemPrompt: true,
+    });
+    fsReadFileSyncSpy.mockReturnValue("My custom system prompt");
+    const ctx = fakeCtx();
+    ctx.getSystemPrompt = vi.fn().mockReturnValue("parent prompt content");
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(fsReadFileSyncSpy).toHaveBeenCalledWith(expect.stringContaining("subagents-lite-prompt.md"), "utf-8");
+    expect(ctx.getSystemPrompt).not.toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ customSystemPrompt: "My custom system prompt" }),
+      "custom",
+    );
+  });
+
+  it("includeSystemPrompt: false forces replace mode when global mode is custom", async () => {
+    mockModules.mockSystemPromptMode = "custom";
+    mockSession();
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeSystemPrompt: false,
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(fsReadFileSyncSpy).not.toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      "replace",
+    );
+  });
+
+  it("includeSystemPrompt: false forces replace mode when global mode is inherit", async () => {
+    mockModules.mockSystemPromptMode = "inherit";
+    mockSession();
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      includeSystemPrompt: false,
+    });
+    const ctx = fakeCtx();
+    ctx.getSystemPrompt = vi.fn().mockReturnValue("parent prompt content");
+
+    await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
+
+    expect(ctx.getSystemPrompt).not.toHaveBeenCalled();
+    expect(mockModules.mockBuildAgentPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.not.objectContaining({ parentSystemPrompt: expect.anything() }),
+      "replace",
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  resolveEffectiveSystemPromptMode — effective mode rule             */
+/* ------------------------------------------------------------------ */
+
+describe("resolveEffectiveSystemPromptMode", () => {
+  it.each([
+    ["replace", true, "inherit"],
+    ["inherit", true, "inherit"],
+    ["custom", true, "custom"],
+    ["custom", false, "replace"],
+    ["inherit", false, "replace"],
+    ["replace", false, "replace"],
+    ["replace", undefined, "replace"],
+    ["custom", undefined, "custom"],
+    ["inherit", undefined, "inherit"],
+  ] as const)("global %s + override %s → %s", (globalMode, override, expected) => {
+    expect(resolveEffectiveSystemPromptMode(globalMode, override)).toBe(expected);
   });
 });
 describe("runAgent — project trust threading", () => {

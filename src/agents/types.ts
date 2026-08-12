@@ -40,6 +40,10 @@ export interface AgentConfig {
   isDefault?: boolean;
   /** Whether to write a streaming transcript to the output file. Undefined = use global config. */
   outputTranscript?: boolean;
+  /** Include AGENTS.md context files in this agent's system prompt. Undefined = use global config. */
+  includeContextFiles?: boolean;
+  /** Whether to inherit the parent's system prompt. Undefined = use global systemPromptMode. */
+  includeSystemPrompt?: boolean;
   /** true = agent is hidden from the schema enum but can still be called by name. */
   hidden?: boolean;
   /** Where this agent was loaded from */

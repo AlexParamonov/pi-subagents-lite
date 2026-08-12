@@ -294,16 +294,36 @@ async function detectEnv(pi: ExtensionAPI, cwd: string): Promise<EnvInfo> {
 
 // ── runAgent phases ────────────────────────────────────────────────
 
+/**
+ * Effective system prompt mode for an agent: the global mode overridden by
+ * the agent's include_system_prompt frontmatter field.
+ *
+ * - false → replace (never inherit or custom)
+ * - true → inherit, except when the global mode is custom (custom wins)
+ * - undefined → global mode
+ */
+export function resolveEffectiveSystemPromptMode(
+  globalMode: SystemPromptMode,
+  includeSystemPrompt: boolean | undefined,
+): SystemPromptMode {
+  if (includeSystemPrompt === false) return "replace";
+  if (includeSystemPrompt === true && globalMode !== "custom") return "inherit";
+  return globalMode;
+}
+
 function resolveSystemPromptSources(
   ctx: ExtensionContext,
   cwd: string,
   notify: (msg: string) => void,
+  agentConfig: ReturnType<typeof getAgentConfig>,
 ): {
   mode: SystemPromptMode;
   extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles">;
 } {
   const store = getStore();
-  const mode = store.agent.systemPromptMode;
+  // Per-agent frontmatter overrides win; unset fields follow the global config.
+  const mode = resolveEffectiveSystemPromptMode(store.agent.systemPromptMode, agentConfig?.includeSystemPrompt);
+  const includeContextFiles = agentConfig?.includeContextFiles ?? store.agent.includeContextFiles;
   const extras: Pick<PromptExtras, "parentSystemPrompt" | "customSystemPrompt" | "contextFiles"> = {};
 
   if (mode === "inherit") {
@@ -331,7 +351,7 @@ function resolveSystemPromptSources(
     }
   }
 
-  if (store.agent.includeContextFiles) {
+  if (includeContextFiles) {
     try {
       extras.contextFiles = loadProjectContextFiles({ cwd, agentDir: getAgentDir() });
     } catch {
@@ -645,7 +665,7 @@ async function runAgentImpl(
     projectTrusted: options.projectTrusted !== false,
   });
 
-  const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify);
+  const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify, agentConfig);
 
   const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env, mode, promptExtras);
   const { loader, reloadAndMap } = createResourceLoader(
