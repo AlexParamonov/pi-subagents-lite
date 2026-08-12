@@ -268,14 +268,10 @@ export class AgentManager {
     // the subagent — it is recorded as stopped immediately instead (ADR-0005).
     if (options.signal) {
       if (options.signal.aborted) {
-        if (queued) {
-          this.queue = this.queue.filter((q) => q.id !== id);
-        }
-        record.lifecycle.status = "stopped";
-        record.lifecycle.stoppedBy = "user";
-        record.lifecycle.completedAt = Date.now();
-        this.openGate(id, "");
-        this.notifyComplete(record);
+        // Already-aborted signal: the subagent never starts — record it as
+        // stopped immediately (ADR-0005). stopAgent opens the gate and
+        // notifies because a never-started record has no run to settle.
+        this.stopAgent(record, "user");
         return id;
       }
       const handler = () => this.abort(id, "user");
@@ -290,7 +286,7 @@ export class AgentManager {
       this.startAgent(id, record, args, concurrencySlot);
     } catch (err) {
       this.detachParentBinding(record);
-      this.gateResolvers.delete(id);
+      this.openGate(id, "");
       this.agents.delete(id);
       throw err;
     }
@@ -627,9 +623,10 @@ export class AgentManager {
     record.lifecycle.stopDetail = stopDetail;
     record.lifecycle.completedAt = Date.now();
     this.detachParentBinding(record);
-    if (wasQueued) {
-      // A queued record has no run to settle — open the gate and notify now.
-      // Queued stops notify directly; they never tally as completed agents.
+    if (!record.lifecycle.started) {
+      // A record that never started has no run whose .finally opens the
+      // gate — open it now and notify directly. Such stops never tally as
+      // completed agents.
       this.openGate(record.id, "");
       this.notifyComplete(record);
     }
