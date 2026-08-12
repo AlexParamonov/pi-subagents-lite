@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/spawn/spawn-coordinator.js";
+import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 
 vi.mock("../../src/agents/agent-types.js", () => ({

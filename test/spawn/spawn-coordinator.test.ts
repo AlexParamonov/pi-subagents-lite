@@ -88,9 +88,10 @@ function makeMockManager(opts: { pendingGate?: boolean } = {}) {
     getGateResolver: vi.fn((id: string) => gateResolvers.get(id)),
     listAgents: vi.fn(() => [...records.values()]),
     abort: vi.fn(() => true),
-    steer: vi.fn(async () => true),
+    dispose: vi.fn(() => {
+      records.clear();
+    }),
     getTotalAgentCost: vi.fn(() => 0),
-    dispose: vi.fn(),
     onComplete: undefined as any,
     onStart: undefined as any,
   };
@@ -168,7 +169,7 @@ describe("SpawnCoordinator", () => {
     expect(view!.responseText).toBe("");
   });
 
-  it("cleans up live view on foreground completion", async () => {
+  it("keeps the live view after foreground completion (the agent can be continued)", async () => {
     const coordinator = new SpawnCoordinator(manager as any);
     const result = await coordinator.spawn(mockPi, ctx, {
       type: "builder",
@@ -178,9 +179,9 @@ describe("SpawnCoordinator", () => {
       runInBackground: false,
     });
 
-    // After foreground spawn completes, live view should be cleaned up
-    const view = coordinator.liveView(result.agentId);
-    expect(view).toBeUndefined();
+    // The live view rides on the record: it survives settlement so a
+    // continuation can keep feeding the same view.
+    expect(coordinator.liveView(result.agentId)).toBeDefined();
   });
 
   it("registers background agent in backgroundAgentIds", async () => {
@@ -352,7 +353,7 @@ describe("SpawnCoordinator", () => {
   });
 
   describe("onAgentComplete", () => {
-    it("deletes live view on completion", async () => {
+    it("keeps the live view after completion (a continuation re-feeds it)", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
       const result = await coordinator.spawn(mockPi, ctx, {
         type: "builder",
@@ -365,7 +366,7 @@ describe("SpawnCoordinator", () => {
 
       coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
 
-      expect(coordinator.liveView(result.agentId)).toBeUndefined();
+      expect(coordinator.liveView(result.agentId)).toBeDefined();
     });
 
     it("schedules nudge for background agents", async () => {
@@ -388,6 +389,29 @@ describe("SpawnCoordinator", () => {
 
       // Should be removed from background set
       expect(coordinator.isBackground(result.agentId)).toBe(false);
+    });
+
+    it("re-feeds the live view with activity after completion", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+      const spawn = manager.getSpawnCalls()[0];
+
+      coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
+
+      // Continuation activity flows through the same spawn-time callbacks
+      // into the retained live view.
+      spawn.options.onToolActivity({ type: "start", toolName: "bash", toolCallId: "c1" });
+      spawn.options.onTextDelta("hel", "hello world");
+
+      const view = coordinator.liveView(result.agentId)!;
+      expect(view.activeTools.size).toBe(1);
+      expect(view.responseText).toBe("hello world");
     });
 
     it("does not schedule nudge for foreground agents", async () => {
@@ -485,6 +509,8 @@ describe("SpawnCoordinator", () => {
       });
       expect(coordinator.liveView(result.agentId)).toBeDefined();
 
+      // Teardown disposes both peers; the live view dies with its record.
+      manager.dispose();
       coordinator.dispose();
 
       expect(coordinator.liveView(result.agentId)).toBeUndefined();

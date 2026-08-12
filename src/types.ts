@@ -13,6 +13,12 @@ export interface ToolActivity {
   toolCallId?: string;
 }
 
+/** Widget live-view state: per-agent transient display data, fed by tool/stream callbacks. */
+export interface LiveView {
+  activeTools: Map<string, string>; // keyed by toolName_timestamp
+  responseText: string;
+}
+
 /**
  * Resolved model + run-limit tunables shared by every spawn/run shape
  * (RunOptions, SpawnOptions, SpawnIntent). Add a tunable here once and it
@@ -166,6 +172,17 @@ export interface AgentExecutionState {
    * the delta since the last tally.
    */
   talliedCost?: number;
+  /**
+   * Widget live-view state, attached by the coordinator at spawn. Retained
+   * across settlement so a continuation keeps feeding the same view.
+   */
+  liveView?: LiveView;
+  /**
+   * Coordinator-supplied live-view bridge (tool activity + streamed text),
+   * captured at spawn and re-wired on continuation. Without it the widget
+   * would show a static "thinking…" while a continued agent runs.
+   */
+  liveViewCallbacks?: Pick<RunCallbacks, "onToolActivity" | "onTextDelta">;
 }
 
 /**

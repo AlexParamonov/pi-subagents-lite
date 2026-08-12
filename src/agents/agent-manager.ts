@@ -242,6 +242,14 @@ export class AgentManager {
         maxTurns: options.maxTurns,
       },
     };
+    // Capture the coordinator's live-view bridge so a continuation can re-wire
+    // tool activity and streamed text into the widget's live view.
+    if (options.onToolActivity || options.onTextDelta) {
+      record.execution.liveViewCallbacks = {
+        onToolActivity: options.onToolActivity,
+        onTextDelta: options.onTextDelta,
+      };
+    }
     this.agents.set(id, record);
 
     // Completion gate: every record carries one from birth, opened exactly once
@@ -607,10 +615,15 @@ export class AgentManager {
 
     const previousTurns = record.stats.turnCount ?? 0;
     const promise = continueAgentSession(session, message, {
-      ...this.createRecordCallbacks(record),
-      onTextDelta: () => {
+      ...this.createRecordCallbacks(record, {
+        // Re-bridge tool activity to the spawn-time live-view callbacks so the
+        // widget shows real activity while a continued agent runs.
+        onToolActivity: (activity) => record.execution.liveViewCallbacks?.onToolActivity?.(activity),
+      }),
+      onTextDelta: (delta, fullText) => {
         // Streamed response text counts as activity for the idle watchdog.
         this.watchdog.recordText(id);
+        record.execution.liveViewCallbacks?.onTextDelta?.(delta, fullText);
       },
       maxTurns: record.stats.maxTurns,
       graceTurns: getStore().agent.graceTurns ?? DEFAULT_GRACE_TURNS,

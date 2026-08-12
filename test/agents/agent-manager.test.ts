@@ -2080,6 +2080,27 @@ describe("AgentManager", () => {
       await vi.waitFor(() => expect(record.execution.settled).toBe(true));
     });
 
+    it("forwards continuation activity and streamed text to the spawn-time live-view callbacks", async () => {
+      manager = new AgentManager(onComplete);
+      const onToolActivity = vi.fn();
+      const onTextDelta = vi.fn();
+      const contRun = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun.promise);
+      const id = await spawnSettled({ onToolActivity, onTextDelta });
+      const record = manager.getRecord(id)!;
+
+      await manager.steer(id, "keep going");
+      const contCallbacks = mockModules.mockContinueAgentSession.mock.calls[0][2];
+      contCallbacks.onToolActivity({ type: "start", toolName: "bash", toolCallId: "c1" });
+      contCallbacks.onTextDelta("hel", "hello");
+
+      expect(onToolActivity).toHaveBeenCalledWith({ type: "start", toolName: "bash", toolCallId: "c1" });
+      expect(onTextDelta).toHaveBeenCalledWith("hel", "hello");
+
+      contRun.resolve(mockRunResult());
+      await vi.waitFor(() => expect(record.execution.settled).toBe(true));
+    });
+
     it("tallies only the cost delta and does not double-count the agent", async () => {
       manager = new AgentManager(onComplete);
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());

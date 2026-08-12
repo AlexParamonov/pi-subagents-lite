@@ -2,7 +2,7 @@ import { getPiInstance, getSessionCtx, getWidget } from "../shell.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord, SpawnConfig, ToolActivity } from "../types.js";
+import type { AgentRecord, LiveView, SpawnConfig, ToolActivity } from "../types.js";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.js";
 import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.js";
 
@@ -10,7 +10,8 @@ import { buildAgentDetails, formatResultContent } from "../agents/tool-execution
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
  * Single entry point for both LLM tool and menu spawn paths.
- * Owns: LiveView store, Nudge system (schedule/batch/emit), background agent tracking.
+ * Owns: Nudge system (schedule/batch/emit), background agent tracking. Live-view
+ * state rides on the record (attached here at spawn) so continuations re-feed it.
  * Delegates concurrency and record lifecycle to AgentManager (peers, not ownership).
  *
  * Decision refs: D3 (forward events to live-view), D4 (stats on record only),
@@ -18,12 +19,6 @@ import { buildAgentDetails, formatResultContent } from "../agents/tool-execution
  */
 
 // --- Types ---
-
-/** Coordinator-owned per-agent live display state. Only transient UI state. */
-export interface LiveView {
-  activeTools: Map<string, string>; // keyed by toolName_timestamp
-  responseText: string;
-}
 
 /** Input for spawn(). Built by each caller from its own validation. */
 export interface SpawnIntent extends SpawnConfig {
@@ -52,9 +47,6 @@ const NUDGE_DELAY_MS = 200;
 // --- SpawnCoordinator ---
 
 export class SpawnCoordinator {
-  /** Per-agent live display state. Widget reads from here + record for stats. */
-  private liveViews = new Map<string, LiveView>();
-
   /** Agent IDs spawned as background — only these trigger a nudge on completion. */
   private backgroundAgentIds = new Set<string>();
 
@@ -94,8 +86,10 @@ export class SpawnCoordinator {
     };
 
     const agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
-
-    this.liveViews.set(agentId, liveView);
+    const record = this.manager.getRecord(agentId)!;
+    // Live view rides on the record so it survives settlement — a continuation
+    // re-feeds the same view instead of the widget showing a stale "thinking…".
+    record.execution.liveView = liveView;
 
     // Ensure widget timer is running so it displays the new agent
     // (menu path calls this explicitly, but tool path doesn't)
@@ -110,13 +104,8 @@ export class SpawnCoordinator {
       this.backgroundContexts.set(agentId, ctx);
     }
 
-    const record = this.manager.getRecord(agentId)!;
-
     if (!intent.runInBackground) {
       await record.execution.promise;
-
-      // Clean up live view (foreground completion handled inline)
-      this.liveViews.delete(agentId);
     }
 
     return { agentId, record };
@@ -124,7 +113,7 @@ export class SpawnCoordinator {
 
   /** Read the live view for an agent. Widget calls this. */
   liveView(id: string): LiveView | undefined {
-    return this.liveViews.get(id);
+    return this.manager.getRecord(id)?.execution.liveView;
   }
 
   isBackground(agentId: string): boolean {
@@ -153,15 +142,14 @@ export class SpawnCoordinator {
 
   /**
    * Called by AgentManager's onComplete callback (wired at session_start).
-   * Owns the completion side-effects: nudge scheduling, live-view cleanup.
+   * Owns the completion side-effects: nudge scheduling. The live view stays
+   * on the record — a settled agent can be continued and re-feeds it.
    */
   onAgentComplete(record: AgentRecord): void {
     if (this.backgroundAgentIds.has(record.id)) {
       this.scheduleNudge(record.id);
       this.backgroundAgentIds.delete(record.id);
     }
-
-    this.liveViews.delete(record.id);
   }
 
   dispose(): void {
@@ -170,7 +158,6 @@ export class SpawnCoordinator {
       this.nudgeTimer = null;
     }
     this.pendingNudges.clear();
-    this.liveViews.clear();
     this.backgroundAgentIds.clear();
     this.backgroundContexts.clear();
     this.disposed = true;
