@@ -452,6 +452,9 @@ vi.mock("../src/shell.js", async () => {
           worktreePath: intent.worktreePath,
           worktreeLabel: intent.worktreeLabel,
           invocation: intent.invocation,
+          // Mirror the real coordinator's spread: the signal key exists only
+          // when the intent carried one — menu-wizard spawns never do.
+          ...(intent.signal !== undefined ? { signal: intent.signal } : {}),
         });
         const record = mockModules.mockManager.getRecord(id);
         if (!intent.runInBackground && record?.execution?.promise) {

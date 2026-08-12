@@ -32,6 +32,11 @@ export interface SpawnIntent extends SpawnConfig {
   type: string;
   prompt: string;
   runInBackground: boolean;
+  /**
+   * Parent run's interrupt signal, forwarded to the manager for foreground
+   * spawns only. Background and menu-wizard spawns never carry one.
+   */
+  signal?: AbortSignal;
   /** Narrowed to required — all callers resolve this before spawn. */
   graceTurns: number;
 }
@@ -85,8 +90,9 @@ export class SpawnCoordinator {
     };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
 
-    // Shared config fields (SpawnConfig) pass through unchanged; only the
-    // intent-only fields (type/prompt/runInBackground) need translation.
+    // SpawnConfig fields pass through unchanged; only type/prompt/runInBackground
+    // need translation. The parent signal rides through the spread — SpawnOptions
+    // declares the same field with the same meaning.
     const { type, prompt, runInBackground, ...config } = intent;
     const spawnOptions: SpawnOptions = {
       ...config,

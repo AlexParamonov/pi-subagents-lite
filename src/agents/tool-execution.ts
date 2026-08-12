@@ -163,7 +163,7 @@ async function resolveWorktree(
 export async function executeAgentTool(
   _toolCallId: string,
   params: Record<string, unknown>,
-  _signal: AbortSignal | undefined,
+  signal: AbortSignal | undefined,
   _onUpdate: ((update: any) => void) | undefined,
   ctx: ExtensionContext,
 ): Promise<any> {
@@ -210,6 +210,10 @@ export async function executeAgentTool(
 
   // Use SpawnCoordinator for unified spawn path
   const coordinator = getCoordinator()!;
+  // Background spawns (explicit or forceBackground) never bind to the parent
+  // run's interrupt signal — only foreground spawns can be interrupted.
+  const isBackground = runInBackground || getStore().agent.forceBackground;
+
   const result = await coordinator.spawn(getPiInstance(), ctx, {
     type: resolvedType,
     prompt,
@@ -223,12 +227,13 @@ export async function executeAgentTool(
     worktreeLabel,
     projectTrusted,
     invocation: { modelName, thinkingLevel, maxTurns },
-    runInBackground: runInBackground || getStore().agent.forceBackground,
+    runInBackground: isBackground,
+    signal: isBackground ? undefined : signal,
   });
 
   const { agentId, record } = result;
 
-  if (runInBackground || getStore().agent.forceBackground) {
+  if (isBackground) {
     // Background: return immediately
     const suffix = `Success! You delegated to an agent. A notification will arrive when done - USER: do not poll, don't check status and don't duplicate the delegated work!\n\nAgent ID: ${agentId}`;
     const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
