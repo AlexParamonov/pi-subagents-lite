@@ -107,3 +107,4 @@
 
 ### Edit tool
 - Edit-tool `append` after an anchor line must not re-include the anchor line's own content (it inserts after it, so including it duplicates the line). Single-line `replace` with multiple `lines` swaps one line and inserts the rest — a trailing `}` in the replacement duplicates the block close. Re-read after each failed/stale-anchor edit; hash typos (e.g. `YQ` vs `QY`) surface as stale anchors, which is the tool telling you the line is wrong.
+- Multi-op `replace` calls on adjacent ranges are one wrong anchor away from deleting a neighboring field: slice 1-4's `resultConsumed` removal accidentally swept the adjacent `started` marker added by slice 1-3 (typecheck caught it, tests didn't — the field has no test of its own at the type level). Verify each op's range endpoints against a fresh read, then run typecheck before the test suite.
