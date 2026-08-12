@@ -177,14 +177,6 @@ function buildStatsItems(
     values: ["ON", "OFF"],
     description: STAT_DESCRIPTIONS[id],
   }));
-  items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-  items.push({
-    id: "deltaInputTokens",
-    label: "Delta input tokens",
-    currentValue: store.agent.deltaInputTokens ? "ON" : "OFF",
-    values: ["ON", "OFF"],
-    description: "Estimate input token delta for vLLM (no cache reporting).",
-  });
   return items;
 }
 
@@ -236,12 +228,6 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
       case "modelThinkingPlacement":
         store.mutate.widget.setModelThinkingPlacement(newValue === "header" ? "header" : "metadata");
         ctx.ui.notify(`Model/thinking placement: ${newValue}`, "info");
-        break;
-
-      // Stats (deltaInputTokens is not in statConfig)
-      case "deltaInputTokens":
-        store.mutate.agent.setDeltaInputTokens(newValue === "ON");
-        ctx.ui.notify(`Delta input tokens ${newValue}`, "info");
         break;
 
       // Behavior

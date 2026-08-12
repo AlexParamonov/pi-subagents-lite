@@ -464,22 +464,7 @@ export class AgentManager {
         options?.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
-        // vLLM doesn't report cache hits, so usage.input is full prompt_tokens.
-        // Estimate new tokens as delta from previous message's input.
-        const deltaEnabled = getStore().agent.deltaInputTokens;
-        const cacheRead = usage.cacheRead;
-        let inputDelta = usage.input;
-        if (
-          deltaEnabled &&
-          cacheRead === 0 &&
-          record.stats.prevInputTokens != null &&
-          usage.input > record.stats.prevInputTokens
-        ) {
-          inputDelta = usage.input - record.stats.prevInputTokens;
-        }
-        record.stats.prevInputTokens = usage.input;
-
-        addUsage(record.stats.lifetimeUsage, { ...usage, input: inputDelta });
+        addUsage(record.stats.lifetimeUsage, usage);
         options?.onAssistantUsage?.(usage);
       },
       onCompaction: (info) => {

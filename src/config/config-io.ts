@@ -53,7 +53,6 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showCost: false,
   showTime: true,
   outputTranscript: false,
-  deltaInputTokens: false,
   finishedRetentionMinutes: 1,
   modelDisplayStyle: "name",
   modelThinkingPlacement: "header",

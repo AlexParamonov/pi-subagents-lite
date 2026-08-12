@@ -812,7 +812,7 @@ describe("ConfigStore notifyToolsExpanded", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore show* stats visibility", () => {
-  it("showTools and deltaInputTokens default to false, rest default to true", () => {
+  it("showTools defaults to false, rest default to true", () => {
     const store = new ConfigStore(minimalIO());
     expect(store.agent.showTools).toBe(false);
     expect(store.agent.showTurns).toBe(true);
@@ -820,7 +820,6 @@ describe("ConfigStore show* stats visibility", () => {
     expect(store.agent.showOutput).toBe(true);
     expect(store.agent.showContext).toBe(true);
     expect(store.agent.showTime).toBe(true);
-    expect(store.agent.deltaInputTokens).toBe(false);
   });
 
   it("configured false values are respected", () => {

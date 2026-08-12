@@ -11,8 +11,7 @@ export type LifetimeUsage = { input: number; output: number; cacheWrite: number;
 
 /**
  * A single per-turn usage event as emitted upstream. Adds `cacheRead`, which
- * LifetimeUsage omits from totals (see issue #38). Used to estimate input
- * deltas for providers like vLLM that don't report cache hits.
+ * LifetimeUsage omits from totals (see issue #38).
  */
 export type AgentUsage = LifetimeUsage & { cacheRead: number };
 
