@@ -179,7 +179,7 @@ function mergeRawFiles(globalRaw: SubagentsConfig, projectRaw: SubagentsConfig |
   return {
     agent: mergeAgent(globalRaw.agent, projectRaw.agent),
     concurrency: {
-      default: projectRaw.concurrency?.default ?? globalRaw.concurrency?.default ?? 4,
+      default: projectRaw.concurrency?.default ?? globalRaw.concurrency?.default ?? DEFAULT_CONCURRENCY.default,
       providers: mergeMap(globalRaw.concurrency?.providers, projectRaw.concurrency?.providers),
       models: mergeMap(globalRaw.concurrency?.models, projectRaw.concurrency?.models),
     },
