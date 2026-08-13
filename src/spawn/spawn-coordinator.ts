@@ -47,7 +47,7 @@ const NUDGE_DELAY_MS = 200;
 // --- SpawnCoordinator ---
 
 export class SpawnCoordinator {
-  /** Agent IDs spawned as background — only these trigger a nudge on completion. */
+  /** Agent IDs spawned as background — the one-shot first-settlement nudge gate; also backs isBackground(). */
   private backgroundAgentIds = new Set<string>();
 
   /** Pending nudge agent IDs, batched within the delay window. */
@@ -84,11 +84,10 @@ export class SpawnCoordinator {
 
     const agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
     const record = this.manager.getRecord(agentId)!;
-    // Live view rides on the record so it survives settlement — a continuation
-    // re-feeds the same view instead of the widget showing a stale "thinking…".
+    // Spawn-time state rides on the record so it survives settlement: the
+    // live view is re-fed by continuations, and the ctx keeps the UI-notify
+    // fallback reachable for any later nudge (continuations included).
     record.execution.liveView = liveView;
-    // Spawning-session ctx rides on the record (like the live view) so the
-    // UI-notify fallback survives the first nudge and covers every spawn.
     record.execution.spawnCtx = ctx;
 
     // Ensure widget timer is running so it displays the new agent
@@ -119,7 +118,7 @@ export class SpawnCoordinator {
   }
 
   /**
-   * Schedule a nudge for a background agent.
+   * Schedule a nudge for an agent.
    * Batches with NUDGE_DELAY_MS window to coalesce rapid completions.
    */
   scheduleNudge(agentId: string): void {
@@ -144,16 +143,11 @@ export class SpawnCoordinator {
    * on the record — a settled agent can be continued and re-feeds it.
    */
   onAgentComplete(record: AgentRecord): void {
-    // First settlement of a background agent: one-shot nudge (unchanged).
-    if (this.backgroundAgentIds.has(record.id)) {
-      this.scheduleNudge(record.id);
-      this.backgroundAgentIds.delete(record.id);
-      return;
-    }
-    // Later settlements: the record's settlement ordinal (written by the
-    // manager's shared settlement chain before this callback fires) proves a
-    // continuation happened — the coordinator never observes steers itself.
-    if (record.execution.settlementCount >= 2) {
+    // One-shot background gate: the first settlement of a background agent
+    // nudges and consumes the set entry. Continuation settlements (ordinal
+    // >= 2, written by the manager before this callback fires) nudge for both
+    // spawn classes — the coordinator never observes steers itself.
+    if (this.backgroundAgentIds.delete(record.id) || record.execution.settlementCount >= 2) {
       this.scheduleNudge(record.id);
     }
   }
