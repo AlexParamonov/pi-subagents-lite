@@ -15,10 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Transient transport error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are retried automatically instead of failing the run.
 - **Continue settled agents.** `steer()` now resumes a settled agent (completed, errored, aborted, stopped, turn-limited) that still has a live session, instead of requiring a re-spawn. The viewer footer/composer switches from "steer" to "continue" for settled agents.
 - **Per-agent context and prompt inclusion.** New `include_context_files` and `include_system_prompt` frontmatter fields on agent definition files override the global settings per agent: whether AGENTS.md/CLAUDE.md context files load as `<project_context>`, and whether the parent's system prompt is included (inherit, replace, or global mode).
+- **Stop notes for never-started agents.** Agents stopped before they started (queued stop, aborted spawn) now report that the task was NOT attempted instead of claiming partial output. Applies to tool results and background nudges.
 
 ### Removed
 
 - **`deltaInputTokens` setting and delta estimation.** Removed the vLLM-specific workaround that estimated input token deltas by subtracting consecutive `usage.input` values.
+
+### Changed
+
+- **Running Agents menu bulk actions grouped.** The stop row sits above a clear group
 
 ### Fixed
 
@@ -26,13 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **View result bottom border.** Fixed mirrored corner characters in the text viewer frame.
 - **Running Agents menu skips separator rows.**
   Up/down navigation no longer lands on the blank separator rows between the agent list and the bulk actions; the cursor jumps from the last agent straight to the first bulk action row. The separator-skip mechanism is now a shared helper used by both the settings-menu wrapper and the Running Agents menu.
-- **`outputThinkingBufferSize` read live from config.** Value is now read from the config store at runtime instead of being captured at startup.
 - **`defaultMaxTurns` fallback in tool execution path.** Prevents failures when max turns is not explicitly set.
 - **Stale concurrency slots cleaned up.** Removing a concurrency limit from config now frees the orphaned slots in-session.
-- **`finishedRetentionMinutes` clamped on load.** Config values below the minimum are clamped at load time.
 - **Rejected abort/steer promises swallowed.** Session abort and steer calls no longer throw unhandled rejections when the session is already closed.
 - **Qwen quota retry.** Qwen `insufficient_quota` errors containing "Allocated quota exceeded" are retried instead of failing immediately. These may be transient false positives when the quota check is eventually consistent.
-- **Live-view activity during continuation.** The widget now keeps showing real tool calls and streamed text while a continued agent runs. The live view previously died at the first settlement, leaving the widget stuck on "thinking…" for the whole continuation.
+
 ## [1.10.0] - 2026-08-09
 
 ### Added
