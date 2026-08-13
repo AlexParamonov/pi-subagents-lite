@@ -4,11 +4,11 @@
  * Atomic writes: write to .tmp then rename.
  * Loaded at session_start; saved on every /agents menu mutation.
  *
- * Project-level config: when created with a project's `.pi` directory,
- * `.pi/subagents-lite.json` merges over the global file per field (project
- * wins, global fills, hardcoded defaults fill). Saves with a project file
- * present write only the project-origin diff back to it, so the project file
- * keeps overriding only what it sets; the global file is hand-edited.
+ * Project-level config: when created with a project's `.pi` directory and a
+ * valid `.pi/subagents-lite.json` exists, that file IS the entire config —
+ * the global file is not read. Without a valid project file (absent or
+ * malformed), the global file is used exactly as today. One file wins, wholly:
+ * no merging, no diffs, no tombstones. See docs/adr/0007-project-level-config.md.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -72,35 +72,27 @@ export interface ConfigIO {
   save(config: SubagentsConfig): void;
 }
 
-/**
- * Raw file contents captured at load: globalRaw is the save-diff baseline,
- * project.raw feeds the load-time merge.
- */
+/** The file in use at load: its raw contents and the path saves go to. */
 interface LoadedFiles {
-  globalRaw: SubagentsConfig;
-  /** null when the project file is absent or malformed (then saves go global). */
-  project: { path: string; raw: SubagentsConfig } | null;
+  raw: SubagentsConfig;
+  path: string;
 }
 
 /**
- * Create a ConfigIO. With a project's `.pi` directory, the project's
- * `subagents-lite.json` merges over the global file on load, and saves with a
- * project file present write the project-origin diff to it (never the global
- * file). Without one, behaves exactly like the global-only functions.
+ * Create a ConfigIO. With a project's `.pi` directory and a valid project
+ * config file, that file is the entire config on load and the only save
+ * target; otherwise the global file behaves exactly as today. One file wins,
+ * wholly.
  */
 export function createConfigIO(projectDir?: string): ConfigIO {
   let files: LoadedFiles | null = null;
   return {
     load: () => {
       files = loadFiles(projectDir);
-      return mergeDefaults(mergeRawFiles(files.globalRaw, files.project?.raw ?? null));
+      return mergeDefaults(files.raw);
     },
     save: (config) => {
-      if (files?.project) {
-        writeJsonAtomic(files.project.path, diffProjectContent(config, files.globalRaw));
-      } else {
-        saveConfigAtomic(config);
-      }
+      writeJsonAtomic(files?.path ?? CONFIG_PATH, config);
     },
   };
 }
@@ -119,12 +111,17 @@ export function saveConfigAtomic(config: SubagentsConfig): void {
 
 // ── Load ─────────────────────────────────────────────────────────────
 
+/**
+ * Pick the file in use: the project file when a valid one exists, else the
+ * global file. A malformed project file is ignored with a warning.
+ */
 function loadFiles(projectDir?: string): LoadedFiles {
-  const globalRaw = readGlobalRaw();
-  if (!projectDir) return { globalRaw, project: null };
-  const projectPath = path.join(projectDir, CONFIG_FILE_NAME);
-  const raw = readProjectRaw(projectPath);
-  return { globalRaw, project: raw ? { path: projectPath, raw } : null };
+  if (projectDir) {
+    const projectPath = path.join(projectDir, CONFIG_FILE_NAME);
+    const raw = readProjectRaw(projectPath);
+    if (raw) return { raw, path: projectPath };
+  }
+  return { raw: readGlobalRaw(), path: CONFIG_PATH };
 }
 
 /** Read the global file; any failure (missing, malformed) reads as {} — as today. */
@@ -147,53 +144,7 @@ function readProjectRaw(projectPath: string): SubagentsConfig | null {
   }
 }
 
-/**
- * Merge the project agent object over the global one. A null project value
- * means the key is removed (overrides the global entry with nothing) — except
- * `default`, where null means "inherit parent" and stays a real value.
- */
-function mergeAgent(global: SubagentsConfig["agent"], project: SubagentsConfig["agent"]): SubagentsConfig["agent"] {
-  const merged = { ...global };
-  for (const [key, value] of Object.entries(project ?? {})) {
-    if (value === null && key !== "default") delete merged[key];
-    else merged[key] = value;
-  }
-  return merged;
-}
-
-/**
- * Merge a numeric map over the global one. A null project entry means the
- * entry is removed, overriding the global entry with nothing.
- */
-function mergeMap(
-  global: Record<string, number> | undefined,
-  project: Record<string, number | null> | undefined,
-): Record<string, number> {
-  const merged = { ...(global ?? {}) };
-  for (const [key, value] of Object.entries(project ?? {})) {
-    if (value === null) delete merged[key];
-    else merged[key] = value;
-  }
-  return merged;
-}
-
-/** Per-field merge of the two raw files: project wins, global fills the rest. */
-function mergeRawFiles(globalRaw: SubagentsConfig, projectRaw: SubagentsConfig | null): SubagentsConfig {
-  if (!projectRaw) return globalRaw;
-  return {
-    agent: mergeAgent(globalRaw.agent, projectRaw.agent),
-    concurrency: {
-      // null in the project file means "not set" for the scalar default
-      // (fall back to global, then built-in), unlike the maps below where
-      // null deletes the entry.
-      default: projectRaw.concurrency?.default ?? globalRaw.concurrency?.default ?? DEFAULT_CONCURRENCY.default,
-      providers: mergeMap(globalRaw.concurrency?.providers, projectRaw.concurrency?.providers),
-      models: mergeMap(globalRaw.concurrency?.models, projectRaw.concurrency?.models),
-    },
-  };
-}
-
-/** Bake hardcoded defaults into the merged result; normalize legacy keys on it. */
+/** Bake hardcoded defaults into the loaded raw config; normalize legacy keys on it. */
 function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
   // Spread form (not an explicit default key) so the loaded value wins
   // without triggering TS2783; identical runtime semantics.
@@ -211,61 +162,6 @@ function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
 }
 
 // ── Save ─────────────────────────────────────────────────────────────
-
-/**
- * Compute the project-file content that reproduces the merged config when
- * merged over the global file. Defaults and global-only keys are never
- * copied, so the project file stays a small hand-editable diff.
- */
-function diffProjectContent(merged: SubagentsConfig, globalRaw: SubagentsConfig): Record<string, unknown> {
-  const globalWithDefaults = mergeDefaults(globalRaw);
-  const content: Record<string, unknown> = {};
-  const agent = diffRecord(merged.agent, globalWithDefaults.agent);
-  if (Object.keys(agent).length > 0) content.agent = agent;
-  const concurrency = diffConcurrency(merged.concurrency, globalWithDefaults.concurrency);
-  if (Object.keys(concurrency).length > 0) content.concurrency = concurrency;
-  return content;
-}
-
-function diffConcurrency(
-  merged: SubagentsConfig["concurrency"],
-  global: SubagentsConfig["concurrency"],
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  if (merged.default !== global.default) result.default = merged.default;
-  const providers = diffRecord(merged.providers, global.providers);
-  if (Object.keys(providers).length > 0) result.providers = providers;
-  const models = diffRecord(merged.models, global.models);
-  if (Object.keys(models).length > 0) result.models = models;
-  return result;
-}
-
-/**
- * Per-key diff of a merged record against the global baseline, for writing
- * back to the project file: keys whose merged value differs from the global
- * one, plus null tombstones for keys deleted from the merged config that the
- * global file defines (null project entries mean "removed" at load), so
- * removals outlive the reload. Keys only the project file had are either
- * still in the merged record (diffed normally) or were deleted (dropped —
- * absent from both sides, they would resurrect nothing).
- */
-function diffRecord<T>(
-  merged: Record<string, T> | undefined,
-  global: Record<string, T> | undefined,
-): Record<string, T | null> {
-  const result: Record<string, T | null> = {};
-  for (const key of new Set([...Object.keys(merged ?? {}), ...Object.keys(global ?? {})])) {
-    const value = merged?.[key];
-    if (value === undefined) {
-      // Deleted from the merged config: tombstone keys the global file defines
-      // so the removal outlives the reload; keys only the project had are dropped.
-      if (global?.[key] !== undefined) result[key] = null;
-      continue;
-    }
-    if (value !== global?.[key]) result[key] = value;
-  }
-  return result;
-}
 
 /** Write JSON atomically: tmp file in the same directory, then rename. */
 function writeJsonAtomic(filePath: string, config: unknown): void {
