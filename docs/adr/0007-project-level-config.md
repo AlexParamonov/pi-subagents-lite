@@ -1,3 +1,5 @@
+> **Status:** superseded by [ADR-0008](./0008-project-config-as-override-layer.md)
+
 # Project-level config
 
 A project can commit `.pi/subagents-lite.json` (same file name as the global

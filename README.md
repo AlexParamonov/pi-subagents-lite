@@ -198,9 +198,7 @@ Widget, stats visibility, and spawn defaults are all under `/agents` > Settings.
 
 ### Project-level config
 
-A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). When a valid project file exists, it is used as the **entire** config: the global file is not consulted, and there is no merging between the two files — one file wins, wholly. Validation, clamping, and legacy-key normalization apply to whichever file is loaded. An empty project file (`{}`) is valid and means built-in defaults only.
-
-`/agents` menu changes persist to the project file when one exists — the full effective config is written to it, so it stays self-contained — and to the global file otherwise; state is never split across both files. The global file is only the fallback for projects without a project file: with no project file, behavior is byte-for-byte unchanged. A malformed project file is ignored with a warning and the global file is used instead. The project file is only loaded in trusted projects, same as `.pi/agents`.
+A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). It is an **override layer**, not a full config: it may contain only model and concurrency settings (`agent.default`, per-type model overrides, `concurrency`), and each key it sets overrides the global file's value. Every other setting — widget, watchdog, spawn defaults — always comes from the global file. The effective value of each key resolves as: session override > project file > global file > built-in default.
 
 Output transcripts are disabled by default; enable them globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, the transcript streams to `/tmp/pi-agent-outputs/<agentId>.log` (append-only, `tail -f` friendly) and the widget shows the `tail -f` line. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
 

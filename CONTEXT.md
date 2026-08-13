@@ -24,8 +24,16 @@ _Avoid_: Hidden tool, minimal tool
 
 ### Configuration
 
+**Global config**:
+The personal baseline config file `~/.pi/agent/subagents-lite.json`, holding the full config surface and the default write target for menu changes.
+_Avoid_: User config, personal config
+
+**Project config**:
+The per-project override file `.pi/subagents-lite.json` in a trusted project. Holds only model and concurrency overrides: each key it sets wins over the Global config, and an absent key inherits from it. An empty file (`{}`) is inert.
+_Avoid_: Project settings, local config
+
 **Model override**:
-A user-configured model preference (per-type or global) that takes precedence over any built-in or frontmatter default. Set via `/agents` > Model settings.
+A user-configured model preference (per-type or global) set at session, global, or project level, taking precedence over any lower level and over any built-in or frontmatter default. Set via `/agents` > Model settings.
 _Avoid_: Model injection, model preference
 
 **Grace turns**:
@@ -65,6 +73,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 ## Relationships
 
 - An **Agent type** has an optional **Model override**
+- A **Project config** overrides the **Global config** per key, for model and concurrency settings only
 - A **Subagent** is spawned from one **Agent type**
 - A **Subagent** may run in a **Worktree** of the parent's repo or in a directory inside any other git repo on disk
 - An **Agent briefing** describes all available **Agent types** to the LLM
