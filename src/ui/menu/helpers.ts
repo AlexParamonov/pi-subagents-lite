@@ -39,13 +39,16 @@ export function installSeparatorSkip(list: any): void {
     return next;
   };
   const inBounds = (i: number) => i >= 0 && i < list.items.length;
+  // Capture before defineProperty: afterwards, reading selectedIndex goes
+  // through the new getter and yields the not-yet-seeded rawIndex (0).
+  const initialIndex = list.selectedIndex ?? 0;
   Object.defineProperty(list, "selectedIndex", {
     get() {
-      return list[rawIndex] ?? 0;
+      return list[rawIndex];
     },
     set(idx) {
       const items = list.items;
-      const cur = list[rawIndex] ?? 0;
+      const cur = list[rawIndex];
       const clamped = Math.max(0, Math.min(idx, items.length - 1));
       if (!isSep(items[clamped])) {
         list[rawIndex] = clamped;
@@ -61,7 +64,7 @@ export function installSeparatorSkip(list: any): void {
     },
     configurable: true,
   });
-  list[rawIndex] = list.selectedIndex ?? 0;
+  list[rawIndex] = initialIndex;
 }
 /**
  * Build SelectOption[] from raw "provider/model-id" strings.

@@ -174,6 +174,16 @@ describe("installSeparatorSkip", () => {
     expect(list.items[list.selectedIndex].id).toBe("__sep__");
   });
 
+  it("preserves a selection made before installation", () => {
+    const list = makeList([
+      { id: "a", label: "A", currentValue: "" },
+      { id: "b", label: "B", currentValue: "" },
+    ]);
+    list.selectedIndex = 1;
+    installSeparatorSkip(list);
+    expect(list.selectedIndex).toBe(1);
+  });
+
   it("is a no-op when items is not an array", () => {
     const list = { selectedIndex: 0 };
     expect(() => installSeparatorSkip(list)).not.toThrow();
