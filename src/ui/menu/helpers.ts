@@ -1,8 +1,8 @@
 /**
  * helpers.ts — Shared helpers for menu modules:
  * theme builders for SettingsList/SelectList, numeric validation,
- * model-option building, a swappable delegating component, and a
- * searchable pick-list submenu factory.
+ * model-option building, separator-skip installation, a swappable
+ * delegating component, and a searchable pick-list submenu factory.
  */
 import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "../types.js";
@@ -19,13 +19,12 @@ export const SEPARATOR_ID = "__sep__";
  * Install separator-skip on a SelectList/SettingsList instance so navigation
  * never leaves the cursor on a SEPARATOR_ID row.
  *
- * Overrides `selectedIndex` with a get/set pair (symbol-backed storage). The
- * pi-tui library stores selectedIndex as a plain own property and writes it
- * directly on up/down (with wrap-around), so every navigation write flows
- * through the setter. On a separator write it searches in the travel
- * direction first, falls back to the opposite direction, and stays put if
- * everything is a separator. The list's own items array is used for the
- * search; neither caller filters items, so items and filteredItems coincide.
+ * pi-tui stores selectedIndex as a plain own property and writes it directly
+ * on up/down (with wrap-around), so overriding it with a symbol-backed
+ * get/set pair intercepts every navigation write. On a separator write the
+ * setter searches in the travel direction first, falls back to the opposite
+ * direction, and stays put if everything is a separator. The search uses
+ * list.items; no caller filters items, so it matches filteredItems.
  */
 export function installSeparatorSkip(list: any): void {
   if (!Array.isArray(list.items)) return;

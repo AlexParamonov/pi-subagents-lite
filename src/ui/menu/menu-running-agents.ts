@@ -284,8 +284,8 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
     };
 
     const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
-    // Skip __sep__ rows on navigation, same as wrapped menus: the cursor
-    // jumps from the last agent straight to the first bulk action row.
+    // SelectList does not skip __sep__ rows itself; install the same skip
+    // mechanism the wrapped menus use.
     installSeparatorSkip(agentList);
 
     const delegator = createDelegatingComponent(agentList);
