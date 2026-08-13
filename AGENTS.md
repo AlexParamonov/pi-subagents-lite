@@ -6,3 +6,6 @@
 **Format:** `npm run format` (prettier) / `npm run format:check`
 
 **Before committing:** run typecheck, tests, and format:check.
+
+## Pi
+Pi source code in ../pi
