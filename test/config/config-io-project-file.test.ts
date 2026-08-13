@@ -353,75 +353,75 @@ describe("ConfigStore with project IO", () => {
     store.mutate.agent.setGraceTurns(11);
     expect(readProjectFile()).toEqual({ agent: { graceTurns: 11 } });
   });
-});
-it("persists removing a global-origin provider across reload", () => {
-  writeGlobal({ concurrency: { providers: { llamacpp: 1 } } });
-  writeProject({});
-  const store = new ConfigStore(createConfigIO(projectDir));
-  expect(store.concurrency.providers).toEqual({ llamacpp: 1 });
+  it("persists removing a global-origin provider across reload", () => {
+    writeGlobal({ concurrency: { providers: { llamacpp: 1 } } });
+    writeProject({});
+    const store = new ConfigStore(createConfigIO(projectDir));
+    expect(store.concurrency.providers).toEqual({ llamacpp: 1 });
 
-  store.mutate.concurrency.removeProvider("llamacpp");
+    store.mutate.concurrency.removeProvider("llamacpp");
 
-  expect(readProjectFile()).toEqual({ concurrency: { providers: { llamacpp: null } } });
-  expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).concurrency.providers).toEqual({ llamacpp: 1 });
-  store.reload();
-  expect(store.concurrency.providers).toEqual({});
-});
-
-it("persists removing a global-origin model across reload", () => {
-  writeGlobal({ concurrency: { models: { "g/openai/gpt-4o": 2 } } });
-  writeProject({});
-  const store = new ConfigStore(createConfigIO(projectDir));
-
-  store.mutate.concurrency.removeModel("g/openai/gpt-4o");
-
-  expect(readProjectFile()).toEqual({ concurrency: { models: { "g/openai/gpt-4o": null } } });
-  store.reload();
-  expect(store.concurrency.models).toEqual({});
-});
-
-it("persists resetting concurrency across reload, tombstoning global-origin limits", () => {
-  writeGlobal({ concurrency: { default: 2, providers: { llamacpp: 1 }, models: { m1: 3 } } });
-  writeProject({});
-  const store = new ConfigStore(createConfigIO(projectDir));
-
-  store.mutate.concurrency.reset();
-
-  expect(readProjectFile()).toEqual({
-    concurrency: { default: 4, providers: { llamacpp: null }, models: { m1: null } },
+    expect(readProjectFile()).toEqual({ concurrency: { providers: { llamacpp: null } } });
+    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).concurrency.providers).toEqual({ llamacpp: 1 });
+    store.reload();
+    expect(store.concurrency.providers).toEqual({});
   });
-  store.reload();
-  expect(store.concurrency.default).toBe(4);
-  expect(store.concurrency.providers).toEqual({});
-  expect(store.concurrency.models).toEqual({});
-});
 
-it("persists clearing a global-origin per-type model override across reload", () => {
-  writeGlobal({ agent: { Explore: "g/explore", general: "g/general" } });
-  writeProject({});
-  const store = new ConfigStore(createConfigIO(projectDir));
+  it("persists removing a global-origin model across reload", () => {
+    writeGlobal({ concurrency: { models: { "g/openai/gpt-4o": 2 } } });
+    writeProject({});
+    const store = new ConfigStore(createConfigIO(projectDir));
 
-  store.mutate.agent.clearModelOverride("Explore");
+    store.mutate.concurrency.removeModel("g/openai/gpt-4o");
 
-  expect(readProjectFile()).toEqual({ agent: { Explore: null } });
-  store.reload();
-  expect(store.agentConfigSnapshot().Explore).toBeUndefined();
-  // The global-only override survives; the cleared one does not resurrect.
-  expect(store.agentConfigSnapshot().general).toBe("g/general");
-});
+    expect(readProjectFile()).toEqual({ concurrency: { models: { "g/openai/gpt-4o": null } } });
+    store.reload();
+    expect(store.concurrency.models).toEqual({});
+  });
 
-it("persists clearing global-origin spawn defaults across reload", () => {
-  writeGlobal({ agent: { defaultThinking: "high", defaultMaxTurns: 5 } });
-  writeProject({});
-  const store = new ConfigStore(createConfigIO(projectDir));
-  expect(store.agent.defaultThinking).toBe("high");
-  expect(store.agent.defaultMaxTurns).toBe(5);
+  it("persists resetting concurrency across reload, tombstoning global-origin limits", () => {
+    writeGlobal({ concurrency: { default: 2, providers: { llamacpp: 1 }, models: { m1: 3 } } });
+    writeProject({});
+    const store = new ConfigStore(createConfigIO(projectDir));
 
-  store.mutate.agent.setDefaultThinking(undefined);
-  store.mutate.agent.setDefaultMaxTurns(undefined);
+    store.mutate.concurrency.reset();
 
-  expect(readProjectFile()).toEqual({ agent: { defaultThinking: null, defaultMaxTurns: null } });
-  store.reload();
-  expect(store.agent.defaultThinking).toBeUndefined();
-  expect(store.agent.defaultMaxTurns).toBeUndefined();
+    expect(readProjectFile()).toEqual({
+      concurrency: { default: 4, providers: { llamacpp: null }, models: { m1: null } },
+    });
+    store.reload();
+    expect(store.concurrency.default).toBe(4);
+    expect(store.concurrency.providers).toEqual({});
+    expect(store.concurrency.models).toEqual({});
+  });
+
+  it("persists clearing a global-origin per-type model override across reload", () => {
+    writeGlobal({ agent: { Explore: "g/explore", general: "g/general" } });
+    writeProject({});
+    const store = new ConfigStore(createConfigIO(projectDir));
+
+    store.mutate.agent.clearModelOverride("Explore");
+
+    expect(readProjectFile()).toEqual({ agent: { Explore: null } });
+    store.reload();
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+    // The global-only override survives; the cleared one does not resurrect.
+    expect(store.agentConfigSnapshot().general).toBe("g/general");
+  });
+
+  it("persists clearing global-origin spawn defaults across reload", () => {
+    writeGlobal({ agent: { defaultThinking: "high", defaultMaxTurns: 5 } });
+    writeProject({});
+    const store = new ConfigStore(createConfigIO(projectDir));
+    expect(store.agent.defaultThinking).toBe("high");
+    expect(store.agent.defaultMaxTurns).toBe(5);
+
+    store.mutate.agent.setDefaultThinking(undefined);
+    store.mutate.agent.setDefaultMaxTurns(undefined);
+
+    expect(readProjectFile()).toEqual({ agent: { defaultThinking: null, defaultMaxTurns: null } });
+    store.reload();
+    expect(store.agent.defaultThinking).toBeUndefined();
+    expect(store.agent.defaultMaxTurns).toBeUndefined();
+  });
 });
