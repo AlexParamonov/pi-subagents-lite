@@ -73,7 +73,7 @@ export interface ConfigIO {
 }
 
 /** The file in use at load: its raw contents and the path saves go to. */
-interface LoadedFiles {
+interface LoadedFile {
   raw: SubagentsConfig;
   path: string;
 }
@@ -85,14 +85,16 @@ interface LoadedFiles {
  * wholly.
  */
 export function createConfigIO(projectDir?: string): ConfigIO {
-  let files: LoadedFiles | null = null;
+  let loadedFile: LoadedFile | null = null;
   return {
     load: () => {
-      files = loadFiles(projectDir);
-      return mergeDefaults(files.raw);
+      loadedFile = loadFileInUse(projectDir);
+      return mergeDefaults(loadedFile.raw);
     },
     save: (config) => {
-      writeJsonAtomic(files?.path ?? CONFIG_PATH, config);
+      // Before load there is no resolved file; ConfigStore always loads in its
+      // constructor, so this only guards direct callers. Global is the fallback.
+      writeJsonAtomic(loadedFile?.path ?? CONFIG_PATH, config);
     },
   };
 }
@@ -115,7 +117,7 @@ export function saveConfigAtomic(config: SubagentsConfig): void {
  * Pick the file in use: the project file when a valid one exists, else the
  * global file. A malformed project file is ignored with a warning.
  */
-function loadFiles(projectDir?: string): LoadedFiles {
+function loadFileInUse(projectDir?: string): LoadedFile {
   if (projectDir) {
     const projectPath = path.join(projectDir, CONFIG_FILE_NAME);
     const raw = readProjectRaw(projectPath);
