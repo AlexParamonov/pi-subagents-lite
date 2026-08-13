@@ -206,12 +206,8 @@ function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
 
 /**
  * Compute the project-file content that reproduces the merged config when
- * merged over the global file: keys the project file already sets (updated to
- * the merged value) plus keys whose merged value differs from the global file.
- * A key deleted from the merged config that the global file defines is written
- * as a null tombstone (null project entries mean "removed" at load), so
- * removals outlive the reload. Defaults and global-only keys are never copied,
- * so the project file stays a small hand-editable diff.
+ * merged over the global file. Defaults and global-only keys are never
+ * copied, so the project file stays a small hand-editable diff.
  */
 function diffProjectContent(
   merged: SubagentsConfig,
@@ -220,30 +216,11 @@ function diffProjectContent(
 ): Record<string, unknown> {
   const mergedGlobal = mergeDefaults(globalRaw);
   const content: Record<string, unknown> = {};
-  const agent = diffAgent(merged.agent, projectRaw.agent ?? {}, mergedGlobal.agent);
+  const agent = diffRecord(merged.agent, projectRaw.agent, mergedGlobal.agent);
   if (Object.keys(agent).length > 0) content.agent = agent;
   const concurrency = diffConcurrency(merged.concurrency, projectRaw.concurrency ?? {}, mergedGlobal.concurrency);
   if (Object.keys(concurrency).length > 0) content.concurrency = concurrency;
   return content;
-}
-
-function diffAgent(
-  merged: SubagentsConfig["agent"],
-  project: SubagentsConfig["agent"],
-  global: SubagentsConfig["agent"],
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const key of new Set([...Object.keys(project), ...Object.keys(merged), ...Object.keys(global)])) {
-    const value = merged[key];
-    if (value === undefined) {
-      // Deleted from the merged config: tombstone keys the global file defines
-      // so the removal outlives the reload; drop keys only the project had.
-      if (global[key] !== undefined) result[key] = null;
-      continue;
-    }
-    if (value !== global[key]) result[key] = value;
-  }
-  return result;
 }
 
 function diffConcurrency(
@@ -253,20 +230,27 @@ function diffConcurrency(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   if (merged.default !== global.default) result.default = merged.default;
-  const providers = diffMap(merged.providers, project.providers, global.providers);
+  const providers = diffRecord(merged.providers, project.providers, global.providers);
   if (Object.keys(providers).length > 0) result.providers = providers;
-  const models = diffMap(merged.models, project.models, global.models);
+  const models = diffRecord(merged.models, project.models, global.models);
   if (Object.keys(models).length > 0) result.models = models;
   return result;
 }
 
-/** Per-key diff for a nested string→number map (concurrency providers/models). */
-function diffMap(
-  merged: Record<string, number> | undefined,
-  project: Record<string, number> | undefined,
-  global: Record<string, number> | undefined,
-): Record<string, number | null> {
-  const result: Record<string, number | null> = {};
+/**
+ * Per-key diff of a merged record against the global one, for writing back to
+ * the project file: keys the project file already sets (updated to the merged
+ * value) plus keys whose merged value differs from the global file. A key
+ * deleted from the merged config that the global file defines is written as a
+ * null tombstone (null project entries mean "removed" at load), so removals
+ * outlive the reload; keys only the project had are dropped.
+ */
+function diffRecord<T>(
+  merged: Record<string, T> | undefined,
+  project: Record<string, T> | undefined,
+  global: Record<string, T> | undefined,
+): Record<string, T | null> {
+  const result: Record<string, T | null> = {};
   for (const key of new Set([
     ...Object.keys(project ?? {}),
     ...Object.keys(merged ?? {}),
@@ -274,9 +258,8 @@ function diffMap(
   ])) {
     const value = merged?.[key];
     if (value === undefined) {
-      // Deleted from the merged config: tombstone entries the global file
-      // defines so the removal outlives the reload; drop entries only the
-      // project had.
+      // Deleted from the merged config: tombstone keys the global file defines
+      // so the removal outlives the reload; drop keys only the project had.
       if (global?.[key] !== undefined) result[key] = null;
       continue;
     }
