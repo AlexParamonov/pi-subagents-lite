@@ -22,8 +22,10 @@ is dropped from the project file when only the project defined it, and written
 as a `null` tombstone when the global file defines it, so removals outlive the
 reload. At load, `null` project entries mean "removed" and delete the global
 entry (`mergeAgent`/`mergeMap`), except `agent.default`, where `null` means
-"inherit parent" and is a real value. The raw files are captured at load and
-diffed against, so a save reproduces the in-memory session config exactly.
+"inherit parent" and is a real value, and `concurrency.default`, where
+`null` falls back to the global file's value (or the built-in default). The
+raw files are captured at load and diffed against, so a save reproduces the
+in-memory session config exactly.
 
 The tombstone mechanism exists because a plain diff cannot express a
 deletion: a key absent from both layers is indistinguishable from one never

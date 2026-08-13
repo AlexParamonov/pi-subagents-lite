@@ -132,6 +132,23 @@ describe("createConfigIO load — project over global per field", () => {
     expect(config.agent.default).toBeNull();
   });
 
+  it("treats concurrency.default: null in the project file as inherit-global", () => {
+    writeGlobal({ concurrency: { default: 2 } });
+    writeProject({ concurrency: { default: null } });
+
+    const config = createConfigIO(projectDir).load();
+
+    expect(config.concurrency.default).toBe(2);
+  });
+
+  it("falls back to the built-in default when concurrency.default is null everywhere", () => {
+    writeProject({ concurrency: { default: null } });
+
+    const config = createConfigIO(projectDir).load();
+
+    expect(config.concurrency.default).toBe(4);
+  });
+
   it("matches the global-only load byte-for-byte when no project file exists", () => {
     writeGlobal({ agent: { graceTurns: 5 }, concurrency: { default: 2 } });
 
