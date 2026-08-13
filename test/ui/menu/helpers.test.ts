@@ -3,7 +3,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { validateNumeric, buildSettingsListTheme, buildSelectListTheme } from "../../../src/ui/menu/helpers.js";
+import {
+  installSeparatorSkip,
+  validateNumeric,
+  buildSettingsListTheme,
+  buildSelectListTheme,
+} from "../../../src/ui/menu/helpers.js";
 
 const mockTheme = {
   fg: (color: string, text: string) => `[${color}:${text}]`,
@@ -106,5 +111,71 @@ describe("buildSelectListTheme", () => {
     const settingsTheme = buildSettingsListTheme(mockTheme);
     const selectTheme = buildSelectListTheme(mockTheme);
     expect(selectTheme.selectedPrefix("item")).toBe(settingsTheme.cursor);
+  });
+});
+
+describe("installSeparatorSkip", () => {
+  function makeList(items: any[]) {
+    return { items, selectedIndex: 0 };
+  }
+
+  it("skips a __sep__ row when moving down onto it (SettingsList items use id)", () => {
+    const list = makeList([
+      { id: "a", label: "A", currentValue: "" },
+      { id: "__sep__", label: " ", currentValue: "" },
+      { id: "b", label: "B", currentValue: "" },
+    ]);
+    installSeparatorSkip(list);
+    list.selectedIndex = 1; // library write for down from "a"
+    expect(list.items[list.selectedIndex].id).toBe("b");
+  });
+
+  it("skips a __sep__ row when moving up onto it (SelectList items use value)", () => {
+    const list = makeList([
+      { value: "a", label: "A" },
+      { value: "__sep__", label: " " },
+      { value: "b", label: "B" },
+    ]);
+    installSeparatorSkip(list);
+    list.selectedIndex = 2;
+    list.selectedIndex = 1; // library write for up from "b"
+    expect(list.items[list.selectedIndex].value).toBe("a");
+  });
+
+  it("falls back to the opposite direction when the travel direction hits a trailing separator", () => {
+    const list = makeList([
+      { id: "a", label: "A", currentValue: "" },
+      { id: "b", label: "B", currentValue: "" },
+      { id: "__sep__", label: " ", currentValue: "" },
+    ]);
+    installSeparatorSkip(list);
+    list.selectedIndex = 5; // out-of-range write, clamped to the trailing sep
+    expect(list.items[list.selectedIndex].id).toBe("b");
+  });
+
+  it("falls forward past a leading separator when wrap-around writes 0", () => {
+    const list = makeList([
+      { id: "__sep__", label: " ", currentValue: "" },
+      { id: "a", label: "A", currentValue: "" },
+      { id: "b", label: "B", currentValue: "" },
+    ]);
+    installSeparatorSkip(list);
+    list.selectedIndex = 0; // library write for down from the last item
+    expect(list.items[list.selectedIndex].id).toBe("a");
+  });
+
+  it("stays put when every item is a separator", () => {
+    const list = makeList([
+      { id: "__sep__", label: " ", currentValue: "" },
+      { id: "__sep__", label: " ", currentValue: "" },
+    ]);
+    installSeparatorSkip(list);
+    list.selectedIndex = 1;
+    expect(list.items[list.selectedIndex].id).toBe("__sep__");
+  });
+
+  it("is a no-op when items is not an array", () => {
+    const list = { selectedIndex: 0 };
+    expect(() => installSeparatorSkip(list)).not.toThrow();
   });
 });

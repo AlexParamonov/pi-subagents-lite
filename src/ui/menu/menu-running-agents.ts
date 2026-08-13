@@ -28,7 +28,7 @@ import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
 import { getDisplayName } from "../format.js";
-import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
 
@@ -284,6 +284,10 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
     };
 
     const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
+    // Skip __sep__ rows on navigation, same as wrapped menus: the cursor
+    // jumps from the last agent straight to the first bulk action row.
+    installSeparatorSkip(agentList);
+
     const delegator = createDelegatingComponent(agentList);
 
     agentList.onSelect = async (item) => {

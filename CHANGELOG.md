@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Running Agents menu skips separator rows.**
+  Up/down navigation no longer lands on the blank separator rows between the agent list and the bulk actions; the cursor jumps from the last agent straight to the first bulk action row. The separator-skip mechanism is now a shared helper used by both the settings-menu wrapper and the Running Agents menu.
 - **`outputThinkingBufferSize` read live from config.** Value is now read from the config store at runtime instead of being captured at startup.
 - **`defaultMaxTurns` fallback in tool execution path.** Prevents failures when max turns is not explicitly set.
 - **Stale concurrency slots cleaned up.** Removing a concurrency limit from config now frees the orphaned slots in-session.

@@ -11,9 +11,58 @@ import { parseModelKey } from "../../utils.js";
 
 /**
  * Item id that marks a separator/section-header row in SettingsList/SelectList
- * item arrays. Menus push these; the SettingsListWrapper skips them.
+ * item arrays. Menus push these; the separator-skip mechanism (installSeparatorSkip)
+ * keeps the cursor from landing on them.
  */
 export const SEPARATOR_ID = "__sep__";
+/**
+ * Install separator-skip on a SelectList/SettingsList instance so navigation
+ * never leaves the cursor on a SEPARATOR_ID row.
+ *
+ * Overrides `selectedIndex` with a get/set pair (symbol-backed storage). The
+ * pi-tui library stores selectedIndex as a plain own property and writes it
+ * directly on up/down (with wrap-around), so every navigation write flows
+ * through the setter. On a separator write it searches in the travel
+ * direction first, falls back to the opposite direction, and stays put if
+ * everything is a separator. The list's own items array is used for the
+ * search; neither caller filters items, so items and filteredItems coincide.
+ */
+export function installSeparatorSkip(list: any): void {
+  if (!Array.isArray(list.items)) return;
+  const _rawIndex = Symbol("rawIndex");
+  const isSep = (item: any) => item?.value === SEPARATOR_ID || item?.id === SEPARATOR_ID;
+  // Starting just past `start`, walk in `step` direction and return the
+  // first non-separator index (or an out-of-bounds sentinel if none).
+  const firstNonSepFrom = (start: number, step: number): number => {
+    let next = start + step;
+    while (next >= 0 && next < list.items.length && isSep(list.items[next])) next += step;
+    return next;
+  };
+  const inBounds = (i: number) => i >= 0 && i < list.items.length;
+  Object.defineProperty(list, "selectedIndex", {
+    get() {
+      return list[_rawIndex] ?? 0;
+    },
+    set(idx) {
+      const items = list.items;
+      const cur = list[_rawIndex] ?? 0;
+      const clamped = Math.max(0, Math.min(idx, items.length - 1));
+      if (!isSep(items[clamped])) {
+        list[_rawIndex] = clamped;
+        return;
+      }
+      // Landed on a separator: search in the travel direction first,
+      // fall back to the opposite direction so the cursor always ends on
+      // a real item (or stays put if everything is a separator).
+      const step = idx > cur ? 1 : -1;
+      const fwd = firstNonSepFrom(clamped, step);
+      const back = firstNonSepFrom(clamped, -step);
+      list[_rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
+    },
+    configurable: true,
+  });
+  list[_rawIndex] = list.selectedIndex ?? 0;
+}
 /**
  * Build SelectOption[] from raw "provider/model-id" strings.
  * Includes "(inherits parent)" as the first option.
