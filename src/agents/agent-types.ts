@@ -106,22 +106,43 @@ export async function discoverNewAgents(
   return count;
 }
 
-/** Resolve a type name case-insensitively. Also matches displayName. Returns the canonical key or undefined. */
-export function resolveType(name: string): string | undefined {
-  if (!name) return undefined;
-  if (agents.has(name)) return name;
+/**
+ * Result of resolving a type name against the registry.
+ *
+ * - exact: the requested name is a registered name, byte for byte.
+ * - ci: a single registered name matches case-insensitively; key is the canonical name.
+ * - ambiguous: two or more registered names differ only by case; candidates in
+ *   registry order. Never a silent pick (US-2).
+ * - not-found: no registered name matches, even after case folding.
+ *
+ * Registered names are the only resolution surface: displayName is display-only
+ * (no synonym matching, per the case-folding-only constraint). Hidden agents
+ * participate like any registered type (they can still be called by name).
+ */
+export type TypeResolution =
+  | { kind: "exact"; key: string }
+  | { kind: "ci"; key: string }
+  | { kind: "ambiguous"; candidates: string[] }
+  | { kind: "not-found" };
+
+/** Resolve a type name: exact match wins, then a single case-insensitive match; otherwise ambiguous or not-found. */
+export function resolveType(name: string): TypeResolution {
+  if (!name) return { kind: "not-found" };
+  if (agents.has(name)) return { kind: "exact", key: name };
   const lower = name.toLowerCase();
-  for (const [key, config] of agents.entries()) {
-    if (key.toLowerCase() === lower) return key;
-    if ((config.displayName ?? "").toLowerCase() === lower) return key;
+  const candidates: string[] = [];
+  for (const key of agents.keys()) {
+    if (key.toLowerCase() === lower) candidates.push(key);
   }
-  return undefined;
+  if (candidates.length === 1) return { kind: "ci", key: candidates[0] };
+  if (candidates.length > 1) return { kind: "ambiguous", candidates };
+  return { kind: "not-found" };
 }
 
 /** Get the agent config for a type (case-insensitive). */
 export function getAgentConfig(name: string): AgentConfig | undefined {
-  const key = resolveType(name);
-  return key ? agents.get(key) : undefined;
+  const resolution = resolveType(name);
+  return resolution.kind === "exact" || resolution.kind === "ci" ? agents.get(resolution.key) : undefined;
 }
 
 /** Get all visible type names (for spawning and tool descriptions). */
@@ -325,8 +346,8 @@ function applyGlobalDefaults(
 
 /** Find the first non-hidden config: resolved type, then general-purpose, then undefined. */
 function findActiveConfig(type: string): AgentConfig | undefined {
-  const key = resolveType(type);
-  const config = key ? agents.get(key) : undefined;
+  const resolution = resolveType(type);
+  const config = resolution.kind === "exact" || resolution.kind === "ci" ? agents.get(resolution.key) : undefined;
   if (config?.hidden !== true) return config;
   return agents.get("general-purpose");
 }

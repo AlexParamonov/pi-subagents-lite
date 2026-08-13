@@ -109,7 +109,7 @@ vi.mock("../src/agents/agent-types.js", () => ({
   getAgentConfig: vi.fn(),
   getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
   getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
-  resolveType: vi.fn((name: string) => name),
+  resolveType: vi.fn((name: string) => ({ kind: "exact", key: name })),
   discoverNewAgents: vi.fn(async () => 0),
 }));
 

@@ -272,7 +272,9 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
             if (currentWorktreePath) {
               await discoverNewAgents(`${currentWorktreePath}/.pi/agents`);
             }
-            const resolvedType = resolveType(selectedType) ?? selectedType;
+            const resolution = resolveType(selectedType);
+            const resolvedType =
+              resolution.kind === "exact" || resolution.kind === "ci" ? resolution.key : selectedType;
 
             const widget = getWidget();
             if (widget) {

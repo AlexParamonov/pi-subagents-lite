@@ -162,18 +162,25 @@ export async function executeAgentTool(
   const projectTrusted = resolved.projectTrusted;
 
   const type = (params.agent as string) || "general-purpose";
-  let resolvedType = resolveType(type);
-  if (!resolvedType) {
+  let resolution = resolveType(type);
+  if (resolution.kind === "not-found") {
     // Not found in registry — try scanning filesystem for agents added during the session.
     // When worktree_path is set, also scan the target's .pi/agents/ directory — unless
     // the target is an untrusted cross-repo project (its agent types stay hidden).
     const targetAgentsDir = projectTrusted && validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
     await discoverNewAgents(targetAgentsDir);
-    resolvedType = resolveType(type);
+    resolution = resolveType(type);
   }
-  if (!resolvedType) {
+  if (resolution.kind === "ambiguous") {
+    // Two or more registered types differ only by case — never a silent pick.
+    return errorResult(
+      `Ambiguous agent type: ${type}. Candidates: ${resolution.candidates.join(", ")}. Use the exact registered name.`,
+    );
+  }
+  if (resolution.kind === "not-found") {
     return errorResult(`Unknown agent type: ${type}`);
   }
+  const resolvedType = resolution.key;
 
   const prompt = params.prompt as string;
   const description =
