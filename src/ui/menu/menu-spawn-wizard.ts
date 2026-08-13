@@ -13,7 +13,7 @@ import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-t
 import { getSupportedThinkingLevels, clampThinkingLevel } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
-import { getAgentConfig, getAvailableTypes, resolveType, discoverNewAgents } from "../../agents/agent-types.js";
+import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
 import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
@@ -272,7 +272,6 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
             if (currentWorktreePath) {
               await discoverNewAgents(`${currentWorktreePath}/.pi/agents`);
             }
-            const resolvedType = resolveType(selectedType) ?? selectedType;
 
             const widget = getWidget();
             if (widget) {
@@ -283,7 +282,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
             const coordinator = getCoordinator()!;
             try {
               await coordinator.spawn(getPiInstance(), session!, {
-                type: resolvedType,
+                type: selectedType,
                 prompt: spawnPrompt,
                 description,
                 model,

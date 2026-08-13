@@ -35,7 +35,7 @@ const {
   mockGetRecord: vi.fn(),
   mockDiscoverNewAgents: vi.fn(),
   mockResolveSubagentTrust: vi.fn(),
-  mockResolveType: vi.fn((type: string) => type),
+  mockResolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
   mockStoreState: { forceBackground: false },
 }));
 
@@ -387,7 +387,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     // mockReset clears once-queues leaked by earlier tests in this describe;
     // re-establish the base identity implementation.
     mockResolveType.mockReset();
-    mockResolveType.mockImplementation((t: string) => t);
+    mockResolveType.mockImplementation((t: string) => ({ kind: "resolved", key: t }));
     ctx = fakeCtx();
     mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
@@ -413,9 +413,9 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       label: "feature",
     });
 
-    // First resolveType call returns undefined (type not known)
-    mockResolveType.mockReturnValueOnce(undefined); // first call — not found
-    mockResolveType.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    // First resolveType call returns not-found (type not known)
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" }); // first call — not found
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "feature-reviewer" }); // after discovery — found
 
     await executeAgentTool(
       "tc-disc",
@@ -431,15 +431,106 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
   });
 
   it("calls discoverNewAgents without worktree dir when type is not known and worktree_path omitted", async () => {
-    // First resolveType call returns undefined (type not known)
-    mockResolveType.mockReturnValueOnce(undefined); // first call — not found
-    mockResolveType.mockReturnValueOnce("feature-reviewer"); // after discovery — found
+    // First resolveType call returns not-found (type not known)
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" }); // first call — not found
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "feature-reviewer" }); // after discovery — found
 
     await executeAgentTool("tc-disc-no-wt", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx);
 
     // Should have called discoverNewAgents WITHOUT a worktree dir
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("executeAgentTool — case-insensitive type resolution", () => {
+  let ctx: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveType.mockReset();
+    mockResolveType.mockImplementation((t: string) => ({ kind: "resolved", key: t }));
+    ctx = fakeCtx();
+    mockResolveSubagentTrust.mockReturnValue(true);
+    mockGetRecord.mockReturnValue({
+      id: "agent-id-ci",
+      result: "Agent completed successfully",
+      display: { type: "Explore", description: "Test agent" },
+      lifecycle: { status: "completed", startedAt: Date.now() - 1000, completedAt: Date.now() },
+      execution: { promise: Promise.resolve("Agent completed successfully") },
+      stats: {
+        lifetimeUsage: { input: 100, output: 50, cacheWrite: 0, cost: 0.01 },
+        toolUses: 3,
+        turnCount: 2,
+        compactionCount: 0,
+      },
+    });
+  });
+
+  it("spawns with the canonical registered name for a case-insensitive match", async () => {
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "Explore" });
+
+    const result = await executeAgentTool("tc-ci", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx);
+
+    expect(result.isError).toBeUndefined();
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockSpawn.mock.calls[0][2]).toBe("Explore");
+  });
+
+  it("returns an error naming both candidates for an ambiguous type and spawns nothing", async () => {
+    mockResolveType.mockReturnValueOnce({ kind: "ambiguous", candidates: ["Explore", "explore"] });
+
+    const result = await executeAgentTool("tc-amb", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Ambiguous agent type: EXPLORE");
+    expect(result.content[0].text).toContain("Explore");
+    expect(result.content[0].text).toContain("explore");
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger a filesystem re-scan when the initial resolution is ambiguous", async () => {
+    mockResolveType.mockReturnValueOnce({ kind: "ambiguous", candidates: ["Explore", "explore"] });
+
+    await executeAgentTool("tc-amb-2", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx);
+
+    expect(mockDiscoverNewAgents).not.toHaveBeenCalled();
+  });
+
+  it("resolves case-insensitively against agents discovered from the worktree", async () => {
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/wt/feature",
+      worktreeRoot: "/wt/feature",
+      label: "feature",
+    });
+    // Not known before discovery, then a worktree agent matches case-insensitively
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "Wt-Agent" });
+
+    await executeAgentTool(
+      "tc-wt-ci",
+      makeParams({ agent: "wt-agent", worktree_path: "/wt/feature" }),
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/wt/feature/.pi/agents");
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockSpawn.mock.calls[0][2]).toBe("Wt-Agent");
+  });
+
+  it("returns the existing unknown-type error for unresolvable types", async () => {
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" });
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" });
+    mockDiscoverNewAgents.mockResolvedValue(0);
+
+    const result = await executeAgentTool("tc-unknown", makeParams({ agent: "nope" }), undefined, undefined, ctx);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe("Unknown agent type: nope");
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 });
 describe("executeAgentTool — cross-repo trust gate", () => {
@@ -490,8 +581,8 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     crossRepoValidation(false);
     mockResolveSubagentTrust.mockReturnValue(false);
     // Force the on-demand discovery path so the .pi/agents skip is observable
-    mockResolveType.mockReturnValueOnce(undefined);
-    mockResolveType.mockReturnValueOnce("general-purpose");
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "general-purpose" });
 
     await executeAgentTool("tc-tr-2", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
 
@@ -507,8 +598,8 @@ describe("executeAgentTool — cross-repo trust gate", () => {
   it("does not warn and spawns trusted for a trusted cross-repo target", async () => {
     crossRepoValidation(false);
     mockResolveSubagentTrust.mockReturnValue(true);
-    mockResolveType.mockReturnValueOnce(undefined);
-    mockResolveType.mockReturnValueOnce("general-purpose");
+    mockResolveType.mockReturnValueOnce({ kind: "not-found" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "general-purpose" });
 
     await executeAgentTool("tc-tr-3", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
 
