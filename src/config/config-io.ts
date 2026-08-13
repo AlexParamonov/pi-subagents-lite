@@ -15,8 +15,10 @@ import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { SubagentsConfig } from "../models/model-precedence.js";
 
+/** File name of the config in both the global agent dir and a project's .pi dir. */
+const CONFIG_FILE_NAME = "subagents-lite.json";
 const CONFIG_DIR = getAgentDir();
-const CONFIG_PATH = path.join(CONFIG_DIR, "subagents-lite.json");
+const CONFIG_PATH = path.join(CONFIG_DIR, CONFIG_FILE_NAME);
 /** Path to custom prompt file for subagent system prompts. */
 export const CUSTOM_PROMPT_PATH = path.join(CONFIG_DIR, "subagents-lite-prompt.md");
 /** Default number of grace turns before an agent is force-stopped. */
@@ -117,7 +119,7 @@ export function saveConfigAtomic(config: SubagentsConfig): void {
 function loadFiles(projectDir?: string): LoadedFiles {
   const globalRaw = readGlobalRaw();
   if (!projectDir) return { globalRaw, project: null };
-  const projectPath = path.join(projectDir, "subagents-lite.json");
+  const projectPath = path.join(projectDir, CONFIG_FILE_NAME);
   const raw = readProjectRaw(projectPath);
   return { globalRaw, project: raw ? { path: projectPath, raw } : null };
 }
