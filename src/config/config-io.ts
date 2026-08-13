@@ -74,8 +74,7 @@ export interface ConfigIO {
 interface LoadedFiles {
   globalRaw: SubagentsConfig;
   /** null when the project file is absent or malformed (then saves go global). */
-  projectRaw: SubagentsConfig | null;
-  projectPath: string | null;
+  project: { path: string; raw: SubagentsConfig } | null;
 }
 
 /**
@@ -89,11 +88,11 @@ export function createConfigIO(projectDir?: string): ConfigIO {
   return {
     load: () => {
       files = loadFiles(projectDir);
-      return mergeDefaults(mergeRawFiles(files.globalRaw, files.projectRaw));
+      return mergeDefaults(mergeRawFiles(files.globalRaw, files.project?.raw ?? null));
     },
     save: (config) => {
-      if (files?.projectPath && files.projectRaw) {
-        writeJsonAtomic(files.projectPath, diffProjectContent(config, files.globalRaw, files.projectRaw));
+      if (files?.project) {
+        writeJsonAtomic(files.project.path, diffProjectContent(config, files.globalRaw, files.project.raw));
       } else {
         saveConfigAtomic(config);
       }
@@ -117,10 +116,10 @@ export function saveConfigAtomic(config: SubagentsConfig): void {
 
 function loadFiles(projectDir?: string): LoadedFiles {
   const globalRaw = readGlobalRaw();
-  if (!projectDir) return { globalRaw, projectRaw: null, projectPath: null };
+  if (!projectDir) return { globalRaw, project: null };
   const projectPath = path.join(projectDir, "subagents-lite.json");
-  const projectRaw = readProjectRaw(projectPath);
-  return { globalRaw, projectRaw, projectPath: projectRaw ? projectPath : null };
+  const raw = readProjectRaw(projectPath);
+  return { globalRaw, project: raw ? { path: projectPath, raw } : null };
 }
 
 /** Read the global file; any failure (missing, malformed) reads as {} — as today. */
