@@ -143,15 +143,45 @@ function readProjectRaw(projectPath: string): SubagentsConfig | null {
   }
 }
 
+/**
+ * Merge the project agent object over the global one. A null project value
+ * means the key is removed (overrides the global entry with nothing) — except
+ * `default`, where null means "inherit parent" and stays a real value.
+ */
+function mergeAgent(global: SubagentsConfig["agent"], project: SubagentsConfig["agent"]): SubagentsConfig["agent"] {
+  const merged = { ...global };
+  for (const [key, value] of Object.entries(project ?? {})) {
+    if (value === null && key !== "default") delete merged[key];
+    else merged[key] = value;
+  }
+  return merged;
+}
+
+/**
+ * Merge a numeric map over the global one. A null project entry means the
+ * entry is removed, overriding the global entry with nothing.
+ */
+function mergeMap(
+  global: Record<string, number> | undefined,
+  project: Record<string, number | null> | undefined,
+): Record<string, number> {
+  const merged = { ...(global ?? {}) };
+  for (const [key, value] of Object.entries(project ?? {})) {
+    if (value === null) delete merged[key];
+    else merged[key] = value;
+  }
+  return merged;
+}
+
 /** Per-field merge of the two raw files: project wins, global fills the rest. */
 function mergeRawFiles(globalRaw: SubagentsConfig, projectRaw: SubagentsConfig | null): SubagentsConfig {
   if (!projectRaw) return globalRaw;
   return {
-    agent: { ...globalRaw.agent, ...projectRaw.agent },
+    agent: mergeAgent(globalRaw.agent, projectRaw.agent),
     concurrency: {
       default: projectRaw.concurrency?.default ?? globalRaw.concurrency?.default ?? 4,
-      providers: { ...(globalRaw.concurrency?.providers ?? {}), ...(projectRaw.concurrency?.providers ?? {}) },
-      models: { ...(globalRaw.concurrency?.models ?? {}), ...(projectRaw.concurrency?.models ?? {}) },
+      providers: mergeMap(globalRaw.concurrency?.providers, projectRaw.concurrency?.providers),
+      models: mergeMap(globalRaw.concurrency?.models, projectRaw.concurrency?.models),
     },
   };
 }
@@ -174,9 +204,11 @@ function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
 /**
  * Compute the project-file content that reproduces the merged config when
  * merged over the global file: keys the project file already sets (updated to
- * the merged value, or dropped when deleted from the merged config) plus keys
- * whose merged value differs from the global file. Defaults and global-only
- * keys are never copied, so the project file stays a small hand-editable diff.
+ * the merged value) plus keys whose merged value differs from the global file.
+ * A key deleted from the merged config that the global file defines is written
+ * as a null tombstone (null project entries mean "removed" at load), so
+ * removals outlive the reload. Defaults and global-only keys are never copied,
+ * so the project file stays a small hand-editable diff.
  */
 function diffProjectContent(
   merged: SubagentsConfig,
@@ -198,9 +230,14 @@ function diffAgent(
   global: SubagentsConfig["agent"],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  for (const key of new Set([...Object.keys(project), ...Object.keys(merged)])) {
+  for (const key of new Set([...Object.keys(project), ...Object.keys(merged), ...Object.keys(global)])) {
     const value = merged[key];
-    if (value === undefined) continue; // deleted from merged — drop from the project file
+    if (value === undefined) {
+      // Deleted from the merged config: tombstone keys the global file defines
+      // so the removal outlives the reload; drop keys only the project had.
+      if (global[key] !== undefined) result[key] = null;
+      continue;
+    }
     if (value !== global[key]) result[key] = value;
   }
   return result;
@@ -210,8 +247,8 @@ function diffConcurrency(
   merged: SubagentsConfig["concurrency"],
   project: Partial<SubagentsConfig["concurrency"]>,
   global: SubagentsConfig["concurrency"],
-): Partial<SubagentsConfig["concurrency"]> {
-  const result: Partial<SubagentsConfig["concurrency"]> = {};
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
   if (merged.default !== global.default) result.default = merged.default;
   const providers = diffMap(merged.providers, project.providers, global.providers);
   if (Object.keys(providers).length > 0) result.providers = providers;
@@ -225,11 +262,21 @@ function diffMap(
   merged: Record<string, number> | undefined,
   project: Record<string, number> | undefined,
   global: Record<string, number> | undefined,
-): Record<string, number> {
-  const result: Record<string, number> = {};
-  for (const key of new Set([...Object.keys(project ?? {}), ...Object.keys(merged ?? {})])) {
+): Record<string, number | null> {
+  const result: Record<string, number | null> = {};
+  for (const key of new Set([
+    ...Object.keys(project ?? {}),
+    ...Object.keys(merged ?? {}),
+    ...Object.keys(global ?? {}),
+  ])) {
     const value = merged?.[key];
-    if (value === undefined) continue; // deleted from merged — drop from the project file
+    if (value === undefined) {
+      // Deleted from the merged config: tombstone entries the global file
+      // defines so the removal outlives the reload; drop entries only the
+      // project had.
+      if (global?.[key] !== undefined) result[key] = null;
+      continue;
+    }
     if (value !== global?.[key]) result[key] = value;
   }
   return result;

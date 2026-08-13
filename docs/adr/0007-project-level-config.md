@@ -11,17 +11,27 @@ before. Three decisions:
 ## 1. Save writes a project-origin diff, not the full merged config
 
 A menu save with a project file present writes only the keys the project file
-already sets (updated to the merged value, or dropped when the key was deleted
-from the merged config) plus keys whose merged value differs from the global
-file. Defaults and global-only keys are never copied. Writing the full merged
-snapshot was rejected: after the first menu change the project file would set
-every field and silently shadow later global-file edits, eroding the "project
-overrides only what it sets" contract the feature exists for. The diff is
-recursive (concurrency `providers`/`models` merge per key at both nesting
-levels) and deletion-aware (`clearModelOverride`, `removeProvider` drop the key
-from the project file so it cannot resurrect on the next load). The raw files
-are captured at load and diffed against, so a save reproduces the in-memory
-session config exactly.
+already sets (updated to the merged value) plus keys whose merged value
+differs from the global file. Defaults and global-only keys are never copied.
+Writing the full merged snapshot was rejected: after the first menu change the
+project file would set every field and silently shadow later global-file edits,
+eroding the "project overrides only what it sets" contract the feature exists
+for. The diff is recursive (concurrency `providers`/`models` merge per key at
+both nesting levels) and deletion-aware: a key deleted from the merged config
+is dropped from the project file when only the project defined it, and written
+as a `null` tombstone when the global file defines it, so removals outlive the
+reload. At load, `null` project entries mean "removed" and delete the global
+entry (`mergeAgent`/`mergeMap`), except `agent.default`, where `null` means
+"inherit parent" and is a real value. The raw files are captured at load and
+diffed against, so a save reproduces the in-memory session config exactly.
+
+The tombstone mechanism exists because a plain diff cannot express a
+deletion: a key absent from both layers is indistinguishable from one never
+set, so removing a global-only entry would silently write nothing and the
+entry would return on the next reload. Documenting the limitation or gating
+the menu's remove actions was rejected: both leave the acceptance criterion
+"menu changes write to the project file" unmet for delete-type changes and
+present the user a success notification that reverts next session.
 
 ## 2. The merge lives in config-io, not the store
 

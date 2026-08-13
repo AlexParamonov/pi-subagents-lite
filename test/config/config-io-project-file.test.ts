@@ -99,11 +99,37 @@ describe("createConfigIO load — project over global per field", () => {
   it("applies legacy-key normalization to the merged result", () => {
     writeGlobal({ agent: { finishedEvictTurns: 7, finishedRetentionMinutes: 3 } });
     writeProject({ agent: { graceTurns: 9 } });
-
     const config = createConfigIO(projectDir).load();
 
     expect("finishedEvictTurns" in config.agent).toBe(false);
     expect(config.agent.finishedRetentionMinutes).toBe(3);
+  });
+
+  it("treats null in the project file as a removed entry, not an inherited one", () => {
+    writeGlobal({
+      agent: { Explore: "g/explore", defaultThinking: "high" },
+      concurrency: { providers: { llamacpp: 1, openai: 2 }, models: { m1: 3 } },
+    });
+    writeProject({
+      agent: { Explore: null, defaultThinking: null },
+      concurrency: { providers: { llamacpp: null }, models: { m1: null } },
+    });
+
+    const config = createConfigIO(projectDir).load();
+
+    expect(config.agent.Explore).toBeUndefined();
+    expect(config.agent.defaultThinking).toBeUndefined();
+    expect(config.concurrency.providers).toEqual({ openai: 2 });
+    expect(config.concurrency.models).toEqual({});
+  });
+
+  it("keeps default: null in the project file as inherit-parent", () => {
+    writeGlobal({ agent: { default: "g/explore" } });
+    writeProject({ agent: { default: null } });
+
+    const config = createConfigIO(projectDir).load();
+
+    expect(config.agent.default).toBeNull();
   });
 
   it("matches the global-only load byte-for-byte when no project file exists", () => {
@@ -174,7 +200,7 @@ describe("createConfigIO save — project write-back", () => {
     expect(readProjectFile()).toEqual({});
   });
 
-  it("drops a deleted per-type model override so it cannot resurrect from the project file", () => {
+  it("tombstones a deleted per-type override the global file also defines", () => {
     writeGlobal({ agent: { Explore: "g/explore" } });
     writeProject({ agent: { Explore: "p/explore", graceTurns: 9 } });
     const io = createConfigIO(projectDir);
@@ -182,9 +208,50 @@ describe("createConfigIO save — project write-back", () => {
     delete config.agent.Explore;
     io.save(config);
 
-    expect(readProjectFile()).toEqual({ agent: { graceTurns: 9 } });
+    expect(readProjectFile()).toEqual({ agent: { Explore: null, graceTurns: 9 } });
+    // Reload: the tombstone keeps the override removed; the global value does not return.
+    expect(createConfigIO(projectDir).load().agent.Explore).toBeUndefined();
   });
 
+  it("writes a null tombstone for a deleted global-origin provider and keeps it on later saves", () => {
+    writeGlobal({ concurrency: { providers: { llamacpp: 1, openai: 2 } } });
+    writeProject({});
+    const io = createConfigIO(projectDir);
+    const config = io.load();
+    delete config.concurrency.providers!.llamacpp;
+    io.save(config);
+
+    expect(readProjectFile()).toEqual({ concurrency: { providers: { llamacpp: null } } });
+    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"))).toEqual({
+      concurrency: { providers: { llamacpp: 1, openai: 2 } },
+    });
+
+    // A later unrelated save keeps the tombstone; a reload keeps the entry removed.
+    io.save(io.load());
+    expect(readProjectFile()).toEqual({ concurrency: { providers: { llamacpp: null } } });
+    expect(io.load().concurrency.providers).toEqual({ openai: 2 });
+  });
+
+  it("tombstones a provider deleted while the project file also defined it, instead of reverting to the global value", () => {
+    writeGlobal({ concurrency: { providers: { llamacpp: 1 } } });
+    writeProject({ concurrency: { providers: { llamacpp: 2 } } });
+    const io = createConfigIO(projectDir);
+    const config = io.load();
+    delete config.concurrency.providers!.llamacpp;
+    io.save(config);
+
+    expect(readProjectFile()).toEqual({ concurrency: { providers: { llamacpp: null } } });
+    expect(io.load().concurrency.providers).toEqual({});
+  });
+
+  it("drops a stale tombstone when the global file no longer defines the entry", () => {
+    writeGlobal({});
+    writeProject({ concurrency: { providers: { llamacpp: null } } });
+    const io = createConfigIO(projectDir);
+    io.save(io.load());
+
+    expect(readProjectFile()).toEqual({});
+  });
   it("drops a deleted concurrency provider so it cannot resurrect from the project file", () => {
     writeGlobal({});
     writeProject({ concurrency: { providers: { llamacpp: 2 } } });
@@ -269,4 +336,75 @@ describe("ConfigStore with project IO", () => {
     store.mutate.agent.setGraceTurns(11);
     expect(readProjectFile()).toEqual({ agent: { graceTurns: 11 } });
   });
+});
+it("persists removing a global-origin provider across reload", () => {
+  writeGlobal({ concurrency: { providers: { llamacpp: 1 } } });
+  writeProject({});
+  const store = new ConfigStore(createConfigIO(projectDir));
+  expect(store.concurrency.providers).toEqual({ llamacpp: 1 });
+
+  store.mutate.concurrency.removeProvider("llamacpp");
+
+  expect(readProjectFile()).toEqual({ concurrency: { providers: { llamacpp: null } } });
+  expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).concurrency.providers).toEqual({ llamacpp: 1 });
+  store.reload();
+  expect(store.concurrency.providers).toEqual({});
+});
+
+it("persists removing a global-origin model across reload", () => {
+  writeGlobal({ concurrency: { models: { "g/openai/gpt-4o": 2 } } });
+  writeProject({});
+  const store = new ConfigStore(createConfigIO(projectDir));
+
+  store.mutate.concurrency.removeModel("g/openai/gpt-4o");
+
+  expect(readProjectFile()).toEqual({ concurrency: { models: { "g/openai/gpt-4o": null } } });
+  store.reload();
+  expect(store.concurrency.models).toEqual({});
+});
+
+it("persists resetting concurrency across reload, tombstoning global-origin limits", () => {
+  writeGlobal({ concurrency: { default: 2, providers: { llamacpp: 1 }, models: { m1: 3 } } });
+  writeProject({});
+  const store = new ConfigStore(createConfigIO(projectDir));
+
+  store.mutate.concurrency.reset();
+
+  expect(readProjectFile()).toEqual({
+    concurrency: { default: 4, providers: { llamacpp: null }, models: { m1: null } },
+  });
+  store.reload();
+  expect(store.concurrency.default).toBe(4);
+  expect(store.concurrency.providers).toEqual({});
+  expect(store.concurrency.models).toEqual({});
+});
+
+it("persists clearing a global-origin per-type model override across reload", () => {
+  writeGlobal({ agent: { Explore: "g/explore", general: "g/general" } });
+  writeProject({});
+  const store = new ConfigStore(createConfigIO(projectDir));
+
+  store.mutate.agent.clearModelOverride("Explore");
+
+  expect(readProjectFile()).toEqual({ agent: { Explore: null } });
+  store.reload();
+  expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+  // The global-only override survives; the cleared one does not resurrect.
+  expect(store.agentConfigSnapshot().general).toBe("g/general");
+});
+
+it("persists clearing global-origin spawn defaults across reload", () => {
+  writeGlobal({ agent: { defaultThinking: "high", defaultMaxTurns: 5 } });
+  writeProject({});
+  const store = new ConfigStore(createConfigIO(projectDir));
+  expect(store.agent.defaultThinking).toBe("high");
+  expect(store.agent.defaultMaxTurns).toBe(5);
+
+  store.mutate.agent.setDefaultThinking(undefined);
+  store.mutate.agent.setDefaultMaxTurns(undefined);
+
+  expect(readProjectFile()).toEqual({ agent: { defaultThinking: null, defaultMaxTurns: null } });
+  store.reload();
+  expect(store.agent.defaultThinking).toBeUndefined();
+  expect(store.agent.defaultMaxTurns).toBeUndefined();
 });

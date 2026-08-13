@@ -69,6 +69,7 @@
 - When a callback consumer cannot observe an event (continuations bypass the coordinator), ride the signal on the record the callback receives — a settlement ordinal in the shared settlement chain cannot drift from the notify that fires there.
 - New config setting: audit the full plumbing list in one pass (type, DEFAULT_AGENT, resolution/setter/sync, CONFIG_AGENT_NON_MODEL_KEYS, mirrored internal defaults). When changing a user-visible default, grep for the old value across src/ and test/. A "setting survives clearAllModelOverrides" test belongs with every new setting.
 - Config constraints: enforce at every entry point in one pass (setter, load/default-merge, resolution getter) — enforcing two of three is a trap.
+- Overlay merges need an explicit tombstone for deletions: a key absent from both layers is indistinguishable from one never set, so removing a global-origin entry writes nothing and it silently returns next session. Write null (= removed) into the overriding layer and delete the entry at load; keep keys where null is a real value (agent.default = inherit) out of the delete rule.
 
 ## pi-ai API & Subagent Lifecycle
 - `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for the agent. Check `ctx.isIdle()` at call time.
