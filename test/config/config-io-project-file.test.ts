@@ -148,7 +148,7 @@ describe("createConfigIO save — full config to the file in use", () => {
 
     const saved = readProjectFile() as { agent: { graceTurns: number } };
     expect(saved.agent.graceTurns).toBe(12);
-    expect(readProjectFile()).toEqual(config);
+    expect(saved).toEqual(config);
     // The global file is untouched.
     expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"))).toEqual({
       agent: { graceTurns: 5, showCost: true },
