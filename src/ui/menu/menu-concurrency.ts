@@ -30,6 +30,7 @@ import {
 } from "./submenus/target-select.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
+import type { RawConcurrency } from "../../config/config-store.js";
 import type { SelectOption } from "../searchable-select.js";
 import type { Theme } from "../types.js";
 
@@ -39,18 +40,14 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     const items: SettingItem[] = [];
     const projectOffered = store.projectTargetOffered;
 
+    /** True when the layer carries this concurrency entry. */
+    const layerHas = (layer: RawConcurrency, section: "default" | "providers" | "models", key?: string): boolean =>
+      section === "default" ? layer.default !== undefined : key !== undefined && layer[section]?.[key] !== undefined;
+
     /** " [session]" / " [project]" when the effective value comes from that layer. */
     const limitTag = (section: "default" | "providers" | "models", key?: string): string => {
-      const sessionHas =
-        section === "default"
-          ? store.sessionConcurrency.default !== undefined
-          : key !== undefined && store.sessionConcurrency[section]?.[key] !== undefined;
-      if (sessionHas) return " [session]";
-      const projectHas =
-        section === "default"
-          ? store.projectConcurrency.default !== undefined
-          : key !== undefined && store.projectConcurrency[section]?.[key] !== undefined;
-      if (projectHas) return " [project]";
+      if (layerHas(store.sessionConcurrency, section, key)) return " [session]";
+      if (layerHas(store.projectConcurrency, section, key)) return " [project]";
       return "";
     };
 
@@ -92,9 +89,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
                 theme,
                 projectOffered,
                 includeAll: true,
-                onPick: (target) => {
-                  onRemove(target);
-                },
+                onPick: onRemove,
               })(currentValue, done),
             );
           }
