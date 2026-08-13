@@ -281,11 +281,14 @@ export class ConfigStore {
       },
       clearModelOverride: (type: string, target: ConfigTarget | "all" = "global"): void => {
         if (target === "all") {
-          delete this.sessionOverrides[type];
-          if (this.globalRaw.agent) delete this.globalRaw.agent[type];
-          this.io.saveGlobal(this.globalRaw);
-          this.clearProjectModelKeyIfOffered(type);
-          this.rebuildEffective();
+          this.clearAcrossAllLayers(
+            () => {
+              delete this.sessionOverrides[type];
+            },
+            (layer) => {
+              if (layer.agent) delete layer.agent[type];
+            },
+          );
           return;
         }
         if (target === "session") {
@@ -304,11 +307,12 @@ export class ConfigStore {
           return;
         }
         if (target === "all") {
-          this.sessionOverrides = { default: null };
-          this.clearAgentModelKeys(this.globalRaw);
-          this.io.saveGlobal(this.globalRaw);
-          this.clearProjectModelKeysIfOffered();
-          this.rebuildEffective();
+          this.clearAcrossAllLayers(
+            () => {
+              this.sessionOverrides = { default: null };
+            },
+            (layer) => this.clearAgentModelKeys(layer),
+          );
           return;
         }
         const layer = this.layerFor(target);
@@ -484,11 +488,14 @@ export class ConfigStore {
           return;
         }
         if (target === "all") {
-          this.sessionConcurrencyLayer = {};
-          delete this.globalRaw.concurrency;
-          this.io.saveGlobal(this.globalRaw);
-          this.clearProjectConcurrencyIfOffered();
-          this.rebuildEffective();
+          this.clearAcrossAllLayers(
+            () => {
+              this.sessionConcurrencyLayer = {};
+            },
+            (layer) => {
+              delete layer.concurrency;
+            },
+          );
           this.applyConcurrency();
           return;
         }
@@ -663,46 +670,40 @@ export class ConfigStore {
     }
   }
 
-  private clearProjectModelKeyIfOffered(type: string): void {
-    if (!this.projectTargetOffered) return;
-    const layer = this.layerFor("project");
-    if (!layer) return;
-    if (layer.agent) delete layer.agent[type];
-    this.io.saveProject(this.projectRaw!);
+  /**
+   * Clear the same model/concurrency key set across every layer: session
+   * (in-memory), then global (saved), then project when offered (saved).
+   * Rebuilds the effective config. Save order: global first, then project.
+   */
+  private clearAcrossAllLayers(sessionClear: () => void, layerClear: (layer: RawConfig) => void): void {
+    sessionClear();
+    layerClear(this.globalRaw);
+    this.io.saveGlobal(this.globalRaw);
+    this.withProjectLayer(layerClear);
+    this.rebuildEffective();
   }
 
-  private clearProjectModelKeysIfOffered(): void {
+  /** Run a write against the project layer when offered, persisting it after. */
+  private withProjectLayer(write: (layer: RawConfig) => void): void {
     if (!this.projectTargetOffered) return;
     const layer = this.layerFor("project");
     if (!layer) return;
-    this.clearAgentModelKeys(layer);
-    this.io.saveProject(this.projectRaw!);
-  }
-
-  private clearProjectConcurrencyIfOffered(): void {
-    if (!this.projectTargetOffered) return;
-    const layer = this.layerFor("project");
-    if (!layer) return;
-    delete layer.concurrency;
-    this.io.saveProject(this.projectRaw!);
+    write(layer);
+    this.io.saveProject(layer);
   }
 
   private removeConcurrencyEntry(section: "providers" | "models", key: string, target: ConfigTarget | "all"): void {
     if (target === "all") {
-      const sessionSection = this.sessionConcurrencyLayer[section];
-      if (sessionSection) delete sessionSection[key];
-      const globalSection = this.globalRaw.concurrency?.[section];
-      if (globalSection) delete globalSection[key];
-      this.io.saveGlobal(this.globalRaw);
-      if (this.projectTargetOffered) {
-        const layer = this.layerFor("project");
-        if (layer) {
-          const projectSection = layer.concurrency?.[section];
-          if (projectSection) delete projectSection[key];
-          this.io.saveProject(this.projectRaw!);
-        }
-      }
-      this.rebuildEffective();
+      this.clearAcrossAllLayers(
+        () => {
+          const sessionSection = this.sessionConcurrencyLayer[section];
+          if (sessionSection) delete sessionSection[key];
+        },
+        (layer) => {
+          const sectionObj = layer.concurrency?.[section];
+          if (sectionObj) delete sectionObj[key];
+        },
+      );
       this.applyConcurrency();
       return;
     }
