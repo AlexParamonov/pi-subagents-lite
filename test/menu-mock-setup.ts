@@ -137,10 +137,6 @@ vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
 }));
 
-vi.mock("../src/prompt/context.js", () => ({
-  buildSnapshotMarkdown: vi.fn(),
-}));
-
 vi.mock("../src/config/config-io.js", async () => {
   // Re-export the real constants so the shell mock below derives its defaults
   // from src (DEFAULT_AGENT etc.) instead of hand-copied literals.

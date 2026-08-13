@@ -59,10 +59,6 @@ vi.mock("../src/registration.js", () => ({
   registerAgentTool: vi.fn(),
 }));
 
-vi.mock("../src/prompt/context.js", () => ({
-  buildSnapshotMarkdown: vi.fn(() => ""),
-}));
-
 vi.mock("../src/ui/format.js", () => ({
   formatMs: vi.fn(() => "0s"),
   buildStatsParts: vi.fn(() => []),
