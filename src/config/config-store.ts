@@ -280,45 +280,25 @@ export class ConfigStore {
         this.setAgentModelKey(type, value, target);
       },
       clearModelOverride: (type: string, target: ConfigTarget | "all" = "global"): void => {
-        if (target === "all") {
-          this.clearAcrossAllLayers(
-            () => {
-              delete this.sessionOverrides[type];
-            },
-            (layer) => {
-              if (layer.agent) delete layer.agent[type];
-            },
-          );
-          return;
-        }
-        if (target === "session") {
-          delete this.sessionOverrides[type];
-          return;
-        }
-        const layer = this.layerFor(target);
-        if (!layer) return;
-        if (layer.agent) delete layer.agent[type];
-        this.commitLayer(target, layer);
+        this.clearAtTarget(
+          target,
+          () => {
+            delete this.sessionOverrides[type];
+          },
+          (layer) => {
+            if (layer.agent) delete layer.agent[type];
+          },
+        );
       },
       /** Clear all model keys (default, thinking, max turns, per-type), keeping non-model settings. */
       clearAllModelOverrides: (target: ConfigTarget | "all" = "global"): void => {
-        if (target === "session") {
-          this.sessionOverrides = { default: null };
-          return;
-        }
-        if (target === "all") {
-          this.clearAcrossAllLayers(
-            () => {
-              this.sessionOverrides = { default: null };
-            },
-            (layer) => this.clearAgentModelKeys(layer),
-          );
-          return;
-        }
-        const layer = this.layerFor(target);
-        if (!layer) return;
-        this.clearAgentModelKeys(layer);
-        this.commitLayer(target, layer);
+        this.clearAtTarget(
+          target,
+          () => {
+            this.sessionOverrides = { default: null };
+          },
+          (layer) => this.clearAgentModelKeys(layer),
+        );
       },
       setForceBackground: (enabled: boolean): void => {
         this.globalAgent().forceBackground = enabled;
@@ -482,28 +462,16 @@ export class ConfigStore {
       },
       /** Remove every concurrency key at the target level; effective values fall through. */
       clearAll: (target: ConfigTarget | "all" = "global"): void => {
-        if (target === "session") {
-          this.sessionConcurrencyLayer = {};
-          this.applyConcurrency();
-          return;
-        }
-        if (target === "all") {
-          this.clearAcrossAllLayers(
-            () => {
-              this.sessionConcurrencyLayer = {};
-            },
-            (layer) => {
-              delete layer.concurrency;
-            },
-          );
-          this.applyConcurrency();
-          return;
-        }
-        const layer = this.layerFor(target);
-        if (!layer) return;
-        delete layer.concurrency;
-        this.commitLayer(target, layer);
-        this.applyConcurrency();
+        this.clearAtTarget(
+          target,
+          () => {
+            this.sessionConcurrencyLayer = {};
+          },
+          (layer) => {
+            delete layer.concurrency;
+          },
+          () => this.applyConcurrency(),
+        );
       },
     },
     session: {
@@ -664,16 +632,36 @@ export class ConfigStore {
   }
 
   /**
-   * Clear the same model/concurrency key set across every layer: session
-   * (in-memory), then global (saved), then project when offered (saved).
-   * Rebuilds the effective config. Save order: global first, then project.
+   * Clear the same model/concurrency key set at one target: session
+   * (in-memory), a persisted layer (saved), or every layer (global saved
+   * first, then project when offered; effective config rebuilt).
+   * `after` runs after any branch.
    */
-  private clearAcrossAllLayers(sessionClear: () => void, layerClear: (layer: RawConfig) => void): void {
-    sessionClear();
-    layerClear(this.globalRaw);
-    this.io.saveGlobal(this.globalRaw);
-    this.withProjectLayer(layerClear);
-    this.rebuildEffective();
+  private clearAtTarget(
+    target: ConfigTarget | "all",
+    sessionClear: () => void,
+    layerClear: (layer: RawConfig) => void,
+    after?: () => void,
+  ): void {
+    if (target === "session") {
+      sessionClear();
+      after?.();
+      return;
+    }
+    if (target === "all") {
+      sessionClear();
+      layerClear(this.globalRaw);
+      this.io.saveGlobal(this.globalRaw);
+      this.withProjectLayer(layerClear);
+      this.rebuildEffective();
+      after?.();
+      return;
+    }
+    const layer = this.layerFor(target);
+    if (!layer) return;
+    layerClear(layer);
+    this.commitLayer(target, layer);
+    after?.();
   }
 
   /** Run a write against the project layer when offered, persisting it after. */
@@ -686,32 +674,18 @@ export class ConfigStore {
   }
 
   private removeConcurrencyEntry(section: "providers" | "models", key: string, target: ConfigTarget | "all"): void {
-    if (target === "all") {
-      this.clearAcrossAllLayers(
-        () => {
-          const sessionSection = this.sessionConcurrencyLayer[section];
-          if (sessionSection) delete sessionSection[key];
-        },
-        (layer) => {
-          const sectionObj = layer.concurrency?.[section];
-          if (sectionObj) delete sectionObj[key];
-        },
-      );
-      this.applyConcurrency();
-      return;
-    }
-    if (target === "session") {
-      const sessionSection = this.sessionConcurrencyLayer[section];
-      if (sessionSection) delete sessionSection[key];
-      this.applyConcurrency();
-      return;
-    }
-    const layer = this.layerFor(target);
-    if (!layer) return;
-    const sectionObj = layer.concurrency?.[section];
-    if (sectionObj) delete sectionObj[key];
-    this.commitLayer(target, layer);
-    this.applyConcurrency();
+    this.clearAtTarget(
+      target,
+      () => {
+        const sessionSection = this.sessionConcurrencyLayer[section];
+        if (sessionSection) delete sessionSection[key];
+      },
+      (layer) => {
+        const sectionObj = layer.concurrency?.[section];
+        if (sectionObj) delete sectionObj[key];
+      },
+      () => this.applyConcurrency(),
+    );
   }
 
   private syncWidgetSettings(): void {
