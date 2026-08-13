@@ -30,12 +30,7 @@ import type { SelectOption } from "../searchable-select.js";
 import type { Theme } from "../types.js";
 
 export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
-  const buildItems = (
-    store: ReturnType<typeof getStore>,
-    theme: Theme,
-    modelOptions: string[],
-    onRebuild?: () => void,
-  ): SettingItem[] => {
+  const buildItems = (store: ReturnType<typeof getStore>, theme: Theme, modelOptions: string[]): SettingItem[] => {
     const providers = [...new Set(modelOptions.map((m) => m.split("/")[0]))].sort();
     const items: SettingItem[] = [];
     const projectOffered = store.projectTargetOffered;
@@ -263,9 +258,9 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
   let rebuild: ((items: any[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const triggerRebuild = () => rebuild?.(buildItems(getStore(), theme, modelOptions, triggerRebuild));
+    const triggerRebuild = () => rebuild?.(buildItems(getStore(), theme, modelOptions));
     const store = getStore();
-    const items = buildItems(store, theme, modelOptions, triggerRebuild);
+    const items = buildItems(store, theme, modelOptions);
     const settingsList = new SettingsList(
       items,
       15,
