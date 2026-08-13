@@ -354,10 +354,4 @@ describe("describeActivity", () => {
     expect(result.length).toBe(100);
     expect(result).toBe(longResponse);
   });
-
-  it("keeps full response text", () => {
-    const longResponse = "a".repeat(100);
-    const result = describeActivity(new Map(), longResponse);
-    expect(result).toBe(longResponse);
-  });
 });

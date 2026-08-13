@@ -232,6 +232,8 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      expect(lines[1]).toMatch(/^  /);
+      expect(lines[2]).toMatch(/^  /);
     });
 
     it("uses spaces for tail-f line of last finished agent", () => {
