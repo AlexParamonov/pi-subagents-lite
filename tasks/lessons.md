@@ -66,6 +66,7 @@
 - Two mechanisms converging on the same state with the same gates are vestigial duplication: keep the one owned by the authoritative module, delete the other.
 - Remove dead code in the same commit that makes it dead, not later.
 - Centralize a decision on one authoritative field; downstream consumers key off it.
+- When a callback consumer cannot observe an event (continuations bypass the coordinator), ride the signal on the record the callback receives — a settlement ordinal in the shared settlement chain cannot drift from the notify that fires there.
 - New config setting: audit the full plumbing list in one pass (type, DEFAULT_AGENT, resolution/setter/sync, CONFIG_AGENT_NON_MODEL_KEYS, mirrored internal defaults). When changing a user-visible default, grep for the old value across src/ and test/. A "setting survives clearAllModelOverrides" test belongs with every new setting.
 - Config constraints: enforce at every entry point in one pass (setter, load/default-merge, resolution getter) — enforcing two of three is a trap.
 

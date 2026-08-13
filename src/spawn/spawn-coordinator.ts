@@ -50,9 +50,6 @@ export class SpawnCoordinator {
   /** Agent IDs spawned as background — only these trigger a nudge on completion. */
   private backgroundAgentIds = new Set<string>();
 
-  /** Captured ExtensionContext per background agent, bound to the spawning session. */
-  private backgroundContexts = new Map<string, ExtensionContext>();
-
   /** Pending nudge agent IDs, batched within the delay window. */
   private pendingNudges = new Set<string>();
 
@@ -90,6 +87,9 @@ export class SpawnCoordinator {
     // Live view rides on the record so it survives settlement — a continuation
     // re-feeds the same view instead of the widget showing a stale "thinking…".
     record.execution.liveView = liveView;
+    // Spawning-session ctx rides on the record (like the live view) so the
+    // UI-notify fallback survives the first nudge and covers every spawn.
+    record.execution.spawnCtx = ctx;
 
     // Ensure widget timer is running so it displays the new agent
     // (menu path calls this explicitly, but tool path doesn't)
@@ -98,10 +98,8 @@ export class SpawnCoordinator {
       widget.ensureTimer();
     }
 
-    // Capture spawning-session ctx for fallback notification
     if (intent.runInBackground) {
       this.backgroundAgentIds.add(agentId);
-      this.backgroundContexts.set(agentId, ctx);
     }
 
     if (!intent.runInBackground) {
@@ -146,9 +144,17 @@ export class SpawnCoordinator {
    * on the record — a settled agent can be continued and re-feeds it.
    */
   onAgentComplete(record: AgentRecord): void {
+    // First settlement of a background agent: one-shot nudge (unchanged).
     if (this.backgroundAgentIds.has(record.id)) {
       this.scheduleNudge(record.id);
       this.backgroundAgentIds.delete(record.id);
+      return;
+    }
+    // Later settlements: the record's settlement ordinal (written by the
+    // manager's shared settlement chain before this callback fires) proves a
+    // continuation happened — the coordinator never observes steers itself.
+    if (record.execution.settlementCount >= 2) {
+      this.scheduleNudge(record.id);
     }
   }
 
@@ -159,7 +165,6 @@ export class SpawnCoordinator {
     }
     this.pendingNudges.clear();
     this.backgroundAgentIds.clear();
-    this.backgroundContexts.clear();
     this.disposed = true;
   }
 
@@ -225,7 +230,7 @@ export class SpawnCoordinator {
     } catch (error) {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.
-      const spawnCtx = this.backgroundContexts.get(agentId);
+      const spawnCtx = record.execution.spawnCtx;
       if (spawnCtx?.ui?.notify) {
         try {
           spawnCtx.ui.notify(`[Subagent "${record.display.type}" ${record.lifecycle.status}] Result available`, "info");
@@ -233,8 +238,6 @@ export class SpawnCoordinator {
           // ctx may also be stale if session was replaced
         }
       }
-    } finally {
-      this.backgroundContexts.delete(agentId);
     }
   }
 }
