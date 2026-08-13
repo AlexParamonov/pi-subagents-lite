@@ -7,7 +7,7 @@
 
 **Before committing:** run typecheck, tests, and format:check.
 
-**Docs:** update CHANGELOG.md (Unreleased section) and README.md for user-visible changes.
+**Docs:** update CHANGELOG.md (Unreleased section).
 
 ## Pi
 Pi source code in ../pi
