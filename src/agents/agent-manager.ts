@@ -13,16 +13,14 @@ import { getStore } from "../shell.js";
 import {
   type AgentRecord,
   type AgentStatus,
-  type CompactionInfo,
   type RunCallbacks,
   type StopInitiator,
   type WatchdogStopDetail,
   type SpawnConfig,
-  type ToolActivity,
 } from "../types.js";
 import type { SubagentType } from "./types.js";
 import { getAgentConfig } from "./agent-types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
+import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
 import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
 
@@ -323,7 +321,7 @@ export class AgentManager {
       graceTurns: options.graceTurns,
       projectTrusted: options.projectTrusted,
       signal: record.execution.abortController!.signal,
-      ...this.recordRunCallbacks(record, options, (turnCount) => {
+      ...this.runTrackingCallbacks(record, options, (turnCount) => {
         record.stats.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
       }),
@@ -482,19 +480,22 @@ export class AgentManager {
     return this.totalAgentCount;
   }
 
-  private createRecordCallbacks(
+  /**
+   * Callback set shared by a first run and a continuation: accumulates stats
+   * on the record, feeds the watchdog, and forwards to the caller's own
+   * callbacks. writeTurnCount is the per-path policy — the first run records
+   * the absolute count, a continuation adds to the previous total.
+   */
+  private runTrackingCallbacks(
     record: AgentRecord,
-    options?: Pick<SpawnOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
-  ): {
-    onToolActivity: (activity: ToolActivity) => void;
-    onAssistantUsage: (usage: AgentUsage) => void;
-    onCompaction: (info: CompactionInfo) => void;
-  } {
+    forward: RunCallbacks | undefined,
+    writeTurnCount: (turnCount: number) => void,
+  ): RunCallbacks {
     return {
       onToolActivity: (activity) => {
         if (activity.type === "end") record.stats.toolUses++;
         this.watchdog.recordActivity(record.id, activity);
-        options?.onToolActivity?.(activity);
+        forward?.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
         // vLLM doesn't report cache hits, so usage.input is full prompt_tokens.
@@ -513,28 +514,12 @@ export class AgentManager {
         record.stats.prevInputTokens = usage.input;
 
         addUsage(record.stats.lifetimeUsage, { ...usage, input: inputDelta });
-        options?.onAssistantUsage?.(usage);
+        forward?.onAssistantUsage?.(usage);
       },
       onCompaction: (info) => {
         record.stats.compactionCount++;
-        options?.onCompaction?.(info);
+        forward?.onCompaction?.(info);
       },
-    };
-  }
-
-  /**
-   * Record-tracking callback overlay shared by a first run and a continuation:
-   * accumulates stats, feeds the watchdog, and forwards to the caller's own
-   * callbacks. writeTurnCount is the per-path policy — the first run records
-   * the absolute count, a continuation adds to the previous total.
-   */
-  private recordRunCallbacks(
-    record: AgentRecord,
-    forward: Pick<RunCallbacks, "onToolActivity" | "onTextDelta" | "onAssistantUsage" | "onCompaction"> | undefined,
-    writeTurnCount: (turnCount: number) => void,
-  ) {
-    return {
-      ...this.createRecordCallbacks(record, forward),
       onTextDelta: (delta: string, fullText: string) => {
         // Streamed response text counts as activity for the idle watchdog.
         this.watchdog.recordText(record.id);
@@ -640,7 +625,7 @@ export class AgentManager {
 
     const previousTurns = record.stats.turnCount ?? 0;
     const promise = continueAgentSession(session, message, {
-      ...this.recordRunCallbacks(record, record.execution.liveViewCallbacks, (turnCount) => {
+      ...this.runTrackingCallbacks(record, record.execution.liveViewCallbacks, (turnCount) => {
         record.stats.turnCount = previousTurns + turnCount;
       }),
       maxTurns: record.stats.maxTurns,
