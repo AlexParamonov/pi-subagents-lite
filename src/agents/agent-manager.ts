@@ -299,7 +299,7 @@ export class AgentManager {
     // The idle clock starts here, so a hung pre-session init phase is covered.
     this.watchdog.start(id);
 
-    // Output transcript: agent frontmatter overrides the global setting (default true).
+    // Output transcript: agent frontmatter overrides the global setting (default false).
     const agentConfig = getAgentConfig(type);
     const outputTranscript = agentConfig?.outputTranscript ?? getStore().agent.outputTranscript;
     if (outputTranscript) {
