@@ -12,7 +12,7 @@ import type { AgentRecord } from "../../src/types.js";
 // --- Mock modules ---
 
 vi.mock("../../src/agents/agent-types.js", () => ({
-  resolveType: vi.fn((name: string) => ({ kind: "exact", key: name })),
+  resolveType: vi.fn((name: string) => ({ kind: "resolved", key: name })),
   getAgentConfig: vi.fn(() => undefined),
   discoverNewAgents: vi.fn(async () => 0),
 }));

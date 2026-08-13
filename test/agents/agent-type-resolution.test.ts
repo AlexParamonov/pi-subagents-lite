@@ -28,15 +28,15 @@ describe("resolveType", () => {
     registerAgents(new Map(EXPLORE_AND_GENERAL));
   });
 
-  it("resolves an exact-case registered name as exact", () => {
-    expect(resolveType("Explore")).toEqual({ kind: "exact", key: "Explore" });
-    expect(resolveType("general-purpose")).toEqual({ kind: "exact", key: "general-purpose" });
+  it("resolves an exact-case registered name to itself", () => {
+    expect(resolveType("Explore")).toEqual({ kind: "resolved", key: "Explore" });
+    expect(resolveType("general-purpose")).toEqual({ kind: "resolved", key: "general-purpose" });
   });
 
   it("resolves a single case-insensitive match to the canonical name", () => {
-    expect(resolveType("explore")).toEqual({ kind: "ci", key: "Explore" });
-    expect(resolveType("EXPLORE")).toEqual({ kind: "ci", key: "Explore" });
-    expect(resolveType("General-Purpose")).toEqual({ kind: "ci", key: "general-purpose" });
+    expect(resolveType("explore")).toEqual({ kind: "resolved", key: "Explore" });
+    expect(resolveType("EXPLORE")).toEqual({ kind: "resolved", key: "Explore" });
+    expect(resolveType("General-Purpose")).toEqual({ kind: "resolved", key: "general-purpose" });
   });
 
   it("an exact-case match beats a case-insensitive match when both exist", () => {
@@ -46,8 +46,8 @@ describe("resolveType", () => {
         ["explore", agent("explore")],
       ]),
     );
-    expect(resolveType("Explore")).toEqual({ kind: "exact", key: "Explore" });
-    expect(resolveType("explore")).toEqual({ kind: "exact", key: "explore" });
+    expect(resolveType("Explore")).toEqual({ kind: "resolved", key: "Explore" });
+    expect(resolveType("explore")).toEqual({ kind: "resolved", key: "explore" });
   });
 
   it("two registered types differing only by case are ambiguous with both candidates", () => {
@@ -67,7 +67,7 @@ describe("resolveType", () => {
         ["explore", agent("explore", { hidden: true })],
       ]),
     );
-    expect(resolveType("explore")).toEqual({ kind: "exact", key: "explore" });
+    expect(resolveType("explore")).toEqual({ kind: "resolved", key: "explore" });
     expect(resolveType("EXPLORE")).toEqual({ kind: "ambiguous", candidates: ["Explore", "explore"] });
   });
 

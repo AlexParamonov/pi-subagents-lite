@@ -35,7 +35,7 @@ const {
   mockGetRecord: vi.fn(),
   mockDiscoverNewAgents: vi.fn(),
   mockResolveSubagentTrust: vi.fn(),
-  mockResolveType: vi.fn((type: string) => ({ kind: "exact", key: type })),
+  mockResolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
   mockStoreState: { forceBackground: false },
 }));
 
@@ -387,7 +387,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
     // mockReset clears once-queues leaked by earlier tests in this describe;
     // re-establish the base identity implementation.
     mockResolveType.mockReset();
-    mockResolveType.mockImplementation((t: string) => ({ kind: "exact", key: t }));
+    mockResolveType.mockImplementation((t: string) => ({ kind: "resolved", key: t }));
     ctx = fakeCtx();
     mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
@@ -415,7 +415,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
 
     // First resolveType call returns not-found (type not known)
     mockResolveType.mockReturnValueOnce({ kind: "not-found" }); // first call — not found
-    mockResolveType.mockReturnValueOnce({ kind: "exact", key: "feature-reviewer" }); // after discovery — found
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "feature-reviewer" }); // after discovery — found
 
     await executeAgentTool(
       "tc-disc",
@@ -433,7 +433,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
   it("calls discoverNewAgents without worktree dir when type is not known and worktree_path omitted", async () => {
     // First resolveType call returns not-found (type not known)
     mockResolveType.mockReturnValueOnce({ kind: "not-found" }); // first call — not found
-    mockResolveType.mockReturnValueOnce({ kind: "exact", key: "feature-reviewer" }); // after discovery — found
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "feature-reviewer" }); // after discovery — found
 
     await executeAgentTool("tc-disc-no-wt", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx);
 
@@ -449,7 +449,7 @@ describe("executeAgentTool — case-insensitive type resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockResolveType.mockReset();
-    mockResolveType.mockImplementation((t: string) => ({ kind: "exact", key: t }));
+    mockResolveType.mockImplementation((t: string) => ({ kind: "resolved", key: t }));
     ctx = fakeCtx();
     mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
@@ -468,7 +468,7 @@ describe("executeAgentTool — case-insensitive type resolution", () => {
   });
 
   it("spawns with the canonical registered name for a case-insensitive match", async () => {
-    mockResolveType.mockReturnValueOnce({ kind: "ci", key: "Explore" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "Explore" });
 
     const result = await executeAgentTool("tc-ci", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx);
 
@@ -506,7 +506,7 @@ describe("executeAgentTool — case-insensitive type resolution", () => {
     });
     // Not known before discovery, then a worktree agent matches case-insensitively
     mockResolveType.mockReturnValueOnce({ kind: "not-found" });
-    mockResolveType.mockReturnValueOnce({ kind: "ci", key: "Wt-Agent" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "Wt-Agent" });
 
     await executeAgentTool(
       "tc-wt-ci",
@@ -582,7 +582,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     mockResolveSubagentTrust.mockReturnValue(false);
     // Force the on-demand discovery path so the .pi/agents skip is observable
     mockResolveType.mockReturnValueOnce({ kind: "not-found" });
-    mockResolveType.mockReturnValueOnce({ kind: "exact", key: "general-purpose" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "general-purpose" });
 
     await executeAgentTool("tc-tr-2", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
 
@@ -599,7 +599,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     crossRepoValidation(false);
     mockResolveSubagentTrust.mockReturnValue(true);
     mockResolveType.mockReturnValueOnce({ kind: "not-found" });
-    mockResolveType.mockReturnValueOnce({ kind: "exact", key: "general-purpose" });
+    mockResolveType.mockReturnValueOnce({ kind: "resolved", key: "general-purpose" });
 
     await executeAgentTool("tc-tr-3", makeParams({ worktree_path: "/repo-b" }), undefined, undefined, ctx);
 

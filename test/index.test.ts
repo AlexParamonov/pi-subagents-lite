@@ -102,7 +102,7 @@ vi.mock("../src/models/model-precedence.js", () => ({
 }));
 
 vi.mock("../src/agents/agent-types.js", () => ({
-  resolveType: vi.fn((name: string) => ({ kind: "exact", key: name })),
+  resolveType: vi.fn((name: string) => ({ kind: "resolved", key: name })),
   getConfig: vi.fn(() => ({ displayName: "unknown" })),
   getAgentConfig: vi.fn(() => ({})),
   registerAgents: vi.fn(),

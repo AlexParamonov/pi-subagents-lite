@@ -39,7 +39,7 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
 }));
 
 vi.mock("../../src/agents/agent-types.js", () => ({
-  resolveType: vi.fn((type: string) => ({ kind: "exact", key: type })),
+  resolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
   getAgentConfig: mockGetAgentConfig,
   discoverNewAgents: mockDiscoverNewAgents,
 }));

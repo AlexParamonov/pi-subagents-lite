@@ -56,7 +56,7 @@ describe("discoverNewAgents — worktree-local agent types", () => {
       expect(count).toBeGreaterThanOrEqual(1);
 
       // Now it should be resolved
-      expect(resolveType("feature-reviewer")).toEqual({ kind: "exact", key: "feature-reviewer" });
+      expect(resolveType("feature-reviewer")).toEqual({ kind: "resolved", key: "feature-reviewer" });
       expect(getAgentConfig("feature-reviewer")?.description).toBe("Reviews feature branches");
     } finally {
       cleanupProject();
@@ -97,11 +97,11 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
       // First discovery with worktree
       await discoverNewAgents(worktreeDir);
-      expect(resolveType("wt-agent")).toEqual({ kind: "exact", key: "wt-agent" });
+      expect(resolveType("wt-agent")).toEqual({ kind: "resolved", key: "wt-agent" });
 
       // Second discovery WITHOUT worktree — should still be in registry
       const count = await discoverNewAgents();
-      expect(resolveType("wt-agent")).toEqual({ kind: "exact", key: "wt-agent" });
+      expect(resolveType("wt-agent")).toEqual({ kind: "resolved", key: "wt-agent" });
       expect(count).toBe(0); // No new agents (already known)
     } finally {
       cleanupProject();
@@ -126,8 +126,8 @@ describe("discoverNewAgents — worktree-local agent types", () => {
       const count = await discoverNewAgents(worktreeDir);
 
       // Both project and worktree types should be discovered
-      expect(resolveType("project-agent")).toEqual({ kind: "exact", key: "project-agent" });
-      expect(resolveType("wt-agent")).toEqual({ kind: "exact", key: "wt-agent" });
+      expect(resolveType("project-agent")).toEqual({ kind: "resolved", key: "project-agent" });
+      expect(resolveType("wt-agent")).toEqual({ kind: "resolved", key: "wt-agent" });
       expect(count).toBeGreaterThanOrEqual(2);
     } finally {
       cleanupProject();
@@ -265,7 +265,7 @@ describe("discoverNewAgents — worktree-local agent types", () => {
       registerAgents(new Map());
 
       await discoverNewAgents(worktreeDir);
-      expect(resolveType("feature-reviewer")).toEqual({ kind: "ci", key: "Feature-Reviewer" });
+      expect(resolveType("feature-reviewer")).toEqual({ kind: "resolved", key: "Feature-Reviewer" });
     } finally {
       cleanupProject();
       cleanupWt();
@@ -320,7 +320,7 @@ describe("discoverNewAgents — shared .agents/agents/ discovery", () => {
       const count = await discoverNewAgents();
       expect(count).toBeGreaterThanOrEqual(1);
 
-      expect(resolveType("shared-agent")).toEqual({ kind: "exact", key: "shared-agent" });
+      expect(resolveType("shared-agent")).toEqual({ kind: "resolved", key: "shared-agent" });
       expect(getAgentConfig("shared-agent")?.description).toBe("Shared workspace agent");
     } finally {
       cleanupProject();
