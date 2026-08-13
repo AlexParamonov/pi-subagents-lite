@@ -32,14 +32,15 @@ export function installSeparatorSkip(list: any): void {
   const isSep = (item: any) => item?.value === SEPARATOR_ID || item?.id === SEPARATOR_ID;
   // Starting just past `start`, walk in `step` direction and return the
   // first non-separator index (or an out-of-bounds sentinel if none).
-  const firstNonSepFrom = (start: number, step: number): number => {
+  const firstNonSepFrom = (items: any[], start: number, step: number): number => {
     let next = start + step;
-    while (next >= 0 && next < list.items.length && isSep(list.items[next])) next += step;
+    while (next >= 0 && next < items.length && isSep(items[next])) next += step;
     return next;
   };
-  const inBounds = (i: number) => i >= 0 && i < list.items.length;
-  // Capture before defineProperty: afterwards, reading selectedIndex goes
-  // through the new getter and yields the not-yet-seeded rawIndex (0).
+  const inBounds = (items: any[], i: number) => i >= 0 && i < items.length;
+  // Read the current selection before defineProperty: afterwards, reading
+  // selectedIndex goes through the new getter and returns the not-yet-seeded
+  // rawIndex (undefined) instead of the real value.
   const initialIndex = list.selectedIndex ?? 0;
   Object.defineProperty(list, "selectedIndex", {
     get() {
@@ -57,9 +58,11 @@ export function installSeparatorSkip(list: any): void {
       // fall back to the opposite direction so the cursor always ends on
       // a real item (or stays put if everything is a separator).
       const step = idx > cur ? 1 : -1;
-      const fwd = firstNonSepFrom(clamped, step);
-      const back = firstNonSepFrom(clamped, -step);
-      list[rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
+      const fwd = firstNonSepFrom(items, clamped, step);
+      const back = firstNonSepFrom(items, clamped, -step);
+      if (inBounds(items, fwd)) list[rawIndex] = fwd;
+      else if (inBounds(items, back)) list[rawIndex] = back;
+      else list[rawIndex] = clamped;
     },
     configurable: true,
   });
