@@ -1,13 +1,6 @@
 /**
  * skill-loader.test.ts — Tests for skill loading and prompt integration.
  *
- * Covers:
- *   - preloadSkills: loads full SKILL.md content via Pi's loadSkills
- *   - loadSkillMeta: loads metadata only (name, description, location)
- *   - loadAllSkills: correct precedence, filtering, dedup
- *   - buildAgentPrompt: correct format for whitelist vs preload
- *   - Integration proof with secret token verification
- *
  * Pi's loadSkills/loadSkillsFromDir are mocked to isolate from system skills.
  */
 

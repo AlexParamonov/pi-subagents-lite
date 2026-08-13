@@ -355,7 +355,7 @@ describe("describeActivity", () => {
     expect(result).toBe(longResponse);
   });
 
-  it("returns truncated response text with ellipsis when truncateLine is called", () => {
+  it("keeps full response text", () => {
     const longResponse = "a".repeat(100);
     const result = describeActivity(new Map(), longResponse);
     expect(result).toBe(longResponse);
