@@ -135,10 +135,11 @@ export interface RunResult {
 }
 
 /**
- * Options for resuming a settled session (continueAgentSession).
- * Carries the same callbacks as a first run; the session itself is reused.
+ * Options for prompting a session, whether first run or continuation.
+ * Carries the callbacks the manager wires for record tracking and live-view
+ * updates; the session itself is reused by continuations.
  */
-export interface ContinueAgentOptions extends RunCallbacks {
+export interface SessionPromptOptions extends RunCallbacks {
   maxTurns?: number;
   graceTurns?: number;
   /** Abort signal forwarded to session.abort() while the prompt runs. */
@@ -622,7 +623,7 @@ async function runTurnLoop(
 async function runSessionPrompt(
   session: AgentSession,
   prompt: string,
-  options: ContinueAgentOptions,
+  options: SessionPromptOptions,
 ): Promise<RunResult> {
   const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, options);
   const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
@@ -648,7 +649,7 @@ async function runSessionPrompt(
 export async function continueAgentSession(
   session: AgentSession,
   prompt: string,
-  options: ContinueAgentOptions = {},
+  options: SessionPromptOptions = {},
 ): Promise<RunResult> {
   return runSessionPrompt(session, prompt, options);
 }
