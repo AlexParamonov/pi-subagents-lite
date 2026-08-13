@@ -19,7 +19,7 @@ import {
   buildMetadataLineParts,
   type StatsVisibility,
 } from "./format.js";
-import type { LiveView } from "../spawn/spawn-coordinator.js";
+import type { LiveView } from "../types.js";
 
 // Backward-compat re-export for consumers importing Theme from this module.
 export type { Theme } from "./types.js";
@@ -68,7 +68,7 @@ interface RenderBlock {
 
 // ---- Re-exports from format.ts (backward compatibility) ----
 export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.js";
-export type { LiveView as AgentActivity } from "../spawn/spawn-coordinator.js";
+export type { LiveView as AgentActivity } from "../types.js";
 
 // ---- Widget-internal helpers ----
 

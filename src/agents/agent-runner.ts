@@ -119,7 +119,7 @@ interface RunOptions extends RunTunables, RunCallbacks {
   signal?: AbortSignal;
 }
 
-interface RunResult {
+export interface RunResult {
   responseText: string;
   session: AgentSession;
   /** True if the agent was hard-aborted (max_turns + grace exceeded). */
@@ -132,6 +132,18 @@ interface RunResult {
    * and turn-limited runs, and for transient errors superseded by a later turn.
    */
   modelError?: string;
+}
+
+/**
+ * Options for prompting a session, whether first run or continuation.
+ * Carries the callbacks the manager wires for record tracking and live-view
+ * updates; the session itself is reused by continuations.
+ */
+export interface SessionPromptOptions extends RunCallbacks {
+  maxTurns?: number;
+  graceTurns?: number;
+  /** Abort signal forwarded to session.abort() while the prompt runs. */
+  signal?: AbortSignal;
 }
 
 function collectResponseText(session: AgentSession, onTextDelta?: (delta: string, fullText: string) => void) {
@@ -148,8 +160,8 @@ function collectResponseText(session: AgentSession, onTextDelta?: (delta: string
   return { getText: () => text, unsubscribe };
 }
 
-function getLastAssistantText(session: AgentSession): string {
-  for (let i = session.messages.length - 1; i >= 0; i--) {
+function getLastAssistantText(session: AgentSession, fromIndex: number): string {
+  for (let i = session.messages.length - 1; i >= fromIndex; i--) {
     const msg = session.messages[i];
     if (msg.role !== "assistant") continue;
     const text = extractText(msg.content).trim();
@@ -598,10 +610,19 @@ function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxT
   return { unsubscribe, getAborted: () => aborted, getTurnLimited: () => softLimitReached };
 }
 
-async function runTurnLoop(session: AgentSession, prompt: string, options: RunOptions, unsubTurns: () => void) {
+async function runTurnLoop(
+  session: AgentSession,
+  prompt: string,
+  options: { signal?: AbortSignal } & RunCallbacks,
+  unsubTurns: () => void,
+) {
   const unsubEvents = subscribeToSessionEvents(session, options);
   const collector = collectResponseText(session, options.onTextDelta);
   const cleanupAbort = forwardAbortSignal(session, options.signal);
+  // Messages already in the session before this prompt belong to earlier runs;
+  // the fallback must not surface their text when this run fails (model error
+  // or abort with no output) — that would resurrect a prior run's result.
+  const messageStart = session.messages.length;
   try {
     await session.prompt(prompt);
   } finally {
@@ -610,7 +631,47 @@ async function runTurnLoop(session: AgentSession, prompt: string, options: RunOp
     collector.unsubscribe();
     cleanupAbort();
   }
-  return collector.getText().trim() || getLastAssistantText(session);
+  return collector.getText().trim() || getLastAssistantText(session, messageStart);
+}
+
+/**
+ * Run a single prompt against a session: wire turn tracking, event
+ * subscription, response collection, and abort forwarding, prompt, then
+ * assemble the RunResult. Shared by the first run (runAgentImpl) and
+ * continuations (continueAgentSession) so the two paths cannot drift.
+ */
+async function runSessionPrompt(
+  session: AgentSession,
+  prompt: string,
+  options: SessionPromptOptions,
+): Promise<RunResult> {
+  const { unsubscribe: unsubTurns, getAborted, getTurnLimited } = wireTurnTracking(session, options);
+  const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
+  return {
+    responseText,
+    session,
+    aborted: getAborted(),
+    turnLimited: getTurnLimited(),
+    modelError: getFinalModelError(session),
+  };
+}
+
+/**
+ * Prompt an existing session after its original run settled (the fork's
+ * continueAgentSession() shape).
+ *
+ * Unlike runAgent, the session already exists: onSessionCreated is never
+ * called, and there is no session setup (model resolution, resource loader,
+ * tool filtering). The result keeps the runAgent shape (including
+ * modelError) so the manager classifies the continuation exactly like the
+ * first run.
+ */
+export async function continueAgentSession(
+  session: AgentSession,
+  prompt: string,
+  options: SessionPromptOptions = {},
+): Promise<RunResult> {
+  return runSessionPrompt(session, prompt, options);
 }
 
 // ── main entry ─────────────────────────────────────────────────────
@@ -688,16 +749,10 @@ async function runAgentImpl(
     settingsManager,
     bufferNotify,
   );
-  const {
-    unsubscribe: unsubTurns,
-    getAborted,
-    getTurnLimited,
-  } = wireTurnTracking(session, {
+  const result = await runSessionPrompt(session, prompt, {
     ...options,
     maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
   });
-
-  const responseText = await runTurnLoop(session, prompt, options, unsubTurns);
 
   // Flush buffered warnings now that tool_result is in the session tree.
   for (const msg of warnings) {
@@ -705,11 +760,5 @@ async function runAgentImpl(
     else console.warn(`[pi-subagents-lite] ${msg}`);
   }
 
-  return {
-    responseText,
-    session,
-    aborted: getAborted(),
-    turnLimited: getTurnLimited(),
-    modelError: getFinalModelError(session),
-  };
+  return result;
 }

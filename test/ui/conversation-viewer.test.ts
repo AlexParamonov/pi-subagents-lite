@@ -385,7 +385,7 @@ describe("ConversationViewer", () => {
       expect(viewer.render(80).join("\n")).not.toContain("Enter send · Esc cancel");
     });
 
-    it("does not open composer when agent is not running", () => {
+    it("offers continue (not steer) for a settled agent with a session", () => {
       const onSteer = vi.fn();
       const done = vi.fn();
       const session = makeMockSession();
@@ -396,10 +396,58 @@ describe("ConversationViewer", () => {
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
+
+      // Footer advertises continue for a settled record, not steer.
+      const text = viewer.render(120).join("\n");
+      expect(text).toContain("Enter continue");
+      expect(text).not.toContain("Enter steer");
+
+      // Enter opens the composer with the continue hint.
+      viewer.handleInput("\r");
+      const composed = viewer.render(120).join("\n");
+      expect(composed).toContain("✎ continue");
+      expect(composed).not.toContain("✎ steer");
+
+      // Submitting sends through the same onSteer callback.
+      viewer.handleInput("keep going");
+      viewer.handleInput("\r");
+      expect(onSteer).toHaveBeenCalledWith("keep going");
+    });
+
+    it("shows Enter steer in the footer while the agent is running", () => {
+      const session = makeMockSession();
+      const record = makeMockRecord({
+        lifecycle: { status: "running", startedAt: Date.now() },
+        execution: { session },
+      });
+      const viewer = new ConversationViewer(
+        makeTui(),
+        session,
+        record,
+        noopTheme,
+        vi.fn(),
+        undefined,
+        undefined,
+        vi.fn(),
+      );
+
+      const text = viewer.render(120).join("\n");
+      expect(text).toContain("Enter steer");
+      expect(text).not.toContain("Enter continue");
+    });
+
+    it("does not offer the composer when the record has no session", () => {
+      const onSteer = vi.fn();
+      const done = vi.fn();
+      const session = makeMockSession();
+      const record = makeMockRecord({ execution: { session: undefined } });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
       viewer.handleInput("\r");
 
-      const text = viewer.render(80).join("\n");
-      expect(text).not.toContain("✎ steer");
+      const text = viewer.render(120).join("\n");
+      expect(text).not.toContain("✎ continue");
       expect(text).not.toContain("Enter send · Esc cancel");
     });
 

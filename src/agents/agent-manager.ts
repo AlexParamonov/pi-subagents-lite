@@ -6,24 +6,23 @@
 
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { runAgent } from "./agent-runner.js";
+import { continueAgentSession, runAgent, type RunResult } from "./agent-runner.js";
 import { AgentOutputLog } from "./output-file.js";
 import { Watchdog } from "./watchdog.js";
 import { getStore } from "../shell.js";
 import {
   type AgentRecord,
   type AgentStatus,
-  type CompactionInfo,
   type RunCallbacks,
   type StopInitiator,
   type WatchdogStopDetail,
   type SpawnConfig,
-  type ToolActivity,
 } from "../types.js";
 import type { SubagentType } from "./types.js";
 import { getAgentConfig } from "./agent-types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent, type AgentUsage } from "./usage.js";
+import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
+import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
 
 export const WATCHDOG_TICK_MS = 5_000;
 
@@ -230,6 +229,8 @@ export class AgentManager {
       },
       execution: {
         abortController,
+        modelKey: options.modelKey,
+        settled: false,
       },
       stats: {
         lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
@@ -238,6 +239,12 @@ export class AgentManager {
         compactionCount: 0,
         maxTurns: options.maxTurns,
       },
+    };
+    // Capture the coordinator's live-view bridge so a continuation can re-wire
+    // tool activity and streamed text into the widget's live view.
+    record.execution.liveViewCallbacks = {
+      onToolActivity: options.onToolActivity,
+      onTextDelta: options.onTextDelta,
     };
     this.agents.set(id, record);
 
@@ -312,16 +319,10 @@ export class AgentManager {
       graceTurns: options.graceTurns,
       projectTrusted: options.projectTrusted,
       signal: record.execution.abortController!.signal,
-      ...this.createRecordCallbacks(record, options),
-      onTurnEnd: (turnCount) => {
+      ...this.runTrackingCallbacks(record, options, (turnCount) => {
         record.stats.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
-      },
-      onTextDelta: (delta, fullText) => {
-        // Streamed response text counts as activity for the idle watchdog.
-        this.watchdog.recordText(id);
-        options.onTextDelta?.(delta, fullText);
-      },
+      }),
       onSessionCreated: (session) => {
         record.execution.session = session;
         // Flush any steers that arrived before the session was ready
@@ -339,7 +340,23 @@ export class AgentManager {
         }
         options.onSessionCreated?.(session);
       },
-    })
+    });
+    this.attachSettlementChain(record, promise, concurrencySlot);
+  }
+
+  /**
+   * Wire the shared settlement chain (status precedence, error formatting,
+   * tally, slot release, gate open) onto a run promise. Used by both the
+   * first run (startAgent) and continuations (continueSettledAgent) so the two paths
+   * cannot drift. openGate is idempotent, so a continuation's second call
+   * is a no-op — the gate resolver is dropped at the first settlement.
+   */
+  private attachSettlementChain(
+    record: AgentRecord,
+    runPromise: Promise<RunResult>,
+    concurrencySlot?: ConcurrencySlot,
+  ) {
+    runPromise
       .then(({ responseText, session, aborted, turnLimited, modelError }) => {
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
@@ -366,6 +383,8 @@ export class AgentManager {
         if (record.lifecycle.status !== "stopped") {
           record.lifecycle.status = "error";
         }
+        // A failed continuation must not leave the prior run's result visible.
+        record.result = undefined;
         record.error = errorMessage(err);
         record.lifecycle.completedAt ??= Date.now();
         return "";
@@ -393,6 +412,9 @@ export class AgentManager {
         // the result text is captured and the completion notify has fired.
         this.detachParentBinding(record);
         this.openGate(record.id, record.result ?? "");
+        // The run chain is fully settled: a continuation may now re-reserve
+        // the slot and prompt the session again.
+        record.execution.settled = true;
       });
   }
 
@@ -430,8 +452,15 @@ export class AgentManager {
   }
 
   private tallyCompletion(record: AgentRecord): void {
-    this.totalAgentCost += record.stats.lifetimeUsage.cost;
-    this.totalAgentCount++;
+    // Usage is monotonic (addUsage only accumulates), so the delta from the
+    // last tally is the cost this run added. The first tally (talliedCost
+    // undefined) also counts the agent; continuations never double-count.
+    const cost = record.stats.lifetimeUsage.cost;
+    const baseline = record.execution.talliedCost ?? 0;
+    this.totalAgentCost += cost - baseline;
+    const firstTally = record.execution.talliedCost === undefined;
+    record.execution.talliedCost = cost;
+    if (firstTally) this.totalAgentCount++;
     this.notifyComplete(record);
   }
 
@@ -449,28 +478,37 @@ export class AgentManager {
     return this.totalAgentCount;
   }
 
-  private createRecordCallbacks(
+  /**
+   * Callback set shared by a first run and a continuation: accumulates stats
+   * on the record, feeds the watchdog, and forwards to the caller's own
+   * callbacks. writeTurnCount is the per-path policy — the first run records
+   * the absolute count, a continuation adds to the previous total.
+   */
+  private runTrackingCallbacks(
     record: AgentRecord,
-    options?: Pick<SpawnOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
-  ): {
-    onToolActivity: (activity: ToolActivity) => void;
-    onAssistantUsage: (usage: AgentUsage) => void;
-    onCompaction: (info: CompactionInfo) => void;
-  } {
+    forward: RunCallbacks | undefined,
+    writeTurnCount: (turnCount: number) => void,
+  ): RunCallbacks {
     return {
       onToolActivity: (activity) => {
         if (activity.type === "end") record.stats.toolUses++;
         this.watchdog.recordActivity(record.id, activity);
-        options?.onToolActivity?.(activity);
+        forward?.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
         addUsage(record.stats.lifetimeUsage, usage);
-        options?.onAssistantUsage?.(usage);
+        forward?.onAssistantUsage?.(usage);
       },
       onCompaction: (info) => {
         record.stats.compactionCount++;
-        options?.onCompaction?.(info);
+        forward?.onCompaction?.(info);
       },
+      onTextDelta: (delta: string, fullText: string) => {
+        // Streamed response text counts as activity for the idle watchdog.
+        this.watchdog.recordText(record.id);
+        forward?.onTextDelta?.(delta, fullText);
+      },
+      onTurnEnd: writeTurnCount,
     };
   }
 
@@ -501,26 +539,87 @@ export class AgentManager {
     this.queue = this.queue.filter((e) => !started.has(e.id));
   }
 
-  /** Steer a running agent; queues the message when the session isn't created yet. */
+  /**
+   * Steer a running agent; queues the message when the session isn't created
+   * yet. A settled agent (completed, errored, aborted, stopped, turn-limited)
+   * with a live session is continued: the concurrency slot is re-reserved,
+   * the record is reset to running, and the session is prompted again.
+   */
   async steer(id: string, message: string): Promise<boolean> {
     const record = this.agents.get(id);
     if (!record) return false;
 
-    if (record.lifecycle.status !== "running") return false;
+    if (record.lifecycle.status === "running") {
+      if (!record.execution.session) {
+        if (!record.execution.pendingSteers) record.execution.pendingSteers = [];
+        record.execution.pendingSteers.push(message);
+        return true;
+      }
 
-    if (!record.execution.session) {
-      if (!record.execution.pendingSteers) record.execution.pendingSteers = [];
-      record.execution.pendingSteers.push(message);
-      return true;
+      try {
+        await record.execution.session.steer(message);
+        return true;
+      } catch {
+        // steer failures are surfaced to the caller via the boolean return value
+        return false;
+      }
+    }
+    return this.continueSettledAgent(record, message);
+  }
+
+  /**
+   * Continue a settled agent: re-reserve the concurrency slot, reset the
+   * record to running, and prompt the session again. Returns false when the
+   * record cannot be continued (still settling, no session, streaming, or
+   * the model's concurrency slot is full).
+   */
+  private continueSettledAgent(record: AgentRecord, message: string): boolean {
+    // settled flips to true only after the previous run chain's .finally, so
+    // a continuation cannot race the settlement cleanup (slot release, gate).
+    if (!record.execution.settled) return false;
+    const session = record.execution.session;
+    if (!session) return false;
+    // Defensive: a streaming session is mid-response and cannot be prompted.
+    if (session.isStreaming) return false;
+
+    // Re-reserve the concurrency slot (reject when full, don't queue). Skip
+    // entirely when the spawn had no model key — the record never held a slot.
+    let concurrencySlot: ConcurrencySlot | undefined;
+    const modelKey = record.execution.modelKey;
+    if (modelKey) {
+      const slot = this.getSlot(modelKey);
+      if (slot.running >= slot.limit) return false;
+      concurrencySlot = slot;
+      concurrencySlot.running++;
     }
 
-    try {
-      await record.execution.session.steer(message);
-      return true;
-    } catch {
-      // steer failures are surfaced to the caller via the boolean return value
-      return false;
-    }
+    // Reset the record to running; stats (usage, toolUses, turnCount) carry over.
+    const abortController = new AbortController();
+    record.execution.abortController = abortController;
+    record.execution.settled = false;
+    record.lifecycle.status = "running";
+    record.lifecycle.startedAt = Date.now();
+    record.lifecycle.completedAt = undefined;
+    record.result = undefined;
+    record.error = undefined;
+    // A stale idle clock from the first run would kill the continuation
+    // immediately — restart the watchdog before the new turn begins.
+    this.watchdog.start(record.id);
+
+    const previousTurns = record.stats.turnCount ?? 0;
+    const promise = continueAgentSession(session, message, {
+      ...this.runTrackingCallbacks(record, record.execution.liveViewCallbacks, (turnCount) => {
+        record.stats.turnCount = previousTurns + turnCount;
+      }),
+      maxTurns: record.stats.maxTurns,
+      graceTurns: getStore().agent.graceTurns ?? DEFAULT_GRACE_TURNS,
+      signal: abortController.signal,
+    });
+    this.attachSettlementChain(record, promise, concurrencySlot);
+    // The run proceeds asynchronously; the caller only learns the wiring
+    // succeeded. The parent abort binding is deliberately NOT re-attached —
+    // the parent turn that spawned the agent is over.
+    return true;
   }
 
   getRecord(id: string): AgentRecord | undefined {

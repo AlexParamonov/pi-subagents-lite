@@ -104,7 +104,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, subscribeToSessionEvents, resolveEffectiveSystemPromptMode } from "../../src/agents/agent-runner.js";
+import { runAgent, subscribeToSessionEvents, continueAgentSession, resolveEffectiveSystemPromptMode } from "../../src/agents/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",
@@ -2372,5 +2372,165 @@ describe("runAgent — model error detection", () => {
 
     const result = await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
     expect(result.modelError).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  continueAgentSession — resuming a settled session                  */
+/* ------------------------------------------------------------------ */
+
+describe("continueAgentSession", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  function fireTextDelta(session: any, delta: string) {
+    session
+      ._getListeners()
+      .forEach((fn: any) => fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }));
+  }
+
+  it("prompts the existing session and returns the collected response", async () => {
+    const session = createMockSession();
+    let resolvePrompt!: () => void;
+    session.prompt = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolvePrompt = r;
+        }),
+    );
+    const resultPromise = continueAgentSession(session, "keep going", {});
+    await vi.waitFor(() => expect(session.prompt).toHaveBeenCalledWith("keep going"));
+    fireTextDelta(session, "continued answer");
+    resolvePrompt();
+    const result = await resultPromise;
+    expect(result.responseText).toBe("continued answer");
+    expect(result.aborted).toBe(false);
+    expect(result.turnLimited).toBe(false);
+    expect(result.modelError).toBeUndefined();
+  });
+
+  /**
+   * Realistic continuation session: the first run's history is already in
+   * `messages`, and the prompt appends the continuation's own messages.
+   * extractText is mocked to return real text so the fallback scan is exercised.
+   */
+  function sessionWithPriorRun(continuationMessages: any[]) {
+    const session = createMockSession();
+    session.messages = [
+      { role: "user", content: "first task" },
+      { role: "assistant", content: [{ type: "text", text: "first run answer" }], stopReason: "stop" },
+    ];
+    session.prompt = vi.fn(async () => {
+      session.messages.push({ role: "user", content: "keep going" }, ...continuationMessages);
+    });
+    mockModules.mockExtractText.mockImplementation((content: any) =>
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content.map((c: any) => c.text ?? "").join("")
+          : "",
+    );
+    return session;
+  }
+
+  it("does not surface the prior run's text when the continuation ends in a model error", async () => {
+    const session = sessionWithPriorRun([
+      { role: "assistant", content: [], stopReason: "error", errorMessage: "provider boom" },
+    ]);
+
+    const result = await continueAgentSession(session, "keep going", {});
+
+    // The failed continuation produced no text of its own; the first run's
+    // "first run answer" must not leak into the result.
+    expect(result.responseText).toBe("");
+    expect(result.modelError).toBe("provider boom");
+  });
+
+  it("does not surface the prior run's text when the continuation is aborted without text", async () => {
+    const session = sessionWithPriorRun([{ role: "assistant", content: [], stopReason: "aborted" }]);
+
+    const result = await continueAgentSession(session, "keep going", {});
+
+    expect(result.responseText).toBe("");
+    expect(result.modelError).toBeUndefined();
+  });
+
+  it("still falls back to the continuation's own assistant text when the collector captured nothing", async () => {
+    const session = sessionWithPriorRun([
+      { role: "assistant", content: [{ type: "text", text: "continued answer" }], stopReason: "stop" },
+    ]);
+
+    const result = await continueAgentSession(session, "keep going", {});
+
+    expect(result.responseText).toBe("continued answer");
+  });
+
+  it("returns the session so the manager can re-attach it to the record", async () => {
+    const session = createMockSession();
+    session.prompt = vi.fn(async () => {});
+    const result = await continueAgentSession(session, "keep going", {});
+    expect(result.session).toBe(session);
+  });
+
+  it("never calls onSessionCreated — the session already exists", async () => {
+    const session = createMockSession();
+    session.prompt = vi.fn(async () => {});
+    const onSessionCreated = vi.fn();
+    await continueAgentSession(session, "keep going", { onSessionCreated });
+    expect(onSessionCreated).not.toHaveBeenCalled();
+  });
+
+  it("classifies a provider error from the final assistant message", async () => {
+    const session = createMockSession();
+    session.prompt = vi.fn(async () => {});
+    session.messages = [
+      { role: "assistant", content: [{ type: "text", text: "x" }], stopReason: "error", errorMessage: "provider boom" },
+    ];
+    const result = await continueAgentSession(session, "keep going", {});
+    expect(result.modelError).toBe("provider boom");
+  });
+
+  it("applies maxTurns and graceTurns to the continuation's turn tracking", async () => {
+    const session = createMockSession();
+    let resolvePrompt!: () => void;
+    session.prompt = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolvePrompt = r;
+        }),
+    );
+    const resultPromise = continueAgentSession(session, "keep going", { maxTurns: 1, graceTurns: 2 });
+    await vi.waitFor(() => expect(session.prompt).toHaveBeenCalled());
+    // Turn 1 hits the soft limit (steer); turn 3 (1 + 2 grace) hard-aborts.
+    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    expect(session.steer).toHaveBeenCalled();
+    expect(session.abort).not.toHaveBeenCalled();
+    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    expect(session.abort).toHaveBeenCalled();
+    resolvePrompt();
+    const result = await resultPromise;
+    expect(result.aborted).toBe(true);
+    expect(result.turnLimited).toBe(true);
+  });
+
+  it("forwards an abort signal to the session while the prompt runs", async () => {
+    const session = createMockSession();
+    let resolvePrompt!: () => void;
+    session.prompt = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolvePrompt = r;
+        }),
+    );
+    const controller = new AbortController();
+    const resultPromise = continueAgentSession(session, "keep going", { signal: controller.signal });
+    await vi.waitFor(() => expect(session.prompt).toHaveBeenCalled());
+    controller.abort();
+    expect(session.abort).toHaveBeenCalled();
+    resolvePrompt();
+    await resultPromise;
   });
 });

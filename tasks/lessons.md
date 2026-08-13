@@ -8,8 +8,13 @@
 - Slice from feature branch HEAD, not main. Wave 2+ needs Wave 1 cleanup first.
 
 ## Testing
-- Run `npm run test` after merging — clean merge ≠ passing tests.
-- Test behavior, not implementation details: assert constructor args and call args, not downstream effects; export testable functions early.
+- vi.fn() with an arrow implementation is not a constructor — a `new`ed mock needs a `function` implementation.
+- Cost accumulators: assert with toBeCloseTo (0.1 + 0.05 ≠ 0.15 in floats), and remember usage callbacks report per-message cost, not cumulative.
+- Per-message usage callbacks must be driven BEFORE the run settles — post-settlement the tally already read the old total.
+- When a new run path (e.g. continuation) reuses callback wiring, mirror every first-run callback: a dropped onTextDelta silently breaks idle-watchdog feeding for streamed text.
+- Re-bridge every spawn-time consumer on continuation: spawn-only callbacks (live-view bridging) die at first settlement, so a continued run renders stale "thinking…" until the manager forwards the continuation's events through callbacks captured on the record.
+- When a run reuses a session's transcript (continuation), scope history-scanning fallbacks to messages added during this run — a full-history scan resurrects a prior run's result text on failed runs (model error/abort with no output).
+- vitest writes transformed modules under TMPDIR; a shared machine pruning /tmp mid-run produces flaky ENOENT import failures — run with TMPDIR set to a stable local dir.
 - Replace `setTimeout` sleeps with awaiting chained completion promises — faster, no flake.
 - afterEach cleanup must remove the whole temp base dir, not one sibling.
 - Re-review recently fixed code fresh — don't assume the fix held because it was just touched.
