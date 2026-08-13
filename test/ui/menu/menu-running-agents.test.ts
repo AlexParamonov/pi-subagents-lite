@@ -341,8 +341,10 @@ describe("showTextViewer — component behavior", () => {
     const { component } = await getComponent(record, "result", "hello world\nline 2");
     const lines = component.render(80);
 
-    expect(lines[0]).toMatch(/\u256d/); // top-left corner
-    expect(lines[lines.length - 1]).toMatch(/\u2570/); // bottom-right corner
+    expect(lines[0].startsWith("\u256d")).toBe(true); // ╭ top-left corner
+    const bottom = lines[lines.length - 1];
+    expect(bottom.startsWith("\u2570")).toBe(true); // ╰ bottom-left corner
+    expect(bottom.endsWith("\u256f")).toBe(true); // ╯ bottom-right corner
     expect(lines[1]).toContain("general-purpose"); // title contains agent type
     expect(lines[1]).toContain("test-id"); // title contains short id
   });
@@ -658,6 +660,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     await list.onSelect!({ value: "view-conversation" });
 
     expect(capturedFactory).toBeDefined();
+    expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), { overlay: true });
   });
 
   it("shows both View conversation and View result for completed agent with session and result", () => {

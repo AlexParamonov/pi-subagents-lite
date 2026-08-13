@@ -50,6 +50,11 @@
 - For sweep/enumeration claims in plans, grep-verify counts — eyeballing undercounts.
 - Before manual testing, probe the configured model endpoints first; budget a model swap.
 
+## Manual Testing Environment
+- This box runs a shared agent pool whose gate-clean workflow wipes recently-created files under /tmp (observed: mock server dir, request logs, test projects, backups all deleted mid-test). Keep mock servers, request logs, test projects, and config backups outside /tmp (e.g. $HOME/manual-test/); expect an external wipe at any moment and write evidence immediately after capture.
+- Verify a config backup is the PRE-modification state before trusting it — re-copying after an earlier mutation silently freezes the modified version.
+- For pi extension e2e tests: point pi at a local mock OpenAI-compatible SSE server (llamacpp provider already targets localhost:8080) via --model + --api-key; drive the spawn deterministically by having the mock return an `Agent` tool call (agent type read from a file), and capture the sub-agent's exact system prompt from the logged request. Discriminate parent vs sub-agent requests by the `<agent_instructions>` marker in the system message.
+
 ## Types & Refactoring
 - Run typecheck before removing "redundant" fallbacks. Verify narrowing claims with the typechecker.
 - Make source fields optional from the start for explicit-vs-default overrides. Trace ALL mutation paths when adding similar config.
@@ -101,4 +106,3 @@
 
 ## Scope
 - Stay within issue scope. When provisional wording or removed-machinery comment changes, update the spec/comment in the same commit.
-- Clean up dev comments immediately; add the CHANGELOG entry as part of the initial implementation.

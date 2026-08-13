@@ -41,20 +41,23 @@ async function showConversationViewer(ctx: ExtensionCommandContext, record: Agen
   if (!record.execution?.session) return;
   const manager = getManager();
 
-  await ctx.ui.custom<void>((tui, theme, kb, done) => {
-    const viewer = new ConversationViewer(
-      tui,
-      record.execution.session!,
-      record,
-      theme,
-      done,
-      () => manager?.abort(record.id, "user"),
-      kb,
-      (msg: string) => manager?.steer(record.id, msg),
-    );
-    viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-    return viewer;
-  });
+  await ctx.ui.custom<void>(
+    (tui, theme, kb, done) => {
+      const viewer = new ConversationViewer(
+        tui,
+        record.execution.session!,
+        record,
+        theme,
+        done,
+        () => manager?.abort(record.id, "user"),
+        kb,
+        (msg: string) => manager?.steer(record.id, msg),
+      );
+      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
+      return viewer;
+    },
+    { overlay: true },
+  );
 }
 
 async function showTextViewer(
@@ -116,7 +119,7 @@ async function showTextViewer(
           const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
           out.push(`${border} ${count}${" ".repeat(gap)}${footerText} ${border}`);
 
-          out.push(theme.fg("border", `\u256f${"\u2500".repeat(width - 2)}\u2570`));
+          out.push(theme.fg("border", `\u2570${"\u2500".repeat(width - 2)}\u256f`));
           return out;
         },
         handleInput(data: string) {
