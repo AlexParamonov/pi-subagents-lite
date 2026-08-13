@@ -1,53 +1,26 @@
 /**
  * model-display-style.test.ts — Tests for model display style config.
  */
-
 import { describe, it, expect } from "vitest";
 import { ConfigStore, type ConfigIO } from "../../src/config/config-store.ts";
+import type { RawConfig } from "../../src/config/config-io.ts";
 import type { AgentWidget } from "../../src/ui/agent-widget.ts";
-import type { SubagentsConfig } from "../../src/models/model-precedence.ts";
 
-function defaultConfig(): SubagentsConfig {
-  return {
-    agent: {
-      default: null,
-      forceBackground: false,
-      graceTurns: 6,
-      widgetMaxLines: 12,
-      widgetDescLengthFull: 50,
-      widgetDescLengthCompact: 30,
-      widgetCompact: false,
-      widgetShortcut: false,
-      systemPromptMode: "replace",
-      includeContextFiles: true,
-      disableDefaultAgents: false,
-      showTools: true,
-      showTurns: true,
-      showInput: true,
-      showOutput: true,
-      showContext: true,
-      showCost: false,
-      showTime: true,
-      modelDisplayStyle: "name",
-    },
-    concurrency: { default: 4 },
-  };
-}
-
-function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): { io: ConfigIO; saves: SubagentsConfig[] } {
-  const merged: SubagentsConfig = {
-    agent: { ...defaultConfig().agent, ...(initial.agent ?? {}) },
-    concurrency: { default: 4, ...(initial.concurrency ?? {}) },
-  };
-  let cur = structuredClone(merged);
-  const saves: SubagentsConfig[] = [];
+/** In-memory ConfigIO over raw global layers, recording saves. */
+function memIO(initial: { global?: RawConfig } = {}): {
+  io: ConfigIO;
+  saves: Array<{ layer: "global" | "project"; config: RawConfig }>;
+} {
+  let cur: RawConfig = structuredClone(initial.global ?? {});
+  const saves: Array<{ layer: "global" | "project"; config: RawConfig }> = [];
   return {
     io: {
-      load: () => structuredClone(cur),
-      save: (c) => {
-        cur = structuredClone(c);
-        saves.push(structuredClone(c));
+      load: () => ({ global: structuredClone(cur), project: null, projectStatus: "untrusted" }),
+      saveGlobal: (config) => {
+        cur = structuredClone(config);
+        saves.push({ layer: "global", config: structuredClone(config) });
       },
+      saveProject: () => {},
     },
     saves,
   };
@@ -61,8 +34,6 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
     setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
     setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
-    setDescLengthFull: (n: number) => calls.push(`setDescLengthFull:${n}`),
-    setDescLengthCompact: (n: number) => calls.push(`setDescLengthCompact:${n}`),
     setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
     setFinishedRetentionMinutes: (n: number) => calls.push(`setFinishedRetentionMinutes:${n}`),
     setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
@@ -79,19 +50,18 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore modelDisplayStyle", () => {
-  it("defaults to 'id'", () => {
-    const { io } = memIO({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } });
+  it("defaults to 'name'", () => {
+    const { io } = memIO();
     const store = new ConfigStore(io);
     expect(store.agent.modelDisplayStyle).toBe("name");
   });
 
   it("returns configured value when present", () => {
     const { io } = memIO({
-      agent: { default: null, forceBackground: false, modelDisplayStyle: "name" },
-      concurrency: { default: 4 },
+      global: { agent: { modelDisplayStyle: "id" } },
     });
     const store = new ConfigStore(io);
-    expect(store.agent.modelDisplayStyle).toBe("name");
+    expect(store.agent.modelDisplayStyle).toBe("id");
   });
 
   it("setModelDisplayStyle persists and syncs widget", () => {
@@ -102,23 +72,22 @@ describe("ConfigStore modelDisplayStyle", () => {
     calls.length = 0;
     saves.length = 0;
 
-    store.mutate.widget.setModelDisplayStyle("name");
-    expect(store.agent.modelDisplayStyle).toBe("name");
+    store.mutate.widget.setModelDisplayStyle("id");
+    expect(store.agent.modelDisplayStyle).toBe("id");
     expect(saves).toHaveLength(1);
-    expect(saves[0].agent.modelDisplayStyle).toBe("name");
-    expect(calls).toContain("setModelDisplayStyle:name");
+    expect(saves[0].config.agent!.modelDisplayStyle).toBe("id");
+    expect(calls).toContain("setModelDisplayStyle:id");
   });
 
-  it("setModelDisplayStyle cycles back to 'id'", () => {
+  it("setModelDisplayStyle cycles back to 'name'", () => {
     const { io, saves } = memIO({
-      agent: { default: null, forceBackground: false, modelDisplayStyle: "name" },
-      concurrency: { default: 4 },
+      global: { agent: { modelDisplayStyle: "id" } },
     });
     const store = new ConfigStore(io);
     saves.length = 0;
 
-    store.mutate.widget.setModelDisplayStyle("id");
-    expect(store.agent.modelDisplayStyle).toBe("id");
+    store.mutate.widget.setModelDisplayStyle("name");
+    expect(store.agent.modelDisplayStyle).toBe("name");
     expect(saves).toHaveLength(1);
   });
 });

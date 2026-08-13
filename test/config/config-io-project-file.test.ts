@@ -1,24 +1,13 @@
 /**
- * config-io-project-file.test.ts — Project-level config: `.pi/subagents-lite.json`.
- *
- * When a valid project file exists it is used as the ENTIRE config; the global
- * file is not read. When it is absent or malformed, the global file is used
- * exactly as today. One file wins, wholly: no merging, no diffs, no tombstones
- * (project-level-config v2).
+ * config-io-project-file.test.ts — Project config as an override layer
+ * (ADR-0008): the project file's model/concurrency keys merge over the global
+ * file; absent keys inherit. Unknown keys are ignored with a warning, a
+ * malformed file is never written, and per-layer saves touch only their layer.
  */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-
-// Spy on the file actually read, to pin "the global file is not read" (AC).
-vi.mock("node:fs", async () => {
-  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-  return {
-    ...actual,
-    readFileSync: vi.fn(actual.readFileSync),
-  };
-});
 
 // Per-run temp dirs: must never read a real user config file.
 const MOCK_AGENT_DIR = mkdtempSync(join(tmpdir(), "pi-subagents-global-"));
@@ -29,15 +18,13 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 // Import after mock is set up
-const { createConfigIO, loadConfig } = await import("../../src/config/config-io.js");
-const { ConfigStore } = await import("../../src/config/config-store.js");
+const { createConfigIO, loadConfig, mergeLayers, mergeDefaults } = await import("../../src/config/config-io.js");
 
 let projectDir: string;
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "pi-subagents-project-"));
   rmSync(GLOBAL_CONFIG_PATH, { force: true });
-  vi.mocked(readFileSync).mockClear();
 });
 
 afterEach(() => {
@@ -65,220 +52,267 @@ function readProjectFile(): unknown {
   return JSON.parse(readFileSync(join(projectDir, "subagents-lite.json"), "utf-8"));
 }
 
-describe("createConfigIO load — project file wins wholesale", () => {
-  it("uses the project file as the entire config; global values do not leak", () => {
-    writeGlobal({
-      agent: { graceTurns: 5, showCost: true },
-      concurrency: { providers: { llamacpp: 2 } },
-    });
-    writeProject({ agent: { graceTurns: 9 } });
+describe("createConfigIO load — two-layer override model", () => {
+  it("returns the raw global and project layers with status loaded", () => {
+    writeGlobal({ agent: { graceTurns: 5 }, concurrency: { default: 2 } });
+    writeProject({ agent: { default: "p/default" }, concurrency: { default: 8 } });
 
-    const config = createConfigIO(projectDir).load();
+    const loaded = createConfigIO(projectDir).load();
 
-    expect(config.agent.graceTurns).toBe(9);
-    // Default, not the global file's value: the project file replaces it entirely.
-    expect(config.agent.showCost).toBe(false);
-    expect(config.concurrency).toEqual({ default: 4 });
+    expect(loaded.projectStatus).toBe("loaded");
+    expect(loaded.global).toEqual({ agent: { graceTurns: 5 }, concurrency: { default: 2 } });
+    expect(loaded.project).toEqual({ agent: { default: "p/default" }, concurrency: { default: 8 } });
   });
 
-  it("does not read the global file when a valid project file exists", () => {
-    writeGlobal({ agent: { graceTurns: 5 } });
-    writeProject({ agent: { graceTurns: 9 } });
+  it("reports untrusted and no project layer when created without a project dir", () => {
+    const loaded = createConfigIO().load();
 
-    const config = createConfigIO(projectDir).load();
-
-    expect(config.agent.graceTurns).toBe(9);
-    const readPaths = vi.mocked(readFileSync).mock.calls.map((c) => c[0]);
-    expect(readPaths).toEqual([join(projectDir, "subagents-lite.json")]);
+    expect(loaded.projectStatus).toBe("untrusted");
+    expect(loaded.project).toBeNull();
+    expect(loaded.global).toEqual({});
   });
 
-  it("an empty project file is valid and means defaults only", () => {
-    writeGlobal({ agent: { graceTurns: 5, showCost: true } });
+  it("reports absent when the trusted project has no config file yet", () => {
+    const loaded = createConfigIO(projectDir).load();
+
+    expect(loaded.projectStatus).toBe("absent");
+    expect(loaded.project).toBeNull();
+  });
+
+  it("an empty project file is inert: loaded as an empty layer", () => {
     writeProject({});
 
-    const config = createConfigIO(projectDir).load();
+    const loaded = createConfigIO(projectDir).load();
 
-    expect(config.agent.graceTurns).toBe(6);
-    expect(config.agent.showCost).toBe(false);
-    expect(config.concurrency.default).toBe(4);
+    expect(loaded.projectStatus).toBe("loaded");
+    expect(loaded.project).toEqual({});
   });
 
-  it("applies legacy-key normalization to the loaded file", () => {
-    writeGlobal({ agent: { finishedRetentionMinutes: 3 } });
-    writeProject({ agent: { finishedEvictTurns: 7 } });
-
-    const config = createConfigIO(projectDir).load();
-
-    expect("finishedEvictTurns" in config.agent).toBe(false);
-    // Built-in default, not the global file's value.
-    expect(config.agent.finishedRetentionMinutes).toBe(1);
-  });
-
-  it("ignores a malformed project file with a warning and still loads the global file", () => {
+  it("ignores a malformed JSON project file with a warning; status malformed", () => {
     writeGlobal({ agent: { graceTurns: 5 } });
     writeProjectRaw("{ not json !!");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const config = createConfigIO(projectDir).load();
-      expect(config.agent.graceTurns).toBe(5);
+      const loaded = createConfigIO(projectDir).load();
+      expect(loaded.projectStatus).toBe("malformed");
+      expect(loaded.project).toBeNull();
+      // The global layer still loads.
+      expect(loaded.global).toEqual({ agent: { graceTurns: 5 } });
       expect(warn).toHaveBeenCalledOnce();
     } finally {
       warn.mockRestore();
     }
   });
 
-  it("matches the global-only load byte-for-byte when no project file exists", () => {
-    writeGlobal({ agent: { graceTurns: 5 }, concurrency: { default: 2 } });
+  it("treats structurally invalid project files as malformed", () => {
+    const violations = [
+      { agent: "nope" },
+      { concurrency: "nope" },
+      { concurrency: { providers: 5 } },
+      { concurrency: { models: [] } },
+      [1, 2],
+      "text",
+      42,
+      null,
+    ];
+    for (const bad of violations) {
+      writeProject(bad);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const loaded = createConfigIO(projectDir).load();
+        expect(loaded.projectStatus).toBe("malformed");
+        expect(loaded.project).toBeNull();
+      } finally {
+        warn.mockRestore();
+      }
+    }
+  });
 
-    expect(createConfigIO(projectDir).load()).toEqual(loadConfig());
-    expect(createConfigIO().load()).toEqual(loadConfig());
+  it("warns once about unknown project keys, per IO instance", () => {
+    // graceTurns is a global-only setting: not allowed in the project file.
+    writeProject({ agent: { default: "p/default", graceTurns: 9 } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const io = createConfigIO(projectDir);
+      io.load();
+      io.load();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("graceTurns"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does not warn for a project file with only model and concurrency keys", () => {
+    writeProject({
+      agent: { default: "p", Explore: "p/x", defaultThinking: "high", defaultMaxTurns: 3 },
+      concurrency: { default: 2, providers: { a: 1 }, models: { b: 2 } },
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      createConfigIO(projectDir).load();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("strips the legacy finishedEvictTurns key from the global layer at load", () => {
+    writeGlobal({ agent: { finishedEvictTurns: 7, graceTurns: 5 } });
+
+    const loaded = createConfigIO().load();
+
+    expect("finishedEvictTurns" in loaded.global.agent!).toBe(false);
+    expect(loaded.global.agent).toEqual({ graceTurns: 5 });
   });
 });
 
-describe("createConfigIO save — full config to the file in use", () => {
-  it("persists the full effective config to the project file when it exists", () => {
+describe("mergeLayers — project over global, per key", () => {
+  it("project agent keys override global; absent keys inherit", () => {
+    const merged = mergeLayers({ agent: { default: "g", Explore: "g/x", graceTurns: 5 } }, { agent: { default: "p" } });
+
+    expect(merged.agent).toEqual({ default: "p", Explore: "g/x", graceTurns: 5 });
+  });
+
+  it("drops project agent keys that are not model keys", () => {
+    const merged = mergeLayers(
+      { agent: { default: "g" } },
+      { agent: { default: "p", graceTurns: 9, widgetMaxLines: 3 } },
+    );
+
+    expect(merged.agent).toEqual({ default: "p" });
+  });
+
+  it("keeps an explicit null project default as an override", () => {
+    const merged = mergeLayers({ agent: { default: "g" } }, { agent: { default: null } });
+
+    expect(merged.agent).toEqual({ default: null });
+  });
+
+  it("merges concurrency per entry: default wins, providers/models combine", () => {
+    const merged = mergeLayers(
+      { concurrency: { default: 2, providers: { llamacpp: 1, openai: 2 }, models: { a: 1 } } },
+      { concurrency: { default: 8, providers: { llamacpp: 3 } } },
+    );
+
+    expect(merged.concurrency).toEqual({
+      default: 8,
+      providers: { llamacpp: 3, openai: 2 },
+      models: { a: 1 },
+    });
+  });
+
+  it("project provider/model entries fall through to global entries", () => {
+    const merged = mergeLayers(
+      { concurrency: { providers: { llamacpp: 1 } } },
+      { concurrency: { providers: { openai: 2 } } },
+    );
+
+    expect(merged.concurrency).toEqual({ providers: { llamacpp: 1, openai: 2 } });
+  });
+
+  it("with no project layer, the global layer passes through", () => {
+    expect(mergeLayers({ agent: { default: "g" }, concurrency: { default: 2 } }, null)).toEqual({
+      agent: { default: "g" },
+      concurrency: { default: 2 },
+    });
+  });
+
+  it("empty layers merge to empty sections without explicit undefined default", () => {
+    const merged = mergeLayers({}, {});
+
+    expect(merged.agent).toEqual({});
+    expect("default" in merged.concurrency!).toBe(false);
+    expect(merged.concurrency).toEqual({});
+  });
+});
+
+describe("mergeDefaults / loadConfig", () => {
+  it("bakes built-in defaults for absent keys", () => {
+    const config = mergeDefaults({ agent: { default: "x" }, concurrency: { default: 2 } });
+
+    expect(config.agent.graceTurns).toBe(6);
+    expect(config.agent.widgetMaxLines).toBe(12);
+    expect(config.agent.showCost).toBe(false);
+    expect(config.concurrency.providers).toBeUndefined();
+  });
+
+  it("strips the legacy finishedEvictTurns key from the effective agent", () => {
+    const config = mergeDefaults({ agent: { finishedEvictTurns: 7, forceBackground: true } });
+
+    expect("finishedEvictTurns" in config.agent).toBe(false);
+    expect(config.agent.forceBackground).toBe(true);
+  });
+
+  it("loadConfig merges only the global file", () => {
+    writeGlobal({ agent: { default: "g", graceTurns: 5 }, concurrency: { default: 2 } });
+    writeProject({ agent: { default: "p" } });
+
+    expect(loadConfig()).toEqual(
+      mergeDefaults({ agent: { default: "g", graceTurns: 5 }, concurrency: { default: 2 } }),
+    );
+  });
+});
+
+describe("createConfigIO save — per-layer writes", () => {
+  it("saveGlobal writes only the global file, leaving the project file untouched", () => {
+    writeGlobal({ agent: { graceTurns: 5 } });
+    writeProject({ agent: { default: "p" } });
+    const io = createConfigIO(projectDir);
+    io.load();
+
+    io.saveGlobal({ agent: { graceTurns: 9 } });
+
+    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"))).toEqual({ agent: { graceTurns: 9 } });
+    expect(readProjectFile()).toEqual({ agent: { default: "p" } });
+  });
+
+  it("saveProject writes only the project file, leaving the global file untouched", () => {
     writeGlobal({ agent: { graceTurns: 5, showCost: true } });
     writeProject({ agent: { graceTurns: 9 } });
     const io = createConfigIO(projectDir);
-    const config = io.load();
-    config.agent.graceTurns = 12;
-    io.save(config);
+    io.load();
 
-    const saved = readProjectFile() as { agent: { graceTurns: number } };
-    expect(saved.agent.graceTurns).toBe(12);
-    expect(saved).toEqual(config);
-    // The global file is untouched.
+    io.saveProject({ agent: { graceTurns: 12 } });
+
+    expect(readProjectFile()).toEqual({ agent: { graceTurns: 12 } });
     expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"))).toEqual({
       agent: { graceTurns: 5, showCost: true },
     });
   });
 
-  it("with no project file, saves the full config to the global file as today", () => {
-    writeGlobal({ agent: { graceTurns: 5 } });
+  it("the first saveProject in a trusted project without a file creates it", () => {
     const io = createConfigIO(projectDir);
-    const config = io.load();
-    config.agent.graceTurns = 9;
-    io.save(config);
+    io.load();
 
-    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8"))).toEqual(config);
-    expect(existsSync(join(projectDir, "subagents-lite.json"))).toBe(false);
+    io.saveProject({ agent: { default: "p" } });
+
+    expect(readProjectFile()).toEqual({ agent: { default: "p" } });
   });
 
-  it("with a malformed project file, saves go to the global file and the malformed file is untouched", () => {
-    writeGlobal({ agent: { graceTurns: 5 } });
+  it("saveProject refuses to write a malformed project file; bytes untouched", () => {
     writeProjectRaw("{ not json !!");
-    const io = createConfigIO(projectDir);
-    const config = io.load();
-    config.agent.graceTurns = 7;
-    io.save(config);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const io = createConfigIO(projectDir);
+      io.load();
 
-    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).agent.graceTurns).toBe(7);
-    expect(readFileSync(join(projectDir, "subagents-lite.json"), "utf-8")).toBe("{ not json !!");
-  });
-});
+      io.saveProject({ agent: { default: "p" } });
 
-describe("ConfigStore with project IO", () => {
-  it("reads project values and persists menu changes to the project file only", () => {
-    writeGlobal({ agent: { graceTurns: 5, showCost: true } });
-    writeProject({ agent: { graceTurns: 9 } });
-    const store = new ConfigStore(createConfigIO(projectDir));
-
-    expect(store.agent.graceTurns).toBe(9);
-    expect(store.agent.showCost).toBe(false);
-
-    store.mutate.agent.setGraceTurns(12);
-
-    expect((readProjectFile() as { agent: { graceTurns: number } }).agent.graceTurns).toBe(12);
-    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).agent.graceTurns).toBe(5);
-    store.reload();
-    expect(store.agent.graceTurns).toBe(12);
+      expect(readFileSync(join(projectDir, "subagents-lite.json"), "utf-8")).toBe("{ not json !!");
+      // One warning for the malformed load, one for the refused save.
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
-  it("a saved project file contains the full effective config", () => {
-    writeProject({ agent: { graceTurns: 9 } });
-    const store = new ConfigStore(createConfigIO(projectDir));
+  it("saveProject without a trusted project dir writes nothing", () => {
+    const io = createConfigIO();
+    io.load();
 
-    store.mutate.agent.setGraceTurns(12);
+    io.saveProject({ agent: { default: "p" } });
 
-    const saved = readProjectFile() as {
-      agent: { graceTurns: number; widgetMaxLines: number };
-      concurrency: { default: number };
-    };
-    expect(saved.agent.graceTurns).toBe(12);
-    expect(saved.agent.widgetMaxLines).toBe(12); // built-in default baked in
-    expect(saved.concurrency.default).toBe(4);
-  });
-
-  it("applies clamping to the loaded file", () => {
-    writeGlobal({ agent: { finishedRetentionMinutes: 3 } });
-    writeProject({ agent: { finishedRetentionMinutes: 0 } });
-    const store = new ConfigStore(createConfigIO(projectDir));
-
-    expect(store.agent.finishedRetentionMinutes).toBeCloseTo(1 / 60, 5);
-  });
-
-  it("setProjectDir retargets persistence and reload picks up the project file", () => {
-    writeGlobal({ agent: { graceTurns: 5 } });
-    writeProject({ agent: { graceTurns: 9 } });
-    const store = new ConfigStore(createConfigIO());
-    expect(store.agent.graceTurns).toBe(5);
-
-    store.setProjectDir(projectDir);
-    store.reload();
-    expect(store.agent.graceTurns).toBe(9);
-
-    store.mutate.agent.setGraceTurns(11);
-    expect((readProjectFile() as { agent: { graceTurns: number } }).agent.graceTurns).toBe(11);
-  });
-
-  it("persists removing a provider across reload", () => {
-    writeGlobal({ concurrency: { providers: { llamacpp: 1, openai: 2 } } });
-    writeProject({ concurrency: { providers: { llamacpp: 1 } } });
-    const store = new ConfigStore(createConfigIO(projectDir));
-    expect(store.concurrency.providers).toEqual({ llamacpp: 1 });
-
-    store.mutate.concurrency.removeProvider("llamacpp");
-
-    expect((readProjectFile() as { concurrency: { providers: object } }).concurrency.providers).toEqual({});
-    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).concurrency.providers).toEqual({
-      llamacpp: 1,
-      openai: 2,
-    });
-    store.reload();
-    expect(store.concurrency.providers).toEqual({});
-  });
-
-  it("persists resetting concurrency across reload", () => {
-    writeGlobal({ concurrency: { default: 2, providers: { llamacpp: 1 } } });
-    writeProject({ concurrency: { default: 8, providers: { llamacpp: 3 } } });
-    const store = new ConfigStore(createConfigIO(projectDir));
-    expect(store.concurrency.default).toBe(8);
-
-    store.mutate.concurrency.reset();
-
-    const saved = readProjectFile() as { concurrency: { default: number; providers?: object } };
-    expect(saved.concurrency.default).toBe(4);
-    expect(saved.concurrency.providers).toBeUndefined();
-    expect(JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")).concurrency.default).toBe(2);
-    store.reload();
-    expect(store.concurrency.default).toBe(4);
-    expect(store.concurrency.providers).toEqual({});
-  });
-
-  it("persists clearing a per-type model override across reload; the global file never reapplies", () => {
-    writeGlobal({ agent: { Explore: "g/explore", general: "g/general" } });
-    writeProject({ agent: { Explore: "p/explore" } });
-    const store = new ConfigStore(createConfigIO(projectDir));
-    expect(store.agentConfigSnapshot().Explore).toBe("p/explore");
-
-    store.mutate.agent.clearModelOverride("Explore");
-
-    const saved = readProjectFile() as { agent: { Explore?: string; general?: string } };
-    expect(saved.agent.Explore).toBeUndefined();
-    // The project file is the entire config: the global file's overrides do not return.
-    expect(saved.agent.general).toBeUndefined();
-    store.reload();
-    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
-    expect(store.agentConfigSnapshot().general).toBeUndefined();
+    expect(existsSync(join(projectDir, "subagents-lite.json"))).toBe(false);
   });
 });

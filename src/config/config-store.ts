@@ -8,6 +8,9 @@
  * - Each persisted mutate method is mutate + persist + its side effect, so a
  *   side effect cannot be forgotten.
  * - Widget/manager are injected after construction (they're created lazily).
+ * - Effective config resolves session overrides → project file → global file
+ *   → built-in defaults (ADR-0008). Mutations target one layer; each file
+ *   stores only its own keys and the merged config is never written back.
  *
  * Lifecycle: per-session. `reload()` re-reads disk + resets session overrides
  * at session_start. `dispose()` drops deps at session_shutdown.
@@ -22,16 +25,25 @@ import type { SystemPromptMode } from "../agents/types.js";
 import type { ThinkingLevel } from "../types.js";
 import {
   VALID_SYSTEM_PROMPT_MODES,
-  DEFAULT_CONCURRENCY,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
   MIN_FINISHED_RETENTION_MINUTES,
+  MODEL_FAMILY_KEYS,
   createConfigIO,
+  mergeDefaults,
+  mergeLayers,
   type ConfigIO,
+  type ConfigTarget,
+  type ProjectLayerStatus,
+  type RawConfig,
+  type RawConcurrency,
 } from "./config-io.js";
 
-export type { ConfigIO } from "./config-io.js";
+export type { ConfigIO, ConfigTarget, ProjectLayerStatus, RawConfig, RawConcurrency } from "./config-io.js";
 
 export const fileConfigIO: ConfigIO = createConfigIO();
+
+/** Agent keys that survive clear-all: non-model settings minus the model family. */
+const CLEAR_ALL_KEPT_AGENT_KEYS = new Set(CONFIG_AGENT_NON_MODEL_KEYS.filter((key) => !MODEL_FAMILY_KEYS.has(key)));
 
 /** Agent settings with all scalar defaults resolved. Model fields stay nullable. */
 export interface ResolvedAgentSettings {
@@ -102,9 +114,13 @@ export interface ConfigStoreDeps {
 }
 
 export class ConfigStore {
+  private globalRaw: RawConfig;
+  private projectRaw: RawConfig | null;
+  private projectStatus: ProjectLayerStatus;
   private config: SubagentsConfig;
   private io: ConfigIO;
   private sessionOverrides: SessionModelOverrides = { default: null };
+  private sessionConcurrencyLayer: RawConcurrency = {};
   private sessionShowCost: boolean | undefined;
   private widget?: AgentWidget;
   private manager?: AgentManager;
@@ -113,7 +129,11 @@ export class ConfigStore {
 
   constructor(io: ConfigIO = fileConfigIO) {
     this.io = io;
-    this.config = this.io.load();
+    const loaded = io.load();
+    this.globalRaw = loaded.global;
+    this.projectRaw = loaded.project;
+    this.projectStatus = loaded.projectStatus;
+    this.config = mergeDefaults(mergeLayers(this.globalRaw, this.projectRaw));
   }
 
   /**
@@ -126,13 +146,18 @@ export class ConfigStore {
 
   // ── Reads ──────────────────────────────────────────────────────
 
+  /** True when the project layer may be written: trusted project, valid or absent file. */
+  get projectTargetOffered(): boolean {
+    return this.projectStatus === "loaded" || this.projectStatus === "absent";
+  }
+
   get hasSessionShowCost(): boolean {
     return this.sessionShowCost !== undefined;
   }
 
   get agent(): ResolvedAgentSettings {
     const a = this.config.agent;
-    const widgetMaxLines = a.widgetMaxLines!; // guaranteed by loadConfig default merge
+    const widgetMaxLines = a.widgetMaxLines!; // guaranteed by the defaults merge
     const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
 
     return {
@@ -181,10 +206,12 @@ export class ConfigStore {
     providers: Record<string, number>;
     models: Record<string, number>;
   } {
+    const base = this.config.concurrency;
+    const session = this.sessionConcurrencyLayer;
     return {
-      default: this.config.concurrency.default,
-      providers: this.config.concurrency.providers ?? {},
-      models: this.config.concurrency.models ?? {},
+      default: session.default ?? base.default,
+      providers: { ...(base.providers ?? {}), ...(session.providers ?? {}) },
+      models: { ...(base.models ?? {}), ...(session.models ?? {}) },
     };
   }
 
@@ -194,6 +221,33 @@ export class ConfigStore {
 
   sessionModelOverride(type: string): string | null {
     return this.sessionOverrides[type] ?? null;
+  }
+
+  /** Whether the session layer sets this agent model key (default or per-type). */
+  hasSessionModelKey(key: string): boolean {
+    return typeof this.sessionOverrides[key] === "string";
+  }
+
+  /** Whether the global agent layer carries this key (provenance from layer membership). */
+  hasGlobalModelKey(key: string): boolean {
+    return this.globalRaw.agent != null && this.globalRaw.agent[key] !== undefined;
+  }
+
+  /** Whether the project agent layer carries this key (provenance from layer membership). */
+  hasProjectModelKey(key: string): boolean {
+    return this.projectRaw?.agent != null && this.projectRaw.agent[key] !== undefined;
+  }
+
+  get globalConcurrency(): RawConcurrency {
+    return { ...(this.globalRaw.concurrency ?? {}) };
+  }
+
+  get projectConcurrency(): RawConcurrency {
+    return { ...(this.projectRaw?.concurrency ?? {}) };
+  }
+
+  get sessionConcurrency(): RawConcurrency {
+    return { ...this.sessionConcurrencyLayer };
   }
 
   /** Raw agent config incl. dynamic per-type model keys (for menu display). */
@@ -218,100 +272,124 @@ export class ConfigStore {
 
   // ── Mutations ──────────────────────────────────────────────────
   // Session methods are in-memory only: never persisted, no side effects.
+  // Target-aware methods default to the global layer; "all" clears the key or
+  // the model set in every layer that offers a project target.
 
   readonly mutate = {
     agent: {
-      setDefaultModel: (value: string | null): void => {
-        this.config.agent.default = value;
-        this.persist();
-      },
-      setModelOverride: (type: string, value: string | null): void => {
-        this.config.agent[type] = value;
-        this.persist();
-      },
-      clearModelOverride: (type: string): void => {
-        delete this.config.agent[type];
-        this.persist();
-      },
-      /** Clear all per-type model overrides, preserving non-model settings. */
-      clearAllModelOverrides: (): void => {
-        const preserved: Record<string, unknown> = {};
-        for (const key of CONFIG_AGENT_NON_MODEL_KEYS) {
-          const val = this.config.agent[key];
-          if (val != null || key === "default" || key === "forceBackground") {
-            preserved[key] = val;
-          }
+      setDefaultModel: (value: string | null, target: ConfigTarget = "global"): void => {
+        if (target === "session") {
+          this.sessionOverrides.default = value;
+          return;
         }
-        this.config.agent = preserved as SubagentsConfig["agent"];
-        this.persist();
-        this.syncWidgetSettings();
+        const layer = this.agentLayerFor(target);
+        if (!layer) return;
+        layer.default = value;
+        this.commitLayer(target);
+      },
+      setModelOverride: (type: string, value: string | null, target: ConfigTarget = "global"): void => {
+        if (target === "session") {
+          this.sessionOverrides[type] = value;
+          return;
+        }
+        const layer = this.agentLayerFor(target);
+        if (!layer) return;
+        layer[type] = value;
+        this.commitLayer(target);
+      },
+      clearModelOverride: (type: string, target: ConfigTarget | "all" = "global"): void => {
+        if (target === "all") {
+          delete this.sessionOverrides[type];
+          if (this.globalRaw.agent) delete this.globalRaw.agent[type];
+          this.io.saveGlobal(this.globalRaw);
+          this.clearProjectModelKeyIfOffered(type);
+          this.rebuildEffective();
+          return;
+        }
+        if (target === "session") {
+          delete this.sessionOverrides[type];
+          return;
+        }
+        const layer = this.layerFor(target);
+        if (!layer) return;
+        if (layer.agent) delete layer.agent[type];
+        this.commitLayer(target);
+      },
+      /** Clear all model keys (default, thinking, max turns, per-type), keeping non-model settings. */
+      clearAllModelOverrides: (target: ConfigTarget | "all" = "global"): void => {
+        if (target === "session") {
+          this.sessionOverrides = { default: null };
+          return;
+        }
+        if (target === "all") {
+          this.sessionOverrides = { default: null };
+          this.clearAgentModelKeys(this.globalRaw);
+          this.io.saveGlobal(this.globalRaw);
+          this.clearProjectModelKeysIfOffered();
+          this.rebuildEffective();
+          return;
+        }
+        const layer = this.layerFor(target);
+        if (!layer) return;
+        this.clearAgentModelKeys(layer);
+        this.commitLayer(target);
       },
       setForceBackground: (enabled: boolean): void => {
-        this.config.agent.forceBackground = enabled;
-        this.persist();
+        this.globalAgent().forceBackground = enabled;
+        this.commitGlobal();
       },
       setShowCost: (enabled: boolean): void => {
-        this.config.agent.showCost = enabled;
+        this.globalAgent().showCost = enabled;
         this.sessionShowCost = undefined;
-        this.persist();
+        this.commitGlobal();
         this.widget?.setShowCost(enabled);
         this.syncWidgetStatsVisibility();
       },
       setGraceTurns: (n: number): void => {
-        this.config.agent.graceTurns = n;
-        this.persist();
+        this.globalAgent().graceTurns = n;
+        this.commitGlobal();
       },
       setToolTimeoutMinutes: (n: number): void => {
-        this.config.agent.toolTimeoutMinutes = Math.max(0, n);
-        this.persist();
+        this.globalAgent().toolTimeoutMinutes = Math.max(0, n);
+        this.commitGlobal();
       },
       setIdleTimeoutMinutes: (n: number): void => {
-        this.config.agent.idleTimeoutMinutes = Math.max(0, n);
-        this.persist();
+        this.globalAgent().idleTimeoutMinutes = Math.max(0, n);
+        this.commitGlobal();
       },
       setOutputTranscript: (enabled: boolean): void => {
-        this.config.agent.outputTranscript = enabled;
-        this.persist();
+        this.globalAgent().outputTranscript = enabled;
+        this.commitGlobal();
       },
       setSystemPromptMode: (mode: SystemPromptMode): void => {
-        this.config.agent.systemPromptMode = mode;
-        this.persist();
+        this.globalAgent().systemPromptMode = mode;
+        this.commitGlobal();
       },
       setIncludeContextFiles: (enabled: boolean): void => {
-        this.config.agent.includeContextFiles = enabled;
-        this.persist();
+        this.globalAgent().includeContextFiles = enabled;
+        this.commitGlobal();
       },
-      setDefaultThinking: (level: ThinkingLevel | undefined): void => {
-        if (level === undefined) {
-          delete this.config.agent.defaultThinking;
-        } else {
-          this.config.agent.defaultThinking = level;
-        }
-        this.persist();
+      setDefaultThinking: (level: ThinkingLevel | undefined, target: "global" | "project" = "global"): void => {
+        this.setModelFamilyKey("defaultThinking", level, target);
       },
-      setDefaultMaxTurns: (n: number | undefined): void => {
-        if (n === undefined) {
-          delete this.config.agent.defaultMaxTurns;
-        } else {
-          this.config.agent.defaultMaxTurns = n;
-        }
-        this.persist();
+      setDefaultMaxTurns: (n: number | undefined, target: "global" | "project" = "global"): void => {
+        this.setModelFamilyKey("defaultMaxTurns", n, target);
       },
       setLoadSkillsImplicitly: (value: boolean): void => {
-        this.config.agent.loadSkillsImplicitly = value;
-        this.persist();
+        this.globalAgent().loadSkillsImplicitly = value;
+        this.commitGlobal();
       },
       setLoadExtensionsImplicitly: (value: boolean): void => {
-        this.config.agent.loadExtensionsImplicitly = value;
-        this.persist();
+        this.globalAgent().loadExtensionsImplicitly = value;
+        this.commitGlobal();
       },
       setDisableDefaultAgents: (value: boolean): void => {
-        this.config.agent.disableDefaultAgents = value;
-        this.persist();
+        this.globalAgent().disableDefaultAgents = value;
+        this.commitGlobal();
       },
       setAgentToolStrictMode: (value: boolean): void => {
-        this.config.agent.agentToolStrictMode = value;
-        this.persist();
+        this.globalAgent().agentToolStrictMode = value;
+        this.commitGlobal();
       },
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
       setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
@@ -320,38 +398,38 @@ export class ConfigStore {
       setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
       setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
       setOutputThinkingBufferSize: (size: number): void => {
-        this.config.agent.outputThinkingBufferSize = size;
-        this.persist();
+        this.globalAgent().outputThinkingBufferSize = size;
+        this.commitGlobal();
       },
       setFinishedRetentionMinutes: (minutes: number): void => {
         const n = Math.max(MIN_FINISHED_RETENTION_MINUTES, minutes);
-        this.config.agent.finishedRetentionMinutes = n;
-        this.persist();
+        this.globalAgent().finishedRetentionMinutes = n;
+        this.commitGlobal();
         // Push the window to the widget so it applies on the next render tick.
         this.widget?.setFinishedRetentionMinutes(n);
       },
     },
     widget: {
       setCompact: (enabled: boolean): void => {
-        this.config.agent.widgetCompact = enabled;
-        this.persist();
+        this.globalAgent().widgetCompact = enabled;
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
       setShowCompletionCards: (enabled: boolean): void => {
-        this.config.agent.showCompletionCards = enabled;
-        this.persist();
+        this.globalAgent().showCompletionCards = enabled;
+        this.commitGlobal();
       },
       setMaxLines: (lines: number): void => {
-        this.config.agent.widgetMaxLines = lines;
-        if (this.config.agent.widgetMaxLinesCompact === undefined) {
-          this.config.agent.widgetMaxLinesCompact = Math.floor(lines / 2);
+        this.globalAgent().widgetMaxLines = lines;
+        if (this.globalAgent().widgetMaxLinesCompact === undefined) {
+          this.globalAgent().widgetMaxLinesCompact = Math.floor(lines / 2);
         }
-        this.persist();
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
       setMaxLinesCompact: (lines: number): void => {
-        this.config.agent.widgetMaxLinesCompact = lines;
-        this.persist();
+        this.globalAgent().widgetMaxLinesCompact = lines;
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
 
@@ -360,71 +438,107 @@ export class ConfigStore {
       // than immediately. Flagged for a follow-up (the other three widget
       // setters do sync).
       setShortcut: (enabled: boolean): void => {
-        this.config.agent.widgetShortcut = enabled;
-        this.persist();
+        this.globalAgent().widgetShortcut = enabled;
+        this.commitGlobal();
       },
       setShowModel: (enabled: boolean): void => {
-        this.config.agent.widgetShowModel = enabled;
-        this.persist();
+        this.globalAgent().widgetShowModel = enabled;
+        this.commitGlobal();
         this.syncWidgetStatsVisibility();
       },
       setShowThinking: (enabled: boolean): void => {
-        this.config.agent.widgetShowThinking = enabled;
-        this.persist();
+        this.globalAgent().widgetShowThinking = enabled;
+        this.commitGlobal();
         this.syncWidgetStatsVisibility();
       },
       setNavHint: (enabled: boolean): void => {
-        this.config.agent.widgetNavHint = enabled;
-        this.persist();
+        this.globalAgent().widgetNavHint = enabled;
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
       setModelDisplayStyle: (style: "id" | "name"): void => {
-        this.config.agent.modelDisplayStyle = style;
-        this.persist();
+        this.globalAgent().modelDisplayStyle = style;
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
       setModelThinkingPlacement: (placement: ModelThinkingPlacement): void => {
-        this.config.agent.modelThinkingPlacement = placement;
-        this.persist();
+        this.globalAgent().modelThinkingPlacement = placement;
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
       setStatusBarFormat: (format: "full" | "compact"): void => {
-        this.config.agent.statusBarFormat = format;
-        this.persist();
+        this.globalAgent().statusBarFormat = format;
+        this.commitGlobal();
         this.syncWidgetSettings();
       },
     },
     concurrency: {
-      setDefault: (n: number): void => {
-        this.config.concurrency.default = n;
-        this.persist();
+      setDefault: (n: number, target: ConfigTarget = "global"): void => {
+        if (target === "session") {
+          this.sessionConcurrencyLayer.default = n;
+          this.applyConcurrency();
+          return;
+        }
+        const layer = this.concurrencyLayerFor(target);
+        if (!layer) return;
+        layer.default = n;
+        this.commitLayer(target);
         this.applyConcurrency();
       },
-      setProvider: (key: string, n: number): void => {
-        this.config.concurrency.providers = { ...(this.config.concurrency.providers ?? {}), [key]: n };
-        this.persist();
+      setProvider: (key: string, n: number, target: ConfigTarget = "global"): void => {
+        if (target === "session") {
+          this.sessionConcurrencyLayer.providers = { ...(this.sessionConcurrencyLayer.providers ?? {}), [key]: n };
+          this.applyConcurrency();
+          return;
+        }
+        const layer = this.concurrencyLayerFor(target);
+        if (!layer) return;
+        layer.providers = { ...(layer.providers ?? {}), [key]: n };
+        this.commitLayer(target);
         this.applyConcurrency();
       },
-      setModel: (key: string, n: number): void => {
-        this.config.concurrency.models = { ...(this.config.concurrency.models ?? {}), [key]: n };
-        this.persist();
+      setModel: (key: string, n: number, target: ConfigTarget = "global"): void => {
+        if (target === "session") {
+          this.sessionConcurrencyLayer.models = { ...(this.sessionConcurrencyLayer.models ?? {}), [key]: n };
+          this.applyConcurrency();
+          return;
+        }
+        const layer = this.concurrencyLayerFor(target);
+        if (!layer) return;
+        layer.models = { ...(layer.models ?? {}), [key]: n };
+        this.commitLayer(target);
         this.applyConcurrency();
       },
-      removeProvider: (key: string): void => {
-        if (this.config.concurrency.providers) delete this.config.concurrency.providers[key];
-        this.persist();
+      removeProvider: (key: string, target: ConfigTarget | "all" = "global"): void => {
+        this.removeConcurrencyEntry("providers", key, target);
+      },
+      removeModel: (key: string, target: ConfigTarget | "all" = "global"): void => {
+        this.removeConcurrencyEntry("models", key, target);
+      },
+      /** Remove every concurrency key at the target level; effective values fall through. */
+      clearAll: (target: ConfigTarget | "all" = "global"): void => {
+        if (target === "session") {
+          this.sessionConcurrencyLayer = {};
+          this.applyConcurrency();
+          return;
+        }
+        if (target === "all") {
+          this.sessionConcurrencyLayer = {};
+          delete this.globalRaw.concurrency;
+          this.io.saveGlobal(this.globalRaw);
+          this.clearProjectConcurrencyIfOffered();
+          this.rebuildEffective();
+          this.applyConcurrency();
+          return;
+        }
+        const layer = this.layerFor(target);
+        if (!layer) return;
+        delete layer.concurrency;
+        this.commitLayer(target);
         this.applyConcurrency();
       },
-      removeModel: (key: string): void => {
-        if (this.config.concurrency.models) delete this.config.concurrency.models[key];
-        this.persist();
-        this.applyConcurrency();
-      },
-      reset: (): void => {
-        this.config.concurrency = { ...DEFAULT_CONCURRENCY };
-        this.persist();
-        this.applyConcurrency();
-      },
+      /** @deprecated Use clearAll("global") — kept until the concurrency menu is rewritten. */
+      reset: (): void => this.mutate.concurrency.clearAll("global"),
     },
     session: {
       /** Not persisted; key "default" sets the session-wide default. */
@@ -478,8 +592,13 @@ export class ConfigStore {
 
   /** Re-read disk, reset session overrides + toggle state, re-sync deps. Called at session_start. */
   reload(): void {
-    this.config = this.io.load();
+    const loaded = this.io.load();
+    this.globalRaw = loaded.global;
+    this.projectRaw = loaded.project;
+    this.projectStatus = loaded.projectStatus;
+    this.rebuildEffective();
     this.sessionOverrides = { default: null };
+    this.sessionConcurrencyLayer = {};
     this.sessionShowCost = undefined;
     this.lastToolsExpanded = undefined;
     this.syncAllDeps();
@@ -500,8 +619,131 @@ export class ConfigStore {
 
   // ── Private helpers ────────────────────────────────────────────
 
-  private persist(): void {
-    this.io.save(this.config);
+  /**
+   * The raw layer a persisted mutation targets. The project layer is created
+   * empty on first access in a trusted project without a file (the first write
+   * creates the file); when the project target is unavailable (untrusted or
+   * malformed) the mutation is refused with a warning.
+   */
+  private layerFor(target: "global" | "project"): RawConfig | null {
+    if (target === "global") return this.globalRaw;
+    if (this.projectRaw) return this.projectRaw;
+    if (this.projectStatus === "absent") {
+      this.projectRaw = {};
+      return this.projectRaw;
+    }
+    console.warn(`[subagents] Project config target unavailable (${this.projectStatus}); change ignored`);
+    return null;
+  }
+
+  private agentLayerFor(target: "global" | "project"): Record<string, unknown> | null {
+    const layer = this.layerFor(target);
+    if (!layer) return null;
+    layer.agent ??= {};
+    return layer.agent;
+  }
+
+  private concurrencyLayerFor(target: "global" | "project"): RawConcurrency | null {
+    const layer = this.layerFor(target);
+    if (!layer) return null;
+    layer.concurrency ??= {};
+    return layer.concurrency;
+  }
+
+  private globalAgent(): Record<string, unknown> {
+    this.globalRaw.agent ??= {};
+    return this.globalRaw.agent;
+  }
+
+  private commitGlobal(): void {
+    this.io.saveGlobal(this.globalRaw);
+    this.rebuildEffective();
+  }
+
+  private commitLayer(target: "global" | "project"): void {
+    if (target === "global") this.io.saveGlobal(this.globalRaw);
+    else this.io.saveProject(this.projectRaw!);
+    this.rebuildEffective();
+  }
+
+  private rebuildEffective(): void {
+    this.config = mergeDefaults(mergeLayers(this.globalRaw, this.projectRaw));
+  }
+
+  private setModelFamilyKey(
+    key: "defaultThinking" | "defaultMaxTurns",
+    value: unknown,
+    target: "global" | "project",
+  ): void {
+    const layer = this.agentLayerFor(target);
+    if (!layer) return;
+    if (value === undefined) delete layer[key];
+    else layer[key] = value;
+    this.commitLayer(target);
+  }
+
+  private clearAgentModelKeys(layer: RawConfig): void {
+    if (!layer.agent) return;
+    for (const key of Object.keys(layer.agent)) {
+      if (!CLEAR_ALL_KEPT_AGENT_KEYS.has(key)) delete layer.agent[key];
+    }
+  }
+
+  private clearProjectModelKeyIfOffered(type: string): void {
+    if (!this.projectTargetOffered) return;
+    const layer = this.layerFor("project");
+    if (!layer) return;
+    if (layer.agent) delete layer.agent[type];
+    this.io.saveProject(this.projectRaw!);
+  }
+
+  private clearProjectModelKeysIfOffered(): void {
+    if (!this.projectTargetOffered) return;
+    const layer = this.layerFor("project");
+    if (!layer) return;
+    this.clearAgentModelKeys(layer);
+    this.io.saveProject(this.projectRaw!);
+  }
+
+  private clearProjectConcurrencyIfOffered(): void {
+    if (!this.projectTargetOffered) return;
+    const layer = this.layerFor("project");
+    if (!layer) return;
+    delete layer.concurrency;
+    this.io.saveProject(this.projectRaw!);
+  }
+
+  private removeConcurrencyEntry(section: "providers" | "models", key: string, target: ConfigTarget | "all"): void {
+    if (target === "all") {
+      const sessionSection = this.sessionConcurrencyLayer[section];
+      if (sessionSection) delete sessionSection[key];
+      const globalSection = this.globalRaw.concurrency?.[section];
+      if (globalSection) delete globalSection[key];
+      this.io.saveGlobal(this.globalRaw);
+      if (this.projectTargetOffered) {
+        const layer = this.layerFor("project");
+        if (layer) {
+          const projectSection = layer.concurrency?.[section];
+          if (projectSection) delete projectSection[key];
+          this.io.saveProject(this.projectRaw!);
+        }
+      }
+      this.rebuildEffective();
+      this.applyConcurrency();
+      return;
+    }
+    if (target === "session") {
+      const sessionSection = this.sessionConcurrencyLayer[section];
+      if (sessionSection) delete sessionSection[key];
+      this.applyConcurrency();
+      return;
+    }
+    const layer = this.layerFor(target);
+    if (!layer) return;
+    const sectionObj = layer.concurrency?.[section];
+    if (sectionObj) delete sectionObj[key];
+    this.commitLayer(target);
+    this.applyConcurrency();
   }
 
   private syncWidgetSettings(): void {
@@ -541,13 +783,13 @@ export class ConfigStore {
     key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime",
     value: boolean,
   ): void {
-    this.config.agent[key] = value;
-    this.persist();
+    this.globalAgent()[key] = value;
+    this.commitGlobal();
     this.syncWidgetStatsVisibility();
   }
 
   private applyConcurrency(): void {
-    this.manager?.setConcurrency(this.config.concurrency);
+    this.manager?.setConcurrency(this.concurrency);
   }
 
   private syncAllDeps(): void {
