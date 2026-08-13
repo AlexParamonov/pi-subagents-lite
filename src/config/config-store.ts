@@ -238,10 +238,6 @@ export class ConfigStore {
     return this.projectRaw?.agent != null && this.projectRaw.agent[key] !== undefined;
   }
 
-  get globalConcurrency(): RawConcurrency {
-    return { ...(this.globalRaw.concurrency ?? {}) };
-  }
-
   get projectConcurrency(): RawConcurrency {
     return { ...(this.projectRaw?.concurrency ?? {}) };
   }
@@ -278,24 +274,10 @@ export class ConfigStore {
   readonly mutate = {
     agent: {
       setDefaultModel: (value: string | null, target: ConfigTarget = "global"): void => {
-        if (target === "session") {
-          this.sessionOverrides.default = value;
-          return;
-        }
-        const layer = this.agentLayerFor(target);
-        if (!layer) return;
-        layer.default = value;
-        this.commitLayer(target);
+        this.setAgentModelKey("default", value, target);
       },
       setModelOverride: (type: string, value: string | null, target: ConfigTarget = "global"): void => {
-        if (target === "session") {
-          this.sessionOverrides[type] = value;
-          return;
-        }
-        const layer = this.agentLayerFor(target);
-        if (!layer) return;
-        layer[type] = value;
-        this.commitLayer(target);
+        this.setAgentModelKey(type, value, target);
       },
       clearModelOverride: (type: string, target: ConfigTarget | "all" = "global"): void => {
         if (target === "all") {
@@ -313,7 +295,7 @@ export class ConfigStore {
         const layer = this.layerFor(target);
         if (!layer) return;
         if (layer.agent) delete layer.agent[type];
-        this.commitLayer(target);
+        this.commitLayer(target, layer);
       },
       /** Clear all model keys (default, thinking, max turns, per-type), keeping non-model settings. */
       clearAllModelOverrides: (target: ConfigTarget | "all" = "global"): void => {
@@ -332,7 +314,7 @@ export class ConfigStore {
         const layer = this.layerFor(target);
         if (!layer) return;
         this.clearAgentModelKeys(layer);
-        this.commitLayer(target);
+        this.commitLayer(target, layer);
       },
       setForceBackground: (enabled: boolean): void => {
         this.globalAgent().forceBackground = enabled;
@@ -474,40 +456,19 @@ export class ConfigStore {
     },
     concurrency: {
       setDefault: (n: number, target: ConfigTarget = "global"): void => {
-        if (target === "session") {
-          this.sessionConcurrencyLayer.default = n;
-          this.applyConcurrency();
-          return;
-        }
-        const layer = this.concurrencyLayerFor(target);
-        if (!layer) return;
-        layer.default = n;
-        this.commitLayer(target);
-        this.applyConcurrency();
+        this.applyConcurrencyWrite(target, (layer) => {
+          layer.default = n;
+        });
       },
       setProvider: (key: string, n: number, target: ConfigTarget = "global"): void => {
-        if (target === "session") {
-          this.sessionConcurrencyLayer.providers = { ...(this.sessionConcurrencyLayer.providers ?? {}), [key]: n };
-          this.applyConcurrency();
-          return;
-        }
-        const layer = this.concurrencyLayerFor(target);
-        if (!layer) return;
-        layer.providers = { ...(layer.providers ?? {}), [key]: n };
-        this.commitLayer(target);
-        this.applyConcurrency();
+        this.applyConcurrencyWrite(target, (layer) => {
+          layer.providers = { ...(layer.providers ?? {}), [key]: n };
+        });
       },
       setModel: (key: string, n: number, target: ConfigTarget = "global"): void => {
-        if (target === "session") {
-          this.sessionConcurrencyLayer.models = { ...(this.sessionConcurrencyLayer.models ?? {}), [key]: n };
-          this.applyConcurrency();
-          return;
-        }
-        const layer = this.concurrencyLayerFor(target);
-        if (!layer) return;
-        layer.models = { ...(layer.models ?? {}), [key]: n };
-        this.commitLayer(target);
-        this.applyConcurrency();
+        this.applyConcurrencyWrite(target, (layer) => {
+          layer.models = { ...(layer.models ?? {}), [key]: n };
+        });
       },
       removeProvider: (key: string, target: ConfigTarget | "all" = "global"): void => {
         this.removeConcurrencyEntry("providers", key, target);
@@ -534,7 +495,7 @@ export class ConfigStore {
         const layer = this.layerFor(target);
         if (!layer) return;
         delete layer.concurrency;
-        this.commitLayer(target);
+        this.commitLayer(target, layer);
         this.applyConcurrency();
       },
     },
@@ -634,18 +595,32 @@ export class ConfigStore {
     return null;
   }
 
-  private agentLayerFor(target: "global" | "project"): Record<string, unknown> | null {
+  /** Write a model key (default or per-type) at the target layer; session writes are in-memory. */
+  private setAgentModelKey(key: string, value: string | null, target: ConfigTarget): void {
+    if (target === "session") {
+      this.sessionOverrides[key] = value;
+      return;
+    }
     const layer = this.layerFor(target);
-    if (!layer) return null;
+    if (!layer) return;
     layer.agent ??= {};
-    return layer.agent;
+    layer.agent[key] = value;
+    this.commitLayer(target, layer);
   }
 
-  private concurrencyLayerFor(target: "global" | "project"): RawConcurrency | null {
+  /** Write a concurrency value into the target layer, then persist and re-sync the manager. */
+  private applyConcurrencyWrite(target: ConfigTarget, write: (layer: RawConcurrency) => void): void {
+    if (target === "session") {
+      write(this.sessionConcurrencyLayer);
+      this.applyConcurrency();
+      return;
+    }
     const layer = this.layerFor(target);
-    if (!layer) return null;
+    if (!layer) return;
     layer.concurrency ??= {};
-    return layer.concurrency;
+    write(layer.concurrency);
+    this.commitLayer(target, layer);
+    this.applyConcurrency();
   }
 
   private globalAgent(): Record<string, unknown> {
@@ -658,9 +633,9 @@ export class ConfigStore {
     this.rebuildEffective();
   }
 
-  private commitLayer(target: "global" | "project"): void {
-    if (target === "global") this.io.saveGlobal(this.globalRaw);
-    else this.io.saveProject(this.projectRaw!);
+  private commitLayer(target: "global" | "project", layer: RawConfig): void {
+    if (target === "global") this.io.saveGlobal(layer);
+    else this.io.saveProject(layer);
     this.rebuildEffective();
   }
 
@@ -673,11 +648,12 @@ export class ConfigStore {
     value: unknown,
     target: "global" | "project",
   ): void {
-    const layer = this.agentLayerFor(target);
+    const layer = this.layerFor(target);
     if (!layer) return;
-    if (value === undefined) delete layer[key];
-    else layer[key] = value;
-    this.commitLayer(target);
+    layer.agent ??= {};
+    if (value === undefined) delete layer.agent[key];
+    else layer.agent[key] = value;
+    this.commitLayer(target, layer);
   }
 
   private clearAgentModelKeys(layer: RawConfig): void {
@@ -740,7 +716,7 @@ export class ConfigStore {
     if (!layer) return;
     const sectionObj = layer.concurrency?.[section];
     if (sectionObj) delete sectionObj[key];
-    this.commitLayer(target);
+    this.commitLayer(target, layer);
     this.applyConcurrency();
   }
 
