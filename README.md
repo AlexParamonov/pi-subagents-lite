@@ -69,7 +69,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `name` | string | filename | Agent type name. Must be unique. |
+| `name` | string | — | Agent type name. Must be unique; a file without it is skipped. |
 | `display_name` | string | `name` | Label in the UI. |
 | `description` | string | `""` | One-sentence description. |
 | `tools` | `true` \| `string[]` \| `false` | `true` | Tool whitelist. Mutually exclusive with `exclude_tools`. |
@@ -83,7 +83,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `max_turns` | number | unlimited | Soft turn limit, then grace turns before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. |
 | `hidden` | boolean | `false` | Hide from the enum. Still callable by name. |
-| `output_transcript` | boolean | inherit global | Write streaming JSON-lines transcript to `.output` file (frontmatter overrides). |
+| `output_transcript` | boolean | inherit global | Write streaming transcript to `/tmp/pi-agent-outputs/<agentId>.log` (frontmatter overrides). |
 | `include_context_files` | boolean | inherit global | Include AGENTS.md files as `<project_context>` in the system prompt. `true` = load, `false` = none, unset = global "Include AGENTS.md" setting. |
 | `include_system_prompt` | boolean | inherit global | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`. |
 
@@ -128,7 +128,7 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
 
 The widget keeps a live roster of agents and a status bar in pi's status area. `↑`/`↓` navigates it, `Enter` opens the conversation viewer, `Esc` closes it; `ctrl+o` toggles compact mode when the shortcut is enabled. The viewer streams the live transcript: thinking blocks, tool calls, compaction summaries, and results.
 
-Finished agents stay in the widget for `finishedRetentionMinutes` (decimal) after settling, and in Running Agents for the rest of the session until `Clear` (one agent), `Clear done` (completed), or `Clear all` (all finished) removes them.
+Finished agents stay in the widget for `finishedRetentionMinutes` (decimal) after settling, and in the Running Agents menu for the rest of the session. `Clear` removes one agent, `Clear done` all completed, `Clear all` all finished.
 
 Most of the widget is configurable: per-stat visibility, model and thinking display, widget sizing, etc.
 
@@ -160,7 +160,6 @@ The watchdog notifies the main session on a kill so it can act accordingly.
     "showTime": true,
     "widgetMaxLines": 12,
     "widgetMaxLinesCompact": 6,
-    "widgetDescLengthFull": 50,
     "widgetCompact": true,
     "showCompletionCards": true,
     "widgetShortcut": false,
@@ -203,9 +202,7 @@ A project can commit its own defaults as `.pi/subagents-lite.json` (same file na
 
 `/agents` menu changes persist to the project file when one exists — the full effective config is written to it, so it stays self-contained — and to the global file otherwise; state is never split across both files. The global file is only the fallback for projects without a project file: with no project file, behavior is byte-for-byte unchanged. A malformed project file is ignored with a warning and the global file is used instead. The project file is only loaded in trusted projects, same as `.pi/agents`.
 
-Output logs land in `/tmp/pi-agent-outputs/<agentId>.log`, append-only and `tail -f` friendly. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
-
-Output transcripts are disabled by default and can be enabled globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, transcripts land in the `/tmp/pi-agent-outputs/<agentId>.log` file and the widget shows the `tail -f` line.
+Output transcripts are disabled by default; enable them globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, the transcript streams to `/tmp/pi-agent-outputs/<agentId>.log` (append-only, `tail -f` friendly) and the widget shows the `tail -f` line. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
 
 ## Requirements
 

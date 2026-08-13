@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Running Agents menu bulk actions grouped.** The stop row sits above a clear group
+- **Running Agents menu bulk actions grouped.** The stop row sits above the clear-actions group.
 - **Case-insensitive agent type resolution.** The `Agent` tool's `agent` parameter now resolves type names case-insensitively: the exact registered name wins; a single case-insensitive match resolves; two types differing only by case produce an error naming both candidates instead of a silent pick, and nothing spawns. Applies to the initial lookup, the mid-session re-scan, and worktree-targeted spawns.
 
 ### Fixed
