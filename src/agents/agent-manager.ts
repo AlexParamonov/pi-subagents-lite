@@ -231,6 +231,7 @@ export class AgentManager {
         abortController,
         modelKey: options.modelKey,
         settled: false,
+        settlementCount: 0,
       },
       stats: {
         lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
@@ -390,6 +391,9 @@ export class AgentManager {
         return "";
       })
       .finally(() => {
+        // Count this settlement before notifying, so the completion callback
+        // can tell a continuation settlement (>= 2) from the first one.
+        record.execution.settlementCount++;
         if (record.execution.outputLog) {
           try {
             record.execution.outputLog.finalize({

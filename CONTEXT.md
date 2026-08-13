@@ -51,7 +51,7 @@ Per-agent transient display state (active tools, streaming response text) bridgi
 _Avoid_: Agent monitor, agent stats
 
 **Nudge**:
-A completion notification delivered to the parent session after a background agent finishes, errors, or is stopped. Batched with a 200ms hold to coalesce rapid completions.
+A completion notification delivered to the parent session when a background agent settles (first settlement only), or when any agent settles after a continuation. A foreground agent's initial result returns inline through the tool call and delivers no nudge. Batched with a 200ms hold to coalesce rapid completions.
 _Avoid_: Callback, notification
 
 **Parent interrupt binding**:
@@ -70,7 +70,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - An **Agent briefing** describes all available **Agent types** to the LLM
 - A **Stealth tool** requires an **Agent briefing** before the LLM can use it
 - An **Activity tracker** is created per spawn and cleaned up on completion
-- A **Nudge** is emitted when a background agent completes, errors, or is stopped
+- A **Nudge** is emitted when a background agent completes, errors, or is stopped (first settlement), and on every settlement of a continued agent
 - **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
 - A **Watchdog** stops a **Subagent** when a tool call or inactivity exceeds its configured thresholds
 - A **Parent interrupt binding** stops a foreground **Subagent** when the parent run is interrupted; background **Subagents** are never bound

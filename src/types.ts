@@ -1,5 +1,5 @@
 import type { Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentOutputLog } from "./agents/output-file.js";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
 import type { SubagentType, AgentInvocation } from "./agents/types.js";
@@ -166,6 +166,21 @@ export interface AgentExecutionState {
    * settlement. Guards continuation against racing settlement cleanup.
    */
   settled: boolean;
+  /**
+   * Number of settlements so far (first run = 1, each continuation run
+   * increments). Written at the top of the shared settlement chain's
+   * .finally, before the completion callback fires, so the coordinator can
+   * tell a continuation settlement from the first one. Never-started stops
+   * (queued stop, already-aborted spawn) never increment it.
+   */
+  settlementCount: number;
+  /**
+   * Spawning-session ExtensionContext, attached by the coordinator at spawn
+   * for every spawn. Kept for the record's lifetime so the UI-notify
+   * fallback can reach a live context on any later nudge (continuations of
+   * foreground agents included). Dies with the record at Clear/dispose.
+   */
+  spawnCtx?: ExtensionContext;
   /**
    * Lifetime cost already added to the session total (tallyCompletion
    * baseline). Undefined until the first settlement; continuations add only

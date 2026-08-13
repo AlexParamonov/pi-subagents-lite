@@ -2209,5 +2209,60 @@ describe("AgentManager", () => {
 
       firstRun.resolve(mockRunResult());
     });
+
+    it("initializes settlementCount to 0 at spawn", async () => {
+      manager = new AgentManager(onComplete);
+      mockModules.mockRunAgent.mockReturnValue(makeResolvablePromise().promise);
+      const id = spawnForeground("first task");
+
+      expect(manager.getRecord(id)!.execution.settlementCount).toBe(0);
+    });
+
+    it("increments settlementCount on every settlement, before notifying", async () => {
+      const observedCounts: number[] = [];
+      manager = new AgentManager((record) => {
+        onComplete(record);
+        observedCounts.push(record.execution.settlementCount);
+      });
+      mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
+      const id = spawnForeground("first task");
+      await manager.getRecord(id)!.execution.promise;
+
+      const contRun1 = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun1.promise);
+      await manager.steer(id, "keep going");
+      contRun1.resolve(mockRunResult());
+      await vi.waitFor(() => expect(manager.getRecord(id)!.execution.settled).toBe(true));
+
+      const contRun2 = makeResolvablePromise();
+      mockModules.mockContinueAgentSession.mockReturnValue(contRun2.promise);
+      await manager.steer(id, "keep going again");
+      contRun2.resolve(mockRunResult());
+      await vi.waitFor(() => expect(manager.getRecord(id)!.execution.settled).toBe(true));
+
+      const record = manager.getRecord(id)!;
+      expect(record.execution.settlementCount).toBe(3);
+      // The completion callback observes the incremented count, so the
+      // coordinator can tell a continuation settlement from the first one.
+      expect(observedCounts).toEqual([1, 2, 3]);
+    });
+
+    it("keeps settlementCount at 0 for a never-started queued stop", async () => {
+      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
+      const firstRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
+      const id1 = spawnForeground("first");
+      const id2 = spawnForeground("second");
+      const record2 = manager.getRecord(id2)!;
+      expect(record2.lifecycle.status).toBe("queued");
+
+      manager.abort(id2, "user");
+      // The direct notify path (never-started) carries the untouched counter.
+      const observed = onComplete.mock.calls.map((c) => c[0]);
+      const stopCall = observed.find((r) => r.id === id2)!;
+      expect(stopCall.execution.settlementCount).toBe(0);
+
+      firstRun.resolve(mockRunResult());
+    });
   });
 }); // end describe AgentManager

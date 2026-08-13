@@ -432,6 +432,143 @@ describe("SpawnCoordinator", () => {
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
+    it("nudges on every continuation settlement of a background agent", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      // First settlement consumes the one-shot set entry and nudges once.
+      result.record.execution.settlementCount = 1;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+
+      // Each continuation settlement nudges again.
+      result.record.execution.settlementCount = 2;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(2);
+
+      result.record.execution.settlementCount = 3;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it("schedules a nudge for a continued foreground agent", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+
+      result.record.execution.settlementCount = 2;
+      coordinator.onAgentComplete(result.record);
+
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not nudge a foreground agent's initial completion", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+
+      result.record.execution.settlementCount = 1;
+      coordinator.onAgentComplete(result.record);
+
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("delivers no nudge for a never-started foreground stop", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+
+      // Never-started stops notify directly without incrementing the counter.
+      result.record.execution.settlementCount = 0;
+      coordinator.onAgentComplete(result.record);
+
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("keeps the never-started background stop nudge unchanged", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      // The one-shot set still gates the first settlement even when the
+      // counter never incremented (queued stop / already-aborted spawn).
+      result.record.execution.settlementCount = 0;
+      coordinator.onAgentComplete(result.record);
+
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("never emits more than one nudge for settlements within one batch window", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      // First and continuation settlements inside the same 200ms window
+      // coalesce into a single batched nudge — never more than one.
+      result.record.execution.settlementCount = 1;
+      coordinator.onAgentComplete(result.record);
+      result.record.execution.settlementCount = 2;
+      coordinator.onAgentComplete(result.record);
+
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a continued foreground agent reporting as foreground", async () => {
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+
+      result.record.execution.settlementCount = 2;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+
+      expect(coordinator.isBackground(result.agentId)).toBe(false);
+    });
+
     it("catches sendMessage errors silently (stale pi)", async () => {
       const coordinator = new SpawnCoordinator(manager as any);
 
@@ -475,6 +612,85 @@ describe("SpawnCoordinator", () => {
 
       // No sendMessage because disposed
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("ui.notify fallback for continuation nudges", () => {
+    it("falls back to ui.notify for a continued foreground agent when sendMessage fails", async () => {
+      const notify = vi.fn();
+      const ctxWithUi = { ...makeMockCtx(), ui: { notify } } as unknown as ExtensionContext;
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctxWithUi, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+
+      // sendMessage fails — the spawning ctx must still be reachable.
+      mockPi.sendMessage.mockImplementation(() => {
+        throw new Error("stale context");
+      });
+
+      result.record.execution.settlementCount = 2;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+
+      expect(notify).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fall back to ui.notify for a foreground agent's initial completion", async () => {
+      const notify = vi.fn();
+      const ctxWithUi = { ...makeMockCtx(), ui: { notify } } as unknown as ExtensionContext;
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctxWithUi, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+
+      mockPi.sendMessage.mockImplementation(() => {
+        throw new Error("stale context");
+      });
+
+      // Initial completion delivers inline — no nudge, no fallback.
+      result.record.execution.settlementCount = 1;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it("keeps the spawning ctx across a background agent's first nudge for the continuation fallback", async () => {
+      const notify = vi.fn();
+      const ctxWithUi = { ...makeMockCtx(), ui: { notify } } as unknown as ExtensionContext;
+      const coordinator = new SpawnCoordinator(manager as any);
+      const result = await coordinator.spawn(mockPi, ctxWithUi, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      // First settlement: sendMessage works, notify untouched.
+      result.record.execution.settlementCount = 1;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+
+      // Continuation settlement: sendMessage fails, fallback still has the ctx.
+      mockPi.sendMessage.mockImplementation(() => {
+        throw new Error("stale context");
+      });
+      result.record.execution.settlementCount = 2;
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+      expect(notify).toHaveBeenCalledTimes(1);
     });
   });
 

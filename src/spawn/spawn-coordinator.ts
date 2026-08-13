@@ -47,11 +47,8 @@ const NUDGE_DELAY_MS = 200;
 // --- SpawnCoordinator ---
 
 export class SpawnCoordinator {
-  /** Agent IDs spawned as background — only these trigger a nudge on completion. */
+  /** Agent IDs spawned as background — the one-shot first-settlement nudge gate; also backs isBackground(). */
   private backgroundAgentIds = new Set<string>();
-
-  /** Captured ExtensionContext per background agent, bound to the spawning session. */
-  private backgroundContexts = new Map<string, ExtensionContext>();
 
   /** Pending nudge agent IDs, batched within the delay window. */
   private pendingNudges = new Set<string>();
@@ -87,9 +84,11 @@ export class SpawnCoordinator {
 
     const agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
     const record = this.manager.getRecord(agentId)!;
-    // Live view rides on the record so it survives settlement — a continuation
-    // re-feeds the same view instead of the widget showing a stale "thinking…".
+    // Spawn-time state rides on the record so it survives settlement: the
+    // live view is re-fed by continuations, and the ctx keeps the UI-notify
+    // fallback reachable for any later nudge (continuations included).
     record.execution.liveView = liveView;
+    record.execution.spawnCtx = ctx;
 
     // Ensure widget timer is running so it displays the new agent
     // (menu path calls this explicitly, but tool path doesn't)
@@ -98,13 +97,9 @@ export class SpawnCoordinator {
       widget.ensureTimer();
     }
 
-    // Capture spawning-session ctx for fallback notification
     if (intent.runInBackground) {
       this.backgroundAgentIds.add(agentId);
-      this.backgroundContexts.set(agentId, ctx);
-    }
-
-    if (!intent.runInBackground) {
+    } else {
       await record.execution.promise;
     }
 
@@ -121,7 +116,7 @@ export class SpawnCoordinator {
   }
 
   /**
-   * Schedule a nudge for a background agent.
+   * Schedule a nudge for an agent.
    * Batches with NUDGE_DELAY_MS window to coalesce rapid completions.
    */
   scheduleNudge(agentId: string): void {
@@ -146,9 +141,12 @@ export class SpawnCoordinator {
    * on the record — a settled agent can be continued and re-feeds it.
    */
   onAgentComplete(record: AgentRecord): void {
-    if (this.backgroundAgentIds.has(record.id)) {
+    // One-shot background gate: the first settlement of a background agent
+    // nudges and consumes the set entry. Continuation settlements (ordinal
+    // >= 2, written by the manager before this callback fires) nudge for both
+    // spawn classes — the coordinator never observes steers itself.
+    if (this.backgroundAgentIds.delete(record.id) || record.execution.settlementCount >= 2) {
       this.scheduleNudge(record.id);
-      this.backgroundAgentIds.delete(record.id);
     }
   }
 
@@ -159,7 +157,6 @@ export class SpawnCoordinator {
     }
     this.pendingNudges.clear();
     this.backgroundAgentIds.clear();
-    this.backgroundContexts.clear();
     this.disposed = true;
   }
 
@@ -225,7 +222,7 @@ export class SpawnCoordinator {
     } catch (error) {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.
-      const spawnCtx = this.backgroundContexts.get(agentId);
+      const spawnCtx = record.execution.spawnCtx;
       if (spawnCtx?.ui?.notify) {
         try {
           spawnCtx.ui.notify(`[Subagent "${record.display.type}" ${record.lifecycle.status}] Result available`, "info");
@@ -233,8 +230,6 @@ export class SpawnCoordinator {
           // ctx may also be stale if session was replaced
         }
       }
-    } finally {
-      this.backgroundContexts.delete(agentId);
     }
   }
 }
