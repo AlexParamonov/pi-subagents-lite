@@ -147,7 +147,7 @@ export class AgentWidget {
   /** Scroll anchor: index of the first visible block in the window. */
   private scrollAnchor = 0;
 
-  /** Viewer overlay open — prevents deactivation while ResultViewer is displayed. */
+  /** Viewer overlay open — prevents deactivation while ConversationViewer is displayed. */
   private viewerOpen = false;
 
   constructor(
@@ -447,7 +447,7 @@ export class AgentWidget {
   }
 
   isEditorFocused(): boolean {
-    // Overlays (ResultViewer, model picker) → not focused.
+    // Overlays (ConversationViewer, model picker) → not focused.
     if (this.tui?.hasOverlay?.()) return false;
     // Menus (ctx.ui.select/confirm) replace the editor in editorContainer.
     // Check if the focused component is the Editor via duck-typing:

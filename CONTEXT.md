@@ -19,7 +19,7 @@ A user message sent via `/agents` that teaches the LLM about available agent typ
 _Avoid_: Agent documentation, tool description
 
 **Stealth tool**:
-A tool registered with minimal schema (description ".", no promptSnippet, no promptGuidelines). Usage is taught exclusively through the agent briefing.
+A tool registered with no description, promptSnippet, or promptGuidelines. Usage is taught exclusively through the agent briefing.
 _Avoid_: Hidden tool, minimal tool
 
 ### Configuration
@@ -99,7 +99,6 @@ _Avoid_: Debounce period, nav lock
 Rebuilding the roster into live display order (finished → running → queued) once the freeze window elapses; repeats on every render tick while the user stays idle. The highlight follows its agent by id across a re-rank.
 _Avoid_: Re-sort, refresh
 
-**ResultViewer overlay**:
-Read-only markdown viewer showing an agent's conversation snapshot via `buildSnapshotMarkdown`.
-Opened on `Enter` in navigation mode. Overlay owns input while open.
-_Avoid_: Agent viewer, conversation viewer
+**ConversationViewer overlay**:
+Live, scrollable view of an agent's conversation, streamed from session events. Opened from the running-agents menu; owns input while open (`Enter` steers, `s` stops).
+_Avoid_: ResultViewer, snapshot viewer
