@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { join } from "node:path";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 // Spy on the file actually read, to pin "the global file is not read" (AC).
@@ -53,13 +53,11 @@ function writeGlobal(config: unknown): void {
 }
 
 function writeProject(config: unknown): void {
-  mkdirSync(projectDir, { recursive: true });
   writeFileSync(join(projectDir, "subagents-lite.json"), JSON.stringify(config));
 }
 
 /** Write raw text (e.g. malformed JSON) to the project file. */
 function writeProjectRaw(text: string): void {
-  mkdirSync(projectDir, { recursive: true });
   writeFileSync(join(projectDir, "subagents-lite.json"), text);
 }
 
