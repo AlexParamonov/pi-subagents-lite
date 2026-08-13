@@ -329,8 +329,9 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
         submenu: createModelSelectSubmenu({
           modelOptions,
           showClear: false,
+          projectOffered: store.projectTargetOffered,
           theme,
-          onSelect: (_mode, model) => {
+          onSet: (_target, model) => {
             currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
 
             // Clamp thinking level to nearest supported level for the new model
@@ -346,6 +347,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
             // Rebuild items so displayed thinking level reflects clamped value
             rebuild?.(buildItems());
           },
+          onClear: () => {},
         }),
       },
       {

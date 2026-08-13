@@ -10,18 +10,20 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme } from "./helpers.js";
+import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
+import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
+import { createTargetSelectSubmenu } from "./submenus/target-select.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
+import type { Theme } from "../types.js";
 import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES } from "../../config/config-io.js";
 import { getStore } from "../../shell.js";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
 
-  const items: SettingItem[] = [
+  const buildItems = (theme: Theme): SettingItem[] => [
     {
       id: "forceBackground",
       label: "Force background",
@@ -63,26 +65,58 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     {
       id: "defaultMaxTurns",
       label: "Default max turns",
-      currentValue: String(store.agent.defaultMaxTurns ?? "(not set)"),
-      submenu: createNumericSubmenu(
-        ctx,
-        { min: 1 },
-        (parsed) => {
-          store.mutate.agent.setDefaultMaxTurns(parsed);
-          ctx.ui.notify(`Default max turns set to ${parsed}`, "info");
-        },
-        () => {
-          store.mutate.agent.setDefaultMaxTurns(undefined);
-          ctx.ui.notify("Default max turns cleared", "info");
-        },
-      ),
+      currentValue: `${store.agent.defaultMaxTurns ?? "(not set)"}${store.hasProjectModelKey("defaultMaxTurns") ? " [project]" : ""}`,
+
+      submenu: (currentValue, done) =>
+        createTargetSelectSubmenu({
+          theme,
+          projectOffered: store.projectTargetOffered,
+          includeSession: false,
+          onPick: (target, pickDone) =>
+            createNumericSubmenu(
+              ctx,
+              { min: 1 },
+              (parsed) => {
+                store.mutate.agent.setDefaultMaxTurns(parsed, target as "global" | "project");
+                ctx.ui.notify(`Default max turns set to ${parsed} (${target})`, "info");
+              },
+              () => {
+                store.mutate.agent.setDefaultMaxTurns(undefined, target as "global" | "project");
+                ctx.ui.notify(`Default max turns cleared (${target})`, "info");
+              },
+            )(String(store.agent.defaultMaxTurns ?? ""), pickDone),
+        })(currentValue, done),
       description: "Soft turn limit; agent is steered here, then hard-aborts after grace turns. Blank = unlimited.",
     },
     {
       id: "defaultThinking",
       label: "Default thinking level",
-      currentValue: store.agent.defaultThinking ?? "inherit",
-      values: ["off", "minimal", "low", "medium", "high", "xhigh", "max", "inherit"],
+      currentValue: `${store.agent.defaultThinking ?? "inherit"}${store.hasProjectModelKey("defaultThinking") ? " [project]" : ""}`,
+
+      submenu: (currentValue, done) =>
+        createTargetSelectSubmenu({
+          theme,
+          projectOffered: store.projectTargetOffered,
+          includeSession: false,
+          onPick: (target, pickDone) => {
+            const level = target as "global" | "project";
+            const levelItems = ["off", "minimal", "low", "medium", "high", "xhigh", "max", "inherit"].map((v) => ({
+              value: v,
+              label: v,
+            }));
+            const list = new SelectList(levelItems, 10, buildSelectListTheme(theme));
+            list.onSelect = (item) => {
+              store.mutate.agent.setDefaultThinking(
+                item.value === "inherit" ? undefined : (item.value as ThinkingLevel),
+                level,
+              );
+              ctx.ui.notify(`Default thinking level set to ${item.value} (${level})`, "info");
+              pickDone(item.value);
+            };
+            list.onCancel = () => pickDone();
+            return list;
+          },
+        })(currentValue, done),
       description: "Thinking level applied when agent frontmatter omits one.",
     },
     {
@@ -107,10 +141,6 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         store.mutate.agent.setForceBackground(newValue === "ON");
         ctx.ui.notify(`Force background set to ${newValue}`, "info");
         break;
-      case "defaultThinking":
-        store.mutate.agent.setDefaultThinking(newValue === "inherit" ? undefined : (newValue as ThinkingLevel));
-        ctx.ui.notify(`Default thinking level set to ${newValue}`, "info");
-        break;
       case "disableDefaultAgents":
         store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
         ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
@@ -123,7 +153,9 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
   };
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const settingsList = new SettingsList(items, 10, buildSettingsListTheme(theme), onChange, () => done(undefined));
+    const settingsList = new SettingsList(buildItems(theme), 10, buildSettingsListTheme(theme), onChange, () =>
+      done(undefined),
+    );
     return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme, onCancel: () => done(undefined) });
   });
 }

@@ -3,6 +3,8 @@
  *
  * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
  * SettingsList maintains internal cursor state (fixes cursor position reset).
+ * defaultThinking/defaultMaxTurns go through a target picker (global/project
+ * per ADR-0008) before their value submenu.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -27,12 +29,27 @@ let inputInstances: Array<{
   getValue: () => string;
 }> = [];
 
+let selectListInstances: Array<{
+  items: any[];
+  onSelect?: (item: any) => void;
+  onCancel?: () => void;
+}> = [];
+
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
     items: any[];
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
       this.items = items;
       settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options });
+    }
+  },
+  SelectList: class MockSelectList {
+    items: any[];
+    onSelect?: (item: any) => void;
+    onCancel?: () => void;
+    constructor(items: any[]) {
+      this.items = items;
+      selectListInstances.push(this as any);
     }
   },
   Input: class MockInput {
@@ -56,15 +73,20 @@ import { showSpawnOptionsMenu } from "../../../src/ui/menu/menu-spawn-options.js
 
 afterEach(() => resetConfig());
 
+function resetMenuState(): void {
+  mockModules.mockConfig.agent = { default: null, forceBackground: false };
+  mockModules.mockProjectConfig.agent = {};
+  mockModules.mockSessionOverrides.default = null;
+  mockModules.mockSessionShowCost = undefined;
+  mockModules.mockProjectTargetOffered = false;
+  vi.clearAllMocks();
+  settingsListCalls = [];
+  inputInstances = [];
+  selectListInstances = [];
+}
+
 describe("showSpawnOptionsMenu — SettingsList integration", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-  });
+  beforeEach(resetMenuState);
 
   it("uses ctx.ui.custom (not ctx.ui.select)", async () => {
     const ctx = createMockCtx();
@@ -75,14 +97,7 @@ describe("showSpawnOptionsMenu — SettingsList integration", () => {
 });
 
 describe("showSpawnOptionsMenu — force background", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-  });
+  beforeEach(resetMenuState);
 
   it("shows 'Force background · OFF' when disabled", async () => {
     const ctx = createMockCtx();
@@ -110,14 +125,7 @@ describe("showSpawnOptionsMenu — force background", () => {
 });
 
 describe("showSpawnOptionsMenu — grace turns", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-  });
+  beforeEach(resetMenuState);
 
   it("shows 'Grace turns · 6' with default value", async () => {
     const ctx = createMockCtx();
@@ -182,14 +190,7 @@ describe("showSpawnOptionsMenu — grace turns", () => {
 });
 
 describe("showSpawnOptionsMenu — default max turns", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-  });
+  beforeEach(resetMenuState);
 
   it("shows 'Default max turns · (not set)' when no default is set", async () => {
     const ctx = createMockCtx();
@@ -207,7 +208,16 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     expect(dmt.currentValue).toBe("50");
   });
 
-  it("max turns submenu accepts valid number", async () => {
+  it("tags a project-sourced max turns with [project]", async () => {
+    mockModules.mockProjectConfig.agent.defaultMaxTurns = 50;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    expect(dmt.currentValue).toBe("50 [project]");
+  });
+
+  it("max turns submenu: target pick then valid number", async () => {
+    mockModules.mockProjectTargetOffered = true;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
@@ -215,13 +225,19 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("unlimited", mockDone);
 
-    inputInstances[0].onSubmit!("30");
-    expect(mockModules.mockConfig.agent.defaultMaxTurns).toBe(30);
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    // No session layer for max turns; project offered.
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["global", "project"]);
+    targetList.onSelect!({ value: "project" });
+
+    const input = inputInstances[inputInstances.length - 1];
+    input.onSubmit!("30");
+    expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBe(30);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("30");
   });
 
-  it("max turns submenu accepts 'unlimited'", async () => {
+  it("max turns submenu accepts 'unlimited' to clear at the picked level", async () => {
     mockModules.mockConfig.agent.defaultMaxTurns = 50;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
@@ -230,7 +246,10 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("50", mockDone);
 
-    inputInstances[0].onSubmit!("unlimited");
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "global" });
+
+    inputInstances[inputInstances.length - 1].onSubmit!("unlimited");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
     expect(mockDone).toHaveBeenCalledWith("(not set)");
   });
@@ -243,13 +262,16 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("unlimited", mockDone);
 
-    inputInstances[0].onSubmit!("0");
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "global" });
+
+    inputInstances[inputInstances.length - 1].onSubmit!("0");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
 
-  it("max turns submenu rejects invalid input", async () => {
+  it("max turns submenu handles escape from the target picker", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
@@ -257,33 +279,13 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("unlimited", mockDone);
 
-    inputInstances[0].onSubmit!("abc");
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
-    expect(mockDone).not.toHaveBeenCalled();
-  });
-
-  it("max turns submenu handles escape", async () => {
-    const ctx = createMockCtx();
-    await showSpawnOptionsMenu(ctx);
-
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
-    const mockDone = vi.fn();
-    dmt.submenu("unlimited", mockDone);
-
-    inputInstances[0].onEscape!();
+    selectListInstances[selectListInstances.length - 1].onCancel!();
     expect(mockDone).toHaveBeenCalled();
   });
 });
 
 describe("showSpawnOptionsMenu — default thinking level", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-  });
+  beforeEach(resetMenuState);
 
   it("shows 'Default thinking level · inherit' when no default is set", async () => {
     const ctx = createMockCtx();
@@ -300,33 +302,81 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     expect(dt.currentValue).toBe("high");
   });
 
-  it("sets thinking level via onChange", async () => {
+  it("tags a project-sourced thinking level with [project]", async () => {
+    mockModules.mockProjectConfig.agent.defaultThinking = "medium";
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    settingsListCalls[0].onChange("defaultThinking", "medium");
-    expect(mockModules.mockConfig.agent.defaultThinking).toBe("medium");
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    expect(dt.currentValue).toBe("medium [project]");
   });
 
-  it("sets thinking level to inherit (undefined) via onChange", async () => {
+  it("sets thinking level at global via target pick then level pick", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const mockDone = vi.fn();
+    dt.submenu("", mockDone);
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "global" });
+
+    const levelList = selectListInstances[selectListInstances.length - 1];
+    expect(levelList.items.map((i: any) => i.value)).toEqual([
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "inherit",
+    ]);
+    levelList.onSelect!({ value: "medium" });
+
+    expect(mockModules.mockConfig.agent.defaultThinking).toBe("medium");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(mockDone).toHaveBeenCalledWith("medium");
+  });
+
+  it("sets thinking level at project level via target pick", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const mockDone = vi.fn();
+    dt.submenu("", mockDone);
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "project" });
+
+    const levelList = selectListInstances[selectListInstances.length - 1];
+    levelList.onSelect!({ value: "high" });
+
+    expect(mockModules.mockProjectConfig.agent.defaultThinking).toBe("high");
+    expect(mockDone).toHaveBeenCalledWith("high");
+  });
+
+  it("selecting 'inherit' clears the level at the picked target", async () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    settingsListCalls[0].onChange("defaultThinking", "inherit");
+    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const mockDone = vi.fn();
+    dt.submenu("", mockDone);
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "global" });
+
+    const levelList = selectListInstances[selectListInstances.length - 1];
+    levelList.onSelect!({ value: "inherit" });
+
     expect(mockModules.mockConfig.agent.defaultThinking).toBeUndefined();
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(mockDone).toHaveBeenCalledWith("inherit");
   });
 });
 
 describe("showSpawnOptionsMenu — watchdog timeouts", () => {
-  beforeEach(() => {
-    mockModules.mockConfig.agent = { default: null, forceBackground: false };
-    mockModules.mockSessionOverrides.default = null;
-    mockModules.mockSessionShowCost = undefined;
-    vi.clearAllMocks();
-    settingsListCalls = [];
-    inputInstances = [];
-  });
+  beforeEach(resetMenuState);
 
   it("shows 'Tool timeout · 45' and 'Idle timeout · 45' right after grace turns", async () => {
     const ctx = createMockCtx();
@@ -432,12 +482,12 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
 
   describe("showSpawnOptionsMenu — output transcript", () => {
     beforeEach(() => {
-      mockModules.mockConfig.agent = { default: null, forceBackground: false, outputTranscript: true };
-      mockModules.mockSessionOverrides.default = null;
-      mockModules.mockSessionShowCost = undefined;
-      vi.clearAllMocks();
-      settingsListCalls = [];
-      inputInstances = [];
+      resetMenuState();
+      mockModules.mockConfig.agent = {
+        default: null,
+        forceBackground: false,
+        outputTranscript: true,
+      };
     });
 
     it("shows 'Output transcript · ON' when enabled (default)", async () => {

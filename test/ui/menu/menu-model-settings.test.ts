@@ -1,12 +1,12 @@
 /**
  * menu-model-settings.test.ts — Tests for showModelSettingsMenu using SettingsList.
  *
- * Uses ctx.ui.custom with SettingsList.
- * Cost display toggle removed (still in widget settings → usage stats).
+ * Uses ctx.ui.custom with SettingsList. Model overrides go through target-level
+ * submenus (session/global/project, nested per-level clear) per ADR-0008.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mockModules, resetConfig } from "../../menu-mock-setup.js";
+import { mockModules, resetConfig, selectDialogInstances } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig, getAllTypes } from "../../../src/agents/agent-types.js";
 
@@ -70,29 +70,14 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
   },
 }));
 
-// Mock SearchableSelectDialog from searchable-select
-vi.mock("../../../src/ui/searchable-select.js", () => ({
-  SearchableSelectDialog: class MockSearchableSelectDialog {
-    onSelect?: (v: string) => void;
-    onCancel?: () => void;
-    constructor(_items: any, _current: any, callbacks: any, _theme: any) {
-      this.onSelect = callbacks.onSelect;
-      this.onCancel = callbacks.onCancel;
-    }
-    render() {
-      return [];
-    }
-    handleInput() {}
-    invalidate() {}
-  },
-}));
-
 import { showModelSettingsMenu } from "../../../src/ui/menu/menu-model-settings.js";
 
 function resetAgentState(): void {
   mockModules.mockConfig.agent = { default: null, forceBackground: false };
+  mockModules.mockProjectConfig.agent = {};
   mockModules.mockSessionOverrides = { default: null };
   mockModules.mockSessionShowCost = undefined;
+  mockModules.mockProjectTargetOffered = false;
 }
 
 afterEach(() => resetConfig());
@@ -135,6 +120,23 @@ describe("showModelSettingsMenu — SettingsList migration", () => {
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
     expect(item.currentValue).toContain("(inherits parent)");
+  });
+
+  it("tags a project-sourced default with [project]", async () => {
+    mockModules.mockProjectConfig.agent.default = "openai/gpt-4o";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
+    expect(item.currentValue).toContain("openai/gpt-4o");
+    expect(item.currentValue).toContain("[project]");
+  });
+
+  it("tags a session default with [session]", async () => {
+    mockModules.mockSessionOverrides.default = "openai/gpt-4o";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
+    expect(item.currentValue).toContain("[session]");
   });
 });
 
@@ -190,6 +192,15 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     expect(item.currentValue).toContain("[session]");
   });
 
+  it("tags a project-sourced per-type value with [project]", async () => {
+    mockModules.mockProjectConfig.agent["Explore"] = "openai/gpt-4o";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
+    expect(item.currentValue).toContain("openai/gpt-4o");
+    expect(item.currentValue).toContain("[project]");
+  });
+
   it("shows 'Override another type...' when non-overridden types exist", async () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
@@ -197,37 +208,80 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     expect(ids).toContain("overrideType");
   });
 
-  it("shows 'Clear session overrides' when session overrides exist", async () => {
-    mockModules.mockSessionOverrides["Explore"] = "openai/gpt-4o";
+  it("sets a per-type model at project level via the submenu", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
-    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toContain("clearSession");
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
+    const done = vi.fn();
+    const proxy = item.submenu("", done);
+
+    const modeList = selectListInstances[selectListInstances.length - 1];
+    expect(modeList.items.map((i: any) => i.value)).toEqual(["session", "global", "project", "clear"]);
+    modeList.onSelect!({ value: "project" });
+
+    const selector = selectDialogInstances[selectDialogInstances.length - 1];
+    selector.callbacks.onSelect("openai/gpt-4o");
+
+    expect(mockModules.mockProjectConfig.agent["Explore"]).toBe("openai/gpt-4o");
+    expect(mockModules.mockConfig.agent["Explore"]).toBe("anthropic/claude-sonnet-4-20250514");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("openai/gpt-4o"), "info");
+    expect(done).toHaveBeenCalledWith("openai/gpt-4o");
+    expect(proxy).toBeDefined();
   });
 
-  it("does NOT show 'Clear session overrides' when no session overrides", async () => {
+  it("offers no project entry when the project target is not offered", async () => {
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).not.toContain("clearSession");
-  });
-
-  it("clear session overrides calls store.mutate.session.clearAll", async () => {
-    mockModules.mockSessionOverrides["Explore"] = "openai/gpt-4o";
-    const ctx = createMockCtx();
-    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "clearSession");
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
     const done = vi.fn();
     item.submenu("", done);
-    // Confirm submenu creates SelectList — select "Yes"
-    const confirmList = selectListInstances[selectListInstances.length - 1];
-    confirmList.onSelect!({ value: "Yes" });
-    expect(mockModules.mockSessionOverrides).toEqual({ default: null });
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    const modeList = selectListInstances[selectListInstances.length - 1];
+    expect(modeList.items.map((i: any) => i.value)).toEqual(["session", "global", "clear"]);
+  });
+
+  it("clears a per-type override at the global level via the nested picker", async () => {
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
+    const done = vi.fn();
+    item.submenu("", done);
+    const modeList = selectListInstances[selectListInstances.length - 1];
+    modeList.onSelect!({ value: "clear" });
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
+    targetList.onSelect!({ value: "global" });
+
+    expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("cleared"), "info");
+    expect(done).toHaveBeenCalledWith("global");
+  });
+
+  it("clears a per-type override at the project level via the nested picker", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockProjectConfig.agent["Explore"] = "openai/gpt-4o";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
+    const done = vi.fn();
+    item.submenu("", done);
+    const modeList = selectListInstances[selectListInstances.length - 1];
+    modeList.onSelect!({ value: "clear" });
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "project", "all"]);
+    targetList.onSelect!({ value: "project" });
+
+    expect(mockModules.mockProjectConfig.agent["Explore"]).toBeUndefined();
+    expect(done).toHaveBeenCalledWith("project");
   });
 });
 
-describe("showModelSettingsMenu — clear all overrides", () => {
+describe("showModelSettingsMenu — clear all overrides per target", () => {
   beforeEach(() => {
     resetAgentState();
     settingsListCalls = [];
@@ -238,14 +292,14 @@ describe("showModelSettingsMenu — clear all overrides", () => {
     (getAllTypes as any).mockReturnValue(["general-purpose", "Explore"]);
   });
 
-  it("shows 'Clear all overrides' item", async () => {
+  it("shows 'Clear all model overrides...' item", async () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, []);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
     expect(ids).toContain("clearAll");
   });
 
-  it("clear all overrides clears config overrides", async () => {
+  it("clear-all at global clears config overrides after target pick + confirm", async () => {
     mockModules.mockConfig.agent["Explore"] = "openai/gpt-4o";
     mockModules.mockConfig.agent.default = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
@@ -253,11 +307,69 @@ describe("showModelSettingsMenu — clear all overrides", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "clearAll");
     const done = vi.fn();
     item.submenu("", done);
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
+    targetList.onSelect!({ value: "global" });
+
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
-    // Per-type override removed, non-model keys (default) preserved
+
     expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
-    expect(mockModules.mockConfig.agent.default).toBe("anthropic/claude-sonnet-4-20250514");
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("All model overrides cleared"), "info");
+    // The model family clears too (default is a model key).
+    expect(mockModules.mockConfig.agent.default).toBeUndefined();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("cleared"), "info");
+  });
+
+  it("clear-all at project clears the project layer only", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockProjectConfig.agent["Explore"] = "openai/gpt-4o";
+    mockModules.mockConfig.agent["Explore"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "clearAll");
+    const done = vi.fn();
+    item.submenu("", done);
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "project" });
+    const confirmList = selectListInstances[selectListInstances.length - 1];
+    confirmList.onSelect!({ value: "Yes" });
+
+    expect(mockModules.mockProjectConfig.agent["Explore"]).toBeUndefined();
+    expect(mockModules.mockConfig.agent["Explore"]).toBe("anthropic/claude-sonnet-4-20250514");
+  });
+
+  it("clear-all at all levels clears session, global and project", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockSessionOverrides["Explore"] = "s/explore";
+    mockModules.mockConfig.agent["Explore"] = "g/explore";
+    mockModules.mockProjectConfig.agent["Explore"] = "p/explore";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "clearAll");
+    const done = vi.fn();
+    item.submenu("", done);
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "all" });
+    const confirmList = selectListInstances[selectListInstances.length - 1];
+    confirmList.onSelect!({ value: "Yes" });
+
+    expect(mockModules.mockSessionOverrides).toEqual({ default: null });
+    expect(mockModules.mockConfig.agent["Explore"]).toBeUndefined();
+    expect(mockModules.mockProjectConfig.agent["Explore"]).toBeUndefined();
+  });
+
+  it("clear-all at session resets session overrides", async () => {
+    mockModules.mockSessionOverrides["Explore"] = "s/explore";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "clearAll");
+    const done = vi.fn();
+    item.submenu("", done);
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "session" });
+    const confirmList = selectListInstances[selectListInstances.length - 1];
+    confirmList.onSelect!({ value: "Yes" });
+
+    expect(mockModules.mockSessionOverrides).toEqual({ default: null });
   });
 });

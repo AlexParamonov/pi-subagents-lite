@@ -12,6 +12,7 @@
  */
 
 import { vi } from "vitest";
+import { CONFIG_AGENT_NON_MODEL_KEYS } from "../src/config/types.js";
 
 // Create the mutable mock state via vi.hoisted so the vi.mock factories
 // (which vitest hoists above the rest of the module) can reference it.
@@ -21,7 +22,14 @@ const hoisted = vi.hoisted(() => {
     concurrency: { default: 4 } as Record<string, any>,
   };
 
+  const mockProjectConfig = {
+    agent: {} as Record<string, any>,
+    concurrency: {} as Record<string, any>,
+  };
+
   const mockSessionOverrides = { default: null } as Record<string, any>;
+  const mockSessionConcurrency = {} as Record<string, any>;
+  const mockProjectTargetOffered = false;
   const mockSessionShowCost = undefined as boolean | undefined;
 
   const mockManager = {
@@ -60,7 +68,10 @@ const hoisted = vi.hoisted(() => {
 
   return {
     mockConfig,
+    mockProjectConfig,
     mockSessionOverrides,
+    mockSessionConcurrency,
+    mockProjectTargetOffered,
     mockSessionShowCost,
     mockManager,
     mockSessionCtx,
@@ -71,7 +82,10 @@ const hoisted = vi.hoisted(() => {
 
 export const mockModules = {
   mockConfig: hoisted.mockConfig,
+  mockProjectConfig: hoisted.mockProjectConfig,
   mockSessionOverrides: hoisted.mockSessionOverrides,
+  mockSessionConcurrency: hoisted.mockSessionConcurrency,
+  mockProjectTargetOffered: hoisted.mockProjectTargetOffered,
   mockSessionShowCost: hoisted.mockSessionShowCost,
   mockManager: hoisted.mockManager,
   mockSessionCtx: hoisted.mockSessionCtx,
@@ -89,7 +103,13 @@ export function resetConfig(): void {
     agent: { default: null, forceBackground: false, outputTranscript: false } as Record<string, any>,
     concurrency: { default: 4 } as Record<string, any>,
   };
+  mockModules.mockProjectConfig = {
+    agent: {} as Record<string, any>,
+    concurrency: {} as Record<string, any>,
+  };
   mockModules.mockSessionOverrides = { default: null } as Record<string, any>;
+  mockModules.mockSessionConcurrency = {} as Record<string, any>;
+  mockModules.mockProjectTargetOffered = false;
   mockModules.mockSessionShowCost = undefined;
   mockModules.mockManager.setConcurrency.mockReset();
   mockModules.mockManager.listAgents.mockReset();
@@ -160,10 +180,14 @@ vi.mock("../src/agents/tool-execution.js", () => ({
 vi.mock("../src/shell.js", async () => {
   // Derive the getter defaults from src's real config constants (via the mocked
   // config-io module above) so menu tests pin src's defaults, not a hand copy.
-  const { DEFAULT_AGENT } = await import("../src/config/config-io.js");
+  const { DEFAULT_AGENT, DEFAULT_CONCURRENCY } = await import("../src/config/config-io.js");
   const mockStore = {
+    get projectTargetOffered() {
+      return mockModules.mockProjectTargetOffered;
+    },
     get agent() {
-      const a = mockModules.mockConfig.agent;
+      // Effective agent: project layer over global layer (model keys only).
+      const a = { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
       const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_AGENT.widgetMaxLines;
       return {
         defaultModel: a.default ?? null,
@@ -202,11 +226,28 @@ vi.mock("../src/shell.js", async () => {
       };
     },
     get concurrency() {
+      const globalConc = mockModules.mockConfig.concurrency ?? {};
+      const projectConc = mockModules.mockProjectConfig.concurrency ?? {};
+      const sessionConc = mockModules.mockSessionConcurrency;
       return {
-        default: mockModules.mockConfig.concurrency.default,
-        providers: mockModules.mockConfig.concurrency.providers ?? {},
-        models: mockModules.mockConfig.concurrency.models ?? {},
+        default: sessionConc.default ?? projectConc.default ?? globalConc.default ?? DEFAULT_CONCURRENCY.default,
+        providers: {
+          ...(globalConc.providers ?? {}),
+          ...(projectConc.providers ?? {}),
+          ...(sessionConc.providers ?? {}),
+        },
+        models: {
+          ...(globalConc.models ?? {}),
+          ...(projectConc.models ?? {}),
+          ...(sessionConc.models ?? {}),
+        },
       };
+    },
+    get projectConcurrency() {
+      return mockModules.mockProjectConfig.concurrency ?? {};
+    },
+    get sessionConcurrency() {
+      return mockModules.mockSessionConcurrency;
     },
     get sessionDefaultModel() {
       return mockModules.mockSessionOverrides.default ?? null;
@@ -214,69 +255,80 @@ vi.mock("../src/shell.js", async () => {
     sessionModelOverride(type: string) {
       return mockModules.mockSessionOverrides[type] ?? null;
     },
+    hasSessionModelKey(key: string) {
+      return typeof mockModules.mockSessionOverrides[key] === "string";
+    },
+    hasGlobalModelKey(key: string) {
+      return mockModules.mockConfig.agent[key] !== undefined;
+    },
+    hasProjectModelKey(key: string) {
+      return mockModules.mockProjectConfig.agent[key] !== undefined;
+    },
     get hasSessionShowCost() {
       return mockModules.mockSessionShowCost !== undefined;
     },
     agentConfigSnapshot() {
-      return mockModules.mockConfig.agent;
+      return { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
     },
     modelFor(type: string, parentModelId: string, agentConfig?: any) {
+      const effectiveAgent = { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
       const sessionOverride = mockModules.mockSessionOverrides[type];
       if (sessionOverride) return sessionOverride;
       const sessionDefault = mockModules.mockSessionOverrides.default;
       if (sessionDefault) return sessionDefault;
-      const configOverride = mockModules.mockConfig.agent[type];
+      const configOverride = effectiveAgent[type];
       if (configOverride) return configOverride;
-      const configDefault = mockModules.mockConfig.agent.default;
+      const configDefault = effectiveAgent.default;
       if (configDefault) return configDefault;
       if (agentConfig?.model) return agentConfig.model;
       return parentModelId;
     },
     mutate: {
       agent: {
-        setDefaultModel(value: string | null) {
-          mockModules.mockConfig.agent.default = value;
+        setDefaultModel(value: string | null, target: string = "global") {
+          if (target === "session") mockModules.mockSessionOverrides.default = value;
+          else if (target === "project") mockModules.mockProjectConfig.agent.default = value;
+          else mockModules.mockConfig.agent.default = value;
         },
-        setModelOverride(type: string, value: string | null) {
-          mockModules.mockConfig.agent[type] = value;
+        setModelOverride(type: string, value: string | null, target: string = "global") {
+          if (target === "session") mockModules.mockSessionOverrides[type] = value;
+          else if (target === "project") mockModules.mockProjectConfig.agent[type] = value;
+          else mockModules.mockConfig.agent[type] = value;
         },
-        clearModelOverride(type: string) {
-          delete mockModules.mockConfig.agent[type];
-        },
-        clearAllModelOverrides() {
-          const preserved: Record<string, unknown> = {};
-          for (const key of [
-            "default",
-            "forceBackground",
-            "graceTurns",
-            "showCost",
-            "showTools",
-            "showTurns",
-            "showInput",
-            "showOutput",
-            "showContext",
-            "showTime",
-            "widgetMaxLines",
-            "widgetMaxLinesCompact",
-            "widgetDescLengthFull",
-            "widgetDescLengthCompact",
-            "widgetCompact",
-            "showCompletionCards",
-            "widgetShortcut",
-            "systemPromptMode",
-            "includeContextFiles",
-            "defaultThinking",
-            "defaultMaxTurns",
-            "loadSkillsImplicitly",
-            "loadExtensionsImplicitly",
-            "modelDisplayStyle",
-          ]) {
-            const val = mockModules.mockConfig.agent[key];
-            if (val != null || key === "default" || key === "forceBackground") {
-              preserved[key] = val;
-            }
+        clearModelOverride(type: string, target: string = "global") {
+          if (target === "session") {
+            delete mockModules.mockSessionOverrides[type];
+          } else if (target === "all") {
+            delete mockModules.mockSessionOverrides[type];
+            delete mockModules.mockConfig.agent[type];
+            delete mockModules.mockProjectConfig.agent[type];
+          } else if (target === "project") {
+            delete mockModules.mockProjectConfig.agent[type];
+          } else {
+            delete mockModules.mockConfig.agent[type];
           }
-          mockModules.mockConfig.agent = preserved as any;
+        },
+        clearAllModelOverrides(target: string = "global") {
+          // Mirror the store: clear the model family + per-type keys, keep non-model settings.
+          const kept = CONFIG_AGENT_NON_MODEL_KEYS.filter(
+            (key) => !["default", "defaultThinking", "defaultMaxTurns"].includes(key),
+          );
+          const clearAgent = (agent: Record<string, any>) => {
+            for (const key of Object.keys(agent)) {
+              if (!kept.includes(key)) delete agent[key];
+            }
+          };
+          if (target === "session") {
+            mockModules.mockSessionOverrides = { default: null };
+          } else if (target === "all") {
+            mockModules.mockSessionOverrides = { default: null };
+            clearAgent(mockModules.mockConfig.agent);
+            clearAgent(mockModules.mockProjectConfig.agent);
+          } else if (target === "project") {
+            clearAgent(mockModules.mockProjectConfig.agent);
+          } else {
+            clearAgent(mockModules.mockConfig.agent);
+          }
         },
         setForceBackground(enabled: boolean) {
           mockModules.mockConfig.agent.forceBackground = enabled;
@@ -299,11 +351,15 @@ vi.mock("../src/shell.js", async () => {
         setIncludeContextFiles(enabled: boolean) {
           mockModules.mockConfig.agent.includeContextFiles = enabled;
         },
-        setDefaultThinking(level: string | undefined) {
-          mockModules.mockConfig.agent.defaultThinking = level;
+        setDefaultThinking(level: string | undefined, target: string = "global") {
+          const agent = target === "project" ? mockModules.mockProjectConfig.agent : mockModules.mockConfig.agent;
+          if (level === undefined) delete agent.defaultThinking;
+          else agent.defaultThinking = level;
         },
-        setDefaultMaxTurns(n: number | undefined) {
-          mockModules.mockConfig.agent.defaultMaxTurns = n;
+        setDefaultMaxTurns(n: number | undefined, target: string = "global") {
+          const agent = target === "project" ? mockModules.mockProjectConfig.agent : mockModules.mockConfig.agent;
+          if (n === undefined) delete agent.defaultMaxTurns;
+          else agent.defaultMaxTurns = n;
         },
         setLoadSkillsImplicitly(value: boolean) {
           mockModules.mockConfig.agent.loadSkillsImplicitly = value;
@@ -378,25 +434,77 @@ vi.mock("../src/shell.js", async () => {
         },
       },
       concurrency: {
-        setDefault(n: number) {
-          mockModules.mockConfig.concurrency.default = n;
+        setDefault(n: number, target: string = "global") {
+          if (target === "session") mockModules.mockSessionConcurrency.default = n;
+          else if (target === "project") mockModules.mockProjectConfig.concurrency.default = n;
+          else mockModules.mockConfig.concurrency.default = n;
         },
-        setProvider(key: string, n: number) {
-          if (!mockModules.mockConfig.concurrency.providers) mockModules.mockConfig.concurrency.providers = {};
-          mockModules.mockConfig.concurrency.providers[key] = n;
+        setProvider(key: string, n: number, target: string = "global") {
+          const section =
+            target === "session"
+              ? mockModules.mockSessionConcurrency
+              : target === "project"
+                ? mockModules.mockProjectConfig.concurrency
+                : mockModules.mockConfig.concurrency;
+          if (!section.providers) section.providers = {};
+          section.providers[key] = n;
         },
-        setModel(key: string, n: number) {
-          if (!mockModules.mockConfig.concurrency.models) mockModules.mockConfig.concurrency.models = {};
-          mockModules.mockConfig.concurrency.models[key] = n;
+        setModel(key: string, n: number, target: string = "global") {
+          const section =
+            target === "session"
+              ? mockModules.mockSessionConcurrency
+              : target === "project"
+                ? mockModules.mockProjectConfig.concurrency
+                : mockModules.mockConfig.concurrency;
+          if (!section.models) section.models = {};
+          section.models[key] = n;
         },
-        removeProvider(key: string) {
-          if (mockModules.mockConfig.concurrency.providers) delete mockModules.mockConfig.concurrency.providers[key];
+        removeProvider(key: string, target: string = "global") {
+          if (target === "session") {
+            if (mockModules.mockSessionConcurrency.providers) delete mockModules.mockSessionConcurrency.providers[key];
+          } else if (target === "all") {
+            if (mockModules.mockSessionConcurrency.providers) delete mockModules.mockSessionConcurrency.providers[key];
+            if (mockModules.mockConfig.concurrency.providers) delete mockModules.mockConfig.concurrency.providers[key];
+            if (mockModules.mockProjectConfig.concurrency.providers) {
+              delete mockModules.mockProjectConfig.concurrency.providers[key];
+            }
+          } else if (target === "project") {
+            if (mockModules.mockProjectConfig.concurrency.providers) {
+              delete mockModules.mockProjectConfig.concurrency.providers[key];
+            }
+          } else if (mockModules.mockConfig.concurrency.providers) {
+            delete mockModules.mockConfig.concurrency.providers[key];
+          }
         },
-        removeModel(key: string) {
-          if (mockModules.mockConfig.concurrency.models) delete mockModules.mockConfig.concurrency.models[key];
+        removeModel(key: string, target: string = "global") {
+          if (target === "session") {
+            if (mockModules.mockSessionConcurrency.models) delete mockModules.mockSessionConcurrency.models[key];
+          } else if (target === "all") {
+            if (mockModules.mockSessionConcurrency.models) delete mockModules.mockSessionConcurrency.models[key];
+            if (mockModules.mockConfig.concurrency.models) delete mockModules.mockConfig.concurrency.models[key];
+            if (mockModules.mockProjectConfig.concurrency.models) {
+              delete mockModules.mockProjectConfig.concurrency.models[key];
+            }
+          } else if (target === "project") {
+            if (mockModules.mockProjectConfig.concurrency.models) {
+              delete mockModules.mockProjectConfig.concurrency.models[key];
+            }
+          } else if (mockModules.mockConfig.concurrency.models) {
+            delete mockModules.mockConfig.concurrency.models[key];
+          }
         },
-        reset() {
-          mockModules.mockConfig.concurrency = { default: 4 };
+        clearAll(target: string = "global") {
+          if (target === "session") {
+            mockModules.mockSessionConcurrency = {};
+          } else if (target === "all") {
+            mockModules.mockSessionConcurrency = {};
+            mockModules.mockConfig.concurrency = {};
+            mockModules.mockProjectConfig.concurrency = {};
+          } else if (target === "project") {
+            mockModules.mockProjectConfig.concurrency = {};
+          } else {
+            mockModules.mockConfig.concurrency = {};
+          }
         },
       },
       session: {

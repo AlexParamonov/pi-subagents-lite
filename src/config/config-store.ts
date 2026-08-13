@@ -537,8 +537,6 @@ export class ConfigStore {
         this.commitLayer(target);
         this.applyConcurrency();
       },
-      /** @deprecated Use clearAll("global") — kept until the concurrency menu is rewritten. */
-      reset: (): void => this.mutate.concurrency.clearAll("global"),
     },
     session: {
       /** Not persisted; key "default" sets the session-wide default. */
