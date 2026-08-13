@@ -107,10 +107,6 @@ export function loadConfig(): SubagentsConfig {
   return mergeDefaults(readGlobalRaw());
 }
 
-export function saveConfigAtomic(config: SubagentsConfig): void {
-  writeJsonAtomic(CONFIG_PATH, config);
-}
-
 // ── Load ─────────────────────────────────────────────────────────────
 
 /**

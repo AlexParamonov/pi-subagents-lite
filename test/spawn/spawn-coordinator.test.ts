@@ -29,7 +29,6 @@ vi.mock("../../src/utils.js", () => ({
 
 vi.mock("../../src/config/config-io.js", () => ({
   loadConfig: vi.fn(() => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } })),
-  saveConfigAtomic: vi.fn(),
   DEFAULT_CONFIG: { agent: { default: null, forceBackground: false }, concurrency: { default: 4 } },
 }));
 
