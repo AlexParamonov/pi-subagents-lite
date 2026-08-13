@@ -103,7 +103,7 @@ The LLM never passes `model`. Set it once in config or frontmatter and forget.
 
 `worktree_path` accepts a path inside **any git repository on disk** — a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
 
-Cross-repo targets are gated by pi's existing trust framework: the target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting — anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, and a warning is surfaced. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
+Cross-repo targets are gated by pi's existing trust framework: the target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting — anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, the extension's project config (`.pi/subagents-lite.json`) is not loaded, and a warning is surfaced. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
 
 ## System prompt mode
 
@@ -162,6 +162,11 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
 
 Widget, stats visibility, and spawn defaults are all under `/agents` > Settings.
 
+### Project-level config
+
+A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). At load, the two files merge per field — project wins, global fills the rest, built-in defaults fill the rest — and validation, clamping, and legacy-key normalization apply to the merged result. Concurrency limits (`default`, `providers`, `models`) and per-type model overrides merge per key, so a project can override a single provider limit or model without copying the rest.
+
+`/agents` menu changes persist to the project file when one exists (never splitting state across both files); the global file is hand-edited. With no project file, everything works exactly as before: the full config is written to the global file. A malformed project file is ignored with a warning and the global file still loads. The project file is only loaded in trusted projects, same as `.pi/agents`.
 Output logs land in `/tmp/pi-agent-outputs/<agentId>.log`, append-only and `tail -f` friendly. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
 
 Output transcripts are disabled by default and can be enabled globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, transcripts land in `/tmp/pi-agent-outputs/<agentId>.log` and the `tail -f` widget line is shown.
