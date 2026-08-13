@@ -22,8 +22,12 @@ import {
   createSearchableSelect,
 } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
-import { createConfirmSubmenu } from "./submenus/confirm.js";
-import { createTargetSelectSubmenu, type SetTarget, type TargetChoice } from "./submenus/target-select.js";
+import {
+  createTargetSelectSubmenu,
+  createClearAllSubmenu,
+  type SetTarget,
+  type TargetChoice,
+} from "./submenus/target-select.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 import type { SelectOption } from "../searchable-select.js";
@@ -235,21 +239,15 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       label: "Clear all concurrency limits...",
       currentValue: "",
       description: "Remove concurrency overrides at the chosen level (session, global, project, or all).",
-      submenu: (currentValue, done) =>
-        createTargetSelectSubmenu({
-          theme,
-          projectOffered,
-          includeAll: true,
-          onPick: (target, pickDone) =>
-            createConfirmSubmenu({
-              message: `Clear all concurrency limits at the ${target} level?`,
-              theme,
-              onConfirm: () => {
-                store.mutate.concurrency.clearAll(target);
-                ctx.ui.notify(`Concurrency limits cleared (${target})`, "info");
-              },
-            })(currentValue, pickDone),
-        })(currentValue, done),
+      submenu: createClearAllSubmenu({
+        theme,
+        projectOffered,
+        message: (target) => `Clear all concurrency limits at the ${target} level?`,
+        onConfirm: (target) => {
+          store.mutate.concurrency.clearAll(target);
+          ctx.ui.notify(`Concurrency limits cleared (${target})`, "info");
+        },
+      }),
     });
 
     return items;

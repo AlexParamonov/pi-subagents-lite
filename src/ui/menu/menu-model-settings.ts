@@ -16,8 +16,7 @@ import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import type { Theme } from "../types.js";
 import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
-import { createTargetSelectSubmenu, type TargetChoice } from "./submenus/target-select.js";
-import { createConfirmSubmenu } from "./submenus/confirm.js";
+import { createClearAllSubmenu, type TargetChoice } from "./submenus/target-select.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 
@@ -167,25 +166,19 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       label: "Clear all model overrides...",
       currentValue: "",
       description: "Discard model overrides at the chosen level (session, global, project, or all).",
-      submenu: (currentValue, done) =>
-        createTargetSelectSubmenu({
-          theme,
-          projectOffered,
-          includeAll: true,
-          onPick: (target, pickDone) =>
-            createConfirmSubmenu({
-              message: `Clear all model overrides at the ${target} level?`,
-              theme,
-              onConfirm: () => {
-                if (target === "session") {
-                  store.mutate.session.clearAll();
-                } else {
-                  store.mutate.agent.clearAllModelOverrides(target);
-                }
-                ctx.ui.notify(`Model overrides cleared (${target})`, "info");
-              },
-            })(currentValue, pickDone),
-        })(currentValue, done),
+      submenu: createClearAllSubmenu({
+        theme,
+        projectOffered,
+        message: (target) => `Clear all model overrides at the ${target} level?`,
+        onConfirm: (target) => {
+          if (target === "session") {
+            store.mutate.session.clearAll();
+          } else {
+            store.mutate.agent.clearAllModelOverrides(target);
+          }
+          ctx.ui.notify(`Model overrides cleared (${target})`, "info");
+        },
+      }),
     });
 
     return items;

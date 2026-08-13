@@ -10,6 +10,7 @@
 import { SelectList, type Component } from "@earendil-works/pi-tui";
 import type { Theme } from "../../types.js";
 import { buildSelectListTheme, createDelegatingComponent } from "../helpers.js";
+import { createConfirmSubmenu } from "./confirm.js";
 
 /** The layer a set/clear applies to; "all" clears every layer. */
 export type TargetChoice = "session" | "global" | "project" | "all";
@@ -54,4 +55,29 @@ export function createTargetSelectSubmenu(
 
     return delegator;
   };
+}
+
+/**
+ * Nested clear-all flow shared by the model settings and concurrency menus:
+ * pick a level (session/global/project/all), then confirm before applying.
+ */
+export function createClearAllSubmenu(options: {
+  theme: Theme;
+  projectOffered: boolean;
+  /** Confirm prompt, e.g. "Clear all model overrides at the {target} level?" */
+  message: (target: TargetChoice) => string;
+  onConfirm: (target: TargetChoice) => void;
+}): (currentValue: string, done: (selectedValue?: string) => void) => Component {
+  return (currentValue, done) =>
+    createTargetSelectSubmenu({
+      theme: options.theme,
+      projectOffered: options.projectOffered,
+      includeAll: true,
+      onPick: (target, pickDone) =>
+        createConfirmSubmenu({
+          message: options.message(target),
+          theme: options.theme,
+          onConfirm: () => options.onConfirm(target),
+        })(currentValue, pickDone),
+    })(currentValue, done);
 }
