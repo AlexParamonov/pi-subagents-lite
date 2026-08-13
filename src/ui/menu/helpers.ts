@@ -29,7 +29,7 @@ export const SEPARATOR_ID = "__sep__";
  */
 export function installSeparatorSkip(list: any): void {
   if (!Array.isArray(list.items)) return;
-  const _rawIndex = Symbol("rawIndex");
+  const rawIndex = Symbol("rawIndex");
   const isSep = (item: any) => item?.value === SEPARATOR_ID || item?.id === SEPARATOR_ID;
   // Starting just past `start`, walk in `step` direction and return the
   // first non-separator index (or an out-of-bounds sentinel if none).
@@ -41,14 +41,14 @@ export function installSeparatorSkip(list: any): void {
   const inBounds = (i: number) => i >= 0 && i < list.items.length;
   Object.defineProperty(list, "selectedIndex", {
     get() {
-      return list[_rawIndex] ?? 0;
+      return list[rawIndex] ?? 0;
     },
     set(idx) {
       const items = list.items;
-      const cur = list[_rawIndex] ?? 0;
+      const cur = list[rawIndex] ?? 0;
       const clamped = Math.max(0, Math.min(idx, items.length - 1));
       if (!isSep(items[clamped])) {
-        list[_rawIndex] = clamped;
+        list[rawIndex] = clamped;
         return;
       }
       // Landed on a separator: search in the travel direction first,
@@ -57,11 +57,11 @@ export function installSeparatorSkip(list: any): void {
       const step = idx > cur ? 1 : -1;
       const fwd = firstNonSepFrom(clamped, step);
       const back = firstNonSepFrom(clamped, -step);
-      list[_rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
+      list[rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
     },
     configurable: true,
   });
-  list[_rawIndex] = list.selectedIndex ?? 0;
+  list[rawIndex] = list.selectedIndex ?? 0;
 }
 /**
  * Build SelectOption[] from raw "provider/model-id" strings.
