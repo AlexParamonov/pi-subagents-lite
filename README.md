@@ -45,7 +45,7 @@ The `/agents` menu covers running agents (view, steer, continue settled agents, 
 
 ## Custom agent types
 
-Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, so nothing needs registering. Built-ins `general-purpose` and `Explore` are always available; on name clash, project > shared > user > built-in. Type names resolve case-insensitively: the exact registered name wins, a single case-insensitive match resolves, and two types differing only by case fail with an error naming both candidates.
+Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, so nothing needs registering. Built-ins `general-purpose` and `Explore` are always available; on name clash, project > shared > user > built-in. Type names resolve case-insensitively.
 
 ```markdown
 ---
