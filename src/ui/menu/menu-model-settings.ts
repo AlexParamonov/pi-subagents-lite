@@ -28,20 +28,22 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
 
     // Shared onSet for model override submenus: applies the model to the given
     // config key at the picked layer, with `label` used in notify messages.
+    // The picker returns the literal "(inherits parent)" sentinel string (never
+    // null); selecting it means "clear this key at the picked layer" so the
+    // value falls through to the next layer (ADR-0008 delete semantics).
     const modelOverrideOnSelect =
       (key: string, label: string): ((target: "session" | "global" | "project", model: string | null) => void) =>
       (target, model) => {
-        if (target === "session") {
-          if (model === null) {
-            store.mutate.session.clearOverride(key);
-          } else {
-            store.mutate.session.setOverride(key, model);
-          }
+        const inherits = model === null || model === "(inherits parent)";
+        if (inherits) {
+          store.mutate.agent.clearModelOverride(key, target);
+        } else if (target === "session") {
+          store.mutate.session.setOverride(key, model);
         } else {
           store.mutate.agent.setModelOverride(key, model, target);
         }
         ctx.ui.notify(
-          model === null ? `${label} inherits parent model` : `${label} model set to ${model} (${target})`,
+          inherits ? `${label} inherits parent model` : `${label} model set to ${model} (${target})`,
           "info",
         );
       };

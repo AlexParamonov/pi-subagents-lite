@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules, resetConfig, selectDialogInstances } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
+import { ConfigStore, type ConfigIO } from "../../../src/config/config-store.js";
 import { getAgentConfig, getAllTypes } from "../../../src/agents/agent-types.js";
 
 let settingsListCalls: Array<any> = [];
@@ -78,6 +79,28 @@ function resetAgentState(): void {
   mockModules.mockSessionOverrides = { default: null };
   mockModules.mockSessionShowCost = undefined;
   mockModules.mockProjectTargetOffered = false;
+}
+
+/** In-memory ConfigIO over two raw layers, mirroring config-store.test.ts. */
+function memIO(opts: { global?: any; project?: any | null; projectStatus?: any } = {}): ConfigIO {
+  const state = {
+    global: opts.global ?? {},
+    project: opts.project === undefined ? null : opts.project,
+    projectStatus: opts.projectStatus ?? "untrusted",
+  };
+  return {
+    load: () => ({
+      global: structuredClone(state.global),
+      project: state.project ? structuredClone(state.project) : null,
+      projectStatus: state.projectStatus,
+    }),
+    saveGlobal: (config) => {
+      state.global = structuredClone(config);
+    },
+    saveProject: (config) => {
+      state.project = structuredClone(config);
+    },
+  };
 }
 
 afterEach(() => resetConfig());
@@ -371,5 +394,80 @@ describe("showModelSettingsMenu — clear all overrides per target", () => {
     confirmList.onSelect!({ value: "Yes" });
 
     expect(mockModules.mockSessionOverrides).toEqual({ default: null });
+  });
+});
+
+describe("showModelSettingsMenu — '(inherits parent)' clears the picked layer (real ConfigStore)", () => {
+  beforeEach(() => {
+    resetAgentState();
+    settingsListCalls = [];
+    selectListInstances = [];
+    settingsListWrapperCalls = [];
+    vi.clearAllMocks();
+    (getAgentConfig as any).mockImplementation(() => undefined);
+  });
+
+  // Regression: the picker returns the literal "(inherits parent)" string (never
+  // null). Selecting it must delete the key at the picked layer (ADR-0008 delete
+  // semantics), not store the sentinel as a model value. Driven through the real
+  // ConfigStore so the mock-store mirror cannot hide the bug.
+  it("at the global target deletes the global key and modelFor falls through to parent", async () => {
+    const store = new ConfigStore(memIO({ global: { agent: { default: "g/default" } }, projectStatus: "loaded" }));
+    mockModules.mockStoreOverride = store;
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["openai/gpt-4o"]);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
+    const done = vi.fn();
+    item.submenu("", done);
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "global" });
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("(inherits parent)");
+
+    expect(store.hasGlobalModelKey("default")).toBe(false);
+    expect(store.agent.defaultModel).toBeNull();
+    expect(store.modelFor("Explore", "parent-id")).toBe("parent-id");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("inherits parent"), "info");
+  });
+
+  it("at the project target deletes only the project key and the global value applies again", async () => {
+    const store = new ConfigStore(
+      memIO({
+        global: { agent: { default: "g/default" } },
+        project: { agent: { default: "p/default" } },
+        projectStatus: "loaded",
+      }),
+    );
+    mockModules.mockStoreOverride = store;
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["openai/gpt-4o"]);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
+    const done = vi.fn();
+    item.submenu("", done);
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "project" });
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("(inherits parent)");
+
+    expect(store.hasProjectModelKey("default")).toBe(false);
+    expect(store.hasGlobalModelKey("default")).toBe(true);
+    expect(store.agent.defaultModel).toBe("g/default");
+    expect(store.modelFor("Explore", "parent-id")).toBe("g/default");
+  });
+
+  it("at the session target clears the session override and the config value applies again", async () => {
+    const store = new ConfigStore(memIO({ global: { agent: { default: "g/default" } }, projectStatus: "loaded" }));
+    store.mutate.session.setOverride("default", "s/default");
+    mockModules.mockStoreOverride = store;
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["openai/gpt-4o"]);
+
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultModel");
+    const done = vi.fn();
+    item.submenu("", done);
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "session" });
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("(inherits parent)");
+
+    expect(store.sessionDefaultModel).toBeNull();
+    expect(store.modelFor("Explore", "parent-id")).toBe("g/default");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("inherits parent"), "info");
   });
 });

@@ -30,6 +30,7 @@ const hoisted = vi.hoisted(() => {
   const mockSessionOverrides = { default: null } as Record<string, any>;
   const mockSessionConcurrency = {} as Record<string, any>;
   const mockProjectTargetOffered = false;
+  const mockStoreOverride = null as any;
   const mockSessionShowCost = undefined as boolean | undefined;
 
   const mockManager = {
@@ -72,6 +73,7 @@ const hoisted = vi.hoisted(() => {
     mockSessionOverrides,
     mockSessionConcurrency,
     mockProjectTargetOffered,
+    mockStoreOverride,
     mockSessionShowCost,
     mockManager,
     mockSessionCtx,
@@ -86,6 +88,7 @@ export const mockModules = {
   mockSessionOverrides: hoisted.mockSessionOverrides,
   mockSessionConcurrency: hoisted.mockSessionConcurrency,
   mockProjectTargetOffered: hoisted.mockProjectTargetOffered,
+  mockStoreOverride: hoisted.mockStoreOverride,
   mockSessionShowCost: hoisted.mockSessionShowCost,
   mockManager: hoisted.mockManager,
   mockSessionCtx: hoisted.mockSessionCtx,
@@ -110,6 +113,7 @@ export function resetConfig(): void {
   mockModules.mockSessionOverrides = { default: null } as Record<string, any>;
   mockModules.mockSessionConcurrency = {} as Record<string, any>;
   mockModules.mockProjectTargetOffered = false;
+  mockModules.mockStoreOverride = null;
   mockModules.mockSessionShowCost = undefined;
   mockModules.mockManager.setConcurrency.mockReset();
   mockModules.mockManager.listAgents.mockReset();
@@ -528,7 +532,7 @@ vi.mock("../src/shell.js", async () => {
   };
 
   return {
-    getStore: () => mockStore,
+    getStore: () => mockModules.mockStoreOverride ?? mockStore,
     getManager: () => mockModules.mockManager,
     getWidget: vi.fn(() => undefined),
     getPiInstance: () => mockModules.mockPiInstance,
