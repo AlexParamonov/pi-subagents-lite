@@ -3,8 +3,13 @@
  *
  * Atomic writes: write to .tmp then rename.
  * Loaded at session_start; saved on every /agents menu mutation.
+ *
+ * Project-level config: when created with a project's `.pi` directory,
+ * `.pi/subagents-lite.json` merges over the global file per field (project
+ * wins, global fills, hardcoded defaults fill). Saves with a project file
+ * present write only the project-origin diff back to it, so the project file
+ * keeps overriding only what it sets; the global file is hand-edited.
  */
-
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -59,18 +64,100 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   statusBarFormat: "full",
 };
 
+/** Persistence port consumed by ConfigStore. */
+export interface ConfigIO {
+  load(): SubagentsConfig;
+  save(config: SubagentsConfig): void;
+}
+
+/** Raw file contents captured at load; the save path diffs against these. */
+interface LoadedFiles {
+  globalRaw: SubagentsConfig;
+  /** null when the project file is absent or malformed (then saves go global). */
+  projectRaw: SubagentsConfig | null;
+  projectPath: string | null;
+}
+
+/**
+ * Create a ConfigIO. With a project's `.pi` directory, the project's
+ * `subagents-lite.json` merges over the global file on load, and saves with a
+ * project file present write the project-origin diff to it (never the global
+ * file). Without one, behaves exactly like the global-only functions.
+ */
+export function createConfigIO(projectDir?: string): ConfigIO {
+  let files: LoadedFiles | null = null;
+  return {
+    load: () => {
+      files = loadFiles(projectDir);
+      return mergeDefaults(mergeRawFiles(files.globalRaw, files.projectRaw));
+    },
+    save: (config) => {
+      if (files?.projectPath && files.projectRaw) {
+        writeJsonAtomic(files.projectPath, diffProjectContent(config, files.globalRaw, files.projectRaw));
+      } else {
+        saveConfigAtomic(config);
+      }
+    },
+  };
+}
+
 /**
  * Read config from disk. Merges loaded values over defaults so the result
  * is always a complete SubagentsConfig — no partial shapes for callers to handle.
  */
 export function loadConfig(): SubagentsConfig {
-  let raw: SubagentsConfig;
-  try {
-    raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as SubagentsConfig;
-  } catch {
-    raw = {} as SubagentsConfig;
-  }
+  return mergeDefaults(readGlobalRaw());
+}
 
+export function saveConfigAtomic(config: SubagentsConfig): void {
+  writeJsonAtomic(CONFIG_PATH, config);
+}
+
+// ── Load ─────────────────────────────────────────────────────────────
+
+function loadFiles(projectDir?: string): LoadedFiles {
+  const globalRaw = readGlobalRaw();
+  if (!projectDir) return { globalRaw, projectRaw: null, projectPath: null };
+  const projectPath = path.join(projectDir, "subagents-lite.json");
+  const projectRaw = readProjectRaw(projectPath);
+  return { globalRaw, projectRaw, projectPath: projectRaw ? projectPath : null };
+}
+
+/** Read the global file; any failure (missing, malformed) reads as {} — as today. */
+function readGlobalRaw(): SubagentsConfig {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as SubagentsConfig;
+  } catch {
+    return {} as SubagentsConfig;
+  }
+}
+
+/** Read the project file; missing = absent, unreadable/malformed = absent + warning. */
+function readProjectRaw(projectPath: string): SubagentsConfig | null {
+  if (!fs.existsSync(projectPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(projectPath, "utf-8")) as SubagentsConfig;
+  } catch (err) {
+    console.warn(`[subagents] Ignoring malformed project config ${projectPath}: ${err}`);
+    return null;
+  }
+}
+
+/** Per-field merge of the two raw files: project wins, global fills the rest. */
+function mergeRawFiles(globalRaw: SubagentsConfig, projectRaw: SubagentsConfig | null): SubagentsConfig {
+  if (!projectRaw) return globalRaw;
+  return {
+    agent: { ...globalRaw.agent, ...projectRaw.agent },
+    concurrency: {
+      default: projectRaw.concurrency?.default ?? globalRaw.concurrency?.default ?? 4,
+      providers: { ...(globalRaw.concurrency?.providers ?? {}), ...(projectRaw.concurrency?.providers ?? {}) },
+      models: { ...(globalRaw.concurrency?.models ?? {}), ...(projectRaw.concurrency?.models ?? {}) },
+    },
+  };
+}
+
+/** Bake hardcoded defaults into the merged result; normalize legacy keys on it. */
+function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
   // @ts-expect-error TS2783: spread may override 'default', which is intentional (loaded value wins)
   const concurrency = { default: 4, ...(raw.concurrency ?? {}) } as SubagentsConfig["concurrency"];
   const agent = { ...DEFAULT_AGENT, ...raw.agent };
@@ -82,12 +169,79 @@ export function loadConfig(): SubagentsConfig {
   };
 }
 
-export function saveConfigAtomic(config: SubagentsConfig): void {
-  const tmpPath = CONFIG_PATH + ".tmp";
+// ── Save ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute the project-file content that reproduces the merged config when
+ * merged over the global file: keys the project file already sets (updated to
+ * the merged value, or dropped when deleted from the merged config) plus keys
+ * whose merged value differs from the global file. Defaults and global-only
+ * keys are never copied, so the project file stays a small hand-editable diff.
+ */
+function diffProjectContent(
+  merged: SubagentsConfig,
+  globalRaw: SubagentsConfig,
+  projectRaw: SubagentsConfig,
+): Record<string, unknown> {
+  const mergedGlobal = mergeDefaults(globalRaw);
+  const content: Record<string, unknown> = {};
+  const agent = diffAgent(merged.agent, projectRaw.agent ?? {}, mergedGlobal.agent);
+  if (Object.keys(agent).length > 0) content.agent = agent;
+  const concurrency = diffConcurrency(merged.concurrency, projectRaw.concurrency ?? {}, mergedGlobal.concurrency);
+  if (Object.keys(concurrency).length > 0) content.concurrency = concurrency;
+  return content;
+}
+
+function diffAgent(
+  merged: SubagentsConfig["agent"],
+  project: SubagentsConfig["agent"],
+  global: SubagentsConfig["agent"],
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(project), ...Object.keys(merged)])) {
+    const value = merged[key];
+    if (value === undefined) continue; // deleted from merged — drop from the project file
+    if (value !== global[key]) result[key] = value;
+  }
+  return result;
+}
+
+function diffConcurrency(
+  merged: SubagentsConfig["concurrency"],
+  project: Partial<SubagentsConfig["concurrency"]>,
+  global: SubagentsConfig["concurrency"],
+): Partial<SubagentsConfig["concurrency"]> {
+  const result: Partial<SubagentsConfig["concurrency"]> = {};
+  if (merged.default !== global.default) result.default = merged.default;
+  const providers = diffMap(merged.providers, project.providers, global.providers);
+  if (Object.keys(providers).length > 0) result.providers = providers;
+  const models = diffMap(merged.models, project.models, global.models);
+  if (Object.keys(models).length > 0) result.models = models;
+  return result;
+}
+
+/** Per-key diff for a nested string→number map (concurrency providers/models). */
+function diffMap(
+  merged: Record<string, number> | undefined,
+  project: Record<string, number> | undefined,
+  global: Record<string, number> | undefined,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const key of new Set([...Object.keys(project ?? {}), ...Object.keys(merged ?? {})])) {
+    const value = merged?.[key];
+    if (value === undefined) continue; // deleted from merged — drop from the project file
+    if (value !== global?.[key]) result[key] = value;
+  }
+  return result;
+}
+
+/** Write JSON atomically: tmp file in the same directory, then rename. */
+function writeJsonAtomic(filePath: string, config: unknown): void {
+  const tmpPath = filePath + ".tmp";
   try {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), "utf-8");
-    fs.renameSync(tmpPath, CONFIG_PATH);
+    fs.renameSync(tmpPath, filePath);
   } catch (err) {
     console.error(`[subagents] Failed to save config: ${err}`);
   }

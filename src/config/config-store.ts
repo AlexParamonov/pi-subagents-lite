@@ -25,20 +25,13 @@ import {
   DEFAULT_CONCURRENCY,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
   MIN_FINISHED_RETENTION_MINUTES,
-  loadConfig,
-  saveConfigAtomic,
+  createConfigIO,
+  type ConfigIO,
 } from "./config-io.js";
 
-/** Injected persistence adapter. Swap for an in-memory adapter in tests. */
-export interface ConfigIO {
-  load(): SubagentsConfig;
-  save(config: SubagentsConfig): void;
-}
+export type { ConfigIO } from "./config-io.js";
 
-export const fileConfigIO: ConfigIO = {
-  load: () => loadConfig(),
-  save: (c) => saveConfigAtomic(c),
-};
+export const fileConfigIO: ConfigIO = createConfigIO();
 
 /** Agent settings with all scalar defaults resolved. Model fields stay nullable. */
 export interface ResolvedAgentSettings {
@@ -110,6 +103,7 @@ export interface ConfigStoreDeps {
 
 export class ConfigStore {
   private config: SubagentsConfig;
+  private io: ConfigIO;
   private sessionOverrides: SessionModelOverrides = { default: null };
   private sessionShowCost: boolean | undefined;
   private widget?: AgentWidget;
@@ -117,8 +111,17 @@ export class ConfigStore {
   /** Previous tool-expansion state, for ctrl+o compact sync. */
   private lastToolsExpanded: boolean | undefined;
 
-  constructor(private readonly io: ConfigIO = fileConfigIO) {
+  constructor(io: ConfigIO = fileConfigIO) {
+    this.io = io;
     this.config = this.io.load();
+  }
+
+  /**
+   * Point persistence at a project's `.pi` directory (or back to global-only
+   * when undefined). Does not reload; session_start follows with reload().
+   */
+  setProjectDir(projectDir: string | undefined): void {
+    this.io = createConfigIO(projectDir);
   }
 
   // ── Reads ──────────────────────────────────────────────────────

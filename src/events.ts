@@ -75,6 +75,10 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
 }
 
 export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
+  // Project config (.pi/subagents-lite.json) loads only in trusted projects,
+  // mirroring the .pi/agents scan-dir gate in scanAndRegisterAgents.
+  const projectDir = ctx.isProjectTrusted() ? path.join(ctx.cwd, ".pi") : undefined;
+  getStore().setProjectDir(projectDir);
   // ConfigStore is authoritative for config + session overrides + widget/manager
   // side effects.
   getStore().reload();

@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { join } from "node:path";
 
 const mockSetAgentScanDirs = vi.fn();
+const mockSetProjectDir = vi.fn();
 
 const MOCK_AGENT_DIR = "/home/user/.pi/agent";
 const MOCK_CWD = "/home/user/project";
@@ -33,7 +34,9 @@ vi.mock("../src/agents/agent-discovery.js", () => ({
 }));
 
 vi.mock("../src/agents/agent-manager.js", () => ({
-  AgentManager: class AgentManager {},
+  AgentManager: class AgentManager {
+    setOnComplete(): void {}
+  },
 }));
 
 vi.mock("../src/ui/agent-widget.js", () => ({
@@ -84,6 +87,7 @@ vi.mock("../src/shell.js", () => ({
   getStore: vi.fn(() => ({
     agent: { disableDefaultAgents: false },
     setDeps: vi.fn(),
+    setProjectDir: mockSetProjectDir,
     reload: vi.fn(),
     notifyToolsExpanded: vi.fn(),
     dispose: vi.fn(),
@@ -111,7 +115,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 }));
 
 // Import after mocks
-const { scanAndRegisterAgents } = await import("../src/events.js");
+const { scanAndRegisterAgents, loadConfigAndRegisterAgents } = await import("../src/events.js");
 
 describe("events.ts project trust gate", () => {
   beforeEach(() => {
@@ -163,5 +167,19 @@ describe("events.ts project trust gate", () => {
       const [userDir] = mockSetAgentScanDirs.mock.calls[0];
       expect(userDir).toBe(join(MOCK_AGENT_DIR, "agents"));
     }
+  });
+
+  it("loadConfigAndRegisterAgents points the store at the project .pi dir when trusted", async () => {
+    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
+    await loadConfigAndRegisterAgents(ctx);
+
+    expect(mockSetProjectDir).toHaveBeenCalledWith(join(MOCK_CWD, ".pi"));
+  });
+
+  it("loadConfigAndRegisterAgents skips the project config when untrusted", async () => {
+    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => false } as any;
+    await loadConfigAndRegisterAgents(ctx);
+
+    expect(mockSetProjectDir).toHaveBeenCalledWith(undefined);
   });
 });
