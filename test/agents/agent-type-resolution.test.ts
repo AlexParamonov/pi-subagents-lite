@@ -23,11 +23,11 @@ const EXPLORE_AND_GENERAL = new Map<string, AgentConfig>([
   ["general-purpose", agent("general-purpose")],
 ]);
 
-describe("resolveType", () => {
-  beforeEach(() => {
-    registerAgents(new Map(EXPLORE_AND_GENERAL));
-  });
+beforeEach(() => {
+  registerAgents(new Map(EXPLORE_AND_GENERAL));
+});
 
+describe("resolveType", () => {
   it("resolves an exact-case registered name to itself", () => {
     expect(resolveType("Explore")).toEqual({ kind: "resolved", key: "Explore" });
     expect(resolveType("general-purpose")).toEqual({ kind: "resolved", key: "general-purpose" });
@@ -89,10 +89,6 @@ describe("resolveType", () => {
 });
 
 describe("getAgentConfig", () => {
-  beforeEach(() => {
-    registerAgents(new Map(EXPLORE_AND_GENERAL));
-  });
-
   it("returns the config for exact and case-insensitive names", () => {
     expect(getAgentConfig("Explore")?.name).toBe("Explore");
     expect(getAgentConfig("explore")?.name).toBe("Explore");
