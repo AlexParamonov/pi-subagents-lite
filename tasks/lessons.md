@@ -74,6 +74,7 @@
 - Config constraints: enforce at every entry point in one pass (setter, load/default-merge, resolution getter) — enforcing two of three is a trap.
 - When a merge needs tombstone markers to express deletions, stop and consider one-file-wins — the tombstone requirement is a design smell, not a feature.
 - When overriding a property accessor via defineProperty, check pre-install state reads through the getter — a bootstrap read through the new getter silently stores the wrong value.
+- When rewriting a class wholesale, grep the codebase for every public member the old class exposed before dropping any — a removed getter (hasSessionShowCost) surfaces only as a typecheck break in a caller test you haven't run yet.
 
 ## pi-ai API & Subagent Lifecycle
 - `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for the agent. Check `ctx.isIdle()` at call time.
