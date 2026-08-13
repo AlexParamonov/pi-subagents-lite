@@ -27,12 +27,6 @@ vi.mock("../../src/utils.js", () => ({
   parseThinkingLevel: vi.fn(() => undefined),
 }));
 
-vi.mock("../../src/config/config-io.js", () => ({
-  loadConfig: vi.fn(() => ({ agent: { default: null, forceBackground: false }, concurrency: { default: 4 } })),
-  saveConfigAtomic: vi.fn(),
-  DEFAULT_CONFIG: { agent: { default: null, forceBackground: false }, concurrency: { default: 4 } },
-}));
-
 // Hoist mock pi so shell mock can return it
 const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
   mockPi: {

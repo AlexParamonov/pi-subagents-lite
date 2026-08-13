@@ -147,7 +147,6 @@ vi.mock("../src/config/config-io.js", async () => {
   const actual = await vi.importActual<typeof import("../src/config/config-io.js")>("../src/config/config-io.js");
   return {
     ...actual,
-    saveConfigAtomic: vi.fn(),
     CUSTOM_PROMPT_PATH: "/home/test/.pi/agent/subagents-lite-prompt.md",
     DEFAULT_CONFIG: {
       agent: { default: null, forceBackground: false },

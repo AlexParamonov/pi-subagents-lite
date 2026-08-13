@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Parent interrupt forwarding.** Foreground subagents are now bound to the parent's interrupt signal. Stopping the parent stops all foreground children. Background agents are not affected.
-- **Project-level config.** `.pi/subagents-lite.json` overrides the global `~/.pi/agent/subagents-lite.json` per field; concurrency limits and per-type model overrides merge per key. `/agents` menu changes persist to the project file when one exists, so a team can commit shared defaults without touching anyone's global file. Loaded only in trusted projects, same as `.pi/agents`; a malformed project file is ignored with a warning.
+- **Project-level config.** `.pi/subagents-lite.json` is used as the entire config when it exists: the global `~/.pi/agent/subagents-lite.json` is not consulted, and one file wins wholly (no merging between files). `/agents` menu changes persist to the project file when one exists, so a team can commit shared defaults without touching anyone's global file. Loaded only in trusted projects, same as `.pi/agents`; a malformed project file is ignored with a warning.
 - **Agent menu clear actions.** Individual `Clear` action removes a settled agent. `Clear all`/`Clear done` bulk-removes all/done agents from the widget.
 - **Time-based finished retention.** Replaced turn-based eviction with a configurable time window. Finished agents stay visible for `finishedRetentionMinutes` (default 1 min) instead of a fixed number of turns.
 - **Transient transport error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are retried automatically instead of failing the run.
