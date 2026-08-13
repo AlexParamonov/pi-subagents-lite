@@ -85,16 +85,18 @@ interface LoadedFile {
  * wholly.
  */
 export function createConfigIO(projectDir?: string): ConfigIO {
-  let loadedFile: LoadedFile | null = null;
+  // Global until the first load resolves the file in use (project file wins
+  // when present). ConfigStore always loads in its constructor; this only
+  // guards direct callers.
+  let savePath = CONFIG_PATH;
   return {
     load: () => {
-      loadedFile = loadFileInUse(projectDir);
-      return mergeDefaults(loadedFile.raw);
+      const file = loadFileInUse(projectDir);
+      savePath = file.path;
+      return mergeDefaults(file.raw);
     },
     save: (config) => {
-      // Before load there is no resolved file; ConfigStore always loads in its
-      // constructor, so this only guards direct callers. Global is the fallback.
-      writeJsonAtomic(loadedFile?.path ?? CONFIG_PATH, config);
+      writeJsonAtomic(savePath, config);
     },
   };
 }
