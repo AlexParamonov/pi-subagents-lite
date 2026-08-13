@@ -58,7 +58,7 @@ export class SettingsListWrapper implements Component {
 
     // Auto-skip separator items when navigating, so the cursor never lands on a
     // section header. Menus push their own SEPARATOR_ID items.
-    if (options.onCancel && Array.isArray(list.items)) {
+    if (options.onCancel) {
       installSeparatorSkip(list);
     }
 
