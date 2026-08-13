@@ -242,12 +242,10 @@ export class AgentManager {
     };
     // Capture the coordinator's live-view bridge so a continuation can re-wire
     // tool activity and streamed text into the widget's live view.
-    if (options.onToolActivity || options.onTextDelta) {
-      record.execution.liveViewCallbacks = {
-        onToolActivity: options.onToolActivity,
-        onTextDelta: options.onTextDelta,
-      };
-    }
+    record.execution.liveViewCallbacks = {
+      onToolActivity: options.onToolActivity,
+      onTextDelta: options.onTextDelta,
+    };
     this.agents.set(id, record);
 
     // Completion gate: every record carries one from birth, opened exactly once
