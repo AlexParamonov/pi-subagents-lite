@@ -99,9 +99,7 @@ export class SpawnCoordinator {
 
     if (intent.runInBackground) {
       this.backgroundAgentIds.add(agentId);
-    }
-
-    if (!intent.runInBackground) {
+    } else {
       await record.execution.promise;
     }
 
