@@ -90,7 +90,7 @@ describe("createConfigIO load — project file wins wholesale", () => {
     const config = createConfigIO(projectDir).load();
 
     expect(config.agent.graceTurns).toBe(9);
-    const readPaths = (readFileSync as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    const readPaths = vi.mocked(readFileSync).mock.calls.map((c) => c[0]);
     expect(readPaths).toEqual([join(projectDir, "subagents-lite.json")]);
   });
 
