@@ -1,12 +1,6 @@
 /**
- * worktree-tool-execution.test.ts — Acceptance tests for worktree_path
+ * tool-execution.test.ts — Acceptance tests for worktree_path
  * validation in the Agent tool execution flow.
- *
- * Verifies:
- *   - Valid worktree_path: validator is called, resolved path passed into spawn options
- *   - Invalid worktree_path: validator error returned to LLM, no spawn
- *   - Omitted worktree_path: no validator call, spawn uses parent cwd
- *   - Error details from validator are surfaced to the LLM
  *
  * Tests the integration boundary between executeAgentTool and the validator.
  * Mocks the validator module and the spawn flow; tests observable behavior
@@ -198,7 +192,6 @@ describe("executeAgentTool — worktree_path validation", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("not inside a git repository");
-    // Should NOT have spawned
     expect(mockSpawn).not.toHaveBeenCalled();
   });
   it("flushes validator warnings via ctx.ui.notify on validation failure", async () => {
@@ -239,7 +232,6 @@ describe("executeAgentTool — worktree_path validation", () => {
 
     await executeAgentTool("tc-4", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx);
 
-    // Verify spawn received the worktree path via options
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const spawnCall = mockSpawn.mock.calls[0];
     const spawnOptions = spawnCall[4]; // options is 5th arg (pi, ctx, type, prompt, options)
@@ -315,7 +307,6 @@ describe("executeAgentTool — worktree_path validation", () => {
       ctx,
     );
 
-    // Should return an error result, not throw
     expect(result.isError).toBe(true);
   });
 });
@@ -425,7 +416,6 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
       ctx,
     );
 
-    // Should have called discoverNewAgents with the worktree's .pi/agents dir
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith("/wt/feature/.pi/agents");
   });
@@ -437,7 +427,6 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
 
     await executeAgentTool("tc-disc-no-wt", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx);
 
-    // Should have called discoverNewAgents WITHOUT a worktree dir
     expect(mockDiscoverNewAgents).toHaveBeenCalledTimes(1);
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);
   });
@@ -589,7 +578,6 @@ describe("executeAgentTool — cross-repo trust gate", () => {
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const spawnOptions = mockSpawn.mock.calls[0][4];
     expect(spawnOptions.projectTrusted).toBe(false);
-    // Warning surfaced to the user
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("not trusted"), "warning");
     // Target .pi/agents discovery is skipped for untrusted targets
     expect(mockDiscoverNewAgents).toHaveBeenCalledWith(undefined);

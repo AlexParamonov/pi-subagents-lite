@@ -1,7 +1,7 @@
 /**
- * menu-model-settings-new.test.ts — Tests for showModelSettingsMenu using SettingsList.
+ * menu-model-settings.test.ts — Tests for showModelSettingsMenu using SettingsList.
  *
- * After migration: uses ctx.ui.custom with SettingsList.
+ * Uses ctx.ui.custom with SettingsList.
  * Cost display toggle removed (still in widget settings → usage stats).
  */
 

@@ -1,12 +1,6 @@
 /**
  * worktree-widget-display.test.ts — Acceptance tests for worktree label in widget.
  *
- * Verifies:
- *   - Full mode shows worktreeLabel on the agent's metadata line
- *   - Compact mode does NOT show worktreeLabel
- *   - Worktree label renders for running and finished agents
- *   - Parallel agents with different worktree labels are distinguishable
- *
  * Follows agent-widget.test.ts patterns: uses makeMockManager, makeMockTheme,
  * direct renderWidget calls.
  */
@@ -136,7 +130,6 @@ describe("widget worktree label — full mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // The metadata line (after header) should contain the worktree label
     const metadataLine = lines.find((l: string) => l.includes("feature/packages/web"));
     expect(metadataLine).toBeDefined();
     expect(metadataLine).toContain("@");
@@ -239,7 +232,6 @@ describe("widget worktree label — compact mode", () => {
     (manager as any).listAgents = () => [agent];
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Should still have agent type and activity visible
     expect(lines.some((l: string) => l.includes("reading"))).toBe(true);
   });
 });

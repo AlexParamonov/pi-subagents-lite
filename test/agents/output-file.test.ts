@@ -248,7 +248,6 @@ describe("streamToOutputFile", () => {
     ]);
     const cleanup = streamToOutputFile(session, path);
 
-    // Flush the pre-compaction message
     session._fireTurnEnd();
 
     // Simulate compaction by replacing messages with shorter array
@@ -259,7 +258,6 @@ describe("streamToOutputFile", () => {
     ];
     Object.defineProperty(session, "messages", { get: () => compactedMessages, configurable: true });
 
-    // Fire compaction_end with successful result
     session._fireCompactionEnd({
       reason: "threshold",
       aborted: false,
@@ -290,7 +288,6 @@ describe("streamToOutputFile", () => {
     ]);
     const cleanup = streamToOutputFile(session, path);
 
-    // Flush the pre-compaction message
     session._fireTurnEnd();
 
     // Simulate compaction (aborted - messages shouldn't change)

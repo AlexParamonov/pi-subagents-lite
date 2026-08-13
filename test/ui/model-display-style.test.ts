@@ -1,7 +1,5 @@
 /**
  * model-display-style.test.ts — Tests for model display style config.
- *
- * Covers: config type, default, resolved field, mutation, and widget sync.
  */
 
 import { describe, it, expect } from "vitest";

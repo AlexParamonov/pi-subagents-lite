@@ -1,5 +1,5 @@
 /**
- * agent-status-tool.test.ts — Execute behavior tests for the AgentStatus tool.
+ * agent-status.test.ts — Execute behavior tests for the AgentStatus tool.
  *
  * Tests the executeAgentStatusTool handler with a mocked manager.
  * Schema tests live in index.test.ts (which doesn't mock index.js).
@@ -94,7 +94,6 @@ describe("AgentStatus tool execute behavior", () => {
     const result = await executeAgentStatusTool("call_4", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
-    // Contract: each agent entry matches the format pattern with its status
     expect(text).toMatch(/id1 \(a\) running/);
     expect(text).toMatch(/id2 \(b\) queued/);
     expect(text).toMatch(/id3 \(c\) completed/);

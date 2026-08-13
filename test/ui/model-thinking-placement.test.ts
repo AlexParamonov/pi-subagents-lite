@@ -128,7 +128,7 @@ describe("modelThinkingPlacement setting", () => {
   describe("full mode with placement = '2nd'", () => {
     beforeEach(() => {
       widget.setCompactMode(false);
-      // Placement is set explicitly; the built-in default is now '1st' (header)
+      // Placement is set explicitly; the built-in default is '1st' (header)
       widget.setModelThinkingPlacement("metadata");
     });
 
@@ -139,9 +139,7 @@ describe("modelThinkingPlacement setting", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
-      // Metadata line should contain model/thinking
       expect(lines[2]).toContain("haiku • medium");
     });
 
@@ -151,9 +149,7 @@ describe("modelThinkingPlacement setting", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
-      // Metadata line should contain model/thinking
       expect(lines[2]).toContain("haiku • medium");
     });
   });
@@ -171,9 +167,7 @@ describe("modelThinkingPlacement setting", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Header SHOULD contain model/thinking tag
       expect(lines[1]).toContain("(haiku • medium)");
-      // Metadata line should NOT contain model/thinking
       expect(lines[2]).not.toContain("haiku • medium");
     });
 
@@ -183,9 +177,7 @@ describe("modelThinkingPlacement setting", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Header SHOULD contain model/thinking tag
       expect(lines[1]).toContain("(haiku • medium)");
-      // Metadata line should NOT contain model/thinking
       expect(lines[2] ?? "").not.toContain("haiku • medium");
     });
   });
@@ -218,7 +210,6 @@ describe("modelThinkingPlacement setting", () => {
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-      // Header SHOULD contain model/thinking tag
       expect(lines[1]).toContain("(haiku • medium)");
     });
   });

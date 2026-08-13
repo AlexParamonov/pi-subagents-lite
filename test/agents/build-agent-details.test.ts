@@ -2,8 +2,7 @@
  * build-agent-details.test.ts — Tests for the buildAgentDetails helper.
  *
  * buildAgentDetails consolidates the stats/details Record<string, unknown>
- * construction that was previously duplicated across emitIndividualNudge,
- * executeSpawnForeground, and executeSpawnBackground.
+ * construction shared by the spawn paths.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -25,7 +24,6 @@ describe("buildAgentDetails", () => {
     buildAgentDetails = mod.buildAgentDetails;
   });
 
-  /** Helper to build a minimal AgentRecord for testing. */
   function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
     const base: AgentRecord = {
       id: "test-id-123",

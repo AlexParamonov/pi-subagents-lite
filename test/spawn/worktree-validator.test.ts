@@ -1,13 +1,5 @@
 /**
  * worktree-validator.test.ts — Tests for worktree path validation.
- *
- * Covers: validation logic, resolution, label computation, error cases.
- *
- * Merged from acceptance tests (HEAD) and slice 1-1 tests (feature branch).
- * `result.skipped` acceptance tests were adapted to integration tests through
- * `validateWorktreePath`, which returns `{ ok: true }` (no `skipped` field) for
- * empty paths. `computeWorktreeLabel` is exported as `computeLabel` and is
- * unit-tested directly below.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

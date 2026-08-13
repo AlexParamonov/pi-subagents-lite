@@ -1,7 +1,7 @@
 /**
  * menu-running-agents.test.ts — Tests for showRunningAgentsMenu using SelectList.
  *
- * After migration: uses ctx.ui.custom (not ctx.ui.select/runMenuLoop).
+ * Uses ctx.ui.custom (not ctx.ui.select/runMenuLoop).
  * The running agents menu is a SelectList with dynamic agent entries.
  * Selecting an agent opens an actions submenu (also SelectList).
  */

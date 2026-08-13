@@ -1,12 +1,5 @@
 /**
  * disable-default-agents.test.ts — Tests for the disableDefaultAgents setting.
- *
- * Verifies:
- *   - When disableDefaultAgents is true, registerAgents skips DEFAULT_AGENTS
- *   - When disableDefaultAgents is false (default), DEFAULT_AGENTS are included
- *   - discoverNewAgents respects the setting
- *   - User agents overriding a default by name still work when setting is on
- *   - getConfig falls back to generic config when defaults disabled and no user agents
  */
 
 import { describe, it, expect, beforeEach } from "vitest";

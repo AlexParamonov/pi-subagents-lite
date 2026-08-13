@@ -1,10 +1,5 @@
 /**
  * output-transcript.test.ts — Tests for outputTranscript setting.
- *
- * Verifies:
- * - Global config outputTranscript controls transcript writing
- * - Agent frontmatter output_transcript overrides global
- * - Default behavior (both absent) does not write transcripts
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

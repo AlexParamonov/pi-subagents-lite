@@ -1,7 +1,7 @@
 /**
  * menu-debug.test.ts — Tests for showDebugMenu using SelectList.
  *
- * After migration: uses ctx.ui.custom (not ctx.ui.select).
+ * Uses ctx.ui.custom (not ctx.ui.select).
  * The debug menu is a SelectList with 2 items that execute actions on select.
  */
 

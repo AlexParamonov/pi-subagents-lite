@@ -13,7 +13,6 @@ import { patchRetryClassifier } from "../../src/agents/stream-retry.js";
 
 // --- Helpers ---
 
-/** Build a mock session with a controllable _isRetryableError. */
 function makeMockSession(originalRetryable: (msg: any) => boolean = () => false) {
   const session = {
     _isRetryableError: originalRetryable,
@@ -21,7 +20,6 @@ function makeMockSession(originalRetryable: (msg: any) => boolean = () => false)
   return session;
 }
 
-/** Build a classifier message. */
 function msg(opts: { stopReason?: string; errorMessage?: string } = {}): any {
   return {
     stopReason: opts.stopReason ?? "end",

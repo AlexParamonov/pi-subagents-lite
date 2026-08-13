@@ -1,10 +1,5 @@
 /**
  * agent-widget.test.ts — Tests for widget rendering.
- *
- * Verifies that the widget renders correct formatting:
- *   - Headers use 2-space prefix (no tree connectors)
- *   - Activity lines use a tree connector (│ or └) prefix
- *   - outputFile lines appear before activity lines
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -196,7 +191,6 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // Both agent headers use 2-space prefix with tree connector
       expect(lines[1]).toMatch(/^  /);
       expect(lines[3]).toMatch(/^  /);
     });
@@ -209,7 +203,6 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // Activity lines use │ or └ connector
       expect(lines[2]).toMatch(/^\[dim:  [│└]/);
       expect(lines[4]).toMatch(/^\[dim:  [│└]/);
     });
@@ -239,8 +232,6 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [a1, a2];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      expect(lines[1]).toMatch(/^  /); // All agents use 2-space prefix
-      expect(lines[2]).toMatch(/^  /); // All agents use 2-space prefix
     });
 
     it("uses spaces for tail-f line of last finished agent", () => {
@@ -248,7 +239,6 @@ describe("widget rendering format", () => {
       a1.display.outputFile = "/tmp/pi-agent-outputs/test.log";
       (manager as any).listAgents = () => [a1];
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      expect(lines[1]).toMatch(/^  /); // All agents use 2-space prefix
       // tail-f line should have spaces only (no connector)
       expect(lines[2]).toMatch(/^\[dim:\s{4}/);
       expect(lines[2]).toContain("tail -f");
@@ -277,7 +267,6 @@ describe("widget rendering format", () => {
       (manager as any).listAgents = () => [finished, running];
 
       const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      // Both use 2-space prefix
       expect(lines[1]).toMatch(/^  /); // finished agent
       expect(lines[2]).toMatch(/^  /); // running agent
     });
@@ -448,7 +437,6 @@ describe("status bar cost from accumulator", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    // Should show $2.50 from accumulator
     const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).toContain("$2.50");
   });
@@ -469,7 +457,6 @@ describe("status bar cost from accumulator", () => {
     (manager as any).listAgents = () => [agent];
     widget.update();
 
-    // Should NOT contain $ when cost is hidden
     const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
     expect(statusCall[1]).not.toContain("$");
   });
@@ -565,7 +552,7 @@ describe("status bar compact format", () => {
   });
 });
 
-// ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
 /*  Compact mode and max lines tests                                 */
 /* ------------------------------------------------------------------ */
 
@@ -629,7 +616,6 @@ describe("max lines configuration", () => {
 
   it("setMaxLines updates the full mode max lines", () => {
     widget.setMaxLines(8);
-    // Create 8 running agents to test overflow
     const agents = Array.from({ length: 8 }, (_, i) => makeRunningAgent(`a${i}`));
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
     (manager as any).listAgents = () => agents;
@@ -643,7 +629,6 @@ describe("max lines configuration", () => {
     widget.setCompactMode(true);
     widget.setWidgetShortcut(true);
     widget.setMaxLinesCompact(3);
-    // Create 5 running agents
     const agents = Array.from({ length: 5 }, (_, i) => makeRunningAgent(`a${i}`));
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
     (manager as any).listAgents = () => agents;
@@ -660,7 +645,6 @@ describe("max lines configuration", () => {
     (manager as any).listAgents = () => agents;
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-    // Should have overflow indicator
     const hasOverflow = lines.some((l: string) => l.includes("more"));
     expect(hasOverflow).toBe(true);
   });
@@ -774,7 +758,6 @@ describe("getLiveView callback", () => {
 
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     expect(lines.length).toBeGreaterThanOrEqual(3);
-    // Should show the liveView data
     expect(lines[2]).toContain("reading");
   });
 
@@ -884,7 +867,7 @@ describe("renderFinishedLine watchdog stop", () => {
   });
 });
 
-// ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
 /*  Stats visibility integration tests                               */
 /* ------------------------------------------------------------------ */
 
@@ -1005,13 +988,10 @@ describe("description truncation", () => {
     const testManager = makeMockManager([agent]);
     const widget = new AgentWidget(testManager, () => undefined);
 
-    // Render the widget with wide terminal
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
 
-    // Find the line with the description
     const descLine = lines.find((l: string) => l.includes("aaa"));
     expect(descLine).toBeDefined();
-    // The description should not be truncated to 50 chars
     expect(descLine).toContain(agent.display.description);
   });
 
@@ -1076,9 +1056,7 @@ describe("description truncation", () => {
     const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
     const descLine = lines.find((l: string) => l.includes("Red description"));
     expect(descLine).toBeDefined();
-    // The visible text should be "Red description with color" (11 chars)
-    // ANSI codes should be handled properly (not counted in width)
-    // Just verify the line renders without crashing and contains the text
+    // ANSI codes must not break rendering; verify the visible text survives.
     expect(descLine).toContain("Red description");
   });
 
@@ -1112,7 +1090,6 @@ describe("description truncation", () => {
     // Find the compact line (should have description and possibly activity)
     const compactLine = lines.find((l: string) => l.includes("AAA"));
     expect(compactLine).toBeDefined();
-    // Description should be present
     expect(compactLine).toContain("AAA");
   });
 });

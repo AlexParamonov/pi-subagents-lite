@@ -56,7 +56,6 @@ const noopTheme: any = {
   bold: (text: string) => text,
 };
 
-/** Default showCost value for tests. */
 const SHOW_COST = false;
 
 /* ------------------------------------------------------------------ */

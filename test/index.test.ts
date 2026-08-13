@@ -1,19 +1,12 @@
 /**
  * index.test.ts — Tests for the extension entry point.
  *
- * Tests focus on:
- *   - Tool schema shapes (no description, no promptSnippet/promptGuidelines)
- *   - Listener guards (only mutates event.input.model for Agent tool)
- *   - Schema field exclusion (no model, inherit_context, schedule, isolation params)
- *
- * These tests mock ExtensionAPI and verify registration behavior.
  * Full integration testing is manual via pi TUI.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createMockExtensionAPI, hasParam, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
 
-// Mock external dependencies before any imports
 vi.mock("@sinclair/typebox", () => {
   const createType = (type: string) => (opts?: any) => ({
     type,
@@ -158,9 +151,6 @@ vi.mock("../src/shell.js", () =>
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-/**
- * Find a tool by name from the mock API.
- */
 function findTool(api: MockExtensionAPI, name: string) {
   return api.tools.find((t) => t.name === name);
 }
@@ -400,7 +390,6 @@ describe("event listener registration", () => {
   });
 });
 
-// worktree_path schema tests (merged from worktree-schema-briefing)
 describe("Agent tool schema — worktree_path", () => {
   let api: MockExtensionAPI;
 
@@ -494,7 +483,6 @@ describe("constrained sampling — default OFF", () => {
     await loadExtension(api.api);
   });
 
-  // Agent tool: no constrainedSampling when toggle is OFF (default)
   it("Agent has no constrainedSampling when toggle is OFF", () => {
     const tool = findTool(api, "Agent");
     expect(tool).toBeDefined();

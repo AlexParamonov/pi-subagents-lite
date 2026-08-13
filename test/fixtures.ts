@@ -1,15 +1,6 @@
 /**
  * fixtures.ts — Shared test fixtures and helpers for the subagents extension tests.
  *
- * Provides:
- *   - createMockExtensionAPI: mock ExtensionAPI for index test
- *   - hasParam: check TypeBox schema for a parameter
- *   - loadExtension: import and invoke the extension factory
- *   - createMockSession: mock agent session for output-file tests
- *   - tempDirFixture: temp directory setup/teardown for filesystem tests
- *   - makeAgentMd: build agent .md content from frontmatter fields
- *   - tempDirWithFiles: create a temp dir with files for scanAgentFilesInDir tests
- *
  * Shared mock factories (for vi.mock call sites):
  *   - shellMock: ../src/shell.js stubs (parameterized by hoisted fns)
  */
@@ -198,7 +189,6 @@ export function hasParam(schema: any, paramName: string): boolean {
 
 /**
  * Import and invoke the extension factory.
- * Returns the factory function for chaining.
  */
 export async function loadExtension(api: any) {
   const factory = (await import("../src/index.js")).default;
@@ -382,8 +372,6 @@ export function tempDirWithFiles(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Output file cleanup                                               */
 /* ------------------------------------------------------------------ */
 /*  Fake context / pi                                                 */
 /* ------------------------------------------------------------------ */

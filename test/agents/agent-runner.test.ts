@@ -1,10 +1,5 @@
 /**
  * agent-runner.test.ts — Tests for the agent execution engine.
- *
- * Tests focus on:
- *   - isolated parameter handling (overrides extensions/skills)
- *   - tool filtering (excluded tools, whitelist, blacklist)
- *   - No inheritContext or memory code paths
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -128,9 +123,6 @@ const defaultAgentConfig = {
   tools: undefined as true | string[] | false | undefined,
 };
 
-/**
- * Reset all mocks to their default state.
- */
 function resetMocks() {
   vi.clearAllMocks();
   mockModules.clearLoaderOpts();
@@ -148,9 +140,6 @@ function resetMocks() {
   mockModules.mockPreloadSkills.mockReturnValue([]);
 }
 
-/**
- * Create a mock session with default stubs.
- */
 function createMockSession() {
   const listeners: Array<(event: any) => void> = [];
   // Track active tools as real session state (a fake, not a call record) so
@@ -205,7 +194,6 @@ describe("runAgent — tool filtering", () => {
       pi: fakePi,
     });
 
-    // The session's active-tool list is the observable outcome of filtering.
     // tools: undefined → defaults to true → all tools visible (except Agent)
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toEqual(expect.not.arrayContaining(["Agent"]));
@@ -217,7 +205,6 @@ describe("runAgent — tool filtering", () => {
 
   it("tools: [read, bash, edit] — whitelist filters out other tools", async () => {
     const session = createMockSession();
-    // Simulate: agent wants [read, bash, edit], but session also has write and grep active
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "write", "grep", "Agent"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({
       session,
@@ -236,7 +223,6 @@ describe("runAgent — tool filtering", () => {
       pi: fakePi,
     });
 
-    // write and grep not in tools whitelist → rejected in the active-tool state
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).toContain("bash");
@@ -317,7 +303,6 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // No filtering needed — write not in active tools, session state stays untouched
     expect(session.getActiveTools()).toBeUndefined();
   });
 
@@ -331,12 +316,11 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       tools: ["read", "bash"],
-      excludeTools: ["write"], // ignored because tools is set
+      excludeTools: ["write"],
     });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // tools whitelist wins — only read and bash visible in the active-tool state
     expect(session.getActiveTools()).toEqual(["read", "bash"]);
   });
 
@@ -427,7 +411,6 @@ describe("runAgent — codex stream error retry wiring", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // The wiring replaced the classifier with a wrapper.
     expect(session._isRetryableError).not.toBe(originalClassifier);
     // Transient Codex stream errors are classified as retryable by our pattern...
     expect(
@@ -456,7 +439,6 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
-    // Fire assistant message_end with cost data on event.message.usage
     listeners[0]({
       type: "message_end",
       message: {
@@ -486,7 +468,6 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
-    // Fire message_end with message.usage but no cost
     listeners[0]({
       type: "message_end",
       message: {
@@ -574,7 +555,6 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
-    // Fire user message_end (should be ignored)
     listeners[0]({
       type: "message_end",
       message: {
@@ -598,7 +578,6 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
-    // Fire non-message_end event
     listeners[0]({
       type: "turn_end",
     });
@@ -617,11 +596,9 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
-    // Fire message_end without usage at all
     listeners[0]({
       type: "message_end",
       message: { role: "assistant", content: "Hello" },
-      // no usage field
     });
 
     expect(onAssistantUsage).not.toHaveBeenCalled();
@@ -705,7 +682,6 @@ describe("runAgent — extension name-based filtering", () => {
     expect(loaderCall.noExtensions).toBe(false);
     expect(typeof loaderCall.extensionsOverride).toBe("function");
 
-    // Verify the override filters correctly
     const override = loaderCall.extensionsOverride;
     const result = override({
       extensions: [
@@ -768,7 +744,6 @@ describe("runAgent — extension name-based filtering", () => {
       errors: [],
       runtime: {},
     });
-    // confirm-edits not in list → filtered out by override
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -836,7 +811,6 @@ describe("runAgent — excludeExtensions (blacklist mode)", () => {
     expect(loaderCall.noExtensions).toBe(false);
     expect(typeof loaderCall.extensionsOverride).toBe("function");
 
-    // Verify the override filters correctly
     const override = loaderCall.extensionsOverride;
     const result = override({
       extensions: [
@@ -898,7 +872,6 @@ describe("runAgent — excludeExtensions (blacklist mode)", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     const loaderCall = mockModules.getLoaderOpts();
-    // extensions whitelist wins — override should filter to only tavily
     const override = loaderCall.extensionsOverride;
     const result = override({
       extensions: [
@@ -959,9 +932,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
     expect(activeTools).toContain("web_search");
-    // web_extract not in tools list -> filtered out
     expect(activeTools).not.toContain("web_extract");
-    // bash not in tools list -> filtered out
     expect(activeTools).not.toContain("bash");
     expect(activeTools).not.toContain("Agent");
   });
@@ -1038,9 +1009,6 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // sessionOpts was captured when createAgentSession was invoked above.
-    // Whitelist semantics: only "read" + the expanded tavily tools register.
-    // bash/edit are NOT in the whitelist, so they must not leak into the gate.
     expect(sessionOpts.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl"]));
     expect(sessionOpts.tools).not.toContain("bash");
     expect(sessionOpts.tools).not.toContain("edit");
@@ -1171,7 +1139,6 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // tools: true -> no filtering (except excluded tools), session state untouched
     expect(session.getActiveTools()).toBeUndefined();
   });
 
@@ -1247,7 +1214,6 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    // extensions: [tavily] loads tavily, but tools: [read] hides its tools
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       extensions: ["tavily"],
@@ -1276,7 +1242,6 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     expect(activeTools).not.toContain("web_extract");
     expect(activeTools).not.toContain("bash");
 
-    // Also warns that tavily is loaded but none of its tools are in tools
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('extension "tavily" is loaded but none of its tools are in tools'),
     );
@@ -1308,10 +1273,8 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // No warnings when tools is not set
     expect(warnSpy).not.toHaveBeenCalled();
 
-    // Falls back to extensions-based filtering: all tavily tools allowed, Agent filtered out
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("web_search");
     expect(activeTools).toContain("web_extract");
@@ -1357,7 +1320,6 @@ describe("runAgent — grace turns", () => {
       maxTurns: 1,
     });
 
-    // Wait for the session to be created and prompt to be called
     await vi.waitFor(() => {
       expect(session.prompt).toHaveBeenCalled();
     });
@@ -1367,9 +1329,7 @@ describe("runAgent — grace turns", () => {
       session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
     }
 
-    // The steer should have been called at turn 1
     expect(session.steer).toHaveBeenCalled();
-    // Should not abort within grace period
     expect(session.abort).not.toHaveBeenCalled();
 
     // Now fire the 7th turn — should abort (maxTurns=1 + graceTurns=6 = 7)
@@ -1402,7 +1362,6 @@ describe("runAgent — grace turns", () => {
       session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
     }
 
-    // The steer should have been called at turn 2
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
@@ -1671,7 +1630,6 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     };
     const finalPayload = await session.agent.onPayload(rawPayload, model);
 
-    // The spawn-time value (2048) wins over the agent config's 4096.
     expect(finalPayload.max_tokens).toBe(2048);
   });
 });
@@ -1734,7 +1692,6 @@ describe("runAgent — context file gating", () => {
       throw new Error("permission denied");
     });
 
-    // Should not throw
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     expect(mockModules.mockLoadProjectContextFiles).toHaveBeenCalled();
@@ -2236,7 +2193,6 @@ describe("runAgent — notify buffering", () => {
     });
     expect(ctx.ui.notify).not.toHaveBeenCalled();
 
-    // Complete the turn loop
     resolvePrompt();
     await promise;
 
@@ -2261,7 +2217,6 @@ describe("runAgent — notify buffering", () => {
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
-    // Should have exactly one warning (mutual exclusion)
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("both tools and exclude_tools set"), "warning");
   });
@@ -2309,11 +2264,9 @@ describe("runAgent — notify buffering", () => {
     });
     expect(warnSpy).not.toHaveBeenCalled();
 
-    // Complete the turn loop
     resolvePrompt();
     await promise;
 
-    // Now console.warn should have been called
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("both tools and exclude_tools set"));
   });
 });
@@ -2328,7 +2281,6 @@ describe("runAgent — model error detection", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
-  /** Create a session pre-populated with a message history. */
   function sessionWithMessages(messages: any[]) {
     const session = createMockSession();
     session.messages = messages;

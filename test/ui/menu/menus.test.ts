@@ -1,7 +1,7 @@
 /**
  * menus.test.ts — Tests for the dispatcher (showAgentsMainMenu, showSettingsMenu).
  *
- * After migration: uses SelectList via ctx.ui.custom (not ctx.ui.select).
+ * Uses SelectList via ctx.ui.custom (not ctx.ui.select).
  * Each iteration creates a fresh SelectList; submenu closes it before opening.
  */
 

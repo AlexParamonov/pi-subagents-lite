@@ -1,14 +1,5 @@
 /**
  * agent-widget-navigation.test.ts — Tests for keyboard navigation in AgentWidget.
- *
- * Covers:
- *   - Navigation state machine (activate, up, down, select, deactivate)
- *   - Roster building (finished, running, queued)
- *   - Rendering with `>` marker and heading hint text
- *   - Queued agent expansion during navigation
- *   - Editor focus detection
- *   - Viewer open guard
- *   - Auto-deactivation when agents clear
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

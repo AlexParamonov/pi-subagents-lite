@@ -1,11 +1,5 @@
 /**
  * agent-discovery.test.ts — Tests for agent file parsing, merging, and config.
- *
- * Covers:
- *   - parseAgentFile: parses all frontmatter fields into AgentConfigFromMd
- *   - parseExtensions: handles false/'false'/'none' → false, true/'true'/'all' → true, string → array
- *   - scanAgentFilesInDir: scans directory for .md files
- *   - mergeAgents: per-field merge default < user < project, returns Map<string, AgentConfig>
  */
 
 import { describe, it, expect } from "vitest";
@@ -292,7 +286,6 @@ body
 `;
     const result = parseAgentFile(content, "user");
     expect(result.name).toBe("agent");
-    // Should not error on unknown fields
   });
 
   it("rejects invalid thinking values", () => {
@@ -420,7 +413,6 @@ describe("mergeAgents", () => {
     ];
     const result = mergeAgents(defaults, userAgents, [], []);
     const agent = result.get("explorer")!;
-    // User fields override defaults
     expect(agent.description).toBe("User explorer");
     expect(agent.systemPrompt).toBe("user prompt");
     // Default fields preserved when user doesn't override
@@ -461,7 +453,6 @@ describe("mergeAgents", () => {
     ];
     const result = mergeAgents(defaults, userAgents, [], projectAgents);
     const agent = result.get("explorer")!;
-    // Project overrides
     expect(agent.model).toBe("model/project");
     expect(agent.systemPrompt).toBe("project prompt");
     // User overrides preserved where project doesn't override

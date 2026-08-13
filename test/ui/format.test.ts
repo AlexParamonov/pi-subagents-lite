@@ -169,10 +169,8 @@ describe("buildStatsParts — cost behavior", () => {
 
 describe("getDisplayName", () => {
   beforeEach(() => {
-    // Set up test agents
     const agents = new Map<string, AgentConfig>();
 
-    // Visible agent with displayName
     agents.set("visible-agent", {
       name: "visible-agent",
       displayName: "Visible Agent Display",
@@ -180,7 +178,6 @@ describe("getDisplayName", () => {
       systemPrompt: "test",
     });
 
-    // Hidden agent with displayName
     agents.set("hidden-agent", {
       name: "hidden-agent",
       displayName: "Hidden Agent Display",
@@ -189,7 +186,6 @@ describe("getDisplayName", () => {
       systemPrompt: "test",
     });
 
-    // Agent without displayName (should fall back to name)
     agents.set("no-display-name", {
       name: "no-display-name",
       description: "An agent without displayName",
@@ -217,9 +213,6 @@ describe("getDisplayName", () => {
   });
 });
 
-/**
- * Mock factories for buildMetadataLineParts tests.
- */
 function makeAgentRecord(overrides?: Partial<any>): any {
   return {
     id: "test-agent",
@@ -358,17 +351,13 @@ describe("describeActivity", () => {
   it("does not truncate response text longer than 60 characters", () => {
     const longResponse = "a".repeat(100);
     const result = describeActivity(new Map(), longResponse);
-    // Should return the full text, not truncated to 60 chars
     expect(result.length).toBe(100);
     expect(result).toBe(longResponse);
   });
 
   it("returns truncated response text with ellipsis when truncateLine is called", () => {
-    // This test verifies the current behavior before fix
     const longResponse = "a".repeat(100);
-    // truncateLine is called inside describeActivity, so result should be truncated
     const result = describeActivity(new Map(), longResponse);
-    // After fix, this should be the full text
     expect(result).toBe(longResponse);
   });
 });

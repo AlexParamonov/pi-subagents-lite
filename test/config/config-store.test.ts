@@ -47,7 +47,6 @@ function memIO(initial: Partial<SubagentsConfig> = defaultConfig()): {
   saves: SubagentsConfig[];
   current: () => SubagentsConfig;
 } {
-  // Merge with defaults like loadConfig does
   const merged: SubagentsConfig = {
     agent: { ...defaultConfig().agent, ...(initial.agent ?? {}) },
     concurrency: { default: 4, ...(initial.concurrency ?? {}) },
@@ -103,7 +102,6 @@ function managerStub(): { m: AgentManager; concurrencies: unknown[] } {
   return { m: m as unknown as AgentManager, concurrencies };
 }
 
-/** Parse setStatsVisibility payloads from recorded widget calls. */
 function statsVisibilityPayloads(calls: string[]): any[] {
   return calls
     .filter((c) => c.startsWith("setStatsVisibility:"))

@@ -1,7 +1,7 @@
 /**
  * menu-concurrency.test.ts — Tests for showConcurrencySettingsMenu using SettingsList.
  *
- * After migration: uses ctx.ui.custom with SettingsList (not ctx.ui.select/runMenuLoop).
+ * Uses ctx.ui.custom with SettingsList (not ctx.ui.select/runMenuLoop).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

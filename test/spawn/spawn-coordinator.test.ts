@@ -1,8 +1,5 @@
 /**
  * spawn-coordinator.test.ts — Tests for SpawnCoordinator.
-
- * Verifies: spawn (foreground/background), nudge batching, live-view lifecycle,
- * onAgentComplete, dispose, stale pi protection.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -218,13 +215,11 @@ describe("SpawnCoordinator", () => {
 
       coordinator.scheduleNudge(result.agentId);
 
-      // Not yet emitted — timer pending
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
 
       // Advance past the 200ms batch window
       vi.advanceTimersByTime(200);
 
-      // Now the nudge should have been emitted
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
     });
 
@@ -252,7 +247,6 @@ describe("SpawnCoordinator", () => {
       // Advance past the batch window
       vi.advanceTimersByTime(200);
 
-      // Both should be emitted as individual messages
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(2);
     });
 
@@ -289,10 +283,8 @@ describe("SpawnCoordinator", () => {
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
-      // New nudge after the window
       coordinator.scheduleNudge(r2.agentId);
 
-      // Not yet emitted
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(200);
@@ -374,14 +366,11 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
 
-      // Simulate completion
       coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
 
-      // Nudge should be scheduled
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
-      // Should be removed from background set
       expect(coordinator.isBackground(result.agentId)).toBe(false);
     });
 
@@ -582,7 +571,6 @@ describe("SpawnCoordinator", () => {
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 
-      // sendMessage was attempted
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
     });
 
@@ -763,7 +751,6 @@ describe("SpawnCoordinator", () => {
       coordinator.scheduleNudge(result.agentId);
       vi.advanceTimersByTime(200);
 
-      // Fresh pi was used, not the original mockPi
       expect(freshPi.sendMessage).toHaveBeenCalledTimes(1);
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });

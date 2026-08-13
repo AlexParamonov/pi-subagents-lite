@@ -1,8 +1,5 @@
 /**
  * agent-manager.test.ts — Tests for AgentManager.
- *
- * Covers: concurrency limits (per-model, per-provider, default),
- * queue draining, config updates, cost accumulation.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -420,7 +417,6 @@ describe("AgentManager", () => {
     });
 
     it("removes per-model slot when model entry is removed from config", () => {
-      // Set up: per-model limit of 1 for llamacpp/4b
       const config: ConcurrencyConfig = { default: 4, models: { "llamacpp/4b": 1 } };
       manager = new AgentManager(onComplete, config);
 
@@ -430,7 +426,6 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      // First agent starts (limit is 1)
       const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
         description: "task 1",
         modelKey: "llamacpp/4b",
@@ -438,10 +433,8 @@ describe("AgentManager", () => {
       });
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
 
-      // Remove the per-model limit — should fall back to default (4)
       manager.setConcurrency({ default: 4, models: {} });
 
-      // New agents should now spawn under default limit, not the old per-model limit
       const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
         description: "task 2",
         modelKey: "llamacpp/4b",
@@ -458,7 +451,6 @@ describe("AgentManager", () => {
         isBackground: true,
       });
 
-      // All should be running (default limit is 4, old per-model limit of 1 is gone)
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id3)?.lifecycle.status).toBe("running");
@@ -469,7 +461,6 @@ describe("AgentManager", () => {
     });
 
     it("removes per-provider slot when provider entry is removed from config", () => {
-      // Set up: per-provider limit of 1 for llamacpp
       const config: ConcurrencyConfig = { default: 4, providers: { llamacpp: 1 }, models: {} };
       manager = new AgentManager(onComplete, config);
 
@@ -479,7 +470,6 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      // First agent starts (provider limit is 1)
       const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
         description: "task 1",
         modelKey: "llamacpp/4b",
@@ -487,10 +477,8 @@ describe("AgentManager", () => {
       });
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
 
-      // Remove the per-provider limit — should fall back to default (4)
       manager.setConcurrency({ default: 4, providers: {}, models: {} });
 
-      // New agents should now spawn under default limit
       const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
         description: "task 2",
         modelKey: "llamacpp/4b",
@@ -517,7 +505,6 @@ describe("AgentManager", () => {
     });
 
     it("reset to defaults clears per-model and per-provider slots", () => {
-      // Set up: per-model and per-provider limits
       const config: ConcurrencyConfig = {
         default: 4,
         providers: { llamacpp: 2 },
@@ -531,7 +518,6 @@ describe("AgentManager", () => {
       const ctx = fakeCtx();
       const pi = fakePi();
 
-      // Spawn one agent per model to establish slots
       const id1 = manager.spawn(pi, ctx, "general-purpose", "task 1", {
         description: "task 1",
         modelKey: "llamacpp/4b",
@@ -545,10 +531,8 @@ describe("AgentManager", () => {
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
 
-      // Reset to defaults: no per-model or per-provider overrides
       manager.setConcurrency({ default: 4 });
 
-      // New spawns should use default limit for all models
       const id3 = manager.spawn(pi, ctx, "general-purpose", "task 3", {
         description: "task 3",
         modelKey: "llamacpp/4b",
@@ -565,7 +549,6 @@ describe("AgentManager", () => {
         isBackground: true,
       });
 
-      // id1 + id3 + id4 + id5 = 4 running for llamacpp/4b (default limit 4)
       expect(manager.getRecord(id3)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id4)?.lifecycle.status).toBe("running");
       expect(manager.getRecord(id5)?.lifecycle.status).toBe("running");
@@ -575,8 +558,6 @@ describe("AgentManager", () => {
     });
 
     it("running agent under removed slot still settles without error", async () => {
-      // Agent running under a per-model limit; slot is removed while agent runs.
-      // The agent must complete and decrement its (now orphaned) slot gracefully.
       const config: ConcurrencyConfig = { default: 4, models: { "llamacpp/4b": 1 } };
       manager = new AgentManager(onComplete, config);
 
@@ -594,10 +575,8 @@ describe("AgentManager", () => {
       });
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
 
-      // Remove the per-model limit while agent is still running
       manager.setConcurrency({ default: 4, models: {} });
 
-      // Spawn a new agent — should use default limit now (not blocked by old slot)
       const id2 = manager.spawn(pi, ctx, "general-purpose", "task 2", {
         description: "task 2",
         modelKey: "llamacpp/4b",
@@ -605,14 +584,12 @@ describe("AgentManager", () => {
       });
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("running");
 
-      // Complete the original agent — must not throw
       deferred1.resolve(mockRunResult());
       await manager.getRecord(id1)!.execution.promise;
 
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("completed");
       expect(onComplete).toHaveBeenCalledTimes(1);
 
-      // Clean up id2
       deferred2.resolve(mockRunResult());
     });
     it("queues foreground agent when limit is reached", async () => {
@@ -790,7 +767,6 @@ describe("AgentManager", () => {
       });
       await manager.getRecord(id)!.execution.promise;
 
-      // Agent failed but still completed (error status), count should increment
       expect(manager.getTotalAgentCount()).toBe(1);
     });
 
@@ -806,14 +782,12 @@ describe("AgentManager", () => {
         manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task", { description: "fail", modelKey: "test/model" }),
       ).toThrow("start failed");
 
-      // Failed start should not count
       expect(manager.getTotalAgentCount()).toBe(0);
     });
 
     it("does not count queued agent that fails to start", async () => {
       manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
 
-      // First agent fills the concurrency slot
       const deferred = makeResolvablePromise();
       mockModules.mockRunAgent.mockReturnValueOnce(deferred.promise);
 
@@ -823,7 +797,6 @@ describe("AgentManager", () => {
       });
       expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
 
-      // Second agent gets queued (concurrency limit = 1)
       mockModules.mockRunAgent.mockImplementationOnce(() => {
         throw new Error("start failed");
       });
@@ -838,7 +811,6 @@ describe("AgentManager", () => {
 
       await manager.getRecord(id1)!.execution.promise;
 
-      // Agent 1 completed successfully (counted), agent 2 failed to start (not counted)
       expect(manager.getTotalAgentCount()).toBe(1);
       expect(manager.getRecord(id2)?.lifecycle.status).toBe("error");
     });
@@ -970,13 +942,11 @@ describe("AgentManager", () => {
   // ── Watchdog ──
 
   describe("watchdog", () => {
-    /** Capture the onToolActivity callback passed to the last runAgent call. */
     function getOnToolActivity() {
       const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
       return call[3].onToolActivity;
     }
 
-    /** Capture the onTextDelta callback passed to the last runAgent call. */
     function getOnTextDelta() {
       const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
       return call[3].onTextDelta;
@@ -1752,7 +1722,6 @@ describe("AgentManager", () => {
         100, // store value, not constructor value
       );
 
-      // Change store value; next spawn should use the new value.
       mockModules.mockAgentOutputLog.mockClear();
       mockStoreState.outputThinkingBufferSize = 200;
 
@@ -1774,19 +1743,16 @@ describe("AgentManager", () => {
   // ── steer continuation: settled agents with a live session ──
 
   describe("steer continuation", () => {
-    /** Capture the onTurnEnd callback passed to the most recent runAgent call. */
     function getOnTurnEnd() {
       const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
       return call[3].onTurnEnd;
     }
 
-    /** Capture the onToolActivity callback passed to the most recent runAgent call. */
     function getOnToolActivity() {
       const call = mockModules.mockRunAgent.mock.calls[mockModules.mockRunAgent.mock.calls.length - 1];
       return call[3].onToolActivity;
     }
 
-    /** Spawn and settle a completed agent; returns its id. */
     async function spawnSettled(options: Record<string, unknown> = {}): Promise<string> {
       mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
       const id = spawnForeground("first task", options);
@@ -1811,7 +1777,6 @@ describe("AgentManager", () => {
         "keep going",
         expect.objectContaining({ maxTurns: undefined, graceTurns: 6 }),
       );
-      // Record is reset to running with a fresh abort controller.
       expect(record.lifecycle.status).toBe("running");
       expect(record.lifecycle.startedAt).toBeGreaterThanOrEqual(oldStartedAt);
       expect(record.lifecycle.completedAt).toBeUndefined();
@@ -2265,4 +2230,4 @@ describe("AgentManager", () => {
       firstRun.resolve(mockRunResult());
     });
   });
-}); // end describe AgentManager
+});

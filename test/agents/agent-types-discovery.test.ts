@@ -1,12 +1,5 @@
 /**
- * worktree-discovery.test.ts — Tests for worktree-local agent type discovery.
- *
- * Verifies:
- *   - discoverNewAgents scans the worktree's .pi/agents/ when worktreeDir is set
- *   - Worktree-local types are discovered and added to the session-wide registry
- *   - Worktree scan does not interfere with existing parent/global discovery
- *   - Missing or non-existent worktree .pi/agents/ dir is handled gracefully
- *   - Worktree-local type fails to resolve without worktreeDir (not in parent/global)
+ * agent-types-discovery.test.ts — Tests for worktree-local agent type discovery.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -48,14 +41,11 @@ describe("discoverNewAgents — worktree-local agent types", () => {
       setAgentScanDirs("", projectDir);
       registerAgents(new Map());
 
-      // Not known before discovery
       expect(resolveType("feature-reviewer")).toEqual({ kind: "not-found" });
 
-      // Discover with worktree dir
       const count = await discoverNewAgents(worktreeDir);
       expect(count).toBeGreaterThanOrEqual(1);
 
-      // Now it should be resolved
       expect(resolveType("feature-reviewer")).toEqual({ kind: "resolved", key: "feature-reviewer" });
       expect(getAgentConfig("feature-reviewer")?.description).toBe("Reviews feature branches");
     } finally {
@@ -75,7 +65,6 @@ describe("discoverNewAgents — worktree-local agent types", () => {
       setAgentScanDirs("", projectDir);
       registerAgents(new Map());
 
-      // Discover WITHOUT worktree dir — should not find the worktree type
       await discoverNewAgents();
       expect(resolveType("feature-reviewer")).toEqual({ kind: "not-found" });
     } finally {
@@ -125,7 +114,6 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
       const count = await discoverNewAgents(worktreeDir);
 
-      // Both project and worktree types should be discovered
       expect(resolveType("project-agent")).toEqual({ kind: "resolved", key: "project-agent" });
       expect(resolveType("wt-agent")).toEqual({ kind: "resolved", key: "wt-agent" });
       expect(count).toBeGreaterThanOrEqual(2);
@@ -172,11 +160,8 @@ describe("discoverNewAgents — worktree-local agent types", () => {
       await discoverNewAgents(worktreeDir);
       const config = getAgentConfig("wt-agent");
       expect(config).toBeDefined();
-      // Extensions parsed correctly
       expect(config!.extensions).toEqual(["read", "bash"]);
-      // Thinking parsed correctly
       expect(config!.thinkingLevel).toBe("high");
-      // Max turns parsed correctly
       expect(config!.maxTurns).toBe(50);
     } finally {
       cleanupProject();

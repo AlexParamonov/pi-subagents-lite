@@ -1,12 +1,5 @@
 /**
  * prompts.test.ts — Tests for system prompt building with skills.
- *
- * Covers:
- *   - buildAgentPrompt with skillMetas (via formatSkillsForPrompt)
- *   - buildAgentPrompt with skillBlocks (preloaded in available_skills with content tag)
- *   - buildAgentPrompt with both (merged into single available_skills block)
- *   - XML escaping of special characters (Pi's full XML escaping)
- *   - System prompt modes (replace, inherit, custom)
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -79,7 +72,6 @@ describe("buildAgentPrompt", () => {
     expect(result).toContain("<description>Debugging workflow</description>");
     expect(result).toContain("<location>/skills/debug/SKILL.md</location>");
     expect(result).toContain("</available_skills>");
-    // Should include instruction to use read tool
     expect(result).toContain("Use the read tool to load a skill's file");
   });
 
@@ -90,7 +82,6 @@ describe("buildAgentPrompt", () => {
       ],
     });
 
-    // Should be in available_skills block
     expect(result).toContain("<available_skills>");
     expect(result).toContain("<skill><name>tdd</name><description>TDD workflow</description><content>");
     expect(result).toContain("## TDD Steps");
@@ -112,7 +103,6 @@ describe("buildAgentPrompt", () => {
       skillBlocks: [{ name: "tdd", description: "TDD workflow", content: "Full TDD content here" }],
     });
 
-    // Both in available_skills
     expect(result).toContain("<available_skills>");
     expect(result).toContain("<name>debug</name>");
     expect(result).toContain("<description>Debug workflow</description>");
@@ -120,7 +110,6 @@ describe("buildAgentPrompt", () => {
     expect(result).toContain(
       "<skill><name>tdd</name><description>TDD workflow</description><content>Full TDD content here</content></skill>",
     );
-    // Single block
     const blockCount = (result.match(/<available_skills>/g) || []).length;
     expect(blockCount).toBe(1);
     // No separate markdown dump
@@ -180,21 +169,17 @@ describe("buildAgentPrompt — system prompt modes", () => {
   it("replace mode (default): generic header + env + agent's systemPrompt in agent_instructions", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
 
-    // Should have generic header
     expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
 
-    // Should have active_agent tag
     expect(result).toContain(`<active_agent name="${baseConfig.name}"/>`);
 
-    // Should have env block
     expect(result).toContain("# Environment");
     expect(result).toContain("Working directory: /test/cwd");
     expect(result).toContain("Git repository: yes");
     expect(result).toContain("Branch: main");
     expect(result).toContain("Platform: linux");
 
-    // Should have agent's systemPrompt in agent_instructions tags
     expect(result).toContain("<agent_instructions>");
     expect(result).toContain(baseConfig.systemPrompt);
     expect(result).toContain("</agent_instructions>");
@@ -204,23 +189,18 @@ describe("buildAgentPrompt — system prompt modes", () => {
     const parentPrompt = "You are the parent agent. You have access to all tools.";
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { parentSystemPrompt: parentPrompt }, "inherit");
 
-    // Should have parent prompt verbatim at the start
     expect(result.startsWith(parentPrompt)).toBe(true);
 
-    // Should have active_agent tag after parent prompt
     const afterParent = result.slice(parentPrompt.length);
     expect(afterParent).toContain(`<active_agent name="${baseConfig.name}"/>`);
 
-    // Should have env block
     expect(result).toContain("# Environment");
     expect(result).toContain("Working directory: /test/cwd");
 
-    // Should have agent's systemPrompt in agent_instructions tags
     expect(result).toContain("<agent_instructions>");
     expect(result).toContain(baseConfig.systemPrompt);
     expect(result).toContain("</agent_instructions>");
 
-    // Should NOT have generic header
     expect(result).not.toContain("You are a Pi, an expert coding sub-agent.");
   });
 
@@ -228,30 +208,24 @@ describe("buildAgentPrompt — system prompt modes", () => {
     const customPrompt = "You are a specialized agent for code review tasks.";
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: customPrompt }, "custom");
 
-    // Should have custom prompt at the start
     expect(result.startsWith(customPrompt)).toBe(true);
 
-    // Should have active_agent tag after custom prompt
     const afterCustom = result.slice(customPrompt.length);
     expect(afterCustom).toContain(`<active_agent name="${baseConfig.name}"/>`);
 
-    // Should have env block
     expect(result).toContain("# Environment");
     expect(result).toContain("Working directory: /test/cwd");
 
-    // Should have agent's systemPrompt in agent_instructions tags
     expect(result).toContain("<agent_instructions>");
     expect(result).toContain(baseConfig.systemPrompt);
     expect(result).toContain("</agent_instructions>");
 
-    // Should NOT have generic header
     expect(result).not.toContain("You are a Pi, an expert coding sub-agent.");
   });
 
   it("inherit mode falls back to replace when parentSystemPrompt is missing", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "inherit");
 
-    // Should have generic header (fallback)
     expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
   });
@@ -259,7 +233,6 @@ describe("buildAgentPrompt — system prompt modes", () => {
   it("custom mode falls back to replace when customSystemPrompt is missing", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "custom");
 
-    // Should have generic header (fallback)
     expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
   });

@@ -1,10 +1,5 @@
 /**
  * usage.test.ts — Tests for usage tracking utilities.
- *
- * Tests cover:
- *   - addUsage accumulates cost alongside tokens
- *   - getLifetimeTotal returns input + output only
- *   - Backward compatibility (existing token fields unchanged)
  */
 
 import { describe, it, expect } from "vitest";

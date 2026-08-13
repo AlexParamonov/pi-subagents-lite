@@ -162,7 +162,6 @@ function createMockWizardCtx(stepResults: (string | undefined)[]) {
   return ctx;
 }
 
-// Helper to complete all 3 wizard steps
 async function completeWizard(ctx: ReturnType<typeof createMockCtx>) {
   await showSpawnAgentMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
 }
@@ -409,7 +408,6 @@ describe("showSpawnAgentMenu — thinking level", () => {
     selectListInstances[selectListInstances.length - 1].onSelect!({ value: "session" });
     // Select a non-reasoning model to trigger the clamping callback
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("openai/gpt-4o");
-    // clampThinkingLevel should have been called with the non-reasoning model and currentThinking "high"
     expect(vi.mocked(clampThinkingLevel).mock.calls).toHaveLength(1);
     const [model, level] = vi.mocked(clampThinkingLevel).mock.calls[0];
     expect(model.reasoning).toBe(false);

@@ -1,9 +1,5 @@
 /**
  * context.test.ts — Tests for conversation context helpers.
- *
- * Tests focus on:
- *   - extractText: extracting text from content arrays
- *   - buildSnapshotMarkdown: formatting agent messages as markdown
  */
 
 import { describe, it, expect } from "vitest";

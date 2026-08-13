@@ -1,12 +1,5 @@
 /**
  * agent-widget-scroll.test.ts — Tests for scroll-viewport navigation.
- *
- * Verifies the new scroll model:
- *   - State (h, s): highlighted roster index, scroll anchor
- *   - Window shows contiguous blocks [s..e] fitting the budget
- *   - Arrow moves freely within window; at edges, scrolls with arrow pinned
- *   - Wrap at list ends
- *   - Overflow line shows "+N more"
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

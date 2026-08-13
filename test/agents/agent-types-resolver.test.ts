@@ -156,7 +156,6 @@ describe("resolveVisibleTools — allowlist mode", () => {
   it("whitelists grep, find, or ls without warning (AC-4)", () => {
     const notify = vi.fn();
 
-    // Whitelisting grep should register and activate it
     const grepResult = resolveVisibleTools({
       activeTools: ["read", "bash", "grep"],
       tools: ["read", "grep"],
@@ -166,7 +165,6 @@ describe("resolveVisibleTools — allowlist mode", () => {
     expect(grepResult).not.toContain("bash");
     expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "grep" not found'));
 
-    // Whitelisting find should register and activate it
     const findResult = resolveVisibleTools({
       activeTools: ["read", "bash", "find"],
       tools: ["read", "find"],
@@ -176,7 +174,6 @@ describe("resolveVisibleTools — allowlist mode", () => {
     expect(findResult).not.toContain("bash");
     expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('tool "find" not found'));
 
-    // Whitelisting ls should register and activate it (ls is in BUILTIN_TOOL_NAMES)
     const lsResult = resolveVisibleTools({
       activeTools: ["read", "bash", "ls"],
       tools: ["read", "ls"],
@@ -217,7 +214,6 @@ describe("resolveVisibleTools — allowlist mode", () => {
       extToolMap,
       notify,
     });
-    // Should NOT warn about tavily having no tools in tools (ext/* covers it)
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -307,7 +303,6 @@ describe("resolveVisibleTools — denylist mode", () => {
       tools: ["read", "bash"],
       excludeTools: ["write"],
     });
-    // tools whitelist wins — only read and bash
     expect(result).toEqual(["read", "bash"]);
   });
 
@@ -430,7 +425,6 @@ describe("resolveVisibleTools — edge cases", () => {
 
 describe("getConfig — global implicit defaults", () => {
   beforeEach(() => {
-    // Register a test agent with skills: true and extensions: true
     const agents = new Map<string, AgentConfig>();
     agents.set("test-agent", {
       name: "test-agent",
@@ -611,7 +605,6 @@ describe("resolveSessionAllowedTools", () => {
       tools: ["read", "ghost/*"],
       extToolMap,
     });
-    // Only the bare "read" survives; "ghost/*" finds no extension.
     expect(result).toEqual(["read"]);
   });
 
@@ -657,7 +650,6 @@ describe("resolveSessionAllowedTools", () => {
     // No extToolMap means "tavily/*" can't expand; only the bare "read" registers.
     expect(result).toEqual(["read"]);
   });
-
   it("raw wildcard literals never reach pi as bogus allowedToolNames", () => {
     const result = resolveSessionAllowedTools({
       registeredTools: ["read", "tavily/*"],

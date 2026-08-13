@@ -1,11 +1,5 @@
 /**
  * thinking-streaming.test.ts — Tests for streaming thinking blocks to output file.
- *
- * Verifies:
- * - Config option `outputThinkingBufferSize` is respected
- * - Thinking deltas buffer until configured size
- * - Buffer flushes on thinking_end and turn_end events
- * - No duplicate thinking content at turn_end
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -39,14 +33,11 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       const cleanup = streamToOutputFile(session, path, undefined, 0);
 
-      // Fire thinking_delta event
       session._fireThinkingDelta("Let me think...");
 
-      // Check that nothing was written yet
       const contentBefore = readFileSync(path, "utf-8");
       expect(contentBefore).not.toContain("Let me think...");
 
-      // Fire turn_end to flush everything
       session._fireTurnEnd();
 
       // Now thinking should appear (flushed at turn_end)
@@ -69,14 +60,11 @@ describe("streamToOutputFile with thinking streaming", () => {
       // bufferSize omitted — the default (0) must disable live thinking streaming
       const cleanup = streamToOutputFile(session, path, undefined);
 
-      // Fire thinking_delta event
       session._fireThinkingDelta("Let me think...");
 
-      // Check that nothing was written yet
       const contentBefore = readFileSync(path, "utf-8");
       expect(contentBefore).not.toContain("Let me think...");
 
-      // Fire turn_end to flush everything
       session._fireTurnEnd();
 
       // Now thinking should appear (flushed at turn_end)
@@ -101,17 +89,14 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       const cleanup = streamToOutputFile(session, path, undefined, 10);
 
-      // Fire thinking_delta event
       session._fireThinkingDelta("Hello ");
 
       // Buffer is not full yet (6 chars < 10), so nothing should be written
       const contentAfterDelta = readFileSync(path, "utf-8");
       expect(contentAfterDelta).not.toContain("Hello ");
 
-      // Fire turn_end to flush the buffer
       session._fireTurnEnd();
 
-      // Now the thinking should appear
       const contentAfterTurnEnd = readFileSync(path, "utf-8");
       expect(contentAfterTurnEnd).toContain("[THINKING]");
       expect(contentAfterTurnEnd).toContain("Hello ");
@@ -179,7 +164,6 @@ describe("streamToOutputFile with thinking streaming", () => {
       // Add content below the 100-char flush threshold so it buffers
       session._fireThinkingDelta("Partial thought");
 
-      // Buffer should not be flushed yet
       const contentBefore = readFileSync(path, "utf-8");
       expect(contentBefore).not.toContain("Partial thought");
 
@@ -206,13 +190,10 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       const cleanup = streamToOutputFile(session, path, undefined, 100);
 
-      // Add some content to buffer
       session._fireThinkingDelta("Some thinking");
 
-      // Fire turn_end event
       session._fireTurnEnd();
 
-      // Buffer should be flushed
       const contentAfter = readFileSync(path, "utf-8");
       expect(contentAfter).toContain("[THINKING]");
       expect(contentAfter).toContain("Some thinking");
@@ -235,13 +216,10 @@ describe("streamToOutputFile with thinking streaming", () => {
       // Fire thinking_delta that reaches buffer limit
       session._fireThinkingDelta("Full thinki"); // 10 chars, should flush
 
-      // Fire thinking_end with full content
       session._fireThinkingEnd("Full thinking");
 
-      // Fire turn_end
       session._fireTurnEnd();
 
-      // Count occurrences of thinking content
       const content = readFileSync(path, "utf-8");
       const matches = content.match(/\[THINKING\] Full think/g);
       expect(matches?.length).toBe(1); // Should appear only once
@@ -268,7 +246,6 @@ describe("streamToOutputFile with thinking streaming", () => {
 
       const cleanup = streamToOutputFile(session, path, undefined, 100);
 
-      // Fire turn_end to flush all
       session._fireTurnEnd();
 
       const content = readFileSync(path, "utf-8");
@@ -300,7 +277,6 @@ describe("streamToOutputFile with thinking streaming", () => {
       // Fire turn_end WITHOUT thinking_end (simulating missing thinking_end)
       session._fireTurnEnd();
 
-      // Count occurrences of [THINKING] lines with this content
       const content = readFileSync(path, "utf-8");
       const thinkingLines = content.match(/\[THINKING\] Partial thi/g);
       expect(thinkingLines?.length).toBe(1); // Should appear only once, no duplicates

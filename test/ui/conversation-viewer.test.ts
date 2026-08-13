@@ -1,18 +1,5 @@
 /**
  * conversation-viewer.test.ts — Tests for ConversationViewer.
- *
- * Covers:
- *   - Rendering header with status, duration, tool uses, tokens
- *   - Rendering user/assistant/toolResult messages
- *   - Thinking blocks in assistant messages
- *   - Tool result success/error backgrounds
- *   - Tool result truncation at 500 chars
- *   - Scroll behavior (up/down/pageup/pagedown/g/G)
- *   - Close on q/Esc
- *   - Stop key two-press confirmation ('s')
- *   - Steering composer (Enter opens, sends on Enter, cancels on Esc)
- *   - Auto-scroll behavior
- *   - Event-driven updates via session.subscribe
  */
 
 import * as fs from "node:fs";
@@ -248,7 +235,6 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
 
-      // Close the viewer (via q key)
       viewer.handleInput("q");
 
       // Fire a render-triggering event after close — the closed guard must
@@ -682,7 +668,6 @@ describe("ConversationViewer", () => {
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
-      // Should show preview of long result
       expect(text).toContain("bash");
       expect(text).toContain("xxxxx");
     });
@@ -833,7 +818,6 @@ describe("ConversationViewer", () => {
 
   describe("cache invalidation on messages array replacement", () => {
     it("clears cache when messages array is replaced (e.g., after compaction)", () => {
-      // Start with a session that has multiple messages
       const originalMessages = [
         { role: "user", content: "original message 1" },
         { role: "assistant", content: [{ type: "text", text: "original response 1" }] },
@@ -851,7 +835,6 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      // First render - populates cache with original messages
       const firstRender = viewer.render(80).join("\n");
       expect(firstRender).toContain("original message 1");
       expect(firstRender).toContain("original response 1");
@@ -870,7 +853,6 @@ describe("ConversationViewer", () => {
     });
 
     it("detects array replacement via reference change (not just length)", () => {
-      // Start with a session
       let messagesArray = [
         { role: "user", content: "msg 1" },
         { role: "assistant", content: [{ type: "text", text: "resp 1" }] },
@@ -884,7 +866,6 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      // First render
       viewer.render(80);
 
       // Replace with new array of SAME length but different content (simulating compaction)
@@ -900,7 +881,6 @@ describe("ConversationViewer", () => {
     });
 
     it("preserves cache on append (no array replacement)", () => {
-      // Start with a session
       const messagesArray = [{ role: "user", content: "msg 1" }];
       const session = {
         get messages() {
@@ -911,14 +891,12 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      // First render
       const firstRender = viewer.render(80).join("\n");
       expect(firstRender).toContain("msg 1");
 
       // Append to same array (no replacement)
       messagesArray.push({ role: "assistant", content: [{ type: "text", text: "resp 1" }] });
 
-      // Should work correctly with append
       const secondRender = viewer.render(80).join("\n");
       expect(secondRender).toContain("msg 1");
       expect(secondRender).toContain("resp 1");
@@ -987,7 +965,6 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Footer should show thinking state
       const text = viewer.render(120).join("\n");
       expect(text).toContain("C-t thinking");
     });
@@ -1002,7 +979,6 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Thinking should be hidden initially
       expect((viewer as any).thinkingVisible).toBe(false);
     });
 
@@ -1024,7 +1000,6 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Thinking should be hidden initially
       expect((viewer as any).thinkingVisible).toBe(false);
 
       const text = viewer.render(80).join("\n");
@@ -1085,7 +1060,6 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Thinking should be hidden initially
       expect((viewer as any).thinkingVisible).toBe(false);
 
       // Simulate streaming thinking via session events
