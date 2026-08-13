@@ -14,12 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Time-based finished retention.** Replaced turn-based eviction with a configurable time window. Finished agents stay visible for `finishedRetentionMinutes` (default 1 min) instead of a fixed number of turns.
 - **Transient transport error retry.** Brief stream failures (ECONNRESET, EPIPE, ETIMEDOUT, EAI_AGAIN) are retried automatically instead of failing the run.
 - **Continue settled agents.** `steer()` now resumes a settled agent (completed, errored, aborted, stopped, turn-limited) that still has a live session, instead of requiring a re-spawn. The viewer footer/composer switches from "steer" to "continue" for settled agents.
+- **Per-agent context and prompt inclusion.** New `include_context_files` and `include_system_prompt` frontmatter fields on agent definition files override the global settings per agent: whether AGENTS.md/CLAUDE.md context files load as `<project_context>`, and whether the parent's system prompt is included (inherit, replace, or global mode).
 
 ### Removed
 
 - **`deltaInputTokens` setting and delta estimation.** Removed the vLLM-specific workaround that estimated input token deltas by subtracting consecutive `usage.input` values.
 
 ### Fixed
+
+- **Conversation viewer freeze from running agents menu.** Viewer overlay now uses `{ overlay: true }` so closing it restores the menu instead of clobbering it and freezing all input.
+- **View result bottom border.** Fixed mirrored corner characters in the text viewer frame.
 
 - **`outputThinkingBufferSize` read live from config.** Value is now read from the config store at runtime instead of being captured at startup.
 - **`defaultMaxTurns` fallback in tool execution path.** Prevents failures when max turns is not explicitly set.
