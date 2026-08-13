@@ -18,10 +18,13 @@ import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES } from "../../config/config-io.js";
+import { VALID_THINKING_LEVELS } from "../../utils.js";
 import { getStore } from "../../shell.js";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
+  /** " [project]" when the effective value comes from the project layer. */
+  const projectTag = (key: string): string => (store.hasProjectModelKey(key) ? " [project]" : "");
 
   const buildItems = (theme: Theme): SettingItem[] => [
     {
@@ -65,33 +68,35 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     {
       id: "defaultMaxTurns",
       label: "Default max turns",
-      currentValue: `${store.agent.defaultMaxTurns ?? "(not set)"}${store.hasProjectModelKey("defaultMaxTurns") ? " [project]" : ""}`,
+      currentValue: `${store.agent.defaultMaxTurns ?? "(not set)"}${projectTag("defaultMaxTurns")}`,
 
       submenu: (currentValue, done) =>
         createTargetSelectSubmenu({
           theme,
           projectOffered: store.projectTargetOffered,
           includeSession: false,
-          onPick: (target, pickDone) =>
-            createNumericSubmenu(
+          onPick: (picked, pickDone) => {
+            const target = picked as "global" | "project";
+            return createNumericSubmenu(
               ctx,
               { min: 1 },
               (parsed) => {
-                store.mutate.agent.setDefaultMaxTurns(parsed, target as "global" | "project");
+                store.mutate.agent.setDefaultMaxTurns(parsed, target);
                 ctx.ui.notify(`Default max turns set to ${parsed} (${target})`, "info");
               },
               () => {
-                store.mutate.agent.setDefaultMaxTurns(undefined, target as "global" | "project");
+                store.mutate.agent.setDefaultMaxTurns(undefined, target);
                 ctx.ui.notify(`Default max turns cleared (${target})`, "info");
               },
-            )(String(store.agent.defaultMaxTurns ?? ""), pickDone),
+            )(String(store.agent.defaultMaxTurns ?? ""), pickDone);
+          },
         })(currentValue, done),
       description: "Soft turn limit; agent is steered here, then hard-aborts after grace turns. Blank = unlimited.",
     },
     {
       id: "defaultThinking",
       label: "Default thinking level",
-      currentValue: `${store.agent.defaultThinking ?? "inherit"}${store.hasProjectModelKey("defaultThinking") ? " [project]" : ""}`,
+      currentValue: `${store.agent.defaultThinking ?? "inherit"}${projectTag("defaultThinking")}`,
 
       submenu: (currentValue, done) =>
         createTargetSelectSubmenu({
@@ -100,7 +105,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
           includeSession: false,
           onPick: (target, pickDone) => {
             const level = target as "global" | "project";
-            const levelItems = ["off", "minimal", "low", "medium", "high", "xhigh", "max", "inherit"].map((v) => ({
+            const levelItems = [...VALID_THINKING_LEVELS, "inherit"].map((v) => ({
               value: v,
               label: v,
             }));
