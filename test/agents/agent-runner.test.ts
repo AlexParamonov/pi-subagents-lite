@@ -104,7 +104,12 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 // --- Import the module under test ---
 
-import { runAgent, subscribeToSessionEvents, continueAgentSession, resolveEffectiveSystemPromptMode } from "../../src/agents/agent-runner.js";
+import {
+  runAgent,
+  subscribeToSessionEvents,
+  continueAgentSession,
+  resolveEffectiveSystemPromptMode,
+} from "../../src/agents/agent-runner.js";
 
 const defaultConfig = {
   displayName: "Agent",
