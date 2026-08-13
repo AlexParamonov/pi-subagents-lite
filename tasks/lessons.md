@@ -83,6 +83,8 @@
 ## SettingsList & Menus
 - SettingsList: toggles, submenus, separators, static display. No multi-step dialogs. Never call `ctx.ui.input/select/custom` inside it.
 - Proxy pattern (`createDelegatingComponent`) chains submenus cleanly.
+- Separator-skip lives in one shared helper (`installSeparatorSkip`): override `selectedIndex` on the list instance, since pi-tui stores it as a plain own property and writes ±1-with-wrap directly.
+- When simulating library navigation writes in tests, initialize the state field exactly as the library class field does — `undefined + 1` is `NaN`, which silently passes any index check.
 
 ## Issue Design
 - Prototype state machines/key handlers in issue.md as a contract. Call out overflow behavior as a hard AC gate.

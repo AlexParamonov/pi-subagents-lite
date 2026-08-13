@@ -28,7 +28,7 @@ import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
 import { getDisplayName } from "../format.js";
-import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent } from "./helpers.js";
+import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
 
@@ -287,6 +287,10 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
     };
 
     const agentList = new SelectList(buildAgentItems(), 15, buildSelectListTheme(theme));
+    // SelectList does not skip __sep__ rows itself; install the same skip
+    // mechanism the wrapped menus use.
+    installSeparatorSkip(agentList);
+
     const delegator = createDelegatingComponent(agentList);
 
     agentList.onSelect = async (item) => {

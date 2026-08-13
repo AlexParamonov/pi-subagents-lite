@@ -14,7 +14,7 @@
  */
 
 import { type Component, isFocusable } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID } from "../helpers.js";
+import { installSeparatorSkip } from "../helpers.js";
 
 export interface SettingsListWrapperTheme {
   bold: (text: string) => string;
@@ -58,40 +58,8 @@ export class SettingsListWrapper implements Component {
 
     // Auto-skip separator items when navigating, so the cursor never lands on a
     // section header. Menus push their own SEPARATOR_ID items.
-    if (options.onCancel && Array.isArray(list.items)) {
-      const _rawIndex = Symbol("rawIndex");
-      const isSep = (item: any) => item?.value === SEPARATOR_ID || item?.id === SEPARATOR_ID;
-      // Starting just past `start`, walk in `step` direction and return the
-      // first non-separator index (or an out-of-bounds sentinel if none).
-      const firstNonSepFrom = (start: number, step: number): number => {
-        let next = start + step;
-        while (next >= 0 && next < list.items.length && isSep(list.items[next])) next += step;
-        return next;
-      };
-      const inBounds = (i: number) => i >= 0 && i < list.items.length;
-      Object.defineProperty(list, "selectedIndex", {
-        get() {
-          return list[_rawIndex] ?? 0;
-        },
-        set(idx) {
-          const items = list.items;
-          const cur = list[_rawIndex] ?? 0;
-          const clamped = Math.max(0, Math.min(idx, items.length - 1));
-          if (!isSep(items[clamped])) {
-            list[_rawIndex] = clamped;
-            return;
-          }
-          // Landed on a separator: search in the travel direction first,
-          // fall back to the opposite direction so the cursor always ends on
-          // a real item (or stays put if everything is a separator).
-          const step = idx > cur ? 1 : -1;
-          const fwd = firstNonSepFrom(clamped, step);
-          const back = firstNonSepFrom(clamped, -step);
-          list[_rawIndex] = inBounds(fwd) ? fwd : inBounds(back) ? back : clamped;
-        },
-        configurable: true,
-      });
-      list[_rawIndex] = list.selectedIndex ?? 0;
+    if (options.onCancel) {
+      installSeparatorSkip(list);
     }
 
     // Expose rebuild callback. Items are set directly without appending any
