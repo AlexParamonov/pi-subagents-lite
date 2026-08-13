@@ -194,12 +194,12 @@ describe("showRunningAgentsMenu — __sep__ navigation skip", () => {
   it("wrap-around up from the first item lands on the last real item", async () => {
     const list = await openMenu();
     pressUp(list); // library writes len-1
-    expect(list.items[list.selectedIndex].value).toBe("__clear-done");
+    expect(list.items[list.selectedIndex].value).toBe("__clear-all");
   });
 
   it("wrap-around down from the last item lands on the first agent", async () => {
     const list = await openMenu();
-    list.selectedIndex = list.items.length - 1; // __clear-done
+    list.selectedIndex = list.items.length - 1; // __clear-all
     pressDown(list); // library writes 0
     expect(list.items[list.selectedIndex].value).toBe("agent-1");
   });
@@ -932,5 +932,59 @@ describe("clear actions for finished agents", () => {
     expect(mockModules.mockManager.abort).toHaveBeenCalledWith("agent-2", "user");
     expect(mockModules.mockManager.abort).toHaveBeenCalledWith("agent-3", "user");
     expect(mockModules.mockManager.abort).not.toHaveBeenCalledWith("agent-1", "user");
+  });
+
+  describe("bulk action row ordering", () => {
+    beforeEach(() => {
+      selectListCalls = [];
+      vi.clearAllMocks();
+      mockModules.mockManager.listAgents.mockReset().mockReturnValue([]);
+      mockModules.mockManager.clear.mockReset();
+      mockModules.mockManager.abort.mockReset();
+    });
+
+    it("orders bulk rows: stop group, then clear group with Clear done before Clear all", async () => {
+      mockModules.mockManager.listAgents.mockReturnValue([
+        makeRecord({ id: "agent-1" }), // completed
+        makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+        makeRecord({ id: "agent-3", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+      ]);
+      const ctx = createMockCtx();
+      await showRunningAgentsMenu(ctx);
+      const values = selectListCalls[0].items.map((i: any) => i.value);
+      expect(values).toEqual([
+        "agent-1",
+        "agent-2",
+        "agent-3",
+        "__sep__",
+        "__stop-all",
+        "__sep__",
+        "__clear-done",
+        "__clear-all",
+      ]);
+    });
+
+    it("uses two separators when stop, finished, and completed groups are present", async () => {
+      mockModules.mockManager.listAgents.mockReturnValue([
+        makeRecord({ id: "agent-1" }), // completed
+        makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+        makeRecord({ id: "agent-3", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+      ]);
+      const ctx = createMockCtx();
+      await showRunningAgentsMenu(ctx);
+      const values = selectListCalls[0].items.map((i: any) => i.value);
+      expect(values.filter((v: any) => v === "__sep__")).toHaveLength(2);
+    });
+
+    it("shows only Clear all in the clear group when no completed agents exist", async () => {
+      mockModules.mockManager.listAgents.mockReturnValue([
+        makeRecord({ id: "agent-1", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
+        makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
+      ]);
+      const ctx = createMockCtx();
+      await showRunningAgentsMenu(ctx);
+      const values = selectListCalls[0].items.map((i: any) => i.value);
+      expect(values).toEqual(["agent-1", "agent-2", "__sep__", "__stop-all", "__sep__", "__clear-all"]);
+    });
   });
 });

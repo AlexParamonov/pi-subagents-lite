@@ -276,12 +276,14 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         items.push({ value: "__stop-all", label: `Stop ${running.length} running agent(s)` });
       }
       if (finished.length > 0) {
+        // One group: "Clear done" (only when completed agents exist) above "Clear all".
+        // completed is always a subset of finished, so the group is [Clear done, Clear all]
+        // or [Clear all] — never [Clear done] alone.
         items.push({ value: SEPARATOR_ID, label: " " });
+        if (completed.length > 0) {
+          items.push({ value: "__clear-done", label: "Clear done" });
+        }
         items.push({ value: "__clear-all", label: "Clear all" });
-      }
-      if (completed.length > 0) {
-        items.push({ value: SEPARATOR_ID, label: " " });
-        items.push({ value: "__clear-done", label: "Clear done" });
       }
       return items;
     };
