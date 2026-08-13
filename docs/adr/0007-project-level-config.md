@@ -2,71 +2,71 @@
 
 A project can commit `.pi/subagents-lite.json` (same file name as the global
 `~/.pi/agent/subagents-lite.json`) so every team member gets the same defaults.
-At load the two files merge per field — project wins, global fills the rest,
-hardcoded defaults fill the rest — and validation, clamping, and legacy-key
-normalization apply to the merged result, not per file. `/agents` menu changes
-persist to the project file when one exists, otherwise to the global file as
-before. Three decisions:
+When a valid project file exists, it is used as the **entire** config; the
+global file is not consulted. When it does not exist (or is malformed), the
+global file is used exactly as today. No merging between files, no diffs, no
+tombstones: one file wins, wholly.
 
-## 1. Save writes a project-origin diff, not the full merged config
+## Decision: a simple switch, not the v1 per-field merge
 
-A menu save with a project file present writes only the keys the project file
-already sets (updated to the merged value) plus keys whose merged value
-differs from the global file. Defaults and global-only keys are never copied.
-Writing the full merged snapshot was rejected: after the first menu change the
-project file would set every field and silently shadow later global-file edits,
-eroding the "project overrides only what it sets" contract the feature exists
-for. The diff is recursive (concurrency `providers`/`models` merge per key at
-both nesting levels) and deletion-aware: a key deleted from the merged config
-is dropped from the project file when only the project defined it, and written
-as a `null` tombstone when the global file defines it, so removals outlive the
-reload. At load, `null` project entries mean "removed" and delete the global
-entry (`mergeAgent`/`mergeMap`), except `agent.default`, where `null` means
-"inherit parent" and is a real value, and `concurrency.default`, where
-`null` falls back to the global file's value (or the built-in default). The
-raw files are captured at load and diffed against, so a save reproduces the
-in-memory session config exactly.
+The first implementation (v1, in git history) merged the two files per field —
+project wins, global fills, hardcoded defaults fill — with save-time diffing
+and `null` tombstones for deletions, so a project file stayed a small diff on
+top of the personal global file. The user rejected it as overly complex and
+directed this simple switch:
 
-The tombstone mechanism exists because a plain diff cannot express a
-deletion: a key absent from both layers is indistinguishable from one never
-set, so removing a global-only entry would silently write nothing and the
-entry would return on the next reload. Documenting the limitation or gating
-the menu's remove actions was rejected: both leave the acceptance criterion
-"menu changes write to the project file" unmet for delete-type changes and
-present the user a success notification that reverts next session.
+- One file wins. A valid project file replaces the global file completely;
+  global edits never apply to a project that has one. An empty project file
+  (`{}`) is valid and means built-in defaults only.
+- Saves write the full effective config to the file in use. A project file
+  saved from the menus contains the full effective config, so it is
+  self-contained and hand-editable.
+- Validation, clamping, and legacy-key normalization apply to whichever file
+  is loaded.
 
-## 2. The merge lives in config-io, not the store
+The merge design's rejected advantages: a small committable diff and the
+ability to keep personal overrides alongside team defaults. That came at the
+cost of a load-time merge with file-specific `null` semantics (inherit,
+fall-back, delete depending on the key), save-time re-derivation of the diff,
+and surprising interactions when the global file changed under a project.
 
-`createConfigIO(projectDir)` returns the existing `ConfigIO` port backed by two
-files; `ConfigStore` stays untouched except for `setProjectDir()`, which
+## Load and save
+
+`createConfigIO(projectDir)` returns the existing `ConfigIO` port backed by
+one file in use: at `load()` it reads the project file when a valid one
+exists, else the global file, and captures that file's path as the save
+target. `ConfigStore` stays untouched except for `setProjectDir()`, which
 retargets the port at session_start (the store is constructed at module load,
 before any cwd exists, so the project directory arrives at the `reload()` seam
-in `loadConfigAndRegisterAgents`). Store-layer origin tracking was rejected:
-the store would gain raw-config state and merge logic that already belongs next
-to the default-merging IO code, for no behavioral gain.
+in `loadConfigAndRegisterAgents`). A malformed project file is treated as
+absent for the session: warned, saves go to the global file, and the malformed
+file is never overwritten.
 
-## 3. The project file loads only in trusted projects
+## Trust gate
 
+The project file loads only in trusted projects:
 `loadConfigAndRegisterAgents` passes `.pi` only when `ctx.isProjectTrusted()`
 is true, mirroring the existing `.pi/agents` scan-dir gate. This keeps the
 documented cross-repo trust boundary honest (an untrusted spawn target's
-`.pi/subagents-lite.json` must not change agent execution) and matches pi's own
-model: `hasTrustRequiringProjectResources` does not include this file, so
+`.pi/subagents-lite.json` must not change agent execution) and matches pi's
+own model: `hasTrustRequiringProjectResources` does not include this file, so
 projects without other `.pi` resources are auto-trusted and the feature works
-unconditionally there. Unconditional loading was rejected: it would have loaded
-repo-controlled config in projects the user explicitly chose not to trust, and
-a repo-shipped file can change spawn behavior (`systemPromptMode`, model
-overrides, watchdog timeouts).
+unconditionally there. Unconditional loading was rejected: it would have
+loaded repo-controlled config in projects the user explicitly chose not to
+trust, and a repo-shipped file can change spawn behavior (`systemPromptMode`,
+model overrides, watchdog timeouts).
 
 ## Why
 
-Teams want shared agent defaults without each member hand-editing their global
-file. The global file stays the personal base; the project file is a small,
-hand-editable, committable diff on top.
+Teams want shared agent defaults without each member hand-editing their
+global file. The simple switch makes the project file self-contained: it is
+the config for that project, period, and the menus behave identically for
+both files.
 
 ## Trade-off
 
-Save-time diffing adds logic to config-io, and a malformed project file is
-treated as absent for the session (warned, saves go to the global file, the
-malformed file is never overwritten). Mid-session hand-edits to either file are
-picked up at the next reload, same as today.
+A project that commits `.pi/subagents-lite.json` fully owns its config: later
+global-file edits no longer apply there, and the first menu save snapshots the
+full effective config into the project file. That is the accepted cost of
+killing the diff/tombstone machinery. Mid-session hand-edits to either file
+are picked up at the next reload, same as today.
