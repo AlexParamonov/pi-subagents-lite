@@ -92,7 +92,7 @@ export function createConfigIO(projectDir?: string): ConfigIO {
     },
     save: (config) => {
       if (files?.project) {
-        writeJsonAtomic(files.project.path, diffProjectContent(config, files.globalRaw, files.project.raw));
+        writeJsonAtomic(files.project.path, diffProjectContent(config, files.globalRaw));
       } else {
         saveConfigAtomic(config);
       }
@@ -211,57 +211,48 @@ function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
  * merged over the global file. Defaults and global-only keys are never
  * copied, so the project file stays a small hand-editable diff.
  */
-function diffProjectContent(
-  merged: SubagentsConfig,
-  globalRaw: SubagentsConfig,
-  projectRaw: SubagentsConfig,
-): Record<string, unknown> {
-  const mergedGlobal = mergeDefaults(globalRaw);
+function diffProjectContent(merged: SubagentsConfig, globalRaw: SubagentsConfig): Record<string, unknown> {
+  const globalWithDefaults = mergeDefaults(globalRaw);
   const content: Record<string, unknown> = {};
-  const agent = diffRecord(merged.agent, projectRaw.agent, mergedGlobal.agent);
+  const agent = diffRecord(merged.agent, globalWithDefaults.agent);
   if (Object.keys(agent).length > 0) content.agent = agent;
-  const concurrency = diffConcurrency(merged.concurrency, projectRaw.concurrency ?? {}, mergedGlobal.concurrency);
+  const concurrency = diffConcurrency(merged.concurrency, globalWithDefaults.concurrency);
   if (Object.keys(concurrency).length > 0) content.concurrency = concurrency;
   return content;
 }
 
 function diffConcurrency(
   merged: SubagentsConfig["concurrency"],
-  project: Partial<SubagentsConfig["concurrency"]>,
   global: SubagentsConfig["concurrency"],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   if (merged.default !== global.default) result.default = merged.default;
-  const providers = diffRecord(merged.providers, project.providers, global.providers);
+  const providers = diffRecord(merged.providers, global.providers);
   if (Object.keys(providers).length > 0) result.providers = providers;
-  const models = diffRecord(merged.models, project.models, global.models);
+  const models = diffRecord(merged.models, global.models);
   if (Object.keys(models).length > 0) result.models = models;
   return result;
 }
 
 /**
- * Per-key diff of a merged record against the global one, for writing back to
- * the project file: keys the project file already sets (updated to the merged
- * value) plus keys whose merged value differs from the global file. A key
- * deleted from the merged config that the global file defines is written as a
- * null tombstone (null project entries mean "removed" at load), so removals
- * outlive the reload; keys only the project had are dropped.
+ * Per-key diff of a merged record against the global baseline, for writing
+ * back to the project file: keys whose merged value differs from the global
+ * one, plus null tombstones for keys deleted from the merged config that the
+ * global file defines (null project entries mean "removed" at load), so
+ * removals outlive the reload. Keys only the project file had are either
+ * still in the merged record (diffed normally) or were deleted (dropped —
+ * absent from both sides, they would resurrect nothing).
  */
 function diffRecord<T>(
   merged: Record<string, T> | undefined,
-  project: Record<string, T> | undefined,
   global: Record<string, T> | undefined,
 ): Record<string, T | null> {
   const result: Record<string, T | null> = {};
-  for (const key of new Set([
-    ...Object.keys(project ?? {}),
-    ...Object.keys(merged ?? {}),
-    ...Object.keys(global ?? {}),
-  ])) {
+  for (const key of new Set([...Object.keys(merged ?? {}), ...Object.keys(global ?? {})])) {
     const value = merged?.[key];
     if (value === undefined) {
       // Deleted from the merged config: tombstone keys the global file defines
-      // so the removal outlives the reload; drop keys only the project had.
+      // so the removal outlives the reload; keys only the project had are dropped.
       if (global?.[key] !== undefined) result[key] = null;
       continue;
     }
