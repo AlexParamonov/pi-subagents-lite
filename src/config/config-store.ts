@@ -356,10 +356,10 @@ export class ConfigStore {
         this.commitGlobal();
       },
       setDefaultThinking: (level: ThinkingLevel | undefined, target: "global" | "project" = "global"): void => {
-        this.setModelFamilyKey("defaultThinking", level, target);
+        this.setAgentLayerEntry("defaultThinking", level, target);
       },
       setDefaultMaxTurns: (n: number | undefined, target: "global" | "project" = "global"): void => {
-        this.setModelFamilyKey("defaultMaxTurns", n, target);
+        this.setAgentLayerEntry("defaultMaxTurns", n, target);
       },
       setLoadSkillsImplicitly: (value: boolean): void => {
         this.globalAgent().loadSkillsImplicitly = value;
@@ -602,17 +602,23 @@ export class ConfigStore {
     return null;
   }
 
+  /** Write an agent key (model family or per-type) at a persisted layer; undefined deletes it. */
+  private setAgentLayerEntry(key: string, value: unknown, target: "global" | "project"): void {
+    const layer = this.layerFor(target);
+    if (!layer) return;
+    layer.agent ??= {};
+    if (value === undefined) delete layer.agent[key];
+    else layer.agent[key] = value;
+    this.commitLayer(target, layer);
+  }
+
   /** Write a model key (default or per-type) at the target layer; session writes are in-memory. */
   private setAgentModelKey(key: string, value: string | null, target: ConfigTarget): void {
     if (target === "session") {
       this.sessionOverrides[key] = value;
       return;
     }
-    const layer = this.layerFor(target);
-    if (!layer) return;
-    layer.agent ??= {};
-    layer.agent[key] = value;
-    this.commitLayer(target, layer);
+    this.setAgentLayerEntry(key, value, target);
   }
 
   /** Write a concurrency value into the target layer, then persist and re-sync the manager. */
@@ -648,19 +654,6 @@ export class ConfigStore {
 
   private rebuildEffective(): void {
     this.config = mergeDefaults(mergeLayers(this.globalRaw, this.projectRaw));
-  }
-
-  private setModelFamilyKey(
-    key: "defaultThinking" | "defaultMaxTurns",
-    value: unknown,
-    target: "global" | "project",
-  ): void {
-    const layer = this.layerFor(target);
-    if (!layer) return;
-    layer.agent ??= {};
-    if (value === undefined) delete layer.agent[key];
-    else layer.agent[key] = value;
-    this.commitLayer(target, layer);
   }
 
   private clearAgentModelKeys(layer: RawConfig): void {
