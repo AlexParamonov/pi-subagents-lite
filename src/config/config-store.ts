@@ -223,10 +223,6 @@ export class ConfigStore {
     return this.sessionOverrides[type] ?? null;
   }
 
-  /** Whether the session layer sets this agent model key (default or per-type). */
-  hasSessionModelKey(key: string): boolean {
-    return typeof this.sessionOverrides[key] === "string";
-  }
 
   /** Whether the global agent layer carries this key (provenance from layer membership). */
   hasGlobalModelKey(key: string): boolean {

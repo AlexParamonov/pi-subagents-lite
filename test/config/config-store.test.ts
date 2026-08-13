@@ -223,8 +223,6 @@ describe("ConfigStore override layers", () => {
     expect(store.hasGlobalModelKey("Explore")).toBe(false);
     expect(store.hasProjectModelKey("Explore")).toBe(true);
     expect(store.hasProjectModelKey("default")).toBe(false);
-    expect(store.hasSessionModelKey("general")).toBe(true);
-    expect(store.hasSessionModelKey("Explore")).toBe(false);
     expect(store.projectConcurrency).toEqual({});
     expect(store.sessionConcurrency).toEqual({});
   });

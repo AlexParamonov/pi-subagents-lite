@@ -259,9 +259,6 @@ vi.mock("../src/shell.js", async () => {
     sessionModelOverride(type: string) {
       return mockModules.mockSessionOverrides[type] ?? null;
     },
-    hasSessionModelKey(key: string) {
-      return typeof mockModules.mockSessionOverrides[key] === "string";
-    },
     hasGlobalModelKey(key: string) {
       return mockModules.mockConfig.agent[key] !== undefined;
     },
