@@ -30,22 +30,22 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
    └ ## Architecture Summary: pi-subagents-lite
 ```
 
-Manage everything from `/agents`: running agents (view, steer, continue settled agents, stop, clear), manual spawn without an LLM round-trip, model settings, concurrency, widget layout.
+The `/agents` menu covers running agents (view, steer, continue settled agents, stop, clear), manual spawns without an LLM round-trip, model settings, concurrency, and widget layout.
 
 ## Tools
 
-- **`Agent`** — spawn a sub-agent:
-  - `prompt` — required task text.
-  - `agent` — agent type; defaults to `general-purpose`.
-  - `run_in_background` — fire-and-forget; returns immediately, notifies the parent on completion.
-  - `worktree_path` — any git repository on disk: a worktree of the parent's repo, its main checkout, or a different repo entirely. See [Worktree paths and trust](#worktree-paths-and-trust).
+- **`Agent`**: spawn a sub-agent:
+  - `prompt` is a required task text.
+  - `agent` is an agent type; defaults to `general-purpose`.
+  - `run_in_background` is a boolean toggle for fire-and-forget. Agent will return immediately and notify the parent on completion.
+  - `worktree_path` can be any git repository on disk: a worktree of the parent's repo, its main checkout, or a different repo entirely. See [Worktree paths and trust](#worktree-paths-and-trust).
   `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM. Foreground agents are bound to the parent's interrupt: stopping the parent stops them (partial output preserved); background agents are not affected.
-- **`StopAgent`** — stop a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
-- **`AgentStatus`** — list all agents with type, short ID, and status.
+- **`StopAgent`**: stop a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
+- **`AgentStatus`**: list all agents with type, short ID, and status.
 
 ## Custom agent types
 
-Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, no registration needed. Built-ins `general-purpose` and `Explore` are always available; on name clash, project > shared > user > built-in.
+Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, so nothing needs registering. Built-ins `general-purpose` and `Explore` are always available; on name clash, project > shared > user > built-in.
 
 ```markdown
 ---
@@ -110,15 +110,15 @@ Steer a running agent mid-task to redirect it: `Enter` in the conversation viewe
 
 ## Worktree paths and trust
 
-`worktree_path` accepts a path inside **any git repository on disk** — a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
+`worktree_path` accepts a path inside **any git repository on disk**: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
 
-Cross-repo targets are gated by pi's existing trust framework: the target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting — anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, and a warning is surfaced. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
+Cross-repo targets are gated by pi's existing trust framework: the target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting: anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, and pi surfaces a warning. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
 
 ## System prompt mode
 
 `systemPromptMode` (default `replace`):
 
-- **`replace`**: minimal generic prompt plus the agent's instructions. Lowest cost, most isolated.
+- **`replace`**: minimal generic prompt plus the agent's instructions. Lowest cost and most isolated.
 - **`inherit`**: parent's system prompt plus the agent's instructions.
 - **`custom`**: `~/.pi/agent/subagents-lite-prompt.md` plus the agent's instructions.
 
@@ -128,18 +128,18 @@ When `includeContextFiles` is `true` (default), AGENTS.md files load as shared c
 
 The widget keeps a live roster of agents and a status bar in pi's status area. `↑`/`↓` navigates it, `Enter` opens the conversation viewer, `Esc` closes it; `ctrl+o` toggles compact mode when the shortcut is enabled. The viewer streams the live transcript: thinking blocks, tool calls, compaction summaries, and results.
 
-Finished agents stay visible in widget for `finishedRetentionMinutes` (decimal) after settling, but kept in Running Agents for the session until one of `Clear` (one agent), `Clear done` (completed), `Clear all` (all finished) is used.
+Finished agents stay in the widget for `finishedRetentionMinutes` (decimal) after settling, and in Running Agents for the rest of the session until `Clear` (one agent), `Clear done` (completed), or `Clear all` (all finished) removes them.
 
-Widget is highly configurable: per-stat visibility in the stats line (`showTools`, `showTurns`, `showInput`, `showOutput`, `showContext`, `showCost`, `showTime`), model/thinking display (`widgetShowModel`, `widgetShowThinking`, `modelDisplayStyle`, `modelThinkingPlacement`), `statusBarFormat`, widget sizing (`widgetMaxLines`, `widgetMaxLinesCompact`, `widgetCompact`), `showCompletionCards`, and `widgetShortcut`.
+Most of the widget is configurable: per-stat visibility, model and thinking display, widget sizing, etc.
 
 ## Watchdog
 
 The watchdog stops agents that hang. Two independent checks, both default 45 minutes, `0` disables:
 
-- `toolTimeoutMinutes` — a single tool call running longer than this stops the agent.
-- `idleTimeoutMinutes` — no activity (tool events or streamed response text) for this long stops the agent.
+- `toolTimeoutMinutes`: a single tool call running longer than this stops the agent.
+- `idleTimeoutMinutes`: no activity (tool events or streamed response text) for this long stops the agent.
 
-The main session is notified on a watchdog kill so it can act accordingly.
+The watchdog notifies the main session on a kill so it can act accordingly.
 
 ## Configuration
 
@@ -195,11 +195,11 @@ The main session is notified on a watchdog kill so it can act accordingly.
 
 Widget, stats visibility, and spawn defaults are all under `/agents` > Settings.
 
-`concurrency` caps parallel agents: a per-model limit overrides a per-provider limit, which overrides the `default` per-model limit; excess spawns queue until a slot frees. `agentToolStrictMode` constrains Agent-tool sampling to strict json_schema: fewer malformed calls, higher token cost.
+`concurrency` caps parallel agents: a per-model limit overrides a per-provider limit, which overrides the `default` per-model limit; excess spawns queue until a slot frees. `agentToolStrictMode` makes Agent-tool sampling use strict json_schema, which produces fewer malformed calls at a higher token cost.
 
 Output logs land in `/tmp/pi-agent-outputs/<agentId>.log`, append-only and `tail -f` friendly. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
 
-Output transcripts are disabled by default and can be enabled globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, transcripts land in `/tmp/pi-agent-outputs/<agentId>.log` and the `tail -f` widget line is shown.
+Output transcripts are disabled by default and can be enabled globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, transcripts land in the `/tmp/pi-agent-outputs/<agentId>.log` file and the widget shows the `tail -f` line.
 
 ## Requirements
 
