@@ -32,7 +32,10 @@
 - Time-window fixtures at exactly the filter edge are latent flakes — same-ms passes in isolation are luck. When adding a time-based filter, audit shared fixture boundaries.
 - Pin listener lifecycle exactly-once with spy-based detach regression guards.
 - For pi-tui widgets, verify `truncate()` runs on every render path — hard contract.
-- When shipping wording adjusted from a spec's provisional text, update the spec's Further Notes in the same pass.
+- In shared-mock files, `mockReturnValue` persists across describes — only `mockReset` clears it; prefer `mockReturnValueOnce` with exact per-test consumption counts so one describe can't leak its last return into the next.
+- For layout/order changes, assert the exact full item array and separator count, not membership.
+- Tests that pass on unfixed code are vacuous for the regression they claim: wrap-around edges pass even without the fix — include mid-list cases that fail on old code.
+- File-content test fixtures: malformed input as raw text, not a stringified value (`JSON.stringify` of a malformed-JSON string is valid JSON); assert against known-good literals, not recomputed expectations.
 
 ## Delegation
 - Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
@@ -64,23 +67,27 @@
 - Check for WIP branches that might land before merging.
 - Prefer public API for cross-package access — private fields break silently on upstream changes.
 - Two mechanisms converging on the same state with the same gates are vestigial duplication: keep the one owned by the authoritative module, delete the other.
-- Remove dead code in the same commit that makes it dead, not later.
+- Remove dead code in the same commit that makes it dead, not later — rewrite the tests that described the dead contract instead of layering new tests beside them.
 - Centralize a decision on one authoritative field; downstream consumers key off it.
 - When a callback consumer cannot observe an event (continuations bypass the coordinator), ride the signal on the record the callback receives — a settlement ordinal in the shared settlement chain cannot drift from the notify that fires there.
 - New config setting: audit the full plumbing list in one pass (type, DEFAULT_AGENT, resolution/setter/sync, CONFIG_AGENT_NON_MODEL_KEYS, mirrored internal defaults). When changing a user-visible default, grep for the old value across src/ and test/. A "setting survives clearAllModelOverrides" test belongs with every new setting.
 - Config constraints: enforce at every entry point in one pass (setter, load/default-merge, resolution getter) — enforcing two of three is a trap.
-- Overlay merges need an explicit tombstone for deletions: a key absent from both layers is indistinguishable from one never set, so removing a global-origin entry writes nothing and it silently returns next session. Write null (= removed) into the overriding layer and delete the entry at load; keep keys where null is a real value (agent.default = inherit) out of the delete rule.
+- When a merge needs tombstone markers to express deletions, stop and consider one-file-wins — the tombstone requirement is a design smell, not a feature.
+- When overriding a property accessor via defineProperty, check pre-install state reads through the getter — a bootstrap read through the new getter silently stores the wrong value.
 
 ## pi-ai API & Subagent Lifecycle
 - `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. `followUp` waits for the agent. Check `ctx.isIdle()` at call time.
 - `createAgentSession` re-executes EVERY extension factory and re-fires session_start/shutdown in subagent context. Bracket `runAgent` with a nesting-depth flag; no-op factory and session handlers while a subagent is in flight.
 - `AgentSession.dispose()` does NOT emit session_shutdown; subagent `bindExtensions` DOES fire parent's session_start.
+- A one-shot gate (consumed set) hides re-occurring events: continuations re-settle, so before designing a delivery/notification gate, ask whether the event can re-occur.
+- Verify pi API behavior claims in library source before committing to an approach — pi-tui/pi internals are checkable in ../pi.
 - Reading pi's settings.json directly is acceptable when pi APIs don't expose the setting yet.
 
 ## Extension Tools
 - When tools/resources are silently missing, find the gate first. Seed `createAgentSession({ tools })` with concrete names.
 - Allowlist gate must derive from whitelist expansion alone in whitelist mode and gate builtins too.
 - Cross-repo trust gate is narrower than it reads: `.pi/` resources + `.agents/skills` are gated, but root `AGENTS.md`/`CLAUDE.md` load unconditionally.
+- Before deciding unconditional vs gated loading of repo-controlled files, check the codebase's trust-gate precedents and pi's trust-requiring-resources list in library source.
 
 ## SettingsList & Menus
 - SettingsList: toggles, submenus, separators, static display. No multi-step dialogs. Never call `ctx.ui.input/select/custom` inside it.
@@ -91,6 +98,7 @@
 ## Issue Design
 - Prototype state machines/key handlers in issue.md as a contract. Call out overflow behavior as a hard AC gate.
 - Grill / voice-of-reason shape vague questions into precise issues.
+- Verify keybinding claims against the host's default keybindings before writing ACs about keys.
 
 ## Buffer & Error Patterns
 - Buffer-then-flush is the simplest fix for ordering/corruption. Consider error paths when deferring side effects; try/finally guarantees flush.
@@ -111,38 +119,3 @@
 ## Scope
 - Stay within issue scope. When provisional wording or removed-machinery comment changes, update the spec/comment in the same commit.
 
-## continue-settled-agents - 2025-07-18
-**What worked:** shared settlement chain (`attachSettlementChain`) kept first-run and continuation paths from drifting; TDD with deferred promises verified async timing without sleeps; reviewer caught 3 real bugs (watchdog feed, stale result text, widget live-view) that unit tests alone missed.
-**What failed:** initial implementation missed `onTextDelta` on continuation path (watchdog idle-kill); stale result text from prior runs resurfaced on failed continuation; widget live-view showed stale "thinking…" during continuation.
-**Next time:** when a new run path reuses session/callback wiring, audit every first-run callback before shipping (checklist: onTextDelta, onToolActivity, onUsage, onCompaction); scope history-scanning fallbacks to the current run via pre-prompt boundary; re-bridge every spawn-time consumer on the record.
-
-## nudge-after-continuation - 2025-07-18
-**What worked:** settlement ordinal on the record (incremented in the shared settlement chain's `.finally` before `notifyComplete`) gave the coordinator a race-free continuation signal off the steer path; replacing the ctx map with a record-carried `spawnCtx` followed the established `liveView` precedent; the manual harness's mutation check (revert the gate branch → exactly the continuation scenarios fail) proved the tests detect the regression.
-**What failed:** the one-shot `backgroundAgentIds` set consumed at first settlement hid the continuation gap; foreground agents were never armed at all. First review round approved clean — the bug analysis done before writing the issue (coordinator not on steer path, notify fires on every settlement) made the fix land correctly the first time.
-**Next time:** when a delivery/notification gate is a consumed set, ask whether the event can re-occur before writing the issue; verify the callback's visibility of run ordinal at the point the gate reads it (increment must precede notify synchronously).
-
-## running-agents-menu-skip-separators - 2026-08-13
-**What worked:** extracting the wrapper's `selectedIndex` accessor into a shared `installSeparatorSkip` helper (applied to the list instance directly, bypassing the wrapper/delegator incompatibility); verifying the pi-tui mechanism in library source before committing to the approach; unit tests mirroring the library's exact ±1-with-wrap writes; manual tmux test with real spawned agents (running + completed) matching the issue's menu layout.
-**What failed:** the wrapper's initial-selection bootstrap line read through the new getter and always stored 0 (silently discarding pre-install selection) — hidden-state bug caught only in the refactor pass, not review; AC-1 initially promised j/k navigation that this menu never had (no j/k→arrow conversion, host binds arrows only) — scope decided by user: separator-skip only, j/k out of scope.
-**Next time:** when overriding a property accessor, check pre-install state reads through the getter before defineProperty; verify keybinding claims against the host's default keybindings before writing ACs about keys; wrap-around edge cases (both list ends are real items) pass even without the fix — add mid-list separator tests that actually fail on old code.
-
-## running-agents-menu-action-order - 2026-08-13
-**What worked:** TDD with exact-order assertions (full item array + separator count + wrap targets) that failed on the old layout for the right reasons; nesting the `completed` group inside the `finished` block directly encodes the completed ⊆ finished invariant instead of a rank sort; refactor agent correctly NOOP'd rather than forcing a grouping helper that would diverge from the inline separator convention used by every menu.
-**What failed:** one self-inflicted edit duplication (`__stop-all` block duplicated by a bad range replace) during implementation, caught by the red tests; the brainstorm step (voice-of-reason) added latency on a genuinely trivial change — user stopped it and called it trivial.
-**Next time:** for layout/order changes, assert the exact full item array and separator count, not membership; when the user calls a change trivial, skip the brainstorm step (it never blocks anyway); a fast way to get a running+completed menu state for manual tests: spawn via the wizard and let an accidental second spawn with the default model complete quickly.
-
-## case-insensitive-agent-types - 2026-08-13
-**What worked:** discriminated-union resolution (`exact | ci | ambiguous | not-found`) as one primitive for all consumers — ambiguity lives beside the fold logic, so name/displayName/hidden semantics are decided once and the spawn gate just branches on `kind`.
-**What failed:** two vitest traps in the new describe block: (1) forgetting `ctx = fakeCtx()` in beforeEach failed 50 lines deep inside the module (`Cannot read properties of undefined (reading 'modelRegistry')`) instead of at the call site; (2) `mockReturnValue` persists across describes — only `mockReset` clears implementations — so the last test in my describe leaked `{kind:"not-found"}` into later describes that relied on the hoisted base implementation.
-**Next time:** when copying an existing describe's beforeEach, diff it line-by-line against the original before running; in shared-mock test files, prefer `mockReturnValueOnce` with exact per-test consumption counts (or reset+re-establish the base implementation in beforeEach) so a describe never leaks its last `mockReturnValue` into the next one.
-**Resolved decisions:** dropped `resolveType` displayName aliasing (constraint bans synonyms; no caller relied on it — briefing and wizard pass registered names); hidden agents participate in ambiguity (they are callable by name); worktree spawns use merged-registry resolution (target agents are in the registry post-discovery, so the AC holds as tested).
-
-## project-level-config - 2026-08-13
-**What worked:** TDD vertical slices (load merge → save write-back → store wiring → events trust gate) with mutation checks to prove the save-diff tests bite; the diff-write-back rule (union of project+merged keys, skip undefined) is deletion-aware by construction and was verified by removing keys at both nesting levels; verifying pi's trust model in library source before deciding the load gate (`hasTrustRequiringProjectResources` excludes `subagents-lite.json`, so auto-trust keeps the feature working in plain repos).
-**What failed:** the save path was written in the same pass as the load path, so chunk B never had a RED run (caught via mutation check, not process); several single-anchor edits inserted multi-line replacements incorrectly, mangling test files — range replaces with both endpoints are the only reliable form; `JSON.stringify` of a malformed-JSON test string produced valid JSON (a string literal), hiding the warning-path bug.
-**Next time:** when a feature adds a load path for repo-controlled files, check the codebase's trust gate precedents and pi's trust-requiring-resources list BEFORE deciding unconditional vs gated loading; write the malformed-input test with raw text, not a stringified value; for file-content assertions, use known-good literals rather than recomputing expectations.
-
-## project-level-config v2 - one file wins - 2026-08-13
-**What worked:** replacing the v1 merge design with a simple switch (a valid project file is the ENTIRE config; the global file is not read) cut config-io from ~280 lines of merge/diff/tombstone machinery to a file pick; the rewritten tests pin the new contract with outcome assertions (global values must not leak, saves write the full config, a saved project file is self-contained) and one fs-boundary spy proving the global file is not even read.
-**What failed:** the v1 merge design itself — per-field merging with `null` tombstones for deletions — was rejected by the user as overly complex: null markers had key-dependent meanings (inherit / fall back / delete), save-time diffs re-derived state, and global edits leaked into projects in surprising ways.
-**Next time:** when a merge needs tombstone markers to express deletions, stop and consider one-file-wins; the tombstone requirement is a design smell, not a feature. When the user calls a shipped design over-complex and directs a simpler one, replace the dead machinery in the same commit that makes it dead (lessons: Remove dead code in the same commit), and rewrite the tests that described the dead contract instead of layering new tests beside them.
