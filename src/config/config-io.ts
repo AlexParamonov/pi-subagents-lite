@@ -72,7 +72,10 @@ export interface ConfigIO {
   save(config: SubagentsConfig): void;
 }
 
-/** Raw file contents captured at load; the save path diffs against these. */
+/**
+ * Raw file contents captured at load: globalRaw is the save-diff baseline,
+ * project.raw feeds the load-time merge.
+ */
 interface LoadedFiles {
   globalRaw: SubagentsConfig;
   /** null when the project file is absent or malformed (then saves go global). */
