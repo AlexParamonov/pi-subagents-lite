@@ -188,8 +188,11 @@ function mergeRawFiles(globalRaw: SubagentsConfig, projectRaw: SubagentsConfig |
 
 /** Bake hardcoded defaults into the merged result; normalize legacy keys on it. */
 function mergeDefaults(raw: SubagentsConfig): SubagentsConfig {
-  // @ts-expect-error TS2783: spread may override 'default', which is intentional (loaded value wins)
-  const concurrency = { default: 4, ...(raw.concurrency ?? {}) } as SubagentsConfig["concurrency"];
+  const concurrency = {
+    // @ts-expect-error TS2783: spread may override 'default', which is intentional (loaded value wins)
+    default: DEFAULT_CONCURRENCY.default,
+    ...(raw.concurrency ?? {}),
+  } as SubagentsConfig["concurrency"];
   const agent = { ...DEFAULT_AGENT, ...raw.agent };
   // Legacy pre-ADR-0006 key: normalize without error, touching no other keys (US-15).
   delete agent.finishedEvictTurns;
