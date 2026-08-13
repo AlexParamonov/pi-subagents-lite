@@ -103,7 +103,6 @@ function normalizeMaxTurns(n: number | undefined): number | undefined {
   return Math.max(1, n);
 }
 
-/** Info about a tool event in the subagent. */
 interface RunOptions extends RunTunables, RunCallbacks {
   /** ExtensionAPI instance — used for pi.exec() for git detection. */
   pi: ExtensionAPI;

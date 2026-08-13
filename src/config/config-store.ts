@@ -91,7 +91,7 @@ export interface ResolvedAgentSettings {
   readonly toolTimeoutMinutes: number;
   /** Stop an agent showing no activity (tool events, streamed text) for this long (minutes). 0 disables. */
   readonly idleTimeoutMinutes: number;
-  /** Whether to write streaming JSON-lines transcript to .output file. Default: true. */
+  /** Whether to stream the agent transcript to the output file. Default: false. */
   readonly outputTranscript: boolean;
 }
 

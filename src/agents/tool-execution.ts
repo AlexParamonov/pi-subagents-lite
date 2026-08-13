@@ -29,8 +29,6 @@ function errorResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], isError: true as const, details };
 }
 
-// --- Activity tracking ---
-
 /**
  * Build a details record from an AgentRecord. Always includes type and
  * description; includeStatus adds status/outputFile/stopReason, includeStats

@@ -1,8 +1,9 @@
 /**
  * agent-types.ts — Unified agent type registry.
  *
- * Merges embedded default agents with user-defined agents from .pi/agents/*.md.
- * User agents override defaults with the same name. Disabled agents are kept but excluded from spawning.
+ * Merges embedded default agents with user-defined agents from .md files
+ * (user, shared, and project dirs). Precedence: default < user < shared < project.
+ * Hidden agents are kept registered but excluded from spawning.
  */
 
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";

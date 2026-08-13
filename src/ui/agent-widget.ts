@@ -374,7 +374,6 @@ export class AgentWidget {
     return 0;
   }
 
-  /** Whether the agent has a metadata line in full mode. */
   private hasMetadataLine(a: AgentRecord): boolean {
     if (this.isCompact()) return false;
     return (
@@ -427,7 +426,7 @@ export class AgentWidget {
     return this.navActive;
   }
 
-  /** Current highlight position (0 = main). Derived from highlightId against the current roster. */
+  /** Current highlight position (0 = main). */
   highlightedIndex(): number {
     if (!this.navActive) return 0;
     return this.resolveNavState().index;

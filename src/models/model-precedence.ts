@@ -49,7 +49,7 @@ export interface SubagentsConfig {
     disableDefaultAgents?: boolean;
     /** When true, use strict-mode schema for the Agent tool. Costs more tokens due to nullable field encoding. */
     agentToolStrictMode?: boolean;
-    /** Whether to show toolUses count in widget stats line. Default: true. */
+    /** Whether to show toolUses count in widget stats line. Default: false. */
     showTools?: boolean;
     /** Whether to show turn count in widget stats line. Default: true. */
     showTurns?: boolean;
@@ -61,14 +61,14 @@ export interface SubagentsConfig {
     showContext?: boolean;
     /** Whether to show elapsed time in widget stats line. Default: true. */
     showTime?: boolean;
-    /** Whether to write streaming JSON-lines transcript to .output file. Default: true. */
+    /** Whether to stream the agent transcript to the output file. Default: false. */
     outputTranscript?: boolean;
 
     /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
     outputThinkingBufferSize?: number;
     /** Minutes to retain finished agents in the widget. Default: 1. */
     finishedRetentionMinutes?: number;
-    /** How to display the model label: short ID or full name. Default: 'id'. */
+    /** How to display the model label: short ID or full name. Default: 'name'. */
     modelDisplayStyle?: "id" | "name";
     /** Where model/thinking appears in full mode: 'header' (1st line) or 'metadata' (2nd line). Default: 'header'. */
     modelThinkingPlacement?: ModelThinkingPlacement;
@@ -84,8 +84,7 @@ export interface SubagentsConfig {
 }
 
 /**
- * Shape of session-only model overrides.
- * Same as config.agent but without the forceBackground flag.
+ * Session-only model overrides: "default" plus per-agent-type entries.
  * Not persisted — cleared on session_start.
  */
 export interface SessionModelOverrides {

@@ -8,8 +8,7 @@ import { showAgentsMainMenu } from "./ui/menu/menus.js";
 import { getStore } from "./shell.js";
 
 // Provider-side json_schema enforcement; "prefer" falls back gracefully on
-// providers without strict mode (e.g. local Ollama). Runtime-supported field,
-// not yet declared in pi's ToolDefinition type.
+// providers without strict mode (e.g. local Ollama).
 const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
 
 // --- Agent tool registration — dynamic enum for agent types ---
