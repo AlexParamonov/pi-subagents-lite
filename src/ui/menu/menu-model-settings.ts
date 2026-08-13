@@ -60,6 +60,18 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         ctx.ui.notify(`${label} override cleared (${target})`, "info");
       };
 
+    // Shared submenu factory: target + model picker for one config key.
+    const modelSubmenuFor = (typeName: string, effectiveModel: string | null, showClear: boolean) =>
+      createModelSelectSubmenu({
+        modelOptions,
+        showClear,
+        projectOffered,
+        theme,
+        currentModel: effectiveModel,
+        onSet: modelOverrideOnSelect(typeName, typeName),
+        onClear: clearOverrideOnSelect(typeName, typeName),
+      });
+
     // Global default model
     const sessionDefault = store.sessionDefaultModel;
     const effectiveDefault = store.agentConfigSnapshot().default;
@@ -77,15 +89,11 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       label: "Global default model",
       currentValue: globalDisplayValue,
       description: "Model used when no per-type override or frontmatter model applies.",
-      submenu: createModelSelectSubmenu({
-        modelOptions,
-        showClear: sessionDefault != null || hasProjectDefault || hasGlobalDefault,
-        projectOffered,
-        theme,
-        currentModel: effectiveDefault,
-        onSet: modelOverrideOnSelect("default", "Global default"),
-        onClear: clearOverrideOnSelect("default", "Global default"),
-      }),
+      submenu: modelSubmenuFor(
+        "default",
+        effectiveDefault,
+        sessionDefault != null || hasProjectDefault || hasGlobalDefault,
+      ),
     });
 
     // Per-type overrides
@@ -116,15 +124,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         label: typeName,
         currentValue: `${frontmatterHint}${displayModel}`,
         description: `Per-type model override for the ${typeName} agent type.`,
-        submenu: createModelSelectSubmenu({
-          modelOptions,
-          showClear: hasPerm || hasSession,
-          projectOffered,
-          theme,
-          currentModel: effectiveModel,
-          onSet: modelOverrideOnSelect(typeName, typeName),
-          onClear: clearOverrideOnSelect(typeName, typeName),
-        }),
+        submenu: modelSubmenuFor(typeName, effectiveModel, hasPerm || hasSession),
       });
     }
 
@@ -141,16 +141,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
             {
               onSelect: (typeName) => {
                 const entry = nonOverridden.find((e) => e.typeName === typeName)!;
-                const modelSubmenu = createModelSelectSubmenu({
-                  modelOptions,
-                  showClear: false,
-                  projectOffered,
-                  theme,
-                  currentModel: entry.effectiveModel,
-                  onSet: modelOverrideOnSelect(entry.typeName, entry.typeName),
-                  onClear: clearOverrideOnSelect(entry.typeName, entry.typeName),
-                });
-                return modelSubmenu(entry.effectiveModel, subDone);
+                return modelSubmenuFor(entry.typeName, entry.effectiveModel, false)(entry.effectiveModel, subDone);
               },
               onCancel: () => subDone(),
             },
