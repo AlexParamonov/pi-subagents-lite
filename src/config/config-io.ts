@@ -178,6 +178,9 @@ function mergeRawFiles(globalRaw: SubagentsConfig, projectRaw: SubagentsConfig |
   return {
     agent: mergeAgent(globalRaw.agent, projectRaw.agent),
     concurrency: {
+      // null in the project file means "not set" for the scalar default
+      // (fall back to global, then built-in), unlike the maps below where
+      // null deletes the entry.
       default: projectRaw.concurrency?.default ?? globalRaw.concurrency?.default ?? DEFAULT_CONCURRENCY.default,
       providers: mergeMap(globalRaw.concurrency?.providers, projectRaw.concurrency?.providers),
       models: mergeMap(globalRaw.concurrency?.models, projectRaw.concurrency?.models),
