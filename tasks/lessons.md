@@ -106,3 +106,8 @@
 
 ## Scope
 - Stay within issue scope. When provisional wording or removed-machinery comment changes, update the spec/comment in the same commit.
+
+## continue-settled-agents - 2025-07-18
+**What worked:** shared settlement chain (`attachSettlementChain`) kept first-run and continuation paths from drifting; TDD with deferred promises verified async timing without sleeps; reviewer caught 3 real bugs (watchdog feed, stale result text, widget live-view) that unit tests alone missed.
+**What failed:** initial implementation missed `onTextDelta` on continuation path (watchdog idle-kill); stale result text from prior runs resurfaced on failed continuation; widget live-view showed stale "thinking…" during continuation.
+**Next time:** when a new run path reuses session/callback wiring, audit every first-run callback before shipping (checklist: onTextDelta, onToolActivity, onUsage, onCompaction); scope history-scanning fallbacks to the current run via pre-prompt boundary; re-bridge every spawn-time consumer on the record.
