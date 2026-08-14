@@ -40,6 +40,14 @@ _Avoid_: Model injection, model preference
 Additional turns allowed after the soft turn limit steer message before hard abort. Default 6, configurable via `/agents` > Model settings.
 _Avoid_: Grace period, extra turns
 
+**Resolved model**:
+The model an Agent type runs on: the highest set **Model override** (session per-type > session global > project > global, per-type > global default) wins, else the frontmatter model, else the parent session's current model.
+_Avoid_: Effective model, assigned model
+
+**Thinking level**:
+Per-spawn reasoning effort (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Resolved as frontmatter `thinking` > `defaultThinking` (project over global) > parent session level, then clamped to the **Resolved model**'s supported levels (non-reasoning models support only `off`).
+_Avoid_: Reasoning effort, thinking mode
+
 ### Worktrees
 
 **Worktree**:
@@ -87,6 +95,8 @@ _Avoid_: Timeout killer, stuck-agent detector
 - A **Worktree path** is the absolute resolved path passed via `worktree_path`
 - A **Worktree label** is derived from a **Worktree path** for compact display
 - The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
+- An **Agent type** has one **Resolved model**; its **Thinking level** is clamped to that model's supported levels
+- The Model settings menu lists only Agent types whose **Resolved model** differs from the model shown on its Global default row
 
 ### Navigation
 
