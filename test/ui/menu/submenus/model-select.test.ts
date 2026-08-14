@@ -152,7 +152,7 @@ describe("createModelSelectSubmenu", () => {
     expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
     targetList.onSelect!({ value: "global" });
 
-    expect(onClear).toHaveBeenCalledWith("global");
+    expect(onClear).toHaveBeenCalledWith("global", expect.any(Function));
     expect(done).toHaveBeenCalledWith("global");
   });
 

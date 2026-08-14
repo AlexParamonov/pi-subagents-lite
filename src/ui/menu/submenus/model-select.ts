@@ -61,9 +61,7 @@ export function createModelSelectSubmenu(
       theme: options.theme,
       projectOffered: options.projectOffered,
       includeAll: true,
-      onPick: (target) => {
-        options.onClear(target);
-      },
+      onPick: options.onClear,
     });
 
     modeList.onSelect = (item) => {
