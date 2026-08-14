@@ -34,13 +34,8 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       (key: string, label: string): ((target: "session" | "global" | "project", model: string | null) => void) =>
       (target, model) => {
         const inherits = model === null || model === "(inherits parent)";
-        if (inherits) {
-          store.mutate.agent.clearModelOverride(key, target);
-        } else if (target === "session") {
-          store.mutate.session.setOverride(key, model);
-        } else {
-          store.mutate.agent.setModelOverride(key, model, target);
-        }
+        if (inherits) store.mutate.agent.clearModelOverride(key, target);
+        else store.mutate.agent.setModelOverride(key, model, target);
         ctx.ui.notify(
           inherits ? `${label} inherits parent model` : `${label} model set to ${model} (${target})`,
           "info",
@@ -52,11 +47,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     const clearOverrideOnSelect =
       (key: string, label: string): ((target: TargetChoice) => void) =>
       (target) => {
-        if (target === "session") {
-          store.mutate.session.clearOverride(key);
-        } else {
-          store.mutate.agent.clearModelOverride(key, target);
-        }
+        store.mutate.agent.clearModelOverride(key, target);
         ctx.ui.notify(`${label} override cleared (${target})`, "info");
       };
 
@@ -162,11 +153,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         projectOffered,
         message: (target) => `Clear all model overrides at the ${target} level?`,
         onConfirm: (target) => {
-          if (target === "session") {
-            store.mutate.session.clearAll();
-          } else {
-            store.mutate.agent.clearAllModelOverrides(target);
-          }
+          store.mutate.agent.clearAllModelOverrides(target);
           ctx.ui.notify(`Model overrides cleared (${target})`, "info");
         },
       }),
