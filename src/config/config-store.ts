@@ -295,10 +295,7 @@ export class ConfigStore {
           (layer) => this.clearAgentModelKeys(layer),
         );
       },
-      setForceBackground: (enabled: boolean): void => {
-        this.globalAgent().forceBackground = enabled;
-        this.commitGlobal();
-      },
+      setForceBackground: (enabled: boolean) => this.setAgentLayerEntry("forceBackground", enabled, "global"),
       setShowCost: (enabled: boolean): void => {
         this.globalAgent().showCost = enabled;
         this.sessionShowCost = undefined;
@@ -306,80 +303,44 @@ export class ConfigStore {
         this.widget?.setShowCost(enabled);
         this.syncWidgetStatsVisibility();
       },
-      setGraceTurns: (n: number): void => {
-        this.globalAgent().graceTurns = n;
-        this.commitGlobal();
-      },
-      setToolTimeoutMinutes: (n: number): void => {
-        this.globalAgent().toolTimeoutMinutes = Math.max(0, n);
-        this.commitGlobal();
-      },
-      setIdleTimeoutMinutes: (n: number): void => {
-        this.globalAgent().idleTimeoutMinutes = Math.max(0, n);
-        this.commitGlobal();
-      },
-      setOutputTranscript: (enabled: boolean): void => {
-        this.globalAgent().outputTranscript = enabled;
-        this.commitGlobal();
-      },
-      setSystemPromptMode: (mode: SystemPromptMode): void => {
-        this.globalAgent().systemPromptMode = mode;
-        this.commitGlobal();
-      },
-      setIncludeContextFiles: (enabled: boolean): void => {
-        this.globalAgent().includeContextFiles = enabled;
-        this.commitGlobal();
-      },
+      setGraceTurns: (n: number) => this.setAgentLayerEntry("graceTurns", n, "global"),
+      setToolTimeoutMinutes: (n: number) => this.setAgentLayerEntry("toolTimeoutMinutes", Math.max(0, n), "global"),
+      setIdleTimeoutMinutes: (n: number) => this.setAgentLayerEntry("idleTimeoutMinutes", Math.max(0, n), "global"),
+      setOutputTranscript: (enabled: boolean) => this.setAgentLayerEntry("outputTranscript", enabled, "global"),
+      setSystemPromptMode: (mode: SystemPromptMode) => this.setAgentLayerEntry("systemPromptMode", mode, "global"),
+      setIncludeContextFiles: (enabled: boolean) => this.setAgentLayerEntry("includeContextFiles", enabled, "global"),
       setDefaultThinking: (level: ThinkingLevel | undefined, target: "global" | "project" = "global"): void => {
         this.setAgentLayerEntry("defaultThinking", level, target);
       },
       setDefaultMaxTurns: (n: number | undefined, target: "global" | "project" = "global"): void => {
         this.setAgentLayerEntry("defaultMaxTurns", n, target);
       },
-      setLoadSkillsImplicitly: (value: boolean): void => {
-        this.globalAgent().loadSkillsImplicitly = value;
-        this.commitGlobal();
-      },
-      setLoadExtensionsImplicitly: (value: boolean): void => {
-        this.globalAgent().loadExtensionsImplicitly = value;
-        this.commitGlobal();
-      },
-      setDisableDefaultAgents: (value: boolean): void => {
-        this.globalAgent().disableDefaultAgents = value;
-        this.commitGlobal();
-      },
-      setAgentToolStrictMode: (value: boolean): void => {
-        this.globalAgent().agentToolStrictMode = value;
-        this.commitGlobal();
-      },
+      setLoadSkillsImplicitly: (value: boolean) => this.setAgentLayerEntry("loadSkillsImplicitly", value, "global"),
+      setLoadExtensionsImplicitly: (value: boolean) =>
+        this.setAgentLayerEntry("loadExtensionsImplicitly", value, "global"),
+      setDisableDefaultAgents: (value: boolean) => this.setAgentLayerEntry("disableDefaultAgents", value, "global"),
+      setAgentToolStrictMode: (value: boolean) => this.setAgentLayerEntry("agentToolStrictMode", value, "global"),
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
       setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
       setShowInput: (enabled: boolean) => this.setAgentVisibility("showInput", enabled),
       setShowOutput: (enabled: boolean) => this.setAgentVisibility("showOutput", enabled),
       setShowContext: (enabled: boolean) => this.setAgentVisibility("showContext", enabled),
       setShowTime: (enabled: boolean) => this.setAgentVisibility("showTime", enabled),
-      setOutputThinkingBufferSize: (size: number): void => {
-        this.globalAgent().outputThinkingBufferSize = size;
-        this.commitGlobal();
-      },
+      setOutputThinkingBufferSize: (size: number) =>
+        this.setAgentLayerEntry("outputThinkingBufferSize", size, "global"),
       setFinishedRetentionMinutes: (minutes: number): void => {
         const n = Math.max(MIN_FINISHED_RETENTION_MINUTES, minutes);
-        this.globalAgent().finishedRetentionMinutes = n;
-        this.commitGlobal();
+        this.setAgentLayerEntry("finishedRetentionMinutes", n, "global");
         // Push the window to the widget so it applies on the next render tick.
         this.widget?.setFinishedRetentionMinutes(n);
       },
     },
     widget: {
       setCompact: (enabled: boolean): void => {
-        this.globalAgent().widgetCompact = enabled;
-        this.commitGlobal();
+        this.setAgentLayerEntry("widgetCompact", enabled, "global");
         this.syncWidgetSettings();
       },
-      setShowCompletionCards: (enabled: boolean): void => {
-        this.globalAgent().showCompletionCards = enabled;
-        this.commitGlobal();
-      },
+      setShowCompletionCards: (enabled: boolean) => this.setAgentLayerEntry("showCompletionCards", enabled, "global"),
       setMaxLines: (lines: number): void => {
         this.globalAgent().widgetMaxLines = lines;
         if (this.globalAgent().widgetMaxLinesCompact === undefined) {
@@ -389,8 +350,7 @@ export class ConfigStore {
         this.syncWidgetSettings();
       },
       setMaxLinesCompact: (lines: number): void => {
-        this.globalAgent().widgetMaxLinesCompact = lines;
-        this.commitGlobal();
+        this.setAgentLayerEntry("widgetMaxLinesCompact", lines, "global");
         this.syncWidgetSettings();
       },
 
@@ -398,38 +358,29 @@ export class ConfigStore {
       // behavior, where toggling the shortcut takes effect on next reload rather
       // than immediately. Flagged for a follow-up (the other three widget
       // setters do sync).
-      setShortcut: (enabled: boolean): void => {
-        this.globalAgent().widgetShortcut = enabled;
-        this.commitGlobal();
-      },
+      setShortcut: (enabled: boolean) => this.setAgentLayerEntry("widgetShortcut", enabled, "global"),
       setShowModel: (enabled: boolean): void => {
-        this.globalAgent().widgetShowModel = enabled;
-        this.commitGlobal();
+        this.setAgentLayerEntry("widgetShowModel", enabled, "global");
         this.syncWidgetStatsVisibility();
       },
       setShowThinking: (enabled: boolean): void => {
-        this.globalAgent().widgetShowThinking = enabled;
-        this.commitGlobal();
+        this.setAgentLayerEntry("widgetShowThinking", enabled, "global");
         this.syncWidgetStatsVisibility();
       },
       setNavHint: (enabled: boolean): void => {
-        this.globalAgent().widgetNavHint = enabled;
-        this.commitGlobal();
+        this.setAgentLayerEntry("widgetNavHint", enabled, "global");
         this.syncWidgetSettings();
       },
       setModelDisplayStyle: (style: "id" | "name"): void => {
-        this.globalAgent().modelDisplayStyle = style;
-        this.commitGlobal();
+        this.setAgentLayerEntry("modelDisplayStyle", style, "global");
         this.syncWidgetSettings();
       },
       setModelThinkingPlacement: (placement: ModelThinkingPlacement): void => {
-        this.globalAgent().modelThinkingPlacement = placement;
-        this.commitGlobal();
+        this.setAgentLayerEntry("modelThinkingPlacement", placement, "global");
         this.syncWidgetSettings();
       },
       setStatusBarFormat: (format: "full" | "compact"): void => {
-        this.globalAgent().statusBarFormat = format;
-        this.commitGlobal();
+        this.setAgentLayerEntry("statusBarFormat", format, "global");
         this.syncWidgetSettings();
       },
     },
@@ -565,7 +516,7 @@ export class ConfigStore {
     return null;
   }
 
-  /** Write an agent key (model family or per-type) at a persisted layer; undefined deletes it. */
+  /** Write an agent key at a persisted layer; undefined deletes it. */
   private setAgentLayerEntry(key: string, value: unknown, target: "global" | "project"): void {
     const layer = this.layerFor(target);
     if (!layer) return;
@@ -720,8 +671,7 @@ export class ConfigStore {
     key: "showTools" | "showTurns" | "showInput" | "showOutput" | "showContext" | "showTime",
     value: boolean,
   ): void {
-    this.globalAgent()[key] = value;
-    this.commitGlobal();
+    this.setAgentLayerEntry(key, value, "global");
     this.syncWidgetStatsVisibility();
   }
 
