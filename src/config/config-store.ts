@@ -625,13 +625,15 @@ export class ConfigStore {
     after?.();
   }
 
-  /** Run a write against the project layer when offered, persisting it after. */
+  /**
+   * Run a write against an existing project layer, persisting it after.
+   * Skips when no project file exists: a clear must never create one (sets
+   * create the layer via layerFor).
+   */
   private withProjectLayer(write: (layer: RawConfig) => void): void {
-    if (!this.projectTargetOffered) return;
-    const layer = this.layerFor("project");
-    if (!layer) return;
-    write(layer);
-    this.io.saveProject(layer);
+    if (!this.projectRaw) return;
+    write(this.projectRaw);
+    this.io.saveProject(this.projectRaw);
   }
 
   private removeConcurrencyEntry(

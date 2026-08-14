@@ -36,6 +36,7 @@
 - For layout/order changes, assert the exact full item array and separator count, not membership.
 - Tests that pass on unfixed code are vacuous for the regression they claim: wrap-around edges pass even without the fix — include mid-list cases that fail on old code.
 - File-content test fixtures: malformed input as raw text, not a stringified value (`JSON.stringify` of a malformed-JSON string is valid JSON); assert against known-good literals, not recomputed expectations.
+- Clear operations that write a layer must gate on layer existence, not target availability: `projectTargetOffered` (status "absent") is true when no project file exists, so an unconditional project write through it created an inert file on every "all levels" clear. Gate on the loaded/created raw layer (`projectRaw === null` means nothing to clear), and pin the set-then-clear sequence in a test so the guard can't regress to a status check.
 
 ## Delegation
 - Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
