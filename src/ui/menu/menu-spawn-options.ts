@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
+import { SettingsList, SelectList, type SettingItem, type Component } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
 import { createTargetSelectSubmenu } from "./submenus/target-select.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
@@ -25,6 +25,19 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
   const store = getStore();
   /** " [project]" when the effective value comes from the project layer. */
   const projectTag = (key: string): string => (store.hasProjectModelKey(key) ? " [project]" : "");
+
+  /** Submenu: pick a persisted layer (global or project), then edit the value. No session target. */
+  const persistedTargetSubmenu = (
+    theme: Theme,
+    onPick: (target: "global" | "project", pickDone: (selectedValue?: string) => void) => Component | void,
+  ) =>
+    createTargetSelectSubmenu({
+      theme,
+      projectOffered: store.projectTargetOffered,
+      includeSession: false,
+      // The picker offers only global/project here; narrow its TargetChoice.
+      onPick: (target, pickDone) => onPick(target as "global" | "project", pickDone),
+    });
 
   const buildItems = (theme: Theme): SettingItem[] => [
     {
@@ -70,27 +83,20 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Default max turns",
       currentValue: `${store.agent.defaultMaxTurns ?? "(not set)"}${projectTag("defaultMaxTurns")}`,
 
-      submenu: (currentValue, done) =>
-        createTargetSelectSubmenu({
-          theme,
-          projectOffered: store.projectTargetOffered,
-          includeSession: false,
-          onPick: (picked, pickDone) => {
-            const target = picked as "global" | "project";
-            return createNumericSubmenu(
-              ctx,
-              { min: 1 },
-              (parsed) => {
-                store.mutate.agent.setDefaultMaxTurns(parsed, target);
-                ctx.ui.notify(`Default max turns set to ${parsed} (${target})`, "info");
-              },
-              () => {
-                store.mutate.agent.setDefaultMaxTurns(undefined, target);
-                ctx.ui.notify(`Default max turns cleared (${target})`, "info");
-              },
-            )(String(store.agent.defaultMaxTurns ?? ""), pickDone);
+      submenu: persistedTargetSubmenu(theme, (target, pickDone) =>
+        createNumericSubmenu(
+          ctx,
+          { min: 1 },
+          (parsed) => {
+            store.mutate.agent.setDefaultMaxTurns(parsed, target);
+            ctx.ui.notify(`Default max turns set to ${parsed} (${target})`, "info");
           },
-        })(currentValue, done),
+          () => {
+            store.mutate.agent.setDefaultMaxTurns(undefined, target);
+            ctx.ui.notify(`Default max turns cleared (${target})`, "info");
+          },
+        )(String(store.agent.defaultMaxTurns ?? ""), pickDone),
+      ),
       description: "Soft turn limit; agent is steered here, then hard-aborts after grace turns. Blank = unlimited.",
     },
     {
@@ -98,30 +104,23 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Default thinking level",
       currentValue: `${store.agent.defaultThinking ?? "inherit"}${projectTag("defaultThinking")}`,
 
-      submenu: (currentValue, done) =>
-        createTargetSelectSubmenu({
-          theme,
-          projectOffered: store.projectTargetOffered,
-          includeSession: false,
-          onPick: (target, pickDone) => {
-            const level = target as "global" | "project";
-            const levelItems = [...VALID_THINKING_LEVELS, "inherit"].map((v) => ({
-              value: v,
-              label: v,
-            }));
-            const list = new SelectList(levelItems, 10, buildSelectListTheme(theme));
-            list.onSelect = (item) => {
-              store.mutate.agent.setDefaultThinking(
-                item.value === "inherit" ? undefined : (item.value as ThinkingLevel),
-                level,
-              );
-              ctx.ui.notify(`Default thinking level set to ${item.value} (${level})`, "info");
-              pickDone(item.value);
-            };
-            list.onCancel = () => pickDone();
-            return list;
-          },
-        })(currentValue, done),
+      submenu: persistedTargetSubmenu(theme, (target, pickDone) => {
+        const levelItems = [...VALID_THINKING_LEVELS, "inherit"].map((v) => ({
+          value: v,
+          label: v,
+        }));
+        const list = new SelectList(levelItems, 10, buildSelectListTheme(theme));
+        list.onSelect = (item) => {
+          store.mutate.agent.setDefaultThinking(
+            item.value === "inherit" ? undefined : (item.value as ThinkingLevel),
+            target,
+          );
+          ctx.ui.notify(`Default thinking level set to ${item.value} (${target})`, "info");
+          pickDone(item.value);
+        };
+        list.onCancel = () => pickDone();
+        return list;
+      }),
       description: "Thinking level applied when agent frontmatter omits one.",
     },
     {
