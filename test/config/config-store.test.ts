@@ -460,12 +460,42 @@ describe("ConfigStore override layers", () => {
     expect(saves[0].layer).toBe("global");
   });
 
-  it("clear-all at all levels in a trusted project without a file writes an empty project layer", () => {
+  it("clear-all at all levels in a trusted project without a file creates no project file", () => {
     const { io, saves, project } = memIO({ global: { agent: { Explore: "g" } }, projectStatus: "absent" });
     const store = new ConfigStore(io);
     store.mutate.agent.clearAllModelOverrides("all");
-    expect(saves).toHaveLength(2);
-    expect(project()).toEqual({});
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(project()).toBeNull();
+  });
+
+  it("clearModelOverride at all levels with no project file clears only global", () => {
+    const { io, saves, project } = memIO({ global: { agent: { Explore: "g" } }, projectStatus: "absent" });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearModelOverride("Explore", "all");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(project()).toBeNull();
+  });
+
+  it("clearDefaultMaxTurns at all levels with no project file clears only global", () => {
+    const { io, saves, project } = memIO({ global: { agent: { defaultMaxTurns: 50 } }, projectStatus: "absent" });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearDefaultMaxTurns("all");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(project()).toBeNull();
+  });
+
+  it("clear-all at all levels after a project set still clears the layer created this session", () => {
+    const { io, saves, project } = memIO({ global: { agent: { Explore: "g" } }, projectStatus: "absent" });
+    const store = new ConfigStore(io);
+    store.mutate.agent.setModelOverride("Explore", "p/explore", "project");
+    store.mutate.agent.clearAllModelOverrides("all");
+    expect(saves).toHaveLength(3);
+    expect(saves[2].layer).toBe("project");
+    expect(saves[2].config).toEqual({ agent: {} });
+    expect(project()).toEqual({ agent: {} });
   });
 });
 
@@ -623,6 +653,25 @@ describe("ConfigStore concurrency layers", () => {
     store.mutate.concurrency.removeDefault("all");
     expect(store.concurrency.default).toBe(4);
     expect(saves).toHaveLength(2);
+  });
+
+  it("clearAll at all levels with no project file clears only global", () => {
+    const { io, saves, project } = memIO({ global: { concurrency: { default: 2 } }, projectStatus: "absent" });
+    const store = new ConfigStore(io);
+    store.mutate.concurrency.clearAll("all");
+    expect(store.concurrency.default).toBe(4);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(project()).toBeNull();
+  });
+
+  it("removeProvider at all levels with no project file clears only global", () => {
+    const { io, saves, project } = memIO({ global: { concurrency: { providers: { a: 1 } } }, projectStatus: "absent" });
+    const store = new ConfigStore(io);
+    store.mutate.concurrency.removeProvider("a", "all");
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(project()).toBeNull();
   });
 });
 

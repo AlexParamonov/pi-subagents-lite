@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Target-picker wording.** The global and project entries now read "Global (saves to config)" / "Project (saves to project config)", parallel with "Session (not saved)".
 
 - **"(inherits parent)" no longer stored as a model value.** In the Model Settings menu, picking "(inherits parent)" now deletes the key at the chosen level (session, global, or project) instead of persisting the literal sentinel string into the config file or session overrides; the effective model falls through to the next layer.
+- **"All levels" clears never create a project file.** Clearing a model or concurrency key at all levels in a trusted project without `.pi/subagents-lite.json` previously wrote an empty project file out of nothing. A clear now skips the project layer entirely when no project file exists (only a set creates the file); an existing project file keeps today's behavior.
 
 - **Conversation viewer freeze from running agents menu.** Viewer overlay now uses `{ overlay: true }` so closing it restores the menu instead of clobbering it and freezing all input.
 - **View result bottom border.** Fixed mirrored corner characters in the text viewer frame.
