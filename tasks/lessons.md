@@ -122,3 +122,8 @@
 ## Scope
 - Stay within issue scope. When provisional wording or removed-machinery comment changes, update the spec/comment in the same commit.
 
+
+## project-config-overrides - 2026-08-14
+**What worked:** Layer model where provenance is membership (session map, project layer, global layer) — no tombstone/diff machinery; per-layer unmerged writes kept both files honest and made hand-edits predictable. RED-first regression tests driven through the real ConfigStore + real menu flow caught the sentinel bug the store-mirror tests replicated. Manual testing in a sandboxed HOME with tmux-driven TUI sessions found two display bugs automated tests could not (provenance tag under session-default shadowing; missing onRebuild in one of three menus).
+**What failed:** "(inherits parent)" sentinel regression — the pre-conversion null-mapping was dropped during the menu rewrite, and mirror-based menu tests replicated the bug instead of catching it. TUI display state (tags) drifted from store state in one menu because only two of three menus wired onRebuild.
+**Next time:** When rewriting a value-mapping path, diff the old conversion (git show HEAD~1) and add one test per target that drives the real submenu flow. When a display feature spans several menus, wire the rebuild hook in all of them in the same commit, and audit display provenance by "which value is shown, not which layer has the key". Manual test at least one edge where two layers shadow each other (session default shadowing project key).
