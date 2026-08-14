@@ -1,5 +1,6 @@
 /**
- * Tests for createModelSelectSubmenu — 2-step override mode → model selection.
+ * Tests for createModelSelectSubmenu — target level → model selection,
+ * with a nested per-level clear picker (ADR-0008).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -101,13 +102,17 @@ describe("createModelSelectSubmenu", () => {
     italic: (t: string) => t,
   };
 
-  it("returns a function that creates a SelectList with override mode options", () => {
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"],
-      showClear: false,
-      theme: mockTheme,
-      onSelect: vi.fn(),
-    });
+  const baseOptions = {
+    modelOptions: ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"],
+    showClear: false,
+    projectOffered: false,
+    theme: mockTheme,
+    onSet: vi.fn(),
+    onClear: vi.fn(),
+  };
+
+  it("returns a function that creates a SelectList with target options", () => {
+    const factory = createModelSelectSubmenu({ ...baseOptions });
     expect(typeof factory).toBe("function");
 
     factory("(inherits parent)", vi.fn());
@@ -116,89 +121,77 @@ describe("createModelSelectSubmenu", () => {
     expect(items).toHaveLength(2);
     expect(items[0].value).toBe("session");
     expect(items[0].label).toContain("session");
-    expect(items[1].value).toBe("permanent");
-    expect(items[1].label).toContain("permanent");
+    expect(items[1].value).toBe("global");
+    expect(items[1].label).toContain("global");
+  });
+
+  it("offers the project target when the project layer is available", () => {
+    const factory = createModelSelectSubmenu({ ...baseOptions, projectOffered: true });
+    factory("(inherits parent)", vi.fn());
+    const items = selectListInstances[0].items;
+    expect(items.map((i: any) => i.value)).toEqual(["session", "global", "project"]);
   });
 
   it("shows Clear option when showClear is true", () => {
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514"],
-      showClear: true,
-      theme: mockTheme,
-      onSelect: vi.fn(),
-    });
+    const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true });
     factory("openai/gpt-4o", vi.fn());
     const items = selectListInstances[0].items;
     expect(items).toHaveLength(3);
     expect(items[2].value).toBe("clear");
   });
 
-  it("calls onSelect with mode='clear' and done when clear is selected", () => {
-    const onSelect = vi.fn();
+  it("nested clear picker calls onClear with the picked target", () => {
+    const onClear = vi.fn();
     const done = vi.fn();
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514"],
-      showClear: true,
-      theme: mockTheme,
-      onSelect,
-    });
+    const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true, onClear });
     factory("openai/gpt-4o", done);
     selectListInstances[0].onSelect!({ value: "clear" });
-    expect(onSelect).toHaveBeenCalledWith("clear", null);
-    expect(done).toHaveBeenCalledWith("clear");
+
+    // The nested target picker is a second SelectList with "all levels".
+    const targetList = selectListInstances[1];
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
+    targetList.onSelect!({ value: "global" });
+
+    expect(onClear).toHaveBeenCalledWith("global");
+    expect(done).toHaveBeenCalledWith("global");
   });
 
   it("transitions to model selection when session is selected", () => {
-    const onSelect = vi.fn();
+    const onSet = vi.fn();
     const done = vi.fn();
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514"],
-      showClear: false,
-      theme: mockTheme,
-      onSelect,
-    });
+    const factory = createModelSelectSubmenu({ ...baseOptions, onSet });
     const component = factory("(inherits parent)", done);
     selectListInstances[0].onSelect!({ value: "session" });
-    // onSelect not called yet (model selection step pending)
-    expect(onSelect).not.toHaveBeenCalled();
+    // onSet not called yet (model selection step pending)
+    expect(onSet).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
     // The delegator now renders the searchable model selector, not the mode list
     expect(component.render(80)).toEqual(["MODEL-SELECTOR-ACTIVE"]);
-    // Picking a model in the selector completes the flow with the chosen mode
+    // Picking a model in the selector completes the flow with the chosen target
     searchableSelectInstances[0].callbacks.onSelect("openai/gpt-4o");
-    expect(onSelect).toHaveBeenCalledWith("session", "openai/gpt-4o");
+    expect(onSet).toHaveBeenCalledWith("session", "openai/gpt-4o");
     expect(done).toHaveBeenCalledWith("openai/gpt-4o");
   });
 
-  it("transitions to model selection when permanent is selected", () => {
-    const onSelect = vi.fn();
+  it("transitions to model selection when global is selected", () => {
+    const onSet = vi.fn();
     const done = vi.fn();
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514"],
-      showClear: false,
-      theme: mockTheme,
-      onSelect,
-    });
+    const factory = createModelSelectSubmenu({ ...baseOptions, onSet });
     const component = factory("(inherits parent)", done);
-    selectListInstances[0].onSelect!({ value: "permanent" });
-    expect(onSelect).not.toHaveBeenCalled();
+    selectListInstances[0].onSelect!({ value: "global" });
+    expect(onSet).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
     // The delegator now renders the searchable model selector, not the mode list
     expect(component.render(80)).toEqual(["MODEL-SELECTOR-ACTIVE"]);
   });
 
-  it("calls done without onSelect on cancel from mode selection", () => {
-    const onSelect = vi.fn();
+  it("calls done without onSet on cancel from mode selection", () => {
+    const onSet = vi.fn();
     const done = vi.fn();
-    const factory = createModelSelectSubmenu({
-      modelOptions: ["anthropic/claude-sonnet-4-20250514"],
-      showClear: false,
-      theme: mockTheme,
-      onSelect,
-    });
+    const factory = createModelSelectSubmenu({ ...baseOptions, onSet });
     factory("(inherits parent)", done);
     selectListInstances[0].onCancel!();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSet).not.toHaveBeenCalled();
     expect(done).toHaveBeenCalledWith();
   });
 });

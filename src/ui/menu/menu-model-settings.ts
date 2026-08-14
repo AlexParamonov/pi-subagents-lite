@@ -2,8 +2,9 @@
  * menu-model-settings.ts — Model settings menu concern.
  *
  * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
- * Model overrides use 2-step submenu: override mode → model selection.
- * Cost display toggle removed (already in widget settings → usage stats).
+ * Model overrides use target-level submenus (session/global/project, plus
+ * nested per-level clear) per ADR-0008. Values show [session]/[project] tags
+ * when they come from those layers.
  *
  * Exports:
  *   - showModelSettingsMenu: model settings with global default, per-type overrides
@@ -13,64 +14,77 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import type { Theme } from "../types.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "../../config/types.js";
 import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
-import { createConfirmSubmenu } from "./submenus/confirm.js";
+import { createClearAllSubmenu, type TargetChoice } from "./submenus/target-select.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 
 export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] => {
     const items: SettingItem[] = [];
+    const projectOffered = store.projectTargetOffered;
 
-    // Shared onSelect for model override submenus: applies session/permanent/clear
-    // mode to the given config key, with `label` used in notify messages.
+    // Shared onSet for model override submenus: applies the model to the given
+    // config key at the picked layer, with `label` used in notify messages.
+    // The picker returns the literal "(inherits parent)" sentinel string (never
+    // null); selecting it means "clear this key at the picked layer" so the
+    // value falls through to the next layer (ADR-0008 delete semantics).
     const modelOverrideOnSelect =
-      (key: string, label: string): ((mode: "session" | "permanent" | "clear", model: string | null) => void) =>
-      (mode, model) => {
-        if (mode === "clear") {
-          store.mutate.agent.clearModelOverride(key);
-          store.mutate.session.clearOverride(key);
-          ctx.ui.notify(`${label} overrides cleared`, "info");
-          return;
-        }
-        const effective = model === "(inherits parent)" ? null : model;
-        if (mode === "session") {
-          if (effective === null) {
-            store.mutate.session.clearOverride(key);
-          } else {
-            store.mutate.session.setOverride(key, effective);
-          }
-        } else {
-          store.mutate.agent.setModelOverride(key, effective);
-        }
+      (key: string, label: string): ((target: "session" | "global" | "project", model: string | null) => void) =>
+      (target, model) => {
+        const inherits = model === null || model === "(inherits parent)";
+        if (inherits) store.mutate.agent.clearModelOverride(key, target);
+        else store.mutate.agent.setModelOverride(key, model, target);
         ctx.ui.notify(
-          effective === null ? `${label} inherits parent model` : `${label} model set to ${effective}`,
+          inherits ? `${label} inherits parent model` : `${label} model set to ${model} (${target})`,
           "info",
         );
       };
 
+    // Shared onClear: deletes the key at the picked layer, falling through to
+    // the next layer. "all" clears every layer.
+    const clearOverrideOnSelect =
+      (key: string, label: string): ((target: TargetChoice) => void) =>
+      (target) => {
+        store.mutate.agent.clearModelOverride(key, target);
+        ctx.ui.notify(`${label} override cleared (${target})`, "info");
+      };
+
+    // Shared submenu factory: target + model picker for one config key.
+    const modelSubmenuFor = (typeName: string, effectiveModel: string | null, showClear: boolean) =>
+      createModelSelectSubmenu({
+        modelOptions,
+        showClear,
+        projectOffered,
+        theme,
+        currentModel: effectiveModel,
+        onSet: modelOverrideOnSelect(typeName, typeName),
+        onClear: clearOverrideOnSelect(typeName, typeName),
+      });
+
     // Global default model
     const sessionDefault = store.sessionDefaultModel;
-    const hasSessionGlobal = sessionDefault != null;
-    const globalDisplayValue = hasSessionGlobal
-      ? `${sessionDefault} [session]`
-      : store.agent.defaultModel
-        ? store.agent.defaultModel
-        : "(inherits parent)";
+    const effectiveDefault = store.agentConfigSnapshot().default;
+    const hasProjectDefault = store.hasProjectModelKey("default");
+    const hasGlobalDefault = store.hasGlobalModelKey("default");
+    const globalDisplayValue =
+      sessionDefault != null
+        ? `${sessionDefault} [session]`
+        : hasProjectDefault
+          ? `${effectiveDefault ?? "(inherits parent)"} [project]`
+          : (effectiveDefault ?? "(inherits parent)");
 
     items.push({
       id: "defaultModel",
       label: "Global default model",
       currentValue: globalDisplayValue,
       description: "Model used when no per-type override or frontmatter model applies.",
-      submenu: createModelSelectSubmenu({
-        modelOptions,
-        showClear: false,
-        theme,
-        onSelect: modelOverrideOnSelect("default", "Global default"),
-      }),
+      submenu: modelSubmenuFor(
+        "default",
+        effectiveDefault,
+        sessionDefault != null || hasProjectDefault || hasGlobalDefault,
+      ),
     });
 
     // Per-type overrides
@@ -92,7 +106,8 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
 
     for (const { typeName, cfg, sessionOverride, configOverride, hasSession, effectiveModel } of overridden) {
       const frontmatterHint = !hasSession && configOverride && cfg?.model ? `${cfg.model} → ` : "";
-      const displayModel = hasSession ? `${sessionOverride} [session]` : effectiveModel;
+      const projectTag = store.hasProjectModelKey(typeName) ? " [project]" : "";
+      const displayModel = hasSession ? `${sessionOverride} [session]` : `${effectiveModel}${projectTag}`;
       const hasPerm = !!configOverride;
 
       items.push({
@@ -100,12 +115,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         label: typeName,
         currentValue: `${frontmatterHint}${displayModel}`,
         description: `Per-type model override for the ${typeName} agent type.`,
-        submenu: createModelSelectSubmenu({
-          modelOptions,
-          showClear: hasPerm,
-          theme,
-          onSelect: modelOverrideOnSelect(typeName, typeName),
-        }),
+        submenu: modelSubmenuFor(typeName, effectiveModel, hasPerm || hasSession),
       });
     }
 
@@ -122,13 +132,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
             {
               onSelect: (typeName) => {
                 const entry = nonOverridden.find((e) => e.typeName === typeName)!;
-                const modelSubmenu = createModelSelectSubmenu({
-                  modelOptions,
-                  showClear: false,
-                  theme,
-                  onSelect: modelOverrideOnSelect(entry.typeName, entry.typeName),
-                });
-                return modelSubmenu(entry.effectiveModel, subDone);
+                return modelSubmenuFor(entry.typeName, entry.effectiveModel, false)(entry.effectiveModel, subDone);
               },
               onCancel: () => subDone(),
             },
@@ -138,46 +142,19 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     }
 
     items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-    // Clear session overrides
-    const hasSessionOverrides =
-      store.sessionDefaultModel != null || getAllTypes().some((type) => store.sessionModelOverride(type) != null);
-    if (hasSessionOverrides) {
-      items.push({
-        id: "clearSession",
-        label: "Clear session overrides",
-        currentValue: "",
-        description: "Discard model overrides set only for this session.",
-        submenu: createConfirmSubmenu({
-          message: "Clear all session overrides?",
-          theme,
-          onConfirm: () => {
-            store.mutate.session.clearAll();
-            ctx.ui.notify("Session overrides cleared", "info");
-          },
-        }),
-      });
-    }
-
-    // Clear all overrides
+    // Clear-all per target: nested level picker, then confirm.
     items.push({
       id: "clearAll",
-      label: "Clear all overrides",
+      label: "Clear all model overrides...",
       currentValue: "",
-      description: "Discard all model overrides (config and session).",
-      submenu: createConfirmSubmenu({
-        message: "Clear all model overrides?",
+      description: "Discard model overrides at the chosen level (session, global, project, or all).",
+      submenu: createClearAllSubmenu({
         theme,
-        onConfirm: () => {
-          const agentConfig = store.agentConfigSnapshot();
-          const hasOverrides = Object.entries(agentConfig).some(
-            ([k, v]) => !CONFIG_AGENT_NON_MODEL_KEYS.includes(k) && v != null,
-          );
-          if (!hasOverrides && store.agent.defaultModel === null) {
-            ctx.ui.notify("No overrides to clear", "info");
-            return;
-          }
-          store.mutate.agent.clearAllModelOverrides();
-          ctx.ui.notify("All model overrides cleared", "info");
+        projectOffered,
+        message: (target) => `Clear all model overrides at the ${target} level?`,
+        onConfirm: (target) => {
+          store.mutate.agent.clearAllModelOverrides(target);
+          ctx.ui.notify(`Model overrides cleared (${target})`, "info");
         },
       }),
     });
