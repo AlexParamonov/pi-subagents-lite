@@ -382,6 +382,43 @@ describe("ConfigStore override layers", () => {
     expect(store.agent.defaultMaxTurns).toBeUndefined();
   });
 
+  it("clearDefaultMaxTurns at project deletes only the project key", () => {
+    const { io, saves } = memIO({
+      global: { agent: { defaultMaxTurns: 50 } },
+      project: { agent: { defaultMaxTurns: 30 } },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearDefaultMaxTurns("project");
+    expect(store.agent.defaultMaxTurns).toBe(50); // falls through to global
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("project");
+    expect(saves[0].config.agent).toEqual({});
+  });
+
+  it("clearDefaultMaxTurns at all levels clears global and project", () => {
+    const { io, saves } = memIO({
+      global: { agent: { defaultMaxTurns: 50 } },
+      project: { agent: { defaultMaxTurns: 30 } },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearDefaultMaxTurns("all");
+    expect(store.agent.defaultMaxTurns).toBeUndefined();
+    expect(saves).toHaveLength(2);
+    expect(saves[0].layer).toBe("global");
+    expect(saves[1].layer).toBe("project");
+  });
+
+  it("clearDefaultMaxTurns at all levels skips the project layer when it is not offered", () => {
+    const { io, saves } = memIO({ global: { agent: { defaultMaxTurns: 50 } } });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearDefaultMaxTurns("all");
+    expect(store.agent.defaultMaxTurns).toBeUndefined();
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+  });
+
   it("clearAllModelOverrides at project clears model keys and preserves unknown keys", () => {
     const { io, saves } = memIO({
       global: { agent: { default: "g", defaultThinking: "high", Explore: "g/explore" } },

@@ -26,11 +26,15 @@ export interface TargetSelectSubmenuOptions {
   includeSession?: boolean;
   /** Include the "All levels" entry (clears only). Default: false. */
   includeAll?: boolean;
+  /** Append a "Clear..." entry that opens a nested per-level clear picker. Default: false. */
+  showClear?: boolean;
   /**
    * Apply the pick. Return a Component to chain into (value input, confirm);
    * return void to close the submenu (the settings list rebuilds).
    */
   onPick: (target: TargetChoice, done: (selectedValue?: string) => void) => Component | void;
+  /** Clear the key at the picked level; required when showClear is set. */
+  onClear?: (target: TargetChoice) => void;
 }
 
 export function createTargetSelectSubmenu(
@@ -41,12 +45,29 @@ export function createTargetSelectSubmenu(
     if (options.includeSession ?? true) items.push({ value: "session", label: "Session (not saved)" });
     items.push({ value: "global", label: "Global (saves to config)" });
     if (options.projectOffered) items.push({ value: "project", label: "Project (saves to project config)" });
+    if (options.showClear) items.push({ value: "clear", label: "Clear..." });
     if (options.includeAll) items.push({ value: "all", label: "All levels" });
 
     const list = new SelectList(items, 5, buildSelectListTheme(options.theme));
     const delegator = createDelegatingComponent(list);
 
     list.onSelect = (item) => {
+      if (item.value === "clear") {
+        // "Clear..." routes to a nested per-level picker; "all" clears every layer.
+        delegator.setActive(
+          createTargetSelectSubmenu({
+            theme: options.theme,
+            projectOffered: options.projectOffered,
+            includeSession: options.includeSession ?? true,
+            includeAll: true,
+            onPick: (target, pickDone) => {
+              options.onClear?.(target);
+              pickDone(target);
+            },
+          })("", done),
+        );
+        return;
+      }
       const next = options.onPick(item.value as TargetChoice, done);
       if (next) delegator.setActive(next);
       else done(item.value);

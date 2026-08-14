@@ -362,6 +362,16 @@ vi.mock("../src/shell.js", async () => {
           if (n === undefined) delete agent.defaultMaxTurns;
           else agent.defaultMaxTurns = n;
         },
+        clearDefaultMaxTurns(target: string = "global") {
+          if (target === "all") {
+            delete mockModules.mockConfig.agent.defaultMaxTurns;
+            delete mockModules.mockProjectConfig.agent.defaultMaxTurns;
+          } else if (target === "project") {
+            delete mockModules.mockProjectConfig.agent.defaultMaxTurns;
+          } else {
+            delete mockModules.mockConfig.agent.defaultMaxTurns;
+          }
+        },
         setLoadSkillsImplicitly(value: boolean) {
           mockModules.mockConfig.agent.loadSkillsImplicitly = value;
         },
