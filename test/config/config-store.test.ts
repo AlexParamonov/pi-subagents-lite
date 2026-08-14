@@ -561,6 +561,32 @@ describe("ConfigStore concurrency layers", () => {
     expect(store.concurrency.providers).toEqual({});
     expect(saves).toHaveLength(2);
   });
+
+  it("removeDefault at session removes only the session entry", () => {
+    const { io, saves } = memIO({
+      global: { concurrency: { default: 2 } },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+    store.mutate.concurrency.setDefault(16, "session");
+    expect(store.concurrency.default).toBe(16);
+    store.mutate.concurrency.removeDefault("session");
+    expect(store.concurrency.default).toBe(2);
+    expect(saves).toHaveLength(0);
+  });
+
+  it("removeDefault at all levels removes the default everywhere", () => {
+    const { io, saves } = memIO({
+      global: { concurrency: { default: 2 } },
+      project: { concurrency: { default: 8 } },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+    store.mutate.concurrency.setDefault(16, "session");
+    store.mutate.concurrency.removeDefault("all");
+    expect(store.concurrency.default).toBe(4);
+    expect(saves).toHaveLength(2);
+  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -121,10 +121,17 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       label: "Default concurrency limit",
       currentValue: `${store.concurrency.default}${limitTag("default")}`,
       description: "Concurrent agent slots when no per-provider or per-model limit applies.",
-      submenu: targetThenValueSubmenu(String(store.concurrency.default), (target, parsed) => {
-        store.mutate.concurrency.setDefault(parsed, target);
-        ctx.ui.notify(`Default concurrency set to ${parsed} (${target})`, "info");
-      }),
+      submenu: editOrRemoveSubmenu(
+        store.concurrency.default,
+        (target, parsed) => {
+          store.mutate.concurrency.setDefault(parsed, target);
+          ctx.ui.notify(`Default concurrency set to ${parsed} (${target})`, "info");
+        },
+        (target) => {
+          store.mutate.concurrency.removeDefault(target);
+          ctx.ui.notify(`Removed default concurrency limit (${target})`, "info");
+        },
+      ),
     });
 
     // Per-provider limits

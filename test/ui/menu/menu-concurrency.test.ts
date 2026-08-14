@@ -129,6 +129,12 @@ describe("showConcurrencySettingsMenu — SettingsList migration", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultConcurrency");
     const done = vi.fn();
     item.submenu("4", done);
+
+    // Edit limit → target picker → value input
+    const editList = selectListInstances[selectListInstances.length - 1];
+    expect(editList.items.map((i: any) => i.value)).toEqual(["edit", "remove"]);
+    editList.onSelect!({ value: "edit" });
+
     const targetList = selectListInstances[selectListInstances.length - 1];
     expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "project"]);
     targetList.onSelect!({ value: "project" });
@@ -140,6 +146,28 @@ describe("showConcurrencySettingsMenu — SettingsList migration", () => {
     expect(mockModules.mockProjectConfig.concurrency.default).toBe(6);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("6"), "info");
     expect(done).toHaveBeenCalledWith("6");
+  });
+
+  it("remove default limit — nested target pick removes at the picked level", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockConfig.concurrency = { default: 4 };
+    mockModules.mockProjectConfig.concurrency.default = 8;
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultConcurrency");
+    const done = vi.fn();
+    item.submenu("8", done);
+    const editList = selectListInstances[selectListInstances.length - 1];
+    editList.onSelect!({ value: "remove" });
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "project", "all"]);
+    targetList.onSelect!({ value: "project" });
+
+    expect(mockModules.mockProjectConfig.concurrency.default).toBeUndefined();
+    expect(mockModules.mockConfig.concurrency.default).toBe(4);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(done).toHaveBeenCalledWith("project");
   });
 });
 

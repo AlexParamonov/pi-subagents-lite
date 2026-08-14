@@ -39,8 +39,8 @@ export function createTargetSelectSubmenu(
   return (_currentValue, done) => {
     const items: Array<{ value: string; label: string }> = [];
     if (options.includeSession ?? true) items.push({ value: "session", label: "Session (not saved)" });
-    items.push({ value: "global", label: "Global (saved to config)" });
-    if (options.projectOffered) items.push({ value: "project", label: "Project (saved to project config)" });
+    items.push({ value: "global", label: "Global (saves to config)" });
+    if (options.projectOffered) items.push({ value: "project", label: "Project (saves to project config)" });
     if (options.includeAll) items.push({ value: "all", label: "All levels" });
 
     const list = new SelectList(items, 5, buildSelectListTheme(options.theme));

@@ -96,6 +96,7 @@
 - Proxy pattern (`createDelegatingComponent`) chains submenus cleanly.
 - Separator-skip lives in one shared helper (`installSeparatorSkip`): override `selectedIndex` on the list instance, since pi-tui stores it as a plain own property and writes ±1-with-wrap directly.
 - When simulating library navigation writes in tests, initialize the state field exactly as the library class field does — `undefined + 1` is `NaN`, which silently passes any index check.
+- Per-entry override rows need a remove path wherever a set path exists. After adding a per-layer value flow, audit sibling rows for set-only submenus: the default row lacked the Edit/Remove entry that per-provider/per-model rows had, so its value could not be cleared at a chosen level.
 
 ## Issue Design
 - Prototype state machines/key handlers in issue.md as a contract. Call out overflow behavior as a hard AC gate.
