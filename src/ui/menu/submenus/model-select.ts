@@ -25,15 +25,14 @@ export interface ModelSelectSubmenuOptions {
   /** Effective model for pre-selecting the current value in the picker. */
   currentModel?: string | null;
   onSet: (target: "session" | "global" | "project", model: string | null) => void;
-  onClear: (target: TargetChoice) => void;
+  /** Clear the key at the picked layer; required when showClear is set. */
+  onClear?: (target: TargetChoice) => void;
 }
 
 export function createModelSelectSubmenu(
   options: ModelSelectSubmenuOptions,
 ): (currentValue: string, done: (selectedValue?: string) => void) => Component {
   return (_currentValue, done) => {
-    let selectedTarget: "session" | "global" | "project" = "session";
-
     const modeItems = [
       { value: "session", label: "Set for this session (not saved)" },
       { value: "global", label: "Set globally (saved to config)" },
@@ -44,33 +43,37 @@ export function createModelSelectSubmenu(
     const modeList = new SelectList(modeItems, 6, buildSelectListTheme(options.theme));
     const delegator = createDelegatingComponent(modeList);
 
-    const modelSelector = new SearchableSelectDialog(
-      buildModelOptions(options.modelOptions),
-      options.currentModel == null || options.currentModel === "(inherits parent)" ? null : options.currentModel,
-      {
-        onSelect: (modelValue) => {
-          options.onSet(selectedTarget, modelValue);
-          done(modelValue);
-        },
-        onCancel: () => done(),
-      },
-      options.theme,
-    );
-
-    const clearPicker = createTargetSelectSubmenu({
-      theme: options.theme,
-      projectOffered: options.projectOffered,
-      includeAll: true,
-      onPick: options.onClear,
-    });
+    const currentModel =
+      options.currentModel == null || options.currentModel === "(inherits parent)" ? null : options.currentModel;
 
     modeList.onSelect = (item) => {
       if (item.value === "clear") {
-        delegator.setActive(clearPicker("", done));
+        // "Clear..." is offered only when showClear is set, which callers pair with onClear.
+        delegator.setActive(
+          createTargetSelectSubmenu({
+            theme: options.theme,
+            projectOffered: options.projectOffered,
+            includeAll: true,
+            onPick: (target) => options.onClear?.(target),
+          })("", done),
+        );
         return;
       }
-      selectedTarget = item.value as "session" | "global" | "project";
-      delegator.setActive(modelSelector);
+      const target = item.value as "session" | "global" | "project";
+      delegator.setActive(
+        new SearchableSelectDialog(
+          buildModelOptions(options.modelOptions),
+          currentModel,
+          {
+            onSelect: (modelValue) => {
+              options.onSet(target, modelValue);
+              done(modelValue);
+            },
+            onCancel: () => done(),
+          },
+          options.theme,
+        ),
+      );
     };
     modeList.onCancel = () => done();
 

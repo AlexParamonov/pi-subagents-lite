@@ -343,11 +343,9 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
                 currentThinking = clamped;
               }
             }
-
             // Rebuild items so displayed thinking level reflects clamped value
             rebuild?.(buildItems());
           },
-          onClear: () => {},
         }),
       },
       {

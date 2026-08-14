@@ -140,7 +140,7 @@ describe("createModelSelectSubmenu", () => {
     expect(items[2].value).toBe("clear");
   });
 
-  it("nested clear picker calls onClear with the picked target and done", () => {
+  it("nested clear picker calls onClear with the picked target", () => {
     const onClear = vi.fn();
     const done = vi.fn();
     const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true, onClear });
@@ -152,7 +152,7 @@ describe("createModelSelectSubmenu", () => {
     expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
     targetList.onSelect!({ value: "global" });
 
-    expect(onClear).toHaveBeenCalledWith("global", expect.any(Function));
+    expect(onClear).toHaveBeenCalledWith("global");
     expect(done).toHaveBeenCalledWith("global");
   });
 
