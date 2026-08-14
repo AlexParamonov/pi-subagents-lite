@@ -104,10 +104,13 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     const overridden = typeEntries.filter((e) => e.hasSession || e.hasConfigOverride);
     const nonOverridden = typeEntries.filter((e) => !e.hasSession && !e.hasConfigOverride);
 
-    for (const { typeName, cfg, sessionOverride, configOverride, hasSession, effectiveModel } of overridden) {
+    for (const { typeName, cfg, configOverride, hasSession, effectiveModel } of overridden) {
       const frontmatterHint = !hasSession && configOverride && cfg?.model ? `${cfg.model} → ` : "";
-      const projectTag = store.hasProjectModelKey(typeName) ? " [project]" : "";
-      const displayModel = hasSession ? `${sessionOverride} [session]` : `${effectiveModel}${projectTag}`;
+      // Tag by provenance of the shown value: a per-type session override or the
+      // session default shadows any persisted key, so both display [session].
+      const fromSession = hasSession || store.sessionDefaultModel != null;
+      const tag = fromSession ? " [session]" : store.hasProjectModelKey(typeName) ? " [project]" : "";
+      const displayModel = `${effectiveModel}${tag}`;
       const hasPerm = !!configOverride;
 
       items.push({

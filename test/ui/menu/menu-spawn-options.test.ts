@@ -19,6 +19,8 @@ let settingsListCalls: Array<{
   onChange: (id: string, newValue: string) => void;
   onCancel: () => void;
   options?: any;
+  /** The SettingsList instance, so tests can observe in-place rebuilds. */
+  list: any;
 }> = [];
 
 let inputInstances: Array<{
@@ -40,7 +42,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
     items: any[];
     constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
       this.items = items;
-      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options });
+      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options, list: this as any });
     }
   },
   SelectList: class MockSelectList {
@@ -235,6 +237,23 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBe(30);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("30");
+  });
+
+  // Regression: after a submenu mutation the list must rebuild so the row
+  // shows the fresh value with its provenance tag (previously stale until
+  // the menu was reopened). Mirrors the real SettingsList flow: the numeric
+  // submenu mutates the store, then closes with a value, which invokes onChange.
+  it("rebuilds after a submenu value change so the row shows the new value with its provenance tag", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const recorded = settingsListCalls[0];
+
+    mockModules.mockProjectConfig.agent.defaultMaxTurns = 50;
+    recorded.onChange("defaultMaxTurns", "50");
+
+    const dmt = recorded.list.items.find((i: any) => i.id === "defaultMaxTurns");
+    expect(dmt.currentValue).toBe("50 [project]");
   });
 
   it("max turns submenu accepts 'unlimited' to clear at the picked level", async () => {

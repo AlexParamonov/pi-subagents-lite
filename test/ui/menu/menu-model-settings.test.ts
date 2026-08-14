@@ -224,6 +224,19 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     expect(item.currentValue).toContain("[project]");
   });
 
+  // Regression: a session default shadows a project key, so the shown value
+  // comes from the session layer and must not carry the [project] tag.
+  it("tags a session-default value with [session], not [project], even when the project file has the key", async () => {
+    mockModules.mockProjectConfig.agent["Explore"] = "openai/gpt-4o";
+    mockModules.mockSessionOverrides.default = "s/default";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["openai/gpt-4o"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "type:Explore");
+    expect(item.currentValue).toContain("s/default");
+    expect(item.currentValue).toContain("[session]");
+    expect(item.currentValue).not.toContain("[project]");
+  });
+
   it("shows 'Override another type...' when non-overridden types exist", async () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);

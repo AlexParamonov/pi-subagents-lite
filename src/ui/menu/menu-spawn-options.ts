@@ -156,10 +156,30 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     }
   };
 
+  let rebuild: ((items: any[]) => void) | undefined;
+
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const settingsList = new SettingsList(buildItems(theme), 10, buildSettingsListTheme(theme), onChange, () =>
-      done(undefined),
+    const items = buildItems(theme);
+    const triggerRebuild = () => rebuild?.(buildItems(theme));
+    const settingsList = new SettingsList(
+      items,
+      10,
+      buildSettingsListTheme(theme),
+      (id, newValue) => {
+        onChange(id, newValue);
+        // Submenu-driven rows rebuild to refresh value + provenance tag; toggle
+        // rows update in place via SettingsList (a rebuild would reset the cursor).
+        if (items.some((i) => i.id === id && i.submenu)) triggerRebuild();
+      },
+      () => done(undefined),
     );
-    return new SettingsListWrapper(settingsList, { title: "Spawn Options", theme, onCancel: () => done(undefined) });
+    return new SettingsListWrapper(settingsList, {
+      title: "Spawn Options",
+      theme,
+      onCancel: () => done(undefined),
+      onRebuild: (r) => {
+        rebuild = r;
+      },
+    });
   });
 }
