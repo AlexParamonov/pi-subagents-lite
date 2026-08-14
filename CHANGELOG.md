@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Model settings per-type provenance tag.** When the session default shadows a project key, the per-type row now shows `[session]` (the value's true source) instead of a misleading `[project]`.
+- **Spawn options menu refreshes after a change.** Setting or clearing any spawn option now rebuilds the row immediately, so "Default max turns" and "Default thinking level" show their new value and `[project]` tag without reopening the menu.
 
 - **"(inherits parent)" no longer stored as a model value.** In the Model Settings menu, picking "(inherits parent)" now deletes the key at the chosen level (session, global, or project) instead of persisting the literal sentinel string into the config file or session overrides; the effective model falls through to the next layer.
 

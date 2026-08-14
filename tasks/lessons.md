@@ -92,6 +92,7 @@
 
 ## SettingsList & Menus
 - SettingsList: toggles, submenus, separators, static display. No multi-step dialogs. Never call `ctx.ui.input/select/custom` inside it.
+- Submenu rows do NOT refresh their displayed value in place: closing a submenu with a value only sets the raw `currentValue` and fires `onChange`. Menus with provenance tags (`[session]`/`[project]`) must wire `onRebuild` and trigger it from the SettingsList `onChange` (4th constructor arg) for submenu rows. Toggle rows update in place — rebuilding them would reset the cursor to the top.
 - Proxy pattern (`createDelegatingComponent`) chains submenus cleanly.
 - Separator-skip lives in one shared helper (`installSeparatorSkip`): override `selectedIndex` on the list instance, since pi-tui stores it as a plain own property and writes ±1-with-wrap directly.
 - When simulating library navigation writes in tests, initialize the state field exactly as the library class field does — `undefined + 1` is `NaN`, which silently passes any index check.
