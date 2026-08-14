@@ -51,11 +51,20 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       return "";
     };
 
+    // Submenu factory: pick a target level, then enter a numeric value.
+    const targetThenValueSubmenu =
+      (initial: string, onPick: (target: SetTarget, parsed: number) => void) =>
+      (currentValue: string, done: (selectedValue?: string) => void) =>
+        createTargetSelectSubmenu({
+          theme,
+          projectOffered,
+          onPick: (target, pickDone) =>
+            createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(target as SetTarget, parsed))(initial, pickDone),
+        })(currentValue, done);
+
     // Submenu factory: Edit (→ target → value) or Remove (→ target) for an existing limit.
     const editOrRemoveSubmenu =
       (
-        section: "providers" | "models",
-        key: string,
         currentLimit: number,
         onEdit: (target: SetTarget, parsed: number) => void,
         onRemove: (target: TargetChoice) => void,
@@ -72,17 +81,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
         const delegator = createDelegatingComponent(list);
         list.onSelect = (item) => {
           if (item.value === "edit") {
-            delegator.setActive(
-              createTargetSelectSubmenu({
-                theme,
-                projectOffered,
-                onPick: (target, pickDone) =>
-                  createNumericSubmenu(ctx, { min: 1 }, (parsed) => onEdit(target as SetTarget, parsed))(
-                    String(currentLimit),
-                    pickDone,
-                  ),
-              })(currentValue, done),
-            );
+            delegator.setActive(targetThenValueSubmenu(String(currentLimit), onEdit)(currentValue, done));
           } else {
             delegator.setActive(
               createTargetSelectSubmenu({
@@ -110,15 +109,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
           items,
           {
             onSelect: (key) =>
-              createTargetSelectSubmenu({
-                theme,
-                projectOffered,
-                onPick: (target, pickDone) =>
-                  createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(key, target as SetTarget, parsed))(
-                    "1",
-                    pickDone,
-                  ),
-              })(currentValue, done),
+              targetThenValueSubmenu("1", (target, parsed) => onPick(key, target, parsed))(currentValue, done),
             onCancel: () => done(),
           },
           theme,
@@ -130,16 +121,10 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       label: "Default concurrency limit",
       currentValue: `${store.concurrency.default}${limitTag("default")}`,
       description: "Concurrent agent slots when no per-provider or per-model limit applies.",
-      submenu: (currentValue, done) =>
-        createTargetSelectSubmenu({
-          theme,
-          projectOffered,
-          onPick: (target, pickDone) =>
-            createNumericSubmenu(ctx, { min: 1 }, (parsed) => {
-              store.mutate.concurrency.setDefault(parsed, target as SetTarget);
-              ctx.ui.notify(`Default concurrency set to ${parsed} (${target})`, "info");
-            })(String(store.concurrency.default), pickDone),
-        })(currentValue, done),
+      submenu: targetThenValueSubmenu(String(store.concurrency.default), (target, parsed) => {
+        store.mutate.concurrency.setDefault(parsed, target);
+        ctx.ui.notify(`Default concurrency set to ${parsed} (${target})`, "info");
+      }),
     });
 
     // Per-provider limits
@@ -154,8 +139,6 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
         currentValue: `${limit} slots${limitTag("providers", provider)}`,
         description: `Concurrent slots reserved for agents using the ${provider} provider.`,
         submenu: editOrRemoveSubmenu(
-          "providers",
-          provider,
           limit,
           (target, parsed) => {
             store.mutate.concurrency.setProvider(provider, parsed, target);
@@ -198,8 +181,6 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
         currentValue: `${limit} slots${limitTag("models", modelKey)}`,
         description: `Concurrent slots reserved for agents using the ${modelKey} model.`,
         submenu: editOrRemoveSubmenu(
-          "models",
-          modelKey,
           limit,
           (target, parsed) => {
             store.mutate.concurrency.setModel(modelKey, parsed, target);

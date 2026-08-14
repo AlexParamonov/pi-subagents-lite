@@ -223,7 +223,6 @@ export class ConfigStore {
     return this.sessionOverrides[type] ?? null;
   }
 
-
   /** Whether the global agent layer carries this key (provenance from layer membership). */
   hasGlobalModelKey(key: string): boolean {
     return this.globalRaw.agent != null && this.globalRaw.agent[key] !== undefined;
