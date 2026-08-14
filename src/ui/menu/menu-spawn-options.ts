@@ -83,20 +83,32 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Default max turns",
       currentValue: `${store.agent.defaultMaxTurns ?? "(not set)"}${projectTag("defaultMaxTurns")}`,
 
-      submenu: persistedTargetSubmenu(theme, (target, pickDone) =>
-        createNumericSubmenu(
-          ctx,
-          { min: 1 },
-          (parsed) => {
-            store.mutate.agent.setDefaultMaxTurns(parsed, target);
-            ctx.ui.notify(`Default max turns set to ${parsed} (${target})`, "info");
-          },
-          () => {
-            store.mutate.agent.setDefaultMaxTurns(undefined, target);
-            ctx.ui.notify(`Default max turns cleared (${target})`, "info");
-          },
-        )(String(store.agent.defaultMaxTurns ?? ""), pickDone),
-      ),
+      submenu: createTargetSelectSubmenu({
+        theme,
+        projectOffered: store.projectTargetOffered,
+        includeSession: false,
+        showClear: true,
+        onPick: (target, pickDone) => {
+          const layer = target as "global" | "project";
+          return createNumericSubmenu(
+            ctx,
+            { min: 1 },
+            (parsed) => {
+              store.mutate.agent.setDefaultMaxTurns(parsed, layer);
+              ctx.ui.notify(`Default max turns set to ${parsed} (${layer})`, "info");
+            },
+            () => {
+              store.mutate.agent.setDefaultMaxTurns(undefined, layer);
+              ctx.ui.notify(`Default max turns cleared (${layer})`, "info");
+            },
+          )(String(store.agent.defaultMaxTurns ?? ""), pickDone);
+        },
+        onClear: (target) => {
+          // The nested clear picker has no session entry (includeSession: false above).
+          store.mutate.agent.clearDefaultMaxTurns(target as "global" | "project" | "all");
+          ctx.ui.notify(`Default max turns cleared (${target})`, "info");
+        },
+      }),
       description: "Soft turn limit; agent is steered here, then hard-aborts after grace turns. Blank = unlimited.",
     },
     {

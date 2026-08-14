@@ -315,6 +315,18 @@ export class ConfigStore {
       setDefaultMaxTurns: (n: number | undefined, target: "global" | "project" = "global"): void => {
         this.setAgentLayerEntry("defaultMaxTurns", n, target);
       },
+      /** Delete defaultMaxTurns at a persisted layer (or every layer) so the value falls through. */
+      clearDefaultMaxTurns: (target: "global" | "project" | "all" = "global"): void => {
+        this.clearAtTarget(
+          target,
+          () => {
+            // Spawn defaults have no session layer; "all" clears only the persisted layers.
+          },
+          (layer) => {
+            if (layer.agent) delete layer.agent.defaultMaxTurns;
+          },
+        );
+      },
       setLoadSkillsImplicitly: (value: boolean) => this.setAgentLayerEntry("loadSkillsImplicitly", value, "global"),
       setLoadExtensionsImplicitly: (value: boolean) =>
         this.setAgentLayerEntry("loadExtensionsImplicitly", value, "global"),

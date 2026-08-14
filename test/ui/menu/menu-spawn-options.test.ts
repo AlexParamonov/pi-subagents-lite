@@ -229,7 +229,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
 
     const targetList = selectListInstances[selectListInstances.length - 1];
     // No session layer for max turns; project offered.
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["global", "project"]);
+    expect(targetList.items.map((i: any) => i.value)).toEqual(["global", "project", "clear"]);
     targetList.onSelect!({ value: "project" });
 
     const input = inputInstances[inputInstances.length - 1];
@@ -237,6 +237,85 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBe(30);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(mockDone).toHaveBeenCalledWith("30");
+  });
+
+  it("max turns submenu: Clear... opens a nested per-level picker and clears at the picked level", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockConfig.agent.defaultMaxTurns = 50;
+    mockModules.mockProjectConfig.agent.defaultMaxTurns = 30;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const mockDone = vi.fn();
+    dmt.submenu("30", mockDone);
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "clear" });
+
+    // The nested clear picker offers the persisted layers plus "all"; no session layer.
+    const clearList = selectListInstances[selectListInstances.length - 1];
+    expect(clearList).not.toBe(targetList);
+    expect(clearList.items.map((i: any) => i.value)).toEqual(["global", "project", "all"]);
+    clearList.onSelect!({ value: "project" });
+
+    expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBeUndefined();
+    expect(mockModules.mockConfig.agent.defaultMaxTurns).toBe(50); // falls through to global
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+    expect(mockDone).toHaveBeenCalledWith("project");
+  });
+
+  it("max turns submenu: Clear... at all levels removes the value from every layer", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockConfig.agent.defaultMaxTurns = 50;
+    mockModules.mockProjectConfig.agent.defaultMaxTurns = 30;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const mockDone = vi.fn();
+    dmt.submenu("30", mockDone);
+
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "clear" });
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "all" });
+
+    expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
+    expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBeUndefined();
+    expect(mockDone).toHaveBeenCalledWith("all");
+  });
+
+  it("max turns submenu: Clear... offers only global and all when the project target is unavailable", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const mockDone = vi.fn();
+    dmt.submenu("", mockDone);
+
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "clear" });
+
+    const clearList = selectListInstances[selectListInstances.length - 1];
+    expect(clearList.items.map((i: any) => i.value)).toEqual(["global", "all"]);
+  });
+
+  it("max turns submenu: escape from the nested Clear... picker cancels without clearing", async () => {
+    mockModules.mockConfig.agent.defaultMaxTurns = 50;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+
+    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const mockDone = vi.fn();
+    dmt.submenu("50", mockDone);
+
+    const targetList = selectListInstances[selectListInstances.length - 1];
+    targetList.onSelect!({ value: "clear" });
+
+    const clearList = selectListInstances[selectListInstances.length - 1];
+    expect(clearList).not.toBe(targetList);
+    clearList.onCancel!();
+
+    expect(mockModules.mockConfig.agent.defaultMaxTurns).toBe(50);
+    expect(mockDone).toHaveBeenCalled();
   });
 
   // Regression: after a submenu mutation the list must rebuild so the row

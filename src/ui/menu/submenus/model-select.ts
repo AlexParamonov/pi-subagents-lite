@@ -35,7 +35,7 @@ export function createModelSelectSubmenu(
   return (_currentValue, done) => {
     const modeItems = [
       { value: "session", label: "Set for this session (not saved)" },
-      { value: "global", label: "Set globally (saved to config)" },
+      { value: "global", label: "Set globally (saves to config)" },
       ...(options.projectOffered ? [{ value: "project", label: "Set for this project" }] : []),
     ];
     if (options.showClear) modeItems.push({ value: "clear", label: "Clear..." });
