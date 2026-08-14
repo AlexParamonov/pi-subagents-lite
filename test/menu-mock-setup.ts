@@ -460,6 +460,19 @@ vi.mock("../src/shell.js", async () => {
           if (!section.models) section.models = {};
           section.models[key] = n;
         },
+        removeDefault(target: string = "global") {
+          if (target === "session") {
+            delete mockModules.mockSessionConcurrency.default;
+          } else if (target === "all") {
+            delete mockModules.mockSessionConcurrency.default;
+            delete mockModules.mockConfig.concurrency.default;
+            delete mockModules.mockProjectConfig.concurrency.default;
+          } else if (target === "project") {
+            delete mockModules.mockProjectConfig.concurrency.default;
+          } else {
+            delete mockModules.mockConfig.concurrency.default;
+          }
+        },
         removeProvider(key: string, target: string = "global") {
           if (target === "session") {
             if (mockModules.mockSessionConcurrency.providers) delete mockModules.mockSessionConcurrency.providers[key];

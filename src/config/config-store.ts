@@ -403,6 +403,9 @@ export class ConfigStore {
       removeProvider: (key: string, target: ConfigTarget | "all" = "global"): void => {
         this.removeConcurrencyEntry("providers", key, target);
       },
+      removeDefault: (target: ConfigTarget | "all" = "global"): void => {
+        this.removeConcurrencyEntry("default", undefined, target);
+      },
       removeModel: (key: string, target: ConfigTarget | "all" = "global"): void => {
         this.removeConcurrencyEntry("models", key, target);
       },
@@ -619,17 +622,24 @@ export class ConfigStore {
     this.io.saveProject(layer);
   }
 
-  private removeConcurrencyEntry(section: "providers" | "models", key: string, target: ConfigTarget | "all"): void {
+  private removeConcurrencyEntry(
+    section: "default" | "providers" | "models",
+    key: string | undefined,
+    target: ConfigTarget | "all",
+  ): void {
+    const removeFrom = (layer: RawConcurrency | undefined): void => {
+      if (!layer) return;
+      if (section === "default") {
+        delete layer.default;
+      } else if (key) {
+        const entries = layer[section];
+        if (entries) delete entries[key];
+      }
+    };
     this.clearAtTarget(
       target,
-      () => {
-        const sessionSection = this.sessionConcurrencyLayer[section];
-        if (sessionSection) delete sessionSection[key];
-      },
-      (layer) => {
-        const sectionObj = layer.concurrency?.[section];
-        if (sectionObj) delete sectionObj[key];
-      },
+      () => removeFrom(this.sessionConcurrencyLayer),
+      (layer) => removeFrom(layer.concurrency),
       () => this.applyConcurrency(),
     );
   }
