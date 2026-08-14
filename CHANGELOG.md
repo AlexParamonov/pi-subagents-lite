@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Model settings per-type provenance tag.** When the session default shadows a project key, the per-type row now shows `[session]` (the value's true source) instead of a misleading `[project]`.
+
 - **"(inherits parent)" no longer stored as a model value.** In the Model Settings menu, picking "(inherits parent)" now deletes the key at the chosen level (session, global, or project) instead of persisting the literal sentinel string into the config file or session overrides; the effective model falls through to the next layer.
 
 - **Conversation viewer freeze from running agents menu.** Viewer overlay now uses `{ overlay: true }` so closing it restores the menu instead of clobbering it and freezing all input.
