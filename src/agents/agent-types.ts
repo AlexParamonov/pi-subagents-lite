@@ -306,13 +306,28 @@ export function resolveSessionAllowedTools(opts: {
 }
 
 /**
- * Registered-tool list for a type: the config's registeredTools, or the
- * default active set when the config has none. Type resolution is
- * case-insensitive.
+ * The built-in tool set when an agent config is silent: the defaultTools
+ * setting when configured (including []), else the hardcoded default
+ * active set. Shared by getConfig and getToolNamesForType so both
+ * fallbacks resolve identically.
  */
-export function getToolNamesForType(type: string): string[] {
+function resolveFallbackTools(defaultTools?: string[]): string[] {
+  return defaultTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES];
+}
+
+/**
+ * Registered-tool list for a type: the config's registeredTools, or the
+ * defaultTools setting when the config has none, or the default active
+ * set when the setting is unconfigured. Type resolution is
+ * case-insensitive.
+ *
+ * @param defaultTools pi's defaultTools setting (a copy of the setting,
+ *   [] when explicitly empty, undefined when unconfigured). Passed in by
+ *   the runner so getConfig and this gate share one fallback source.
+ */
+export function getToolNamesForType(type: string, defaultTools?: string[]): string[] {
   const config = getAgentConfig(type);
-  return config?.registeredTools?.length ? config.registeredTools : [...DEFAULT_ACTIVE_TOOL_NAMES];
+  return config?.registeredTools?.length ? config.registeredTools : resolveFallbackTools(defaultTools);
 }
 
 export interface ResolvedAgentConfig {
@@ -354,6 +369,7 @@ export function getConfig(
   type: string,
   loadSkillsImplicitly: boolean = true,
   loadExtensionsImplicitly: boolean = true,
+  defaultTools?: string[],
 ): ResolvedAgentConfig {
   const config = findActiveConfig(type);
   if (config) {
@@ -362,7 +378,7 @@ export function getConfig(
     return {
       displayName: rest.displayName ?? rest.name,
       description: rest.description,
-      registeredTools: rest.registeredTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES],
+      registeredTools: rest.registeredTools ?? resolveFallbackTools(defaultTools),
       tools: rest.tools,
       ...defaults,
     };
@@ -373,7 +389,7 @@ export function getConfig(
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: [...DEFAULT_ACTIVE_TOOL_NAMES],
+    registeredTools: resolveFallbackTools(defaultTools),
     ...defaults,
   };
 }

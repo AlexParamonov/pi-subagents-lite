@@ -22,6 +22,8 @@
 - Re-review recently fixed code fresh — don't assume the fix held because it was just touched.
 - vitest mocks are strict: extending a vi.mock factory must keep every symbol the production module imports; module-level singletons still require vi.mock().
 - `parseInt` accepts trailing garbage — require `/^\d+$/` after trim.
+- TypeScript collapses `Class & { member?: T }` to `never` when `Class` declares `member` private — cast through `unknown` instead of intersecting when bridging a version gap in a dependency's declarations.
+- Default parameter values do NOT apply to explicitly passed `undefined`: a test expecting `getConfig(type, true, true, x)` fails when the caller really passes `undefined, undefined` — assert the actual call args, not the declaration defaults.
 - Closure capture traps: a factory mock's closure binds its own parameter — assign explicitly against the outer variable.
 - Never name a snapshot variable after a callback parameter in scope; don't read `.length` off something that might be a function.
 - Vacuous-test grep list: `.find()` with no expect; global `some()` passing from initial state; `expect.any(String)` for branch-specific messages.
