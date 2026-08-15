@@ -2000,6 +2000,21 @@ describe("runAgent — defaultTools setting wiring", () => {
     expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, undefined);
     expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", undefined);
   });
+
+  it("passes [] through when defaultTools is explicitly empty", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockSettingsManagerCreate.mockReturnValue({
+      getDefaultTools: () => [],
+    } as any);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // An explicit [] is a configured zero-tool set, not "unconfigured".
+    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, []);
+    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", []);
+  });
 });
 
 /* ------------------------------------------------------------------ */

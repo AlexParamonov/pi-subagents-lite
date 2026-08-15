@@ -704,7 +704,10 @@ function readDefaultTools(settingsManager: SettingsManager): string[] | undefine
     settings?: { defaultTools?: string[] };
   };
   const tools = sm.getDefaultTools ? sm.getDefaultTools() : sm.settings?.defaultTools;
-  return tools ? [...tools] : undefined;
+  // Only undefined means "unconfigured": an explicitly empty array is a valid
+  // zero-tool set, and anything else (e.g. null in raw settings JSON) degrades
+  // to the hardcoded fallback instead of crashing.
+  return Array.isArray(tools) ? [...tools] : undefined;
 }
 
 export async function runAgent(
