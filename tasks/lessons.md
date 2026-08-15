@@ -157,3 +157,9 @@
 - Split big suites at the existing describe boundaries and extract the shared fakes (in-memory IO, call-recording stubs) into a `*-helpers.ts` — moving tests unchanged keeps the split verifiable by test count.
 - Node builtin ESM namespaces (node:os, node:fs) reject `vi.spyOn` — "namespace is not configurable in ESM". Fake a home dir with a partial `vi.mock("node:os", async (importOriginal) => ({ ...(await importOriginal()), homedir: vi.fn() }))` so the rest of the module (tmpdir, etc.) stays real.
 - Mocking a schema library (TypeBox) produces mock-specific shapes: the hand-rolled mock emitted `optional: true`, which real TypeBox never does — optionality is absence from the parent `required` array. Assert against the real library; a mock that drifts from the real output lets tests pin a shape production never emits.
+
+## Orchestration
+
+- Never edit source files directly, even for a small, well-understood change — route through the loop pipeline (grill → write-issue → worktree → builder → review → merge). Direct edits get reverted and the work redone.
+- The edit tool may reject anchors as stale even when git shows the file clean; fall back to `replace_text` with unique content instead of re-reading.
+- The shell guard refuses `>>` redirection to existing files — append to existing files with the edit tool, not bash.
