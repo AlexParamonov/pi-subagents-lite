@@ -179,15 +179,6 @@ export function createMockExtensionAPI(): MockExtensionAPI {
 }
 
 /**
- * Check if a specific param exists in a TypeBox schema.
- * The TypeBox mock always produces { type: "object", properties }, so only
- * the `properties` path is tested — no speculative fallbacks needed.
- */
-export function hasParam(schema: any, paramName: string): boolean {
-  return paramName in (schema?.properties ?? {});
-}
-
-/**
  * Import and invoke the extension factory.
  */
 export async function loadExtension(api: any) {
