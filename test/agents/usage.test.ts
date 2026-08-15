@@ -79,6 +79,15 @@ describe("formatTokens", () => {
     // 1234 → 1.234 → 1.2k
     expect(formatTokens(1234)).toBe("1.2k");
   });
+  it("compact mode rounds thousands to whole k", () => {
+    expect(formatTokens(999, true)).toBe("999");
+    expect(formatTokens(12300, true)).toBe("12k");
+    expect(formatTokens(12500, true)).toBe("13k");
+  });
+
+  it("compact mode leaves the M range at 1 decimal", () => {
+    expect(formatTokens(1_200_000, true)).toBe("1.2M");
+  });
 
   it("handles exactly 1 million", () => {
     expect(formatTokens(1_000_000)).toBe("1.0M");
