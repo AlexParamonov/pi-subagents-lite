@@ -1,12 +1,13 @@
 /**
  * settings-list.test.ts — Tests for the SettingsListWrapper frame component.
  *
- * Runs the real wrapper against minimal fake list components (no pi-tui import),
- * exercising the contract the wrapper must uphold now that the Back button is gone.
+ * Runs the real wrapper against minimal fake list components, exercising the
+ * contract the wrapper must uphold now that the Back button is gone.
  */
 
 import { describe, it, expect, vi } from "vitest";
 import { SelectList } from "@earendil-works/pi-tui";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { SettingsListWrapper } from "../../../../src/ui/menu/wrappers/settings-list.js";
 import { buildSelectListTheme, createDelegatingComponent } from "../../../../src/ui/menu/helpers.js";
 import { SearchableSelectDialog } from "../../../../src/ui/searchable-select.js";
@@ -301,6 +302,8 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
   });
 
   it("keeps j/k as letters in a real SearchableSelectDialog submenu", () => {
+    // The dialog renders against pi's global theme; initialize it like the app does.
+    initTheme("dark", false);
     const dialog = new SearchableSelectDialog(
       [
         { value: "m/a", label: "alpha" },
@@ -318,6 +321,7 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
     // If "k" were converted to an arrow, the query would be "a" → [alpha].
     wrapper.handleInput("k");
     wrapper.handleInput("a");
-    expect((dialog as any).filteredItems.map((o: any) => o.label)).toEqual([]);
+    const text = dialog.render(40).join("\n");
+    expect(text).toContain("No matching items");
   });
 });
