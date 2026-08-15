@@ -1,15 +1,18 @@
 /**
- * events-home-dir.test.ts — Verifies scanAndRegisterAgents uses getAgentDir()
- * instead of process.env.HOME for the user agent directory.
+ * events-config.test.ts — session_start config loading in events.ts:
+ * the user agent dir comes from getAgentDir() (not $HOME), and the
+ * project/shared agent dirs plus the project config dir are gated
+ * behind ctx.isProjectTrusted().
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { join } from "node:path";
 
 const mockSetAgentScanDirs = vi.fn();
+const mockSetProjectDir = vi.fn();
 
-// Windows-style fixtures: the fix targets Windows, where HOME may be unset
-// and paths contain backslashes and spaces.
+// Windows-style fixtures: the home-dir fix targets Windows, where HOME may
+// be unset and paths contain backslashes and spaces.
 const MOCK_AGENT_DIR = "C:\\Users\\Pi User\\.pi\\agent";
 const MOCK_CWD = "C:\\project";
 
@@ -35,7 +38,9 @@ vi.mock("../src/agents/agent-discovery.js", () => ({
 }));
 
 vi.mock("../src/agents/agent-manager.js", () => ({
-  AgentManager: class AgentManager {},
+  AgentManager: class AgentManager {
+    setOnComplete(): void {}
+  },
 }));
 
 vi.mock("../src/ui/agent-widget.js", () => ({
@@ -82,6 +87,7 @@ vi.mock("../src/shell.js", () => ({
   getStore: vi.fn(() => ({
     agent: { disableDefaultAgents: false },
     setDeps: vi.fn(),
+    setProjectDir: mockSetProjectDir,
     reload: vi.fn(),
     notifyToolsExpanded: vi.fn(),
     dispose: vi.fn(),
@@ -109,10 +115,14 @@ vi.mock("@earendil-works/pi-tui", () => ({
 }));
 
 // Import after mocks
-const { scanAndRegisterAgents } = await import("../src/events.js");
+const { scanAndRegisterAgents, loadConfigAndRegisterAgents } = await import("../src/events.js");
 
-describe("events.ts home directory resolution", () => {
-  it("uses getAgentDir() for user agent directory", async () => {
+describe("events.ts session config loading", () => {
+  beforeEach(() => {
+    mockSetAgentScanDirs.mockClear();
+  });
+
+  it("uses getAgentDir() (not $HOME) for the user dir and loads project dirs when trusted", async () => {
     const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
     await scanAndRegisterAgents(ctx);
 
@@ -122,5 +132,30 @@ describe("events.ts home directory resolution", () => {
       join(MOCK_CWD, ".pi", "agents"),
       join(MOCK_CWD, ".agents", "agents"),
     );
+  });
+
+  it("skips project dirs when the project is untrusted", async () => {
+    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => false } as any;
+    await scanAndRegisterAgents(ctx);
+
+    expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
+      join(MOCK_AGENT_DIR, "agents"), // user dir always loaded
+      "", // projectAgentDir blocked
+      "", // sharedAgentDir blocked
+    );
+  });
+
+  it("points the store at the project .pi dir when trusted", async () => {
+    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
+    await loadConfigAndRegisterAgents(ctx);
+
+    expect(mockSetProjectDir).toHaveBeenCalledWith(join(MOCK_CWD, ".pi"));
+  });
+
+  it("skips the project config when untrusted", async () => {
+    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => false } as any;
+    await loadConfigAndRegisterAgents(ctx);
+
+    expect(mockSetProjectDir).toHaveBeenCalledWith(undefined);
   });
 });
