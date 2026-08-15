@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { errorMessage, isUnsafeName, isSymlink, safeReadFile } from "../src/utils.ts";
+import {
+  errorMessage,
+  findModelInRegistry,
+  isUnsafeName,
+  isSymlink,
+  parseModelKey,
+  parseThinkingLevel,
+  safeReadFile,
+  summarizeToolArgs,
+} from "../src/utils.ts";
 import { tempDirFixture } from "./fixtures";
 
 /* ------------------------------------------------------------------ */
@@ -151,5 +160,96 @@ describe("errorMessage", () => {
   it("trims leading and trailing whitespace", () => {
     const err = new Error("  leading and trailing  ");
     expect(errorMessage(err)).toBe("leading and trailing");
+  });
+});
+describe("parseThinkingLevel", () => {
+  it("narrows a valid level string", () => {
+    expect(parseThinkingLevel("high")).toBe("high");
+  });
+
+  it("returns undefined for an invalid level or undefined input", () => {
+    expect(parseThinkingLevel("ultra")).toBeUndefined();
+    expect(parseThinkingLevel(undefined)).toBeUndefined();
+  });
+});
+
+describe("parseModelKey", () => {
+  it("splits provider/model-id", () => {
+    expect(parseModelKey("anthropic/claude-sonnet-4-6")).toEqual({
+      provider: "anthropic",
+      modelId: "claude-sonnet-4-6",
+    });
+  });
+
+  it("returns null without a slash or with an empty provider", () => {
+    expect(parseModelKey("no-slash")).toBeNull();
+    expect(parseModelKey("/leading-slash")).toBeNull();
+  });
+});
+
+describe("findModelInRegistry", () => {
+  const registry = {
+    find: (provider: string, modelId: string) =>
+      provider === "anthropic" && modelId === "claude" ? { provider, id: modelId } : undefined,
+  };
+  const fallback = { provider: "fallback", id: "model" };
+
+  it("returns the registry model when found", () => {
+    expect(findModelInRegistry("anthropic/claude", registry, fallback)).toEqual({
+      provider: "anthropic",
+      id: "claude",
+    });
+  });
+
+  it("falls back for unknown, unparseable, or missing model strings", () => {
+    expect(findModelInRegistry("openai/gpt", registry, fallback)).toBe(fallback);
+    expect(findModelInRegistry("nope", registry, fallback)).toBe(fallback);
+    expect(findModelInRegistry(undefined, registry, fallback)).toBe(fallback);
+  });
+});
+
+describe("summarizeToolArgs", () => {
+  it("returns empty string for no or empty args", () => {
+    expect(summarizeToolArgs("read", undefined)).toBe("");
+    expect(summarizeToolArgs("read", {})).toBe("");
+  });
+
+  it("summarizes read as the path", () => {
+    expect(summarizeToolArgs("read", { path: "/a/b.txt" })).toBe('("/a/b.txt")');
+  });
+
+  it("summarizes write as path and content size", () => {
+    expect(summarizeToolArgs("write", { file_path: "/a/b.txt", content: "hello" })).toBe('("/a/b.txt", 5 chars)');
+  });
+
+  it("summarizes edit as path and edit count", () => {
+    expect(summarizeToolArgs("edit", { path: "/a/b.txt", edits: [{}, {}] })).toBe('("/a/b.txt", 2 edits)');
+  });
+
+  it("strips heredocs from bash commands", () => {
+    expect(summarizeToolArgs("bash", { command: "cat <<EOF\nline\nEOF" })).toBe('("cat")');
+  });
+
+  it("truncates long bash commands to 350 chars plus ellipsis", () => {
+    const command = "echo " + "x".repeat(400);
+    expect(summarizeToolArgs("bash", { command })).toBe('("echo ' + "x".repeat(345) + '…")');
+  });
+
+  it("summarizes grep and rg as pattern and path", () => {
+    expect(summarizeToolArgs("grep", { pattern: "foo", path: "/a" })).toBe('("foo", "/a")');
+    expect(summarizeToolArgs("rg", { pattern: "foo", path: "/a" })).toBe('("foo", "/a")');
+  });
+
+  it("renders a single default arg as a shorthand", () => {
+    expect(summarizeToolArgs("custom", { query: "x" })).toBe('("x")');
+  });
+
+  it("JSON-dumps multi-arg tools", () => {
+    expect(summarizeToolArgs("custom", { a: 1, b: "x" })).toBe(' {"a":1,"b":"x"}');
+  });
+
+  it("truncates a long single default string arg", () => {
+    const val = "y".repeat(500);
+    expect(summarizeToolArgs("custom", { note: val })).toBe("(" + JSON.stringify("y".repeat(350) + "...") + ")");
   });
 });
