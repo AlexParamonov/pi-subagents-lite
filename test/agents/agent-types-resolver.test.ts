@@ -12,60 +12,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   resolveVisibleTools,
   resolveSessionAllowedTools,
-  EXCLUDED_TOOL_NAMES,
-  BUILTIN_TOOL_NAMES,
-  DEFAULT_ACTIVE_TOOL_NAMES,
   getConfig,
   getToolNamesForType,
   registerAgents,
 } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/types.ts";
-
-/* ------------------------------------------------------------------ */
-/*  Sanity: constants                                                 */
-/* ------------------------------------------------------------------ */
-
-describe("EXCLUDED_TOOL_NAMES", () => {
-  it("contains 'Agent' to prevent sub-subagent spawning", () => {
-    expect(EXCLUDED_TOOL_NAMES).toContain("Agent");
-  });
-});
-
-describe("BUILTIN_TOOL_NAMES", () => {
-  it("is exported and non-empty", () => {
-    expect(BUILTIN_TOOL_NAMES.length).toBeGreaterThan(0);
-  });
-
-  it("includes all 7 pi built-in tools (validation set)", () => {
-    expect(BUILTIN_TOOL_NAMES).toContain("read");
-    expect(BUILTIN_TOOL_NAMES).toContain("bash");
-    expect(BUILTIN_TOOL_NAMES).toContain("edit");
-    expect(BUILTIN_TOOL_NAMES).toContain("write");
-    expect(BUILTIN_TOOL_NAMES).toContain("grep");
-    expect(BUILTIN_TOOL_NAMES).toContain("find");
-    expect(BUILTIN_TOOL_NAMES).toContain("ls");
-    expect(BUILTIN_TOOL_NAMES).toHaveLength(7);
-  });
-});
-
-describe("DEFAULT_ACTIVE_TOOL_NAMES", () => {
-  it("is exported and has 4 items", () => {
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).toHaveLength(4);
-  });
-
-  it("contains pi's default active tools", () => {
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("read");
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("bash");
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("edit");
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain("write");
-  });
-
-  it("does not contain grep, find, or ls", () => {
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain("grep");
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain("find");
-    expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain("ls");
-  });
-});
 
 /* ------------------------------------------------------------------ */
 /*  Allowlist mode (tools: string[])                                  */
@@ -80,7 +31,7 @@ describe("resolveVisibleTools — allowlist mode", () => {
     expect(result).toEqual(["read", "bash", "edit"]);
   });
 
-  it("always excludes EXCLUDED_TOOL_NAMES", () => {
+  it("always excludes the Agent tool (no sub-subagent policy)", () => {
     const result = resolveVisibleTools({
       activeTools: ["read", "bash", "edit", "Agent"],
       tools: ["read", "bash", "edit", "Agent"],
@@ -97,6 +48,18 @@ describe("resolveVisibleTools — allowlist mode", () => {
       tools: ["Agent"],
     });
     expect(result).toEqual([]);
+  });
+  it("recognizes read, bash, edit, and write as built-ins without a not-found warning", () => {
+    const notify = vi.fn();
+    for (const tool of ["read", "bash", "edit", "write"]) {
+      const result = resolveVisibleTools({
+        activeTools: [tool],
+        tools: [tool],
+        notify,
+      });
+      expect(result).toEqual([tool]);
+      expect(notify).not.toHaveBeenCalled();
+    }
   });
 
   it("ext/* expands to all tools from extension", () => {
@@ -252,7 +215,7 @@ describe("resolveVisibleTools — denylist mode", () => {
     expect(result).not.toContain("write");
   });
 
-  it("always excludes EXCLUDED_TOOL_NAMES", () => {
+  it("always excludes the Agent tool (no sub-subagent policy)", () => {
     const result = resolveVisibleTools({
       activeTools: ["read", "bash", "Agent"],
       tools: undefined,
@@ -330,7 +293,7 @@ describe("resolveVisibleTools — denylist mode", () => {
 /* ------------------------------------------------------------------ */
 
 describe("resolveVisibleTools — tools: true/false/undefined", () => {
-  it("tools: true — all tools visible except EXCLUDED_TOOL_NAMES", () => {
+  it("tools: true — all tools visible except Agent", () => {
     const result = resolveVisibleTools({
       activeTools: ["read", "bash", "edit", "Agent"],
       tools: true,
@@ -513,9 +476,9 @@ describe("getConfig — global implicit defaults", () => {
     expect(result.extensions).toBe(true);
   });
 
-  it("registeredTools defaults to DEFAULT_ACTIVE_TOOL_NAMES when not explicitly set", () => {
+  it("registeredTools defaults to the default active tool set when not explicitly set", () => {
     const result = getConfig("implicit-agent");
-    expect(result.registeredTools).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+    expect(result.registeredTools).toEqual(["read", "bash", "edit", "write"]);
   });
 
   it("registeredTools uses explicit value when set", () => {
@@ -545,9 +508,9 @@ describe("getToolNamesForType", () => {
     registerAgents(agents);
   });
 
-  it("returns DEFAULT_ACTIVE_TOOL_NAMES for agent with no explicit registeredTools", () => {
+  it("returns the default active tool set for agent with no explicit registeredTools", () => {
     const result = getToolNamesForType("test-agent");
-    expect(result).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+    expect(result).toEqual(["read", "bash", "edit", "write"]);
   });
 
   it("returns explicit registeredTools when set", () => {
@@ -555,9 +518,9 @@ describe("getToolNamesForType", () => {
     expect(result).toEqual(["read", "bash"]);
   });
 
-  it("returns DEFAULT_ACTIVE_TOOL_NAMES for unknown agent type", () => {
+  it("returns the default active tool set for unknown agent type", () => {
     const result = getToolNamesForType("nonexistent");
-    expect(result).toEqual(DEFAULT_ACTIVE_TOOL_NAMES);
+    expect(result).toEqual(["read", "bash", "edit", "write"]);
   });
 });
 
@@ -631,7 +594,7 @@ describe("resolveSessionAllowedTools", () => {
     );
   });
 
-  it("excludes EXCLUDED_TOOL_NAMES so the Agent tool never enters the registry", () => {
+  it("excludes the Agent tool so it never enters the registry", () => {
     const withAgent = new Map(extToolMap);
     withAgent.set("subagents", ["Agent"]);
     const result = resolveSessionAllowedTools({
