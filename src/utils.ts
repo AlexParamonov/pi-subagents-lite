@@ -83,6 +83,11 @@ const MAX_COMMAND_DISPLAY_LENGTH = 350;
 
 const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 350;
 
+/** Cut s to max chars, appending the ellipsis character (U+2026) when truncated. */
+function truncateWithEllipsis(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
 /**
  * Summarize tool arguments for log-friendly display. Heavy tools (read,
  * write, edit, bash, grep, rg) get compact summaries; others default to JSON.
@@ -117,8 +122,7 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       // Strip heredoc: truncate at << followed by delimiter
       const heredocIdx = cmd.search(/<<\s*['"]?\w+['"]?/);
       const cleanCmd = heredocIdx >= 0 ? cmd.slice(0, heredocIdx).trim() : cmd.trim();
-      const display =
-        cleanCmd.length > MAX_COMMAND_DISPLAY_LENGTH ? cleanCmd.slice(0, MAX_COMMAND_DISPLAY_LENGTH) + "…" : cleanCmd;
+      const display = truncateWithEllipsis(cleanCmd, MAX_COMMAND_DISPLAY_LENGTH);
       return `(${JSON.stringify(display)})`;
     }
     case "grep":
@@ -133,11 +137,8 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       const keys = Object.keys(rawArgs);
       if (keys.length === 1) {
         const val = rawArgs[keys[0]];
-        const display =
-          typeof val === "string" && val.length > MAX_DEFAULT_STRING_DISPLAY_LENGTH
-            ? JSON.stringify(val.slice(0, MAX_DEFAULT_STRING_DISPLAY_LENGTH) + "…")
-            : JSON.stringify(val);
-        return `(${display})`;
+        const display = typeof val === "string" ? truncateWithEllipsis(val, MAX_DEFAULT_STRING_DISPLAY_LENGTH) : val;
+        return `(${JSON.stringify(display)})`;
       }
       return ` ${JSON.stringify(rawArgs)}`;
     }
