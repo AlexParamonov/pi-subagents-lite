@@ -31,9 +31,7 @@ describe("formatStopReason", () => {
       stoppedBy: "watchdog",
       stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 46 * 60_000 },
     });
-    expect(reason).toMatch(/STOPPED BY WATCHDOG/);
-    expect(reason).toContain("bash");
-    expect(reason).toContain("46m");
+    expect(reason).toBe("STOPPED BY WATCHDOG — tool bash exceeded 46m");
   });
 
   it("identifies an idle-timeout kill", () => {
@@ -43,8 +41,7 @@ describe("formatStopReason", () => {
       stoppedBy: "watchdog",
       stopDetail: { kind: "idle", elapsedMs: 46 * 60_000 },
     });
-    expect(reason).toMatch(/STOPPED BY WATCHDOG/);
-    expect(reason).not.toContain("bash");
+    expect(reason).toBe("STOPPED BY WATCHDOG — no activity for longer than the idle timeout");
   });
 
   it("returns undefined for non-watchdog stops and non-stopped statuses", () => {
@@ -62,13 +59,13 @@ describe("getStatusNote — watchdog", () => {
       stoppedBy: "watchdog",
       stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 },
     });
-    expect(note).toMatch(/^ \(STOPPED BY WATCHDOG/);
-    expect(note).toContain("bash");
-    expect(note).toContain("45m");
+    expect(note).toBe(" (STOPPED BY WATCHDOG — tool bash exceeded 45m)");
   });
 
   it("falls back to the generic watchdog note when no detail is recorded", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "watchdog" })).toMatch(/STOPPED BY WATCHDOG/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "watchdog" })).toBe(
+      " (STOPPED BY WATCHDOG — no activity for longer than the idle timeout)",
+    );
   });
 });
 
@@ -119,5 +116,12 @@ describe("getStatusNote — never-started stopped records", () => {
     const note = getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user", started: true });
     expect(note).toContain("before completion");
     expect(note).toContain("output is partial");
+  });
+
+  it("renders the never-started note for a watchdog stop that never started", () => {
+    const note = getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "watchdog", started: false });
+    expect(note).toContain("STOPPED BY WATCHDOG");
+    expect(note).toContain("before the agent started");
+    expect(note).not.toContain("output is partial");
   });
 });
