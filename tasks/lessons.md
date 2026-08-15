@@ -38,6 +38,7 @@
 - File-content test fixtures: malformed input as raw text, not a stringified value (`JSON.stringify` of a malformed-JSON string is valid JSON); assert against known-good literals, not recomputed expectations.
 - Clear operations that write a layer must gate on layer existence, not target availability: `projectTargetOffered` (status "absent") is true when no project file exists, so an unconditional project write through it created an inert file on every "all levels" clear. Gate on the loaded/created raw layer (`projectRaw === null` means nothing to clear), and pin the set-then-clear sequence in a test so the guard can't regress to a status check.
 - Top-level test/ files import src with `../src/`, not `../../src/`: the latter only resolves via vite's root-relative fallback, which silently breaks when the test file imports real node builtins (e.g. `node:fs` for temp dirs) — failure shows up as a confusing "Cannot find module" on the relative import.
+- Widget rendering tests: drive the public seam (`setUICtx` + `update()` + the captured `setWidget` factory's `render()`), not the private `renderWidget` — a shared helper keeps the reach-in out of every test. Real pi-tui components that render against pi's global theme (DynamicBorder) need `initTheme("dark", false)` once per test file.
 - `test/` is excluded from tsconfig, so `npm run typecheck` never sees test-fixture type errors — validate new test files with `tsc --noEmit --strict --ignoreConfig <file>` and give fixtures the full required shape (typed base spread), not partial literals.
 
 ## Delegation
