@@ -30,12 +30,12 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 let tmpDir: string;
 
 /**
- * Scratch root for skill fixtures. Project-local (not os.tmpdir): loadAllSkills
+ * Scratch root for skill fixtures. Lives under node_modules/.tmp: loadAllSkills
  * walks ancestors via readdirSync looking for .git, and a busy system tmp dir
- * makes that walk cost ~250ms per call. Under node_modules it stays out of
- * the git tree and prettier's path set.
+ * makes that walk cost ~250ms per call. node_modules keeps the fixtures out of
+ * the git tree and prettier's path set (src/ and test/).
  */
-const SCRATCH_ROOT = join(fileURLToPath(new URL("..", import.meta.url)), ".tmp", "skill-test");
+const SCRATCH_ROOT = join(fileURLToPath(new URL("../../node_modules/.tmp", import.meta.url)), "skill-test");
 
 /** Build a minimal Skill object for mocking. */
 function makeSkill(
