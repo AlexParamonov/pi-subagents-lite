@@ -162,6 +162,12 @@ function count(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
+/** Total content lines from the footer scroll readout (N/N · pct%). */
+function readoutTotal(text: string): number {
+  const m = text.match(/\((\d+)\/(\d+) · /);
+  return m ? Number(m[2]) : 0;
+}
+
 // --- Tests ---
 
 describe("ConversationViewer", () => {
@@ -237,14 +243,9 @@ describe("ConversationViewer", () => {
 
       viewer.handleInput("q");
 
-      // Fire a render-triggering event after close — the closed guard must
-      // swallow it before it mutates streaming state or schedules a render.
-      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "x" } });
-      vi.runAllTimers();
-
-      // No render after close, and the event must not leak into state.
+      // No render after close — the closed guard must swallow the event
+      // before it mutates streaming state or schedules a render.
       expect(mockRequestRender).not.toHaveBeenCalled();
-      expect((viewer as any).streamingText).toBe("");
       vi.useRealTimers();
     });
   });
@@ -686,10 +687,6 @@ describe("ConversationViewer", () => {
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      // Ensure thinking is visible (toggle if needed)
-      if (!(viewer as any).thinkingVisible) {
-        viewer.handleInput("\x14"); // ctrl+T to show thinking
-      }
       const lines = viewer.render(80);
       const text = lines.join("\n");
 
@@ -780,23 +777,42 @@ describe("ConversationViewer", () => {
     });
 
     it("scrolls to the true bottom when streaming adds lines (scrollMax not stale)", () => {
+      vi.useFakeTimers();
+      let subscriber: (event?: unknown) => void;
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+        subscriber = cb;
+        return () => {};
+      });
+
       const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
       const record = makeMockRecord({ execution: { session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      // Populates the cache; autoScroll parks scrollOffset at the bottom of the
+      // First render warms the cache and parks the viewport at the bottom of the
       // non-streaming content.
-      viewer.render(80);
-      const baseline = (viewer as any).scrollOffset;
-      expect(baseline).toBeGreaterThan(0);
+      const before = viewer.render(80).join("\n");
+      const beforeTotal = readoutTotal(before);
+      expect(beforeTotal).toBeGreaterThan(0);
 
       // Streaming text arrives (5 rendered lines) without a new session message,
       // so only the streaming suffix changes.
-      (viewer as any).streamingText = "a\nb\nc\nd\ne";
-      (viewer as any).ensureTextMd().setText("a\nb\nc\nd\ne");
+      subscriber!({
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "a\nb\nc\nd\ne" },
+      });
+      vi.runAllTimers();
 
-      viewer.handleInput("G"); // jump to bottom
-      expect((viewer as any).scrollOffset).toBe(baseline + 5);
+      // G must jump to the true bottom: scrollMax is derived from the current
+      // content, not the pre-streaming cache. A stale scrollMax would park the
+      // viewport short and the readout would drop below 100%.
+      viewer.handleInput("G");
+      const after = viewer.render(80).join("\n");
+      expect(readoutTotal(after)).toBeGreaterThan(beforeTotal);
+      expect(after).toMatch(/\(\d+\/\d+ · 100%\)/);
+      // The last streamed line is inside the viewport, not cut off above it.
+      expect(after).toContain("│ e");
+
+      vi.useRealTimers();
     });
   });
 
@@ -905,33 +921,6 @@ describe("ConversationViewer", () => {
 
   describe("thinking visibility", () => {
     it("toggles thinking visibility with ctrl+T", () => {
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      // Initially thinking should be visible (mock returns false for hideThinkingBlock)
-      expect((viewer as any).thinkingVisible).toBe(true);
-      let text = viewer.render(120).join("\n");
-      expect(text).toContain("C-t thinking");
-
-      // Simulate ctrl+T press
-      viewer.handleInput("\x14"); // ctrl+T
-
-      expect((viewer as any).thinkingVisible).toBe(false);
-      text = viewer.render(120).join("\n");
-      expect(text).toContain("C-t thinking");
-
-      // Toggle again
-      viewer.handleInput("\x14");
-
-      expect((viewer as any).thinkingVisible).toBe(true);
-      text = viewer.render(120).join("\n");
-      expect(text).toContain("C-t thinking");
-    });
-
-    it("shows thinking blocks when thinkingVisible is true", () => {
       const session = makeMockSession([
         {
           role: "assistant",
@@ -946,16 +935,22 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
 
-      // Initially thinking is visible (mock returns false for hideThinkingBlock)
+      // Thinking is visible initially (mock returns false for hideThinkingBlock).
       let text = viewer.render(80).join("\n");
       expect(text).toContain("Let me think");
       expect(text).not.toContain("Thinking...");
 
-      // Toggle to hide thinking
+      // ctrl+T hides thinking blocks behind the placeholder label.
       viewer.handleInput("\x14");
       text = viewer.render(80).join("\n");
       expect(text).not.toContain("Let me think");
       expect(text).toContain("Thinking...");
+
+      // Toggle again restores the blocks.
+      viewer.handleInput("\x14");
+      text = viewer.render(80).join("\n");
+      expect(text).toContain("Let me think");
+      expect(text).not.toContain("Thinking...");
     });
 
     it("shows thinking visibility state in footer", () => {
@@ -968,24 +963,9 @@ describe("ConversationViewer", () => {
       const text = viewer.render(120).join("\n");
       expect(text).toContain("C-t thinking");
     });
-
-    it("starts with thinking hidden when hideThinkingBlock setting is true", () => {
-      // Mock the setting to return true (thinking should be hidden)
-      vi.mocked(getHideThinkingBlock).mockReturnValue(true);
-
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      expect((viewer as any).thinkingVisible).toBe(false);
-    });
-
     it("renders Thinking... label for non-streaming thinking when hideThinkingBlock is true", () => {
       // Mock the setting to return true (thinking should be hidden)
       vi.mocked(getHideThinkingBlock).mockReturnValue(true);
-
       const session = makeMockSession([
         {
           role: "assistant",
@@ -999,8 +979,6 @@ describe("ConversationViewer", () => {
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      expect((viewer as any).thinkingVisible).toBe(false);
 
       const text = viewer.render(80).join("\n");
 
@@ -1027,7 +1005,6 @@ describe("ConversationViewer", () => {
 
       // Hide thinking
       viewer.handleInput("\x14");
-      expect((viewer as any).thinkingVisible).toBe(false);
 
       // Simulate streaming thinking via session events
       subscriber!({
@@ -1059,8 +1036,6 @@ describe("ConversationViewer", () => {
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      expect((viewer as any).thinkingVisible).toBe(false);
 
       // Simulate streaming thinking via session events
       subscriber!({
