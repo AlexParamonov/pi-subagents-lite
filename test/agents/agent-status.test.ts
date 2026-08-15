@@ -13,7 +13,9 @@ import { shellMock } from "../fixtures.ts";
 /*  are available when hoisted mock factories run.                      */
 /* ------------------------------------------------------------------ */
 
-const mockListAgents = vi.fn();
+const { mockListAgents } = vi.hoisted(() => ({
+  mockListAgents: vi.fn(),
+}));
 
 /* ------------------------------------------------------------------ */
 /*  Global mocks                                                      */
@@ -29,6 +31,7 @@ vi.mock("../../src/shell.js", () =>
 /*  Execute behavior tests                                            */
 /* ------------------------------------------------------------------ */
 
+import { executeAgentStatusTool } from "../../src/agents/agent-status.js";
 describe("AgentStatus tool execute behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -36,8 +39,6 @@ describe("AgentStatus tool execute behavior", () => {
 
   it("returns empty state message when no agents exist", async () => {
     mockListAgents.mockReturnValue([]);
-
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
     const result = await executeAgentStatusTool("call_1", {}, undefined, undefined, undefined, {} as any);
 
@@ -50,8 +51,6 @@ describe("AgentStatus tool execute behavior", () => {
     mockListAgents.mockReturnValue([
       { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running" } },
     ]);
-
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
     const result = await executeAgentStatusTool("call_2", {}, undefined, undefined, undefined, {} as any);
 
@@ -68,8 +67,6 @@ describe("AgentStatus tool execute behavior", () => {
       { id: "aaa111bbb222ccc", display: { type: "builder" }, lifecycle: { status: "running" } },
       { id: "ddd333eee444fff", display: { type: "reviewer" }, lifecycle: { status: "completed" } },
     ]);
-
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
     const result = await executeAgentStatusTool("call_3", {}, undefined, undefined, undefined, {} as any);
 
@@ -89,8 +86,6 @@ describe("AgentStatus tool execute behavior", () => {
       { id: "id5", display: { type: "e" }, lifecycle: { status: "error" } },
     ]);
 
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
-
     const result = await executeAgentStatusTool("call_4", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
@@ -104,8 +99,6 @@ describe("AgentStatus tool execute behavior", () => {
 
   it("always includes nudge message", async () => {
     mockListAgents.mockReturnValue([]);
-
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
     const result = await executeAgentStatusTool("call_5", {}, undefined, undefined, {} as any);
 
@@ -121,8 +114,6 @@ describe("AgentStatus tool execute behavior", () => {
       },
     ]);
 
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
-
     const result = await executeAgentStatusTool("call_6", {}, undefined, undefined, undefined, {} as any);
 
     const text = result.content[0].text;
@@ -133,8 +124,6 @@ describe("AgentStatus tool execute behavior", () => {
 
   it("returns no error flag on success", async () => {
     mockListAgents.mockReturnValue([]);
-
-    const { executeAgentStatusTool } = await import("../../src/agents/agent-status.js");
 
     const result = await executeAgentStatusTool("call_7", {}, undefined, undefined, {} as any);
 

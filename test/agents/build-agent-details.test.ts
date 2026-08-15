@@ -5,8 +5,9 @@
  * construction shared by the spawn paths.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
+import { buildAgentDetails } from "../../src/agents/tool-execution.js";
 
 // buildAgentDetails is a pure function. Importing tool-execution.ts is safe
 // without mocks because @earendil-works/pi-coding-agent has no top-level side
@@ -17,13 +18,6 @@ import type { AgentRecord } from "../../src/types.js";
 /* ------------------------------------------------------------------ */
 
 describe("buildAgentDetails", () => {
-  let buildAgentDetails: typeof import("../../src/agents/tool-execution.js").buildAgentDetails;
-
-  beforeEach(async () => {
-    const mod = await import("../../src/agents/tool-execution.js");
-    buildAgentDetails = mod.buildAgentDetails;
-  });
-
   function makeRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
     const base: AgentRecord = {
       id: "test-id-123",
