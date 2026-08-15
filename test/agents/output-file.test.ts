@@ -312,7 +312,7 @@ describe("streamToOutputFile", () => {
       {
         role: "assistant",
         content: [
-          { type: "toolCall", name: "write", arguments: { file_path: "/tmp/test.txt", content: "hello world\nline2" } },
+          { type: "toolCall", name: "write", arguments: { path: "/tmp/test.txt", content: "hello world\nline2" } },
         ],
       },
     ]);

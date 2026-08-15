@@ -219,7 +219,7 @@ describe("summarizeToolArgs", () => {
   });
 
   it("summarizes write as path and content size", () => {
-    expect(summarizeToolArgs("write", { file_path: "/a/b.txt", content: "hello" })).toBe('("/a/b.txt", 5 chars)');
+    expect(summarizeToolArgs("write", { path: "/a/b.txt", content: "hello" })).toBe('("/a/b.txt", 5 chars)');
   });
 
   it("summarizes edit as path and edit count", () => {

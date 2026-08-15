@@ -104,7 +104,7 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
     }
     case "write": {
       // write("/path/to/file", <N> chars) — path + content size
-      const path = typeof rawArgs.file_path === "string" ? rawArgs.file_path : "";
+      const path = typeof rawArgs.path === "string" ? rawArgs.path : "";
       const content = rawArgs.content;
       const size = typeof content === "string" ? content.length : 0;
       return `(${JSON.stringify(path)}, ${size} chars)`;
