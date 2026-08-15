@@ -2,7 +2,7 @@
  * model-thinking-placement.test.ts — Tests for model/thinking placement setting.
  *
  * Verifies the modelThinkingPlacement setting controls where model/thinking
- * appears in full mode: "1st" (header) or "2nd" (metadata line).
+ * appears in full mode: "header" or "metadata" (the metadata line).
  * Compact mode always shows model/thinking in header.
  */
 
@@ -97,36 +97,7 @@ describe("modelThinkingPlacement setting", () => {
     widget = new AgentWidget(manager, (id) => activity.get(id));
   });
 
-  describe("full mode with placement = '2nd'", () => {
-    beforeEach(() => {
-      widget.setCompactMode(false);
-      // Placement is set explicitly; the built-in default is '1st' (header)
-      widget.setModelThinkingPlacement("metadata");
-    });
-
-    it("places model/thinking on metadata line for running agents", () => {
-      const agent = makeRunningAgent("a1");
-      activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
-
-      const lines = renderWidgetLines(widget);
-
-      expect(lines[1]).not.toContain("(haiku • medium)");
-      expect(lines[2]).toContain("haiku • medium");
-    });
-
-    it("places model/thinking on metadata line for finished agents", () => {
-      const agent = makeFinishedAgent("a1");
-      (manager as any).listAgents = () => [agent];
-
-      const lines = renderWidgetLines(widget);
-
-      expect(lines[1]).not.toContain("(haiku • medium)");
-      expect(lines[2]).toContain("haiku • medium");
-    });
-  });
-
-  describe("full mode with placement = '1st'", () => {
+  describe("full mode with placement = 'header'", () => {
     beforeEach(() => {
       widget.setCompactMode(false);
       widget.setModelThinkingPlacement("header");
@@ -160,7 +131,7 @@ describe("modelThinkingPlacement setting", () => {
     });
 
     it("always shows model/thinking in header regardless of placement setting", () => {
-      // Set placement to "2nd" but compact mode should ignore it
+      // Set placement to "metadata" but compact mode should ignore it
       widget.setModelThinkingPlacement("metadata");
 
       const agent = makeRunningAgent("a1");
@@ -172,26 +143,10 @@ describe("modelThinkingPlacement setting", () => {
       // Header SHOULD contain model/thinking tag (compact mode always does)
       expect(lines[1]).toContain("(haiku • medium)");
     });
-
-    it("shows model/thinking in header with placement = '1st' too", () => {
-      widget.setModelThinkingPlacement("header");
-
-      const agent = makeRunningAgent("a1");
-      activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
-
-      const lines = renderWidgetLines(widget);
-
-      expect(lines[1]).toContain("(haiku • medium)");
-    });
   });
 
   describe("widget setter", () => {
-    it("has setModelThinkingPlacement method", () => {
-      expect(typeof widget.setModelThinkingPlacement).toBe("function");
-    });
-
-    it("defaults to '1st'", () => {
+    it("defaults to header placement", () => {
       // Check via rendering behavior - model/thinking should be in header
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));

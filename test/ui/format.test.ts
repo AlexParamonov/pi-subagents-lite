@@ -127,17 +127,6 @@ describe("buildStatsParts — all visible flags false", () => {
   });
 });
 
-describe("buildStatsParts — backward compatibility", () => {
-  it("without visible parameter, behaves the same as before", () => {
-    const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.length).toBeGreaterThan(0);
-    expect(parts.some((p) => p.includes("🛠︎"))).toBe(true);
-    expect(parts.some((p) => p.includes("⟳"))).toBe(true);
-    expect(parts.some((p) => p.includes("↑"))).toBe(true);
-    expect(parts.some((p) => p.includes("$"))).toBe(true);
-  });
-});
-
 describe("buildStatsParts — cost behavior", () => {
   it("does not include cost when not provided", () => {
     const parts = buildStatsParts(

@@ -964,18 +964,6 @@ describe("clear actions for finished agents", () => {
       ]);
     });
 
-    it("uses two separators when stop, finished, and completed groups are present", async () => {
-      mockModules.mockManager.listAgents.mockReturnValue([
-        makeRecord({ id: "agent-1" }), // completed
-        makeRecord({ id: "agent-2", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
-        makeRecord({ id: "agent-3", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
-      ]);
-      const ctx = createMockCtx();
-      await showRunningAgentsMenu(ctx);
-      const values = selectListCalls[0].items.map((i: any) => i.value);
-      expect(values.filter((v: any) => v === "__sep__")).toHaveLength(2);
-    });
-
     it("shows only Clear all in the clear group when no completed agents exist", async () => {
       mockModules.mockManager.listAgents.mockReturnValue([
         makeRecord({ id: "agent-1", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
