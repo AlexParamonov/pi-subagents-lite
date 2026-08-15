@@ -43,3 +43,26 @@ export function getHideThinkingBlock(): boolean {
 export function getPiDefaultThinkingLevel(cwd: string, agentDir?: string): ThinkingLevel | undefined {
   return SettingsManager.create(cwd, agentDir ?? getAgentDir()).getDefaultThinkingLevel();
 }
+
+/**
+ * pi's defaultTools setting for a SettingsManager.
+ *
+ * pi >= 0.84.2 exposes SettingsManager.getDefaultTools(); older pi has no
+ * accessor but still carries the key on its merged settings object, so
+ * the feature degrades to the same value instead of crashing. Returns a
+ * copy of the setting when configured (including []), undefined when
+ * unconfigured — the two must stay distinct.
+ */
+export function readDefaultTools(settingsManager: SettingsManager): string[] | undefined {
+  // Cast through unknown: on pi >= 0.84.2 `settings` is private in the type
+  // declarations, so an intersection would collapse to never.
+  const sm = settingsManager as unknown as {
+    getDefaultTools?: () => string[] | undefined;
+    settings?: { defaultTools?: string[] };
+  };
+  const tools = sm.getDefaultTools ? sm.getDefaultTools() : sm.settings?.defaultTools;
+  // Only undefined means "unconfigured": an explicitly empty array is a valid
+  // zero-tool set, and anything else (e.g. null in raw settings JSON) degrades
+  // to the hardcoded fallback instead of crashing.
+  return Array.isArray(tools) ? [...tools] : undefined;
+}

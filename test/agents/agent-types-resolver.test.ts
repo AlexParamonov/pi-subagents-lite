@@ -524,6 +524,12 @@ describe("getToolNamesForType", () => {
       registeredTools: ["read", "bash"],
       systemPrompt: "test",
     });
+    agents.set("empty-tools", {
+      name: "empty-tools",
+      description: "Agent with explicit empty tools",
+      registeredTools: [],
+      systemPrompt: "test",
+    });
     registerAgents(agents);
   });
 
@@ -554,6 +560,16 @@ describe("getToolNamesForType", () => {
   it("prefers explicit registeredTools over the setting", () => {
     const result = getToolNamesForType("explicit-tools", ["read", "bash", "grep"]);
     expect(result).toEqual(["read", "bash"]);
+  });
+
+  it("returns zero tools when registeredTools is explicitly [] — no fallback to the default set", () => {
+    const result = getToolNamesForType("empty-tools");
+    expect(result).toEqual([]);
+  });
+
+  it("prefers explicit [] over the defaultTools setting", () => {
+    const result = getToolNamesForType("empty-tools", ["read", "bash", "grep"]);
+    expect(result).toEqual([]);
   });
 
   it("uses the defaultTools setting for unknown agent type", () => {
