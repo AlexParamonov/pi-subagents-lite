@@ -17,7 +17,7 @@
  * mode (no root files) is not exported.
  */
 
-import { readFileSync, realpathSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadSkills, loadSkillsFromDir, type Skill } from "@earendil-works/pi-coding-agent";
@@ -119,12 +119,10 @@ function filterRootMdFiles(skills: Skill[], skillsRoot: string): Skill[] {
 function findGitRoot(dir: string): string {
   let current = resolve(dir);
   while (true) {
-    try {
-      const entries = readdirSync(current);
-      if (entries.includes(".git")) return current;
-    } catch {
-      /* ignore */
-    }
+    // One constant-time existence probe per level; no directory listing.
+    // existsSync never throws (EACCES → false), so unreadable ancestors
+    // are skipped exactly like the old readdirSync catch-and-continue.
+    if (existsSync(join(current, ".git"))) return current;
     const parent = resolve(current, "..");
     if (parent === current) return current; // filesystem root
     current = parent;

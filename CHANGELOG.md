@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Git-root discovery during skill loading is constant-time per ancestor level.**
+  `findGitRoot` now probes `.git` with a single `existsSync` per level instead of reading the
+  full directory listing, so skill loading no longer stalls on large directories. Detection
+  semantics are unchanged: `.git` directories (checkouts) and `.git` files (worktrees) both
+  mark the root, and the walk still stops at the filesystem root.
+- **Tool-argument summaries truncate with the ellipsis character.** Long single string
+  arguments to arbitrary tools now end with `…` (U+2026) like bash commands, instead of
+  three ASCII dots.
+
 ### Changed
 
 - **Model settings grouped by resolved model.** Per-type overrides are grouped alphabetically by the model they resolve to; each row shows the spawn-effective (clamped) thinking level and the winning layer's tag (`[session]`/`[project]`, global-won rows untagged). Only explicit per-type overrides are listed; frontmatter-only and inheriting types stay hidden (hint arrows gone). The session default is a session-wide override that beats config per-type overrides and frontmatter models. Concurrency settings share the style: rows set targets inline with a nested Clear, section headers in bold accent, and clear/remove pickers offer only the levels that carry the setting ("All levels" only when at least two do), and `j`/`k` navigate list submenus.
