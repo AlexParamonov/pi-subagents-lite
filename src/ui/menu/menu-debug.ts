@@ -14,12 +14,27 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
-import { getAgentConfig, getAvailableTypes, getAllTypes } from "../../agents/agent-types.js";
+import { getAgentConfig, getAvailableTypes, getAllTypes, getToolNamesForType } from "../../agents/agent-types.js";
+import { readDefaultTools } from "../../pi-settings.js";
 import { buildSelectListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getPiInstance } from "../../shell.js";
 
+/** Render a tool set; the zero-tool state is explicit, not a glitch. */
+function formatTools(tools: string[]): string {
+  return tools.length > 0 ? tools.join(", ") : "(none)";
+}
+
+/**
+ * pi's defaultTools setting for the menu's cwd, via the same version-tolerant
+ * accessor the spawn path uses. One SettingsManager per action, with default
+ * trust (matching the spawn default when projectTrusted is unset).
+ */
+function readMenuDefaultTools(cwd: string): string[] | undefined {
+  return readDefaultTools(SettingsManager.create(cwd, getAgentDir()));
+}
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   const types = getAllTypes();
   if (types.length === 0) {
@@ -28,12 +43,13 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   }
 
   const lines: string[] = ["Available agent types:\n"];
+  const defaultTools = readMenuDefaultTools(ctx.cwd);
   for (const name of types) {
     const cfg = getAgentConfig(name);
     if (!cfg) continue;
     const hidden = cfg.hidden === true ? " [HIDDEN]" : "";
     const model = cfg.model ? `  Model: ${cfg.model}` : "";
-    const tools = cfg.registeredTools ? `  Tools: ${cfg.registeredTools.join(", ")}` : "  Tools: all built-in tools";
+    const tools = `  Tools: ${formatTools(getToolNamesForType(name, defaultTools))}`;
     const source = cfg.source ? `  Source: ${cfg.source}` : "";
     lines.push(`  ${name}${hidden}`);
     lines.push(`    ${cfg.description}`);
@@ -49,7 +65,7 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
 async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> {
   const types = getAvailableTypes();
   const agents = types.map((t) => ({ name: t, config: getAgentConfig(t) }));
-
+  const defaultTools = readMenuDefaultTools(ctx.cwd);
   const lines: string[] = [
     "# Agent Types and Capabilities\n",
     "The following agent types are available. Use the `agent` parameter to select one.\n",
@@ -61,9 +77,8 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
     lines.push(config.description);
     lines.push("");
 
-    if (config.registeredTools) {
-      lines.push(`**Tools:** ${config.registeredTools.join(", ")}`);
-    }
+    // Always present: the effective set, whether explicit or resolved.
+    lines.push(`**Tools:** ${formatTools(getToolNamesForType(name, defaultTools))}`);
     if (config.model) {
       lines.push(`**Default model:** ${config.model}`);
     }

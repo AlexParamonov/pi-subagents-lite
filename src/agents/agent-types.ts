@@ -327,7 +327,9 @@ function resolveFallbackTools(defaultTools?: string[]): string[] {
  */
 export function getToolNamesForType(type: string, defaultTools?: string[]): string[] {
   const config = getAgentConfig(type);
-  return config?.registeredTools?.length ? config.registeredTools : resolveFallbackTools(defaultTools);
+  // ?? keeps an explicitly-empty registeredTools as a zero-tool set: only
+  // unset registeredTools falls back to the defaultTools setting.
+  return config?.registeredTools ?? resolveFallbackTools(defaultTools);
 }
 
 export interface ResolvedAgentConfig {

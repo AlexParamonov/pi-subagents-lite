@@ -8,7 +8,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
-import { getAllTypes, getAvailableTypes, getAgentConfig } from "../../../src/agents/agent-types.js";
+import {
+  getAllTypes,
+  getAvailableTypes,
+  getAgentConfig,
+  getToolNamesForType,
+} from "../../../src/agents/agent-types.js";
+
+// Capture SettingsManager creation so the menu's defaultTools read is
+// test-controllable without touching real pi settings files.
+const codingAgentMock = vi.hoisted(() => ({
+  SettingsManager: { create: vi.fn(() => ({ settings: {} })) },
+  getAgentDir: vi.fn(() => "/home/test/.pi/agent"),
+}));
+
+vi.mock("@earendil-works/pi-coding-agent", () => codingAgentMock);
 
 // Capture SelectList constructor calls
 let selectListCalls: Array<{
@@ -115,6 +129,8 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     selectListCalls = [];
     settingsListWrapperCalls = [];
     vi.clearAllMocks();
+    codingAgentMock.SettingsManager.create.mockReturnValue({ settings: {} });
+    (getToolNamesForType as any).mockReturnValue(["read", "bash", "edit", "write"]);
   });
 
   it("shows 'No agent types available' when getAllTypes returns empty", async () => {
@@ -172,25 +188,50 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
 
   it("shows registered tools when present", async () => {
     (getAllTypes as any).mockReturnValue(["tool-agent"]);
-    (getAgentConfig as any).mockImplementation(() => ({
-      description: "Agent with tools",
-      registeredTools: ["file_read", "file_write"],
-    }));
+    (getAgentConfig as any).mockImplementation(() => ({ description: "Agent with tools" }));
+    (getToolNamesForType as any).mockReturnValue(["file_read", "file_write"]);
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: file_read, file_write"), "info");
   });
 
-  it("shows 'all built-in tools' when registeredTools is absent", async () => {
+  it("shows the effective default tool set when registeredTools is absent", async () => {
     (getAllTypes as any).mockReturnValue(["default-agent"]);
-    (getAgentConfig as any).mockImplementation(() => ({
-      description: "Default agent",
-    }));
+    (getAgentConfig as any).mockImplementation(() => ({ description: "Default agent" }));
+    (getToolNamesForType as any).mockReturnValue(["read", "bash", "edit", "write"]);
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types" });
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: all built-in tools"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: read, bash, edit, write"), "info");
+    // The generic "all built-in tools" placeholder is gone.
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("all built-in tools"), "info");
+  });
+
+  it("reads defaultTools through the shared accessor and feeds the resolver", async () => {
+    codingAgentMock.SettingsManager.create.mockReturnValue({
+      settings: { defaultTools: ["read", "bash", "grep"] },
+    });
+    (getAllTypes as any).mockReturnValue(["general-purpose"]);
+    (getAgentConfig as any).mockImplementation(() => ({ description: "General-purpose agent" }));
+    (getToolNamesForType as any).mockReturnValue(["read", "bash", "grep"]);
+    const ctx = { ...createMockCtx(), cwd: "/repo" };
+    await showDebugMenu(ctx);
+    selectListCalls[0].onSelect!({ value: "agent-types" });
+    // Same manager acquisition as the spawn path: SettingsManager over cwd + agent dir.
+    expect(codingAgentMock.SettingsManager.create).toHaveBeenCalledWith("/repo", "/home/test/.pi/agent");
+    expect(getToolNamesForType).toHaveBeenCalledWith("general-purpose", ["read", "bash", "grep"]);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: read, bash, grep"), "info");
+  });
+
+  it("shows '(none)' when the effective tool set is empty", async () => {
+    (getAllTypes as any).mockReturnValue(["tool-agent"]);
+    (getAgentConfig as any).mockImplementation(() => ({ description: "Agent with no tools" }));
+    (getToolNamesForType as any).mockReturnValue([]);
+    const ctx = createMockCtx();
+    await showDebugMenu(ctx);
+    selectListCalls[0].onSelect!({ value: "agent-types" });
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: (none)"), "info");
   });
 
   it("skips types where getAgentConfig returns undefined", async () => {
@@ -229,6 +270,7 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     vi.clearAllMocks();
     mockSendUserMessage = vi.fn();
     mockModules.mockPiInstance.sendUserMessage = mockSendUserMessage;
+    codingAgentMock.SettingsManager.create.mockReturnValue({ settings: {} });
     (getAvailableTypes as any).mockReturnValue(["general-purpose", "Explore"]);
     (getAgentConfig as any).mockImplementation((name: string) => {
       if (name === "general-purpose")
@@ -245,6 +287,10 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
         };
       return undefined;
     });
+    // Tools resolve per type: explicit for general-purpose, default set for Explore.
+    (getToolNamesForType as any).mockImplementation((name: string) =>
+      name === "general-purpose" ? ["file_read", "file_write"] : ["read", "bash", "edit", "write"],
+    );
   });
 
   it("sends briefing to LLM via sendUserMessage", async () => {
@@ -284,6 +330,22 @@ describe("showDebugMenu — agent briefing action (SelectList)", () => {
     expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("thinking"));
     expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("run_in_background"));
     expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("worktree_path"));
+  });
+  it("always includes a Tools line, with the effective set when registeredTools is absent", async () => {
+    const ctx = createMockCtx();
+    await showDebugMenu(ctx);
+    selectListCalls[0].onSelect!({ value: "agent-briefing" });
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("**Tools:** file_read, file_write"));
+    // Explore has no explicit registeredTools: the default set still renders.
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("**Tools:** read, bash, edit, write"));
+  });
+
+  it("shows '(none)' for an empty effective tool set in the briefing", async () => {
+    (getToolNamesForType as any).mockReturnValue([]);
+    const ctx = createMockCtx();
+    await showDebugMenu(ctx);
+    selectListCalls[0].onSelect!({ value: "agent-briefing" });
+    expect(mockSendUserMessage).toHaveBeenCalledWith(expect.stringContaining("**Tools:** (none)"));
   });
 
   it("notifies the user after sending the briefing", async () => {
