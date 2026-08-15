@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { preloadSkills, loadSkillMeta, loadAllSkills } from "../../src/prompt/skill-loader.ts";
 import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
 import type { AgentConfig, EnvInfo } from "../../src/types.ts";
@@ -29,6 +29,14 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 let tmpDir: string;
 
+/**
+ * Scratch root for skill fixtures. Project-local (not os.tmpdir): loadAllSkills
+ * walks ancestors via readdirSync looking for .git, and a busy system tmp dir
+ * makes that walk cost ~250ms per call. Under node_modules it stays out of
+ * the git tree and prettier's path set.
+ */
+const SCRATCH_ROOT = join(fileURLToPath(new URL("..", import.meta.url)), ".tmp", "skill-test");
+
 /** Build a minimal Skill object for mocking. */
 function makeSkill(
   name: string,
@@ -47,7 +55,7 @@ function makeSkill(
 }
 
 beforeEach(() => {
-  tmpDir = join(tmpdir(), `skill-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpDir = join(SCRATCH_ROOT, `case-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpDir, { recursive: true });
 
   // Default: no skills from any source
@@ -58,7 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(SCRATCH_ROOT, { recursive: true, force: true });
   } catch {
     /* ignore */
   }
