@@ -243,8 +243,12 @@ describe("ConversationViewer", () => {
 
       viewer.handleInput("q");
 
-      // No render after close — the closed guard must swallow the event
-      // before it mutates streaming state or schedules a render.
+      // Fire a render-triggering event after close and run the debounce timer:
+      // the closed guard must swallow the event before it mutates streaming
+      // state or schedules a render.
+      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "x" } });
+      vi.runAllTimers();
+
       expect(mockRequestRender).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
