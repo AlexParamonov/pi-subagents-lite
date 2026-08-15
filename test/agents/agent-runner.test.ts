@@ -33,7 +33,7 @@ const mockModules = vi.hoisted(() => ({
   mockDefaultResourceLoader: MockDefaultResourceLoader,
   mockGetAgentDir: vi.fn().mockReturnValue("/home/test/.pi/agent"),
   mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
-  mockSettingsManagerCreate: vi.fn(() => ({})),
+  mockSettingsManagerCreate: vi.fn(() => ({ getDefaultTools: vi.fn(() => undefined) })),
   mockIncludeContextFiles: true as boolean,
   mockSystemPromptMode: "replace" as string,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
@@ -1937,7 +1937,7 @@ describe("runAgent — project trust threading", () => {
   });
 
   it("threads the same settings manager into the resource loader and the session", async () => {
-    const settingsManager = { isProjectTrusted: () => false };
+    const settingsManager = { isProjectTrusted: () => false, getDefaultTools: () => undefined };
     mockModules.mockSettingsManagerCreate.mockReturnValue(settingsManager as any);
 
     const session = createMockSession();
@@ -1954,6 +1954,51 @@ describe("runAgent — project trust threading", () => {
     expect(mockModules.getLoaderOpts().settingsManager).toBe(settingsManager);
     // And the session receives it via the settingsManager option
     expect(sessionOpts.settingsManager).toBe(settingsManager);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — defaultTools setting wiring                            */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — defaultTools setting wiring", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+  });
+
+  it("threads the settings manager's defaultTools into getConfig and getToolNamesForType", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "grep"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockSettingsManagerCreate.mockReturnValue({
+      getDefaultTools: () => ["read", "bash", "grep"],
+    } as any);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    // One read per spawn: both fallback consumers must receive the same value
+    // so the resolved config and the session gate cannot diverge.
+    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, [
+      "read",
+      "bash",
+      "grep",
+    ]);
+    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", ["read", "bash", "grep"]);
+  });
+
+  it("passes undefined defaultTools when the setting is unconfigured", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockSettingsManagerCreate.mockReturnValue({
+      getDefaultTools: () => undefined,
+    } as any);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, undefined);
+    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", undefined);
   });
 });
 

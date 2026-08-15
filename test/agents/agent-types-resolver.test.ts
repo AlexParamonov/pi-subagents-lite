@@ -485,6 +485,25 @@ describe("getConfig — global implicit defaults", () => {
     const result = getConfig("explicit-tools");
     expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
   });
+  it("registeredTools uses the defaultTools setting when the config is silent", () => {
+    const result = getConfig("implicit-agent", true, true, ["read", "bash", "grep"]);
+    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
+  });
+
+  it("registeredTools is empty when defaultTools is explicitly []", () => {
+    const result = getConfig("implicit-agent", true, true, []);
+    expect(result.registeredTools).toEqual([]);
+  });
+
+  it("registeredTools prefers the agent's explicit value over the setting", () => {
+    const result = getConfig("explicit-tools", true, true, ["read", "bash"]);
+    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
+  });
+
+  it("unknown agent type falls back to the defaultTools setting", () => {
+    const result = getConfig("nonexistent", true, true, ["read", "bash", "grep"]);
+    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -521,6 +540,25 @@ describe("getToolNamesForType", () => {
   it("returns the default active tool set for unknown agent type", () => {
     const result = getToolNamesForType("nonexistent");
     expect(result).toEqual(["read", "bash", "edit", "write"]);
+  });
+  it("uses the defaultTools setting for agent with no explicit registeredTools", () => {
+    const result = getToolNamesForType("test-agent", ["read", "bash", "grep"]);
+    expect(result).toEqual(["read", "bash", "grep"]);
+  });
+
+  it("returns zero tools when defaultTools is explicitly []", () => {
+    const result = getToolNamesForType("test-agent", []);
+    expect(result).toEqual([]);
+  });
+
+  it("prefers explicit registeredTools over the setting", () => {
+    const result = getToolNamesForType("explicit-tools", ["read", "bash", "grep"]);
+    expect(result).toEqual(["read", "bash"]);
+  });
+
+  it("uses the defaultTools setting for unknown agent type", () => {
+    const result = getToolNamesForType("nonexistent", ["read", "bash", "grep"]);
+    expect(result).toEqual(["read", "bash", "grep"]);
   });
 });
 

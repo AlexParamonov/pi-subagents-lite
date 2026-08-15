@@ -508,6 +508,7 @@ async function initSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
   settingsManager: SettingsManager,
+  defaultTools: string[] | undefined,
 ): Promise<AgentSession> {
   const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
@@ -519,7 +520,7 @@ async function initSession(
     settingsManager,
     model,
     tools: resolveSessionAllowedTools({
-      registeredTools: getToolNamesForType(type),
+      registeredTools: getToolNamesForType(type, defaultTools),
       tools: agentConfig?.tools,
       extToolMap,
     }),
@@ -554,9 +555,20 @@ async function createAndConfigureSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
   settingsManager: SettingsManager,
+  defaultTools: string[] | undefined,
   notify: (msg: string) => void,
 ): Promise<AgentSession> {
-  const session = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap, settingsManager);
+  const session = await initSession(
+    ctx,
+    options,
+    agentConfig,
+    type,
+    cwd,
+    loader,
+    extToolMap,
+    settingsManager,
+    defaultTools,
+  );
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   await session.bindExtensions({
@@ -675,6 +687,26 @@ export async function continueAgentSession(
 
 // ── main entry ─────────────────────────────────────────────────────
 
+/**
+ * pi's defaultTools setting for a spawn's SettingsManager.
+ *
+ * pi >= 0.84.2 exposes SettingsManager.getDefaultTools(); older pi has no
+ * accessor but still carries the key on its merged settings object, so
+ * the feature degrades to the same value instead of crashing. Returns a
+ * copy of the setting when configured (including []), undefined when
+ * unconfigured — the two must stay distinct.
+ */
+function readDefaultTools(settingsManager: SettingsManager): string[] | undefined {
+  // Cast through unknown: on pi >= 0.84.2 `settings` is private in the type
+  // declarations, so an intersection would collapse to never.
+  const sm = settingsManager as unknown as {
+    getDefaultTools?: () => string[] | undefined;
+    settings?: { defaultTools?: string[] };
+  };
+  const tools = sm.getDefaultTools ? sm.getDefaultTools() : sm.settings?.defaultTools;
+  return tools ? [...tools] : undefined;
+}
+
 export async function runAgent(
   ctx: ExtensionContext,
   type: SubagentType,
@@ -698,7 +730,22 @@ async function runAgentImpl(
   options: RunOptions,
 ): Promise<RunResult> {
   const store = getStore();
-  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
+  const effectiveCwd = options.cwd ?? ctx.cwd;
+
+  // One SettingsManager for the whole spawn: its trust state gates both the
+  // resource loader (project extensions/skills/prompts/themes/system prompt
+  // files) and the session context (ctx.isProjectTrusted). Created before
+  // getConfig so its defaultTools setting can feed the resolved config and
+  // the session tool gate from the same instance.
+  const settingsManager = SettingsManager.create(effectiveCwd, getAgentDir(), {
+    projectTrusted: options.projectTrusted !== false,
+  });
+
+  // Read once per spawn: getConfig and getToolNamesForType share this value,
+  // so their fallbacks cannot diverge. undefined = setting unconfigured.
+  const defaultTools = readDefaultTools(settingsManager);
+
+  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly, defaultTools);
   const agentConfig = getAgentConfig(type);
 
   // Buffer warnings during setup to avoid inserting custom_message entries
@@ -715,15 +762,7 @@ async function runAgentImpl(
     bufferNotify(`agent "${type}": both extensions and exclude_extensions set — extensions (whitelist) wins`);
   }
 
-  const effectiveCwd = options.cwd ?? ctx.cwd;
   const env = await detectEnv(options.pi, effectiveCwd);
-
-  // One SettingsManager for the whole spawn: its trust state gates both the
-  // resource loader (project extensions/skills/prompts/themes/system prompt
-  // files) and the session context (ctx.isProjectTrusted).
-  const settingsManager = SettingsManager.create(effectiveCwd, getAgentDir(), {
-    projectTrusted: options.projectTrusted !== false,
-  });
 
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify, agentConfig);
 
@@ -746,6 +785,7 @@ async function runAgentImpl(
     loader,
     extToolMap,
     settingsManager,
+    defaultTools,
     bufferNotify,
   );
   const result = await runSessionPrompt(session, prompt, {
