@@ -306,6 +306,16 @@ export function resolveSessionAllowedTools(opts: {
 }
 
 /**
+ * The built-in tool set when an agent config is silent: the defaultTools
+ * setting when configured (including []), else the hardcoded default
+ * active set. Shared by getConfig and getToolNamesForType so both
+ * fallbacks resolve identically.
+ */
+function resolveFallbackTools(defaultTools?: string[]): string[] {
+  return defaultTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES];
+}
+
+/**
  * Registered-tool list for a type: the config's registeredTools, or the
  * defaultTools setting when the config has none, or the default active
  * set when the setting is unconfigured. Type resolution is
@@ -317,7 +327,7 @@ export function resolveSessionAllowedTools(opts: {
  */
 export function getToolNamesForType(type: string, defaultTools?: string[]): string[] {
   const config = getAgentConfig(type);
-  return config?.registeredTools?.length ? config.registeredTools : (defaultTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES]);
+  return config?.registeredTools?.length ? config.registeredTools : resolveFallbackTools(defaultTools);
 }
 
 export interface ResolvedAgentConfig {
@@ -368,7 +378,7 @@ export function getConfig(
     return {
       displayName: rest.displayName ?? rest.name,
       description: rest.description,
-      registeredTools: rest.registeredTools ?? defaultTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES],
+      registeredTools: rest.registeredTools ?? resolveFallbackTools(defaultTools),
       tools: rest.tools,
       ...defaults,
     };
@@ -379,7 +389,7 @@ export function getConfig(
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: defaultTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES],
+    registeredTools: resolveFallbackTools(defaultTools),
     ...defaults,
   };
 }
