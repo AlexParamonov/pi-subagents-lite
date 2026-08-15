@@ -12,6 +12,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
+import { renderWidgetLines } from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -41,17 +42,6 @@ function makeMockManager(getAgents: () => any[]): AgentManager {
     getTotalAgentCost: () => 0,
     getTotalAgentCount: () => 0,
   } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
 }
 
 function makeRunningAgent(id: string): any {
@@ -118,7 +108,7 @@ type NavState = {
 
 /** Render the widget and extract visible agent ids, arrow target, N/M readout, and which rows show the ✓ style. */
 function renderNavState(widget: AgentWidget): NavState {
-  const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+  const lines = renderWidgetLines(widget);
   const body = lines.slice(1); // heading takes line 0
   const visible: string[] = [];
   const checked: string[] = [];
@@ -287,7 +277,7 @@ describe("deferred re-rank freeze window", () => {
   });
 
   it("shows no N/M readout outside navigation mode", () => {
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines[0]).not.toMatch(/\d+\/\d+/);
   });
 });

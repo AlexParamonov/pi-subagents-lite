@@ -7,6 +7,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
+import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -26,27 +27,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
   visibleWidth: (text: string) => text.length,
 }));
-
-function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
-  return {
-    listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
-    getTotalAgentCost: () => totalAgentCost,
-    getTotalAgentCount: () => totalAgentCount,
-  } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
-}
 
 function makeRunningAgent(id: string, type: string = "builder"): any {
   return {
@@ -109,7 +89,7 @@ type RenderedState = {
 
 /** Render the widget and extract visible agent ids, arrow target, overflow count. */
 function renderState(widget: AgentWidget): RenderedState {
-  const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+  const lines = renderWidgetLines(widget);
   const body = lines.slice(1); // heading takes line 0
   const visible: string[] = [];
   let arrow: string | null = null;
@@ -360,7 +340,7 @@ describe("overflow line format", () => {
 
     widget.navActivate();
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const overflowLine = lines.find((l: string) => l.includes("more"));
     expect(overflowLine).toBeDefined();
     // Should be "+3 more" (6 agents, 3 visible) — not "+3 more (3 finished)"
@@ -395,7 +375,7 @@ describe("non-navigation overflow", () => {
     (manager as any).listAgents = () => [...finished, ...running, ...queued];
 
     // Not in nav mode
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
 
     // Should show first 3 agents (f0, f1, f2) and collapse the rest
     // With budget=3 (maxBody-1), 3 blocks fit: f0, f1, f2
@@ -563,7 +543,7 @@ describe("queued agents during navigation", () => {
     expect(state.overflow).toBe(5); // 8 agents, 3 visible
 
     // No aggregated "N queued" block anywhere.
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => /\d+ queued/.test(l))).toBe(false);
   });
 });

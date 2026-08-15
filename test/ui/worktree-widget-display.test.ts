@@ -1,8 +1,8 @@
 /**
  * worktree-widget-display.test.ts — Acceptance tests for worktree label in widget.
  *
- * Follows agent-widget.test.ts patterns: uses makeMockManager, makeMockTheme,
- * direct renderWidget calls.
+ * Follows agent-widget.test.ts patterns: shared widget-helpers factories,
+ * rendering through the public update() seam.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -10,6 +10,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
+import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup (same as agent-widget.test.ts)                         */
@@ -33,26 +34,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */
 /* ------------------------------------------------------------------ */
-
-function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
-  return {
-    listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
-    getTotalAgentCost: () => totalAgentCost,
-  } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
-}
 
 function makeRunningAgent(id: string, type: string = "builder", worktreeLabel?: string): any {
   return {
@@ -129,7 +110,7 @@ describe("widget worktree label — full mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const metadataLine = lines.find((l: string) => l.includes("feature/packages/web"));
     expect(metadataLine).toBeDefined();
     expect(metadataLine).toContain("@");
@@ -139,7 +120,7 @@ describe("widget worktree label — full mode", () => {
     const agent = makeFinishedAgent("a1", "builder", "feature");
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const hasLabel = lines.some((l: string) => l.includes("feature"));
     expect(hasLabel).toBe(true);
   });
@@ -149,7 +130,7 @@ describe("widget worktree label — full mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // No worktree label anywhere: a stray "@undefined" (or any @-prefixed
     // garbage) must not render.
     expect(lines.length).toBeGreaterThan(0);
@@ -162,7 +143,7 @@ describe("widget worktree label — full mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // Both @ feature and tail -f should be on the same metadata line
     const combinedLine = lines.find((l: string) => l.includes("@feature") && l.includes("tail -f"));
     expect(combinedLine).toBeDefined();
@@ -173,7 +154,7 @@ describe("widget worktree label — full mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const labelLine = lines.find((l: string) => l.includes("@feature"));
     expect(labelLine).toBeDefined();
     expect(labelLine).not.toContain("tail -f");
@@ -186,7 +167,7 @@ describe("widget worktree label — full mode", () => {
     activity.set("a2", makeActivity("a2"));
     (manager as any).listAgents = () => [a1, a2];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const hasFeature = lines.some((l: string) => l.includes("feature"));
     const hasBugfix = lines.some((l: string) => l.includes("bugfix"));
     expect(hasFeature).toBe(true);
@@ -212,7 +193,7 @@ describe("widget worktree label — compact mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const hasLabel = lines.some((l: string) => l.includes("feature/packages/web"));
     expect(hasLabel).toBe(false);
   });
@@ -221,7 +202,7 @@ describe("widget worktree label — compact mode", () => {
     const agent = makeFinishedAgent("a1", "builder", "feature");
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const hasLabel = lines.some((l: string) => l.includes("feature"));
     expect(hasLabel).toBe(false);
   });
@@ -231,7 +212,7 @@ describe("widget worktree label — compact mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => l.includes("reading"))).toBe(true);
   });
 });

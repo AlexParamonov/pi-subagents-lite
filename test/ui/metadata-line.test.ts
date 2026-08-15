@@ -11,6 +11,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
+import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   getConfig: (type: string) => ({
@@ -26,35 +27,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
   visibleWidth: (text: string) => text.length,
 }));
-
-function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
-  return {
-    listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
-    getTotalAgentCost: () => totalAgentCost,
-    getTotalAgentCount: () => totalAgentCount,
-  } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  const colors: Record<string, string> = {
-    dim: "dim",
-    accent: "accent",
-    success: "success",
-    error: "error",
-    warning: "warning",
-    muted: "muted",
-  };
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
-}
 
 function makeRunningAgent(id: string, type: string = "builder"): any {
   return {
@@ -136,7 +108,7 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
@@ -148,7 +120,7 @@ describe("metadata line assembly", () => {
       const agent = makeFinishedAgent("a1");
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Header should NOT contain model/thinking tag
       expect(lines[1]).not.toContain("(haiku • medium)");
@@ -161,7 +133,7 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Should NOT have parentheses around model/thinking
       expect(lines[2]).not.toContain("(haiku");
@@ -175,7 +147,7 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Metadata line should have worktree, model/thinking, and outputFile
       expect(lines[2]).toContain("@my-feature");
@@ -194,7 +166,7 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Header SHOULD contain model/thinking tag (compact mode unchanged)
       expect(lines[1]).toContain("(haiku • medium)");
@@ -204,7 +176,7 @@ describe("metadata line assembly", () => {
       const agent = makeFinishedAgent("a1");
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Header SHOULD contain model/thinking tag (compact mode unchanged)
       expect(lines[1]).toContain("(haiku • medium)");
@@ -217,7 +189,7 @@ describe("metadata line assembly", () => {
       widget.setModelThinkingPlacement("metadata");
     });
 
-    it("getBlockHeight matches rendered block height for running agent with model but no worktree/outputFile", () => {
+    it("renders a running agent with model but no worktree/outputFile as a 3-line block", () => {
       const agent = makeRunningAgent("a1");
       // Ensure no worktree/outputFile - model/thinking should still produce metadata line
       agent.display.worktreeLabel = undefined;
@@ -225,40 +197,28 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      const blockHeight = (widget as any).getBlockHeight(agent);
-
-      // Running agent: header (1) + metadata line with model/thinking (1) + activity line (1) = 3
-      // getBlockHeight counts header + metadata lines (2) + activity is separate in render
-      // Actually blockHeight = 2 + hasMetadataLine = 3 (header + metadata line + activity accounted in render)
-      // Rendered: heading (1) + header (1) + metadata line (1) + activity (1) = 4 lines
-      // blockHeight should equal rendered lines minus heading
-      expect(lines.length - 1).toBe(blockHeight);
-      expect(blockHeight).toBe(3);
+      const lines = renderWidgetLines(widget);
+      // heading (1) + header (1) + metadata line (1) + activity (1)
+      expect(lines.length - 1).toBe(3);
       // Verify the metadata line contains model info
       expect(lines[2]).toContain("haiku");
     });
 
-    it("getBlockHeight matches rendered block height for finished agent with model but no worktree/outputFile", () => {
+    it("renders a finished agent with model but no worktree/outputFile as a 2-line block", () => {
       const agent = makeFinishedAgent("a1");
       // Ensure no worktree/outputFile
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
-      const blockHeight = (widget as any).getBlockHeight(agent);
-
-      // Finished agent: header (1) + metadata line with model/thinking (1) = 2
-      // Rendered: heading (1) + header (1) + metadata line (1) = 3 lines
-      // blockHeight should equal rendered lines minus heading
-      expect(lines.length - 1).toBe(blockHeight);
-      expect(blockHeight).toBe(2);
+      const lines = renderWidgetLines(widget);
+      // heading (1) + header (1) + metadata line (1)
+      expect(lines.length - 1).toBe(2);
       // Verify the metadata line contains model info
       expect(lines[2]).toContain("haiku");
     });
 
-    it("getBlockHeight returns 1 for compact mode regardless of model", () => {
+    it("renders a compact-mode agent as a 1-line block regardless of model", () => {
       widget.setForceCompact(true);
       const agent = makeRunningAgent("a1");
       agent.display.worktreeLabel = undefined;
@@ -266,11 +226,11 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const blockHeight = (widget as any).getBlockHeight(agent);
-      expect(blockHeight).toBe(1);
+      const lines = renderWidgetLines(widget);
+      expect(lines.length - 1).toBe(1);
     });
 
-    it("getBlockHeight returns 3 for running agent with worktree but no model", () => {
+    it("renders a running agent with worktree but no model as a 3-line block", () => {
       const agent = makeRunningAgent("a1");
       // Remove model/thinking
       agent.execution.session = undefined;
@@ -281,9 +241,9 @@ describe("metadata line assembly", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const blockHeight = (widget as any).getBlockHeight(agent);
-      // Running: 2 + (hasMetadataLine ? 1 : 0) = 2 + 1 = 3
-      expect(blockHeight).toBe(3);
+      const lines = renderWidgetLines(widget);
+      // heading + header + metadata (worktree) + activity
+      expect(lines.length - 1).toBe(3);
     });
   });
 });

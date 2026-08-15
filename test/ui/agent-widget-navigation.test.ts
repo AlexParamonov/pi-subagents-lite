@@ -7,6 +7,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
+import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -26,27 +27,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
   visibleWidth: (text: string) => text.length,
 }));
-
-function makeMockManager(agents: any[], totalAgentCost = 0): AgentManager {
-  return {
-    listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
-    getTotalAgentCost: () => totalAgentCost,
-    getTotalAgentCount: () => 0,
-  } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
-}
 
 function makeRunningAgent(id: string, type: string = "builder"): any {
   return {
@@ -312,7 +292,7 @@ describe("navigation roster", () => {
     (manager as any).listAgents = () => [q1, q2];
 
     // Without nav active, queued agents render as "2 queued" block
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => l.includes("2 queued"))).toBe(true);
   });
 });
@@ -338,7 +318,7 @@ describe("navigation rendering", () => {
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [running];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[0]).toContain("to navigate");
     });
 
@@ -348,7 +328,7 @@ describe("navigation rendering", () => {
       (manager as any).listAgents = () => [running];
       widget.navActivate();
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[0]).toContain("navigate");
       expect(lines[0]).toContain("enter view");
       expect(lines[0]).toContain("esc back");
@@ -362,7 +342,7 @@ describe("navigation rendering", () => {
       (manager as any).listAgents = () => [running];
       widget.navActivate(); // highlights index 1 = the running agent
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // The agent line (after heading) should contain '→'
       const agentLine = lines[1];
       expect(agentLine).toContain("→");
@@ -373,7 +353,7 @@ describe("navigation rendering", () => {
       (manager as any).listAgents = () => [finished];
       widget.navActivate();
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       const agentLine = lines[1];
       expect(agentLine).toContain("→");
     });
@@ -383,7 +363,7 @@ describe("navigation rendering", () => {
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [running];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // No '→' marker in agent lines
       const agentLine = lines[1];
       expect(agentLine).not.toContain("→");
@@ -455,7 +435,7 @@ describe("overflow with navigation", () => {
     for (let i = 0; i < 12; i++) widget.navDown();
     expect(widget.highlightedIndex()).toBe(12);
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
 
     // The pinned (highlighted) block must appear in the output
     const highlightedLine = lines.find((line: string) => line.includes("Finished agent 12"));

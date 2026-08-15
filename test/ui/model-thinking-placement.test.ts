@@ -11,6 +11,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
+import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   getConfig: (type: string) => ({
@@ -26,35 +27,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
   visibleWidth: (text: string) => text.length,
 }));
-
-function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
-  return {
-    listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
-    getTotalAgentCost: () => totalAgentCost,
-    getTotalAgentCount: () => totalAgentCount,
-  } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  const colors: Record<string, string> = {
-    dim: "dim",
-    accent: "accent",
-    success: "success",
-    error: "error",
-    warning: "warning",
-    muted: "muted",
-  };
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
-}
 
 function makeRunningAgent(id: string, type: string = "builder"): any {
   return {
@@ -137,7 +109,7 @@ describe("modelThinkingPlacement setting", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       expect(lines[1]).not.toContain("(haiku • medium)");
       expect(lines[2]).toContain("haiku • medium");
@@ -147,7 +119,7 @@ describe("modelThinkingPlacement setting", () => {
       const agent = makeFinishedAgent("a1");
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       expect(lines[1]).not.toContain("(haiku • medium)");
       expect(lines[2]).toContain("haiku • medium");
@@ -165,7 +137,7 @@ describe("modelThinkingPlacement setting", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       expect(lines[1]).toContain("(haiku • medium)");
       expect(lines[2]).not.toContain("haiku • medium");
@@ -175,7 +147,7 @@ describe("modelThinkingPlacement setting", () => {
       const agent = makeFinishedAgent("a1");
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       expect(lines[1]).toContain("(haiku • medium)");
       expect(lines[2] ?? "").not.toContain("haiku • medium");
@@ -195,7 +167,7 @@ describe("modelThinkingPlacement setting", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Header SHOULD contain model/thinking tag (compact mode always does)
       expect(lines[1]).toContain("(haiku • medium)");
@@ -208,7 +180,7 @@ describe("modelThinkingPlacement setting", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       expect(lines[1]).toContain("(haiku • medium)");
     });
@@ -225,7 +197,7 @@ describe("modelThinkingPlacement setting", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
 
       // Should be in header (default)
       expect(lines[1]).toContain("(haiku • medium)");

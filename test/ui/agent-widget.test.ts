@@ -7,6 +7,7 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView } from "../../src/types.js";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
+import { makeMockManager, makeMockTheme, makeMockTUI, renderWidgetLines } from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -41,36 +42,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
   visibleWidth: (text: string) => stripAnsi(text).length,
 }));
-
-function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
-  return {
-    listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
-    getTotalAgentCost: () => totalAgentCost,
-    getTotalAgentCount: () => totalAgentCount,
-    // other methods not used by widget
-  } as any as AgentManager;
-}
-
-function makeMockTheme(): any {
-  const colors: Record<string, string> = {
-    dim: "dim",
-    accent: "accent",
-    success: "success",
-    error: "error",
-    warning: "warning",
-    muted: "muted",
-  };
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
-
-function makeMockTUI(): any {
-  return { terminal: { columns: 200 } };
-}
 
 function makeRunningAgent(id: string, type: string = "builder"): any {
   return {
@@ -145,7 +116,7 @@ describe("widget rendering format", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /);
     });
 
@@ -154,7 +125,7 @@ describe("widget rendering format", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // Activity line is the second line (index 2, after heading)
       expect(lines[2]).toMatch(/^\[dim:  [│└]/);
     });
@@ -165,7 +136,7 @@ describe("widget rendering format", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // line[1] = header, line[2] = outputFile, line[3] = activity
       expect(lines[2]).toContain("tail -f");
       expect(lines[3]).toMatch(/^\[dim:  [│└]/);
@@ -177,7 +148,7 @@ describe("widget rendering format", () => {
       activity.set("a1", makeActivity("a1"));
       (manager as any).listAgents = () => [agent];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[2]).toMatch(/^\[dim:  └/);
     });
   });
@@ -190,7 +161,7 @@ describe("widget rendering format", () => {
       activity.set("a2", makeActivity("a2"));
       (manager as any).listAgents = () => [a1, a2];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /);
       expect(lines[3]).toMatch(/^  /);
     });
@@ -202,7 +173,7 @@ describe("widget rendering format", () => {
       activity.set("a2", makeActivity("a2"));
       (manager as any).listAgents = () => [a1, a2];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[2]).toMatch(/^\[dim:  [│└]/);
       expect(lines[4]).toMatch(/^\[dim:  [│└]/);
     });
@@ -216,7 +187,7 @@ describe("widget rendering format", () => {
       activity.set("a2", makeActivity("a2"));
       (manager as any).listAgents = () => [a1, a2];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // a1: header[1], outputFile[2], activity[3]; a2: header[4], outputFile[5], activity[6]
       expect(lines[2]).toContain("out1.log");
       expect(lines[3]).toContain("reading");
@@ -231,7 +202,7 @@ describe("widget rendering format", () => {
       const a2 = makeFinishedAgent("a2");
       (manager as any).listAgents = () => [a1, a2];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /);
       expect(lines[2]).toMatch(/^  /);
     });
@@ -240,7 +211,7 @@ describe("widget rendering format", () => {
       const a1 = makeFinishedAgent("a1");
       a1.display.outputFile = "/tmp/pi-agent-outputs/test.log";
       (manager as any).listAgents = () => [a1];
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // tail-f line should have spaces only (no connector)
       expect(lines[2]).toMatch(/^\[dim:\s{4}/);
       expect(lines[2]).toContain("tail -f");
@@ -252,7 +223,7 @@ describe("widget rendering format", () => {
       const a2 = makeFinishedAgent("a2");
       a2.display.outputFile = "/tmp/out2.log";
       (manager as any).listAgents = () => [a1, a2];
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       // All tail-f lines use spaces only (no connector) for finished agents
       expect(lines[2]).toMatch(/^\[dim:\s{4}/);
       expect(lines[4]).toMatch(/^\[dim:\s{4}/);
@@ -268,7 +239,7 @@ describe("widget rendering format", () => {
       activity.set("r1", makeActivity("r1"));
       (manager as any).listAgents = () => [finished, running];
 
-      const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+      const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /); // finished agent
       expect(lines[2]).toMatch(/^  /); // running agent
     });
@@ -574,7 +545,7 @@ describe("compact mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // Full mode: heading + 1 header + 1 activity metadata line = 3 lines
     expect(lines.length).toBeGreaterThanOrEqual(3);
   });
@@ -586,7 +557,7 @@ describe("compact mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // Heading + 1 line for compact agent (no activity metadata line)
     expect(lines).toHaveLength(2);
     // The agent line should contain the activity inline
@@ -599,7 +570,7 @@ describe("compact mode", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // Heading + 1 header + 1 activity metadata line
     expect(lines.length).toBeGreaterThanOrEqual(3);
   });
@@ -622,7 +593,7 @@ describe("max lines configuration", () => {
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
     (manager as any).listAgents = () => agents;
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // Should be capped at 8 lines (1 heading + 7 body max)
     expect(lines.length).toBeLessThanOrEqual(8);
   });
@@ -635,7 +606,7 @@ describe("max lines configuration", () => {
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
     (manager as any).listAgents = () => agents;
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // Should be capped at 3 lines (1 heading + 2 body max)
     expect(lines.length).toBeLessThanOrEqual(3);
   });
@@ -646,7 +617,7 @@ describe("max lines configuration", () => {
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
     (manager as any).listAgents = () => agents;
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const hasOverflow = lines.some((l: string) => l.includes("more"));
     expect(hasOverflow).toBe(true);
   });
@@ -721,7 +692,7 @@ describe("getLiveView callback", () => {
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     // lines[0] = heading, lines[1] = header (└─), lines[2] = activity metadata line
     expect(lines.length).toBeGreaterThanOrEqual(3);
     const metadataLine = lines[2];
@@ -739,7 +710,7 @@ describe("getLiveView callback", () => {
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThanOrEqual(3);
     // No activity data → shows thinking
     expect(lines[2]).toContain("thinking…");
@@ -758,7 +729,7 @@ describe("getLiveView callback", () => {
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(lines[2]).toContain("reading");
   });
@@ -776,7 +747,7 @@ describe("getLiveView callback", () => {
     const agent = makeRunningAgent("a1");
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(lines[2]).toContain("Here is my response");
     expect(lines[2]).not.toContain("thinking…");
@@ -800,7 +771,7 @@ describe("renderFinishedLine context percent", () => {
 
     // Track what buildStatsParts receives by mocking getSessionContextPercent
     // indirectly: the widget should render without needing execution.session
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => l.includes("Finished agent f1"))).toBe(true);
     // The stats line must show the recorded 72% context usage.
     expect(lines.some((l: string) => l.includes("72%"))).toBe(true);
@@ -823,7 +794,7 @@ describe("renderFinishedLine context percent", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [running];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThan(0);
 
     // The session's 85% must win over stats.contextPercent's 50% in the stats line
@@ -846,7 +817,7 @@ describe("renderFinishedLine watchdog stop", () => {
     agent.lifecycle.stopDetail = { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 };
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => l.includes("watchdog: bash >45m"))).toBe(true);
   });
 
@@ -862,7 +833,7 @@ describe("renderFinishedLine watchdog stop", () => {
     agent.lifecycle.stoppedBy = "user";
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const stoppedLine = lines.find((l: string) => l.includes("Finished agent f1"));
     expect(stoppedLine).toContain(" stopped");
     expect(stoppedLine).not.toContain("watchdog");
@@ -891,7 +862,7 @@ describe("stats visibility integration", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     expect(allText).not.toContain("🛠︎");
   });
@@ -903,7 +874,7 @@ describe("stats visibility integration", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     // The running agent started 65s ago so would show "1m 5s" — should be absent
     expect(allText).not.toContain("1m 5s");
@@ -915,7 +886,7 @@ describe("stats visibility integration", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     expect(allText).toContain("1m 5s");
   });
@@ -932,7 +903,7 @@ describe("stats visibility integration", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     expect(allText).not.toContain("%");
     expect(allText).not.toContain("↻");
@@ -945,7 +916,7 @@ describe("stats visibility integration", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     expect(allText).not.toContain("$");
   });
@@ -956,7 +927,7 @@ describe("stats visibility integration", () => {
     agent.stats.toolUses = 15;
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     expect(allText).not.toContain("🛠︎");
   });
@@ -974,7 +945,7 @@ describe("stats visibility integration", () => {
     activity.set("a1", makeActivity("a1"));
     (manager as any).listAgents = () => [agent];
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
     expect(allText).toContain("🛠︎");
     expect(allText).toContain("⟳");
@@ -990,18 +961,11 @@ describe("description truncation", () => {
     const testManager = makeMockManager([agent]);
     const widget = new AgentWidget(testManager, () => undefined);
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
 
     const descLine = lines.find((l: string) => l.includes("aaa"));
     expect(descLine).toBeDefined();
     expect(descLine).toContain(agent.display.description);
-  });
-
-  it("descLengthFull and descLengthCompact properties are removed", () => {
-    const testManager = makeMockManager([]);
-    const widget = new AgentWidget(testManager, () => undefined);
-    expect((widget as any).descLengthFull).toBeUndefined();
-    expect((widget as any).descLengthCompact).toBeUndefined();
   });
 
   it("stats remain visible when descriptions are long", () => {
@@ -1010,7 +974,7 @@ describe("description truncation", () => {
     const testManager = makeMockManager([agent]);
     const widget = new AgentWidget(testManager, () => ({ activeTools: new Map(), responseText: "" }));
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
 
     const headerLine = lines.find((l: string) => l.includes("**Builder**"));
     expect(headerLine).toBeDefined();
@@ -1027,12 +991,12 @@ describe("description truncation", () => {
 
     // Render at narrow width
     const narrowTUI = { terminal: { columns: 80 } };
-    const narrowLines = (widget as any).renderWidget(narrowTUI, makeMockTheme());
+    const narrowLines = renderWidgetLines(widget, narrowTUI);
     const narrowDescLine = narrowLines.find((l: string) => l.includes("Test description"));
 
     // Render at wide width
     const wideTUI = { terminal: { columns: 200 } };
-    const wideLines = (widget as any).renderWidget(wideTUI, makeMockTheme());
+    const wideLines = renderWidgetLines(widget, wideTUI);
     const wideDescLine = wideLines.find((l: string) => l.includes("Test description"));
 
     // Both should contain the description (truncation happens but description is present)
@@ -1055,7 +1019,7 @@ describe("description truncation", () => {
     const testManager = makeMockManager([agent]);
     const widget = new AgentWidget(testManager, () => undefined);
 
-    const lines = (widget as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(widget);
     const descLine = lines.find((l: string) => l.includes("Red description"));
     expect(descLine).toBeDefined();
     // ANSI codes must not break rendering; verify the visible text survives.
@@ -1087,7 +1051,7 @@ describe("description truncation", () => {
 
     // Render at narrow width to trigger the prioritization logic
     const narrowTUI = { terminal: { columns: 60 } };
-    const lines = (widget2 as any).renderWidget(narrowTUI, makeMockTheme());
+    const lines = renderWidgetLines(widget2, narrowTUI);
 
     // Find the compact line (should have description and possibly activity)
     const compactLine = lines.find((l: string) => l.includes("AAA"));
@@ -1108,7 +1072,7 @@ describe("finished-agent time window", () => {
 
   /** Render the widget and extract visible agent ids, arrow target, and nav readout. */
   function renderState(w: AgentWidget): RenderedState {
-    const lines = (w as any).renderWidget(makeMockTUI(), makeMockTheme());
+    const lines = renderWidgetLines(w);
     const visible: string[] = [];
     let arrow: string | null = null;
     for (const line of lines) {
