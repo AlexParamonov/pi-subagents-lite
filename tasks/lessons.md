@@ -32,6 +32,7 @@
 - Redundant guards (subscriber closed-check + timer-callback closed-check) mean a post-close test can only pin the combined no-render contract — verify which guard a test actually fails on before claiming it pins one of them.
 - Prove each consumer reaches an extracted shared mock — a mock is vacuous when the importing modules are themselves mocked.
 - When a fix is about which arguments reach a function, assert the call args — a mock that ignores args keeps the old bug green.
+- Pin tool-argument keys against the dependency's actual tool schema (pi source), not local assumptions: `summarizeToolArgs` read `file_path` while pi's write schema sends `path`, so every write summary rendered an empty path. Fixtures that pin a wrong key encode the bug — update them with the fix.
 - A lib-contract test via `vi.importActual` pins the input formats a fix claims to support.
 - Boolean flag inversion (hide vs show): write the test FIRST with the correct expected value.
 - Test UI features through public APIs (session events), not private state; exercise both streaming and non-streaming paths.

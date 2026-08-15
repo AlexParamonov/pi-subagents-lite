@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tool-argument summaries truncate with the ellipsis character.** Long single string
   arguments to arbitrary tools now end with `…` (U+2026) like bash commands, instead of
   three ASCII dots.
+- **Write-tool summaries show the real file path.** `summarizeToolArgs` now reads the
+  `path` argument key that pi's write tool actually sends, so summaries render as
+  `write("/path/to/file", N chars)` instead of `write("", N chars)`.
+
 
 ### Changed
 
