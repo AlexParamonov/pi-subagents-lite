@@ -87,22 +87,21 @@ describe("ConfigStore concurrency layers", () => {
     expect(saves).toHaveLength(2);
   });
 
-  it("clearAll at all levels with no project file clears only global", () => {
-    const { io, saves, project } = memIO({ global: { concurrency: { default: 2 } }, projectStatus: "absent" });
-    const store = new ConfigStore(io);
-    store.mutate.concurrency.clearAll("all");
-    expect(store.concurrency.default).toBe(4);
-    expect(saves).toHaveLength(1);
-    expect(saves[0].layer).toBe("global");
-    expect(project()).toBeNull();
-  });
+  it("all-levels clears with no project file touch only the global layer", () => {
+    // A clear must never create a project file: both clearAll and
+    // removeProvider skip the absent project layer.
+    const a = memIO({ global: { concurrency: { default: 2 } }, projectStatus: "absent" });
+    const storeA = new ConfigStore(a.io);
+    storeA.mutate.concurrency.clearAll("all");
+    expect(a.saves).toHaveLength(1);
+    expect(a.saves[0].layer).toBe("global");
+    expect(a.project()).toBeNull();
 
-  it("removeProvider at all levels with no project file clears only global", () => {
-    const { io, saves, project } = memIO({ global: { concurrency: { providers: { a: 1 } } }, projectStatus: "absent" });
-    const store = new ConfigStore(io);
-    store.mutate.concurrency.removeProvider("a", "all");
-    expect(saves).toHaveLength(1);
-    expect(saves[0].layer).toBe("global");
-    expect(project()).toBeNull();
+    const b = memIO({ global: { concurrency: { providers: { x: 1 } } }, projectStatus: "absent" });
+    const storeB = new ConfigStore(b.io);
+    storeB.mutate.concurrency.removeProvider("x", "all");
+    expect(b.saves).toHaveLength(1);
+    expect(b.saves[0].layer).toBe("global");
+    expect(b.project()).toBeNull();
   });
 });
