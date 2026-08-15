@@ -248,8 +248,8 @@ describe("summarizeToolArgs", () => {
     expect(summarizeToolArgs("custom", { a: 1, b: "x" })).toBe(' {"a":1,"b":"x"}');
   });
 
-  it("truncates a long single default string arg", () => {
+  it("truncates a long single default string arg with the ellipsis character", () => {
     const val = "y".repeat(500);
-    expect(summarizeToolArgs("custom", { note: val })).toBe("(" + JSON.stringify("y".repeat(350) + "...") + ")");
+    expect(summarizeToolArgs("custom", { note: val })).toBe("(" + JSON.stringify("y".repeat(350) + "…") + ")");
   });
 });

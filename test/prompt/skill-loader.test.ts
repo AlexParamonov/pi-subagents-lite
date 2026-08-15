@@ -2,6 +2,7 @@
  * skill-loader.test.ts — Tests for skill loading and prompt integration.
  *
  * Pi's loadSkills/loadSkillsFromDir are mocked to isolate from system skills.
+ * node:fs is partially mocked so the git-root walk (existsSync/readdirSync) is observable.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -14,11 +15,14 @@ import type { AgentConfig, EnvInfo } from "../../src/types.ts";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { createSkillDir, createFlatSkill } from "../fixtures.ts";
 
-const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt } = vi.hoisted(() => ({
-  mockLoadSkills: vi.fn(),
-  mockLoadSkillsFromDir: vi.fn(),
-  mockFormatSkillsForPrompt: vi.fn(),
-}));
+const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt, fsExistsSyncMock, fsReaddirSyncMock } =
+  vi.hoisted(() => ({
+    mockLoadSkills: vi.fn(),
+    mockLoadSkillsFromDir: vi.fn(),
+    mockFormatSkillsForPrompt: vi.fn(),
+    fsExistsSyncMock: vi.fn(),
+    fsReaddirSyncMock: vi.fn(),
+  }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   loadSkills: mockLoadSkills,
@@ -26,14 +30,23 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   formatSkillsForPrompt: mockFormatSkillsForPrompt,
   getAgentDir: vi.fn(() => "/fake/.pi/agent"),
 }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  // Record git-root probes without changing behavior: delegate to the real fs.
+  return {
+    ...actual,
+    existsSync: fsExistsSyncMock.mockImplementation((p: string) => actual.existsSync(p)),
+    readdirSync: fsReaddirSyncMock.mockImplementation((p: string) => actual.readdirSync(p)),
+  };
+});
 
 let tmpDir: string;
 
 /**
- * Scratch root for skill fixtures. Lives under node_modules/.tmp: loadAllSkills
- * walks ancestors via readdirSync looking for .git, and a busy system tmp dir
- * makes that walk cost ~250ms per call. node_modules keeps the fixtures out of
- * the git tree and prettier's path set (src/ and test/).
+ * Scratch root for skill fixtures. Lives under node_modules/.tmp: the ancestor
+ * walk from a fixture probes for .git and terminates at the repo's own .git.
+ * node_modules keeps the fixtures out of the git tree and prettier's path set
+ * (src/ and test/).
  */
 const SCRATCH_ROOT = join(fileURLToPath(new URL("../../node_modules/.tmp", import.meta.url)), "skill-test");
 
@@ -152,6 +165,53 @@ describe("loadAllSkills", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].description).toBe("First");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Git-root discovery (findGitRoot)                                   */
+/* ------------------------------------------------------------------ */
+
+describe("git root discovery", () => {
+  /** loadSkillsFromDir calls whose dir lives under the fixture scratch tree. */
+  function scratchLoadCalls(): string[] {
+    return mockLoadSkillsFromDir.mock.calls
+      .map(([args]) => (args as { dir: string }).dir)
+      .filter((dir) => dir.startsWith(SCRATCH_ROOT));
+  }
+
+  it("stops the walk at a .git directory (normal checkout)", () => {
+    mkdirSync(join(tmpDir, ".git"));
+    loadAllSkills(tmpDir);
+    expect(scratchLoadCalls()).toEqual([join(tmpDir, ".agents", "skills")]);
+  });
+
+  it("stops the walk at a .git file (worktree layout)", () => {
+    writeFileSync(join(tmpDir, ".git"), "gitdir: /elsewhere/worktree");
+    loadAllSkills(tmpDir);
+    expect(scratchLoadCalls()).toEqual([join(tmpDir, ".agents", "skills")]);
+  });
+
+  it("keeps walking past levels without .git until a root is found", () => {
+    loadAllSkills(tmpDir);
+    const calls = scratchLoadCalls();
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls[0]).toBe(join(tmpDir, ".agents", "skills"));
+  });
+
+  it("probes .git existence once per ancestor level instead of listing the directory", () => {
+    mkdirSync(join(tmpDir, ".git"));
+    loadAllSkills(tmpDir);
+    expect(fsExistsSyncMock).toHaveBeenCalledTimes(1);
+    expect(fsExistsSyncMock).toHaveBeenCalledWith(join(tmpDir, ".git"));
+    expect(fsReaddirSyncMock).not.toHaveBeenCalled();
+  });
+
+  it("probes each ancestor level until it finds a real .git", () => {
+    loadAllSkills(tmpDir);
+    expect(fsExistsSyncMock.mock.calls.length).toBeGreaterThan(1);
+    expect(fsExistsSyncMock.mock.results.at(-1)!.value).toBe(true);
+    expect(fsReaddirSyncMock).not.toHaveBeenCalled();
   });
 });
 

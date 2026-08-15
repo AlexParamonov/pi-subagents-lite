@@ -135,7 +135,7 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
         const val = rawArgs[keys[0]];
         const display =
           typeof val === "string" && val.length > MAX_DEFAULT_STRING_DISPLAY_LENGTH
-            ? JSON.stringify(val.slice(0, MAX_DEFAULT_STRING_DISPLAY_LENGTH) + "...")
+            ? JSON.stringify(val.slice(0, MAX_DEFAULT_STRING_DISPLAY_LENGTH) + "…")
             : JSON.stringify(val);
         return `(${display})`;
       }
