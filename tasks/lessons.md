@@ -24,6 +24,8 @@
 - Never name a snapshot variable after a callback parameter in scope; don't read `.length` off something that might be a function.
 - Vacuous-test grep list: `.find()` with no expect; global `some()` passing from initial state; `expect.any(String)` for branch-specific messages.
 - Verify the mock is actually called — a test that passes if the feature was deleted is worse than no test.
+- A "no render after close" test is vacuous without its trigger: fire the session event and run the debounce timer, or the closed guard is never exercised.
+- Redundant guards (subscriber closed-check + timer-callback closed-check) mean a post-close test can only pin the combined no-render contract — verify which guard a test actually fails on before claiming it pins one of them.
 - Prove each consumer reaches an extracted shared mock — a mock is vacuous when the importing modules are themselves mocked.
 - When a fix is about which arguments reach a function, assert the call args — a mock that ignores args keeps the old bug green.
 - A lib-contract test via `vi.importActual` pins the input formats a fix claims to support.
