@@ -32,6 +32,19 @@ export interface SettingsListWrapperOptions {
   onRebuild?: (rebuild: (items: any[]) => void) => void;
 }
 
+/**
+ * Horizontal arrow encodings (with and without the CSI "O" prefix) mapped to
+ * the key they act as on the main list: → enters the selected item, ←
+ * escapes. On a submenu they pass through unchanged (Input needs them for
+ * cursor movement).
+ */
+const HORIZONTAL_ARROWS = new Map<string, string>([
+  ["\x1b[C", "\r"],
+  ["\x1bOC", "\r"],
+  ["\x1b[D", "\x1b"],
+  ["\x1bOD", "\x1b"],
+]);
+
 export class SettingsListWrapper implements Component {
   private settingsList: Component;
   private title: string;
@@ -80,9 +93,30 @@ export class SettingsListWrapper implements Component {
     this.settingsList.invalidate?.();
   }
 
+  private get submenuComponent(): Component | null {
+    return ((this.settingsList as any)?.submenuComponent ?? null) as Component | null;
+  }
+
   private get hasSubmenu(): boolean {
-    const submenu = (this.settingsList as any)?.submenuComponent ?? null;
-    return isFocusable(submenu);
+    return isFocusable(this.submenuComponent);
+  }
+
+  /**
+   * True when the active submenu's leaf accepts text input, so j/k must stay
+   * letters (SearchableSelectDialog filter, Input fields). Walks delegator
+   * wrappers (getActive) to the leaf — nested delegators (mode picker →
+   * nested level picker) are two hops; the walk is unbounded by construction.
+   * Duck-typed on the text API: getValue (Input) or searchInput
+   * (SearchableSelectDialog).
+   */
+  private isTextInputSubmenu(): boolean {
+    let leaf = this.submenuComponent;
+    while (leaf && typeof (leaf as any).getActive === "function") {
+      leaf = ((leaf as any).getActive() as Component | null) ?? null;
+    }
+    if (!leaf) return false;
+    const anyLeaf = leaf as any;
+    return typeof anyLeaf.getValue === "function" || anyLeaf.searchInput != null;
   }
 
   handleInput(data: string): void {
@@ -90,25 +124,23 @@ export class SettingsListWrapper implements Component {
       this.settingsList.handleInput?.(data);
       return;
     }
+    // j/k move the main list and list-type submenus; they stay letters only
+    // when the active submenu accepts text (searchable picker filter,
+    // numeric/text fields).
     if (data === "k" || data === "j") {
-      if (this.hasSubmenu) {
-        // Submenu: pass through as normal letters
-        this.settingsList.handleInput?.(data);
-      } else {
-        // Main list: convert to arrow keys
-        this.settingsList.handleInput?.(data === "k" ? "\x1b[A" : "\x1b[B");
-      }
-    } else if (data === "\x1b[C" || data === "\x1bOC" || data === "\x1b[D" || data === "\x1bOD") {
-      if (this.hasSubmenu) {
-        // Submenu: pass arrow keys through (Input needs them for cursor)
-        this.settingsList.handleInput?.(data);
-      } else {
-        // Main list: → enters, ← escapes
-        this.settingsList.handleInput?.(data.includes("C") ? "\r" : "\x1b");
-      }
-    } else {
-      this.settingsList.handleInput?.(data);
+      const arrow = data === "k" ? "\x1b[A" : "\x1b[B";
+      const isTextInput = this.hasSubmenu && this.isTextInputSubmenu();
+      this.settingsList.handleInput?.(isTextInput ? data : arrow);
+      return;
     }
+    // Main list: → enters, ← escapes. Submenu: pass arrow keys through
+    // (Input needs them for cursor movement).
+    const mainListKey = HORIZONTAL_ARROWS.get(data);
+    if (mainListKey !== undefined && !this.hasSubmenu) {
+      this.settingsList.handleInput?.(mainListKey);
+      return;
+    }
+    this.settingsList.handleInput?.(data);
   }
 
   render(width: number): string[] {

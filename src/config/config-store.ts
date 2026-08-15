@@ -29,6 +29,7 @@ import {
   MIN_FINISHED_RETENTION_MINUTES,
   MODEL_FAMILY_KEYS,
   createConfigIO,
+  isProjectAllowedAgentKey,
   mergeDefaults,
   mergeLayers,
   type ConfigIO,
@@ -42,8 +43,33 @@ export type { ConfigIO, ConfigTarget, ProjectLayerStatus, RawConfig, RawConcurre
 
 export const fileConfigIO: ConfigIO = createConfigIO();
 
+/** True when a raw agent layer carries a model setting: the model family (default, defaultThinking,
+ * defaultMaxTurns) or a per-type model key. Reuses the "is a model key" rule from config-io
+ * (ADR-0008: only model keys may live in a project file). */
+export function agentLayerHasModelSettings(layer: RawConfig | null): boolean {
+  const agent = layer?.agent;
+  if (!agent) return false;
+  return Object.keys(agent).some((key) => isProjectAllowedAgentKey(key) && agent[key] !== undefined);
+}
+
+/** True when the session layer carries a default model or any per-type override. */
+export function sessionOverridesHasModelSettings(overrides: SessionModelOverrides): boolean {
+  return Object.values(overrides).some((value) => value != null);
+}
+
+/** True when a raw concurrency layer carries any entry (default, provider, or model). */
+export function concurrencyLayerHasSettings(layer: RawConcurrency): boolean {
+  return (
+    layer.default !== undefined ||
+    (layer.providers != null && Object.keys(layer.providers).length > 0) ||
+    (layer.models != null && Object.keys(layer.models).length > 0)
+  );
+}
+
 /** Agent keys that survive clear-all: non-model settings minus the model family. */
-const CLEAR_ALL_KEPT_AGENT_KEYS = new Set(CONFIG_AGENT_NON_MODEL_KEYS.filter((key) => !MODEL_FAMILY_KEYS.has(key)));
+export const CLEAR_ALL_KEPT_AGENT_KEYS: ReadonlySet<string> = new Set(
+  CONFIG_AGENT_NON_MODEL_KEYS.filter((key) => !MODEL_FAMILY_KEYS.has(key)),
+);
 
 /** Agent settings with all scalar defaults resolved. Model fields stay nullable. */
 export interface ResolvedAgentSettings {
@@ -233,12 +259,46 @@ export class ConfigStore {
     return this.projectRaw?.agent != null && this.projectRaw.agent[key] !== undefined;
   }
 
+  /** Whether the session layer carries a default model or any per-type override. */
+  get hasSessionModelSettings(): boolean {
+    return sessionOverridesHasModelSettings(this.sessionOverrides);
+  }
+
+  /** Whether the global agent layer carries a model setting (model family or per-type key). */
+  get hasGlobalModelSettings(): boolean {
+    return agentLayerHasModelSettings(this.globalRaw);
+  }
+
+  /** Whether the project agent layer carries a model setting. */
+  get hasProjectModelSettings(): boolean {
+    return agentLayerHasModelSettings(this.projectRaw);
+  }
+
   get projectConcurrency(): RawConcurrency {
     return { ...(this.projectRaw?.concurrency ?? {}) };
   }
 
+  get globalConcurrency(): RawConcurrency {
+    return { ...(this.globalRaw.concurrency ?? {}) };
+  }
+
   get sessionConcurrency(): RawConcurrency {
     return { ...this.sessionConcurrencyLayer };
+  }
+
+  /** Whether the session layer carries any concurrency entry (default, provider, or model). */
+  get hasSessionConcurrencySettings(): boolean {
+    return concurrencyLayerHasSettings(this.sessionConcurrencyLayer);
+  }
+
+  /** Whether the global layer carries any concurrency entry. */
+  get hasGlobalConcurrencySettings(): boolean {
+    return concurrencyLayerHasSettings(this.globalRaw.concurrency ?? {});
+  }
+
+  /** Whether the project layer carries any concurrency entry. */
+  get hasProjectConcurrencySettings(): boolean {
+    return concurrencyLayerHasSettings(this.projectRaw?.concurrency ?? {});
   }
 
   /** Raw agent config incl. dynamic per-type model keys (for menu display). */
@@ -249,7 +309,7 @@ export class ConfigStore {
   /**
    * Resolve the effective model for a spawn, hiding resolveModel's option
    * assembly. Precedence: session per-type → session default → config per-type
-   * → config default → agentConfig (frontmatter) → parentModelId.
+   * → config default → frontmatter → parentModelId.
    */
   modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }): string {
     return resolveModel({
@@ -591,7 +651,6 @@ export class ConfigStore {
       if (!CLEAR_ALL_KEPT_AGENT_KEYS.has(key)) delete layer.agent[key];
     }
   }
-
   /**
    * Clear the same model/concurrency key set at one target: session
    * (in-memory), a persisted layer (saved), or every layer (global saved

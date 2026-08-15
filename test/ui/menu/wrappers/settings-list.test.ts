@@ -6,7 +6,10 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { SelectList } from "@earendil-works/pi-tui";
 import { SettingsListWrapper } from "../../../../src/ui/menu/wrappers/settings-list.js";
+import { buildSelectListTheme, createDelegatingComponent } from "../../../../src/ui/menu/helpers.js";
+import { SearchableSelectDialog } from "../../../../src/ui/searchable-select.js";
 
 const theme = {
   fg: (_color: string, text: string) => text,
@@ -14,15 +17,20 @@ const theme = {
 };
 
 function makeSettingsList(items: any[]) {
-  return {
+  const list: any = {
     items,
     onChange: vi.fn(),
     onCancel: vi.fn(),
     selectedIndex: 0,
+    submenuComponent: null,
     render: () => [] as string[],
-    handleInput: () => {},
     invalidate: () => {},
   };
+  // Mirror pi-tui's SettingsList: with a submenu active, input goes to it.
+  list.handleInput = (data: string) => {
+    if (list.submenuComponent) list.submenuComponent.handleInput?.(data);
+  };
+  return list;
 }
 
 function makeSelectList(items: any[]) {
@@ -155,5 +163,161 @@ describe("SettingsListWrapper — render frame", () => {
     expect(lines[2]).toBe("  My Title");
     expect(lines[4]).toBe("  → A     value");
     expect(lines[lines.length - 1]).toBe("─".repeat(40));
+  });
+});
+describe("SettingsListWrapper — j/k navigation", () => {
+  it("keeps converting j/k to arrows in the main list (no submenu)", () => {
+    const list = makeSettingsList([{ id: "a", label: "A", currentValue: "" }]);
+    list.handleInput = vi.fn();
+    const wrapper = new SettingsListWrapper(list, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("j");
+    expect(list.handleInput).toHaveBeenCalledWith("\x1b[B");
+    wrapper.handleInput("k");
+    expect(list.handleInput).toHaveBeenCalledWith("\x1b[A");
+  });
+
+  it("converts j/k to arrows in a delegator-wrapped SelectList submenu", () => {
+    const selectList = makeSelectList([
+      { value: "session", label: "Session" },
+      { value: "global", label: "Global" },
+    ]);
+    selectList.handleInput = vi.fn();
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = createDelegatingComponent(selectList as any);
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("j");
+    expect(selectList.handleInput).toHaveBeenCalledWith("\x1b[B");
+    wrapper.handleInput("k");
+    expect(selectList.handleInput).toHaveBeenCalledWith("\x1b[A");
+  });
+
+  it("resolves nested delegators to the leaf SelectList", () => {
+    const selectList = makeSelectList([{ value: "a", label: "A" }]);
+    selectList.handleInput = vi.fn();
+    const inner = createDelegatingComponent(selectList as any);
+    const outer = createDelegatingComponent(inner);
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = outer;
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("j");
+    expect(selectList.handleInput).toHaveBeenCalledWith("\x1b[B");
+  });
+
+  it("passes j/k through as letters for an Input leaf (getValue)", () => {
+    const input = { focused: false, getValue: () => "", handleInput: vi.fn() };
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = createDelegatingComponent(input as any);
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("j");
+    expect(input.handleInput).toHaveBeenCalledWith("j");
+    wrapper.handleInput("k");
+    expect(input.handleInput).toHaveBeenCalledWith("k");
+  });
+
+  it("passes j/k through as letters for a SearchableSelectDialog leaf (searchInput)", () => {
+    const dialog = { focused: false, searchInput: {}, handleInput: vi.fn() };
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = createDelegatingComponent(dialog as any);
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("k");
+    expect(dialog.handleInput).toHaveBeenCalledWith("k");
+  });
+
+  it("converts j/k to arrows for a raw SelectList submenu (confirm dialog)", () => {
+    const selectList = makeSelectList([
+      { value: "Yes", label: "Yes" },
+      { value: "No", label: "No" },
+    ]);
+    selectList.handleInput = vi.fn();
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = selectList as any;
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("j");
+    expect(selectList.handleInput).toHaveBeenCalledWith("\x1b[B");
+  });
+
+  it("sees through a SettingsList picker (focused + getActive) to a text-input leaf", () => {
+    // The level pickers are SettingsLists with a chained step as their own
+    // submenuComponent; getActive exposes it so j/k stay letters.
+    const input = { focused: false, getValue: () => "", handleInput: vi.fn() };
+    const picker = {
+      focused: true,
+      submenuComponent: input,
+      getActive: () => input,
+      handleInput: (d: string) => input.handleInput(d),
+    };
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = picker as any;
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    wrapper.handleInput("j");
+    expect(input.handleInput).toHaveBeenCalledWith("j");
+  });
+});
+
+describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
+  it("moves selection with wrap-around through a delegator", () => {
+    const list = new SelectList(
+      [
+        { value: "a", label: "A" },
+        { value: "b", label: "B" },
+        { value: "c", label: "C" },
+      ],
+      5,
+      buildSelectListTheme(theme),
+    );
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = createDelegatingComponent(list as any);
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    expect(list.selectedIndex).toBe(0);
+    wrapper.handleInput("j");
+    expect(list.selectedIndex).toBe(1);
+    wrapper.handleInput("j");
+    expect(list.selectedIndex).toBe(2);
+    wrapper.handleInput("j"); // wraps to the top
+    expect(list.selectedIndex).toBe(0);
+    wrapper.handleInput("k"); // wraps to the bottom
+    expect(list.selectedIndex).toBe(2);
+  });
+
+  it("moves a raw SelectList submenu (confirm dialog) with wrap-around", () => {
+    const list = new SelectList(
+      [
+        { value: "Yes", label: "Yes" },
+        { value: "No", label: "No" },
+      ],
+      5,
+      buildSelectListTheme(theme),
+    );
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = list as any;
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    expect(list.selectedIndex).toBe(0);
+    wrapper.handleInput("j");
+    expect(list.selectedIndex).toBe(1);
+    wrapper.handleInput("k");
+    expect(list.selectedIndex).toBe(0);
+    wrapper.handleInput("k"); // wraps to the bottom
+    expect(list.selectedIndex).toBe(1);
+  });
+
+  it("keeps j/k as letters in a real SearchableSelectDialog submenu", () => {
+    const dialog = new SearchableSelectDialog(
+      [
+        { value: "m/a", label: "alpha" },
+        { value: "m/b", label: "beta" },
+      ],
+      null,
+      { onSelect: () => {}, onCancel: () => {} },
+      theme,
+    );
+    const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
+    settings.submenuComponent = createDelegatingComponent(dialog as any);
+    const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
+    // 'j'/'k' must reach the search input and accumulate in the query, not
+    // move the list: after "k" + "a" the query is "ka", matching nothing.
+    // If "k" were converted to an arrow, the query would be "a" → [alpha].
+    wrapper.handleInput("k");
+    wrapper.handleInput("a");
+    expect((dialog as any).filteredItems.map((o: any) => o.label)).toEqual([]);
   });
 });

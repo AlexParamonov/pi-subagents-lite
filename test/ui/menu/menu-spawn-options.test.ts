@@ -37,38 +37,49 @@ let selectListInstances: Array<{
   onCancel?: () => void;
 }> = [];
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList {
-    items: any[];
-    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
-      this.items = items;
-      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options, list: this as any });
-    }
-  },
-  SelectList: class MockSelectList {
-    items: any[];
-    onSelect?: (item: any) => void;
-    onCancel?: () => void;
-    constructor(items: any[]) {
-      this.items = items;
-      selectListInstances.push(this as any);
-    }
-  },
-  Input: class MockInput {
-    value = "";
-    onSubmit?: (value: string) => void;
-    onEscape?: () => void;
-    setValue(v: string) {
-      this.value = v;
-    }
-    getValue() {
-      return this.value;
-    }
-    constructor() {
-      inputInstances.push(this as any);
-    }
-  },
-}));
+vi.mock("@earendil-works/pi-tui", async () => {
+  const { activatePickerRow } = await import("../../menu-picker-helpers.js");
+  return {
+    SettingsList: class MockSettingsList {
+      items: any[];
+      onChange: any;
+      onCancel: any;
+      submenuComponent: any = null;
+      constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+        this.items = items;
+        this.onChange = onChange;
+        this.onCancel = onCancel;
+        settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options, list: this as any });
+      }
+      activate(id: string) {
+        activatePickerRow(this, id);
+      }
+    },
+    SelectList: class MockSelectList {
+      items: any[];
+      onSelect?: (item: any) => void;
+      onCancel?: () => void;
+      constructor(items: any[]) {
+        this.items = items;
+        selectListInstances.push(this as any);
+      }
+    },
+    Input: class MockInput {
+      value = "";
+      onSubmit?: (value: string) => void;
+      onEscape?: () => void;
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
+      constructor() {
+        inputInstances.push(this as any);
+      }
+    },
+  };
+});
 
 // Import AFTER mock setup
 import { showSpawnOptionsMenu } from "../../../src/ui/menu/menu-spawn-options.js";
@@ -227,10 +238,10 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("unlimited", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     // No session layer for max turns; project offered.
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["global", "project", "clear"]);
-    targetList.onSelect!({ value: "project" });
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["global", "project", "clear"]);
+    targetList.activate("project");
 
     const input = inputInstances[inputInstances.length - 1];
     input.onSubmit!("30");
@@ -250,14 +261,14 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("30", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "clear" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("clear");
 
     // The nested clear picker offers the persisted layers plus "all"; no session layer.
-    const clearList = selectListInstances[selectListInstances.length - 1];
+    const clearList = settingsListCalls[settingsListCalls.length - 1].list;
     expect(clearList).not.toBe(targetList);
-    expect(clearList.items.map((i: any) => i.value)).toEqual(["global", "project", "all"]);
-    clearList.onSelect!({ value: "project" });
+    expect(clearList.items.map((i: any) => i.id)).toEqual(["global", "project", "all"]);
+    clearList.activate("project");
 
     expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBeUndefined();
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBe(50); // falls through to global
@@ -276,8 +287,8 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("30", mockDone);
 
-    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "clear" });
-    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "all" });
+    settingsListCalls[settingsListCalls.length - 1].list.activate("clear");
+    settingsListCalls[settingsListCalls.length - 1].list.activate("all");
 
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
     expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBeUndefined();
@@ -292,13 +303,13 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("", mockDone);
 
-    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "clear" });
+    settingsListCalls[settingsListCalls.length - 1].list.activate("clear");
 
-    const clearList = selectListInstances[selectListInstances.length - 1];
-    expect(clearList.items.map((i: any) => i.value)).toEqual(["global", "all"]);
+    const clearList = settingsListCalls[settingsListCalls.length - 1].list;
+    expect(clearList.items.map((i: any) => i.id)).toEqual(["global", "all"]);
   });
 
-  it("max turns submenu: escape from the nested Clear... picker cancels without clearing", async () => {
+  it("max turns submenu: escape from the nested Clear... picker returns to the outer picker", async () => {
     mockModules.mockConfig.agent.defaultMaxTurns = 50;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
@@ -307,15 +318,17 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("50", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "clear" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("clear");
 
-    const clearList = selectListInstances[selectListInstances.length - 1];
+    const clearList = settingsListCalls[settingsListCalls.length - 1].list;
     expect(clearList).not.toBe(targetList);
-    clearList.onCancel!();
+    // Drill-down: canceling the nested picker returns to the outer picker;
+    // nothing is cleared and the row's done is not called.
+    clearList.onCancel();
 
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBe(50);
-    expect(mockDone).toHaveBeenCalled();
+    expect(mockDone).not.toHaveBeenCalled();
   });
 
   // Regression: after a submenu mutation the list must rebuild so the row
@@ -344,8 +357,8 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("50", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "global" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("global");
 
     inputInstances[inputInstances.length - 1].onSubmit!("unlimited");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
@@ -360,8 +373,8 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("unlimited", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "global" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("global");
 
     inputInstances[inputInstances.length - 1].onSubmit!("0");
     expect(mockModules.mockConfig.agent.defaultMaxTurns).toBeUndefined();
@@ -377,7 +390,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const mockDone = vi.fn();
     dmt.submenu("unlimited", mockDone);
 
-    selectListInstances[selectListInstances.length - 1].onCancel!();
+    settingsListCalls[settingsListCalls.length - 1].list.onCancel();
     expect(mockDone).toHaveBeenCalled();
   });
 });
@@ -415,8 +428,8 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     const mockDone = vi.fn();
     dt.submenu("", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "global" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("global");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
     expect(levelList.items.map((i: any) => i.value)).toEqual([
@@ -444,8 +457,8 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     const mockDone = vi.fn();
     dt.submenu("", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "project" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("project");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
     levelList.onSelect!({ value: "high" });
@@ -462,8 +475,8 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     const mockDone = vi.fn();
     dt.submenu("", mockDone);
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "global" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1].list;
+    targetList.activate("global");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
     levelList.onSelect!({ value: "inherit" });

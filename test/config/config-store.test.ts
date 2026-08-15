@@ -226,6 +226,39 @@ describe("ConfigStore override layers", () => {
     expect(store.projectConcurrency).toEqual({});
     expect(store.sessionConcurrency).toEqual({});
   });
+  it("reports per-level model settings (model family or per-type key) for clear availability", () => {
+    const { io } = memIO({
+      global: { agent: { default: "g", Explore: "g/explore", graceTurns: 5 } },
+      project: { agent: { defaultThinking: "low" } },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+    // No session overrides yet.
+    expect(store.hasSessionModelSettings).toBe(false);
+    // Global: default + per-type keys (graceTurns is not a model key).
+    expect(store.hasGlobalModelSettings).toBe(true);
+    // Project: defaultThinking is a model-family key, so clear-all applies to it.
+    expect(store.hasProjectModelSettings).toBe(true);
+
+    store.mutate.session.setOverride("default", "s/default");
+    expect(store.hasSessionModelSettings).toBe(true);
+    store.mutate.session.clearOverride("default");
+    store.mutate.session.setOverride("Explore", "s/explore");
+    expect(store.hasSessionModelSettings).toBe(true);
+    store.mutate.session.clearOverride("Explore");
+    expect(store.hasSessionModelSettings).toBe(false);
+
+    store.mutate.agent.clearAllModelOverrides("global");
+    expect(store.hasGlobalModelSettings).toBe(false);
+    store.mutate.agent.setModelOverride("Explore", "g/explore", "project");
+    expect(store.hasProjectModelSettings).toBe(true);
+  });
+
+  it("hasGlobalModelSettings is false for an empty global layer", () => {
+    const store = new ConfigStore(minimalIO());
+    expect(store.hasGlobalModelSettings).toBe(false);
+    expect(store.hasProjectModelSettings).toBe(false);
+  });
 
   it("a project mutation writes only the project layer and overrides the global value", () => {
     const { io, saves, global } = memIO({
@@ -692,11 +725,12 @@ describe("ConfigStore model resolution", () => {
     expect(store.modelFor("Explore", "parent", { model: "frontmatter" })).toBe("session/explore");
   });
 
-  it("falls through config -> frontmatter -> parent", () => {
+  it("config default beats the frontmatter model; frontmatter applies without it", () => {
     const { io } = memIO({
       global: { agent: { default: "config/default", forceBackground: false }, concurrency: { default: 4 } },
     });
     const store = new ConfigStore(io);
+    // The config default sits above the frontmatter model in the chain.
     expect(store.modelFor("Explore", "parent", { model: "frontmatter" })).toBe("config/default");
     expect(store.modelFor("Explore", "parent")).toBe("config/default");
   });

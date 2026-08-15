@@ -4,8 +4,9 @@
  * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
  * All limits are target-level (session/global/project per ADR-0008): setting
  * picks a level then a numeric value; removing/clearing picks a level (or all
- * levels) via the shared target picker. Values show [session]/[project] tags
- * when they come from those layers.
+ * levels) via the shared target picker, which offers only levels that carry
+ * the entry. Values show [session]/[project] tags when they come from those
+ * layers.
  *
  * Exports:
  *   - showConcurrencySettingsMenu: per-provider and per-model slot limits
@@ -13,18 +14,15 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import {
-  SEPARATOR_ID,
-  buildSettingsListTheme,
-  buildSelectListTheme,
-  buildModelOptions,
-  createDelegatingComponent,
-  createSearchableSelect,
-} from "./helpers.js";
+import { SEPARATOR_ID, buildSettingsListTheme, buildModelOptions, createSearchableSelect } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import {
+  buildLevelItems,
+  createClearPickerSubmenu,
+  createLevelPickerSubmenu,
   createTargetSelectSubmenu,
   createClearAllSubmenu,
+  type AvailableLevels,
   type SetTarget,
   type TargetChoice,
 } from "./submenus/target-select.js";
@@ -44,6 +42,13 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     const layerHas = (layer: RawConcurrency, section: "default" | "providers" | "models", key?: string): boolean =>
       section === "default" ? layer.default !== undefined : key !== undefined && layer[section]?.[key] !== undefined;
 
+    /** Which layers carry this concurrency entry, driving the remove/clear pickers. */
+    const entryLevels = (section: "default" | "providers" | "models", key?: string): AvailableLevels => ({
+      session: layerHas(store.sessionConcurrency, section, key),
+      global: layerHas(store.globalConcurrency, section, key),
+      project: layerHas(store.projectConcurrency, section, key),
+    });
+
     /** " [session]" / " [project]" when the effective value comes from that layer. */
     const limitTag = (section: "default" | "providers" | "models", key?: string): string => {
       if (layerHas(store.sessionConcurrency, section, key)) return " [session]";
@@ -62,39 +67,41 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
             createNumericSubmenu(ctx, { min: 1 }, (parsed) => onPick(target as SetTarget, parsed))(initial, pickDone),
         })(currentValue, done);
 
-    // Submenu factory: Edit (→ target → value) or Remove (→ target) for an existing limit.
-    const editOrRemoveSubmenu =
+    // Submenu factory: set at a target level (value input) or Clear via a
+    // nested per-level picker — the model-settings flow.
+    const limitSubmenu =
       (
         currentLimit: number,
-        onEdit: (target: SetTarget, parsed: number) => void,
+        onSet: (target: SetTarget, parsed: number) => void,
         onRemove: (target: TargetChoice) => void,
+        availableLevels: AvailableLevels,
       ): SettingItem["submenu"] =>
       (currentValue, done) => {
-        const list = new SelectList(
-          [
-            { value: "edit", label: "Edit limit" },
-            { value: "remove", label: "Remove limit" },
-          ],
-          5,
-          buildSelectListTheme(theme),
-        );
-        const delegator = createDelegatingComponent(list);
-        list.onSelect = (item) => {
-          if (item.value === "edit") {
-            delegator.setActive(targetThenValueSubmenu(String(currentLimit), onEdit)(currentValue, done));
-          } else {
-            delegator.setActive(
-              createTargetSelectSubmenu({
+        // A fresh config's default row has an effective value but no raw key
+        // anywhere, so Clear is offered only when a layer actually carries it.
+        const items = buildLevelItems({
+          offered: { session: true, global: true, project: projectOffered },
+          includeClear: availableLevels.session || availableLevels.global || availableLevels.project,
+        });
+        return createLevelPickerSubmenu({
+          theme,
+          items,
+          onPick: (id, subDone) => {
+            if (id === "clear") {
+              return createClearPickerSubmenu({
                 theme,
                 projectOffered,
-                includeAll: true,
-                onPick: onRemove,
-              })(currentValue, done),
+                availableLevels,
+                onClear: onRemove,
+              })("", subDone);
+            }
+            const target = id as SetTarget;
+            return createNumericSubmenu(ctx, { min: 1 }, (parsed) => onSet(target, parsed))(
+              String(currentLimit),
+              subDone,
             );
-          }
-        };
-        list.onCancel = () => done();
-        return delegator;
+          },
+        })(currentValue, done);
       };
 
     // Submenu factory: searchable-pick an option, then target → numeric value.
@@ -121,7 +128,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
       label: "Default concurrency limit",
       currentValue: `${store.concurrency.default}${limitTag("default")}`,
       description: "Concurrent agent slots when no per-provider or per-model limit applies.",
-      submenu: editOrRemoveSubmenu(
+      submenu: limitSubmenu(
         store.concurrency.default,
         (target, parsed) => {
           store.mutate.concurrency.setDefault(parsed, target);
@@ -131,12 +138,17 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
           store.mutate.concurrency.removeDefault(target);
           ctx.ui.notify(`Removed default concurrency limit (${target})`, "info");
         },
+        entryLevels("default"),
       ),
     });
 
     // Per-provider limits
     items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-    items.push({ id: SEPARATOR_ID, label: "── Per-provider limits ──", currentValue: "────────" });
+    items.push({
+      id: SEPARATOR_ID,
+      label: theme.bold(theme.fg("accent", "Per-provider limits")),
+      currentValue: "",
+    });
     const providerLimits = store.concurrency.providers;
     for (const provider of Object.keys(providerLimits)) {
       const limit = providerLimits[provider];
@@ -145,7 +157,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
         label: provider,
         currentValue: `${limit} slots${limitTag("providers", provider)}`,
         description: `Concurrent slots reserved for agents using the ${provider} provider.`,
-        submenu: editOrRemoveSubmenu(
+        submenu: limitSubmenu(
           limit,
           (target, parsed) => {
             store.mutate.concurrency.setProvider(provider, parsed, target);
@@ -155,6 +167,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
             store.mutate.concurrency.removeProvider(provider, target);
             ctx.ui.notify(`Removed per-provider limit for ${provider} (${target})`, "info");
           },
+          entryLevels("providers", provider),
         ),
       });
     }
@@ -178,7 +191,11 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
 
     // Per-model limits
     items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-    items.push({ id: SEPARATOR_ID, label: "── Per-model limits ──", currentValue: "────────" });
+    items.push({
+      id: SEPARATOR_ID,
+      label: theme.bold(theme.fg("accent", "Per-model limits")),
+      currentValue: "",
+    });
     const models = store.concurrency.models;
     for (const modelKey of Object.keys(models)) {
       const limit = models[modelKey];
@@ -187,7 +204,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
         label: modelKey,
         currentValue: `${limit} slots${limitTag("models", modelKey)}`,
         description: `Concurrent slots reserved for agents using the ${modelKey} model.`,
-        submenu: editOrRemoveSubmenu(
+        submenu: limitSubmenu(
           limit,
           (target, parsed) => {
             store.mutate.concurrency.setModel(modelKey, parsed, target);
@@ -197,6 +214,7 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
             store.mutate.concurrency.removeModel(modelKey, target);
             ctx.ui.notify(`Removed per-model limit for ${modelKey} (${target})`, "info");
           },
+          entryLevels("models", modelKey),
         ),
       });
     }
@@ -216,22 +234,33 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
     }
 
     items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-    // Clear-all per target: nested level picker, then confirm.
-    items.push({
-      id: "resetAll",
-      label: "Clear all concurrency limits...",
-      currentValue: "",
-      description: "Remove concurrency overrides at the chosen level (session, global, project, or all).",
-      submenu: createClearAllSubmenu({
-        theme,
-        projectOffered,
-        message: (target) => `Clear all concurrency limits at the ${target} level?`,
-        onConfirm: (target) => {
-          store.mutate.concurrency.clearAll(target);
-          ctx.ui.notify(`Concurrency limits cleared (${target})`, "info");
-        },
-      }),
-    });
+    // Clear-all per target: nested level picker, then confirm. Each level is
+    // offered only when it has concurrency entries (project additionally
+    // requires the project target to be offered); the entry itself is hidden
+    // when no level is offered.
+    const availableLevels: AvailableLevels = {
+      session: store.hasSessionConcurrencySettings,
+      global: store.hasGlobalConcurrencySettings,
+      project: store.hasProjectConcurrencySettings && projectOffered,
+    };
+    if (availableLevels.session || availableLevels.global || availableLevels.project) {
+      items.push({
+        id: "resetAll",
+        label: "Clear all concurrency limits...",
+        currentValue: "",
+        description: "Remove concurrency overrides at the chosen level (session, global, project, or all).",
+        submenu: createClearAllSubmenu({
+          theme,
+          projectOffered,
+          availableLevels,
+          message: (target) => `Clear all concurrency limits at the ${target} level?`,
+          onConfirm: (target) => {
+            store.mutate.concurrency.clearAll(target);
+            ctx.ui.notify(`Concurrency limits cleared (${target})`, "info");
+          },
+        }),
+      });
+    }
 
     return items;
   };

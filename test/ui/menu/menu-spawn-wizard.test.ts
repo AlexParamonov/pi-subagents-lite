@@ -56,47 +56,54 @@ let selectListInstances: Array<{
   onCancel?: () => void;
 }> = [];
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList {
-    items: any[];
-    onChange: (id: string, newValue: string) => void;
-    onCancel: () => void;
-    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
-      this.items = items;
-      this.onChange = onChange;
-      this.onCancel = onCancel;
-      this.options = options;
-      // Push the instance (not a snapshot) so rebuild() reassignments of
-      // list.items stay observable through settingsListCalls.
-      settingsListCalls.push(this as any);
-    }
-  },
-  Input: class MockInput {
-    value = "";
-    onSubmit?: (value: string) => void;
-    onEscape?: () => void;
-    setValue(v: string) {
-      this.value = v;
-    }
-    getValue() {
-      return this.value;
-    }
-    constructor() {
-      inputInstances.push(this as any);
-    }
-  },
-  SelectList: class MockSelectList {
-    onSelect?: (item: any) => void;
-    onCancel?: () => void;
-    items: any[];
-    maxVisible: number;
-    constructor(items: any[], maxVisible: number, _theme?: any) {
-      this.items = items;
-      this.maxVisible = maxVisible;
-      selectListInstances.push(this as any);
-    }
-  },
-}));
+vi.mock("@earendil-works/pi-tui", async () => {
+  const { activatePickerRow } = await import("../../menu-picker-helpers.js");
+  return {
+    SettingsList: class MockSettingsList {
+      items: any[];
+      onChange: (id: string, newValue: string) => void;
+      onCancel: () => void;
+      submenuComponent: any = null;
+      constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+        this.items = items;
+        this.onChange = onChange;
+        this.onCancel = onCancel;
+        this.options = options;
+        // Push the instance (not a snapshot) so rebuild() reassignments of
+        // list.items stay observable through settingsListCalls.
+        settingsListCalls.push(this as any);
+      }
+      activate(id: string) {
+        activatePickerRow(this, id);
+      }
+    },
+    Input: class MockInput {
+      value = "";
+      onSubmit?: (value: string) => void;
+      onEscape?: () => void;
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
+      constructor() {
+        inputInstances.push(this as any);
+      }
+    },
+    SelectList: class MockSelectList {
+      onSelect?: (item: any) => void;
+      onCancel?: () => void;
+      items: any[];
+      maxVisible: number;
+      constructor(items: any[], maxVisible: number, _theme?: any) {
+        this.items = items;
+        this.maxVisible = maxVisible;
+        selectListInstances.push(this as any);
+      }
+    },
+  };
+});
 
 // Import AFTER mock setup
 import { showSpawnAgentMenu } from "../../../src/ui/menu/menu-spawn-wizard.js";
@@ -405,7 +412,7 @@ describe("showSpawnAgentMenu — thinking level", () => {
     const mockDone = vi.fn();
     modelItem.submenu("anthropic/claude-sonnet-4-20250514", mockDone);
     // Trigger mode selection (session) — this creates the model selector
-    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "session" });
+    settingsListCalls[settingsListCalls.length - 1].activate("session");
     // Select a non-reasoning model to trigger the clamping callback
     selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("openai/gpt-4o");
     expect(vi.mocked(clampThinkingLevel).mock.calls).toHaveLength(1);

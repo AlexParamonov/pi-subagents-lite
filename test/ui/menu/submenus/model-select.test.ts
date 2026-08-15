@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+let settingsListCalls: Array<any> = [];
 let selectListInstances: Array<{
   items: any[];
   onSelect?: (item: any) => void;
@@ -13,51 +14,57 @@ let selectListInstances: Array<{
   handleInput: (d: string) => void;
 }> = [];
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList {
-    constructor() {}
-  },
-  SelectList: class MockSelectList {
-    items: any[];
-    onSelect?: (item: any) => void;
-    onCancel?: () => void;
-    constructor(items: any[]) {
-      this.items = items;
-      selectListInstances.push(this as any);
-    }
-    render() {
-      return [];
-    }
-    handleInput() {}
-  },
-  Input: class MockInput {
-    value = "";
-    onSubmit?: (v: string) => void;
-    onEscape?: () => void;
-    setValue(v: string) {
-      this.value = v;
-    }
-    getValue() {
-      return this.value;
-    }
-  },
-  Container: class MockContainer {
-    addChild() {}
-    clear() {}
-    render() {
-      return [];
-    }
-    invalidate() {}
-  },
-  Spacer: class MockSpacer {
-    constructor() {}
-  },
-  Text: class MockText {
-    constructor() {}
-  },
-  fuzzyFilter: vi.fn((_items, _query, _accessor) => []),
-  getKeybindings: vi.fn(() => ({ matches: () => false })),
-}));
+vi.mock("@earendil-works/pi-tui", async () => {
+  const { activatePickerRow } = await import("../../../menu-picker-helpers.js");
+  return {
+    SettingsList: class MockSettingsList {
+      items: any[];
+      onChange: any;
+      onCancel: any;
+      submenuComponent: any = null;
+      constructor(items: any[], _max: number, _theme: any, onChange: any, onCancel: any) {
+        this.items = items;
+        this.onChange = onChange;
+        this.onCancel = onCancel;
+        settingsListCalls.push(this as any);
+      }
+      render() {
+        return this.submenuComponent ? this.submenuComponent.render(80) : [];
+      }
+      handleInput() {}
+      activate(id: string) {
+        activatePickerRow(this, id);
+      }
+    },
+    Input: class MockInput {
+      value = "";
+      onSubmit?: (v: string) => void;
+      onEscape?: () => void;
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
+    },
+    Container: class MockContainer {
+      addChild() {}
+      clear() {}
+      render() {
+        return [];
+      }
+      invalidate() {}
+    },
+    Spacer: class MockSpacer {
+      constructor() {}
+    },
+    Text: class MockText {
+      constructor() {}
+    },
+    fuzzyFilter: vi.fn((_items, _query, _accessor) => []),
+    getKeybindings: vi.fn(() => ({ matches: () => false })),
+  };
+});
 
 let searchableSelectInstances: Array<{ items: any[]; callbacks: any }> = [];
 
@@ -91,6 +98,7 @@ import { createModelSelectSubmenu } from "../../../../src/ui/menu/submenus/model
 
 describe("createModelSelectSubmenu", () => {
   beforeEach(() => {
+    settingsListCalls = [];
     selectListInstances = [];
     searchableSelectInstances = [];
     vi.clearAllMocks();
@@ -111,33 +119,44 @@ describe("createModelSelectSubmenu", () => {
     onClear: vi.fn(),
   };
 
-  it("returns a function that creates a SelectList with target options", () => {
+  it("returns a function that creates a SettingsList picker with target rows", () => {
     const factory = createModelSelectSubmenu({ ...baseOptions });
     expect(typeof factory).toBe("function");
 
     factory("(inherits parent)", vi.fn());
-    expect(selectListInstances.length).toBe(1);
-    const items = selectListInstances[0].items;
+    expect(settingsListCalls.length).toBe(1);
+    const items = settingsListCalls[0].items;
     expect(items).toHaveLength(2);
-    expect(items[0].value).toBe("session");
-    expect(items[0].label).toContain("session");
-    expect(items[1].value).toBe("global");
-    expect(items[1].label).toContain("global");
+    expect(items[0].id).toBe("session");
+    expect(items[0].label).toBe("Session");
+    expect(items[1].id).toBe("global");
+    expect(items[1].label).toBe("Global");
+  });
+
+  it("describes each level's persistence", () => {
+    const factory = createModelSelectSubmenu({ ...baseOptions, projectOffered: true });
+    factory("(inherits parent)", vi.fn());
+    const items = settingsListCalls[0].items;
+    expect(items.map((i: any) => i.description)).toEqual([
+      "Not saved",
+      "Saves to the global config file",
+      "Saves to the project config file",
+    ]);
   });
 
   it("offers the project target when the project layer is available", () => {
     const factory = createModelSelectSubmenu({ ...baseOptions, projectOffered: true });
     factory("(inherits parent)", vi.fn());
-    const items = selectListInstances[0].items;
-    expect(items.map((i: any) => i.value)).toEqual(["session", "global", "project"]);
+    const items = settingsListCalls[0].items;
+    expect(items.map((i: any) => i.id)).toEqual(["session", "global", "project"]);
   });
 
   it("shows Clear option when showClear is true", () => {
     const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true });
     factory("openai/gpt-4o", vi.fn());
-    const items = selectListInstances[0].items;
+    const items = settingsListCalls[0].items;
     expect(items).toHaveLength(3);
-    expect(items[2].value).toBe("clear");
+    expect(items[2].id).toBe("clear");
   });
 
   it("nested clear picker calls onClear with the picked target", () => {
@@ -145,15 +164,73 @@ describe("createModelSelectSubmenu", () => {
     const done = vi.fn();
     const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true, onClear });
     factory("openai/gpt-4o", done);
-    selectListInstances[0].onSelect!({ value: "clear" });
+    settingsListCalls[0].activate("clear");
 
-    // The nested target picker is a second SelectList with "all levels".
-    const targetList = selectListInstances[1];
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
-    targetList.onSelect!({ value: "global" });
+    // The nested target picker is a second SettingsList with "all levels".
+    const targetList = settingsListCalls[1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "all"]);
+    targetList.activate("global");
 
     expect(onClear).toHaveBeenCalledWith("global");
     expect(done).toHaveBeenCalledWith("global");
+  });
+
+  it("with availableLevels, the nested clear picker offers only the listed levels", () => {
+    const factory = createModelSelectSubmenu({
+      ...baseOptions,
+      showClear: true,
+      projectOffered: true,
+      availableLevels: { session: false, global: false, project: true },
+    });
+    factory("openai/gpt-4o", vi.fn());
+    // The set entries are not filtered; only the nested clear picker is.
+    expect(settingsListCalls[0].items.map((i: any) => i.id)).toEqual(["session", "global", "project", "clear"]);
+    settingsListCalls[0].activate("clear");
+    const targetList = settingsListCalls[1];
+    // One level → no "All levels".
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["project"]);
+  });
+
+  it("with availableLevels, offers 'All levels' only when at least two levels have the setting", () => {
+    const factory = createModelSelectSubmenu({
+      ...baseOptions,
+      showClear: true,
+      projectOffered: true,
+      availableLevels: { session: true, global: true, project: false },
+    });
+    factory("openai/gpt-4o", vi.fn());
+    settingsListCalls[0].activate("clear");
+    const targetList = settingsListCalls[1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "all"]);
+  });
+
+  it("describes the clear picker levels as removals", () => {
+    const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true, projectOffered: true });
+    factory("openai/gpt-4o", vi.fn());
+    // The mode list keeps the set wording; the nested clear picker switches
+    // to "Removes from...".
+    expect(settingsListCalls[0].items.map((i: any) => i.description)).toEqual([
+      "Not saved",
+      "Saves to the global config file",
+      "Saves to the project config file",
+      undefined,
+    ]);
+    settingsListCalls[0].activate("clear");
+    const targetList = settingsListCalls[1];
+    expect(targetList.items.map((i: any) => i.description)).toEqual([
+      "Removes from the session",
+      "Removes from the global config file",
+      "Removes from the project config file",
+      undefined,
+    ]);
+  });
+
+  it("without availableLevels, the nested clear picker keeps the structural level list", () => {
+    const factory = createModelSelectSubmenu({ ...baseOptions, showClear: true, projectOffered: true });
+    factory("openai/gpt-4o", vi.fn());
+    settingsListCalls[0].activate("clear");
+    const targetList = settingsListCalls[1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "project", "all"]);
   });
 
   it("transitions to model selection when session is selected", () => {
@@ -161,11 +238,11 @@ describe("createModelSelectSubmenu", () => {
     const done = vi.fn();
     const factory = createModelSelectSubmenu({ ...baseOptions, onSet });
     const component = factory("(inherits parent)", done);
-    selectListInstances[0].onSelect!({ value: "session" });
+    settingsListCalls[0].activate("session");
     // onSet not called yet (model selection step pending)
     expect(onSet).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
-    // The delegator now renders the searchable model selector, not the mode list
+    // The picker now renders the searchable model selector as its submenu
     expect(component.render(80)).toEqual(["MODEL-SELECTOR-ACTIVE"]);
     // Picking a model in the selector completes the flow with the chosen target
     searchableSelectInstances[0].callbacks.onSelect("openai/gpt-4o");
@@ -178,10 +255,10 @@ describe("createModelSelectSubmenu", () => {
     const done = vi.fn();
     const factory = createModelSelectSubmenu({ ...baseOptions, onSet });
     const component = factory("(inherits parent)", done);
-    selectListInstances[0].onSelect!({ value: "global" });
+    settingsListCalls[0].activate("global");
     expect(onSet).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
-    // The delegator now renders the searchable model selector, not the mode list
+    // The picker now renders the searchable model selector as its submenu
     expect(component.render(80)).toEqual(["MODEL-SELECTOR-ACTIVE"]);
   });
 
@@ -190,7 +267,7 @@ describe("createModelSelectSubmenu", () => {
     const done = vi.fn();
     const factory = createModelSelectSubmenu({ ...baseOptions, onSet });
     factory("(inherits parent)", done);
-    selectListInstances[0].onCancel!();
+    settingsListCalls[0].onCancel();
     expect(onSet).not.toHaveBeenCalled();
     expect(done).toHaveBeenCalledWith();
   });

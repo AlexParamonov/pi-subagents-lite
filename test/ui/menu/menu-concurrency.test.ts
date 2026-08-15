@@ -14,50 +14,57 @@ let inputInstances: Array<any> = [];
 let selectListInstances: Array<any> = [];
 let settingsListWrapperCalls: Array<any> = [];
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList {
-    items: any[];
-    onChange: any;
-    onCancel: any;
-    constructor(items: any[], _max: number, _theme: any, onChange: any, onCancel: any) {
-      this.items = items;
-      this.onChange = onChange;
-      this.onCancel = onCancel;
-      settingsListCalls.push(this as any);
-    }
-    render() {
-      return [];
-    }
-    handleInput() {}
-  },
-  SelectList: class MockSelectList {
-    items: any[];
-    onSelect?: (item: any) => void;
-    onCancel?: () => void;
-    constructor(items: any[]) {
-      this.items = items;
-      selectListInstances.push(this as any);
-    }
-    render() {
-      return [];
-    }
-    handleInput() {}
-  },
-  Input: class MockInput {
-    value = "";
-    onSubmit?: (v: string) => void;
-    onEscape?: () => void;
-    setValue(v: string) {
-      this.value = v;
-    }
-    getValue() {
-      return this.value;
-    }
-    constructor() {
-      inputInstances.push(this as any);
-    }
-  },
-}));
+vi.mock("@earendil-works/pi-tui", async () => {
+  const { activatePickerRow } = await import("../../menu-picker-helpers.js");
+  return {
+    SettingsList: class MockSettingsList {
+      items: any[];
+      onChange: any;
+      onCancel: any;
+      submenuComponent: any = null;
+      constructor(items: any[], _max: number, _theme: any, onChange: any, onCancel: any) {
+        this.items = items;
+        this.onChange = onChange;
+        this.onCancel = onCancel;
+        settingsListCalls.push(this as any);
+      }
+      render() {
+        return this.submenuComponent ? this.submenuComponent.render(80) : [];
+      }
+      handleInput() {}
+      activate(id: string) {
+        activatePickerRow(this, id);
+      }
+    },
+    SelectList: class MockSelectList {
+      items: any[];
+      onSelect?: (item: any) => void;
+      onCancel?: () => void;
+      constructor(items: any[]) {
+        this.items = items;
+        selectListInstances.push(this as any);
+      }
+      render() {
+        return [];
+      }
+      handleInput() {}
+    },
+    Input: class MockInput {
+      value = "";
+      onSubmit?: (v: string) => void;
+      onEscape?: () => void;
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
+      constructor() {
+        inputInstances.push(this as any);
+      }
+    },
+  };
+});
 
 vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
   SettingsListWrapper: class MockSettingsListWrapper {
@@ -130,14 +137,10 @@ describe("showConcurrencySettingsMenu — SettingsList migration", () => {
     const done = vi.fn();
     item.submenu("4", done);
 
-    // Edit limit → target picker → value input
-    const editList = selectListInstances[selectListInstances.length - 1];
-    expect(editList.items.map((i: any) => i.value)).toEqual(["edit", "remove"]);
-    editList.onSelect!({ value: "edit" });
-
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "project"]);
-    targetList.onSelect!({ value: "project" });
+    // Set at a target level → value input (no separate mode list)
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    expect(modeList.items.map((i: any) => i.id)).toEqual(["session", "global", "project", "clear"]);
+    modeList.activate("project");
 
     const input = inputInstances[inputInstances.length - 1];
     expect(input.value).toBe("4");
@@ -157,17 +160,37 @@ describe("showConcurrencySettingsMenu — SettingsList migration", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultConcurrency");
     const done = vi.fn();
     item.submenu("8", done);
-    const editList = selectListInstances[selectListInstances.length - 1];
-    editList.onSelect!({ value: "remove" });
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    modeList.activate("clear");
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "project", "all"]);
-    targetList.onSelect!({ value: "project" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["global", "project", "all"]);
+    targetList.activate("project");
 
     expect(mockModules.mockProjectConfig.concurrency.default).toBeUndefined();
     expect(mockModules.mockConfig.concurrency.default).toBe(4);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(done).toHaveBeenCalledWith("project");
+  });
+
+  it("hides Clear when no layer carries the default", async () => {
+    mockModules.mockConfig.concurrency = {};
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "defaultConcurrency");
+    const done = vi.fn();
+    item.submenu("4", done);
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    expect(modeList.items.map((i: any) => i.id)).toEqual(["session", "global"]);
+  });
+
+  it("styles section headers like the model settings menu", async () => {
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, []);
+    const items = settingsListCalls[0].items;
+    // Section headers are bare labels, styled by the theme like model settings.
+    expect(items.some((i: any) => i.label === "Per-provider limits")).toBe(true);
+    expect(items.some((i: any) => i.label === "Per-model limits")).toBe(true);
   });
 });
 
@@ -187,19 +210,17 @@ describe("showConcurrencySettingsMenu — per-provider limits", () => {
     expect(item.currentValue).toMatch(/^2\s+slots?$/);
   });
 
-  it("edit provider limit submenu shows Edit/Remove options", async () => {
+  it("edit provider limit submenu shows Set targets plus Clear", async () => {
     mockModules.mockConfig.concurrency = { default: 4, providers: { llamacpp: 2 } };
     const ctx = createMockCtx();
     await showConcurrencySettingsMenu(ctx, ["llamacpp/4b"]);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "provider:llamacpp");
     const done = vi.fn();
     item.submenu("2", done);
-    // Submenu creates a SelectList with Edit/Remove
-    const editList = selectListInstances[selectListInstances.length - 1];
-    expect(editList).toBeDefined();
-    expect(editList.items).toHaveLength(2);
-    expect(editList.items[0].value).toBe("edit");
-    expect(editList.items[1].value).toBe("remove");
+    // Submenu lists Set targets plus Clear (no separate mode list)
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    expect(modeList).toBeDefined();
+    expect(modeList.items.map((i: any) => i.id)).toEqual(["session", "global", "clear"]);
   });
 
   it("remove provider limit — nested target pick removes at the picked level", async () => {
@@ -211,17 +232,31 @@ describe("showConcurrencySettingsMenu — per-provider limits", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "provider:llamacpp");
     const done = vi.fn();
     item.submenu("2", done);
-    const editList = selectListInstances[selectListInstances.length - 1];
-    editList.onSelect!({ value: "remove" });
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    modeList.activate("clear");
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "project", "all"]);
-    targetList.onSelect!({ value: "project" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["global", "project", "all"]);
+    targetList.activate("project");
 
     expect(mockModules.mockProjectConfig.concurrency.providers!.llamacpp).toBeUndefined();
     expect(mockModules.mockConfig.concurrency.providers!.llamacpp).toBe(2);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
     expect(done).toHaveBeenCalledWith("project");
+  });
+
+  it("remove target pick offers only the level carrying the provider entry", async () => {
+    mockModules.mockProjectTargetOffered = true;
+    mockModules.mockProjectConfig.concurrency.providers = { llamacpp: 2 };
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, ["llamacpp/4b"]);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "provider:llamacpp");
+    const done = vi.fn();
+    item.submenu("2", done);
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    modeList.activate("clear");
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["project"]);
   });
 
   it("edit provider limit — target pick then Input applies at the picked level", async () => {
@@ -234,11 +269,8 @@ describe("showConcurrencySettingsMenu — per-provider limits", () => {
 
     expect(proxy.render(80)).toEqual([]);
 
-    const editList = selectListInstances[selectListInstances.length - 1];
-    editList.onSelect!({ value: "edit" });
-
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "session" });
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    modeList.activate("session");
 
     const input = inputInstances[inputInstances.length - 1];
     expect(input).toBeDefined();
@@ -263,8 +295,8 @@ describe("showConcurrencySettingsMenu — per-provider limits", () => {
     const selector = selectDialogInstances[selectDialogInstances.length - 1];
     selector.callbacks.onSelect("llamacpp");
 
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "project" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    targetList.activate("project");
 
     const input = inputInstances[inputInstances.length - 1];
     input.onSubmit!("3");
@@ -291,18 +323,16 @@ describe("showConcurrencySettingsMenu — per-model limits", () => {
     expect(item.currentValue).toMatch(/^3\s+slots?$/);
   });
 
-  it("edit model limit submenu shows Edit/Remove options", async () => {
+  it("edit model limit submenu shows Set targets plus Clear", async () => {
     mockModules.mockConfig.concurrency = { default: 4, models: { "llamacpp/4b": 1 } };
     const ctx = createMockCtx();
     await showConcurrencySettingsMenu(ctx, ["llamacpp/4b"]);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "model:llamacpp/4b");
     const done = vi.fn();
     item.submenu("1", done);
-    const editList = selectListInstances[selectListInstances.length - 1];
-    expect(editList).toBeDefined();
-    expect(editList.items).toHaveLength(2);
-    expect(editList.items[0].value).toBe("edit");
-    expect(editList.items[1].value).toBe("remove");
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    expect(modeList).toBeDefined();
+    expect(modeList.items.map((i: any) => i.id)).toEqual(["session", "global", "clear"]);
   });
 
   it("edit model limit — target pick then Input applies at the picked level", async () => {
@@ -315,11 +345,8 @@ describe("showConcurrencySettingsMenu — per-model limits", () => {
 
     expect(proxy.render(80)).toEqual([]);
 
-    const editList = selectListInstances[selectListInstances.length - 1];
-    editList.onSelect!({ value: "edit" });
-
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "global" });
+    const modeList = settingsListCalls[settingsListCalls.length - 1];
+    modeList.activate("global");
 
     const input = inputInstances[inputInstances.length - 1];
     expect(input.value).toBe("1");
@@ -348,9 +375,9 @@ describe("showConcurrencySettingsMenu — clear all limits per target", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "resetAll");
     const done = vi.fn();
     item.submenu("", done);
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    expect(targetList.items.map((i: any) => i.value)).toEqual(["session", "global", "all"]);
-    targetList.onSelect!({ value: "all" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["global"]);
+    targetList.activate("global");
 
     const confirmList = selectListInstances[selectListInstances.length - 1];
     expect(confirmList).toBeDefined();
@@ -370,8 +397,8 @@ describe("showConcurrencySettingsMenu — clear all limits per target", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "resetAll");
     const done = vi.fn();
     item.submenu("", done);
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "project" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    targetList.activate("project");
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
 
@@ -386,12 +413,32 @@ describe("showConcurrencySettingsMenu — clear all limits per target", () => {
     const item = settingsListCalls[0].items.find((i: any) => i.id === "resetAll");
     const done = vi.fn();
     item.submenu("", done);
-    const targetList = selectListInstances[selectListInstances.length - 1];
-    targetList.onSelect!({ value: "session" });
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    targetList.activate("session");
     const confirmList = selectListInstances[selectListInstances.length - 1];
     confirmList.onSelect!({ value: "Yes" });
 
     expect(mockModules.mockSessionConcurrency).toEqual({});
     expect(mockModules.mockConfig.concurrency).toEqual({ default: 4 });
+  });
+
+  it("hides Clear all when no layer carries any concurrency entry", async () => {
+    mockModules.mockConfig.concurrency = {};
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, []);
+    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    expect(ids).not.toContain("resetAll");
+  });
+
+  it("clear all offers All levels when two layers carry entries", async () => {
+    mockModules.mockConfig.concurrency = { default: 4 };
+    mockModules.mockSessionConcurrency = { default: 9 };
+    const ctx = createMockCtx();
+    await showConcurrencySettingsMenu(ctx, []);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "resetAll");
+    const done = vi.fn();
+    item.submenu("", done);
+    const targetList = settingsListCalls[settingsListCalls.length - 1];
+    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "all"]);
   });
 });

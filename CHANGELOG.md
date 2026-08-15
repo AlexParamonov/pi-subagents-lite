@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Model settings grouped by resolved model.** Per-type overrides are grouped alphabetically by the model they resolve to; each row shows the spawn-effective (clamped) thinking level and the winning layer's tag (`[session]`/`[project]`, global-won rows untagged). Only explicit per-type overrides are listed; frontmatter-only and inheriting types stay hidden (hint arrows gone). The session default is a session-wide override that beats config per-type overrides and frontmatter models. Concurrency settings share the style: rows set targets inline with a nested Clear, section headers in bold accent, and clear/remove pickers offer only the levels that carry the setting ("All levels" only when at least two do), and `j`/`k` navigate list submenus.
+- **Target pickers show bare level names.** `Session` / `Global` / `Project`, with the persistence notes as per-entry descriptions ("Saves to..." when setting, "Removes from..." when clearing) shown at the bottom for the selected row like the main settings menus; the row states what is being set, and `Clear...` / `All levels` are unchanged. Canceling a chained step (value input, model picker, nested clear) now returns one level up instead of closing the menu.
+
 ## [1.11.0] - 2026-08-14
 
 ### Added
@@ -22,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`effectiveDefault` from the model-groups builder result.** `buildModelGroups` no longer computes or returns an `effectiveDefault` field: no production code consumed it (the menu derives the default row from the config snapshot's own `default` key), and it duplicated the menu's local `effectiveDefault` under a different meaning. The `ModelGroups` interface and its tests no longer reference it.
 - **`deltaInputTokens` setting and delta estimation.** Removed the vLLM-specific workaround that estimated input token deltas by subtracting consecutive `usage.input` values.
 
 ### Changed

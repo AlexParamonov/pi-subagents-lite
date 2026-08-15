@@ -33,7 +33,7 @@ The per-project override file `.pi/subagents-lite.json` in a trusted project. Ho
 _Avoid_: Project settings, local config
 
 **Model override**:
-A user-configured model preference (per-type or global) set at session, global, or project level, taking precedence over any lower level and over any built-in or frontmatter default. Set via `/agents` > Model settings.
+A user-configured model preference (per-type or global) set at session, global, or project level. A session per-type **Model override** beats every other source; a session default beats config per-type overrides and frontmatter models; the config default key applies only to types with no session default, no per-type override, and no frontmatter model. Set via `/agents` > Model settings.
 _Avoid_: Model injection, model preference
 
 **Grace turns**:
@@ -41,7 +41,7 @@ Additional turns allowed after the soft turn limit steer message before hard abo
 _Avoid_: Grace period, extra turns
 
 **Resolved model**:
-The model an Agent type runs on: the highest set **Model override** (session per-type > session global > project > global, per-type > global default) wins, else the frontmatter model, else the parent session's current model.
+The model an Agent type runs on: session per-type > session default > config per-type (project over global) > config default (project over global) > the frontmatter model > the parent session's current model.
 _Avoid_: Effective model, assigned model
 
 **Thinking level**:
@@ -96,7 +96,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - A **Worktree label** is derived from a **Worktree path** for compact display
 - The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
 - An **Agent type** has one **Resolved model**; its **Thinking level** is clamped to that model's supported levels
-- The Model settings menu lists only Agent types whose **Resolved model** differs from the model shown on its Global default row
+- The Model settings menu lists only Agent types with an explicit per-type **Model override** at the session, project, or global layer; frontmatter-only and inheriting types are never listed
 
 ### Navigation
 

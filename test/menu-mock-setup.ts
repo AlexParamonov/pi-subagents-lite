@@ -12,7 +12,6 @@
  */
 
 import { vi } from "vitest";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "../src/config/types.js";
 
 // Create the mutable mock state via vi.hoisted so the vi.mock factories
 // (which vitest hoists above the rest of the module) can reference it.
@@ -185,6 +184,13 @@ vi.mock("../src/shell.js", async () => {
   // Derive the getter defaults from src's real config constants (via the mocked
   // config-io module above) so menu tests pin src's defaults, not a hand copy.
   const { DEFAULT_AGENT, DEFAULT_CONCURRENCY } = await import("../src/config/config-io.js");
+  const { resolveModel } = await import("../src/models/model-precedence.js");
+  const {
+    agentLayerHasModelSettings,
+    sessionOverridesHasModelSettings,
+    CLEAR_ALL_KEPT_AGENT_KEYS,
+    concurrencyLayerHasSettings,
+  } = await import("../src/config/config-store.js");
   const mockStore = {
     get projectTargetOffered() {
       return mockModules.mockProjectTargetOffered;
@@ -253,6 +259,18 @@ vi.mock("../src/shell.js", async () => {
     get sessionConcurrency() {
       return mockModules.mockSessionConcurrency;
     },
+    get globalConcurrency() {
+      return mockModules.mockConfig.concurrency ?? {};
+    },
+    get hasSessionConcurrencySettings() {
+      return concurrencyLayerHasSettings(mockModules.mockSessionConcurrency);
+    },
+    get hasGlobalConcurrencySettings() {
+      return concurrencyLayerHasSettings(mockModules.mockConfig.concurrency ?? {});
+    },
+    get hasProjectConcurrencySettings() {
+      return concurrencyLayerHasSettings(mockModules.mockProjectConfig.concurrency ?? {});
+    },
     get sessionDefaultModel() {
       return mockModules.mockSessionOverrides.default ?? null;
     },
@@ -265,6 +283,16 @@ vi.mock("../src/shell.js", async () => {
     hasProjectModelKey(key: string) {
       return mockModules.mockProjectConfig.agent[key] !== undefined;
     },
+    get hasSessionModelSettings() {
+      // Delegate to the real helpers so the mock cannot drift from src.
+      return sessionOverridesHasModelSettings(mockModules.mockSessionOverrides);
+    },
+    get hasGlobalModelSettings() {
+      return agentLayerHasModelSettings(mockModules.mockConfig);
+    },
+    get hasProjectModelSettings() {
+      return agentLayerHasModelSettings(mockModules.mockProjectConfig);
+    },
     get hasSessionShowCost() {
       return mockModules.mockSessionShowCost !== undefined;
     },
@@ -272,17 +300,14 @@ vi.mock("../src/shell.js", async () => {
       return { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
     },
     modelFor(type: string, parentModelId: string, agentConfig?: any) {
-      const effectiveAgent = { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
-      const sessionOverride = mockModules.mockSessionOverrides[type];
-      if (sessionOverride) return sessionOverride;
-      const sessionDefault = mockModules.mockSessionOverrides.default;
-      if (sessionDefault) return sessionDefault;
-      const configOverride = effectiveAgent[type];
-      if (configOverride) return configOverride;
-      const configDefault = effectiveAgent.default;
-      if (configDefault) return configDefault;
-      if (agentConfig?.model) return agentConfig.model;
-      return parentModelId;
+      // Delegate to the real chain so the mock cannot drift from resolveModel.
+      return resolveModel({
+        subagentType: type,
+        agentConfig,
+        config: { agent: { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent } },
+        parentModelId,
+        sessionOverrides: mockModules.mockSessionOverrides,
+      });
     },
     mutate: {
       agent: {
@@ -311,12 +336,9 @@ vi.mock("../src/shell.js", async () => {
         },
         clearAllModelOverrides(target: string = "global") {
           // Mirror the store: clear the model family + per-type keys, keep non-model settings.
-          const kept = CONFIG_AGENT_NON_MODEL_KEYS.filter(
-            (key) => !["default", "defaultThinking", "defaultMaxTurns"].includes(key),
-          );
           const clearAgent = (agent: Record<string, any>) => {
             for (const key of Object.keys(agent)) {
-              if (!kept.includes(key)) delete agent[key];
+              if (!CLEAR_ALL_KEPT_AGENT_KEYS.has(key)) delete agent[key];
             }
           };
           if (target === "session") {

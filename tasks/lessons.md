@@ -37,6 +37,8 @@
 - Tests that pass on unfixed code are vacuous for the regression they claim: wrap-around edges pass even without the fix — include mid-list cases that fail on old code.
 - File-content test fixtures: malformed input as raw text, not a stringified value (`JSON.stringify` of a malformed-JSON string is valid JSON); assert against known-good literals, not recomputed expectations.
 - Clear operations that write a layer must gate on layer existence, not target availability: `projectTargetOffered` (status "absent") is true when no project file exists, so an unconditional project write through it created an inert file on every "all levels" clear. Gate on the loaded/created raw layer (`projectRaw === null` means nothing to clear), and pin the set-then-clear sequence in a test so the guard can't regress to a status check.
+- Top-level test/ files import src with `../src/`, not `../../src/`: the latter only resolves via vite's root-relative fallback, which silently breaks when the test file imports real node builtins (e.g. `node:fs` for temp dirs) — failure shows up as a confusing "Cannot find module" on the relative import.
+- `test/` is excluded from tsconfig, so `npm run typecheck` never sees test-fixture type errors — validate new test files with `tsc --noEmit --strict --ignoreConfig <file>` and give fixtures the full required shape (typed base spread), not partial literals.
 
 ## Delegation
 - Delegate immediately without pre-reading files. For simple tasks, propose 2-3 name/design alternatives upfront.
@@ -125,7 +127,11 @@
 - Stay within issue scope. When provisional wording or removed-machinery comment changes, update the spec/comment in the same commit.
 
 
-## project-config-overrides - 2026-08-14
-**What worked:** Layer model where provenance is membership (session map, project layer, global layer) — no tombstone/diff machinery; per-layer unmerged writes kept both files honest and made hand-edits predictable. RED-first regression tests driven through the real ConfigStore + real menu flow caught the sentinel bug the store-mirror tests replicated. Manual testing in a sandboxed HOME with tmux-driven TUI sessions found two display bugs automated tests could not (provenance tag under session-default shadowing; missing onRebuild in one of three menus).
-**What failed:** "(inherits parent)" sentinel regression — the pre-conversion null-mapping was dropped during the menu rewrite, and mirror-based menu tests replicated the bug instead of catching it. TUI display state (tags) drifted from store state in one menu because only two of three menus wired onRebuild.
-**Next time:** When rewriting a value-mapping path, diff the old conversion (git show HEAD~1) and add one test per target that drives the real submenu flow. When a display feature spans several menus, wire the rebuild hook in all of them in the same commit, and audit display provenance by "which value is shown, not which layer has the key". Manual test at least one edge where two layers shadow each other (session default shadowing project key).
+## Model settings menu (2026-08-14/15) — consolidated
+- Share one precedence chain: the menu and spawn must compute resolution from the same source (`resolveModelSource`). Every re-derived mirror (menu tag logic, test mock, docs) drifted and caused a bug round; a source-returning API kills the class.
+- Ask before flipping semantics: the "settings disappear" report had two readings (display vs spawn). It was fixed as a display bug by reordering spawn resolution the user never asked to change — one reversal round later. Display-only fixes are reversible; semantics flips ripple.
+- Follow-up issues reverse parent decisions: grep every site the old decision pinned (src, tests, CHANGELOG, docs) and flip them in the same commit. Reversals touch every site; the builder inheriting from the parent shipped the wrong tag set.
+- Universal rules need a flow inventory: "clear levels only when set" must enumerate every picker (clear-all, per-type, default row) or one instance ships unfixed. Verify defect scenarios against documented precedence before writing manual-test steps.
+- Layout specs: before/after ASCII samples are exact; "align X" is provisional until seen. Row identity is a marker field (`kind`), not label text; verify ANSI/width math in dependency source before styling list labels.
+- Pure removals: drop the production field first and let the failing assertions enumerate the pins. Edit-tool slips recur (anchor re-inclusion, overlapping replace+append, broken payloads re-applied after stale-anchor rejections) — re-read payloads and sanity-check the test count.
+- Availability predicates must match the action's scope, not the display's — clear-all covers the whole model family, so its "has settings" gate must count defaultThinking/defaultMaxTurns too (review-caught).

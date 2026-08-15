@@ -16,7 +16,7 @@ Registering at init time freezes the tool set from turn 1. No mid-session tool c
 no system prompt rebuilds, no cache invalidation.
 
 Injecting the model via `tool_call` listener keeps the schema lean and lets the
-`resolveModel()` precedence chain (per-type override → global default → frontmatter → parent)
+`resolveModel()` precedence chain (session per-type → session default → config per-type → config default → frontmatter → parent)
 run at call time with full context.
 
 ## Trade-off

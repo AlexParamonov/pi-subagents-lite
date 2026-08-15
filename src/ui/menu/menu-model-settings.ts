@@ -3,11 +3,14 @@
  *
  * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
  * Model overrides use target-level submenus (session/global/project, plus
- * nested per-level clear) per ADR-0008. Values show [session]/[project] tags
- * when they come from those layers.
+ * nested per-level clear) per ADR-0008. Agent types are grouped by their
+ * Resolved model (one group per listed model, alphabetical); each row
+ * shows the type name, the spawn-effective (clamped) thinking level, and
+ * provenance tag ([session] for a session-layer win — per-type override or
+ * session default; [project]; untagged for a global-layer win).
  *
- * Exports:
- *   - showModelSettingsMenu: model settings with global default, per-type overrides
+ *   - showModelSettingsMenu: model settings with global default and model
+ *     groups for types carrying an explicit per-type override
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -16,9 +19,45 @@ import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import type { Theme } from "../types.js";
 import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
-import { createClearAllSubmenu, type TargetChoice } from "./submenus/target-select.js";
+import { createClearAllSubmenu, type AvailableLevels, type TargetChoice } from "./submenus/target-select.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getStore } from "../../shell.js";
+import { getSessionCtx, getStore } from "../../shell.js";
+import { buildModelGroups, hasExplicitPerTypeOverride, type AgentTypeModelConfig } from "../../models/model-groups.js";
+import { findModelInRegistry } from "../../utils.js";
+import { getPiDefaultThinkingLevel } from "../../pi-settings.js";
+import type { SessionModelOverrides } from "../../models/model-precedence.js";
+
+/**
+ * Thinking levels pad to this width so every row's tag starts at the same
+ * column. "minimal" (7 chars) is the longest level label in the ThinkingLevel
+ * union.
+ */
+const THINKING_COLUMN_WIDTH = 7;
+
+/**
+ * Marker on model-group header rows. Headers keep id SEPARATOR_ID so
+ * separator-skip never lands the cursor on them; the marker lets tests
+ * identify headers directly instead of by label shape.
+ */
+const GROUP_HEADER_KIND = "group-header";
+type GroupHeaderItem = SettingItem & { kind: typeof GROUP_HEADER_KIND };
+
+/**
+ * Display value for the "Global default model" row. Tag precedence:
+ * session > project; the global layer is the default source and is never
+ * tagged, so an untagged value means the global layer won. A null default
+ * key means "unset" (null-skip in resolveModel), so a tag requires a
+ * usable value.
+ */
+function defaultRowValue(
+  sessionDefault: string | null,
+  effectiveDefault: string | null,
+  hasProjectDefault: boolean,
+): string {
+  if (sessionDefault != null) return `${sessionDefault} [session]`;
+  if (effectiveDefault == null) return "(inherits parent)";
+  return hasProjectDefault ? `${effectiveDefault} [project]` : effectiveDefault;
+}
 
 export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] => {
@@ -52,77 +91,113 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       };
 
     // Shared submenu factory: target + model picker for one config key.
-    const modelSubmenuFor = (typeName: string, effectiveModel: string | null, showClear: boolean) =>
+    // availableLevels filters the nested clear picker (the default and per-type
+    // rows pass the levels where the key exists); set entries are never filtered.
+    const modelSubmenuFor = (
+      typeName: string,
+      effectiveModel: string | null,
+      showClear: boolean,
+      availableLevels?: AvailableLevels,
+    ) =>
       createModelSelectSubmenu({
         modelOptions,
         showClear,
         projectOffered,
         theme,
         currentModel: effectiveModel,
+        availableLevels,
         onSet: modelOverrideOnSelect(typeName, typeName),
         onClear: clearOverrideOnSelect(typeName, typeName),
       });
 
+    // Per-key level availability: which layers carry a config key, driving the
+    // nested clear picker and the default row's Clear entry.
+    const sessionOverrides: SessionModelOverrides = { default: store.sessionDefaultModel };
+    const levelsFor = (key: string): AvailableLevels => ({
+      session: sessionOverrides[key] != null,
+      global: store.hasGlobalModelKey(key),
+      project: store.hasProjectModelKey(key),
+    });
+
     // Global default model
+    const agentConfigSnapshot = store.agentConfigSnapshot();
     const sessionDefault = store.sessionDefaultModel;
-    const effectiveDefault = store.agentConfigSnapshot().default;
-    const hasProjectDefault = store.hasProjectModelKey("default");
-    const hasGlobalDefault = store.hasGlobalModelKey("default");
-    const globalDisplayValue =
-      sessionDefault != null
-        ? `${sessionDefault} [session]`
-        : hasProjectDefault
-          ? `${effectiveDefault ?? "(inherits parent)"} [project]`
-          : (effectiveDefault ?? "(inherits parent)");
+    const effectiveDefault = agentConfigSnapshot.default;
+    const globalDisplayValue = defaultRowValue(sessionDefault, effectiveDefault, store.hasProjectModelKey("default"));
+    const defaultLevels = levelsFor("default");
 
     items.push({
       id: "defaultModel",
       label: "Global default model",
       currentValue: globalDisplayValue,
-      description: "Model used when no per-type override or frontmatter model applies.",
+      description: "Model used when no session default, per-type override, or frontmatter model applies.",
       submenu: modelSubmenuFor(
         "default",
         effectiveDefault,
-        sessionDefault != null || hasProjectDefault || hasGlobalDefault,
+        defaultLevels.session || defaultLevels.global || defaultLevels.project,
+        defaultLevels,
       ),
     });
 
-    // Per-type overrides
-    items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-    items.push({ id: SEPARATOR_ID, label: "── Per-type overrides ──", currentValue: "────────" });
+    // Model groups: one group per Resolved model with a listed row (an
+    // explicit per-type override, including one pointing at the effective
+    // default), alphabetical by model id. Rows show the type name, the
+    // spawn-effective (clamped) thinking level, and the winning layer's
+    // provenance tag.
+    const session = getSessionCtx();
+    const parentModel = session?.model ?? ctx.model;
+    const parentModelId = parentModel ? `${parentModel.provider}/${parentModel.id}` : "(inherits parent)";
+    const registry = session?.modelRegistry ?? ctx.modelRegistry;
     const types = getAllTypes();
-    const typeEntries = types.map((typeName) => {
-      const cfg = getAgentConfig(typeName);
-      const sessionOverride = store.sessionModelOverride(typeName);
-      const configOverride = store.agentConfigSnapshot()[typeName];
-      const hasSession = sessionOverride != null;
-      const hasConfigOverride = configOverride != null && typeof configOverride === "string";
-      const effectiveModel = store.modelFor(typeName, "(inherits parent)", cfg);
-      return { typeName, cfg, sessionOverride, configOverride, hasSession, hasConfigOverride, effectiveModel };
-    });
 
-    const overridden = typeEntries.filter((e) => e.hasSession || e.hasConfigOverride);
-    const nonOverridden = typeEntries.filter((e) => !e.hasSession && !e.hasConfigOverride);
-
-    for (const { typeName, cfg, configOverride, hasSession, effectiveModel } of overridden) {
-      const frontmatterHint = !hasSession && configOverride && cfg?.model ? `${cfg.model} → ` : "";
-      // Tag by provenance of the shown value: a per-type session override or the
-      // session default shadows any persisted key, so both display [session].
-      const fromSession = hasSession || store.sessionDefaultModel != null;
-      const tag = fromSession ? " [session]" : store.hasProjectModelKey(typeName) ? " [project]" : "";
-      const displayModel = `${effectiveModel}${tag}`;
-      const hasPerm = !!configOverride;
-
-      items.push({
-        id: `type:${typeName}`,
-        label: typeName,
-        currentValue: `${frontmatterHint}${displayModel}`,
-        description: `Per-type model override for the ${typeName} agent type.`,
-        submenu: modelSubmenuFor(typeName, effectiveModel, hasPerm || hasSession),
-      });
+    const agentConfigs: Record<string, AgentTypeModelConfig | undefined> = {};
+    for (const type of types) {
+      // Null entries read as absent downstream, so every type is recorded.
+      sessionOverrides[type] = store.sessionModelOverride(type);
+      agentConfigs[type] = getAgentConfig(type);
     }
 
+    const groups = buildModelGroups({
+      types,
+      agentConfigs,
+      config: agentConfigSnapshot,
+      sessionOverrides,
+      hasProjectModelKey: (key) => store.hasProjectModelKey(key),
+      parentModelId,
+      piDefaultThinking: getPiDefaultThinkingLevel(ctx.cwd),
+      findModel: (modelId) => findModelInRegistry(modelId, registry, undefined),
+    });
+
+    for (const group of groups) {
+      // Blank spacer above each block: pre-groups spacer and between-groups
+      // separator are the same row; the long rule divides after the last group.
+      items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
+      // Section title: bare model id in bold accent, matching the menu title
+      const header: GroupHeaderItem = {
+        id: SEPARATOR_ID,
+        kind: GROUP_HEADER_KIND,
+        label: theme.bold(theme.fg("accent", group.modelId)),
+        currentValue: "",
+      };
+      items.push(header);
+      for (const row of group.rows) {
+        items.push({
+          id: `type:${row.type}`,
+          label: row.type,
+          currentValue: `${row.thinking.padEnd(THINKING_COLUMN_WIDTH)} ${row.tag}`,
+          description: `Model for the ${row.type} agent type. Select to set or clear its override.`,
+          // Every listed row carries an explicit per-type override, so Clear is always offered.
+          submenu: modelSubmenuFor(row.type, group.modelId, true, levelsFor(row.type)),
+        });
+      }
+    }
+
+    // "Override another type..." lists types without an explicit per-type
+    // override: frontmatter-only and inheriting types.
     items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
+    const nonOverridden = types.filter(
+      (type) => !hasExplicitPerTypeOverride(sessionOverrides, agentConfigSnapshot, type),
+    );
     if (nonOverridden.length > 0) {
       items.push({
         id: "overrideType",
@@ -131,11 +206,11 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         description: "Add a model override for an agent type that currently inherits.",
         submenu: (_currentValue, subDone) =>
           createSearchableSelect(
-            nonOverridden.map((e) => ({ value: e.typeName, label: e.typeName })),
+            nonOverridden.map((typeName) => ({ value: typeName, label: typeName })),
             {
               onSelect: (typeName) => {
-                const entry = nonOverridden.find((e) => e.typeName === typeName)!;
-                return modelSubmenuFor(entry.typeName, entry.effectiveModel, false)(entry.effectiveModel, subDone);
+                const effectiveModel = store.modelFor(typeName, parentModelId, getAgentConfig(typeName));
+                return modelSubmenuFor(typeName, effectiveModel, false)(effectiveModel, subDone);
               },
               onCancel: () => subDone(),
             },
@@ -145,22 +220,33 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     }
 
     items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
-    // Clear-all per target: nested level picker, then confirm.
-    items.push({
-      id: "clearAll",
-      label: "Clear all model overrides...",
-      currentValue: "",
-      description: "Discard model overrides at the chosen level (session, global, project, or all).",
-      submenu: createClearAllSubmenu({
-        theme,
-        projectOffered,
-        message: (target) => `Clear all model overrides at the ${target} level?`,
-        onConfirm: (target) => {
-          store.mutate.agent.clearAllModelOverrides(target);
-          ctx.ui.notify(`Model overrides cleared (${target})`, "info");
-        },
-      }),
-    });
+    // Clear-all per target: nested level picker, then confirm. Each level is
+    // offered only when it has model settings (project additionally requires
+    // the project target to be offered); the entry itself is hidden when no
+    // level is offered.
+    const availableLevels: AvailableLevels = {
+      session: store.hasSessionModelSettings,
+      global: store.hasGlobalModelSettings,
+      project: store.hasProjectModelSettings && projectOffered,
+    };
+    if (availableLevels.session || availableLevels.global || availableLevels.project) {
+      items.push({
+        id: "clearAll",
+        label: "Clear all model overrides...",
+        currentValue: "",
+        description: "Discard model overrides at the chosen level (session, global, project, or all).",
+        submenu: createClearAllSubmenu({
+          theme,
+          projectOffered,
+          availableLevels,
+          message: (target) => `Clear all model overrides at the ${target} level?`,
+          onConfirm: (target) => {
+            store.mutate.agent.clearAllModelOverrides(target);
+            ctx.ui.notify(`Model overrides cleared (${target})`, "info");
+          },
+        }),
+      });
+    }
 
     return items;
   };

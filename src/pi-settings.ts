@@ -4,6 +4,8 @@
  */
 
 import * as fs from "node:fs";
+import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "./types.js";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -29,4 +31,15 @@ export function readPiSettings(): PiSettings | undefined {
 export function getHideThinkingBlock(): boolean {
   const settings = readPiSettings();
   return settings?.hideThinkingBlock ?? false;
+}
+
+/**
+ * pi's `defaultThinkingLevel` setting for `cwd` (project over global) — the
+ * level a subagent session falls back to when frontmatter thinking and
+ * `defaultThinking` are both unset. Reads pi's settings the same way the
+ * spawn runtime does (SettingsManager over the agent dir + project dir).
+ * agentDir is injectable for tests; defaults to pi's agent dir.
+ */
+export function getPiDefaultThinkingLevel(cwd: string, agentDir?: string): ThinkingLevel | undefined {
+  return SettingsManager.create(cwd, agentDir ?? getAgentDir()).getDefaultThinkingLevel();
 }
