@@ -1,94 +1,81 @@
 /**
- * pi-settings.test.ts — Tests for PiSettings module.
+ * pi-settings.test.ts — readPiSettings / getHideThinkingBlock against real fs
+ * with a spied home dir, exercising the exact production path
+ * (~/.pi/agent/settings.json) with real JSON parsing and ENOENT handling.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { readPiSettings, getHideThinkingBlock } from "../src/pi-settings.js";
+import { tempDirFixture } from "./fixtures";
 
-vi.mock("node:fs");
-vi.mock("node:os");
-
-const mockFs = vi.mocked(fs);
-const mockOs = vi.mocked(os);
-
-// --- Import after mocks ---
-
-import { readPiSettings, getHideThinkingBlock } from "../../src/pi-settings.js";
+// node:os is externalized (not configurable for spies) — mock only homedir
+// and keep the rest of the module real (tmpdir feeds the temp fixture).
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:os")>()),
+  homedir: vi.fn(),
+}));
 
 describe("PiSettings", () => {
-  let tempHome: string;
+  const { setup, teardown } = tempDirFixture("pi-settings-test");
+  let homeDir: string;
 
   beforeEach(() => {
-    tempHome = "/tmp/test-home";
-    mockOs.homedir.mockReturnValue(tempHome);
-    vi.clearAllMocks();
+    homeDir = setup();
+    vi.mocked(os.homedir).mockReturnValue(homeDir);
   });
 
+  afterEach(() => {
+    teardown();
+  });
+
+  const writeSettings = (content: string): void => {
+    const dir = path.join(homeDir, ".pi", "agent");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "settings.json"), content);
+  };
+
   describe("readPiSettings", () => {
-    it("returns parsed settings when file exists", () => {
-      const settings = { hideThinkingBlock: true };
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(settings));
+    it("returns parsed settings from ~/.pi/agent/settings.json", () => {
+      writeSettings(JSON.stringify({ hideThinkingBlock: true }));
 
-      const result = readPiSettings();
-
-      expect(result).toEqual(settings);
-      expect(mockFs.readFileSync).toHaveBeenCalledWith(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8");
+      expect(readPiSettings()).toEqual({ hideThinkingBlock: true });
     });
 
-    it("returns undefined when file doesn't exist", () => {
-      mockFs.readFileSync.mockImplementation(() => {
-        throw new Error("ENOENT");
-      });
-
-      const result = readPiSettings();
-
-      expect(result).toBeUndefined();
+    it("returns undefined when the file does not exist", () => {
+      expect(readPiSettings()).toBeUndefined();
     });
 
-    it("returns undefined when JSON is invalid", () => {
-      mockFs.readFileSync.mockReturnValue("invalid json");
+    it("returns undefined when the JSON is invalid", () => {
+      writeSettings("not json");
 
-      const result = readPiSettings();
-
-      expect(result).toBeUndefined();
+      expect(readPiSettings()).toBeUndefined();
     });
   });
 
   describe("getHideThinkingBlock", () => {
     it("returns true when hideThinkingBlock is true", () => {
-      mockFs.readFileSync.mockReturnValue(JSON.stringify({ hideThinkingBlock: true }));
+      writeSettings(JSON.stringify({ hideThinkingBlock: true }));
 
-      const result = getHideThinkingBlock();
-
-      expect(result).toBe(true);
+      expect(getHideThinkingBlock()).toBe(true);
     });
 
     it("returns false when hideThinkingBlock is false", () => {
-      mockFs.readFileSync.mockReturnValue(JSON.stringify({ hideThinkingBlock: false }));
+      writeSettings(JSON.stringify({ hideThinkingBlock: false }));
 
-      const result = getHideThinkingBlock();
-
-      expect(result).toBe(false);
+      expect(getHideThinkingBlock()).toBe(false);
     });
 
-    it("returns false when setting is missing", () => {
-      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
+    it("returns false when the setting is missing", () => {
+      writeSettings(JSON.stringify({}));
 
-      const result = getHideThinkingBlock();
-
-      expect(result).toBe(false);
+      expect(getHideThinkingBlock()).toBe(false);
     });
 
-    it("returns false when file can't be read", () => {
-      mockFs.readFileSync.mockImplementation(() => {
-        throw new Error("ENOENT");
-      });
-
-      const result = getHideThinkingBlock();
-
-      expect(result).toBe(false);
+    it("returns false when the file cannot be read", () => {
+      expect(getHideThinkingBlock()).toBe(false);
     });
   });
 });
