@@ -83,8 +83,9 @@ describe("readDefaultTools against pi's real SettingsManager", () => {
     fs.writeFileSync(path.join(cwd, ".pi", "settings.json"), JSON.stringify(settings));
   };
 
-  // The installed pi dist predates the getDefaultTools accessor, so this
-  // exercises the merged-settings degrade path against pi's real storage.
+  // The installed pi (0.84.2) exposes getDefaultTools, so these exercise the
+  // accessor path against pi's real storage; the merged-settings degrade path
+  // (pi < 0.84.2) is covered by stubs in pi-settings.test.ts.
   it("returns undefined when no settings file sets defaultTools", () => {
     writeGlobal({ theme: "dark" });
     const manager = SettingsManager.create(cwd, agentDir);
