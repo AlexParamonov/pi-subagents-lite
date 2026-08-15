@@ -5,39 +5,8 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
-import { createMockExtensionAPI, hasParam, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
+import { createMockExtensionAPI, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
 
-vi.mock("@sinclair/typebox", () => {
-  const createType = (type: string) => (opts?: any) => ({
-    type,
-    ...(opts || {}),
-  });
-  return {
-    Type: {
-      Object: (properties: Record<string, any>, opts?: any) => ({
-        type: "object",
-        properties,
-        ...(opts || {}),
-      }),
-      String: createType("string"),
-      Number: createType("number"),
-      Boolean: createType("boolean"),
-      Optional: (schema: any) => ({ ...schema, optional: true }),
-      Array: (items: any) => ({ type: "array", items }),
-      Record: (keyType: any, valueType: any) => ({
-        type: "record",
-        keyType,
-        valueType,
-      }),
-      Union: (variants: any[]) => ({ anyOf: variants }),
-      Null: () => ({ type: "null" }),
-      Literal: (value: string | number | boolean) => ({
-        type: "literal",
-        const: value,
-      }),
-    },
-  };
-});
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   DynamicBorder: class {},
   getAgentDir: () => "/home/test/.pi/agent",
@@ -182,56 +151,13 @@ describe("Agent tool schema — stealth", () => {
     expect(agentTool()!.promptGuidelines).toBeUndefined();
   });
 
-  it("excludes model param", () => {
-    expect(hasParam(agentTool()!.parameters, "model")).toBe(false);
-  });
-
-  it("excludes inherit_context param", () => {
-    expect(hasParam(agentTool()!.parameters, "inherit_context")).toBe(false);
-  });
-
-  it("excludes schedule param", () => {
-    expect(hasParam(agentTool()!.parameters, "schedule")).toBe(false);
-  });
-
-  it("excludes isolation param", () => {
-    expect(hasParam(agentTool()!.parameters, "isolation")).toBe(false);
-  });
-
-  it("includes prompt param (no .description())", () => {
-    expect(hasParam(agentTool()!.parameters, "prompt")).toBe(true);
-    const promptSchema = agentTool()!.parameters?.properties?.prompt;
-    expect(promptSchema?.description).toBeUndefined();
-  });
-
-  it("includes description param", () => {
-    expect(hasParam(agentTool()!.parameters, "description")).toBe(true);
-  });
-
-  it("includes agent param", () => {
-    expect(hasParam(agentTool()!.parameters, "agent")).toBe(true);
-  });
-
-  it("excludes max_turns from schema (config-only, not LLM-controlled)", () => {
-    expect(hasParam(agentTool()!.parameters, "max_turns")).toBe(false);
-  });
-
-  it("excludes max_tokens from schema (config-only, not LLM-controlled)", () => {
-    expect(hasParam(agentTool()!.parameters, "max_tokens")).toBe(false);
-  });
-
-  it("includes run_in_background param (optional)", () => {
-    expect(hasParam(agentTool()!.parameters, "run_in_background")).toBe(true);
-  });
-
-  it("includes worktree_path param (optional, no .description())", () => {
-    expect(hasParam(agentTool()!.parameters, "worktree_path")).toBe(true);
-    const wtSchema = agentTool()!.parameters?.properties?.worktree_path;
-    expect(wtSchema?.description).toBeUndefined();
-  });
-
-  it("excludes isolated from schema (config-only, not LLM-controlled)", () => {
-    expect(hasParam(agentTool()!.parameters, "isolated")).toBe(false);
+  it("exposes exactly the documented param set, each without a description", () => {
+    const props = agentTool()!.parameters.properties;
+    expect(Object.keys(props).sort()).toEqual(["agent", "description", "prompt", "run_in_background", "worktree_path"]);
+    // Params carry no description: the model learns them from the tool name alone.
+    expect(props.prompt.description).toBeUndefined();
+    expect(props.worktree_path.description).toBeUndefined();
+    expect(props.worktree_path.type).toBe("string");
   });
 });
 
@@ -275,10 +201,6 @@ describe("tool registration", () => {
   beforeAll(async () => {
     api = createMockExtensionAPI();
     await loadExtension(api.api);
-  });
-
-  it("registers exactly 3 tools", () => {
-    expect(api.tools).toHaveLength(3);
   });
 
   it("registers Agent, StopAgent, and AgentStatus tools", () => {
@@ -353,15 +275,9 @@ describe("command registration", () => {
     await loadExtension(api.api);
   });
 
-  it("registers /agents command", () => {
-    const agentsCmd = api.commands.find((c) => c.name === "agents");
-    expect(agentsCmd).toBeDefined();
-    expect(agentsCmd!.description).toBeDefined();
-  });
-
-  it("registers only /agents command", () => {
-    const cmdNames = api.commands.map((c) => c.name).sort();
-    expect(cmdNames).toEqual(["agents"]);
+  it("registers only the /agents command", () => {
+    expect(api.commands.map((c) => c.name)).toEqual(["agents"]);
+    expect(api.commands[0].description).toBeDefined();
   });
 });
 
@@ -387,22 +303,6 @@ describe("event listener registration", () => {
 
   it("registers session_shutdown listener", () => {
     expect(api.listeners.some((l) => l.event === "session_shutdown")).toBe(true);
-  });
-});
-
-describe("Agent tool schema — worktree_path", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
-  it("worktree_path is a string type in the schema", () => {
-    const tool = api.tools.find((t) => t.name === "Agent")!;
-    const prop = tool.parameters.properties?.worktree_path;
-    expect(prop).toBeDefined();
-    expect(prop.type).toBe("string");
   });
 });
 
@@ -489,13 +389,10 @@ describe("constrained sampling — default OFF", () => {
     expect(tool!.constrainedSampling).toBeUndefined();
   });
 
-  it("Agent optional fields use Type.Optional when toggle is OFF", () => {
+  it("Agent optional fields stay out of required when toggle is OFF", () => {
     const tool = findTool(api, "Agent");
-    const props = tool!.parameters.properties;
-    expect(props.description.optional).toBe(true);
-    expect(props.agent.optional).toBe(true);
-    expect(props.run_in_background.optional).toBe(true);
-    expect(props.worktree_path.optional).toBe(true);
+    // TypeBox encodes optionality as absence from the parent `required` array.
+    expect(tool!.parameters.required).toEqual(["prompt"]);
   });
 
   // StopAgent and AgentStatus: always have constrainedSampling
