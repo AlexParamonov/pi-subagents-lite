@@ -60,7 +60,6 @@ export function shellMock(fns: ShellMockFns = {}) {
         forceBackground: false,
         showCost: false,
         agentToolStrictMode: false,
-        agentStatusLimit: 8,
       },
       modelFor: () => "anthropic/claude-sonnet-4-6",
     },
