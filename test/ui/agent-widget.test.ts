@@ -525,6 +525,89 @@ describe("status bar compact format", () => {
   });
 });
 
+describe("status line lifecycle (record-existence-driven)", () => {
+  it("stays visible, dimmed, after rows age out of the retention window", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const manager = makeMockManager([], 0.01, 2);
+    const widget = new AgentWidget(manager, () => undefined);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1"); // 30s old, inside the default 1-min window
+    (manager as any).listAgents = () => [finished];
+    widget.update(); // block and status up
+
+    // The row ages past the window; the record persists (ADR-0006).
+    finished.lifecycle.completedAt = Date.now() - 5 * 60_000;
+    widget.update();
+
+    expect(uiCtx.setWidget).toHaveBeenCalledWith("agents", undefined); // block dropped
+    expect(uiCtx.setStatus).not.toHaveBeenCalledWith("subagents", undefined); // status kept
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    expect(statusCall[1]).toContain("◇ Agents: 2 done · $0.01");
+  });
+
+  it("hides the status line when zero records exist (Clear)", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const manager = makeMockManager([], 0.01, 2);
+    const widget = new AgentWidget(manager, () => undefined);
+    widget.setShowCost(true);
+    widget.setUICtx(uiCtx);
+
+    const finished = makeFinishedAgent("f1");
+    (manager as any).listAgents = () => [finished];
+    widget.update(); // status and block up
+
+    (manager as any).listAgents = () => []; // every record removed (Clear)
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", undefined);
+    expect(uiCtx.setWidget).toHaveBeenCalledWith("agents", undefined);
+  });
+
+  it("re-shows with the active count when a new record spawns after a full clear", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const manager = makeMockManager([], 0, 0);
+    const widget = new AgentWidget(manager, () => undefined);
+    widget.setUICtx(uiCtx);
+
+    (manager as any).listAgents = () => [];
+    widget.update();
+
+    const queued = makeRunningAgent("q1");
+    queued.lifecycle = { status: "queued", startedAt: Date.now() };
+    (manager as any).listAgents = () => [queued];
+    widget.update();
+
+    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    expect(statusCall[1]).toContain("◈ Agents: 1 active");
+    expect(uiCtx.setWidget).toHaveBeenCalledWith(
+      "agents",
+      expect.any(Function),
+      expect.objectContaining({ placement: "aboveEditor" }),
+    );
+  });
+
+  it("does not rewrite the status text on ticks when unchanged", () => {
+    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const manager = makeMockManager([], 0.01, 2);
+    const widget = new AgentWidget(manager, () => undefined);
+    widget.setShowCost(true);
+    widget.setFinishedRetentionMinutes(5);
+    widget.setUICtx(uiCtx);
+
+    const agedOut = makeFinishedAgent("f1");
+    agedOut.lifecycle.completedAt = Date.now() - 10 * 60_000; // outside the 5-min window
+    (manager as any).listAgents = () => [agedOut];
+    widget.update();
+    widget.update();
+    widget.update();
+
+    expect(uiCtx.setStatus).toHaveBeenCalledTimes(1);
+    expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("◇ Agents: 2 done"));
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  Compact mode and max lines tests                                 */
 /* ------------------------------------------------------------------ */

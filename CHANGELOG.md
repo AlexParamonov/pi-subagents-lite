@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Agents status line stays visible for the session.** The status line's visibility is now
+  driven by record existence (ADR-0006), not by the finished-row retention window: after the
+  last agent finishes and its row ages out, the line keeps showing the session done count and
+  cost in its dimmed form, and it hides only when no agent records exist. The widget block
+  still drops once every row leaves the `finishedRetentionMinutes` window; row retention and
+  the ↓ navigation gate are unchanged.
+
 - **Git-root discovery during skill loading is constant-time per ancestor level.**
   `findGitRoot` now probes `.git` with a single `existsSync` per level instead of reading the
   full directory listing, so skill loading no longer stalls on large directories. Detection

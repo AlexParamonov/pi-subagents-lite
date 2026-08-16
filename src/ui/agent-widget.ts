@@ -432,10 +432,15 @@ export class AgentWidget {
     return this.resolveNavState().index;
   }
 
+  /** Whether any rows survive the finished-retention filter (the widget block's visibility). */
+  private hasVisibleRows(running: AgentRecord[], queued: AgentRecord[], finished: AgentRecord[]): boolean {
+    return running.length > 0 || queued.length > 0 || finished.length > 0;
+  }
+
   /** Whether the widget has any visible agents (after finished-window filtering). */
   hasVisibleAgents(): boolean {
-    const { finished, running, queued } = this.categorizeAgents();
-    return finished.length + running.length + queued.length > 0;
+    const { running, queued, finished } = this.categorizeAgents();
+    return this.hasVisibleRows(running, queued, finished);
   }
 
   isViewerOpen(): boolean {
@@ -498,7 +503,10 @@ export class AgentWidget {
       else if (a.lifecycle.status === "queued") queued.push(a);
       else if (a.lifecycle.completedAt !== undefined && a.lifecycle.completedAt >= cutoff) finished.push(a);
     }
-    return { running, queued, finished };
+    // Records persist until cleared or session end (ADR-0006) even after their
+    // rows leave the retention window — the status line keys off record
+    // existence, not the row filter.
+    return { running, queued, finished, hasRecords: allAgents.length > 0 };
   }
 
   private finishedIconAndStatus(
@@ -856,13 +864,18 @@ export class AgentWidget {
     return `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
   }
 
-  private clearWidget() {
+  /** Drop the widget block (rows) and its nav state; the status line survives. */
+  private clearWidgetBlock() {
     if (this.navActive) this.resetNavState();
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
       this.tui = undefined;
     }
+  }
+
+  private clearWidget() {
+    this.clearWidgetBlock();
     if (this.lastStatusText !== undefined) {
       this.uiCtx?.setStatus(STATUS_KEY, undefined);
       this.lastStatusText = undefined;
@@ -901,8 +914,8 @@ export class AgentWidget {
     return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}`;
   }
 
-  private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
-    const activeCount = runningCount + queuedCount;
+  private updateStatusBar(running: AgentRecord[], queued: AgentRecord[]) {
+    const activeCount = running.length + queued.length;
     const doneCount = this.manager.getTotalAgentCount();
 
     // Compute total cost (session accumulator + in-flight running agents)
@@ -930,20 +943,23 @@ export class AgentWidget {
     }
     if (!this.uiCtx) return;
 
-    const { running, queued, finished } = this.categorizeAgents();
+    const { running, queued, finished, hasRecords } = this.categorizeAgents();
 
-    const hasActive = running.length > 0 || queued.length > 0;
-    const hasFinished = finished.length > 0;
-
-    if (!hasActive && !hasFinished) {
-      if (this.widgetRegistered || this.lastStatusText !== undefined) {
-        this.clearWidget();
-      }
+    if (!hasRecords) {
+      // Zero records: the menu is empty — nothing to surface, clear both.
+      this.clearWidget();
       return;
     }
 
-    // Status bar — only call setStatus when the text actually changes
-    this.updateStatusBar(running.length, queued.length, running);
+    // Status bar — only call setStatus when the text actually changes.
+    this.updateStatusBar(running, queued);
+
+    // Record existence drives the status line, visible rows the widget block (ADR-0006).
+    if (!this.hasVisibleRows(running, queued, finished)) {
+      // Every row aged out of the retention window: keep the line, drop the block.
+      this.clearWidgetBlock();
+      return;
+    }
 
     this.widgetFrame++;
 
