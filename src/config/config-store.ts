@@ -187,7 +187,7 @@ export class ConfigStore {
     const a = this.config.agent;
     const widgetMaxLines = a.widgetMaxLines!; // guaranteed by the defaults merge
     const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
-    // 0 or below means auto: the cap tracks the default concurrency (the
+    // Below 1 means auto: the cap tracks the default concurrency (the
     // manager's own fallback chain, baked at 4) so it scales with the session.
     const agentStatusLimit = a.agentStatusLimit ?? 0;
 
@@ -414,7 +414,7 @@ export class ConfigStore {
       },
       /** Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency); below 1 clamps to 0. */
       setAgentStatusLimit: (limit: number): void => {
-        this.setAgentLayerEntry("agentStatusLimit", Math.max(0, limit), "global");
+        this.setAgentLayerEntry("agentStatusLimit", limit >= 1 ? limit : 0, "global");
       },
     },
     widget: {

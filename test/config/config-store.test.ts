@@ -958,11 +958,15 @@ describe("AgentStatus settled limit resolution", () => {
   });
 
   it("setAgentStatusLimit clamps values below 1 to 0 (auto)", () => {
-    const { io, saves } = memIO();
-    const store = new ConfigStore(io);
-    store.mutate.agent.setAgentStatusLimit(-3);
-    expect(saves[0].config.agent!.agentStatusLimit).toBe(0);
-    expect(store.agent.agentStatusLimit).toBe(8);
+    // Fractional limits (menu allows decimals) are not a meaningful stored state:
+    // 0 is the canonical auto marker, matching the menu's "0" display.
+    for (const belowOne of [-3, 0.5]) {
+      const { io, saves } = memIO();
+      const store = new ConfigStore(io);
+      store.mutate.agent.setAgentStatusLimit(belowOne);
+      expect(saves[0].config.agent!.agentStatusLimit).toBe(0);
+      expect(store.agent.agentStatusLimit).toBe(8);
+    }
   });
 
   it("clearAllModelOverrides preserves agentStatusLimit (non-model key)", () => {
