@@ -15,11 +15,10 @@ import { shellMock } from "../fixtures.ts";
 
 const { mockListAgents, mockStore } = vi.hoisted(() => ({
   mockListAgents: vi.fn(),
-  // Resolved store projection the tool reads: effective limit + concurrency
-  // (the real resolution lives in ConfigStore; the shellMock only feeds values).
+  // Resolved store projection the tool reads. The limit arrives pre-resolved;
+  // the auto derivation (2 × default concurrency) lives in ConfigStore.
   mockStore: {
     agent: { agentStatusLimit: 8 },
-    concurrency: { default: 4 },
   },
 }));
 
@@ -144,7 +143,7 @@ describe("AgentStatus tool execute behavior", () => {
 
 describe("AgentStatus limit-bounded output", () => {
   beforeEach(() => {
-    // Default store projection: auto limit 8 (2 × concurrency.default 4).
+    // Default store projection: auto limit 8.
     mockStore.agent.agentStatusLimit = 8;
   });
 
