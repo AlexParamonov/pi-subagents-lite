@@ -946,16 +946,16 @@ export class AgentWidget {
       return;
     }
 
+    // Status bar — only call setStatus when the text actually changes.
+    this.updateStatusBar(running.length, queued.length, running);
+
     // Record existence drives the status line, visible rows the widget block (ADR-0006).
     const hasVisibleRows = running.length > 0 || queued.length > 0 || finished.length > 0;
     if (!hasVisibleRows) {
       // Every row aged out of the retention window: keep the line, drop the block.
       this.clearWidgetBlock();
+      return;
     }
-
-    // Status bar — only call setStatus when the text actually changes
-    this.updateStatusBar(running.length, queued.length, running);
-    if (!hasVisibleRows) return;
 
     this.widgetFrame++;
 
