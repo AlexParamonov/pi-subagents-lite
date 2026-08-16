@@ -498,7 +498,10 @@ export class AgentWidget {
       else if (a.lifecycle.status === "queued") queued.push(a);
       else if (a.lifecycle.completedAt !== undefined && a.lifecycle.completedAt >= cutoff) finished.push(a);
     }
-    return { running, queued, finished };
+    // Records persist until cleared or session end (ADR-0006) even after their
+    // rows leave the retention window — the status line keys off record
+    // existence, not the row filter.
+    return { running, queued, finished, hasRecords: allAgents.length > 0 };
   }
 
   private finishedIconAndStatus(
@@ -856,13 +859,18 @@ export class AgentWidget {
     return `  ${theme.fg("dim", `+${hiddenCount} more`)}`;
   }
 
-  private clearWidget() {
+  /** Drop the widget block (rows) and its nav state; the status line survives. */
+  private clearWidgetBlock() {
     if (this.navActive) this.resetNavState();
     if (this.widgetRegistered) {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
       this.tui = undefined;
     }
+  }
+
+  private clearWidget() {
+    this.clearWidgetBlock();
     if (this.lastStatusText !== undefined) {
       this.uiCtx?.setStatus(STATUS_KEY, undefined);
       this.lastStatusText = undefined;
@@ -930,14 +938,22 @@ export class AgentWidget {
     }
     if (!this.uiCtx) return;
 
-    const { running, queued, finished } = this.categorizeAgents();
+    const { running, queued, finished, hasRecords } = this.categorizeAgents();
 
     const hasActive = running.length > 0 || queued.length > 0;
     const hasFinished = finished.length > 0;
 
     if (!hasActive && !hasFinished) {
-      if (this.widgetRegistered || this.lastStatusText !== undefined) {
-        this.clearWidget();
+      if (!hasRecords) {
+        // Zero records: the menu is empty — nothing to surface, clear both.
+        if (this.widgetRegistered || this.lastStatusText !== undefined) {
+          this.clearWidget();
+        }
+      } else {
+        // Records persist (ADR-0006) but every row aged out of the retention
+        // window: keep the status line, drop the widget block.
+        this.clearWidgetBlock();
+        this.updateStatusBar(running.length, queued.length, running);
       }
       return;
     }
