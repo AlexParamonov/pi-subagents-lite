@@ -32,6 +32,29 @@ function bySettledDesc(a: AgentRecord, b: AgentRecord): number {
   return (b.lifecycle.completedAt ?? b.lifecycle.startedAt) - (a.lifecycle.completedAt ?? a.lifecycle.startedAt);
 }
 
+/**
+ * List text for non-empty agents: every in-progress agent in manager order, then
+ * at most `limit` settled agents most-recently-settled first, with a summary
+ * line when settled agents are hidden.
+ */
+function formatAgentStatusList(agents: AgentRecord[], limit: number): string {
+  const active: AgentRecord[] = [];
+  const settled: AgentRecord[] = [];
+  for (const record of agents) {
+    if (isActive(record)) active.push(record);
+    else settled.push(record);
+  }
+
+  // Recency is settlement time, never start time (issue constraint).
+  settled.sort(bySettledDesc);
+
+  const shownSettled = settled.slice(0, limit);
+  const hidden = settled.length - shownSettled.length;
+
+  const lines = [...active, ...shownSettled].map(formatAgent).join(", ");
+  return hidden > 0 ? `${lines}\nand ${hidden} more settled agents` : lines;
+}
+
 /** List active agents plus at most `limit` settled agents, with a summary line when settled are hidden. */
 export async function executeAgentStatusTool(
   _toolCallId: string,
@@ -51,23 +74,7 @@ export async function executeAgentStatusTool(
     };
   }
 
-  const active: AgentRecord[] = [];
-  const settled: AgentRecord[] = [];
-  for (const record of agents) {
-    if (isActive(record)) active.push(record);
-    else settled.push(record);
-  }
-
-  // Recency is settlement time, never start time (issue constraint).
-  settled.sort(bySettledDesc);
-
-  const limit = getStore().agent.agentStatusLimit;
-  const shownSettled = settled.slice(0, limit);
-  const hidden = settled.length - shownSettled.length;
-
-  let listText = [...active, ...shownSettled].map(formatAgent).join(", ");
-  if (hidden > 0) listText += `\nand ${hidden} more settled agents`;
-
+  const listText = formatAgentStatusList(agents, getStore().agent.agentStatusLimit);
   return {
     content: [{ type: "text", text: `${listText}\n\n${nudge}` }],
   };
