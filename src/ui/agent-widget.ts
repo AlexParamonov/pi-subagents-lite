@@ -432,10 +432,15 @@ export class AgentWidget {
     return this.resolveNavState().index;
   }
 
+  /** Whether any rows survive the finished-retention filter (the widget block's visibility). */
+  private hasVisibleRows(running: AgentRecord[], queued: AgentRecord[], finished: AgentRecord[]): boolean {
+    return running.length > 0 || queued.length > 0 || finished.length > 0;
+  }
+
   /** Whether the widget has any visible agents (after finished-window filtering). */
   hasVisibleAgents(): boolean {
-    const { finished, running, queued } = this.categorizeAgents();
-    return finished.length + running.length + queued.length > 0;
+    const { running, queued, finished } = this.categorizeAgents();
+    return this.hasVisibleRows(running, queued, finished);
   }
 
   isViewerOpen(): boolean {
@@ -950,8 +955,7 @@ export class AgentWidget {
     this.updateStatusBar(running, queued);
 
     // Record existence drives the status line, visible rows the widget block (ADR-0006).
-    const hasVisibleRows = running.length > 0 || queued.length > 0 || finished.length > 0;
-    if (!hasVisibleRows) {
+    if (!this.hasVisibleRows(running, queued, finished)) {
       // Every row aged out of the retention window: keep the line, drop the block.
       this.clearWidgetBlock();
       return;
