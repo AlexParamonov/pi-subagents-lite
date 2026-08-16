@@ -74,6 +74,10 @@ _Avoid_: Callback, notification
 The binding of a foreground Subagent to its parent run's interrupt signal, established at spawn. When the signal aborts (Esc during streaming or tool execution, a stop command, or session shutdown), a running Subagent stops as Stopped (stoppedBy "user", partial output preserved) and a queued Subagent is cancelled before starting. The binding is detached when the Subagent settles, stops, or is removed, so a later interrupt never touches settled work. Background Subagents are never bound.
 _Avoid_: Parent abort signal, interrupt listener, parent signal binding
 
+**Settled**:
+An agent that is no longer in progress, in one of the terminal statuses: completed, turn_limited, aborted, stopped, error. The AgentStatus tool always lists in-progress (running, queued) agents and shows settled agents most-recently-settled first, capped at the configured `agentStatusLimit` (0 = auto: 2 × default concurrency).
+_Avoid_: Done agent, finished agent, terminal agent
+
 **Watchdog**:
 Time-based stuck-agent detection that stops a running agent when a single tool call exceeds the tool timeout, or when the agent produces no activity (tool events or streamed response text) for longer than the idle timeout. Both thresholds are configurable in minutes; a watchdog stop is recorded with a reason distinct from a user stop.
 _Avoid_: Timeout killer, stuck-agent detector
@@ -91,6 +95,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
 - A **Watchdog** stops a **Subagent** when a tool call or inactivity exceeds its configured thresholds
 - A **Parent interrupt binding** stops a foreground **Subagent** when the parent run is interrupted; background **Subagents** are never bound
+- A **Subagent** that is not in progress is **Settled** (completed, turn_limited, aborted, stopped, or error)
 - A **Watchdog** stop records a reason distinct from a user stop
 - A **Worktree path** is the absolute resolved path passed via `worktree_path`
 - A **Worktree label** is derived from a **Worktree path** for compact display

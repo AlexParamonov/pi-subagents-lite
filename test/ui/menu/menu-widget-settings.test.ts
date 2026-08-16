@@ -332,7 +332,14 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i: any) => i.id);
-    expect(ids).toEqual(["finishedRetention", "__sep__", "shortcut", "showCompletionCards", "thinkingBuffer"]);
+    expect(ids).toEqual([
+      "finishedRetention",
+      "agentStatusLimit",
+      "__sep__",
+      "shortcut",
+      "showCompletionCards",
+      "thinkingBuffer",
+    ]);
 
     const item = settingsListCalls[0].items.find((i: any) => i.id === "showCompletionCards");
     expect(item.label).toBe("Show completion cards");
@@ -380,6 +387,38 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedRetention");
     expect(typeof item.submenu).toBe("function");
+  });
+
+  it("agentStatusLimit has a numeric submenu", async () => {
+    const ctx = createDispatchCtx("behavior");
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    expect(typeof item.submenu).toBe("function");
+  });
+
+  it("agentStatusLimit shows 0 (auto) when unset", async () => {
+    const ctx = createDispatchCtx("behavior");
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    expect(item.currentValue).toBe("0");
+    expect(typeof item.description).toBe("string");
+  });
+
+  it("agentStatusLimit shows the explicit value when set", async () => {
+    mockModules.mockConfig.agent.agentStatusLimit = 12;
+    const ctx = createDispatchCtx("behavior");
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    expect(item.currentValue).toBe("12");
+  });
+
+  it("agentStatusLimit submenu submit persists the value", async () => {
+    const ctx = createDispatchCtx("behavior");
+    await showWidgetSettingsMenu(ctx);
+    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    const input = item.submenu("0", () => {}) as any;
+    input.onSubmit("15");
+    expect(mockModules.mockConfig.agent.agentStatusLimit).toBe(15);
   });
 
   it("has title 'Behavior'", async () => {

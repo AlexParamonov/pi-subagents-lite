@@ -119,6 +119,8 @@ export interface ResolvedAgentSettings {
   readonly outputThinkingBufferSize: number;
   /** Minutes a finished agent stays visible in the widget after completion. */
   readonly finishedRetentionMinutes: number;
+  /** Max settled agents the AgentStatus tool lists. Auto default: 2 × configured default concurrency. */
+  readonly agentStatusLimit: number;
   /** Model display format: 'id' (short) or 'name' (full). */
   readonly modelDisplayStyle: "id" | "name";
   /** Model/thinking placement in full mode: 'header' (1st line) or 'metadata' (2nd line). */
@@ -185,6 +187,9 @@ export class ConfigStore {
     const a = this.config.agent;
     const widgetMaxLines = a.widgetMaxLines!; // guaranteed by the defaults merge
     const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
+    // 0 or below means auto: the cap tracks the default concurrency (the
+    // manager's own fallback chain, baked at 4) so it scales with the session.
+    const agentStatusLimit = a.agentStatusLimit ?? 0;
 
     return {
       defaultModel: a.default ?? null,
@@ -218,6 +223,7 @@ export class ConfigStore {
       showTime: a.showTime !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       finishedRetentionMinutes: Math.max(MIN_FINISHED_RETENTION_MINUTES, a.finishedRetentionMinutes ?? 1),
+      agentStatusLimit: agentStatusLimit >= 1 ? agentStatusLimit : 2 * this.concurrency.default,
       modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
       modelThinkingPlacement: a.modelThinkingPlacement === "metadata" ? "metadata" : "header",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
@@ -405,6 +411,10 @@ export class ConfigStore {
         this.setAgentLayerEntry("finishedRetentionMinutes", n, "global");
         // Push the window to the widget so it applies on the next render tick.
         this.widget?.setFinishedRetentionMinutes(n);
+      },
+      /** Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency); below 1 clamps to 0. */
+      setAgentStatusLimit: (limit: number): void => {
+        this.setAgentLayerEntry("agentStatusLimit", Math.max(0, limit), "global");
       },
     },
     widget: {

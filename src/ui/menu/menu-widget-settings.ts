@@ -168,6 +168,12 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
   ];
 }
 
+/** Menu display of the stored agentStatusLimit: explicit value when ≥ 1, else "0" (= auto). */
+function agentStatusLimitMenuValue(store: ReturnType<typeof getStore>): string {
+  const explicit = store.agentConfigSnapshot().agentStatusLimit ?? 0;
+  return explicit >= 1 ? String(explicit) : "0";
+}
+
 function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>): SettingItem[] {
   return [
     {
@@ -179,6 +185,18 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
         ctx.ui.notify(`Finished agent retention set to ${parsed} min`, "info");
       }),
       description: "Minutes to keep finished agents visible (decimals OK, min 1 sec).",
+    },
+    {
+      id: "agentStatusLimit",
+      label: "Agent status settled limit",
+      // The stored value is what the submenu edits: 0 means auto (2 × default
+      // concurrency); the resolved effective number lives in store.agent.
+      currentValue: agentStatusLimitMenuValue(store),
+      submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
+        store.mutate.agent.setAgentStatusLimit(parsed);
+        ctx.ui.notify(`Agent status settled limit set to ${parsed}`, "info");
+      }),
+      description: "Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency).",
     },
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
@@ -281,6 +299,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
       case "finishedRetention":
+      case "agentStatusLimit":
         // Handled by the numeric submenu, not onChange
         break;
     }
@@ -324,7 +343,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     {
       value: "behavior",
       label: "Behavior",
-      description: "Shortcuts, completion cards, thinking buffer, finished agent retention",
+      description: "Shortcuts, completion cards, thinking buffer, retention, agent status limit",
     },
     { value: "stats", label: "Stats", description: "Toggle which usage stats appear in the widget" },
   ];

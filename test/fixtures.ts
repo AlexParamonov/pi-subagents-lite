@@ -55,7 +55,13 @@ export function shellMock(fns: ShellMockFns = {}) {
     pi: fns.pi ?? { sendMessage: vi.fn(), exec: vi.fn() },
     sessionCtx: fns.sessionCtx ?? { cwd: "/home/test" },
     store: fns.store ?? {
-      agent: { graceTurns: 6, forceBackground: false, showCost: false, agentToolStrictMode: false },
+      agent: {
+        graceTurns: 6,
+        forceBackground: false,
+        showCost: false,
+        agentToolStrictMode: false,
+        agentStatusLimit: 8,
+      },
       modelFor: () => "anthropic/claude-sonnet-4-6",
     },
     coordinator: fns.coordinator ?? { spawn: vi.fn() },
