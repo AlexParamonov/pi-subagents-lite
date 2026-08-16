@@ -14,7 +14,7 @@ import { SEPARATOR_ID, buildSelectListTheme, buildSettingsListTheme } from "./he
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
-import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
+import { MIN_FINISHED_RETENTION_MINUTES, canonicalAgentStatusLimit } from "../../config/config-io.js";
 
 /** One stat visibility toggle: menu label, description, and store get/set accessors. */
 type StatToggleConfig = { label: string; description: string; get: () => boolean; set: (v: boolean) => void };
@@ -168,12 +168,6 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
   ];
 }
 
-/** Menu display of the stored agentStatusLimit: explicit value when ≥ 1, else "0" (= auto). */
-function agentStatusLimitMenuValue(store: ReturnType<typeof getStore>): string {
-  const explicit = store.agentConfigSnapshot().agentStatusLimit ?? 0;
-  return explicit >= 1 ? String(explicit) : "0";
-}
-
 function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>): SettingItem[] {
   return [
     {
@@ -191,7 +185,7 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       label: "Agent status settled limit",
       // The stored value is what the submenu edits: 0 means auto (2 × default
       // concurrency); the resolved effective number lives in store.agent.
-      currentValue: agentStatusLimitMenuValue(store),
+      currentValue: String(canonicalAgentStatusLimit(store.agentConfigSnapshot().agentStatusLimit)),
       submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
         store.mutate.agent.setAgentStatusLimit(parsed);
         ctx.ui.notify(`Agent status settled limit set to ${parsed}`, "info");

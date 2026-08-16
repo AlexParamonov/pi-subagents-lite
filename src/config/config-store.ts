@@ -29,6 +29,7 @@ import {
   MIN_FINISHED_RETENTION_MINUTES,
   MODEL_FAMILY_KEYS,
   createConfigIO,
+  canonicalAgentStatusLimit,
   isProjectAllowedAgentKey,
   mergeDefaults,
   mergeLayers,
@@ -187,9 +188,8 @@ export class ConfigStore {
     const a = this.config.agent;
     const widgetMaxLines = a.widgetMaxLines!; // guaranteed by the defaults merge
     const widgetMaxLinesCompact = a.widgetMaxLinesCompact ?? Math.floor(widgetMaxLines / 2);
-    // Below 1 means auto: the cap tracks the default concurrency (the
-    // manager's own fallback chain, baked at 4) so it scales with the session.
-    const agentStatusLimit = a.agentStatusLimit ?? 0;
+    // 0 = auto: the cap tracks the default concurrency (the manager's own
+    // fallback chain, baked at 4) so it scales with the session.
 
     return {
       defaultModel: a.default ?? null,
@@ -223,7 +223,7 @@ export class ConfigStore {
       showTime: a.showTime !== false,
       outputThinkingBufferSize: a.outputThinkingBufferSize ?? 0,
       finishedRetentionMinutes: Math.max(MIN_FINISHED_RETENTION_MINUTES, a.finishedRetentionMinutes ?? 1),
-      agentStatusLimit: agentStatusLimit >= 1 ? agentStatusLimit : 2 * this.concurrency.default,
+      agentStatusLimit: canonicalAgentStatusLimit(a.agentStatusLimit) || 2 * this.concurrency.default,
       modelDisplayStyle: a.modelDisplayStyle === "id" ? "id" : "name",
       modelThinkingPlacement: a.modelThinkingPlacement === "metadata" ? "metadata" : "header",
       statusBarFormat: a.statusBarFormat === "compact" ? "compact" : "full",
@@ -414,7 +414,7 @@ export class ConfigStore {
       },
       /** Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency); below 1 clamps to 0. */
       setAgentStatusLimit: (limit: number): void => {
-        this.setAgentLayerEntry("agentStatusLimit", limit >= 1 ? limit : 0, "global");
+        this.setAgentLayerEntry("agentStatusLimit", canonicalAgentStatusLimit(limit), "global");
       },
     },
     widget: {
