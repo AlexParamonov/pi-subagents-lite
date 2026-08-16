@@ -909,8 +909,8 @@ export class AgentWidget {
     return `${this.theme ? this.theme.fg(iconColor, icon) : icon} ${agentsLabel}`;
   }
 
-  private updateStatusBar(runningCount: number, queuedCount: number, running: AgentRecord[]) {
-    const activeCount = runningCount + queuedCount;
+  private updateStatusBar(running: AgentRecord[], queued: AgentRecord[]) {
+    const activeCount = running.length + queued.length;
     const doneCount = this.manager.getTotalAgentCount();
 
     // Compute total cost (session accumulator + in-flight running agents)
@@ -947,7 +947,7 @@ export class AgentWidget {
     }
 
     // Status bar — only call setStatus when the text actually changes.
-    this.updateStatusBar(running.length, queued.length, running);
+    this.updateStatusBar(running, queued);
 
     // Record existence drives the status line, visible rows the widget block (ADR-0006).
     const hasVisibleRows = running.length > 0 || queued.length > 0 || finished.length > 0;
