@@ -68,6 +68,8 @@ export interface SubagentsConfig {
     outputThinkingBufferSize?: number;
     /** Minutes to retain finished agents in the widget. Default: 1. */
     finishedRetentionMinutes?: number;
+    /** Max settled agents the AgentStatus tool lists. 0 or absent = auto: 2 × default concurrency. */
+    agentStatusLimit?: number;
     /** How to display the model label: short ID or full name. Default: 'name'. */
     modelDisplayStyle?: "id" | "name";
     /** Where model/thinking appears in full mode: 'header' (1st line) or 'metadata' (2nd line). Default: 'header'. */

@@ -34,6 +34,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "agentToolStrictMode",
   "outputThinkingBufferSize",
   "finishedRetentionMinutes",
+  "agentStatusLimit",
   "modelDisplayStyle",
   "modelThinkingPlacement",
   "statusBarFormat",

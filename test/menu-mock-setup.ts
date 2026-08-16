@@ -425,6 +425,9 @@ vi.mock("../src/shell.js", async () => {
         setFinishedRetentionMinutes(n: number) {
           mockModules.mockConfig.agent.finishedRetentionMinutes = n;
         },
+        setAgentStatusLimit(n: number) {
+          mockModules.mockConfig.agent.agentStatusLimit = n;
+        },
         setOutputTranscript(enabled: boolean) {
           mockModules.mockConfig.agent.outputTranscript = enabled;
         },

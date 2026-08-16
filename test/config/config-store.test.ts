@@ -911,3 +911,71 @@ describe("ConfigStore lifecycle", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  AgentStatus settled limit (agentStatusLimit)                       */
+/* ------------------------------------------------------------------ */
+
+describe("AgentStatus settled limit resolution", () => {
+  it("unset, 0, and negative values resolve to the auto default (2 × concurrency.default)", () => {
+    for (const edited of [undefined, 0, -5] as Array<number | undefined>) {
+      const { io } = memIO(edited === undefined ? {} : { global: { agent: { agentStatusLimit: edited } } });
+      const store = new ConfigStore(io);
+      // concurrency.default bakes at 4, so the auto limit is 8 — derived, never a literal.
+      expect(store.agent.agentStatusLimit).toBe(8);
+    }
+  });
+
+  it("an explicit value ≥ 1 overrides the auto default", () => {
+    for (const explicit of [1, 12]) {
+      const { io } = memIO({ global: { agent: { agentStatusLimit: explicit } } });
+      const store = new ConfigStore(io);
+      expect(store.agent.agentStatusLimit).toBe(explicit);
+    }
+  });
+
+  it("the auto default tracks the session-effective concurrency default", () => {
+    const store = new ConfigStore(minimalIO());
+    store.mutate.concurrency.setDefault(6, "session");
+    expect(store.agent.agentStatusLimit).toBe(12);
+  });
+
+  it("setAgentStatusLimit persists the value and resolves it", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setAgentStatusLimit(15);
+    expect(store.agent.agentStatusLimit).toBe(15);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].config.agent!.agentStatusLimit).toBe(15);
+  });
+
+  it("setAgentStatusLimit(0) stores 0, resolving to auto", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setAgentStatusLimit(0);
+    expect(store.agent.agentStatusLimit).toBe(8);
+    expect(saves[0].config.agent!.agentStatusLimit).toBe(0);
+  });
+
+  it("setAgentStatusLimit clamps values below 1 to 0 (auto)", () => {
+    // Fractional limits (menu allows decimals) are not a meaningful stored state:
+    // 0 is the canonical auto marker, matching the menu's "0" display.
+    for (const belowOne of [-3, 0.5]) {
+      const { io, saves } = memIO();
+      const store = new ConfigStore(io);
+      store.mutate.agent.setAgentStatusLimit(belowOne);
+      expect(saves[0].config.agent!.agentStatusLimit).toBe(0);
+      expect(store.agent.agentStatusLimit).toBe(8);
+    }
+  });
+
+  it("clearAllModelOverrides preserves agentStatusLimit (non-model key)", () => {
+    const { io } = memIO({
+      global: { agent: { default: "g", Explore: "g/explore", agentStatusLimit: 12, forceBackground: true } },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agentConfigSnapshot().agentStatusLimit).toBe(12);
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+  });
+});

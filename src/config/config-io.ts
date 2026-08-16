@@ -64,10 +64,21 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   showTime: true,
   outputTranscript: false,
   finishedRetentionMinutes: 1,
+  /** 0 = auto: the AgentStatus settled limit derives as 2 × default concurrency at read time. */
+  agentStatusLimit: 0,
   modelDisplayStyle: "name",
   modelThinkingPlacement: "header",
   statusBarFormat: "full",
 };
+
+/**
+ * Stored form of agentStatusLimit: an explicit value ≥ 1 passes through;
+ * anything below 1 (or unset) becomes 0, the auto marker — the effective
+ * limit then derives as 2 × default concurrency at read time.
+ */
+export function canonicalAgentStatusLimit(raw: number | undefined): number {
+  return raw != null && raw >= 1 ? raw : 0;
+}
 
 /** A layer a persisted mutation can target. */
 export type ConfigTarget = "session" | "global" | "project";
