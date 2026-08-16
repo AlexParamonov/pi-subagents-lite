@@ -940,26 +940,22 @@ export class AgentWidget {
 
     const { running, queued, finished, hasRecords } = this.categorizeAgents();
 
-    const hasActive = running.length > 0 || queued.length > 0;
-    const hasFinished = finished.length > 0;
-
-    if (!hasActive && !hasFinished) {
-      if (!hasRecords) {
-        // Zero records: the menu is empty — nothing to surface, clear both.
-        if (this.widgetRegistered || this.lastStatusText !== undefined) {
-          this.clearWidget();
-        }
-      } else {
-        // Records persist (ADR-0006) but every row aged out of the retention
-        // window: keep the status line, drop the widget block.
-        this.clearWidgetBlock();
-        this.updateStatusBar(running.length, queued.length, running);
-      }
+    if (!hasRecords) {
+      // Zero records: the menu is empty — nothing to surface, clear both.
+      this.clearWidget();
       return;
+    }
+
+    // Record existence drives the status line, visible rows the widget block (ADR-0006).
+    const hasVisibleRows = running.length > 0 || queued.length > 0 || finished.length > 0;
+    if (!hasVisibleRows) {
+      // Every row aged out of the retention window: keep the line, drop the block.
+      this.clearWidgetBlock();
     }
 
     // Status bar — only call setStatus when the text actually changes
     this.updateStatusBar(running.length, queued.length, running);
+    if (!hasVisibleRows) return;
 
     this.widgetFrame++;
 
