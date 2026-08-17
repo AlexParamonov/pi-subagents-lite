@@ -39,7 +39,8 @@
     "format": "prettier --write src/ test/",
     "format:check": "prettier --check src/ test/",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:any-gate": "bash scripts/test-any-gate.sh"
   },
   "pi": {
     "extensions": [
