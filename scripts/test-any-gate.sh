@@ -23,7 +23,7 @@ cp -r test/* "$TMP/"
 #   - Comment lines (// or *) — documentation, not type annotations
 find "$TMP" -name '*.ts' -exec sed -i \
   -e '/expect\.any(/d' \
-  -e '/^export function fakeCtx/,/^): any/d' \
+  -e '/^export function fakeCtx(): any/d' \
   -e '/^export function createMockCtx/,/^): any/d' \
   -e '/^[[:space:]]*\/\//d' \
   -e '/^[[:space:]]*\*/d' \
