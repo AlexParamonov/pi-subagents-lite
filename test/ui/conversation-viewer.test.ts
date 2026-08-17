@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // --- Mocks ---
 
-const mockSubscribe = vi.fn(() => () => {});
+const mockSubscribe = vi.fn<(listener: (event?: unknown) => void) => () => void>(() => () => {});
 const mockRequestRender = vi.fn();
 
 vi.mock("@earendil-works/pi-tui", () => ({
@@ -119,6 +119,12 @@ const bgMarkingTheme: any = {
   bold: (text: string) => text,
   italic: (text: string) => text,
 };
+
+/** Minimal message shape the viewer renders: role plus string or text-block content. */
+interface TestMessage {
+  role: string;
+  content: string | { type: string; text: string }[];
+}
 
 function makeMockSession(messages: any[] = []) {
   return {
@@ -901,7 +907,7 @@ describe("ConversationViewer", () => {
     });
 
     it("preserves cache on append (no array replacement)", () => {
-      const messagesArray = [{ role: "user", content: "msg 1" }];
+      const messagesArray: TestMessage[] = [{ role: "user", content: "msg 1" }];
       const session = {
         get messages() {
           return messagesArray;

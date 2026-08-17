@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
 import { registerAgents, resolveType, getAgentConfig, getAvailableTypes } from "../../src/agents/agent-types.js";
-import type { AgentConfig } from "../../src/types.ts";
+import type { AgentConfig } from "../../src/agents/types.js";
 
 function agent(name: string, overrides: Partial<AgentConfig> = {}): AgentConfig {
   return { name, description: `Agent ${name}`, systemPrompt: "", ...overrides };

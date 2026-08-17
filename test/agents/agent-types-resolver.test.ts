@@ -16,7 +16,7 @@ import {
   getToolNamesForType,
   registerAgents,
 } from "../../src/agents/agent-types.js";
-import type { AgentConfig } from "../../src/types.ts";
+import type { AgentConfig } from "../../src/agents/types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Allowlist mode (tools: string[])                                  */

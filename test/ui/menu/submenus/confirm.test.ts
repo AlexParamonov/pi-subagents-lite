@@ -43,6 +43,7 @@ describe("createConfirmSubmenu", () => {
 
   const mockTheme = {
     fg: (_c: string, t: string) => t,
+    bg: (_c: string, t: string) => t,
     bold: (t: string) => t,
     italic: (t: string) => t,
   };

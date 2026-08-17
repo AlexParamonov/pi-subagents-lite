@@ -1,14 +1,14 @@
 /**
  * agent-manager-watchdog.test.ts — Watchdog stop decisions wired through AgentManager.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.ts";
-import { mockModules, mockStoreState, mockRunResult } from "./manager-mocks.ts";
+import { mockModules, mockStoreState, mockRunResult, type OnAgentComplete } from "./manager-mocks.ts";
 import { AgentManager, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {
   let manager: AgentManager;
-  let onComplete: ReturnType<typeof vi.fn>;
+  let onComplete: Mock<OnAgentComplete>;
 
   beforeEach(() => {
     mockModules.resetUuidCounter();
@@ -16,7 +16,7 @@ describe("AgentManager", () => {
     mockModules.mockContinueAgentSession.mockReset();
     mockModules.mockAgentOutputLog.mockClear();
     mockModules.mockGetAgentConfig.mockClear();
-    onComplete = vi.fn();
+    onComplete = vi.fn<OnAgentComplete>();
   });
 
   afterEach(() => {
@@ -258,8 +258,8 @@ describe("AgentManager", () => {
         vi.setSystemTime(Date.now() + 46 * 60_000 - WATCHDOG_TICK_MS);
         vi.advanceTimersByTime(WATCHDOG_TICK_MS);
 
-        expect(manager.getRecord(id)?.lifecycle.stopDetail?.kind).toBe("tool");
-        expect(manager.getRecord(id)?.lifecycle.stopDetail?.toolName).toBe("bash");
+        const detail = manager.getRecord(id)?.lifecycle.stopDetail;
+        expect(detail).toMatchObject({ kind: "tool", toolName: "bash" });
       } finally {
         vi.useRealTimers();
       }

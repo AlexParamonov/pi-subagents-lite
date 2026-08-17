@@ -1087,8 +1087,8 @@ describe("description truncation", () => {
     expect(wideDescLine).toBeDefined();
     // The wide terminal should show more of the description
     // (less truncated since more space available)
-    const narrowDescMatch = narrowDescLine.match(/Test description[^\]]*/);
-    const wideDescMatch = wideDescLine.match(/Test description[^\]]*/);
+    const narrowDescMatch = narrowDescLine?.match(/Test description[^\]]*/);
+    const wideDescMatch = wideDescLine?.match(/Test description[^\]]*/);
     if (narrowDescMatch && wideDescMatch) {
       // Wide terminal should have longer visible description
       expect(wideDescMatch[0].length).toBeGreaterThanOrEqual(narrowDescMatch[0].length);

@@ -115,6 +115,8 @@ export interface RegisteredTool {
   promptGuidelines?: string;
   parameters: any; // TypeBox TSchema
   execute?: (...args: any[]) => any;
+  /** Provider-side json_schema enforcement; mirrors src/registration.ts. */
+  constrainedSampling?: { type: string; strict: string };
 }
 
 export interface RegisteredCommand {

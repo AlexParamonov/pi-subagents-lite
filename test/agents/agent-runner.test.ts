@@ -2,9 +2,12 @@
  * agent-runner.test.ts — Tests for the agent execution engine.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import fs from "node:fs";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { Api, AssistantMessage, Model, UserMessage } from "@earendil-works/pi-ai";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.ts";
+import { asAgentSession } from "../pi-boundaries.ts";
 
 const fakePi = makeFakePi();
 
@@ -140,8 +143,50 @@ function resetMocks() {
   mockModules.mockPreloadSkills.mockReturnValue([]);
 }
 
-function createMockSession() {
-  const listeners: Array<(event: any) => void> = [];
+/** The fake AgentSession surface these tests drive. */
+interface MockSession {
+  setSessionName: Mock<() => void>;
+  getActiveToolNames: Mock<() => string[] | undefined>;
+  setActiveToolsByName: Mock<(tools: string[]) => void>;
+  getActiveTools: Mock<() => string[] | undefined>;
+  bindExtensions: Mock<() => void>;
+  subscribe: Mock<(listener: (event: unknown) => void) => () => void>;
+  prompt: Mock<(text: string) => Promise<void>>;
+  steer: Mock<(text: string) => Promise<void>>;
+  abort: Mock<() => Promise<void>>;
+  messages: AgentSession["messages"];
+  /** The Agent hook runAgent patches for max_tokens injection. */
+  agent: {
+    onPayload?: (payload: unknown, model: Model<Api>) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  };
+  _getListeners: () => Array<(event: unknown) => void>;
+}
+/** Full assistant message with zeroed metadata; tests override what they assert on. */
+function assistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [],
+    api: "anthropic-messages",
+    provider: "anthropic",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: 0,
+    ...overrides,
+  };
+}
+function userMessage(text: string): UserMessage {
+  return { role: "user", content: text, timestamp: 0 };
+}
+function createMockSession(): MockSession {
+  const listeners: Array<(event: unknown) => void> = [];
   // Track active tools as real session state (a fake, not a call record) so
   // tests assert the observable outcome of tool filtering rather than the
   // internal call structure of setActiveToolsByName.
@@ -154,7 +199,7 @@ function createMockSession() {
     }),
     getActiveTools: vi.fn(() => activeTools),
     bindExtensions: vi.fn(),
-    subscribe: vi.fn((listener: (event: any) => void) => {
+    subscribe: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener);
       return () => {
         const idx = listeners.indexOf(listener);
@@ -168,7 +213,23 @@ function createMockSession() {
     steer: vi.fn(async () => {}),
     abort: vi.fn(async () => {}),
     messages: [],
+    agent: { onPayload: undefined },
     _getListeners: () => listeners,
+  };
+}
+function makeMockModel(overrides: Partial<Model<Api>> = {}): Model<Api> {
+  return {
+    id: "test-model",
+    name: "Test Model",
+    provider: "openai",
+    api: "openai-completions",
+    baseUrl: "https://test.api/v1",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 16384,
+    ...overrides,
   };
 }
 
@@ -434,7 +495,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -463,7 +524,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -492,7 +553,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -521,7 +582,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -550,7 +611,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -573,7 +634,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -591,7 +652,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onAssistantUsage = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onAssistantUsage });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onAssistantUsage });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -610,7 +671,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onToolActivity = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onToolActivity });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onToolActivity });
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
@@ -625,7 +686,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
 
   it("returns a noop unsubscribe when no callbacks are provided", () => {
     const session = createMockSession();
-    const unsub = subscribeToSessionEvents(session, {});
+    const unsub = subscribeToSessionEvents(asAgentSession(session), {});
     // The noop early-return must not touch the session at all
     expect(session.subscribe).not.toHaveBeenCalled();
     expect(typeof unsub).toBe("function");
@@ -634,7 +695,7 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const onCompaction = vi.fn();
     const session = createMockSession();
 
-    const unsub = subscribeToSessionEvents(session, { onCompaction });
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onCompaction });
 
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
@@ -1326,14 +1387,14 @@ describe("runAgent — grace turns", () => {
 
     // Fire 6 turns (within default grace period) — should not abort
     for (let i = 0; i < 6; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
     // Now fire the 7th turn — should abort (maxTurns=1 + graceTurns=6 = 7)
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
 
     resolvePrompt();
@@ -1359,14 +1420,14 @@ describe("runAgent — grace turns", () => {
 
     // Fire 4 turns (within custom grace period) — should not abort
     for (let i = 0; i < 4; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
     // Now fire the 5th turn — should abort (maxTurns=2 + graceTurns=3 = 5)
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
 
     resolvePrompt();
@@ -1393,14 +1454,14 @@ describe("runAgent — grace turns", () => {
 
     // Fire 2 turns — steer fires at turn 2, no abort yet
     for (let i = 0; i < 2; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
     // Fire 1 more turn — abort fires at turn 3 (maxTurns + graceTurns = 2)
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
 
     resolvePrompt();
@@ -1446,7 +1507,7 @@ describe("runAgent — grace turns", () => {
 
     // Turn 1 steers, turn 2 hard-aborts.
     for (let i = 0; i < 2; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(steerCatch).toHaveBeenCalled();
@@ -1507,7 +1568,7 @@ describe("runAgent — grace turns", () => {
 
     // Fire 3 turns (within grace period) — should steer but not abort
     for (let i = 0; i < 3; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
@@ -1537,22 +1598,6 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
   });
 
-  function makeMockModel(overrides = {}) {
-    return {
-      id: "test-model",
-      name: "Test Model",
-      provider: "openai",
-      api: "openai-completions",
-      baseUrl: "https://test.api/v1",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 128000,
-      maxTokens: 16384,
-      ...overrides,
-    };
-  }
-
   it("max_tokens in agent config ends up in the provider request payload", async () => {
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
@@ -1574,7 +1619,7 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
       messages: [{ role: "user", content: "do something" }],
       stream: true,
     };
-    const finalPayload = await session.agent.onPayload(rawPayload, model);
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
 
     expect(finalPayload.max_tokens).toBe(4096);
     expect(finalPayload.model).toBe("llama-3.1-8b");
@@ -1591,7 +1636,7 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
 
-    const finalPayload = await session.agent.onPayload(
+    const finalPayload = await session.agent.onPayload!(
       { model: "some-model", messages: [{ role: "user", content: "do something" }] },
       model,
     );
@@ -1628,7 +1673,7 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
       messages: [{ role: "user", content: "do something" }],
       stream: true,
     };
-    const finalPayload = await session.agent.onPayload(rawPayload, model);
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
 
     expect(finalPayload.max_tokens).toBe(2048);
   });
@@ -2402,10 +2447,10 @@ describe("continueAgentSession", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
-  function fireTextDelta(session: any, delta: string) {
+  function fireTextDelta(session: MockSession, delta: string) {
     session
       ._getListeners()
-      .forEach((fn: any) => fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }));
+      .forEach((fn) => fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }));
   }
 
   it("prompts the existing session and returns the collected response", async () => {
@@ -2417,7 +2462,7 @@ describe("continueAgentSession", () => {
           resolvePrompt = r;
         }),
     );
-    const resultPromise = continueAgentSession(session, "keep going", {});
+    const resultPromise = continueAgentSession(asAgentSession(session), "keep going", {});
     await vi.waitFor(() => expect(session.prompt).toHaveBeenCalledWith("keep going"));
     fireTextDelta(session, "continued answer");
     resolvePrompt();
@@ -2433,14 +2478,14 @@ describe("continueAgentSession", () => {
    * `messages`, and the prompt appends the continuation's own messages.
    * extractText is mocked to return real text so the fallback scan is exercised.
    */
-  function sessionWithPriorRun(continuationMessages: any[]) {
+  function sessionWithPriorRun(continuationMessages: AgentSession["messages"]) {
     const session = createMockSession();
     session.messages = [
-      { role: "user", content: "first task" },
-      { role: "assistant", content: [{ type: "text", text: "first run answer" }], stopReason: "stop" },
+      userMessage("first task"),
+      assistantMessage({ content: [{ type: "text", text: "first run answer" }] }),
     ];
     session.prompt = vi.fn(async () => {
-      session.messages.push({ role: "user", content: "keep going" }, ...continuationMessages);
+      session.messages.push(userMessage("keep going"), ...continuationMessages);
     });
     mockModules.mockExtractText.mockImplementation((content: any) =>
       typeof content === "string"
@@ -2453,11 +2498,9 @@ describe("continueAgentSession", () => {
   }
 
   it("does not surface the prior run's text when the continuation ends in a model error", async () => {
-    const session = sessionWithPriorRun([
-      { role: "assistant", content: [], stopReason: "error", errorMessage: "provider boom" },
-    ]);
+    const session = sessionWithPriorRun([assistantMessage({ stopReason: "error", errorMessage: "provider boom" })]);
 
-    const result = await continueAgentSession(session, "keep going", {});
+    const result = await continueAgentSession(asAgentSession(session), "keep going", {});
 
     // The failed continuation produced no text of its own; the first run's
     // "first run answer" must not leak into the result.
@@ -2466,20 +2509,18 @@ describe("continueAgentSession", () => {
   });
 
   it("does not surface the prior run's text when the continuation is aborted without text", async () => {
-    const session = sessionWithPriorRun([{ role: "assistant", content: [], stopReason: "aborted" }]);
+    const session = sessionWithPriorRun([assistantMessage({ stopReason: "aborted" })]);
 
-    const result = await continueAgentSession(session, "keep going", {});
+    const result = await continueAgentSession(asAgentSession(session), "keep going", {});
 
     expect(result.responseText).toBe("");
     expect(result.modelError).toBeUndefined();
   });
 
   it("still falls back to the continuation's own assistant text when the collector captured nothing", async () => {
-    const session = sessionWithPriorRun([
-      { role: "assistant", content: [{ type: "text", text: "continued answer" }], stopReason: "stop" },
-    ]);
+    const session = sessionWithPriorRun([assistantMessage({ content: [{ type: "text", text: "continued answer" }] })]);
 
-    const result = await continueAgentSession(session, "keep going", {});
+    const result = await continueAgentSession(asAgentSession(session), "keep going", {});
 
     expect(result.responseText).toBe("continued answer");
   });
@@ -2487,7 +2528,7 @@ describe("continueAgentSession", () => {
   it("returns the session so the manager can re-attach it to the record", async () => {
     const session = createMockSession();
     session.prompt = vi.fn(async () => {});
-    const result = await continueAgentSession(session, "keep going", {});
+    const result = await continueAgentSession(asAgentSession(session), "keep going", {});
     expect(result.session).toBe(session);
   });
 
@@ -2495,7 +2536,7 @@ describe("continueAgentSession", () => {
     const session = createMockSession();
     session.prompt = vi.fn(async () => {});
     const onSessionCreated = vi.fn();
-    await continueAgentSession(session, "keep going", { onSessionCreated });
+    await continueAgentSession(asAgentSession(session), "keep going", { onSessionCreated });
     expect(onSessionCreated).not.toHaveBeenCalled();
   });
 
@@ -2503,9 +2544,9 @@ describe("continueAgentSession", () => {
     const session = createMockSession();
     session.prompt = vi.fn(async () => {});
     session.messages = [
-      { role: "assistant", content: [{ type: "text", text: "x" }], stopReason: "error", errorMessage: "provider boom" },
+      assistantMessage({ content: [{ type: "text", text: "x" }], stopReason: "error", errorMessage: "provider boom" }),
     ];
-    const result = await continueAgentSession(session, "keep going", {});
+    const result = await continueAgentSession(asAgentSession(session), "keep going", {});
     expect(result.modelError).toBe("provider boom");
   });
 
@@ -2518,14 +2559,14 @@ describe("continueAgentSession", () => {
           resolvePrompt = r;
         }),
     );
-    const resultPromise = continueAgentSession(session, "keep going", { maxTurns: 1, graceTurns: 2 });
+    const resultPromise = continueAgentSession(asAgentSession(session), "keep going", { maxTurns: 1, graceTurns: 2 });
     await vi.waitFor(() => expect(session.prompt).toHaveBeenCalled());
     // Turn 1 hits the soft limit (steer); turn 3 (1 + 2 grace) hard-aborts.
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
     resolvePrompt();
     const result = await resultPromise;
@@ -2543,7 +2584,7 @@ describe("continueAgentSession", () => {
         }),
     );
     const controller = new AbortController();
-    const resultPromise = continueAgentSession(session, "keep going", { signal: controller.signal });
+    const resultPromise = continueAgentSession(asAgentSession(session), "keep going", { signal: controller.signal });
     await vi.waitFor(() => expect(session.prompt).toHaveBeenCalled());
     controller.abort();
     expect(session.abort).toHaveBeenCalled();

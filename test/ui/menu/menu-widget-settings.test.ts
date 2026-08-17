@@ -8,8 +8,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
+import { asCommandContext } from "../../pi-boundaries.ts";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 
 // Capture constructor calls
@@ -100,12 +102,12 @@ function setupMockConfig() {
 }
 
 /** Create a ctx that dispatches a specific category choice on first custom call. */
-function createDispatchCtx(choice: string) {
+function createDispatchCtx(choice: string): ExtensionCommandContext {
   let callCount = 0;
   // Stateful: setToolsExpanded updates the value getToolsExpanded reads, so the
   // test can assert the refresh restores the original expansion state.
   let toolExpanded = false;
-  return {
+  return asCommandContext({
     ui: {
       custom: vi.fn(async (factory: any) => {
         callCount++;
@@ -129,7 +131,7 @@ function createDispatchCtx(choice: string) {
       }),
     },
     modelRegistry: { getAvailable: vi.fn(() => []) },
-  };
+  });
 }
 
 afterEach(() => resetConfig());

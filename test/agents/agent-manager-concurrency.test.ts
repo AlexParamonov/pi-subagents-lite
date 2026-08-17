@@ -1,15 +1,15 @@
 /**
  * agent-manager-concurrency.test.ts — Concurrency limiting for AgentManager.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.ts";
-import { mockModules, mockRunResult } from "./manager-mocks.ts";
+import { mockModules, mockRunResult, type OnAgentComplete } from "./manager-mocks.ts";
 import { AgentManager } from "../../src/agents/agent-manager.js";
 import type { ConcurrencyConfig } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {
   let manager: AgentManager;
-  let onComplete: ReturnType<typeof vi.fn>;
+  let onComplete: Mock<OnAgentComplete>;
 
   beforeEach(() => {
     mockModules.resetUuidCounter();
@@ -17,7 +17,7 @@ describe("AgentManager", () => {
     mockModules.mockContinueAgentSession.mockReset();
     mockModules.mockAgentOutputLog.mockClear();
     mockModules.mockGetAgentConfig.mockClear();
-    onComplete = vi.fn();
+    onComplete = vi.fn<OnAgentComplete>();
   });
 
   afterEach(() => {

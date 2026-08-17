@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { preloadSkills, loadSkillMeta, loadAllSkills } from "../../src/prompt/skill-loader.ts";
 import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
-import type { AgentConfig, EnvInfo } from "../../src/types.ts";
+import type { AgentConfig } from "../../src/agents/types.ts";
+import type { EnvInfo } from "../../src/types.ts";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { createSkillDir, createFlatSkill } from "../fixtures.ts";
 

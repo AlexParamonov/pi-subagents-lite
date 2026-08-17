@@ -36,7 +36,8 @@ export interface AgentConfigFromMd {
   output_transcript?: boolean;
   include_context_files?: boolean;
   include_system_prompt?: boolean;
-  systemPrompt: string;
+  /** Absent = no override; mergeAgents' compactDefined skips it. */
+  systemPrompt?: string;
   source: "user" | "project";
 }
 

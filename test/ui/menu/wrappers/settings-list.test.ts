@@ -5,27 +5,42 @@
  * contract the wrapper must uphold now that the Back button is gone.
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { SelectList } from "@earendil-works/pi-tui";
+import { describe, it, expect, vi, type Mock } from "vitest";
+import { SelectList, type Component, type SelectItem, type SettingItem } from "@earendil-works/pi-tui";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { SettingsListWrapper } from "../../../../src/ui/menu/wrappers/settings-list.js";
 import { buildSelectListTheme, createDelegatingComponent } from "../../../../src/ui/menu/helpers.js";
 import { SearchableSelectDialog } from "../../../../src/ui/searchable-select.js";
+import { selectListView } from "../../../pi-boundaries.ts";
 
 const theme = {
   fg: (_color: string, text: string) => text,
+  bg: (_color: string, text: string) => text,
   bold: (text: string) => text,
 };
 
-function makeSettingsList(items: any[]) {
-  const list: any = {
+/** The fake SettingsList surface the wrapper reads and rebuild writes. */
+interface FakeSettingsList {
+  items: SettingItem[];
+  filteredItems?: SettingItem[];
+  onChange: Mock<(id: string, newValue: string) => void>;
+  onCancel: Mock<() => void>;
+  selectedIndex: number;
+  submenuComponent: Component | null;
+  render: () => string[];
+  invalidate: () => void;
+  handleInput: (data: string) => void;
+}
+function makeSettingsList(items: SettingItem[]): FakeSettingsList {
+  const list: FakeSettingsList = {
     items,
     onChange: vi.fn(),
     onCancel: vi.fn(),
     selectedIndex: 0,
     submenuComponent: null,
-    render: () => [] as string[],
+    render: () => [],
     invalidate: () => {},
+    handleInput: () => {},
   };
   // Mirror pi-tui's SettingsList: with a submenu active, input goes to it.
   list.handleInput = (data: string) => {
@@ -33,14 +48,14 @@ function makeSettingsList(items: any[]) {
   };
   return list;
 }
-
-function makeSelectList(items: any[]) {
+function makeSelectList(items: SelectItem[]) {
   return {
     items,
-    onSelect: undefined as ((item: any) => void) | undefined,
+    onSelect: undefined as ((item: SelectItem) => void) | undefined,
     onCancel: undefined as (() => void) | undefined,
     selectedIndex: 0,
     render: () => [] as string[],
+    invalidate: () => {},
     handleInput: () => {},
   };
 }
@@ -269,15 +284,15 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
     settings.submenuComponent = createDelegatingComponent(list as any);
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
-    expect(list.selectedIndex).toBe(0);
+    expect(selectListView(list).selectedIndex).toBe(0);
     wrapper.handleInput("j");
-    expect(list.selectedIndex).toBe(1);
+    expect(selectListView(list).selectedIndex).toBe(1);
     wrapper.handleInput("j");
-    expect(list.selectedIndex).toBe(2);
+    expect(selectListView(list).selectedIndex).toBe(2);
     wrapper.handleInput("j"); // wraps to the top
-    expect(list.selectedIndex).toBe(0);
+    expect(selectListView(list).selectedIndex).toBe(0);
     wrapper.handleInput("k"); // wraps to the bottom
-    expect(list.selectedIndex).toBe(2);
+    expect(selectListView(list).selectedIndex).toBe(2);
   });
 
   it("moves a raw SelectList submenu (confirm dialog) with wrap-around", () => {
@@ -292,13 +307,13 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
     settings.submenuComponent = list as any;
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
-    expect(list.selectedIndex).toBe(0);
+    expect(selectListView(list).selectedIndex).toBe(0);
     wrapper.handleInput("j");
-    expect(list.selectedIndex).toBe(1);
+    expect(selectListView(list).selectedIndex).toBe(1);
     wrapper.handleInput("k");
-    expect(list.selectedIndex).toBe(0);
+    expect(selectListView(list).selectedIndex).toBe(0);
     wrapper.handleInput("k"); // wraps to the bottom
-    expect(list.selectedIndex).toBe(1);
+    expect(selectListView(list).selectedIndex).toBe(1);
   });
 
   it("keeps j/k as letters in a real SearchableSelectDialog submenu", () => {

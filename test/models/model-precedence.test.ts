@@ -40,7 +40,7 @@ describe("model resolution precedence chain", () => {
   it("2 — config per-type override beats frontmatter", () => {
     const cfg = {
       ...baseConfig,
-      agent: { Explore: "config-per-type", forceBackground: false },
+      agent: { default: null, Explore: "config-per-type", forceBackground: false },
     };
     const r = resolveModel({
       subagentType: "Explore",
@@ -54,7 +54,7 @@ describe("model resolution precedence chain", () => {
   it("3 — session default beats the config per-type override", () => {
     const cfg = {
       ...baseConfig,
-      agent: { Explore: "config-per-type", forceBackground: false },
+      agent: { default: null, Explore: "config-per-type", forceBackground: false },
     };
     const r = resolveModel({
       subagentType: "Explore",

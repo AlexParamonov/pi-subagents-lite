@@ -36,7 +36,8 @@ let settingsListCalls: Array<{
   theme: any;
   onChange: (id: string, newValue: string) => void;
   onCancel: () => void;
-  options?: any;
+  options?: { enableSearch?: boolean };
+  activate: (id: string) => void;
 }> = [];
 
 // Capture Input instances created
@@ -63,8 +64,16 @@ vi.mock("@earendil-works/pi-tui", async () => {
       items: any[];
       onChange: (id: string, newValue: string) => void;
       onCancel: () => void;
+      options?: { enableSearch?: boolean };
       submenuComponent: any = null;
-      constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+      constructor(
+        items: any[],
+        maxVisible: number,
+        theme: any,
+        onChange: any,
+        onCancel: any,
+        options?: { enableSearch?: boolean },
+      ) {
         this.items = items;
         this.onChange = onChange;
         this.onCancel = onCancel;
@@ -204,7 +213,7 @@ describe("showSpawnAgentMenu — wizard flow", () => {
     expect(settingsListCalls.length).toBe(1);
     expect(settingsListCalls[0].items.map((i: any) => i.id)).toEqual(["general-purpose", "Explore"]);
     // Search must be enabled on the type selector (src passes { enableSearch: true }).
-    expect(settingsListCalls[0].options.enableSearch).toBe(true);
+    expect(settingsListCalls[0].options?.enableSearch).toBe(true);
   });
 
   it("creates Input for prompt entry (step 2)", async () => {

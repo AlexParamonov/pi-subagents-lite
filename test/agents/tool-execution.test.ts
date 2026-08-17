@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fakeCtx, makeResolvablePromise } from "../fixtures.ts";
+import type { TypeResolution } from "../../src/agents/agent-types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -29,7 +30,7 @@ const {
   mockGetRecord: vi.fn(),
   mockDiscoverNewAgents: vi.fn(),
   mockResolveSubagentTrust: vi.fn(),
-  mockResolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
+  mockResolveType: vi.fn<(type: string) => TypeResolution>((type) => ({ kind: "resolved", key: type })),
   mockStoreState: { forceBackground: false },
 }));
 
