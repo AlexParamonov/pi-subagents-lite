@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Agent tool error display shows ✗ instead of ✓.** The Agent and StopAgent tool renderResult callback now uses `context.isError` (the agent-loop's correct error flag) instead of `result.isError`, which agent-loop overwrites to `false` for all non-throwing tools. Failed tool calls now correctly display a red cross (✗) and error background color.
+
 - **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.
 
 - **Agents status line stays visible for the session.** The status line's visibility is now

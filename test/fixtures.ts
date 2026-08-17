@@ -143,6 +143,13 @@ export interface RegisteredTool {
   parameters: TObject;
   /** Provider-side json_schema enforcement; mirrors src/registration.ts. */
   constrainedSampling?: { type: string; strict: string };
+  renderCall?: (args: Record<string, unknown>, theme: unknown) => unknown;
+  renderResult?: (
+    result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
+    options: { expanded?: boolean },
+    theme: unknown,
+    context?: { isError?: boolean; toolCallId?: string; [key: string]: unknown },
+  ) => unknown;
 }
 
 export interface RegisteredCommand {

@@ -51,7 +51,7 @@ vi.mock("../../src/ui/format.js", () => ({
 }));
 
 // Import after mocks are set up
-import { renderSubagentResult } from "../../src/ui/renderer.js";
+import { renderSubagentResult, renderAgentToolResult } from "../../src/ui/renderer.js";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -145,5 +145,53 @@ describe("renderSubagentResult — worktree path display", () => {
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).not.toContain("worktree:");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  renderAgentToolResult — icon tests                                */
+/* ------------------------------------------------------------------ */
+
+describe("renderAgentToolResult — error icon", () => {
+  beforeEach(() => {
+    textInstances.length = 0;
+  });
+
+  const baseResult = {
+    content: [{ type: "text", text: "Agent output" }],
+    details: {
+      type: "builder",
+      description: "Test agent",
+      turnCount: 3,
+      toolUses: 5,
+      input: 100,
+      output: 50,
+      contextPercent: 10,
+      durationMs: 60000,
+    },
+  };
+
+  it("uses error icon (✗) when isError is true", () => {
+    renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("✗");
+    expect(allText).not.toContain("✓");
+  });
+
+  it("uses success icon (✓) when isError is false", () => {
+    renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("✓");
+    expect(allText).not.toContain("✗");
+  });
+
+  it("uses success icon (✓) when isError is undefined", () => {
+    renderAgentToolResult({ ...baseResult }, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("✓");
+    expect(allText).not.toContain("✗");
   });
 });
