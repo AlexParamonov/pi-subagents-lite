@@ -28,6 +28,12 @@
 - Never name a snapshot variable after a callback parameter in scope; don't read `.length` off something that might be a function.
 - Vacuous-test grep list: `.find()` with no expect; global `some()` passing from initial state; `expect.any(String)` for branch-specific messages.
 - Verify the mock is actually called — a test that passes if the feature was deleted is worse than no test.
+- Replacing `: any` fixtures with real types: a factory like makeContentRecord must not clobber base fields with `undefined` overrides — merge with `?? base` so absent overrides keep the base value ("" still overrides; only null/undefined fall back).
+- `vi.fn(impl)` infers its generic from `impl`'s return type, so `.mockReturnValue()` demands that exact shape — widen the mock's generic (`vi.fn<() => MockSettingsManager>()`) when tests replace returns with structurally-different fakes.
+- A local object spread of an `any` (`{ ...fakeCtx(), ui: {...} }`) stays valid under a single `as T` boundary helper — no `as unknown as` needed when the intersection target is assignable to the source.
+- A batched edit that fails on ambiguity aborts ALL its sibling edits — after a rejected batch, re-audit whether earlier intends applied (a dropped events-navigation batch surfaced only via the final any-scan).
+- The edit tool's tree-sitter pre-write guard rejects files containing `vi.importActual<typeof import(...)>()` (a parse false positive on valid TS) — fall back to a targeted script for those files.
+- For a class with private members (AgentManager/DefaultResourceLoader), mock the object at the real class's call boundary with one `as AgentManager & S` intersection cast — legal because the intersection is assignable to `S`.
 - A "no render after close" test is vacuous without its trigger: fire the session event and run the debounce timer, or the closed guard is never exercised.
 - Redundant guards (subscriber closed-check + timer-callback closed-check) mean a post-close test can only pin the combined no-render contract — verify which guard a test actually fails on before claiming it pins one of them.
 - Prove each consumer reaches an extracted shared mock — a mock is vacuous when the importing modules are themselves mocked.
