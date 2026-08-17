@@ -219,8 +219,8 @@ Observations:
   it off. The compact/full transition is a screen-level change — single
   capture gives a stable frame in either state.
 - `/exit` is **not a real pi command**. The LLM received it as a user
-  message and replied "Goodbye." For teardown, use `C-c C-c` or `C-d`,
-  or just `tmux kill-window` from the harness.
+  message and replied "Goodbye." For teardown, use `C-d` or
+  `tmux kill-window` from the harness.
 - Cleanup: `tmux kill-window -t 0:pi-hello-test`. Original panes
   intact.
 
@@ -274,9 +274,8 @@ agent types can themselves be `worktree_path`-aware.
 ### Teardown: `/exit` is not a real pi command
 
 Confirmed during live testing. The LLM receives `/exit` as a user
-message and replies "Goodbye." The actual exit keys are `C-c C-c`
-(empty prompt) or `C-d`. The harness should use those, or just
-`tmux kill-window` from outside.
+message and replies "Goodbye." The exit key is `C-d`. The harness
+should use that, or just `tmux kill-window` from outside.
 
 ## Existing npm packages surveyed
 
