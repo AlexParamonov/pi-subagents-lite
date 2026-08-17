@@ -361,10 +361,13 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
   it("opens text viewer when selecting view-result", async () => {
     let capturedFactory: ComponentFactory | null = null;
     const record = makeRecord({ result: "hello world\nline 2" });
-    const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
-      capturedFactory = factory;
-      return undefined;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory) => {
+          capturedFactory = factory;
+          return undefined;
+        }),
+      },
     });
 
     const list = buildAgentActionsList(
@@ -387,10 +390,13 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       result: "",
       error: "something went wrong",
     });
-    const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
-      capturedFactory = factory;
-      return undefined;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory) => {
+          capturedFactory = factory;
+          return undefined;
+        }),
+      },
     });
 
     const list = buildAgentActionsList(
@@ -413,10 +419,13 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "",
     });
-    const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
-      capturedFactory = factory;
-      return undefined;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory) => {
+          capturedFactory = factory;
+          return undefined;
+        }),
+      },
     });
 
     const list = buildAgentActionsList(
@@ -441,10 +450,13 @@ describe("showTextViewer — component behavior", () => {
 
   async function getComponent(record: AgentRecord, kind: "result" | "error", text: string) {
     let factory: ComponentFactory | null = null;
-    const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (f: ComponentFactory) => {
-      factory = f;
-      return undefined;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (f) => {
+          factory = f;
+          return undefined;
+        }),
+      },
     });
     const list = buildAgentActionsList(
       ctx,
@@ -773,10 +785,13 @@ describe("buildAgentActionsList — completed agent with session", () => {
       execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "done",
     });
-    const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
-      capturedFactory = factory;
-      return undefined;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory) => {
+          capturedFactory = factory;
+          return undefined;
+        }),
+      },
     });
 
     const list = buildAgentActionsList(

@@ -6,7 +6,13 @@
  */
 
 import { vi, type Mock } from "vitest";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+  ExtensionUIContext,
+} from "@earendil-works/pi-coding-agent";
+import { shallowMerge, defaultUi, defaultSessionManager, defaultModel, defaultModelRegistry } from "./mock-utils.js";
 import type { TObject } from "@sinclair/typebox";
 import { asExtensionAPI } from "./pi-boundaries.js";
 import type { AgentManager } from "../src/agents/agent-manager.js";
@@ -444,23 +450,53 @@ export function tempDirWithFiles(
 /*  Fake context / pi                                                 */
 /* ------------------------------------------------------------------ */
 
+/** Options for overriding specific fields of the default fake context. */
+export interface FakeCtxOptions {
+  ui?: Partial<ExtensionUIContext>;
+  mode?: "tui" | "rpc" | "json" | "print";
+  hasUI?: boolean;
+  cwd?: string;
+  modelRegistry?: ExtensionContext["modelRegistry"];
+  model?: ExtensionContext["model"];
+  scopedModels?: ExtensionContext["scopedModels"];
+  thinkingLevel?: ExtensionContext["thinkingLevel"];
+  isIdle?: ExtensionContext["isIdle"];
+  isProjectTrusted?: ExtensionContext["isProjectTrusted"];
+  signal?: ExtensionContext["signal"];
+  abort?: ExtensionContext["abort"];
+  hasPendingMessages?: ExtensionContext["hasPendingMessages"];
+  shutdown?: ExtensionContext["shutdown"];
+  getContextUsage?: ExtensionContext["getContextUsage"];
+  compact?: ExtensionContext["compact"];
+  getSystemPrompt?: ExtensionContext["getSystemPrompt"];
+}
+
 /**
- * Create a minimal fake pi context for agent tests.
- *
- * The return type stays `any` (not ExtensionContext): the agent test suites
- * reassign members with partial mocks — `ctx.ui = { notify: vi.fn() }` and
- * `ctx.getSystemPrompt = vi.fn()...` — and strict TS rejects a partial object
- * against the real ExtensionContext.ui (every ui member required). No non-any
- * type both accepts that reassignment and stays assignable to ExtensionContext
- * for spawn/runAgent (reproduced: TS2740 at the reassignment sites).
+ * Create a fake ExtensionContext with typed defaults for all required fields.
+ * Pass an options object to override specific fields.
  */
-export function fakeCtx(): any {
-  return {
+export function fakeCtx(options: FakeCtxOptions = {}): ExtensionContext {
+  const defaults: ExtensionContext = {
+    ui: defaultUi,
+    mode: "tui",
+    hasUI: true,
     cwd: "/home/test/project",
-    modelRegistry: { find: vi.fn() },
-    model: { provider: "test", id: "model" },
-    getSystemPrompt: vi.fn(),
+    sessionManager: defaultSessionManager(),
+    modelRegistry: defaultModelRegistry(),
+    model: defaultModel(),
+    scopedModels: [],
+    thinkingLevel: undefined,
+    isIdle: vi.fn(() => true),
+    isProjectTrusted: vi.fn(() => true),
+    signal: undefined,
+    abort: vi.fn(),
+    hasPendingMessages: vi.fn(() => false),
+    shutdown: vi.fn(),
+    getContextUsage: vi.fn(() => undefined),
+    compact: vi.fn(),
+    getSystemPrompt: vi.fn(() => ""),
   };
+  return shallowMerge(defaults, options as Partial<ExtensionContext>, false);
 }
 
 /**

@@ -640,16 +640,17 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockConfig.agent["worker"] = "openai/gpt-4o"; // off
     mockModules.mockConfig.agent["plain"] = "anthropic/claude-sonnet-4-20250514"; // medium
     mockModules.mockSessionOverrides["scout"] = "anthropic/claude-sonnet-4-20250514"; // [session] tag
-    const ctx = createMockCtx();
-    // ANSI-emitting theme fake so the assertion sees the styling pi's real
-    // theme.bold(theme.fg("accent", ...)) would produce.
-    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
-      factory(
-        { terminal: { rows: 40 } },
-        { fg: (_c: string, t: string) => `\x1b[38;5;1m${t}\x1b[0m`, bold: (t: string) => `\x1b[1m${t}\x1b[0m` },
-        null,
-        () => {},
-      );
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory: ComponentFactory) => {
+          factory(
+            { terminal: { rows: 40 } },
+            { fg: (_c: string, t: string) => `\x1b[38;5;1m${t}\x1b[0m`, bold: (t: string) => `\x1b[1m${t}\x1b[0m` },
+            null,
+            () => {},
+          );
+        }),
+      },
     });
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     // Rows: thinking padded to a fixed width + one space; the tag follows at

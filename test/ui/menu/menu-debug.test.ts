@@ -171,11 +171,10 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
     // The notification text we show the user is the observable outcome.
-    const [msg] = ctx.ui.notify.mock.calls[0];
-    expect(msg).toContain("general-purpose");
-    expect(msg).toContain("General-purpose agent");
-    expect(msg).toContain("Explore");
-    expect(msg).toContain("Explore agent");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("general-purpose"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("General-purpose agent"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Explore"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Explore agent"), "info");
   });
 
   it("marks hidden types with [HIDDEN]", async () => {
@@ -277,9 +276,8 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
-    const [msg] = ctx.ui.notify.mock.calls[0];
-    expect(msg).toContain("known");
-    expect(msg).not.toContain("unknown");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("known"), "info");
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("unknown"), "info");
   });
 
   it("shows source when present", async () => {

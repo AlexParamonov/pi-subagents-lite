@@ -135,17 +135,22 @@ describe("main menu — submenu navigation", () => {
   });
 
   it("debug submenu is accessible from main menu", async () => {
-    const ctx = createMockCtx();
-    // First custom call: main menu, returns 'debug'
-    // Second custom call: debug menu (via showDebugMenu), returns undefined
-    // Third custom call: back to main menu, returns undefined
     let customCallCount = 0;
-    ctx.ui.custom.mockImplementation(async (factory: ComponentFactory) => {
-      customCallCount++;
-      // Build the menu component so its SelectList is captured
-      factory({ terminal: { rows: 40 } }, { fg: (_c: string, t: string) => t, bold: (t: string) => t }, null, () => {});
-      if (customCallCount === 1) return "debug"; // main menu → select debug
-      return undefined; // debug menu and main menu escape
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory: ComponentFactory) => {
+          customCallCount++;
+          // Build the menu component so its SelectList is captured
+          factory(
+            { terminal: { rows: 40 } },
+            { fg: (_c: string, t: string) => t, bold: (t: string) => t },
+            null,
+            () => {},
+          );
+          if (customCallCount === 1) return "debug"; // main menu → select debug
+          return undefined; // debug menu and main menu escape
+        }),
+      },
     });
     await showAgentsMainMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     // Dispatch ran (2nd call = debug menu) and the loop re-invoked after it (3rd call)
