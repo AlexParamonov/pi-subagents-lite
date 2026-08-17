@@ -128,8 +128,6 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     const model = effectiveModelStr ? findModelInRegistry(effectiveModelStr, ctx.modelRegistry, ctx.model) : undefined;
     const modelKey = model ? `${model.provider}/${model.id}` : undefined;
 
-    const isBackground = call.run_in_background || getStore().agent.forceBackground;
-
     // Inject thinking: explicit > agent config > store default
     const thinkingLevel =
       parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
@@ -141,6 +139,8 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
       widget.ensureTimer();
     }
 
+    // Always spawn as background so we can send nudges (steer messages).
+    // Same approach as the steer settled branch in conversation-viewer.
     await coordinator.spawn(pi, ctx, {
       type: resolvedType,
       prompt: call.prompt,
@@ -156,7 +156,7 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
         thinkingLevel,
         maxTurns,
       },
-      runInBackground: isBackground,
+      runInBackground: true,
     });
 
     restarted.push(`${resolvedType}: ${description}`);
