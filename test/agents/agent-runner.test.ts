@@ -1387,14 +1387,14 @@ describe("runAgent — grace turns", () => {
 
     // Fire 6 turns (within default grace period) — should not abort
     for (let i = 0; i < 6; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
     // Now fire the 7th turn — should abort (maxTurns=1 + graceTurns=6 = 7)
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
 
     resolvePrompt();
@@ -1420,14 +1420,14 @@ describe("runAgent — grace turns", () => {
 
     // Fire 4 turns (within custom grace period) — should not abort
     for (let i = 0; i < 4; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
     // Now fire the 5th turn — should abort (maxTurns=2 + graceTurns=3 = 5)
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
 
     resolvePrompt();
@@ -1454,14 +1454,14 @@ describe("runAgent — grace turns", () => {
 
     // Fire 2 turns — steer fires at turn 2, no abort yet
     for (let i = 0; i < 2; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
 
     // Fire 1 more turn — abort fires at turn 3 (maxTurns + graceTurns = 2)
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
 
     resolvePrompt();
@@ -1507,7 +1507,7 @@ describe("runAgent — grace turns", () => {
 
     // Turn 1 steers, turn 2 hard-aborts.
     for (let i = 0; i < 2; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(steerCatch).toHaveBeenCalled();
@@ -1568,7 +1568,7 @@ describe("runAgent — grace turns", () => {
 
     // Fire 3 turns (within grace period) — should steer but not abort
     for (let i = 0; i < 3; i++) {
-      session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+      session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     }
 
     expect(session.steer).toHaveBeenCalled();
@@ -2447,10 +2447,10 @@ describe("continueAgentSession", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
-  function fireTextDelta(session: any, delta: string) {
+  function fireTextDelta(session: MockSession, delta: string) {
     session
       ._getListeners()
-      .forEach((fn: any) => fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }));
+      .forEach((fn) => fn({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }));
   }
 
   it("prompts the existing session and returns the collected response", async () => {
@@ -2562,11 +2562,11 @@ describe("continueAgentSession", () => {
     const resultPromise = continueAgentSession(asAgentSession(session), "keep going", { maxTurns: 1, graceTurns: 2 });
     await vi.waitFor(() => expect(session.prompt).toHaveBeenCalled());
     // Turn 1 hits the soft limit (steer); turn 3 (1 + 2 grace) hard-aborts.
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.steer).toHaveBeenCalled();
     expect(session.abort).not.toHaveBeenCalled();
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
-    session._getListeners().forEach((fn: any) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
+    session._getListeners().forEach((fn) => fn({ type: "turn_end" }));
     expect(session.abort).toHaveBeenCalled();
     resolvePrompt();
     const result = await resultPromise;
