@@ -10,7 +10,32 @@
  *   - selectByName: helper to select menu items by short name
  */
 
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
+
+/** The ui.custom component factory as the mock invokes it: the real
+ * (tui, theme, keybindings, done) signature with test-fake argument shapes
+ * (the real TUI/Theme/KeybindingsManager are not constructible fakes here). */
+type ComponentFactory = (
+  tui: { terminal: { rows: number } },
+  theme: {
+    fg: (color: string, text: string) => string;
+    bold: (text: string) => string;
+    italic: (text: string) => string;
+  },
+  keybindings: unknown,
+  done: (result: unknown) => void,
+) => unknown;
+
+/** The controllable fake half of the mock command context. */
+export interface MockCommandContext {
+  ui: {
+    select: Mock<(title: string, items: string[]) => Promise<string | undefined>>;
+    input: Mock<(label: string, initialValue?: string) => Promise<string | undefined>>;
+    custom: Mock<(factory: ComponentFactory) => Promise<string | null | undefined>>;
+    notify: Mock;
+  };
+  modelRegistry: { getAvailable: Mock<() => Array<{ provider: string; id: string }>> };
+}
 
 /**
  * Select menu item by partial name match.
@@ -37,6 +62,13 @@ export function selectByName(name: string): (title: string, items: string[]) => 
 /**
  * Create a mock extension command context with controllable UI.
  *
+ * The return type stays `any` (not ExtensionCommandContext): the menu test
+ * suites reassign `ctx.ui.custom` with bare `vi.fn()` mocks, which the real
+ * generic `ui.custom` signature (present in any ExtensionCommandContext-typed
+ * intersection) rejects (reproduced: TS2322 at the reassignment sites). No
+ * non-any type both accepts those reassignments and stays assignable to
+ * ExtensionCommandContext for the show*Menu calls.
+ *
  * @param selections Array of values that ctx.ui.select returns sequentially.
  * @param inputs Array of values that ctx.ui.input returns sequentially.
  * @param customValues Array of values that ctx.ui.custom returns sequentially.
@@ -50,7 +82,7 @@ export function createMockCtx(
   let inputIdx = 0;
   let customIdx = 0;
 
-  return {
+  const fake: MockCommandContext = {
     ui: {
       select: vi.fn(async (title: string, items: string[]) => {
         const sel = selections[selectIdx++];
@@ -60,7 +92,7 @@ export function createMockCtx(
       input: vi.fn(async (_label: string, _initialValue?: string) => {
         return inputs[inputIdx++] ?? undefined;
       }),
-      custom: vi.fn(async (_factory: any) => {
+      custom: vi.fn(async (_factory: ComponentFactory) => {
         // If customValues have explicit entries, return those
         if (customIdx < customValues.length) {
           return customValues[customIdx++];
@@ -88,4 +120,5 @@ export function createMockCtx(
       ]),
     },
   };
+  return fake;
 }

@@ -5,7 +5,14 @@
  *   - shellMock: ../src/shell.js stubs (parameterized by hoisted fns)
  */
 
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { TObject } from "@sinclair/typebox";
+import { asExtensionAPI } from "./pi-boundaries.js";
+import type { AgentManager } from "../src/agents/agent-manager.js";
+import type { SubagentsConfig } from "../src/models/model-precedence.js";
+import type { SpawnCoordinator } from "../src/spawn/spawn-coordinator.js";
+import type { AgentWidget } from "../src/ui/agent-widget.js";
 
 /* ================================================================== */
 /*  Shared mock factories                                             */
@@ -20,15 +27,32 @@ import { vi } from "vitest";
 /*  controlled per-test. The test file keeps its own vi.hoisted().    */
 /* ------------------------------------------------------------------ */
 
+/** The partial ConfigStore projection the shell mock serves. */
+export interface MockShellStore {
+  agent: Partial<SubagentsConfig["agent"]>;
+  modelFor?: (type: string, parentModelId: string, agentConfig?: { model?: string }) => string;
+}
+
 export interface ShellMockFns {
-  manager?: any;
-  pi?: any;
-  sessionCtx?: any;
-  store?: any;
-  coordinator?: any;
-  widget?: any;
+  manager?: Partial<AgentManager>;
+  pi?: Partial<ExtensionAPI>;
+  sessionCtx?: Partial<ExtensionContext>;
+  store?: MockShellStore;
+  coordinator?: Partial<SpawnCoordinator>;
+  widget?: AgentWidget;
   /** Spawn guard state for isInsideSubagentSpawn/enter/exit. */
   spawnGuard?: { depth: number };
+}
+
+/** Mutable mock state; setters update what the getters return. */
+interface ShellMockState {
+  manager: Partial<AgentManager> | null;
+  pi: Partial<ExtensionAPI>;
+  sessionCtx: Partial<ExtensionContext>;
+  store: MockShellStore;
+  coordinator: Partial<SpawnCoordinator> | null;
+  widget: AgentWidget | null | undefined;
+  spawnGuard: { depth: number };
 }
 
 /**
@@ -43,26 +67,29 @@ export interface ShellMockFns {
  *   }));
  */
 export function shellMock(fns: ShellMockFns = {}) {
-  // Mutable state so setters update what getters return.
-  const state = {
-    manager: fns.manager ?? {
-      abort: vi.fn(),
-      getRecord: vi.fn(),
-      listAgents: vi.fn(() => []),
-      spawn: vi.fn(),
-      getTotalAgentCost: vi.fn(() => 0),
-    },
+  const state: ShellMockState = {
+    manager:
+      fns.manager ??
+      ({
+        abort: vi.fn(),
+        getRecord: vi.fn(),
+        listAgents: vi.fn(() => []),
+        spawn: vi.fn(),
+        getTotalAgentCost: vi.fn(() => 0),
+      } satisfies Partial<AgentManager>),
     pi: fns.pi ?? { sendMessage: vi.fn(), exec: vi.fn() },
     sessionCtx: fns.sessionCtx ?? { cwd: "/home/test" },
-    store: fns.store ?? {
-      agent: {
-        graceTurns: 6,
-        forceBackground: false,
-        showCost: false,
-        agentToolStrictMode: false,
-      },
-      modelFor: () => "anthropic/claude-sonnet-4-6",
-    },
+    store:
+      fns.store ??
+      ({
+        agent: {
+          graceTurns: 6,
+          forceBackground: false,
+          showCost: false,
+          agentToolStrictMode: false,
+        },
+        modelFor: () => "anthropic/claude-sonnet-4-6",
+      } satisfies MockShellStore),
     coordinator: fns.coordinator ?? { spawn: vi.fn() },
     widget: fns.widget ?? undefined,
     spawnGuard: fns.spawnGuard ?? { depth: 0 },
@@ -75,19 +102,19 @@ export function shellMock(fns: ShellMockFns = {}) {
     getStore: () => state.store,
     getCoordinator: () => state.coordinator,
     getWidget: () => state.widget,
-    setPiInstance: (pi: any) => {
+    setPiInstance: (pi: Partial<ExtensionAPI>) => {
       state.pi = pi;
     },
-    setSessionCtx: (ctx: any) => {
+    setSessionCtx: (ctx: Partial<ExtensionContext>) => {
       state.sessionCtx = ctx;
     },
-    setManager: (m: any) => {
+    setManager: (m: Partial<AgentManager> | null) => {
       state.manager = m;
     },
-    setWidget: (w: any) => {
+    setWidget: (w: AgentWidget | null) => {
       state.widget = w;
     },
-    setCoordinator: (c: any) => {
+    setCoordinator: (c: Partial<SpawnCoordinator> | null) => {
       state.coordinator = c;
     },
     isInsideSubagentSpawn: () => state.spawnGuard.depth > 0,
@@ -100,7 +127,7 @@ export function shellMock(fns: ShellMockFns = {}) {
   };
 }
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -110,29 +137,55 @@ import { tmpdir } from "node:os";
 
 export interface RegisteredTool {
   name: string;
-  description: string;
+  description?: string;
   promptSnippet?: string;
-  promptGuidelines?: string;
-  parameters: any; // TypeBox TSchema
-  execute?: (...args: any[]) => any;
+  promptGuidelines?: string[];
+  parameters: TObject;
   /** Provider-side json_schema enforcement; mirrors src/registration.ts. */
   constrainedSampling?: { type: string; strict: string };
 }
 
 export interface RegisteredCommand {
   name: string;
-  description: string;
-  handler: (...args: any[]) => any;
+  description?: string;
+  handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }
+
+/**
+ * A captured event listener. The handler is a real src callback that tests
+ * drive with synthetic events and partial ctx fakes, so its parameters
+ * stay wide (no real event/ctx type admits the test's partial fakes).
+ */
+export type ListenerHandler = (event: unknown, ctx: unknown) => Promise<void> | void;
 
 export interface ListenerRegistration {
   event: string;
-  handler: (...args: any[]) => any;
+  handler: ListenerHandler;
 }
+
+/**
+ * A captured message renderer, invoked by tests with the partial
+ * message/options/theme shapes src's subagent-result renderer reads.
+ */
+export type MessageRendererCapture = (
+  message: { content?: string; details?: Record<string, unknown> },
+  options: { expanded?: boolean },
+  theme: { fg: (color: string, text: string) => string; bg: (color: string, text: string) => string },
+) => { children: unknown };
 
 export interface RegisteredMessageRenderer {
   customType: string;
-  renderer: (...args: any[]) => any;
+  renderer: MessageRendererCapture;
+}
+
+export interface MockExtensionApi {
+  registerTool: Mock<(tool: RegisteredTool) => void>;
+  registerCommand: Mock<(name: string, options: Omit<RegisteredCommand, "name">) => void>;
+  registerMessageRenderer: Mock<(customType: string, renderer: MessageRendererCapture) => void>;
+  on: Mock<(event: string, handler: ListenerHandler) => void>;
+  sendUserMessage: Mock;
+  sendMessage: Mock;
+  exec: Mock;
 }
 
 export interface MockExtensionAPI {
@@ -140,15 +193,7 @@ export interface MockExtensionAPI {
   commands: RegisteredCommand[];
   listeners: ListenerRegistration[];
   messageRenderers: RegisteredMessageRenderer[];
-  api: {
-    registerTool: ReturnType<typeof vi.fn>;
-    registerCommand: ReturnType<typeof vi.fn>;
-    registerMessageRenderer: ReturnType<typeof vi.fn>;
-    on: ReturnType<typeof vi.fn>;
-    sendUserMessage: ReturnType<typeof vi.fn>;
-    sendMessage: ReturnType<typeof vi.fn>;
-    exec: ReturnType<typeof vi.fn>;
-  };
+  api: MockExtensionApi;
 }
 
 /**
@@ -166,16 +211,16 @@ export function createMockExtensionAPI(): MockExtensionAPI {
     listeners,
     messageRenderers,
     api: {
-      registerTool: vi.fn((tool: any) => {
+      registerTool: vi.fn((tool: RegisteredTool) => {
         tools.push(tool);
       }),
-      registerCommand: vi.fn((name: string, opts: any) => {
-        commands.push({ name, ...opts });
+      registerCommand: vi.fn((name: string, options: Omit<RegisteredCommand, "name">) => {
+        commands.push({ name, ...options });
       }),
-      registerMessageRenderer: vi.fn((customType: string, renderer: any) => {
+      registerMessageRenderer: vi.fn((customType: string, renderer: MessageRendererCapture) => {
         messageRenderers.push({ customType, renderer });
       }),
-      on: vi.fn((event: string, handler: any) => {
+      on: vi.fn((event: string, handler: ListenerHandler) => {
         listeners.push({ event, handler });
       }),
       sendUserMessage: vi.fn(),
@@ -188,39 +233,64 @@ export function createMockExtensionAPI(): MockExtensionAPI {
 /**
  * Import and invoke the extension factory.
  */
-export async function loadExtension(api: any) {
+export async function loadExtension(api: MockExtensionApi) {
   const factory = (await import("../src/index.js")).default;
-  return factory(api);
+  return factory(asExtensionAPI(api));
 }
 
 /* ------------------------------------------------------------------ */
 /*  Mock session for output-file tests                                */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The events the mock session fires — the subset of the real session
+ * event union that src's output-file streaming reacts to.
+ */
+export type MockSessionEvent =
+  | { type: "turn_end" }
+  | { type: "message_start" }
+  | {
+      type: "message_update";
+      assistantMessageEvent:
+        | { type: "thinking_start" }
+        | { type: "thinking_delta"; delta: string }
+        | { type: "thinking_end"; content: string };
+    }
+  | { type: "compaction_start"; reason: string }
+  | { type: "compaction_end"; reason: string; aborted: boolean; result?: unknown };
+
+export interface MockSessionMessage {
+  role: string;
+  content: string | Array<{ type: string; text: string }>;
+  _idx?: number;
+}
+
+type MockSessionListener = (event: MockSessionEvent) => void;
+
 export interface MockSession {
-  messages: Array<{ role: string; content: any }>;
-  subscribe: ReturnType<typeof vi.fn>;
+  messages: MockSessionMessage[];
+  subscribe: Mock<(listener: MockSessionListener) => () => void>;
   _addMessage: (role: string, content: string) => void;
   _fireTurnEnd: () => void;
   _fireMessageStart: () => void;
   _fireThinkingStart: () => void;
   _fireThinkingDelta: (delta: string) => void;
   _fireThinkingEnd: (content: string) => void;
-  _getListeners: () => Array<(event: any) => void>;
+  _getListeners: () => MockSessionListener[];
   _fireCompactionStart: (reason: string) => void;
-  _fireCompactionEnd: (event: { reason: string; aborted: boolean; result?: any }) => void;
+  _fireCompactionEnd: (event: { reason: string; aborted: boolean; result?: unknown }) => void;
 }
 
 /**
  * Create a mock agent session for testing streamToOutputFile.
  */
 export function createMockSession(): MockSession {
-  const listeners: Array<(event: any) => void> = [];
+  const listeners: MockSessionListener[] = [];
   let msgIdx = 0;
 
   return {
-    messages: [] as Array<{ role: string; content: any }>,
-    subscribe: vi.fn((listener: (event: any) => void) => {
+    messages: [],
+    subscribe: vi.fn((listener: MockSessionListener) => {
       listeners.push(listener);
       return () => {
         const idx = listeners.indexOf(listener);
@@ -229,11 +299,11 @@ export function createMockSession(): MockSession {
     }),
     _addMessage: (role: string, content: string) => {
       msgIdx++;
-      const msg: any = { role, content };
+      const msg: MockSessionMessage = { role, content };
       if (role === "assistant") {
         msg.content = [{ type: "text", text: content }];
       }
-      (msg as any)._idx = msgIdx;
+      msg._idx = msgIdx;
     },
     _fireTurnEnd: () => {
       for (const fn of listeners) fn({ type: "turn_end" });
@@ -265,7 +335,7 @@ export function createMockSession(): MockSession {
     _fireCompactionStart: (reason: string) => {
       for (const fn of listeners) fn({ type: "compaction_start", reason });
     },
-    _fireCompactionEnd: (event: { reason: string; aborted: boolean; result?: any }) => {
+    _fireCompactionEnd: (event: { reason: string; aborted: boolean; result?: unknown }) => {
       for (const fn of listeners)
         fn({ type: "compaction_end", reason: event.reason, aborted: event.aborted, result: event.result });
     },
@@ -376,6 +446,13 @@ export function tempDirWithFiles(
 
 /**
  * Create a minimal fake pi context for agent tests.
+ *
+ * The return type stays `any` (not ExtensionContext): the agent test suites
+ * reassign members with partial mocks — `ctx.ui = { notify: vi.fn() }` and
+ * `ctx.getSystemPrompt = vi.fn()...` — and strict TS rejects a partial object
+ * against the real ExtensionContext.ui (every ui member required). No non-any
+ * type both accepts that reassignment and stays assignable to ExtensionContext
+ * for spawn/runAgent (reproduced: TS2740 at the reassignment sites).
  */
 export function fakeCtx(): any {
   return {
@@ -389,16 +466,16 @@ export function fakeCtx(): any {
 /**
  * Create a minimal fake pi instance for agent tests.
  */
-export function fakePi(): any {
-  return { exec: vi.fn() };
+export function fakePi() {
+  return asExtensionAPI({ exec: vi.fn() });
 }
 
 /**
  * Create a resolvable promise for async concurrency tests.
  */
 export function makeResolvablePromise() {
-  let resolve!: (value: any) => void;
-  const promise = new Promise<any>((r) => {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise<unknown>((r) => {
     resolve = r;
   });
   return { promise, resolve };

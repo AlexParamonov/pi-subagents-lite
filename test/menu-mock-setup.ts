@@ -12,10 +12,14 @@
  */
 
 import { vi } from "vitest";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "../src/agents/agent-manager.js";
 import type { SystemPromptMode } from "../src/agents/types.js";
-import type { RawConcurrency } from "../src/config/config-store.js";
+import type { ConfigStore, RawConcurrency } from "../src/config/config-store.js";
 import type { SessionModelOverrides, SubagentsConfig } from "../src/models/model-precedence.js";
+import type { SpawnIntent } from "../src/spawn/spawn-coordinator.js";
+import type { SelectOption } from "../src/ui/searchable-select.js";
+import type { Theme } from "../src/ui/types.js";
 import type { ThinkingLevel } from "../src/types.js";
 
 // Create the mutable mock state via vi.hoisted so the vi.mock factories
@@ -35,7 +39,7 @@ const hoisted = vi.hoisted(() => {
   const mockSessionOverrides: SessionModelOverrides = { default: null };
   const mockSessionConcurrency: RawConcurrency = {};
   const mockProjectTargetOffered = false;
-  const mockStoreOverride = null as any;
+  const mockStoreOverride = null as ConfigStore | null;
   const mockSessionShowCost = undefined as boolean | undefined;
 
   const mockManager = {
@@ -52,10 +56,17 @@ const hoisted = vi.hoisted(() => {
     provider: "test",
     id: "parent-model",
   };
+  /** The model subset the fake registry resolves; src reads provider/id (+reasoning). */
+  interface FakeModel {
+    provider: string;
+    id: string;
+    reasoning: boolean;
+  }
+
   const mockSessionCtx = {
     modelRegistry: {
       find: vi.fn((provider: string, modelId: string) => {
-        const known: Record<string, any> = {
+        const known: Record<string, FakeModel> = {
           "openai/gpt-4o": { provider: "openai", id: "gpt-4o", reasoning: false },
           "anthropic/claude-sonnet-4-20250514": {
             provider: "anthropic",
@@ -78,6 +89,15 @@ const hoisted = vi.hoisted(() => {
   };
 
   const mockPiExec = vi.fn();
+  // Annotated with ReturnType<typeof vi.fn> (the inferred Mock<Procedure> is
+  // too narrow): consumers swap in their own ReturnType<typeof vi.fn> mocks.
+  const mockPiInstance: {
+    sendUserMessage: ReturnType<typeof vi.fn>;
+    exec: ReturnType<typeof vi.fn>;
+  } = {
+    sendUserMessage: vi.fn(),
+    exec: mockPiExec,
+  };
 
   return {
     mockConfig,
@@ -90,7 +110,7 @@ const hoisted = vi.hoisted(() => {
     mockManager,
     mockSessionCtx,
     mockPiExec,
-    mockPiInstance: { sendUserMessage: vi.fn(), exec: mockPiExec } as any,
+    mockPiInstance,
   };
 });
 
@@ -151,19 +171,24 @@ vi.mock("../src/agents/agent-types.js", () => ({
 }));
 
 // Capture SearchableSelectDialog instances for tests that need them
-export let selectDialogInstances: Array<{ items: any[]; callbacks: any }> = [];
+// Mirrors the (non-exported) SelectDialogCallbacks in src/ui/searchable-select.ts.
+interface SelectDialogCallbacks {
+  onSelect: (value: string) => void;
+  onCancel: () => void;
+}
+export let selectDialogInstances: Array<{ items: SelectOption[]; callbacks: SelectDialogCallbacks }> = [];
 export function resetSelectDialogInstances() {
   selectDialogInstances = [];
 }
 
 vi.mock("../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
-    items: any[];
-    callbacks: any;
-    constructor(items: any[], _currentValue: any, callbacks: any, _theme: any) {
+    items: SelectOption[];
+    callbacks: SelectDialogCallbacks;
+    constructor(items: SelectOption[], _currentValue: string | null, callbacks: SelectDialogCallbacks, _theme: Theme) {
       this.items = items;
       this.callbacks = callbacks;
-      selectDialogInstances.push(this as any);
+      selectDialogInstances.push(this);
     }
     handleInput(_data: string) {}
     invalidate() {}
@@ -190,8 +215,15 @@ vi.mock("../src/config/config-io.js", async () => {
 
 vi.mock("../src/agents/tool-execution.js", () => ({
   buildAgentDetails: vi.fn(() => ({})),
-  successResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], details })),
-  errorResult: vi.fn((text: string, details?: any) => ({ content: [{ type: "text", text }], isError: true, details })),
+  successResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
+    content: [{ type: "text", text }],
+    details,
+  })),
+  errorResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
+    content: [{ type: "text", text }],
+    isError: true,
+    details,
+  })),
 }));
 
 vi.mock("../src/shell.js", async () => {
@@ -353,7 +385,7 @@ vi.mock("../src/shell.js", async () => {
         },
         clearAllModelOverrides(target: string = "global") {
           // Mirror the store: clear the model family + per-type keys, keep non-model settings.
-          const clearAgent = (agent: Record<string, any>) => {
+          const clearAgent = (agent: Partial<SubagentsConfig["agent"]>) => {
             for (const key of Object.keys(agent)) {
               if (!CLEAR_ALL_KEPT_AGENT_KEYS.has(key)) delete agent[key];
             }
@@ -600,7 +632,7 @@ vi.mock("../src/shell.js", async () => {
     getPiInstance: () => mockModules.mockPiInstance,
     getSessionCtx: () => mockModules.mockSessionCtx,
     getCoordinator: vi.fn(() => ({
-      spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
+      spawn: vi.fn(async (_pi: ExtensionAPI, _ctx: ExtensionContext, intent: SpawnIntent) => {
         const id = mockModules.mockManager.spawn(_pi, _ctx, intent.type, intent.prompt, {
           description: intent.description,
           model: intent.model,

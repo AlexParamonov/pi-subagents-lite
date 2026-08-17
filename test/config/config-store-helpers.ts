@@ -8,8 +8,10 @@
  */
 
 import type { ConfigIO, RawConfig, ProjectLayerStatus } from "../../src/config/config-io.js";
+import type { ModelThinkingPlacement } from "../../src/config/types.js";
+import type { StatsVisibility } from "../../src/ui/format.js";
 import type { AgentWidget } from "../../src/ui/agent-widget.js";
-import type { AgentManager } from "../../src/agents/agent-manager.js";
+import type { AgentManager, ConcurrencyConfig } from "../../src/agents/agent-manager.js";
 
 /** In-memory ConfigIO over two raw layers, recording per-layer saves. */
 export function memIO(
@@ -65,33 +67,59 @@ export function minimalIO(): ConfigIO {
 export function widgetStub(): { w: AgentWidget; calls: string[] } {
   const calls: string[] = [];
   const w = {
-    setShowCost: (e: boolean) => calls.push(`setShowCost:${e}`),
-    setForceCompact: (e: boolean) => calls.push(`setForceCompact:${e}`),
-    setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
-    setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
-    setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
+    setShowCost: (e: boolean) => {
+      calls.push(`setShowCost:${e}`);
+    },
+    setForceCompact: (e: boolean) => {
+      calls.push(`setForceCompact:${e}`);
+    },
+    setWidgetShortcut: (e: boolean) => {
+      calls.push(`setWidgetShortcut:${e}`);
+    },
+    setMaxLines: (n: number) => {
+      calls.push(`setMaxLines:${n}`);
+    },
+    setMaxLinesCompact: (n: number) => {
+      calls.push(`setMaxLinesCompact:${n}`);
+    },
 
-    setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
-    setFinishedRetentionMinutes: (n: number) => calls.push(`setFinishedRetentionMinutes:${n}`),
-    setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
-    setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
-    setModelDisplayStyle: (s: string) => calls.push(`setModelDisplayStyle:${s}`),
-    setModelThinkingPlacement: (p: string) => calls.push(`setModelThinkingPlacement:${p}`),
-    setStatusBarFormat: (f: string) => calls.push(`setStatusBarFormat:${f}`),
+    setNavHint: (e: boolean) => {
+      calls.push(`setNavHint:${e}`);
+    },
+    setFinishedRetentionMinutes: (n: number) => {
+      calls.push(`setFinishedRetentionMinutes:${n}`);
+    },
+    setCompactMode: (c: boolean) => {
+      calls.push(`setCompactMode:${c}`);
+    },
+    setStatsVisibility: (v: StatsVisibility) => {
+      calls.push(`setStatsVisibility:${JSON.stringify(v)}`);
+    },
+    setModelDisplayStyle: (s: "id" | "name") => {
+      calls.push(`setModelDisplayStyle:${s}`);
+    },
+    setModelThinkingPlacement: (p: ModelThinkingPlacement) => {
+      calls.push(`setModelThinkingPlacement:${p}`);
+    },
+    setStatusBarFormat: (f: "full" | "compact") => {
+      calls.push(`setStatusBarFormat:${f}`);
+    },
   };
-  return { w: w as unknown as AgentWidget, calls };
+  return { w: w as AgentWidget, calls };
 }
 
 export function managerStub(): { m: AgentManager; concurrencies: unknown[] } {
   const concurrencies: unknown[] = [];
   const m = {
-    setConcurrency: (c: unknown) => concurrencies.push(c),
+    setConcurrency: (c: ConcurrencyConfig) => {
+      concurrencies.push(c);
+    },
   };
-  return { m: m as unknown as AgentManager, concurrencies };
+  return { m: m as AgentManager, concurrencies };
 }
 
-export function statsVisibilityPayloads(calls: string[]): any[] {
+export function statsVisibilityPayloads(calls: string[]): StatsVisibility[] {
   return calls
     .filter((c) => c.startsWith("setStatsVisibility:"))
-    .map((c) => JSON.parse(c.slice("setStatsVisibility:".length)));
+    .map((c) => JSON.parse(c.slice("setStatsVisibility:".length)) as StatsVisibility);
 }

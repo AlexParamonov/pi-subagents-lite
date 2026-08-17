@@ -8,28 +8,40 @@
  * unregisters the widget instead of rendering, and the helper returns [].
  */
 
+import type { Theme } from "../../src/ui/types.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { AgentWidget } from "../../src/ui/agent-widget.js";
+import type { AgentRecord } from "../../src/types.js";
+import type { AgentWidget, UICtx } from "../../src/ui/agent-widget.js";
 
-export function makeMockTheme(): any {
+/** The minimal TUI shape the widget render path reads. */
+export interface MockTUI {
+  terminal: { columns: number };
+}
+
+export function makeMockTheme(): Theme {
   return {
     fg: (color: string, text: string) => `[${color}:${text}]`,
+    bg: (color: string, text: string) => text,
     bold: (text: string) => `**${text}**`,
   };
 }
 
-export function makeMockTUI(): any {
+export function makeMockTUI(): MockTUI {
   return { terminal: { columns: 200 } };
 }
 
-export function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
-  return {
+export function makeMockManager(agents: AgentRecord[], totalAgentCost = 0, totalAgentCount = 0): AgentManager {
+  const m = {
     listAgents: () => agents,
-    getAgent: () => undefined,
-    setConcurrency: () => {},
     getTotalAgentCost: () => totalAgentCost,
     getTotalAgentCount: () => totalAgentCount,
-  } as any as AgentManager;
+  };
+  // The stub implements only what AgentWidget reads (listAgents, cost/count
+  // totals). AgentManager has private members, so the single `as` cast
+  // relies on this shape staying comparable to the real class. The real
+  // setConcurrency(config: ConcurrencyConfig) is omitted: widget tests never
+  // call it, and a zero-arg stub is not comparable to that signature.
+  return m as AgentManager;
 }
 
 /** Render the widget through its public update() -> setWidget -> render() seam.
@@ -37,17 +49,19 @@ export function makeMockManager(agents: any[], totalAgentCost = 0, totalAgentCou
  */
 export function renderWidgetLines(
   widget: AgentWidget,
-  tui: any = makeMockTUI(),
-  theme: any = makeMockTheme(),
+  tui: MockTUI = makeMockTUI(),
+  theme: Theme = makeMockTheme(),
 ): string[] {
-  let factory: ((tui: any, theme: any) => { render(): string[] }) | undefined;
-  const ctx = {
-    setWidget: (_key: string, content: any) => {
+  // The setWidget content factory, captured from the public UICtx seam.
+  type WidgetContent = NonNullable<Parameters<UICtx["setWidget"]>[1]>;
+  let factory: WidgetContent | undefined;
+  const ctx: UICtx = {
+    setWidget: (_key, content) => {
       factory = content;
     },
     setStatus: () => {},
   };
-  widget.setUICtx(ctx as any);
+  widget.setUICtx(ctx);
   widget.update();
   return factory ? factory(tui, theme).render() : [];
 }
