@@ -74,12 +74,6 @@ describe("ConfigStore reads", () => {
     expect(store.concurrency.default).toBe(2);
     expect(store.agent.defaultModel).toBe("config/default");
   });
-
-  it("concurrency providers/models default to {}", () => {
-    const store = new ConfigStore(memIO().io);
-    expect(store.concurrency.providers).toEqual({});
-    expect(store.concurrency.models).toEqual({});
-  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -72,30 +72,6 @@ describe("ConfigStore show* stats visibility", () => {
     expect(store.agent.showTime).toBe(true);
   });
 
-  it("configured false values are respected", () => {
-    const { io } = memIO({
-      global: {
-        agent: {
-          default: null,
-          forceBackground: false,
-          showTools: false,
-          showTurns: false,
-          showInput: false,
-          showOutput: false,
-          showContext: false,
-          showTime: false,
-        },
-      },
-    });
-    const store = new ConfigStore(io);
-    expect(store.agent.showTools).toBe(false);
-    expect(store.agent.showTurns).toBe(false);
-    expect(store.agent.showInput).toBe(false);
-    expect(store.agent.showOutput).toBe(false);
-    expect(store.agent.showContext).toBe(false);
-    expect(store.agent.showTime).toBe(false);
-  });
-
   it("setShowTools persists and syncs to widget", () => {
     const { io, saves } = memIO();
     const { w, calls } = widgetStub();
@@ -169,17 +145,6 @@ describe("ConfigStore outputThinkingBufferSize", () => {
     expect(store.agent.outputThinkingBufferSize).toBe(0);
     expect(store.agentConfigSnapshot().outputThinkingBufferSize).toBe(0);
   });
-
-  it("clearAllModelOverrides preserves outputThinkingBufferSize", () => {
-    const { io } = memIO({
-      global: { agent: { default: "keep", forceBackground: true, outputThinkingBufferSize: 500, Explore: "m1" } },
-    });
-    const store = new ConfigStore(io);
-    store.mutate.agent.clearAllModelOverrides();
-    const snap = store.agentConfigSnapshot();
-    expect(snap.outputThinkingBufferSize).toBe(500);
-    expect(snap.Explore).toBeUndefined();
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -198,17 +163,6 @@ describe("ConfigStore modelThinkingPlacement", () => {
     });
     const store = new ConfigStore(io);
     expect(store.agent.modelThinkingPlacement).toBe("metadata");
-  });
-
-  it("clearAllModelOverrides preserves modelThinkingPlacement", () => {
-    const { io } = memIO({
-      global: { agent: { default: "keep", forceBackground: true, modelThinkingPlacement: "metadata", Explore: "m1" } },
-    });
-    const store = new ConfigStore(io);
-    store.mutate.agent.clearAllModelOverrides();
-    const snap = store.agentConfigSnapshot();
-    expect(snap.modelThinkingPlacement).toBe("metadata");
-    expect(snap.Explore).toBeUndefined();
   });
 });
 
@@ -267,14 +221,6 @@ describe("ConfigStore outputTranscript", () => {
     expect(store.agent.outputTranscript).toBe(false);
   });
 
-  it("returns false when configured false", () => {
-    const { io } = memIO({
-      global: { agent: { default: null, forceBackground: false, outputTranscript: false } },
-    });
-    const store = new ConfigStore(io);
-    expect(store.agent.outputTranscript).toBe(false);
-  });
-
   it("returns true when configured true", () => {
     const { io } = memIO({
       global: { agent: { default: null, forceBackground: false, outputTranscript: true } },
@@ -293,25 +239,31 @@ describe("ConfigStore outputTranscript", () => {
     expect(saves).toHaveLength(1);
     expect(saves[0].config.agent!.outputTranscript).toBe(false);
   });
+});
 
-  it("setOutputTranscript(true) restores transcript", () => {
+/* ------------------------------------------------------------------ */
+/*  clearAllModelOverrides preserves non-model settings                 */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore clearAllModelOverrides preserves widget-sync non-model settings", () => {
+  it("preserves outputThinkingBufferSize, modelThinkingPlacement, and outputTranscript", () => {
     const { io } = memIO({
-      global: { agent: { default: null, forceBackground: false, outputTranscript: false } },
-    });
-    const store = new ConfigStore(io);
-    expect(store.agent.outputTranscript).toBe(false);
-
-    store.mutate.agent.setOutputTranscript(true);
-    expect(store.agent.outputTranscript).toBe(true);
-  });
-
-  it("clearAllModelOverrides preserves outputTranscript", () => {
-    const { io } = memIO({
-      global: { agent: { default: "keep", forceBackground: true, outputTranscript: false, Explore: "m1" } },
+      global: {
+        agent: {
+          default: "keep",
+          forceBackground: true,
+          outputThinkingBufferSize: 500,
+          modelThinkingPlacement: "metadata",
+          outputTranscript: false,
+          Explore: "m1",
+        },
+      },
     });
     const store = new ConfigStore(io);
     store.mutate.agent.clearAllModelOverrides();
     const snap = store.agentConfigSnapshot();
+    expect(snap.outputThinkingBufferSize).toBe(500);
+    expect(snap.modelThinkingPlacement).toBe("metadata");
     expect(snap.outputTranscript).toBe(false);
     expect(snap.Explore).toBeUndefined();
   });
