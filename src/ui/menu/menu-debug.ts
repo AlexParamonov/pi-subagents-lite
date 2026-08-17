@@ -21,6 +21,7 @@ import { readDefaultTools } from "../../pi-settings.js";
 import { buildSelectListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getPiInstance } from "../../shell.js";
+import { handleRestartLastAgents } from "../../agents/restart-last-agents.js";
 
 /** Render a tool set; the zero-tool state is explicit, not a glitch. */
 function formatTools(tools: string[]): string {
@@ -131,6 +132,28 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
   ctx.ui.notify("Agent briefing sent to LLM", "info");
 }
 
+async function handleRestartLastAgentsMenu(ctx: ExtensionCommandContext): Promise<void> {
+  const { restarted, skipped } = await handleRestartLastAgents(ctx);
+
+  if (restarted.length === 0 && skipped.length === 0) {
+    ctx.ui.notify("No recent Agent tool calls found in session history.", "info");
+    return;
+  }
+
+  const lines: string[] = [];
+  if (restarted.length > 0) {
+    lines.push(`Restarted ${restarted.length} agent(s):`);
+    for (const r of restarted) lines.push(`  • ${r}`);
+  }
+  if (skipped.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(`Skipped ${skipped.length} agent(s) (already running):`);
+    for (const s of skipped) lines.push(`  • ${s}`);
+  }
+
+  ctx.ui.notify(lines.join("\n"), "info");
+}
+
 export async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void> {
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const items: SelectItem[] = [
@@ -140,6 +163,11 @@ export async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void>
         label: "Agent briefing",
         description: "Send agent types/capabilities info to LLM (Optional, if having issues)",
       },
+      {
+        value: "restart-last-agents",
+        label: "Restart last agents",
+        description: "Replay the most recent Agent tool calls from session history",
+      },
     ];
 
     const selectList = new SelectList(items, 10, buildSelectListTheme(theme));
@@ -148,6 +176,8 @@ export async function showDebugMenu(ctx: ExtensionCommandContext): Promise<void>
         await showAgentTypes(ctx);
       } else if (item.value === "agent-briefing") {
         await handleAgentBriefing(ctx);
+      } else if (item.value === "restart-last-agents") {
+        await handleRestartLastAgentsMenu(ctx);
       }
     };
     return new SettingsListWrapper(selectList, { title: "Debug", theme, onCancel: () => done(undefined) });

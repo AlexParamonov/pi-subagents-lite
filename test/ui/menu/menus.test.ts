@@ -152,6 +152,6 @@ describe("main menu — submenu navigation", () => {
     expect(ctx.ui.custom).toHaveBeenCalledTimes(3);
     // The debug dispatch rendered the debug SelectList with its two items
     const debugItems = selectListCalls[1].items.map((i) => i.value);
-    expect(debugItems).toEqual(["agent-types", "agent-briefing"]);
+    expect(debugItems).toEqual(["agent-types", "agent-briefing", "restart-last-agents"]);
   });
 });

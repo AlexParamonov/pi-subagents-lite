@@ -137,6 +137,22 @@ export function resolveType(name: string): TypeResolution {
   return { kind: "not-found" };
 }
 
+/**
+ * Resolve a type, discovering new agents from worktreeDir on miss.
+ *
+ * Combines resolveType + discoverNewAgents + resolveType into a single call.
+ * Callers compute worktreeDir themselves (trust, validation, loadExtensions
+ * checks stay in the caller).
+ */
+export async function resolveTypeOrDiscover(type: string, worktreeDir?: string): Promise<TypeResolution> {
+  let resolution = resolveType(type);
+  if (resolution.kind === "not-found") {
+    await discoverNewAgents(worktreeDir);
+    resolution = resolveType(type);
+  }
+  return resolution;
+}
+
 /** Get the agent config for a type (case-insensitive). */
 export function getAgentConfig(name: string): AgentConfig | undefined {
   const resolution = resolveType(name);

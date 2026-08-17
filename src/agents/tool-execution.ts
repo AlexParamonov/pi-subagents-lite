@@ -11,7 +11,7 @@ import { getAgentDir, type ExtensionContext, type ToolCallEvent } from "@earendi
 
 import type { AgentRecord } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
-import { resolveType, getAgentConfig, discoverNewAgents, type TypeResolution } from "./agent-types.js";
+import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
 import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "../spawn/project-trust.js";
@@ -144,20 +144,6 @@ async function resolveWorktree(
   }
 }
 
-/**
- * Resolve a type name, refreshing the registry from the scan dirs when it is not
- * found. Agents added to the filesystem after startup, or to a worktree's
- * .pi/agents/ directory, become resolvable on the retry.
- */
-async function resolveTypeWithDiscovery(type: string, worktreeAgentsDir: string | undefined): Promise<TypeResolution> {
-  let resolution = resolveType(type);
-  if (resolution.kind === "not-found") {
-    await discoverNewAgents(worktreeAgentsDir);
-    resolution = resolveType(type);
-  }
-  return resolution;
-}
-
 export async function executeAgentTool(
   _toolCallId: string,
   params: Record<string, unknown>,
@@ -177,7 +163,7 @@ export async function executeAgentTool(
   // When worktree_path is set, also scan the target's .pi/agents/ directory, unless
   // the target is an untrusted cross-repo project (its agent types stay hidden).
   const targetAgentsDir = projectTrusted && validatedWorktreePath ? `${validatedWorktreePath}/.pi/agents` : undefined;
-  const resolution = await resolveTypeWithDiscovery(type, targetAgentsDir);
+  const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
   if (resolution.kind === "ambiguous") {
     // Two or more registered types differ only by case — never a silent pick.
     return errorResult(
