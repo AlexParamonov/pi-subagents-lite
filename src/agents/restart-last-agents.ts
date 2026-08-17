@@ -64,6 +64,67 @@ export function findLastAgentCallsFromEntries(entries: SessionEntry[]): AgentCal
   return [];
 }
 
+function agentCallDescription(call: AgentCallParams): string {
+  if (call.description) return call.description;
+  const firstLine = call.prompt.split("\n")[0];
+  return firstLine.length > 80 ? firstLine.slice(0, 80) : firstLine || call.prompt.slice(0, 80);
+}
+
+/**
+ * Resolve and spawn a single agent from historical parameters.
+ *
+ * Returns a status string for the caller to collect: "restarted: ..." or "skipped: ...".
+ */
+async function resolveAndSpawn(
+  call: AgentCallParams,
+  ctx: ExtensionCommandContext,
+  running: Set<string>,
+  coordinator: Awaited<ReturnType<typeof getCoordinator>>,
+  pi: Awaited<ReturnType<typeof getPiInstance>>,
+): Promise<{ restarted: string } | { skipped: string }> {
+  const type = call.agent || "general-purpose";
+  const description = agentCallDescription(call);
+  const key = `${type}::${description}`;
+
+  if (running.has(key)) {
+    return { skipped: `${type}: ${description} (already running)` };
+  }
+
+  const targetAgentsDir =
+    call.worktree_path && getStore().agent.loadExtensionsImplicitly !== false
+      ? `${call.worktree_path}/.pi/agents`
+      : undefined;
+  const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
+  if (resolution.kind === "not-found" || resolution.kind === "ambiguous") {
+    return { skipped: `${type}: ${description} (unknown type)` };
+  }
+
+  const resolvedType = resolution.key;
+  const agentConfig = getAgentConfig(resolvedType);
+  const maxTurns = call.max_turns ?? agentConfig?.maxTurns ?? getStore().agent.defaultMaxTurns;
+  const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
+  const effectiveModelStr = getStore().modelFor(resolvedType, parentModelId, agentConfig);
+  const model = effectiveModelStr ? findModelInRegistry(effectiveModelStr, ctx.modelRegistry, ctx.model) : undefined;
+  const modelKey = model ? `${model.provider}/${model.id}` : undefined;
+  const thinkingLevel =
+    parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
+
+  await coordinator!.spawn(pi!, ctx, {
+    type: resolvedType,
+    prompt: call.prompt,
+    description,
+    model,
+    modelKey,
+    maxTurns,
+    thinkingLevel,
+    graceTurns: getStore().agent.graceTurns,
+    worktreePath: call.worktree_path,
+    invocation: { modelName: model?.id, thinkingLevel, maxTurns },
+    runInBackground: true,
+  });
+  return { restarted: `${resolvedType}: ${description}` };
+}
+
 /**
  * Restart agents from the most recent Agent tool calls in session history.
  *
@@ -86,7 +147,6 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     return { restarted: [], skipped: [] };
   }
 
-  // Build a set of running agent "keys" (type + description) to skip.
   const running = new Set(
     manager
       .listAgents()
@@ -94,74 +154,25 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
       .map((a) => `${a.display.type}::${a.display.description}`),
   );
 
+  // Ensure widget is set up so spawned agents appear in the UI.
+  const widget = getWidget();
+  if (widget) {
+    widget.setUICtx(ctx.ui as unknown as UICtx);
+    widget.ensureTimer();
+  }
+
   const restarted: string[] = [];
   const skipped: string[] = [];
 
   for (const call of calls) {
-    const type = call.agent || "general-purpose";
-    const description = call.description || call.prompt.split("\n")[0].slice(0, 80) || call.prompt.slice(0, 80);
-    const key = `${type}::${description}`;
-
-    if (running.has(key)) {
-      skipped.push(`${type}: ${description} (already running)`);
-      continue;
-    }
-
-    // Resolve type (with discovery for worktree-local agents)
-    const targetAgentsDir =
-      call.worktree_path && getStore().agent.loadExtensionsImplicitly !== false
-        ? `${call.worktree_path}/.pi/agents`
-        : undefined;
-    const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
-    if (resolution.kind === "not-found" || resolution.kind === "ambiguous") {
-      skipped.push(`${type}: ${description} (unknown type)`);
-      continue;
-    }
-
-    const resolvedType = resolution.key;
-    const agentConfig = getAgentConfig(resolvedType);
-    const maxTurns = call.max_turns ?? agentConfig?.maxTurns ?? getStore().agent.defaultMaxTurns;
-
-    // Resolve model: use current config (modelFor) not historical call.model
-    const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
-    const effectiveModelStr = getStore().modelFor(resolvedType, parentModelId, agentConfig);
-    const model = effectiveModelStr ? findModelInRegistry(effectiveModelStr, ctx.modelRegistry, ctx.model) : undefined;
-    const modelKey = model ? `${model.provider}/${model.id}` : undefined;
-
-    // Inject thinking: explicit > agent config > store default
-    const thinkingLevel =
-      parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
-
-    // Ensure widget is set up so spawned agents appear in the UI
-    const widget = getWidget();
-    if (widget) {
-      widget.setUICtx(ctx.ui as unknown as UICtx);
-      widget.ensureTimer();
-    }
-
-    // Always spawn as background so we can send nudges (steer messages).
-    // Same approach as the steer settled branch in conversation-viewer.
     try {
-      await coordinator.spawn(pi, ctx, {
-        type: resolvedType,
-        prompt: call.prompt,
-        description,
-        model,
-        modelKey,
-        maxTurns,
-        thinkingLevel,
-        graceTurns: getStore().agent.graceTurns,
-        worktreePath: call.worktree_path,
-        invocation: {
-          modelName: model?.id,
-          thinkingLevel,
-          maxTurns,
-        },
-        runInBackground: true,
-      });
-      restarted.push(`${resolvedType}: ${description}`);
+      const result = await resolveAndSpawn(call, ctx, running, coordinator, pi);
+      if ("restarted" in result) restarted.push(result.restarted);
+      else skipped.push(result.skipped);
     } catch (err) {
-      skipped.push(`${resolvedType}: ${description} (spawn failed: ${String(err).slice(0, 80)})`);
+      const desc = agentCallDescription(call);
+      const type = call.agent || "general-purpose";
+      skipped.push(`${type}: ${desc} (spawn failed: ${String(err).slice(0, 80)})`);
     }
   }
 
