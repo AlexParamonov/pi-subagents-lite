@@ -677,3 +677,102 @@ describe("resolveSessionAllowedTools", () => {
     expect(result).toContain("web_search");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  ext/none — suppress warning without registering tools              */
+/* ------------------------------------------------------------------ */
+
+describe("ext/none — warning suppression", () => {
+  const extToolMap = new Map<string, string[]>([
+    ["tavily", ["web_search", "web_extract", "web_crawl"]],
+    ["exa", ["exa_search"]],
+  ]);
+
+  it("ext/none suppresses the warning for that extension", () => {
+    const notify = vi.fn();
+    const result = resolveVisibleTools({
+      activeTools: ["read", "bash"],
+      tools: ["read", "tavily/none"],
+      extToolMap,
+      notify,
+    });
+    expect(result).toContain("read");
+    expect(result).not.toContain("web_search");
+    expect(notify).not.toHaveBeenCalledWith(
+      expect.stringContaining('extension "tavily" is loaded but none of its tools are in tools'),
+    );
+  });
+
+  it("ext/none adds no tools to the result", () => {
+    const result = resolveVisibleTools({
+      activeTools: ["read", "bash", "web_search"],
+      tools: ["read", "tavily/none"],
+      extToolMap,
+    });
+    expect(result).toContain("read");
+    expect(result).not.toContain("web_search");
+    expect(result).not.toContain("none");
+  });
+
+  it("warning still fires for extensions not in the tools list", () => {
+    const notify = vi.fn();
+    const result = resolveVisibleTools({
+      activeTools: ["read", "bash"],
+      tools: ["read", "tavily/none"],
+      extToolMap,
+      notify,
+    });
+    expect(result).toContain("read");
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining('extension "exa" is loaded but none of its tools are in tools'),
+    );
+  });
+
+  it("ext/none does not leak 'none' as a tool name", () => {
+    const result = resolveVisibleTools({
+      activeTools: ["read", "bash"],
+      tools: ["tavily/none"],
+      extToolMap,
+    });
+    expect(result).not.toContain("none");
+  });
+
+  it("multiple ext/none entries suppress warnings for each extension", () => {
+    const notify = vi.fn();
+    const result = resolveVisibleTools({
+      activeTools: ["read", "bash"],
+      tools: ["read", "tavily/none", "exa/none"],
+      extToolMap,
+      notify,
+    });
+    expect(result).toContain("read");
+    expect(notify).not.toHaveBeenCalledWith(
+      expect.stringContaining('extension "tavily" is loaded but none of its tools are in tools'),
+    );
+    expect(notify).not.toHaveBeenCalledWith(
+      expect.stringContaining('extension "exa" is loaded but none of its tools are in tools'),
+    );
+  });
+
+  it("ext/none combined with ext/* still works", () => {
+    const result = resolveVisibleTools({
+      activeTools: ["read", "web_search", "web_extract", "web_crawl"],
+      tools: ["read", "tavily/*", "exa/none"],
+      extToolMap,
+    });
+    expect(result).toContain("read");
+    expect(result).toContain("web_search");
+    expect(result).toContain("web_extract");
+    expect(result).toContain("web_crawl");
+  });
+
+  it("ext/none with resolveSessionAllowedTools does not leak 'none'", () => {
+    const result = resolveSessionAllowedTools({
+      registeredTools: ["read", "bash"],
+      tools: ["read", "tavily/none"],
+      extToolMap,
+    });
+    expect(result).toContain("read");
+    expect(result).not.toContain("none");
+  });
+});
