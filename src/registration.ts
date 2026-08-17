@@ -56,13 +56,13 @@ export function registerAgentTool(pi: ExtensionAPI): void {
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
 
     renderResult: (
-      result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
+      result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
       options: { expanded?: boolean },
       theme: any,
-      context?: { isError?: boolean },
+      context: { isError?: boolean },
     ) => {
+      const isError = context?.isError ?? false;
       const store = getStore();
-      const isError = context?.isError ?? result.isError;
       return renderAgentToolResult(
         { ...result, isError },
         options,
@@ -93,12 +93,12 @@ export function registerTools(pi: ExtensionAPI): void {
     execute: executeStopAgentTool,
     constrainedSampling: CONSTRAINED_SAMPLING,
     renderResult: (
-      result: { content: Array<{ type: string; text?: string }>; isError?: boolean },
+      result: { content: Array<{ type: string; text?: string }> },
       _options: { expanded?: boolean },
       theme: any,
-      context?: { isError?: boolean },
+      context: { isError?: boolean },
     ) => {
-      const isError = context?.isError ?? result.isError;
+      const isError = context?.isError ?? false;
       const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
       const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
       return new Text(`${icon} ${text}`, 0, 0);
