@@ -170,6 +170,7 @@
 - The edit tool may reject anchors as stale even when git shows the file clean; fall back to `replace_text` with unique content instead of re-reading.
 - The shell guard refuses `>>` redirection to existing files — append to existing files with the edit tool, not bash.
 - Worktree discipline: the main checkout and the issue buildtree have identical trees, so reading a file from the wrong checkout and editing it there silently edits `main`. Verify the path prefix before editing; recover a mistaken main-checkout edit with an inverse edit-tool patch (`git checkout --` is shell-guarded).
+- File searches use the grep/find tools, not bash `grep`/`find`/`rg` (enforced twice in one launch): pipelines filtering command output are fine, but `cat file | grep` is still a file search.
 ## fix-gitroot-perf-and-ellipsis - 2026-08-15
 **What worked:** the maintenance-run report's flagged production items shipped as a single standalone issue through the full loop (grill → write-issue → worktree → voice-of-reason → builder → review → refactor → merge → AC → manual test). The alternatives menu caught one real micro-decision (existsSync follows symlinks, so a broken `.git` symlink stops being detected — matches git's own semantics, so the issue-prescribed option won). Manual testing verified the perf claim with strace: 4 `access` probes, 0 `getdents64` on a 30k-entry dir, whole walk+load 7.6ms vs ~10ms for one old readdirSync level.
 **What failed:** nothing in the loop. One docs-only merge conflict in lessons.md (both sides appended) — resolved by folding both intents.
