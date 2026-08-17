@@ -1,5 +1,6 @@
 import { Type, type TSchema } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { getAvailableTypes } from "./agents/agent-types.js";
 import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
@@ -55,12 +56,20 @@ export function registerAgentTool(pi: ExtensionAPI): void {
     renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
 
     renderResult: (
-      result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
+      result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
       options: { expanded?: boolean },
       theme: any,
+      context: { isError?: boolean },
     ) => {
+      const isError = context?.isError ?? false;
       const store = getStore();
-      return renderAgentToolResult(result, options, theme, store.agent.showCost, store.agent.modelDisplayStyle);
+      return renderAgentToolResult(
+        { ...result, isError },
+        options,
+        theme,
+        store.agent.showCost,
+        store.agent.modelDisplayStyle,
+      );
     },
   };
   // @ts-expect-error — description removed to save prompt tokens
@@ -83,6 +92,17 @@ export function registerTools(pi: ExtensionAPI): void {
     ),
     execute: executeStopAgentTool,
     constrainedSampling: CONSTRAINED_SAMPLING,
+    renderResult: (
+      result: { content: Array<{ type: string; text?: string }> },
+      _options: { expanded?: boolean },
+      theme: any,
+      context: { isError?: boolean },
+    ) => {
+      const isError = context?.isError ?? false;
+      const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
+      const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+      return new Text(`${icon} ${text}`, 0, 0);
+    },
   };
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(stopAgentTool);

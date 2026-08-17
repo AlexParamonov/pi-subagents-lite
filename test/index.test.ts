@@ -40,7 +40,15 @@ vi.mock("@earendil-works/pi-tui", () => ({
     handleInput(_k: string) {}
   },
   Spacer: class {},
-  Text: class {},
+  Text: class {
+    _text: string;
+    constructor(text: string, _w: number, _h: number) {
+      this._text = text;
+    }
+    toString() {
+      return this._text;
+    }
+  },
   Markdown: class {
     text: string;
     constructor(text: string, _w: number, _h: number, _theme: unknown) {
@@ -95,6 +103,24 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   getDisplayName: vi.fn(),
   SPINNER: [],
   ERROR_STATUSES: new Set(),
+}));
+
+const { mockRenderAgentToolResult } = vi.hoisted(() => ({
+  mockRenderAgentToolResult: vi.fn(),
+}));
+
+vi.mock("../src/ui/renderer.js", () => ({
+  renderAgentToolCall: vi.fn(() => "mocked-call"),
+  renderAgentToolResult: mockRenderAgentToolResult,
+  renderSubagentResult: vi.fn(
+    () =>
+      new (class {
+        children: unknown[] = [];
+        addChild(c: unknown) {
+          this.children.push(c);
+        }
+      })(),
+  ),
 }));
 
 // Mutable state shared between the shell mock and tests.
@@ -469,5 +495,120 @@ describe("constrained sampling — toggle ON", () => {
   it("Agent schema has additionalProperties: false when toggle is ON", () => {
     const tool = findTool(api, "Agent");
     expect(tool!.parameters.additionalProperties).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Agent renderResult — uses context.isError, not result.isError      */
+/* ------------------------------------------------------------------ */
+
+describe("Agent renderResult — context.isError override", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  beforeEach(() => {
+    mockRenderAgentToolResult.mockReset();
+  });
+
+  it("passes context.isError true to renderAgentToolResult when result has no isError", () => {
+    const tool = findTool(api, "Agent");
+    expect(tool?.renderResult).toBeDefined();
+
+    // Production data flow: result from pi has no isError field; isError lives in context
+    const result = {
+      content: [{ type: "text", text: "some output" }],
+      details: { type: "builder" },
+    };
+    const context = { isError: true };
+
+    tool!.renderResult!(result, { expanded: false }, {}, context);
+
+    expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
+    const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
+    expect(passedResult.isError).toBe(true);
+  });
+
+  it("passes context.isError false to renderAgentToolResult when result has no isError", () => {
+    const tool = findTool(api, "Agent");
+
+    const result = {
+      content: [{ type: "text", text: "some output" }],
+      details: { type: "builder" },
+    };
+    const context = { isError: false };
+
+    tool!.renderResult!(result, { expanded: false }, {}, context);
+
+    expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
+    const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
+    expect(passedResult.isError).toBe(false);
+  });
+
+  it("defaults isError to false when context is missing", () => {
+    const tool = findTool(api, "Agent");
+
+    const result = {
+      content: [{ type: "text", text: "success" }],
+      details: { type: "builder" },
+    };
+
+    tool!.renderResult!(result, { expanded: false }, {});
+
+    expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
+    const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
+    expect(passedResult.isError).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  StopAgent renderResult — uses context.isError                      */
+/* ------------------------------------------------------------------ */
+
+describe("StopAgent renderResult — context.isError", () => {
+  let api: MockExtensionAPI;
+
+  beforeAll(async () => {
+    api = createMockExtensionAPI();
+    await loadExtension(api.api);
+  });
+
+  const theme = {
+    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
+  };
+
+  it("shows error icon when context.isError is true", () => {
+    const tool = findTool(api, "StopAgent");
+    expect(tool?.renderResult).toBeDefined();
+
+    const result = { content: [{ type: "text", text: "agent not found" }] };
+    const context = { isError: true };
+
+    const rendered = tool!.renderResult!(result, { expanded: false }, theme, context) as { toString(): string };
+    expect(rendered.toString()).toContain("error");
+    expect(rendered.toString()).toContain("✗");
+  });
+
+  it("shows success icon when context.isError is false", () => {
+    const tool = findTool(api, "StopAgent");
+
+    const result = { content: [{ type: "text", text: "agent stopped" }] };
+    const context = { isError: false };
+
+    const rendered = tool!.renderResult!(result, { expanded: false }, theme, context) as { toString(): string };
+    expect(rendered.toString()).toContain("success");
+    expect(rendered.toString()).toContain("✓");
+  });
+
+  it("defaults isError to false when context is missing", () => {
+    const tool = findTool(api, "StopAgent");
+
+    const result = { content: [{ type: "text", text: "agent stopped" }] };
+
+    const rendered = tool!.renderResult!(result, { expanded: false }, theme) as { toString(): string };
+    expect(rendered.toString()).toContain("success");
   });
 });

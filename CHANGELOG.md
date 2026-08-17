@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Restart last agents: one failing spawn no longer kills the entire batch.** Each agent spawn is now individually try/caught, so a failure (e.g., model not found) is logged in the skipped list and the remaining agents continue restarting.
 
+- **Agent tool error display shows ✗ instead of ✓.** Agent and StopAgent tools now throw on errors instead of returning `errorResult()`, matching how built-in tools (bash, edit, read, write) handle errors. Agent-loop's catch block sets `isError: true`, so the renderResult callbacks use `context?.isError` (from the agent-loop's correct error flag) instead of `result.isError`, which is absent from the production data flow. Failed tool calls now correctly display a red cross (✗) and error background color.
+
 - **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.
 
 - **Agents status line stays visible for the session.** The status line's visibility is now

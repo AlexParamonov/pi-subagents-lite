@@ -30,9 +30,9 @@ describe("executeStopAgentTool", () => {
   });
 
   it("returns error when agent_id is missing", async () => {
-    const result = await executeStopAgentTool("call_1", {}, undefined, undefined, asExtensionContext({}));
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe("agent_id is required");
+    await expect(executeStopAgentTool("call_1", {}, undefined, undefined, asExtensionContext({}))).rejects.toThrow(
+      "agent_id is required",
+    );
   });
 
   it("stops a running agent and returns truncated ID", async () => {
@@ -90,16 +90,9 @@ describe("executeStopAgentTool", () => {
     });
     mockAbort.mockReturnValue(false);
 
-    const result = await executeStopAgentTool(
-      "call_9",
-      { agent_id: "abc123def456ghi" },
-      undefined,
-      undefined,
-      asExtensionContext({}),
-    );
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe("Failed to stop agent abc123def456ghi");
+    await expect(
+      executeStopAgentTool("call_9", { agent_id: "abc123def456ghi" }, undefined, undefined, asExtensionContext({})),
+    ).rejects.toThrow("Failed to stop agent abc123def456ghi");
   });
 
   it("returns error when agent ID not found, with running agents list", async () => {
@@ -110,18 +103,9 @@ describe("executeStopAgentTool", () => {
       { id: "ddd333eee444fff", display: { type: "reviewer" }, lifecycle: { status: "running" } },
     ]);
 
-    const result = await executeStopAgentTool(
-      "call_4",
-      { agent_id: "nonexistent-id" },
-      undefined,
-      undefined,
-      asExtensionContext({}),
-    );
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("nonexistent-id not found");
-    expect(result.content[0].text).toContain("Running agents:");
-    expect(result.content[0].text).toContain("aaa111bb (builder)");
+    await expect(
+      executeStopAgentTool("call_4", { agent_id: "nonexistent-id" }, undefined, undefined, asExtensionContext({})),
+    ).rejects.toThrow(/nonexistent-id not found.*Running agents:.*aaa111bb \(builder\)/s);
   });
 
   it("returns info when agent already completed", async () => {
