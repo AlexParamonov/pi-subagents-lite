@@ -12,6 +12,7 @@ import type {
   ExtensionContext,
   ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
+import { shallowMerge, defaultUi } from "./mock-utils.js";
 import type { TObject } from "@sinclair/typebox";
 import { asExtensionAPI } from "./pi-boundaries.js";
 import type { AgentManager } from "../src/agents/agent-manager.js";
@@ -449,15 +450,6 @@ export function tempDirWithFiles(
 /*  Fake context / pi                                                 */
 /* ------------------------------------------------------------------ */
 
-/** Shallow-merge two objects: source values win over defaults for each key. */
-function shallowMerge<T>(defaults: T, overrides: Partial<T>): T {
-  const result: Record<string, unknown> = { ...(defaults as Record<string, unknown>) };
-  for (const key of Object.keys(overrides) as string[]) {
-    result[key] = (overrides as Record<string, unknown>)[key];
-  }
-  return result as T;
-}
-
 /** Options for overriding specific fields of the default fake context. */
 export interface FakeCtxOptions {
   ui?: Partial<ExtensionUIContext>;
@@ -479,50 +471,6 @@ export interface FakeCtxOptions {
   getSystemPrompt?: ExtensionContext["getSystemPrompt"];
 }
 
-/** A vi.fn() stub for any ExtensionContext method. */
-const fn = vi.fn;
-
-/** Default fake UI context with all required ExtensionUIContext members. */
-const defaultUi: ExtensionUIContext = {
-  select: fn(async () => undefined),
-  confirm: fn(async () => false),
-  input: fn(async () => undefined),
-  notify: fn(),
-  onTerminalInput: fn(() => () => {}),
-  setStatus: fn(),
-  setWorkingMessage: fn(),
-  setWorkingVisible: fn(),
-  setWorkingIndicator: fn(),
-  setHiddenThinkingLabel: fn(),
-  setWidget: fn() as ExtensionUIContext["setWidget"],
-  setFooter: fn() as ExtensionUIContext["setFooter"],
-  setHeader: fn() as ExtensionUIContext["setHeader"],
-  setTitle: fn(),
-  custom: fn(async () => undefined) as ExtensionUIContext["custom"],
-  pasteToEditor: fn(),
-  setEditorText: fn(),
-  getEditorText: fn(() => ""),
-  editor: fn(async () => undefined),
-  addAutocompleteProvider: fn(),
-  setEditorComponent: fn() as ExtensionUIContext["setEditorComponent"],
-  getEditorComponent: fn(() => undefined) as ExtensionUIContext["getEditorComponent"],
-  theme: {
-    fg: fn(),
-    bg: fn(),
-    bold: fn(),
-    italic: fn(),
-    dim: fn(),
-    underline: fn(),
-    inverse: fn(),
-    strikethrough: fn(),
-  } as never,
-  getAllThemes: fn(() => []),
-  getTheme: fn(() => undefined),
-  setTheme: fn(() => ({ success: true })),
-  getToolsExpanded: fn(() => false),
-  setToolsExpanded: fn(),
-};
-
 /**
  * Create a fake ExtensionContext with typed defaults for all required fields.
  * Pass an options object to override specific fields.
@@ -534,59 +482,73 @@ export function fakeCtx(options: FakeCtxOptions = {}): ExtensionContext {
     hasUI: true,
     cwd: "/home/test/project",
     sessionManager: {
-      getActive: fn(() => undefined),
-      getInfo: fn(() => undefined),
-      getCwd: fn(() => "/home/test"),
-      getSessionDir: fn(() => "/home/test/.pi/sessions"),
-      getSessionId: fn(() => "session-1"),
-      getSessionFile: fn(() => "/home/test/.pi/sessions/session.json"),
-      getLeafId: fn(() => "leaf-1"),
-      getLeafEntry: fn(() => undefined),
-      getEntry: fn(() => undefined),
-      getLabel: fn(() => "test"),
-      getBranch: fn(() => []),
-      buildContextEntries: fn(() => []),
-      getHeader: fn(() => ({})),
-      getEntries: fn(() => []),
-      getTree: fn(() => []),
-      getSessionName: fn(() => "test-session"),
-    } as unknown as ExtensionContext["sessionManager"],
+      getCwd: vi.fn(() => "/home/test"),
+      getSessionDir: vi.fn(() => "/home/test/.pi/sessions"),
+      getSessionId: vi.fn(() => "session-1"),
+      getSessionFile: vi.fn(() => "/home/test/.pi/sessions/session.json"),
+      getLeafId: vi.fn(() => "leaf-1"),
+      getLeafEntry: vi.fn(() => undefined),
+      getEntry: vi.fn(() => undefined),
+      getLabel: vi.fn(() => "test"),
+      getBranch: vi.fn(() => []),
+      buildContextEntries: vi.fn(() => []),
+      getHeader: vi.fn(() => ({
+        type: "session" as const,
+        id: "session-1",
+        timestamp: "2024-01-01T00:00:00Z",
+        cwd: "/home/test",
+      })),
+      getEntries: vi.fn(() => []),
+      getTree: vi.fn(() => []),
+      getSessionName: vi.fn(() => "test-session"),
+    },
     modelRegistry: {
-      find: fn(),
-      list: fn(() => []),
-      getAll: fn(() => []),
-      getAvailable: fn(() => []),
-      refresh: fn(async () => ({})),
-      getError: fn(() => undefined),
-      hasConfiguredAuth: fn(() => false),
-      getApiKeyAndHeaders: fn(async () => ({ ok: false, error: "mock" })),
-      getProviderAuthStatus: fn(() => ({})),
-      getProvider: fn(() => undefined),
-      complete: fn(async () => ({})),
-      getProviderDisplayName: fn(() => "mock"),
-      getProviderAuth: fn(async () => undefined),
-      getApiKeyForProvider: fn(async () => undefined),
-      isUsingOAuth: fn(() => false),
-      registerProvider: fn(),
-      unregisterProvider: fn(),
-      getRegisteredProviderConfig: fn(() => undefined),
-      getRegisteredNativeProvider: fn(() => undefined),
-      getRegisteredProviderIds: fn(() => []),
+      find: vi.fn(),
+      list: vi.fn(() => []),
+      getAll: vi.fn(() => []),
+      getAvailable: vi.fn(() => []),
+      refresh: vi.fn(async () => ({})),
+      getError: vi.fn(() => undefined),
+      hasConfiguredAuth: vi.fn(() => false),
+      getApiKeyAndHeaders: vi.fn(async () => ({ ok: false, error: "mock" })),
+      getProviderAuthStatus: vi.fn(() => ({})),
+      getProvider: vi.fn(() => undefined),
+      complete: vi.fn(async () => ({})),
+      getProviderDisplayName: vi.fn(() => "mock"),
+      getProviderAuth: vi.fn(async () => undefined),
+      getApiKeyForProvider: vi.fn(async () => undefined),
+      isUsingOAuth: vi.fn(() => false),
+      registerProvider: vi.fn(),
+      unregisterProvider: vi.fn(),
+      getRegisteredProviderConfig: vi.fn(() => undefined),
+      getRegisteredNativeProvider: vi.fn(() => undefined),
+      getRegisteredProviderIds: vi.fn(() => []),
     } as unknown as ExtensionContext["modelRegistry"],
-    model: { provider: "test", id: "model" } as unknown as ExtensionContext["model"],
+    model: {
+      provider: "test",
+      id: "model",
+      name: "Test Model",
+      api: "anthropic-messages",
+      baseUrl: "https://api.test.com",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 100000,
+      maxTokens: 8192,
+    },
     scopedModels: [],
     thinkingLevel: undefined,
-    isIdle: fn(() => true),
-    isProjectTrusted: fn(() => true),
+    isIdle: vi.fn(() => true),
+    isProjectTrusted: vi.fn(() => true),
     signal: undefined,
-    abort: fn(),
-    hasPendingMessages: fn(() => false),
-    shutdown: fn(),
-    getContextUsage: fn(() => undefined),
-    compact: fn(),
-    getSystemPrompt: fn(() => ""),
+    abort: vi.fn(),
+    hasPendingMessages: vi.fn(() => false),
+    shutdown: vi.fn(),
+    getContextUsage: vi.fn(() => undefined),
+    compact: vi.fn(),
+    getSystemPrompt: vi.fn(() => ""),
   };
-  return shallowMerge(defaults, options as Partial<ExtensionContext>);
+  return shallowMerge(defaults, options as Partial<ExtensionContext>, false);
 }
 
 /**

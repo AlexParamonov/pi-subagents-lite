@@ -12,6 +12,7 @@
 
 import { vi, type Mock } from "vitest";
 import type { ExtensionCommandContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { shallowMerge, defaultUi } from "./mock-utils.js";
 
 /** The ui.custom component factory as the mock invokes it: the real
  * (tui, theme, keybindings, done) signature with test-fake argument shapes
@@ -77,57 +78,6 @@ export function selectByName(name: string): (title: string, items: string[]) => 
     return match ?? undefined;
   };
 }
-
-/** Shallow-merge two objects: source values win over defaults for each key. */
-function shallowMerge<T>(defaults: T, overrides: Partial<T>): T {
-  const result: Record<string, unknown> = { ...(defaults as Record<string, unknown>) };
-  for (const key of Object.keys(overrides) as string[]) {
-    const val = (overrides as Record<string, unknown>)[key];
-    if (val !== undefined) result[key] = val;
-  }
-  return result as T;
-}
-
-/** Default fake UI context with all required ExtensionUIContext members. */
-const defaultUi: ExtensionUIContext = {
-  select: vi.fn(async () => undefined),
-  confirm: vi.fn(async () => false),
-  input: vi.fn(async () => undefined),
-  notify: vi.fn(),
-  onTerminalInput: vi.fn(() => () => {}),
-  setStatus: vi.fn(),
-  setWorkingMessage: vi.fn(),
-  setWorkingVisible: vi.fn(),
-  setWorkingIndicator: vi.fn(),
-  setHiddenThinkingLabel: vi.fn(),
-  setWidget: vi.fn() as ExtensionUIContext["setWidget"],
-  setFooter: vi.fn() as ExtensionUIContext["setFooter"],
-  setHeader: vi.fn() as ExtensionUIContext["setHeader"],
-  setTitle: vi.fn(),
-  custom: vi.fn(async () => undefined) as ExtensionUIContext["custom"],
-  pasteToEditor: vi.fn(),
-  setEditorText: vi.fn(),
-  getEditorText: vi.fn(() => ""),
-  editor: vi.fn(async () => undefined),
-  addAutocompleteProvider: vi.fn(),
-  setEditorComponent: vi.fn() as ExtensionUIContext["setEditorComponent"],
-  getEditorComponent: vi.fn(() => undefined) as ExtensionUIContext["getEditorComponent"],
-  theme: {
-    fg: vi.fn(),
-    bg: vi.fn(),
-    bold: vi.fn(),
-    italic: vi.fn(),
-    dim: vi.fn(),
-    underline: vi.fn(),
-    inverse: vi.fn(),
-    strikethrough: vi.fn(),
-  } as never,
-  getAllThemes: vi.fn(() => []),
-  getTheme: vi.fn(() => undefined),
-  setTheme: vi.fn(() => ({ success: true })),
-  getToolsExpanded: vi.fn(() => false),
-  setToolsExpanded: vi.fn(),
-};
 
 /**
  * Create a mock extension command context with controllable UI.
@@ -225,8 +175,6 @@ export function createMockCtx(
     hasUI: true,
     cwd: "/home/test",
     sessionManager: {
-      getActive: vi.fn(() => undefined),
-      getInfo: vi.fn(() => undefined),
       getCwd: vi.fn(() => "/home/test"),
       getSessionDir: vi.fn(() => "/home/test/.pi/sessions"),
       getSessionId: vi.fn(() => "session-1"),
@@ -237,11 +185,16 @@ export function createMockCtx(
       getLabel: vi.fn(() => "test"),
       getBranch: vi.fn(() => []),
       buildContextEntries: vi.fn(() => []),
-      getHeader: vi.fn(() => ({})),
+      getHeader: vi.fn(() => ({
+        type: "session" as const,
+        id: "session-1",
+        timestamp: "2024-01-01T00:00:00Z",
+        cwd: "/home/test",
+      })),
       getEntries: vi.fn(() => []),
       getTree: vi.fn(() => []),
       getSessionName: vi.fn(() => "test-session"),
-    } as unknown as ExtensionCommandContext["sessionManager"],
+    },
     modelRegistry: {
       find: vi.fn(),
       list: vi.fn(() => []),
@@ -267,7 +220,18 @@ export function createMockCtx(
       getRegisteredNativeProvider: vi.fn(() => undefined),
       getRegisteredProviderIds: vi.fn(() => []),
     } as unknown as ExtensionCommandContext["modelRegistry"],
-    model: { provider: "test", id: "model" } as unknown as ExtensionCommandContext["model"],
+    model: {
+      provider: "test",
+      id: "model",
+      name: "Test Model",
+      api: "anthropic-messages",
+      baseUrl: "https://api.test.com",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 100000,
+      maxTokens: 8192,
+    },
     scopedModels: [],
     isIdle: vi.fn(() => true),
     isProjectTrusted: vi.fn(() => true),
