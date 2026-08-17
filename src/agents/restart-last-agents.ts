@@ -103,7 +103,7 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     const key = `${type}::${description}`;
 
     if (running.has(key)) {
-      skipped.push(`${type}: ${description}`);
+      skipped.push(`${type}: ${description} (already running)`);
       continue;
     }
 
@@ -141,25 +141,28 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
 
     // Always spawn as background so we can send nudges (steer messages).
     // Same approach as the steer settled branch in conversation-viewer.
-    await coordinator.spawn(pi, ctx, {
-      type: resolvedType,
-      prompt: call.prompt,
-      description,
-      model,
-      modelKey,
-      maxTurns,
-      thinkingLevel,
-      graceTurns: getStore().agent.graceTurns,
-      worktreePath: call.worktree_path,
-      invocation: {
-        modelName: model?.id,
-        thinkingLevel,
+    try {
+      await coordinator.spawn(pi, ctx, {
+        type: resolvedType,
+        prompt: call.prompt,
+        description,
+        model,
+        modelKey,
         maxTurns,
-      },
-      runInBackground: true,
-    });
-
-    restarted.push(`${resolvedType}: ${description}`);
+        thinkingLevel,
+        graceTurns: getStore().agent.graceTurns,
+        worktreePath: call.worktree_path,
+        invocation: {
+          modelName: model?.id,
+          thinkingLevel,
+          maxTurns,
+        },
+        runInBackground: true,
+      });
+      restarted.push(`${resolvedType}: ${description}`);
+    } catch (err) {
+      skipped.push(`${resolvedType}: ${description} (spawn failed: ${String(err).slice(0, 80)})`);
+    }
   }
 
   return { restarted, skipped };

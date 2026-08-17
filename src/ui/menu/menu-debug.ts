@@ -147,7 +147,7 @@ async function handleRestartLastAgentsMenu(ctx: ExtensionCommandContext): Promis
   }
   if (skipped.length > 0) {
     if (lines.length > 0) lines.push("");
-    lines.push(`Skipped ${skipped.length} agent(s) (already running):`);
+    lines.push(`Skipped ${skipped.length} agent(s):`);
     for (const s of skipped) lines.push(`  • ${s}`);
   }
 
