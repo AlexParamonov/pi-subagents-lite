@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fakeCtx } from "../fixtures.ts";
+import type { AgentConfig } from "../../src/agents/types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -23,13 +24,26 @@ import { fakeCtx } from "../fixtures.ts";
 // Mutable state so per-test values are visible to the hoisted mock factories.
 const { mockGetAgentConfig, mockSpawn, mockGetRecord, mockDiscoverNewAgents, mockValidateWorktreePath, storeState } =
   vi.hoisted(() => ({
-    mockGetAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
+    mockGetAgentConfig: vi.fn<() => AgentConfig | undefined>(defaultAgentConfig),
     mockSpawn: vi.fn(),
     mockGetRecord: vi.fn(),
     mockDiscoverNewAgents: vi.fn(),
     mockValidateWorktreePath: vi.fn(),
     storeState: { defaultThinking: undefined as string | undefined, defaultMaxTurns: undefined as number | undefined },
   }));
+/** Baseline agent config; tests override the fields under test. */
+function defaultAgentConfig(): AgentConfig {
+  return {
+    name: "general-purpose",
+    description: "Test agent",
+    systemPrompt: "test prompt",
+    maxTurns: 25,
+  };
+}
+
+function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
+  return { ...defaultAgentConfig(), ...overrides };
+}
 
 const VALID_THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -109,7 +123,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   storeState.defaultThinking = undefined;
   storeState.defaultMaxTurns = undefined;
-  mockGetAgentConfig.mockReturnValue({ maxTurns: 25, thinkingLevel: undefined });
+  mockGetAgentConfig.mockReturnValue(defaultAgentConfig());
 });
 
 /* ------------------------------------------------------------------ */
@@ -132,7 +146,7 @@ describe("toolCallListener — defaultThinking injection", () => {
 
   it("prefers agent frontmatter thinking over store defaultThinking", async () => {
     storeState.defaultThinking = "max";
-    mockGetAgentConfig.mockReturnValue({ maxTurns: 25, thinkingLevel: "low" });
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "low" }));
     const event = makeEvent() as any;
 
     await toolCallListener(event, fakeCtx());
@@ -194,7 +208,7 @@ describe("executeAgentTool — defaultThinking fallback", () => {
 
   it("prefers agent frontmatter thinking over store defaultThinking", async () => {
     storeState.defaultThinking = "max";
-    mockGetAgentConfig.mockReturnValue({ maxTurns: 25, thinkingLevel: "low" });
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "low" }));
 
     await executeAgentTool("tc-2", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 
@@ -203,7 +217,7 @@ describe("executeAgentTool — defaultThinking fallback", () => {
 
   it("prefers explicit thinking param over frontmatter and default", async () => {
     storeState.defaultThinking = "max";
-    mockGetAgentConfig.mockReturnValue({ maxTurns: 25, thinkingLevel: "low" });
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "low" }));
 
     await executeAgentTool(
       "tc-3",
@@ -251,7 +265,7 @@ describe("executeAgentTool — defaultMaxTurns fallback", () => {
 
   it("falls back to store defaultMaxTurns when no explicit param and no frontmatter", async () => {
     storeState.defaultMaxTurns = 50;
-    mockGetAgentConfig.mockReturnValue({ maxTurns: undefined, thinkingLevel: undefined });
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ maxTurns: undefined }));
 
     await executeAgentTool("tc-mt-1", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 
@@ -274,7 +288,7 @@ describe("executeAgentTool — defaultMaxTurns fallback", () => {
 
   it("prefers agent frontmatter maxTurns over store defaultMaxTurns", async () => {
     storeState.defaultMaxTurns = 50;
-    mockGetAgentConfig.mockReturnValue({ maxTurns: 30, thinkingLevel: undefined });
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ maxTurns: 30 }));
 
     await executeAgentTool("tc-mt-3", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 
@@ -282,7 +296,7 @@ describe("executeAgentTool — defaultMaxTurns fallback", () => {
   });
 
   it("keeps maxTurns undefined when nothing is configured", async () => {
-    mockGetAgentConfig.mockReturnValue({ maxTurns: undefined, thinkingLevel: undefined });
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ maxTurns: undefined }));
 
     await executeAgentTool("tc-mt-4", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 

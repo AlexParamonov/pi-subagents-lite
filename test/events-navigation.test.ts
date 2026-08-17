@@ -7,6 +7,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { KeyId } from "@earendil-works/pi-tui";
+import type { AgentConfig } from "../src/agents/types.js";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => "/home/test/.pi/agent",
@@ -17,12 +19,12 @@ import { createNavInputHandler } from "../src/events.js";
 /*  Mock setup                                                        */
 /* ------------------------------------------------------------------ */
 
-const mockMatchesKey = vi.fn();
-const mockIsKeyRelease = vi.fn(() => false);
+const mockMatchesKey = vi.fn<(data: string, keyId: KeyId) => boolean>();
+const mockIsKeyRelease = vi.fn<(data: string) => boolean>(() => false);
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  matchesKey: (...args: any[]) => mockMatchesKey(...args),
-  isKeyRelease: (...args: any[]) => mockIsKeyRelease(...args),
+  matchesKey: (data: string, keyId: KeyId) => mockMatchesKey(data, keyId),
+  isKeyRelease: (data: string) => mockIsKeyRelease(data),
   truncateToWidth: (text: string, width: number) => text,
   Editor: class Editor {},
   Container: class Container {},
@@ -51,8 +53,8 @@ vi.mock("../src/agents/default-agents.js", () => ({
 
 vi.mock("../src/agents/agent-discovery.js", () => ({
   scanAgentFilesInDir: vi.fn(async () => new Map()),
-  mergeAgents: vi.fn((...maps: Map[][]) => {
-    const merged = new Map();
+  mergeAgents: vi.fn((...maps: Map<string, AgentConfig>[]) => {
+    const merged = new Map<string, AgentConfig>();
     for (const m of maps) for (const [k, v] of m) merged.set(k, v);
     return merged;
   }),
@@ -213,7 +215,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
   describe("activation", () => {
     it("activates on down + empty editor + agents exist", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
       (ctx.ui.getEditorText as any).mockReturnValue("");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
@@ -222,7 +224,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("does not activate when editor has text", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
       (ctx.ui.getEditorText as any).mockReturnValue("hello");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
@@ -231,7 +233,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("does not activate when no visible agents", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
       mockWidget.hasVisibleAgents.mockReturnValue(false);
       (ctx.ui.getEditorText as any).mockReturnValue("");
       const handler = createNavInputHandler(ctx);
@@ -256,7 +258,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("handles down arrow", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "down");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toEqual({ consume: true });
@@ -264,7 +266,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("handles up arrow", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "up");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "up");
       mockWidget.highlightedIndex.mockReturnValue(2);
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
@@ -273,7 +275,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("handles escape", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "escape");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "escape");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toEqual({ consume: true });
@@ -281,7 +283,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("handles enter and calls navSelect", () => {
-      mockMatchesKey.mockImplementation((_d: string, key: string) => key === "enter");
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "enter");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toEqual({ consume: true });
@@ -301,7 +303,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     beforeEach(() => {
       mockWidget.isNavActive.mockReturnValue(false);
       mockWidget.isEditorFocused.mockReturnValue(true);
-      mockMatchesKey.mockImplementation((_data: string, key: string) => key === "ctrl+o");
+      mockMatchesKey.mockImplementation((_data: string, key: KeyId) => key === "ctrl+o");
     });
 
     it("passes raw input to matchesKey and syncs expanded state", () => {

@@ -11,9 +11,10 @@ import { createMockCtx } from "../../menu-test-helpers.js";
 import { ConfigStore, type ConfigIO } from "../../../src/config/config-store.js";
 import { getAgentConfig, getAllTypes } from "../../../src/agents/agent-types.js";
 import { SEPARATOR_ID } from "../../../src/ui/menu/helpers.js";
+import type { ThinkingLevel } from "../../../src/types.js";
 
 const piSettingsMock = vi.hoisted(() => ({
-  getPiDefaultThinkingLevel: vi.fn(() => undefined),
+  getPiDefaultThinkingLevel: vi.fn<(cwd: string, agentDir?: string) => ThinkingLevel | undefined>(() => undefined),
 }));
 
 let settingsListCalls: Array<any> = [];

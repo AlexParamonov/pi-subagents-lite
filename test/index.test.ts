@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createMockExtensionAPI, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
+import type { CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   DynamicBorder: class {},
@@ -225,7 +226,8 @@ describe("tool_call listener — guards", () => {
 
   it("does not mutate event.input.model for non-Agent tools", async () => {
     expect(toolCallHandler()).toBeDefined();
-    const event = {
+    const event: CustomToolCallEvent = {
+      type: "tool_call",
       toolName: "bash",
       toolCallId: "call_123",
       input: { command: "echo hello" },
@@ -245,7 +247,8 @@ describe("tool_call listener — guards", () => {
       },
     };
 
-    const event = {
+    const event: CustomToolCallEvent = {
+      type: "tool_call",
       toolName: "Agent",
       toolCallId: "call_789",
       input: {

@@ -3,23 +3,27 @@ import { getStatusNote, formatStopReason, formatWatchdogSummary } from "../src/s
 
 describe("getStatusNote", () => {
   it("returns empty string for status without a note", () => {
-    expect(getStatusNote({ status: "completed", startedAt: 0 })).toBe("");
+    expect(getStatusNote({ status: "completed", startedAt: 0, started: true })).toBe("");
   });
 
   it("returns user stop message when stoppedBy is user", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user" })).toMatch(/STOPPED BY THE USER/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user", started: true })).toMatch(
+      /STOPPED BY THE USER/,
+    );
   });
 
   it("returns agent stop message when stoppedBy is agent", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "agent" })).toMatch(/STOPPED BY YOU/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "agent", started: true })).toMatch(
+      /STOPPED BY YOU/,
+    );
   });
 
   it("returns agent stop message when stoppedBy is undefined", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0 })).toMatch(/STOPPED BY YOU/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0, started: true })).toMatch(/STOPPED BY YOU/);
   });
 
   it("wraps known notes with space-parentheses", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user" })).toMatch(/^ \(.+\)$/);
+    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "user", started: true })).toMatch(/^ \(.+\)$/);
   });
 });
 
@@ -28,6 +32,7 @@ describe("formatStopReason", () => {
     const reason = formatStopReason({
       status: "stopped",
       startedAt: 0,
+      started: true,
       stoppedBy: "watchdog",
       stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 46 * 60_000 },
     });
@@ -38,6 +43,7 @@ describe("formatStopReason", () => {
     const reason = formatStopReason({
       status: "stopped",
       startedAt: 0,
+      started: true,
       stoppedBy: "watchdog",
       stopDetail: { kind: "idle", elapsedMs: 46 * 60_000 },
     });
@@ -45,9 +51,11 @@ describe("formatStopReason", () => {
   });
 
   it("returns undefined for non-watchdog stops and non-stopped statuses", () => {
-    expect(formatStopReason({ status: "stopped", startedAt: 0, stoppedBy: "user" })).toBeUndefined();
-    expect(formatStopReason({ status: "stopped", startedAt: 0, stoppedBy: "agent" })).toBeUndefined();
-    expect(formatStopReason({ status: "completed", startedAt: 0, stoppedBy: "watchdog" })).toBeUndefined();
+    expect(formatStopReason({ status: "stopped", startedAt: 0, stoppedBy: "user", started: true })).toBeUndefined();
+    expect(formatStopReason({ status: "stopped", startedAt: 0, stoppedBy: "agent", started: true })).toBeUndefined();
+    expect(
+      formatStopReason({ status: "completed", startedAt: 0, stoppedBy: "watchdog", started: true }),
+    ).toBeUndefined();
   });
 });
 
@@ -56,6 +64,7 @@ describe("getStatusNote — watchdog", () => {
     const note = getStatusNote({
       status: "stopped",
       startedAt: 0,
+      started: true,
       stoppedBy: "watchdog",
       stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 },
     });
@@ -63,7 +72,7 @@ describe("getStatusNote — watchdog", () => {
   });
 
   it("falls back to the generic watchdog note when no detail is recorded", () => {
-    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "watchdog" })).toBe(
+    expect(getStatusNote({ status: "stopped", startedAt: 0, stoppedBy: "watchdog", started: true })).toBe(
       " (STOPPED BY WATCHDOG — no activity for longer than the idle timeout)",
     );
   });
@@ -75,6 +84,7 @@ describe("formatWatchdogSummary", () => {
       formatWatchdogSummary({
         status: "stopped",
         startedAt: 0,
+        started: true,
         stoppedBy: "watchdog",
         stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 },
       }),
@@ -86,6 +96,7 @@ describe("formatWatchdogSummary", () => {
       formatWatchdogSummary({
         status: "stopped",
         startedAt: 0,
+        started: true,
         stoppedBy: "watchdog",
         stopDetail: { kind: "idle", elapsedMs: 0 },
       }),
@@ -93,7 +104,9 @@ describe("formatWatchdogSummary", () => {
   });
 
   it("returns undefined for non-watchdog stops", () => {
-    expect(formatWatchdogSummary({ status: "stopped", startedAt: 0, stoppedBy: "user" })).toBeUndefined();
+    expect(
+      formatWatchdogSummary({ status: "stopped", startedAt: 0, stoppedBy: "user", started: true }),
+    ).toBeUndefined();
   });
 });
 

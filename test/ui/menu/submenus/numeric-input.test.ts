@@ -52,7 +52,7 @@ describe("createNumericSubmenu", () => {
   });
 
   it("returns a function that creates an Input component", () => {
-    const factory = createNumericSubmenu(mockCtx(), vi.fn());
+    const factory = createNumericSubmenu(mockCtx(), vi.fn<(parsed: number) => void>());
     expect(typeof factory).toBe("function");
 
     factory("5", vi.fn());
@@ -73,7 +73,7 @@ describe("createNumericSubmenu", () => {
     const ctx = mockCtx();
     const onValid = vi.fn();
     const done = vi.fn();
-    createNumericSubmenu(ctx, { onValid })("5", done);
+    createNumericSubmenu(ctx, onValid)("5", done);
     inputInstances[0].onSubmit!("0");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(onValid).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe("createNumericSubmenu", () => {
   it("accepts value at exact minimum", () => {
     const onValid = vi.fn();
     const done = vi.fn();
-    createNumericSubmenu(mockCtx(), { min: 5, onValid })("5", done);
+    createNumericSubmenu(mockCtx(), { min: 5 }, onValid)("5", done);
     inputInstances[0].onSubmit!("5");
     expect(onValid).toHaveBeenCalledWith(5);
     expect(done).toHaveBeenCalledWith("5");

@@ -12,36 +12,46 @@
  */
 
 import { vi } from "vitest";
+import type { AgentManager } from "../src/agents/agent-manager.js";
+import type { SystemPromptMode } from "../src/agents/types.js";
+import type { RawConcurrency } from "../src/config/config-store.js";
+import type { SessionModelOverrides, SubagentsConfig } from "../src/models/model-precedence.js";
+import type { ThinkingLevel } from "../src/types.js";
 
 // Create the mutable mock state via vi.hoisted so the vi.mock factories
 // (which vitest hoists above the rest of the module) can reference it.
 const hoisted = vi.hoisted(() => {
-  const mockConfig = {
-    agent: { default: null, forceBackground: false, outputTranscript: false } as Record<string, any>,
-    concurrency: { default: 4 } as Record<string, any>,
+  const mockConfig: { agent: Partial<SubagentsConfig["agent"]>; concurrency: RawConcurrency } = {
+    agent: { default: null, forceBackground: false, outputTranscript: false },
+    concurrency: { default: 4 },
   };
 
-  const mockProjectConfig = {
-    agent: {} as Record<string, any>,
-    concurrency: {} as Record<string, any>,
+  const mockProjectConfig: { agent: Partial<SubagentsConfig["agent"]>; concurrency: RawConcurrency } = {
+    // {} = project layer carries no agent settings (hasProjectModelSettings must stay false).
+    agent: {},
+    concurrency: {},
   };
 
-  const mockSessionOverrides = { default: null } as Record<string, any>;
-  const mockSessionConcurrency = {} as Record<string, any>;
+  const mockSessionOverrides: SessionModelOverrides = { default: null };
+  const mockSessionConcurrency: RawConcurrency = {};
   const mockProjectTargetOffered = false;
   const mockStoreOverride = null as any;
   const mockSessionShowCost = undefined as boolean | undefined;
 
   const mockManager = {
     setConcurrency: vi.fn(),
-    listAgents: vi.fn(() => []),
+    listAgents: vi.fn<AgentManager["listAgents"]>(() => []),
     getRecord: vi.fn(),
     abort: vi.fn(),
     steer: vi.fn(),
-    spawn: vi.fn(() => "agent-id-123"),
+    spawn: vi.fn<AgentManager["spawn"]>(() => "agent-id-123"),
     clear: vi.fn(),
   };
 
+  const parentModel: { provider: string; id: string } | undefined = {
+    provider: "test",
+    id: "parent-model",
+  };
   const mockSessionCtx = {
     modelRegistry: {
       find: vi.fn((provider: string, modelId: string) => {
@@ -60,7 +70,8 @@ const hoisted = vi.hoisted(() => {
         { provider: "openai", id: "gpt-4o" },
       ]),
     },
-    model: { provider: "test", id: "parent-model" },
+    // tsgo infers the narrowed const type for the property; tests toggle model to undefined.
+    model: parentModel as { provider: string; id: string } | undefined,
     cwd: "/test",
   };
 
@@ -102,15 +113,15 @@ export const mockModules = {
  */
 export function resetConfig(): void {
   mockModules.mockConfig = {
-    agent: { default: null, forceBackground: false, outputTranscript: false } as Record<string, any>,
-    concurrency: { default: 4 } as Record<string, any>,
+    agent: { default: null, forceBackground: false, outputTranscript: false },
+    concurrency: { default: 4 },
   };
   mockModules.mockProjectConfig = {
-    agent: {} as Record<string, any>,
-    concurrency: {} as Record<string, any>,
+    agent: {},
+    concurrency: {},
   };
-  mockModules.mockSessionOverrides = { default: null } as Record<string, any>;
-  mockModules.mockSessionConcurrency = {} as Record<string, any>;
+  mockModules.mockSessionOverrides = { default: null };
+  mockModules.mockSessionConcurrency = {};
   mockModules.mockProjectTargetOffered = false;
   mockModules.mockStoreOverride = null;
   mockModules.mockSessionShowCost = undefined;
@@ -199,7 +210,8 @@ vi.mock("../src/shell.js", async () => {
     get agent() {
       // Effective agent: project layer over global layer (model keys only).
       const a = { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
-      const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_AGENT.widgetMaxLines;
+      // DEFAULT_AGENT always carries widgetMaxLines (typed optional via the layer type).
+      const widgetMaxLines = a.widgetMaxLines ?? DEFAULT_AGENT.widgetMaxLines!;
       return {
         defaultModel: a.default ?? null,
         forceBackground: a.forceBackground === true,
@@ -305,7 +317,9 @@ vi.mock("../src/shell.js", async () => {
       return resolveModel({
         subagentType: type,
         agentConfig,
-        config: { agent: { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent } },
+        config: {
+          agent: { ...DEFAULT_AGENT, ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent },
+        },
         parentModelId,
         sessionOverrides: mockModules.mockSessionOverrides,
       });
@@ -369,13 +383,13 @@ vi.mock("../src/shell.js", async () => {
         setIdleTimeoutMinutes(n: number) {
           mockModules.mockConfig.agent.idleTimeoutMinutes = n;
         },
-        setSystemPromptMode(mode: string) {
+        setSystemPromptMode(mode: SystemPromptMode) {
           mockModules.mockConfig.agent.systemPromptMode = mode;
         },
         setIncludeContextFiles(enabled: boolean) {
           mockModules.mockConfig.agent.includeContextFiles = enabled;
         },
-        setDefaultThinking(level: string | undefined, target: string = "global") {
+        setDefaultThinking(level: ThinkingLevel | undefined, target: string = "global") {
           const agent = target === "project" ? mockModules.mockProjectConfig.agent : mockModules.mockConfig.agent;
           if (level === undefined) delete agent.defaultThinking;
           else agent.defaultThinking = level;
@@ -463,10 +477,10 @@ vi.mock("../src/shell.js", async () => {
         setNavHint(enabled: boolean) {
           mockModules.mockConfig.agent.widgetNavHint = enabled;
         },
-        setModelDisplayStyle(style: string) {
+        setModelDisplayStyle(style: "id" | "name") {
           mockModules.mockConfig.agent.modelDisplayStyle = style;
         },
-        setStatusBarFormat(format: string) {
+        setStatusBarFormat(format: "full" | "compact") {
           mockModules.mockConfig.agent.statusBarFormat = format;
         },
       },

@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
+import { selectListView } from "../../pi-boundaries.ts";
 
 // Capture SelectList constructor calls
 let selectListCalls: Array<any> = [];
@@ -80,7 +81,7 @@ function makeRecord(overrides: any = {}): any {
     ...overrides,
   };
 }
-const noopTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+const noopTheme = { fg: (_c: string, t: string) => t, bg: (_c: string, t: string) => t, bold: (t: string) => t };
 
 afterEach(() => resetConfig());
 
@@ -229,7 +230,7 @@ describe("buildAgentActionsList — actions submenu", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("view-result");
   });
 
@@ -247,7 +248,7 @@ describe("buildAgentActionsList — actions submenu", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("view-error");
   });
 
@@ -265,7 +266,7 @@ describe("buildAgentActionsList — actions submenu", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("view-snapshot");
   });
 
@@ -283,7 +284,7 @@ describe("buildAgentActionsList — actions submenu", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("steer");
     expect(values).toContain("stop");
   });
@@ -297,7 +298,7 @@ describe("buildAgentActionsList — actions submenu", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).not.toContain("steer");
     expect(values).not.toContain("stop");
   });
@@ -326,7 +327,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       () => {},
       () => {},
     );
-    await list.onSelect!({ value: "view-result" });
+    await list.onSelect!({ value: "view-result", label: "View result" });
 
     expect(capturedFactory).toBeDefined();
   });
@@ -352,7 +353,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       () => {},
       () => {},
     );
-    await list.onSelect!({ value: "view-error" });
+    await list.onSelect!({ value: "view-error", label: "View error" });
 
     expect(capturedFactory).toBeDefined();
   });
@@ -378,7 +379,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
       () => {},
       () => {},
     );
-    await list.onSelect!({ value: "view-snapshot" });
+    await list.onSelect!({ value: "view-snapshot", label: "View snapshot" });
 
     expect(capturedFactory).toBeDefined();
   });
@@ -405,7 +406,10 @@ describe("showTextViewer — component behavior", () => {
       () => {},
       () => {},
     );
-    await list.onSelect!({ value: kind === "result" ? "view-result" : "view-error" });
+    await list.onSelect!({
+      value: kind === "result" ? "view-result" : "view-error",
+      label: kind === "result" ? "View result" : "View error",
+    });
     // Invoke the factory to get the component
     const doneFn = vi.fn();
     const component = factory!(
@@ -543,7 +547,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
       () => {},
       onClose,
     );
-    await list.onSelect!({ value: "stop" });
+    await list.onSelect!({ value: "stop", label: "Stop" });
 
     expect(mockModules.mockManager.abort).toHaveBeenCalledWith("test-id-123", "user");
     expect(onClose).toHaveBeenCalled();
@@ -569,7 +573,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
       setActive,
       () => {},
     );
-    await list.onSelect!({ value: "steer" });
+    await list.onSelect!({ value: "steer", label: "Steer" });
 
     expect(setActive).toHaveBeenCalled();
     expect(capturedInput).toBeTruthy();
@@ -598,7 +602,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
       setActive,
       () => {},
     );
-    await list.onSelect!({ value: "steer" });
+    await list.onSelect!({ value: "steer", label: "Steer" });
 
     // Submit a steer message
     await capturedInput.onSubmit("please do this");
@@ -628,7 +632,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
       setActive,
       () => {},
     );
-    await list.onSelect!({ value: "steer" });
+    await list.onSelect!({ value: "steer", label: "Steer" });
 
     // Cancel steer
     capturedInput.onEscape();
@@ -658,7 +662,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("view-conversation");
   });
 
@@ -676,7 +680,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("view-conversation");
   });
 
@@ -694,7 +698,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).not.toContain("view-conversation");
   });
 
@@ -712,7 +716,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).not.toContain("view-conversation");
     expect(values).toContain("view-snapshot");
   });
@@ -738,7 +742,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
       () => {},
       () => {},
     );
-    await list.onSelect!({ value: "view-conversation" });
+    await list.onSelect!({ value: "view-conversation", label: "View conversation" });
 
     expect(capturedFactory).toBeDefined();
     expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), { overlay: true });
@@ -758,7 +762,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("view-conversation");
     expect(values).toContain("view-result");
   });
@@ -782,7 +786,7 @@ describe("clear actions for finished agents", () => {
       () => {},
       () => {},
     );
-    const values = list.items.map((i: any) => i.value);
+    const values = selectListView(list).items.map((i) => i.value);
     expect(values).toContain("clear");
   });
 
@@ -800,7 +804,7 @@ describe("clear actions for finished agents", () => {
         () => {},
         () => {},
       );
-      const values = list.items.map((i: any) => i.value);
+      const values = selectListView(list).items.map((i) => i.value);
       expect(values).not.toContain("clear");
       expect(values).toContain("stop");
     }
@@ -817,7 +821,7 @@ describe("clear actions for finished agents", () => {
       () => {},
       onClose,
     );
-    await list.onSelect!({ value: "clear" });
+    await list.onSelect!({ value: "clear", label: "Clear" });
     expect(mockModules.mockManager.clear).toHaveBeenCalledWith("test-id-123");
     expect(onClose).toHaveBeenCalled();
   });

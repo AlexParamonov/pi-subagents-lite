@@ -4,7 +4,8 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
-import type { AgentConfig, EnvInfo } from "../../src/types.ts";
+import type { AgentConfig } from "../../src/agents/types.ts";
+import type { EnvInfo } from "../../src/types.ts";
 
 vi.mock("@earendil-works/pi-coding-agent", async () => {
   const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(

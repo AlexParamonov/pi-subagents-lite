@@ -12,6 +12,7 @@ import {
   summarizeToolArgs,
 } from "../src/utils.ts";
 import { tempDirFixture } from "./fixtures";
+import type { Model } from "@earendil-works/pi-ai";
 
 /* ------------------------------------------------------------------ */
 /*  isUnsafeName                                                      */
@@ -188,17 +189,31 @@ describe("parseModelKey", () => {
 });
 
 describe("findModelInRegistry", () => {
+  function makeModel(overrides: Partial<Model<any>> = {}): Model<any> {
+    return {
+      id: "claude",
+      name: "Claude",
+      api: "anthropic-messages",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200_000,
+      maxTokens: 8_192,
+      ...overrides,
+    };
+  }
+
+  const registryModel = makeModel();
   const registry = {
     find: (provider: string, modelId: string) =>
-      provider === "anthropic" && modelId === "claude" ? { provider, id: modelId } : undefined,
+      provider === "anthropic" && modelId === "claude" ? registryModel : undefined,
   };
-  const fallback = { provider: "fallback", id: "model" };
+  const fallback = makeModel({ id: "model", name: "Fallback", provider: "fallback" });
 
   it("returns the registry model when found", () => {
-    expect(findModelInRegistry("anthropic/claude", registry, fallback)).toEqual({
-      provider: "anthropic",
-      id: "claude",
-    });
+    expect(findModelInRegistry("anthropic/claude", registry, fallback)).toBe(registryModel);
   });
 
   it("falls back for unknown, unparseable, or missing model strings", () => {

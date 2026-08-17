@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { buildAgentDetails } from "../../src/agents/tool-execution.js";
+import { asAgentSession } from "../pi-boundaries.ts";
 
 // buildAgentDetails is a pure function. Importing tool-execution.ts is safe
 // without mocks because @earendil-works/pi-coding-agent has no top-level side
@@ -25,12 +26,13 @@ describe("buildAgentDetails", () => {
         status: "completed",
         startedAt: 1000,
         completedAt: 5000,
+        started: true,
       },
       display: {
         type: "builder",
         description: "Build something",
       },
-      execution: {},
+      execution: { settled: true, settlementCount: 1 },
       stats: {
         lifetimeUsage: { input: 100, output: 200, cacheWrite: 50, cost: 0.01 },
         toolUses: 5,
@@ -108,14 +110,18 @@ describe("buildAgentDetails", () => {
   });
 
   it("computes durationMs as completedAt - startedAt", () => {
-    const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 } });
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000, started: true },
+    });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.durationMs).toBe(4000);
   });
 
   it("sets durationMs to 0 when completedAt is undefined", () => {
-    const record = makeRecord({ lifecycle: { status: "completed", startedAt: 1000, completedAt: undefined } });
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: 1000, completedAt: undefined, started: true },
+    });
     const details = buildAgentDetails(record, { includeStats: true });
 
     expect(details.durationMs).toBe(0);
@@ -133,7 +139,7 @@ describe("buildAgentDetails", () => {
   it("prefers session model name over invocation modelName", () => {
     const record = makeRecord({
       display: { type: "builder", description: "Build something", invocation: { modelName: "invocation-model" } },
-      execution: { session: { model: { name: "session-model" } } as any },
+      execution: { session: asAgentSession({ model: { name: "session-model" } }), settled: true, settlementCount: 1 },
     });
     const details = buildAgentDetails(record, { includeStats: true });
     expect(details.modelName).toBe("session-model");
@@ -142,7 +148,7 @@ describe("buildAgentDetails", () => {
   it("falls back to invocation modelName when session has no model", () => {
     const record = makeRecord({
       display: { type: "builder", description: "Build something", invocation: { modelName: "fallback-model" } },
-      execution: { session: {} as any },
+      execution: { session: asAgentSession({}), settled: true, settlementCount: 1 },
     });
     const details = buildAgentDetails(record, { includeStats: true });
     expect(details.modelName).toBe("fallback-model");
@@ -172,7 +178,7 @@ describe("buildAgentDetails", () => {
 
   it("includes status and outputFile when includeStatus is true", () => {
     const record = makeRecord({
-      lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000 },
+      lifecycle: { status: "completed", startedAt: 1000, completedAt: 5000, started: true },
       display: { type: "builder", description: "Build something", outputFile: "/tmp/out.log" },
     });
     const details = buildAgentDetails(record, { includeStatus: true });
@@ -190,6 +196,7 @@ describe("buildAgentDetails", () => {
         status: "stopped",
         startedAt: 1000,
         completedAt: 5000,
+        started: true,
         stoppedBy: "watchdog",
         stopDetail: { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 },
       },
@@ -203,7 +210,7 @@ describe("buildAgentDetails", () => {
 
   it("omits stopReason for user stops", () => {
     const record = makeRecord({
-      lifecycle: { status: "stopped", startedAt: 1000, completedAt: 5000, stoppedBy: "user" },
+      lifecycle: { status: "stopped", startedAt: 1000, completedAt: 5000, stoppedBy: "user", started: true },
     });
     const details = buildAgentDetails(record, { includeStatus: true });
 
@@ -214,7 +221,7 @@ describe("buildAgentDetails", () => {
 
   it("includes both stats and status when both options are true", () => {
     const record = makeRecord({
-      lifecycle: { status: "error", startedAt: 1000, completedAt: 5000 },
+      lifecycle: { status: "error", startedAt: 1000, completedAt: 5000, started: true },
       display: { type: "builder", description: "Build something", outputFile: "/tmp/err.log" },
     });
     const details = buildAgentDetails(record, { includeStats: true, includeStatus: true });

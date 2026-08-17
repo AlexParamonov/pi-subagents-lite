@@ -265,7 +265,7 @@ describe("streamToOutputFile", () => {
     });
 
     // Wait for microtask to complete (re-anchoring writtenCount)
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
     // Fire turn_end to trigger flush of post-compaction message
     session._fireTurnEnd();

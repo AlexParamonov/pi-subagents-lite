@@ -4,14 +4,22 @@
  * agent-manager-watchdog.test.ts. Shared mocks: manager-mocks.ts.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.ts";
-import { mockModules, mockStoreState, mockAgentSession, mockRunResult } from "./manager-mocks.ts";
+import { asAgentSession } from "../pi-boundaries.ts";
+import {
+  mockModules,
+  mockStoreState,
+  mockAgentSession,
+  mockRunResult,
+  type FakeSessionModel,
+  type OnAgentComplete,
+} from "./manager-mocks.ts";
 import { AgentManager, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {
   let manager: AgentManager;
-  let onComplete: ReturnType<typeof vi.fn>;
+  let onComplete: Mock<OnAgentComplete>;
 
   beforeEach(() => {
     mockModules.resetUuidCounter();
@@ -19,7 +27,7 @@ describe("AgentManager", () => {
     mockModules.mockContinueAgentSession.mockReset();
     mockModules.mockAgentOutputLog.mockClear();
     mockModules.mockGetAgentConfig.mockClear();
-    onComplete = vi.fn();
+    onComplete = vi.fn<OnAgentComplete>();
   });
 
   afterEach(() => {
@@ -229,8 +237,8 @@ describe("AgentManager", () => {
   // ── Model error handling (final assistant message stopReason "error") ──
 
   describe("model error handling", () => {
-    function sessionWithModel(model?: { provider: string; id: string }) {
-      return { subscribe: vi.fn(), messages: [], dispose: vi.fn(), model };
+    function sessionWithModel(model?: FakeSessionModel) {
+      return mockAgentSession({ model });
     }
 
     it("marks the record error with type, model, and provider error when runAgent reports a modelError", async () => {
@@ -976,7 +984,7 @@ describe("AgentManager", () => {
       manager = new AgentManager(onComplete);
       const id = await spawnSettled();
       const record = manager.getRecord(id)!;
-      record.execution.session!.isStreaming = true;
+      record.execution.session = asAgentSession(mockAgentSession({ isStreaming: true }));
 
       await expect(manager.steer(id, "keep going")).resolves.toBe(false);
       expect(mockModules.mockContinueAgentSession).not.toHaveBeenCalled();
@@ -1152,7 +1160,7 @@ describe("AgentManager", () => {
         mockRunResult({
           responseText: "",
           modelError: "model failed to load into memory",
-          session: { ...mockAgentSession(), model: { provider: "anthropic", id: "claude-sonnet-4" } },
+          session: mockAgentSession({ model: { provider: "anthropic", id: "claude-sonnet-4" } }),
         }),
       );
       await vi.waitFor(() => expect(record.execution.settled).toBe(true));
@@ -1284,7 +1292,6 @@ describe("AgentManager", () => {
 
       // Session arrives: pending steers flush, live steers delegate.
       const session = mockAgentSession();
-      session.steer = vi.fn(async () => {});
       mockModules.mockRunAgent.mock.calls[0][3].onSessionCreated(session);
       await expect(manager.steer(id, "later")).resolves.toBe(true);
       expect(session.steer).toHaveBeenCalledWith("later");
