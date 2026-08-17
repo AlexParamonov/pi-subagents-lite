@@ -4,9 +4,9 @@
 
 import { describe, it, expect, vi } from "vitest";
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
-import type { AgentConfig } from "../../src/agents/types.ts";
-import type { EnvInfo } from "../../src/types.ts";
+import { buildAgentPrompt } from "../../src/prompt/prompts.js";
+import type { AgentConfig } from "../../src/agents/types.js";
+import type { EnvInfo } from "../../src/types.js";
 
 vi.mock("@earendil-works/pi-coding-agent", async () => {
   const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(

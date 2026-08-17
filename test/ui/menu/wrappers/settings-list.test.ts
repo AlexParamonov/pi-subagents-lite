@@ -11,7 +11,7 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import { SettingsListWrapper } from "../../../../src/ui/menu/wrappers/settings-list.js";
 import { buildSelectListTheme, createDelegatingComponent } from "../../../../src/ui/menu/helpers.js";
 import { SearchableSelectDialog } from "../../../../src/ui/searchable-select.js";
-import { selectListView } from "../../../pi-boundaries.ts";
+import { selectListView } from "../../../pi-boundaries.js";
 import type { Theme } from "../../../../src/ui/types.js";
 
 const theme: Theme = {

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { shellMock } from "../fixtures.ts";
-import { asExtensionContext } from "../pi-boundaries.ts";
+import { shellMock } from "../fixtures.js";
+import { asExtensionContext } from "../pi-boundaries.js";
 
 const { mockAbort, mockGetRecord, mockListAgents } = vi.hoisted(() => ({
   mockAbort: vi.fn(),

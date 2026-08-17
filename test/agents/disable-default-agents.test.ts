@@ -14,7 +14,7 @@ import {
 } from "../../src/agents/agent-types.js";
 import { DEFAULT_AGENTS } from "../../src/agents/default-agents.js";
 import type { AgentConfig } from "../../src/agents/types.js";
-import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
+import { makeAgentMd, tempDirWithFiles } from "../fixtures.js";
 
 /* ------------------------------------------------------------------ */
 /*  registerAgents with disableDefaultAgents                          */

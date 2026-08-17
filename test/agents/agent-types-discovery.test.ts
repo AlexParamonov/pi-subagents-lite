@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
+import { makeAgentMd, tempDirWithFiles } from "../fixtures.js";
 import {
   registerAgents,
   setAgentScanDirs,

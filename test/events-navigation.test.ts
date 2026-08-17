@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { KeyId } from "@earendil-works/pi-tui";
 import type { AgentConfig } from "../src/agents/types.js";
-import { asExtensionContext } from "./pi-boundaries.ts";
+import { asExtensionContext } from "./pi-boundaries.js";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => "/home/test/.pi/agent",

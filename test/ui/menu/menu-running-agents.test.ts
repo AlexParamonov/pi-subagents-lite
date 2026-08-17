@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
-import { asAgentSession, selectListView } from "../../pi-boundaries.ts";
+import { asAgentSession, selectListView } from "../../pi-boundaries.js";
 import type { AgentRecord, AgentDisplayInfo, AgentExecutionState, AgentLifecycle } from "../../../src/types.js";
 import type { Theme } from "../../../src/ui/types.js";
 import type { Component, Input, SelectItem, SelectListTheme } from "@earendil-works/pi-tui";

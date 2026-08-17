@@ -13,7 +13,7 @@ import {
   type WorktreeValidationSuccess,
   type WorktreeValidationFailure,
 } from "../../src/spawn/worktree-validator.js";
-import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.ts";
+import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
 
 // ── helpers ──────────────────────────────────────────────────────
 

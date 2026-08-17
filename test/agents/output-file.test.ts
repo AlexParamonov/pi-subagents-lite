@@ -7,8 +7,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { createMockSession, tempDirFixture } from "../fixtures.ts";
-import { asAgentSession } from "../pi-boundaries.ts";
+import { createMockSession, tempDirFixture } from "../fixtures.js";
+import { asAgentSession } from "../pi-boundaries.js";
 import {
   createOutputFilePath,
   writeInitialEntry,

@@ -14,7 +14,7 @@ import type {
   AgentRecord,
 } from "../../src/types.js";
 import { buildAgentDetails } from "../../src/agents/tool-execution.js";
-import { asAgentSession } from "../pi-boundaries.ts";
+import { asAgentSession } from "../pi-boundaries.js";
 
 // buildAgentDetails is a pure function. Importing tool-execution.ts is safe
 // without mocks because @earendil-works/pi-coding-agent has no top-level side

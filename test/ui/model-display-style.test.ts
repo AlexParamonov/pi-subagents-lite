@@ -2,11 +2,11 @@
  * model-display-style.test.ts — Tests for model display style config.
  */
 import { describe, it, expect } from "vitest";
-import { ConfigStore, type ConfigIO } from "../../src/config/config-store.ts";
-import type { RawConfig } from "../../src/config/config-io.ts";
-import type { AgentWidget } from "../../src/ui/agent-widget.ts";
-import type { StatsVisibility } from "../../src/ui/format.ts";
-import type { ModelThinkingPlacement } from "../../src/config/types.ts";
+import { ConfigStore, type ConfigIO } from "../../src/config/config-store.js";
+import type { RawConfig } from "../../src/config/config-io.js";
+import type { AgentWidget } from "../../src/ui/agent-widget.js";
+import type { StatsVisibility } from "../../src/ui/format.js";
+import type { ModelThinkingPlacement } from "../../src/config/types.js";
 
 /** In-memory ConfigIO over raw global layers, recording saves. */
 function memIO(initial: { global?: RawConfig } = {}): {
