@@ -70,7 +70,9 @@ const hoisted = vi.hoisted(() => {
         { provider: "openai", id: "gpt-4o" },
       ]),
     },
-    // tsgo infers the narrowed const type for the property; tests toggle model to undefined.
+    // TS 7 (native tsc) infers the control-flow-narrowed type of the annotated const
+    // for object-literal properties, losing the `| undefined` (verified in isolation
+    // under 7.0.2); the assertion keeps the union so tests can toggle model off.
     model: parentModel as { provider: string; id: string } | undefined,
     cwd: "/test",
   };

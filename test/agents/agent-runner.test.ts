@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import fs from "node:fs";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { AssistantMessage, Model, UserMessage } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, UserMessage } from "@earendil-works/pi-ai";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.ts";
 import { asAgentSession } from "../pi-boundaries.ts";
 
@@ -157,7 +157,7 @@ interface MockSession {
   messages: AgentSession["messages"];
   /** The Agent hook runAgent patches for max_tokens injection. */
   agent: {
-    onPayload?: (payload: unknown, model: Model<any>) => Record<string, unknown> | Promise<Record<string, unknown>>;
+    onPayload?: (payload: unknown, model: Model<Api>) => Record<string, unknown> | Promise<Record<string, unknown>>;
   };
   _getListeners: () => Array<(event: unknown) => void>;
 }
@@ -217,7 +217,7 @@ function createMockSession(): MockSession {
     _getListeners: () => listeners,
   };
 }
-function makeMockModel(overrides: Partial<Model<any>> = {}): Model<any> {
+function makeMockModel(overrides: Partial<Model<Api>> = {}): Model<Api> {
   return {
     id: "test-model",
     name: "Test Model",

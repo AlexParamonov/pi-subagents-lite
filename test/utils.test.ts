@@ -12,7 +12,7 @@ import {
   summarizeToolArgs,
 } from "../src/utils.ts";
 import { tempDirFixture } from "./fixtures";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 /* ------------------------------------------------------------------ */
 /*  isUnsafeName                                                      */
@@ -189,7 +189,7 @@ describe("parseModelKey", () => {
 });
 
 describe("findModelInRegistry", () => {
-  function makeModel(overrides: Partial<Model<any>> = {}): Model<any> {
+  function makeModel(overrides: Partial<Model<Api>> = {}): Model<Api> {
     return {
       id: "claude",
       name: "Claude",
