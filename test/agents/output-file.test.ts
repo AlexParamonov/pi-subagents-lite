@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createMockSession, tempDirFixture } from "../fixtures.ts";
+import { asAgentSession } from "../pi-boundaries.ts";
 import {
   createOutputFilePath,
   writeInitialEntry,
@@ -60,9 +61,18 @@ describe("writeInitialEntry", () => {
 
 // --- streamToOutputFile ---
 
+/** A feed message the output streamer reads: role plus opaque content blob. */
+interface FeedMessage {
+  role: string;
+  content: string | ReadonlyArray<Record<string, unknown>>;
+  toolName?: string;
+  isError?: boolean;
+  timestamp?: number;
+}
+
 describe("streamToOutputFile", () => {
-  function setupSession(messages: any[]) {
-    const session = createMockSession() as any;
+  function setupSession(messages: FeedMessage[]) {
+    const session = asAgentSession(createMockSession());
     Object.defineProperty(session, "messages", { get: () => messages, configurable: true });
     return session;
   }
@@ -577,7 +587,7 @@ describe("AgentOutputLog", () => {
   it("subscribes to session events on attach", () => {
     const dir = fixture.getDir();
     const log = new AgentOutputLog(testAgentId, "test", dir);
-    const session = createMockSession() as any;
+    const session = asAgentSession(createMockSession());
     log.attach(session);
     expect(session.subscribe).toHaveBeenCalledTimes(1);
   });
@@ -585,7 +595,7 @@ describe("AgentOutputLog", () => {
   it("streams messages on turn_end events", () => {
     const dir = fixture.getDir();
     const log = new AgentOutputLog(testAgentId, "test", dir);
-    const session = createMockSession() as any;
+    const session = asAgentSession(createMockSession());
     Object.defineProperty(session, "messages", {
       get: () => [
         { role: "user", content: "test" },
@@ -604,7 +614,7 @@ describe("AgentOutputLog", () => {
   it("writes DONE line with final stats on finalize", () => {
     const dir = fixture.getDir();
     const log = new AgentOutputLog(testAgentId, "test", dir);
-    const session = createMockSession() as any;
+    const session = asAgentSession(createMockSession());
     Object.defineProperty(session, "messages", { get: () => [], configurable: true });
     log.attach(session);
     log.finalize({ turnCount: 3, toolUseCount: 5, totalTokens: 12400 });
@@ -618,7 +628,7 @@ describe("AgentOutputLog", () => {
   it("flushes remaining messages before writing DONE", () => {
     const dir = fixture.getDir();
     const log = new AgentOutputLog(testAgentId, "test", dir);
-    const session = createMockSession() as any;
+    const session = asAgentSession(createMockSession());
     Object.defineProperty(session, "messages", {
       get: () => [
         { role: "user", content: "test" },
@@ -637,7 +647,7 @@ describe("AgentOutputLog", () => {
   it("unsubscribes from session on finalize", () => {
     const dir = fixture.getDir();
     const log = new AgentOutputLog(testAgentId, "test", dir);
-    const session = createMockSession() as any;
+    const session = asAgentSession(createMockSession());
     Object.defineProperty(session, "messages", { get: () => [], configurable: true });
     log.attach(session);
     log.finalize({ turnCount: 0, toolUseCount: 0, totalTokens: 0 });

@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { buildModelGroups, type ModelGroupsInput } from "../../src/models/model-groups.js";
 import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 
@@ -22,14 +22,14 @@ const REASONING_MODEL = {
   reasoning: true,
   // Declares xhigh/max support (pi-ai excludes them without map entries).
   thinkingLevelMap: { xhigh: "xhigh", max: "max" },
-} as Model<any>;
-const NON_REASONING_MODEL = { provider: "openai", id: "gpt-4o", reasoning: false } as Model<any>;
+} as Model<Api>;
+const NON_REASONING_MODEL = { provider: "openai", id: "gpt-4o", reasoning: false } as Model<Api>;
 const LIMITED_REASONING_MODEL = {
   provider: "anthropic",
   id: "claude-limited",
   reasoning: true,
   thinkingLevelMap: {},
-} as Model<any>;
+} as Model<Api>;
 
 const registry = new Map([
   ["anthropic/claude-opus-4-1", REASONING_MODEL],

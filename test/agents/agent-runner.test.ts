@@ -4,7 +4,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import fs from "node:fs";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import {
+  DefaultResourceLoader,
+  type AgentSession,
+  type CreateAgentSessionOptions,
+  type LoadExtensionsResult,
+} from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage, Model, UserMessage } from "@earendil-works/pi-ai";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.ts";
 import { asAgentSession } from "../pi-boundaries.ts";
@@ -13,11 +18,49 @@ const fakePi = makeFakePi();
 
 // --- Mock module-level dependencies ---
 
-const _loaderOpts: any[] = [];
-const _loaderGetExtensionsResult: any = { extensions: [], errors: [], runtime: {} };
+/** The loader's constructor options, as declared by pi (mirrors src/agent-runner). */
+type LoaderOpts = ConstructorParameters<typeof DefaultResourceLoader>[0];
+
+const _loaderOpts: LoaderOpts[] = [];
+const _loaderGetExtensionsResult: TestLoadExtensionsResult = { extensions: [], errors: [], runtime: {} };
+
+/** The extension surface the tool-map builder reads — mirrors src's inline projection. */
+interface TestExtension {
+  path: string;
+  tools: Map<string, unknown>;
+}
+
+/** The loader result shape tests reconstruct for extensionsOverride: only extensions is read. */
+interface TestLoadExtensionsResult {
+  extensions: TestExtension[];
+  errors: { path: string; error: string }[];
+  runtime: unknown;
+}
+
+/** Assert a stubbed load result against the real LoadExtensionsResult at the override boundary. */
+function asLoadExtensionsResult(result: {
+  extensions: TestExtension[];
+  errors?: unknown[];
+  runtime?: unknown;
+}): LoadExtensionsResult {
+  return result as LoadExtensionsResult;
+}
+
+/** The fake DefaultResourceLoader instance surface: captured opts + mock methods. */
+interface MockLoaderInstance {
+  _opts: LoaderOpts;
+  reload: ReturnType<typeof vi.fn>;
+  getExtensions: ReturnType<typeof vi.fn>;
+}
+
+/** The SettingsManager surface the spawn path reads from SettingsManager.create. */
+interface MockSettingsManager {
+  getDefaultTools?: () => string[] | undefined;
+  isProjectTrusted?: () => boolean;
+}
 
 // DefaultResourceLoader must be a regular function (not arrow) to support `new`
-function MockDefaultResourceLoader(this: any, opts: any) {
+function MockDefaultResourceLoader(this: MockLoaderInstance, opts: LoaderOpts) {
   this._opts = opts;
   this.reload = vi.fn().mockResolvedValue(undefined);
   this.getExtensions = vi.fn().mockReturnValue(_loaderGetExtensionsResult);
@@ -36,14 +79,14 @@ const mockModules = vi.hoisted(() => ({
   mockDefaultResourceLoader: MockDefaultResourceLoader,
   mockGetAgentDir: vi.fn().mockReturnValue("/home/test/.pi/agent"),
   mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
-  mockSettingsManagerCreate: vi.fn(() => ({ getDefaultTools: vi.fn(() => undefined) })),
+  mockSettingsManagerCreate: vi.fn<() => MockSettingsManager>(() => ({ getDefaultTools: vi.fn(() => undefined) })),
   mockIncludeContextFiles: true as boolean,
   mockSystemPromptMode: "replace" as string,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
   clearLoaderOpts: () => {
     _loaderOpts.length = 0;
   },
-  setLoaderExtensions: (exts: any) => {
+  setLoaderExtensions: (exts: TestExtension[]) => {
     _loaderGetExtensionsResult.extensions = exts;
   },
   clearLoaderExtensions: () => {
@@ -160,6 +203,8 @@ interface MockSession {
     onPayload?: (payload: unknown, model: Model<Api>) => Record<string, unknown> | Promise<Record<string, unknown>>;
   };
   _getListeners: () => Array<(event: unknown) => void>;
+  /** Retry-classifier slot patched by stream-retry; tests replace the impl. */
+  _isRetryableError?: (message: { stopReason?: string; errorMessage?: string }) => boolean;
 }
 /** Full assistant message with zeroed metadata; tests override what they assert on. */
 function assistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
@@ -464,7 +509,7 @@ describe("runAgent — codex stream error retry wiring", () => {
   });
 
   it("wraps the session's _isRetryableError classifier", async () => {
-    const session: any = createMockSession();
+    const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     const originalClassifier = vi.fn().mockReturnValue(false);
     session._isRetryableError = originalClassifier;
@@ -475,13 +520,13 @@ describe("runAgent — codex stream error retry wiring", () => {
     expect(session._isRetryableError).not.toBe(originalClassifier);
     // Transient Codex stream errors are classified as retryable by our pattern...
     expect(
-      session._isRetryableError({ stopReason: "error", errorMessage: "stream disconnected before completion" }),
+      session._isRetryableError!({ stopReason: "error", errorMessage: "stream disconnected before completion" }),
     ).toBe(true);
     // ...without calling the original (our pattern matches first).
     expect(originalClassifier).not.toHaveBeenCalled();
     // Other errors fall through to the original classifier.
     originalClassifier.mockClear();
-    expect(session._isRetryableError({ stopReason: "error", errorMessage: "rate limited" })).toBe(false);
+    expect(session._isRetryableError!({ stopReason: "error", errorMessage: "rate limited" })).toBe(false);
     expect(originalClassifier).toHaveBeenCalled();
   });
 });
@@ -743,15 +788,17 @@ describe("runAgent — extension name-based filtering", () => {
     expect(loaderCall.noExtensions).toBe(false);
     expect(typeof loaderCall.extensionsOverride).toBe("function");
 
-    const override = loaderCall.extensionsOverride;
-    const result = override({
-      extensions: [
-        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
-        { path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts", tools: new Map([["glob", {}]]) },
-      ],
-      errors: [],
-      runtime: {},
-    });
+    const override = loaderCall.extensionsOverride!;
+    const result = override(
+      asLoadExtensionsResult({
+        extensions: [
+          { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+          { path: "/home/test/.pi/agent/extensions/extra-tools/glob.ts", tools: new Map([["glob", {}]]) },
+        ],
+        errors: [],
+        runtime: {},
+      }),
+    );
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -771,15 +818,17 @@ describe("runAgent — extension name-based filtering", () => {
     expect(typeof loaderCall.extensionsOverride).toBe("function");
 
     // The override should resolve "tavily/web_search" → "tavily" for extension loading
-    const override = loaderCall.extensionsOverride;
-    const result = override({
-      extensions: [
-        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
-        { path: "/home/test/.pi/agent/extensions/other/index.ts", tools: new Map([["other_tool", {}]]) },
-      ],
-      errors: [],
-      runtime: {},
-    });
+    const override = loaderCall.extensionsOverride!;
+    const result = override(
+      asLoadExtensionsResult({
+        extensions: [
+          { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+          { path: "/home/test/.pi/agent/extensions/other/index.ts", tools: new Map([["other_tool", {}]]) },
+        ],
+        errors: [],
+        runtime: {},
+      }),
+    );
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -796,15 +845,17 @@ describe("runAgent — extension name-based filtering", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     const loaderCall = mockModules.getLoaderOpts();
-    const override = loaderCall.extensionsOverride;
-    const result = override({
-      extensions: [
-        { path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts", tools: new Map() },
-        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
-      ],
-      errors: [],
-      runtime: {},
-    });
+    const override = loaderCall.extensionsOverride!;
+    const result = override(
+      asLoadExtensionsResult({
+        extensions: [
+          { path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts", tools: new Map() },
+          { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+        ],
+        errors: [],
+        runtime: {},
+      }),
+    );
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -872,15 +923,17 @@ describe("runAgent — excludeExtensions (blacklist mode)", () => {
     expect(loaderCall.noExtensions).toBe(false);
     expect(typeof loaderCall.extensionsOverride).toBe("function");
 
-    const override = loaderCall.extensionsOverride;
-    const result = override({
-      extensions: [
-        { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
-        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
-      ],
-      errors: [],
-      runtime: {},
-    });
+    const override = loaderCall.extensionsOverride!;
+    const result = override(
+      asLoadExtensionsResult({
+        extensions: [
+          { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
+          { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+        ],
+        errors: [],
+        runtime: {},
+      }),
+    );
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -902,16 +955,18 @@ describe("runAgent — excludeExtensions (blacklist mode)", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     const loaderCall = mockModules.getLoaderOpts();
-    const override = loaderCall.extensionsOverride;
-    const result = override({
-      extensions: [
-        { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
-        { path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts", tools: new Map() },
-        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
-      ],
-      errors: [],
-      runtime: {},
-    });
+    const override = loaderCall.extensionsOverride!;
+    const result = override(
+      asLoadExtensionsResult({
+        extensions: [
+          { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
+          { path: "/home/test/.pi/agent/extensions/confirm-edits/index.ts", tools: new Map() },
+          { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+        ],
+        errors: [],
+        runtime: {},
+      }),
+    );
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -933,15 +988,17 @@ describe("runAgent — excludeExtensions (blacklist mode)", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     const loaderCall = mockModules.getLoaderOpts();
-    const override = loaderCall.extensionsOverride;
-    const result = override({
-      extensions: [
-        { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
-        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
-      ],
-      errors: [],
-      runtime: {},
-    });
+    const override = loaderCall.extensionsOverride!;
+    const result = override(
+      asLoadExtensionsResult({
+        extensions: [
+          { path: "/home/test/.pi/agent/extensions/quality-monitor/index.ts", tools: new Map() },
+          { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+        ],
+        errors: [],
+        runtime: {},
+      }),
+    );
     expect(result.extensions).toHaveLength(1);
     expect(result.extensions[0].path).toContain("tavily");
   });
@@ -1042,8 +1099,8 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "web_crawl"]);
     // Capture the session-factory config so the allowlist (the registry gate)
     // is asserted on the captured value, not on mock call indexing.
-    let sessionOpts: any;
-    mockModules.mockCreateAgentSession.mockImplementation((opts: any) => {
+    let sessionOpts: CreateAgentSessionOptions | undefined;
+    mockModules.mockCreateAgentSession.mockImplementation((opts: CreateAgentSessionOptions) => {
       sessionOpts = opts;
       return Promise.resolve({ session, extensionsResult: {} });
     });
@@ -1070,11 +1127,11 @@ describe("tools field — extension tool names and ext/all syntax", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    expect(sessionOpts.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl"]));
-    expect(sessionOpts.tools).not.toContain("bash");
-    expect(sessionOpts.tools).not.toContain("edit");
-    expect(sessionOpts.tools).not.toContain("tavily/*");
-    expect(sessionOpts.tools).not.toContain("Agent");
+    expect(sessionOpts!.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl"]));
+    expect(sessionOpts!.tools).not.toContain("bash");
+    expect(sessionOpts!.tools).not.toContain("edit");
+    expect(sessionOpts!.tools).not.toContain("tavily/*");
+    expect(sessionOpts!.tools).not.toContain("Agent");
   });
 
   it("warning: tool name not found in any loaded extension", async () => {
@@ -1983,12 +2040,12 @@ describe("runAgent — project trust threading", () => {
 
   it("threads the same settings manager into the resource loader and the session", async () => {
     const settingsManager = { isProjectTrusted: () => false, getDefaultTools: () => undefined };
-    mockModules.mockSettingsManagerCreate.mockReturnValue(settingsManager as any);
+    mockModules.mockSettingsManagerCreate.mockReturnValue(settingsManager);
 
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
-    let sessionOpts: any;
-    mockModules.mockCreateAgentSession.mockImplementation((opts: any) => {
+    let sessionOpts: CreateAgentSessionOptions | undefined;
+    mockModules.mockCreateAgentSession.mockImplementation((opts: CreateAgentSessionOptions) => {
       sessionOpts = opts;
       return Promise.resolve({ session, extensionsResult: {} });
     });
@@ -1998,7 +2055,7 @@ describe("runAgent — project trust threading", () => {
     // The loader opts carry the same manager instance
     expect(mockModules.getLoaderOpts().settingsManager).toBe(settingsManager);
     // And the session receives it via the settingsManager option
-    expect(sessionOpts.settingsManager).toBe(settingsManager);
+    expect(sessionOpts!.settingsManager).toBe(settingsManager);
   });
 });
 
@@ -2018,7 +2075,7 @@ describe("runAgent — defaultTools setting wiring", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockSettingsManagerCreate.mockReturnValue({
       getDefaultTools: () => ["read", "bash", "grep"],
-    } as any);
+    });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
@@ -2038,7 +2095,7 @@ describe("runAgent — defaultTools setting wiring", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockSettingsManagerCreate.mockReturnValue({
       getDefaultTools: () => undefined,
-    } as any);
+    });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
@@ -2052,7 +2109,7 @@ describe("runAgent — defaultTools setting wiring", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockSettingsManagerCreate.mockReturnValue({
       getDefaultTools: () => [],
-    } as any);
+    });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
@@ -2177,7 +2234,7 @@ describe("runAgent — custom mode", () => {
   });
 
   it("falls back when custom file is missing (ENOENT)", async () => {
-    const err = new Error("ENOENT") as any;
+    const err = new Error("ENOENT") as NodeJS.ErrnoException;
     err.code = "ENOENT";
     fsReadFileSyncSpy.mockImplementation(() => {
       throw err;
@@ -2386,9 +2443,17 @@ describe("runAgent — model error detection", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
-  function sessionWithMessages(messages: any[]) {
+  /** The message surface the model-error detector reads (role/stopReason/errorMessage). */
+  interface TestFeedMessage {
+    role: "user" | "assistant";
+    content?: unknown;
+    stopReason?: string;
+    errorMessage?: string;
+  }
+
+  function sessionWithMessages(messages: TestFeedMessage[]) {
     const session = createMockSession();
-    session.messages = messages;
+    Object.defineProperty(session, "messages", { get: () => messages, configurable: true });
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     return session;
@@ -2487,13 +2552,11 @@ describe("continueAgentSession", () => {
     session.prompt = vi.fn(async () => {
       session.messages.push(userMessage("keep going"), ...continuationMessages);
     });
-    mockModules.mockExtractText.mockImplementation((content: any) =>
-      typeof content === "string"
-        ? content
-        : Array.isArray(content)
-          ? content.map((c: any) => c.text ?? "").join("")
-          : "",
-    );
+    mockModules.mockExtractText.mockImplementation((content: string | ReadonlyArray<{ text?: string }>) => {
+      if (typeof content === "string") return content;
+      if (Array.isArray(content)) return content.map((c) => c.text ?? "").join("");
+      return "";
+    });
     return session;
   }
 

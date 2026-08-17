@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { join } from "node:path";
+import { asExtensionContext } from "./pi-boundaries.ts";
 
 const mockSetAgentScanDirs = vi.fn();
 const mockSetProjectDir = vi.fn();
@@ -123,7 +124,7 @@ describe("events.ts session config loading", () => {
   });
 
   it("uses getAgentDir() (not $HOME) for the user dir and loads project dirs when trusted", async () => {
-    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
+    const ctx = asExtensionContext({ cwd: MOCK_CWD, isProjectTrusted: () => true });
     await scanAndRegisterAgents(ctx);
 
     // Scan dirs: user (from getAgentDir()), project, shared
@@ -135,7 +136,7 @@ describe("events.ts session config loading", () => {
   });
 
   it("skips project dirs when the project is untrusted", async () => {
-    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => false } as any;
+    const ctx = asExtensionContext({ cwd: MOCK_CWD, isProjectTrusted: () => false });
     await scanAndRegisterAgents(ctx);
 
     expect(mockSetAgentScanDirs).toHaveBeenCalledWith(
@@ -146,14 +147,14 @@ describe("events.ts session config loading", () => {
   });
 
   it("points the store at the project .pi dir when trusted", async () => {
-    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => true } as any;
+    const ctx = asExtensionContext({ cwd: MOCK_CWD, isProjectTrusted: () => true });
     await loadConfigAndRegisterAgents(ctx);
 
     expect(mockSetProjectDir).toHaveBeenCalledWith(join(MOCK_CWD, ".pi"));
   });
 
   it("skips the project config when untrusted", async () => {
-    const ctx = { cwd: MOCK_CWD, isProjectTrusted: () => false } as any;
+    const ctx = asExtensionContext({ cwd: MOCK_CWD, isProjectTrusted: () => false });
     await loadConfigAndRegisterAgents(ctx);
 
     expect(mockSetProjectDir).toHaveBeenCalledWith(undefined);

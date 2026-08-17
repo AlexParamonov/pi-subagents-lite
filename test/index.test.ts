@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import { createMockExtensionAPI, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
 import type { CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
+import type { ResolveModelOptions } from "../src/models/model-precedence.js";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   DynamicBorder: class {},
@@ -16,8 +17,8 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 vi.mock("@earendil-works/pi-tui", () => ({
   Box: class {},
   Container: class {
-    children: any[] = [];
-    addChild(c: any) {
+    children: unknown[] = [];
+    addChild(c: unknown) {
       this.children.push(c);
     }
     clear() {
@@ -42,7 +43,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   Text: class {},
   Markdown: class {
     text: string;
-    constructor(text: string, _w: number, _h: number, _theme: any) {
+    constructor(text: string, _w: number, _h: number, _theme: unknown) {
       this.text = text;
     }
     render(_width: number) {
@@ -50,7 +51,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
     }
   },
   truncateToWidth: (text: string) => text,
-  fuzzyFilter: (items: any[], _query: string, _fn: any) => items,
+  fuzzyFilter: (items: unknown[], _query: string, _fn: unknown) => items,
   getKeybindings: () => ({
     matches: () => false,
   }),
@@ -61,7 +62,7 @@ vi.mock("../src/ui/searchable-select.js", () => ({
 }));
 
 vi.mock("../src/models/model-precedence.js", () => ({
-  resolveModel: vi.fn((opts: any) => opts?.parentModelId ?? ""),
+  resolveModel: vi.fn((opts: ResolveModelOptions) => opts?.parentModelId ?? ""),
 }));
 
 vi.mock("../src/agents/agent-types.js", () => ({
@@ -461,7 +462,7 @@ describe("constrained sampling — toggle ON", () => {
       expect(props[name].anyOf).toBeDefined();
       // Strict-mode JSON schema rejects null values unless the union
       // explicitly includes the null variant (Type.Null in registration.ts).
-      expect(props[name].anyOf.some((s: any) => s.type === "null")).toBe(true);
+      expect(props[name].anyOf.some((s: { type?: unknown }) => s.type === "null")).toBe(true);
     }
   });
 

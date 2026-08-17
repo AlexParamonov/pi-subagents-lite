@@ -13,12 +13,13 @@ import {
   type WorktreeValidationSuccess,
   type WorktreeValidationFailure,
 } from "../../src/spawn/worktree-validator.js";
+import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.ts";
 
 // ── helpers ──────────────────────────────────────────────────────
 
 function makePi(gitCommonDirResults: Map<string, string | null>, showToplevelResults?: Map<string, string | null>) {
   return {
-    exec: vi.fn(async (cmd: string, args: string[], opts?: any) => {
+    exec: vi.fn(async (cmd: string, args: string[], opts?: { cwd?: string }) => {
       if (cmd === "git" && args[0] === "rev-parse") {
         const cwd = opts?.cwd ?? "";
         if (args[1] === "--git-common-dir") {
@@ -514,18 +515,18 @@ describe("worktree deletion mid-run", () => {
     mockRunAgent.mockRejectedValue(new Error("ENOENT: no such file or directory, cwd '/deleted/worktree'"));
 
     // Minimal mock for AgentManager dependencies
-    const mockCtx = {
+    const mockCtx = asExtensionContext({
       modelRegistry: [],
       model: undefined,
       cwd: "/tmp",
-    } as any;
+    });
 
     const { AgentManager } = await import("../../src/agents/agent-manager.js");
     const manager = new AgentManager();
 
     // Spawn should not throw — the error is caught inside startAgent.
     // The agent record transitions to "error" status.
-    const agentId = manager.spawn({ exec: vi.fn() } as any, mockCtx, "general-purpose", "test prompt", {
+    const agentId = manager.spawn(asExtensionAPI({ exec: vi.fn() }), mockCtx, "general-purpose", "test prompt", {
       description: "test",
       worktreePath: "/deleted/worktree",
     });

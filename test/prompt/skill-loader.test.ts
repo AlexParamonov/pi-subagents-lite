@@ -13,7 +13,7 @@ import { preloadSkills, loadSkillMeta, loadAllSkills } from "../../src/prompt/sk
 import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
 import type { AgentConfig } from "../../src/agents/types.ts";
 import type { EnvInfo } from "../../src/types.ts";
-import type { Skill } from "@earendil-works/pi-coding-agent";
+import type { Skill, SourceInfo } from "@earendil-works/pi-coding-agent";
 import { createSkillDir, createFlatSkill } from "../fixtures.ts";
 
 const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt, fsExistsSyncMock, fsReaddirSyncMock } =
@@ -63,7 +63,7 @@ function makeSkill(
     description,
     filePath,
     baseDir: join(filePath, ".."),
-    sourceInfo: {} as any,
+    sourceInfo: {} as SourceInfo,
     disableModelInvocation: opts.disableModelInvocation ?? false,
   };
 }

@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
 import type { AgentConfig } from "../../src/agents/types.ts";
 import type { EnvInfo } from "../../src/types.ts";
@@ -15,11 +16,11 @@ vi.mock("@earendil-works/pi-coding-agent", async () => {
     ...actual,
     // Return only <skill> elements — buildAgentPrompt extracts these with regex
     // and adds its own intro text and <available_skills> wrapper.
-    formatSkillsForPrompt: vi.fn((skills: any[]) => {
+    formatSkillsForPrompt: vi.fn((skills: Skill[]) => {
       return skills
-        .filter((s: any) => !s.disableModelInvocation)
+        .filter((s: Skill) => !s.disableModelInvocation)
         .map(
-          (s: any) =>
+          (s: Skill) =>
             `<skill><name>${escapeXml(s.name)}</name><description>${escapeXml(s.description)}</description><location>${escapeXml(s.filePath)}</location></skill>`,
         )
         .join("\n");

@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { readPiSettings, getHideThinkingBlock, readDefaultTools } from "../src/pi-settings.js";
 import { tempDirFixture } from "./fixtures";
 
@@ -84,35 +85,46 @@ describe("PiSettings", () => {
 /*  readDefaultTools                                                  */
 /* ------------------------------------------------------------------ */
 
+/** The SettingsManager surface readDefaultTools reads (accessor + merged settings fallback). */
+interface DefaultToolsManager {
+  getDefaultTools?: () => string[] | undefined;
+  settings?: { defaultTools?: string[] | null };
+}
+
+/** Assert a fake settings manager against the real SettingsManager at the read boundary. */
+function asSettingsManager<S extends object>(fake: S): SettingsManager & S {
+  return fake as SettingsManager & S;
+}
+
 describe("readDefaultTools", () => {
   it("returns the accessor's value when pi exposes getDefaultTools", () => {
-    const manager = { getDefaultTools: () => ["read", "bash"] };
-    expect(readDefaultTools(manager as any)).toEqual(["read", "bash"]);
+    const manager: DefaultToolsManager = { getDefaultTools: () => ["read", "bash"] };
+    expect(readDefaultTools(asSettingsManager(manager))).toEqual(["read", "bash"]);
   });
 
   it("reads the merged settings field when pi lacks getDefaultTools (pi < 0.84.2)", () => {
-    const manager = { settings: { defaultTools: ["read", "bash", "grep"] } };
-    expect(readDefaultTools(manager as any)).toEqual(["read", "bash", "grep"]);
+    const manager: DefaultToolsManager = { settings: { defaultTools: ["read", "bash", "grep"] } };
+    expect(readDefaultTools(asSettingsManager(manager))).toEqual(["read", "bash", "grep"]);
   });
 
   it("returns undefined when the setting is unconfigured on either path", () => {
-    expect(readDefaultTools({ settings: {} } as any)).toBeUndefined();
-    expect(readDefaultTools({ getDefaultTools: () => undefined } as any)).toBeUndefined();
+    expect(readDefaultTools(asSettingsManager({ settings: {} }))).toBeUndefined();
+    expect(readDefaultTools(asSettingsManager({ getDefaultTools: () => undefined }))).toBeUndefined();
   });
 
   it("keeps an explicitly empty [] distinct from unconfigured", () => {
-    expect(readDefaultTools({ settings: { defaultTools: [] } } as any)).toEqual([]);
-    expect(readDefaultTools({ getDefaultTools: () => [] } as any)).toEqual([]);
+    expect(readDefaultTools(asSettingsManager({ settings: { defaultTools: [] } }))).toEqual([]);
+    expect(readDefaultTools(asSettingsManager({ getDefaultTools: () => [] }))).toEqual([]);
   });
 
   it("degrades to undefined when the merged field holds a non-array", () => {
-    expect(readDefaultTools({ settings: { defaultTools: null } } as any)).toBeUndefined();
+    expect(readDefaultTools(asSettingsManager({ settings: { defaultTools: null } }))).toBeUndefined();
   });
 
   it("returns a copy so callers cannot mutate the manager's state", () => {
     const shared = ["read"];
-    const manager = { getDefaultTools: () => shared };
-    const tools = readDefaultTools(manager as any)!;
+    const manager: DefaultToolsManager = { getDefaultTools: () => shared };
+    const tools = readDefaultTools(asSettingsManager(manager))!;
     tools.push("bash");
     expect(shared).toEqual(["read"]);
   });

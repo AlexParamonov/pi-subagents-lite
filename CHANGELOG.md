@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Limit-bounded AgentStatus output.** The AgentStatus tool now always lists in-progress agents (running, queued) and then shows settled agents (completed, turn_limited, aborted, stopped, error) most-recently-settled first, capped at `agentStatusLimit` settled agents; when settled agents are hidden, the output ends with "and N more settled agents". The new `agentStatusLimit` config key (Widget settings > Behavior, numeric entry) defaults to 0 = auto: 2 × the configured default concurrency (8 at the built-in default of 4), so the cap scales with how many agents can run at once. Records are unaffected — the limit only changes what the tool prints.
 
+### Changed
+
+- **No explicit `any` type usage remains in test code.** `typecheck` already covered `test/`; every explicit `any` annotation across the test suite is now replaced with the real `src/` or pi-package type, or with a structural fake asserted at a single call boundary. Type-level only: all 1592 tests behave identically.
+
 ### Fixed
 
 - **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.

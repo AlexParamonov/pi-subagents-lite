@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { createMockSession, tempDirFixture } from "../fixtures.ts";
+import { asAgentSession } from "../pi-boundaries.ts";
 import { createOutputFilePath, writeInitialEntry, streamToOutputFile } from "../../src/agents/output-file.js";
 
 const testAgentId = "test-thinking-streaming";
@@ -13,8 +14,14 @@ const fixture = tempDirFixture();
 beforeEach(() => fixture.setup());
 afterEach(() => fixture.teardown());
 
-function setupSession(messages: any[]) {
-  const session = createMockSession() as any;
+/** A feed message the output streamer reads: role plus opaque content blob. */
+interface FeedMessage {
+  role: string;
+  content: string | ReadonlyArray<Record<string, unknown>>;
+}
+
+function setupSession(messages: FeedMessage[]) {
+  const session = asAgentSession(createMockSession());
   Object.defineProperty(session, "messages", { get: () => messages, configurable: true });
   return session;
 }
