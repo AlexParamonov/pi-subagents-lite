@@ -55,6 +55,14 @@ vi.mock("../../src/spawn/project-trust.js", () => ({
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: mockResolveType,
+  resolveTypeOrDiscover: vi.fn(async (type: string, worktreeDir?: string) => {
+    let resolution = mockResolveType(type);
+    if (resolution.kind === "not-found") {
+      await mockDiscoverNewAgents(worktreeDir);
+      resolution = mockResolveType(type);
+    }
+    return resolution;
+  }),
   getAgentConfig: vi.fn(() => ({ maxTurns: 25, thinkingLevel: undefined })),
   discoverNewAgents: mockDiscoverNewAgents,
 }));

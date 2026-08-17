@@ -8,10 +8,9 @@
 
 import type { ExtensionCommandContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ToolCall } from "@earendil-works/pi-ai";
-import { getCoordinator, getManager, getPiInstance } from "../shell.js";
+import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.js";
 import { parseThinkingLevel, findModelInRegistry } from "../utils.js";
-import { resolveType, getAgentConfig, discoverNewAgents } from "./agent-types.js";
-import { getStore } from "../shell.js";
+import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.js";
 
 /** Extracted parameters from a historical Agent tool call. */
 export interface AgentCallParams {
@@ -108,15 +107,11 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     }
 
     // Resolve type (with discovery for worktree-local agents)
-    let resolution = resolveType(type);
-    if (resolution.kind === "not-found") {
-      const targetAgentsDir =
-        call.worktree_path && getStore().agent.loadExtensionsImplicitly !== false
-          ? `${call.worktree_path}/.pi/agents`
-          : undefined;
-      await discoverNewAgents(targetAgentsDir);
-      resolution = resolveType(type);
-    }
+    const targetAgentsDir =
+      call.worktree_path && getStore().agent.loadExtensionsImplicitly !== false
+        ? `${call.worktree_path}/.pi/agents`
+        : undefined;
+    const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
     if (resolution.kind === "not-found" || resolution.kind === "ambiguous") {
       skipped.push(`${type}: ${description} (unknown type)`);
       continue;

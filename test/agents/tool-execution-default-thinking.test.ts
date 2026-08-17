@@ -56,6 +56,10 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
+  resolveTypeOrDiscover: vi.fn(async (type: string, worktreeDir?: string) => {
+    const resolution = { kind: "resolved" as const, key: type };
+    return resolution;
+  }),
   getAgentConfig: mockGetAgentConfig,
   discoverNewAgents: mockDiscoverNewAgents,
 }));
