@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/types.js";
+import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
@@ -28,12 +28,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => text.length,
 }));
 
-function makeRunningAgent(id: string, type: string = "builder"): any {
+function makeRunningAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: { type, description: `Running agent ${id}` },
-    lifecycle: { status: "running", startedAt: Date.now() - 60000 },
-    execution: {},
+    lifecycle: { status: "running", startedAt: Date.now() - 60000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 5,
       compactionCount: 0,
@@ -44,12 +44,12 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeFinishedAgent(id: string, type: string = "builder"): any {
+function makeFinishedAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: { type, description: `Finished agent ${id}` },
-    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000 },
-    execution: {},
+    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 10,
       compactionCount: 0,
@@ -60,12 +60,12 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeQueuedAgent(id: string, type: string = "builder"): any {
+function makeQueuedAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: { type, description: `Queued agent ${id}` },
-    lifecycle: { status: "queued", startedAt: Date.now() - 30000 },
-    execution: {},
+    lifecycle: { status: "queued", startedAt: Date.now() - 30000, started: false },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 0,
       compactionCount: 0,
@@ -127,7 +127,7 @@ describe("scroll model state", () => {
 
   it("scroll anchor resets to 0 on nav activate", () => {
     const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
     for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): scrolled to bottom window
@@ -142,7 +142,7 @@ describe("scroll model state", () => {
 
   it("scroll anchor resets to 0 on nav deactivate", () => {
     const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
     for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): scrolled to bottom window
@@ -177,7 +177,7 @@ describe("scroll viewport navigation", () => {
 
   it("follows the issue walkthrough state by state", () => {
     const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     // States (h, s) with exact windows from issue.md's scroll model contract, read
     // as a continuous press sequence (the diagram's ↑ columns start from (4,2),
@@ -221,7 +221,7 @@ describe("scroll viewport navigation", () => {
 
   it("arrow moves freely within the visible window without scrolling", () => {
     const agents = Array.from({ length: 3 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate(); // (0,0): f0 f1 f2, everything fits
     let state = renderState(widget);
@@ -242,7 +242,7 @@ describe("scroll viewport navigation", () => {
 
   it("at bottom edge with collapsed agents below, ↓ scrolls up with arrow pinned to bottom", () => {
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate(); // (0,0): f0 f1 f2 +3 more
     widget.navDown(); // (1,0)
@@ -265,7 +265,7 @@ describe("scroll viewport navigation", () => {
 
   it("at top edge with collapsed agents above, ↑ scrolls down with arrow pinned to top", () => {
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate(); // (0,0)
     widget.navDown(); // (1,0)
@@ -291,7 +291,7 @@ describe("scroll viewport navigation", () => {
 
   it("↓ at last agent wraps to first with window reset to top", () => {
     const agents = Array.from({ length: 3 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate(); // (0,0)
     widget.navDown(); // (1,0)
@@ -308,7 +308,7 @@ describe("scroll viewport navigation", () => {
 
   it("↑ at first agent wraps to last with window anchored at bottom", () => {
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate(); // (0,0)
     widget.navUp(); // wrap → (5,3): f3 f4 f5 +3 more, arrow pinned to bottom row
@@ -336,7 +336,7 @@ describe("overflow line format", () => {
 
   it("shows '+N more' without category breakdown", () => {
     const agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
 
@@ -372,7 +372,7 @@ describe("non-navigation overflow", () => {
     const running = Array.from({ length: 2 }, (_, i) => makeRunningAgent(`r${i}`));
     const queued = Array.from({ length: 3 }, (_, i) => makeQueuedAgent(`q${i}`));
 
-    (manager as any).listAgents = () => [...finished, ...running, ...queued];
+    manager.listAgents = () => [...finished, ...running, ...queued];
 
     // Not in nav mode
     const lines = renderWidgetLines(widget);
@@ -408,7 +408,7 @@ describe("highlighted agent always visible", () => {
 
   it("keeps the highlighted agent visible even when its block exceeds the budget", () => {
     const agents = [makeRunningAgent("r0"), makeRunningAgent("r1")];
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate(); // h=0: r0 (2 lines) does not fit the 1-line budget
     let state = renderState(widget);
@@ -426,7 +426,7 @@ describe("roster changes during navigation", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
   let activity: Map<string, LiveView>;
-  let agents: any[];
+  let agents: AgentRecord[];
 
   // Overflow config so the window actually scrolls before the roster shrinks/grows.
   beforeEach(() => {
@@ -441,14 +441,14 @@ describe("roster changes during navigation", () => {
   });
 
   it("renders a valid window right after shrink while navigating (no keypress needed)", () => {
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
     for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): [f2,f3,f4]
     expect(renderState(widget).visible).toEqual(["f2", "f3", "f4"]);
 
     // Turn-based eviction: the 80 ms refresh renders without any nav move.
-    (manager as any).listAgents = () => agents.slice(0, 3);
+    manager.listAgents = () => agents.slice(0, 3);
 
     // Clamp on shrink: h=4 → 2, s stays 2 (≤ h). Window [f2], arrow visible.
     const state = renderState(widget);
@@ -464,14 +464,14 @@ describe("roster changes during navigation", () => {
   });
 
   it("keeps index positions on growth (no auto-follow)", () => {
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
     for (let i = 0; i < 4; i++) widget.navDown(); // (4,2): scrolled to the bottom
 
     // Grow the roster (new spawn) — arrow and window keep their index positions.
     const grown = Array.from({ length: 3 }, (_, i) => makeFinishedAgent(`g${i}`));
-    (manager as any).listAgents = () => [...agents, ...grown];
+    manager.listAgents = () => [...agents, ...grown];
 
     expect(widget.highlightedIndex()).toBe(4);
     const state = renderState(widget);
@@ -481,13 +481,13 @@ describe("roster changes during navigation", () => {
 
   it("clamps to last remaining agent when the highlighted agent is evicted", () => {
     agents = Array.from({ length: 6 }, (_, i) => makeFinishedAgent(`f${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
     for (let i = 0; i < 5; i++) widget.navDown(); // (5,3): [f3,f4,f5], arrow on f5
 
     // Evict f3..f5 including the highlighted agent.
-    (manager as any).listAgents = () => agents.slice(0, 3);
+    manager.listAgents = () => agents.slice(0, 3);
 
     // Clamp happens on the next nav move — highlight clamps to last remaining (f2),
     // then ↓ wraps from the end to the start.
@@ -517,7 +517,7 @@ describe("queued agents during navigation", () => {
     const finished = Array.from({ length: 4 }, (_, i) => makeFinishedAgent(`f${i}`));
     const running = [makeRunningAgent("r0")];
     const queued = Array.from({ length: 3 }, (_, i) => makeQueuedAgent(`q${i}`));
-    (manager as any).listAgents = () => [...finished, ...running, ...queued];
+    manager.listAgents = () => [...finished, ...running, ...queued];
 
     widget.navActivate(); // (0,0): [f0,f1,f2], +5 more
     widget.navDown(); // (1,0)

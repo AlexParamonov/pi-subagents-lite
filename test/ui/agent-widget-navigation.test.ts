@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/types.js";
+import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
@@ -28,12 +28,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => text.length,
 }));
 
-function makeRunningAgent(id: string, type: string = "builder"): any {
+function makeRunningAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: { type, description: `Running agent ${id}` },
-    lifecycle: { status: "running", startedAt: Date.now() - 60000 },
-    execution: {},
+    lifecycle: { status: "running", startedAt: Date.now() - 60000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 5,
       compactionCount: 0,
@@ -44,12 +44,12 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeFinishedAgent(id: string, type: string = "builder"): any {
+function makeFinishedAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: { type, description: `Finished agent ${id}` },
-    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000 },
-    execution: {},
+    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 10,
       compactionCount: 0,
@@ -60,12 +60,12 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeQueuedAgent(id: string, type: string = "builder"): any {
+function makeQueuedAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: { type, description: `Queued agent ${id}` },
-    lifecycle: { status: "queued", startedAt: Date.now() - 30000 },
-    execution: {},
+    lifecycle: { status: "queued", startedAt: Date.now() - 30000, started: false },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 0,
       compactionCount: 0,
@@ -119,9 +119,9 @@ describe("navigation state machine", () => {
     it("activates navigation highlighting first agent when agents exist", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
       const finished = makeFinishedAgent("f1");
-      (manager as any).listAgents = () => [finished, agent];
+      manager.listAgents = () => [finished, agent];
 
       widget.navActivate();
       expect(widget.isNavActive()).toBe(true);
@@ -142,7 +142,7 @@ describe("navigation state machine", () => {
       const finished = makeFinishedAgent("f1");
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [finished, running];
+      manager.listAgents = () => [finished, running];
 
       widget.navActivate(); // highlights index 0 (first finished)
       expect(widget.highlightedIndex()).toBe(0);
@@ -153,7 +153,7 @@ describe("navigation state machine", () => {
 
     it("wraps from last agent to first", () => {
       const finished = makeFinishedAgent("f1");
-      (manager as any).listAgents = () => [finished];
+      manager.listAgents = () => [finished];
 
       widget.navActivate(); // index 0
       widget.navDown(); // wraps to first (index 0)
@@ -166,7 +166,7 @@ describe("navigation state machine", () => {
       const finished = makeFinishedAgent("f1");
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [finished, running];
+      manager.listAgents = () => [finished, running];
 
       widget.navActivate();
       widget.navDown(); // index 1 (running)
@@ -178,7 +178,7 @@ describe("navigation state machine", () => {
 
     it("wraps from first to last agent", () => {
       const finished = makeFinishedAgent("f1");
-      (manager as any).listAgents = () => [finished];
+      manager.listAgents = () => [finished];
 
       widget.navActivate(); // index 0
       widget.navUp(); // wraps to last agent (index 1)
@@ -196,7 +196,7 @@ describe("navigation state machine", () => {
     });
     it("returns the agent record when highlighting an agent", () => {
       const finished = makeFinishedAgent("f1");
-      (manager as any).listAgents = () => [finished];
+      manager.listAgents = () => [finished];
 
       widget.navActivate();
       expect(widget.navSelect()).toBe(finished);
@@ -262,7 +262,7 @@ describe("navigation roster", () => {
     const running = makeRunningAgent("r1");
     activity.set("r1", makeActivity("r1"));
     const queued = makeQueuedAgent("q1");
-    (manager as any).listAgents = () => [finished, running, queued];
+    manager.listAgents = () => [finished, running, queued];
 
     widget.navActivate();
 
@@ -277,7 +277,7 @@ describe("navigation roster", () => {
   it("queued agents expand to individual rows during navigation", () => {
     const q1 = makeQueuedAgent("q1");
     const q2 = makeQueuedAgent("q2");
-    (manager as any).listAgents = () => [q1, q2];
+    manager.listAgents = () => [q1, q2];
 
     widget.navActivate();
     // Roster: q1(0), q2(1)
@@ -289,7 +289,7 @@ describe("navigation roster", () => {
   it("queued agents aggregate when navigation is inactive", () => {
     const q1 = makeQueuedAgent("q1");
     const q2 = makeQueuedAgent("q2");
-    (manager as any).listAgents = () => [q1, q2];
+    manager.listAgents = () => [q1, q2];
 
     // Without nav active, queued agents render as "2 queued" block
     const lines = renderWidgetLines(widget);
@@ -316,7 +316,7 @@ describe("navigation rendering", () => {
     it("shows 'down to navigate' hint when navigation is inactive", () => {
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [running];
+      manager.listAgents = () => [running];
 
       const lines = renderWidgetLines(widget);
       expect(lines[0]).toContain("to navigate");
@@ -325,7 +325,7 @@ describe("navigation rendering", () => {
     it("shows navigation hint when navigation is active", () => {
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [running];
+      manager.listAgents = () => [running];
       widget.navActivate();
 
       const lines = renderWidgetLines(widget);
@@ -339,7 +339,7 @@ describe("navigation rendering", () => {
     it("renders '→' marker on the highlighted running agent", () => {
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [running];
+      manager.listAgents = () => [running];
       widget.navActivate(); // highlights index 1 = the running agent
 
       const lines = renderWidgetLines(widget);
@@ -350,7 +350,7 @@ describe("navigation rendering", () => {
 
     it("renders '→' marker on the highlighted finished agent", () => {
       const finished = makeFinishedAgent("f1");
-      (manager as any).listAgents = () => [finished];
+      manager.listAgents = () => [finished];
       widget.navActivate();
 
       const lines = renderWidgetLines(widget);
@@ -361,7 +361,7 @@ describe("navigation rendering", () => {
     it("does not render '→' marker when navigation is inactive", () => {
       const running = makeRunningAgent("r1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [running];
+      manager.listAgents = () => [running];
 
       const lines = renderWidgetLines(widget);
       // No '→' marker in agent lines
@@ -392,12 +392,12 @@ describe("auto-deactivation", () => {
 
     const running = makeRunningAgent("r1");
     activity.set("r1", makeActivity("r1"));
-    (manager as any).listAgents = () => [running];
+    manager.listAgents = () => [running];
     widget.navActivate();
     expect(widget.isNavActive()).toBe(true);
 
     // Agents clear
-    (manager as any).listAgents = () => [];
+    manager.listAgents = () => [];
     widget.update(); // triggers clearWidget path
     expect(widget.isNavActive()).toBe(false);
   });
@@ -426,7 +426,7 @@ describe("overflow with navigation", () => {
       agent.display.description = `Finished agent ${i}`;
       return agent;
     });
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     // Activate nav — highlights index 0 (agent 0)
     widget.navActivate();
@@ -459,13 +459,13 @@ describe("navigation highlight adoption on roster shrink", () => {
 
   it("returns the adopted live record when roster shrinks during navSelect", () => {
     const agents = Array.from({ length: 5 }, (_, i) => makeFinishedAgent(`a${i}`));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     widget.navActivate();
     for (let i = 0; i < 4; i++) widget.navDown();
     expect(widget.highlightedIndex()).toBe(4);
 
-    (manager as any).listAgents = () => agents.slice(0, 2);
+    manager.listAgents = () => agents.slice(0, 2);
 
     // Roster shrinks to 2 agents mid-freeze, no render in between. navSelect
     // resolves the nav state itself: a4 is gone, so identity-based adoption

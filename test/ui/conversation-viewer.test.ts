@@ -5,6 +5,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { MarkdownTheme, TUI } from "@earendil-works/pi-tui";
+import type { AgentRecord } from "../../src/types.js";
+import type { Theme } from "../../src/ui/types.js";
+import { asAgentSession } from "../pi-boundaries.js";
 
 // --- Mocks ---
 
@@ -47,7 +51,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
       text: string,
       _padX: number,
       _padY: number,
-      _theme: any,
+      _theme: MarkdownTheme,
       overrides?: { color?: (t: string) => string; italic?: boolean },
     ) {
       this._text = text;
@@ -102,7 +106,7 @@ import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
 
 // --- Test helpers ---
 
-const noopTheme: any = {
+const noopTheme: Theme = {
   fg: (_color: string, text: string) => text,
   bg: (_color: string, text: string) => text,
   bold: (text: string) => text,
@@ -113,33 +117,44 @@ const noopTheme: any = {
  * Theme that marks bg() calls in the rendered output. The tool-result
  * success/error distinction is a background color, which noopTheme flattens.
  */
-const bgMarkingTheme: any = {
+const bgMarkingTheme: Theme = {
   fg: (_color: string, text: string) => text,
   bg: (color: string, text: string) => `[bg:${color}]${text}[/bg]`,
   bold: (text: string) => text,
   italic: (text: string) => text,
 };
 
-/** Minimal message shape the viewer renders: role plus string or text-block content. */
+/** Minimal message shape the viewer renders: role, content blocks, tool-result metadata. */
+interface TestContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+}
 interface TestMessage {
   role: string;
-  content: string | { type: string; text: string }[];
+  content: string | TestContentBlock[];
+  toolName?: string;
+  toolCallId?: string;
+  isError?: boolean;
 }
 
-function makeMockSession(messages: any[] = []) {
-  return {
+function makeMockSession(messages: TestMessage[] = []) {
+  return asAgentSession({
     messages,
     subscribe: mockSubscribe,
-  } as any;
+  });
 }
 
-function makeMockRecord(overrides: Partial<any> = {}) {
+function makeMockRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
   return {
     id: "abc12345",
     lifecycle: {
       status: "running",
       startedAt: Date.now() - 30000,
       completedAt: undefined,
+      started: true,
     },
     display: {
       type: "builder",
@@ -152,16 +167,21 @@ function makeMockRecord(overrides: Partial<any> = {}) {
       turnCount: 10,
       compactionCount: 0,
     },
-    execution: { session: makeMockSession() },
+    execution: { settled: false, settlementCount: 0, session: makeMockSession() },
     ...overrides,
-  } as any;
+  };
 }
 
-function makeTui() {
-  return {
+/** Assert a fake TUI at the boundary: the viewer reads only requestRender and terminal.rows. */
+function asTui<S extends object>(fake: S): TUI & S {
+  return fake as TUI & S;
+}
+
+function makeTui(): TUI {
+  return asTui({
     terminal: { rows: 40, cols: 120 },
     requestRender: mockRequestRender,
-  } as any;
+  });
 }
 
 function count(haystack: string, needle: string): number {
@@ -184,7 +204,7 @@ describe("ConversationViewer", () => {
   describe("subscription", () => {
     it("subscribes to session events on construction", () => {
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -201,7 +221,7 @@ describe("ConversationViewer", () => {
       });
 
       const session = makeMockSession([{ role: "user", content: "hi" }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -241,7 +261,7 @@ describe("ConversationViewer", () => {
       });
 
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
       const done = vi.fn();
 
@@ -264,7 +284,7 @@ describe("ConversationViewer", () => {
     it("closes on 'q' key", () => {
       const done = vi.fn();
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
@@ -275,7 +295,7 @@ describe("ConversationViewer", () => {
     it("closes on Escape", () => {
       const done = vi.fn();
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
@@ -290,8 +310,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -311,8 +331,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -329,8 +349,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "completed", startedAt: Date.now() - 10000, completedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "completed", startedAt: Date.now() - 10000, completedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -348,8 +368,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -367,8 +387,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -387,8 +407,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "completed", startedAt: Date.now() - 10000, completedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "completed", startedAt: Date.now() - 10000, completedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -414,8 +434,8 @@ describe("ConversationViewer", () => {
     it("shows Enter steer in the footer while the agent is running", () => {
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const viewer = new ConversationViewer(
         makeTui(),
@@ -437,7 +457,7 @@ describe("ConversationViewer", () => {
       const onSteer = vi.fn();
       const done = vi.fn();
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session: undefined } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session: undefined } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
@@ -453,8 +473,8 @@ describe("ConversationViewer", () => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now() },
-        execution: { session },
+        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        execution: { settled: false, settlementCount: 0, session },
       });
       const tui = makeTui();
 
@@ -500,7 +520,7 @@ describe("ConversationViewer", () => {
 
     it("scrolls down on down arrow", () => {
       const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -516,7 +536,7 @@ describe("ConversationViewer", () => {
 
     it("scrolls up on up arrow", () => {
       const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -534,7 +554,7 @@ describe("ConversationViewer", () => {
 
     it("jumps to top on 'g'", () => {
       const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -551,7 +571,7 @@ describe("ConversationViewer", () => {
       // Content must actually overflow the viewport, or maxScroll is 0 and
       // the G branch has nothing to scroll (vacuous).
       const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -568,7 +588,7 @@ describe("ConversationViewer", () => {
 
     it("does not scroll past start", () => {
       const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -587,7 +607,7 @@ describe("ConversationViewer", () => {
   describe("render", () => {
     it("renders border frame", () => {
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -599,7 +619,7 @@ describe("ConversationViewer", () => {
 
     it("renders user messages", () => {
       const session = makeMockSession([{ role: "user", content: "hello world" }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -611,7 +631,7 @@ describe("ConversationViewer", () => {
 
     it("renders assistant messages", () => {
       const session = makeMockSession([{ role: "assistant", content: [{ type: "text", text: "here is the answer" }] }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -629,7 +649,7 @@ describe("ConversationViewer", () => {
           isError: false,
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, bgMarkingTheme, vi.fn());
@@ -650,7 +670,7 @@ describe("ConversationViewer", () => {
           isError: true,
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, bgMarkingTheme, vi.fn());
@@ -672,7 +692,7 @@ describe("ConversationViewer", () => {
           isError: false,
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -693,7 +713,7 @@ describe("ConversationViewer", () => {
           ],
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -705,7 +725,7 @@ describe("ConversationViewer", () => {
 
     it("shows waiting message when no messages", () => {
       const session = makeMockSession([]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -718,7 +738,7 @@ describe("ConversationViewer", () => {
     it("renders worktree label in header when present", () => {
       const session = makeMockSession([{ role: "user", content: "hello" }]);
       const record = makeMockRecord({
-        execution: { session },
+        execution: { settled: false, settlementCount: 0, session },
         display: { ...makeMockRecord().display, worktreeLabel: "feature" },
       });
       const tui = makeTui();
@@ -732,7 +752,7 @@ describe("ConversationViewer", () => {
 
     it("omits worktree label when not present", () => {
       const session = makeMockSession([{ role: "user", content: "hello" }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -755,7 +775,7 @@ describe("ConversationViewer", () => {
           content: [{ type: "text", text: "UNIQRESULT" }],
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
       const text = viewer.render(80).join("\n");
@@ -767,7 +787,7 @@ describe("ConversationViewer", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
       // First render caches the assistant message as a pending tool call.
@@ -795,7 +815,7 @@ describe("ConversationViewer", () => {
       });
 
       const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
       // First render warms the cache and parks the viewport at the bottom of the
@@ -832,7 +852,7 @@ describe("ConversationViewer", () => {
       mockSubscribe.mockReturnValue(unsubscribe);
 
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -852,13 +872,13 @@ describe("ConversationViewer", () => {
       ];
       // Create a session where messages can be replaced
       let messagesArray = [...originalMessages];
-      const session = {
+      const session = asAgentSession({
         get messages() {
           return messagesArray;
         },
         subscribe: mockSubscribe,
-      } as any;
-      const record = makeMockRecord({ execution: { session } });
+      });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
       const firstRender = viewer.render(80).join("\n");
@@ -883,13 +903,13 @@ describe("ConversationViewer", () => {
         { role: "user", content: "msg 1" },
         { role: "assistant", content: [{ type: "text", text: "resp 1" }] },
       ];
-      const session = {
+      const session = asAgentSession({
         get messages() {
           return messagesArray;
         },
         subscribe: mockSubscribe,
-      } as any;
-      const record = makeMockRecord({ execution: { session } });
+      });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
       viewer.render(80);
@@ -908,13 +928,13 @@ describe("ConversationViewer", () => {
 
     it("preserves cache on append (no array replacement)", () => {
       const messagesArray: TestMessage[] = [{ role: "user", content: "msg 1" }];
-      const session = {
+      const session = asAgentSession({
         get messages() {
           return messagesArray;
         },
         subscribe: mockSubscribe,
-      } as any;
-      const record = makeMockRecord({ execution: { session } });
+      });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
       const firstRender = viewer.render(80).join("\n");
@@ -940,7 +960,7 @@ describe("ConversationViewer", () => {
           ],
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -965,7 +985,7 @@ describe("ConversationViewer", () => {
 
     it("shows thinking visibility state in footer", () => {
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -985,7 +1005,7 @@ describe("ConversationViewer", () => {
           ],
         },
       ]);
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -1008,7 +1028,7 @@ describe("ConversationViewer", () => {
       });
 
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
@@ -1042,7 +1062,7 @@ describe("ConversationViewer", () => {
       });
 
       const session = makeMockSession();
-      const record = makeMockRecord({ execution: { session } });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const tui = makeTui();
 
       const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());

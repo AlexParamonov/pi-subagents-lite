@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/types.js";
+import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
 
@@ -35,7 +35,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 /*  Factories                                                         */
 /* ------------------------------------------------------------------ */
 
-function makeRunningAgent(id: string, type: string = "builder", worktreeLabel?: string): any {
+function makeRunningAgent(id: string, type: string = "builder", worktreeLabel?: string): AgentRecord {
   return {
     id,
     display: {
@@ -46,8 +46,9 @@ function makeRunningAgent(id: string, type: string = "builder", worktreeLabel?: 
     lifecycle: {
       status: "running",
       startedAt: Date.now() - 60000,
+      started: true,
     },
-    execution: {},
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 5,
       compactionCount: 0,
@@ -58,7 +59,7 @@ function makeRunningAgent(id: string, type: string = "builder", worktreeLabel?: 
   };
 }
 
-function makeFinishedAgent(id: string, type: string = "builder", worktreeLabel?: string): any {
+function makeFinishedAgent(id: string, type: string = "builder", worktreeLabel?: string): AgentRecord {
   return {
     id,
     display: {
@@ -70,8 +71,9 @@ function makeFinishedAgent(id: string, type: string = "builder", worktreeLabel?:
       status: "completed",
       startedAt: Date.now() - 120000,
       completedAt: Date.now() - 30000,
+      started: true,
     },
-    execution: {},
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 10,
       compactionCount: 0,
@@ -108,7 +110,7 @@ describe("widget worktree label — full mode", () => {
   it("shows worktreeLabel on the metadata line for a running agent", () => {
     const agent = makeRunningAgent("a1", "builder", "feature/packages/web");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const metadataLine = lines.find((l: string) => l.includes("feature/packages/web"));
@@ -118,7 +120,7 @@ describe("widget worktree label — full mode", () => {
 
   it("shows worktreeLabel for a finished agent", () => {
     const agent = makeFinishedAgent("a1", "builder", "feature");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const hasLabel = lines.some((l: string) => l.includes("feature"));
@@ -128,7 +130,7 @@ describe("widget worktree label — full mode", () => {
   it("does not show worktreeLabel when agent has no worktree", () => {
     const agent = makeRunningAgent("a1", "builder"); // no worktreeLabel
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     // No worktree label anywhere: a stray "@undefined" (or any @-prefixed
@@ -141,7 +143,7 @@ describe("widget worktree label — full mode", () => {
     const agent = makeRunningAgent("a1", "builder", "feature");
     agent.display.outputFile = "/tmp/pi-agent-outputs/test.log";
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     // Both @ feature and tail -f should be on the same metadata line
@@ -152,7 +154,7 @@ describe("widget worktree label — full mode", () => {
   it("shows worktreeLabel on its own line when no outputFile", () => {
     const agent = makeRunningAgent("a1", "builder", "feature");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const labelLine = lines.find((l: string) => l.includes("@feature"));
@@ -165,7 +167,7 @@ describe("widget worktree label — full mode", () => {
     const a2 = makeRunningAgent("a2", "builder", "bugfix");
     activity.set("a1", makeActivity("a1"));
     activity.set("a2", makeActivity("a2"));
-    (manager as any).listAgents = () => [a1, a2];
+    manager.listAgents = () => [a1, a2];
 
     const lines = renderWidgetLines(widget);
     const hasFeature = lines.some((l: string) => l.includes("feature"));
@@ -191,7 +193,7 @@ describe("widget worktree label — compact mode", () => {
   it("does NOT show worktreeLabel in compact mode for a running agent", () => {
     const agent = makeRunningAgent("a1", "builder", "feature/packages/web");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const hasLabel = lines.some((l: string) => l.includes("feature/packages/web"));
@@ -200,7 +202,7 @@ describe("widget worktree label — compact mode", () => {
 
   it("does NOT show worktreeLabel in compact mode for a finished agent", () => {
     const agent = makeFinishedAgent("a1", "builder", "feature");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const hasLabel = lines.some((l: string) => l.includes("feature"));
@@ -210,7 +212,7 @@ describe("widget worktree label — compact mode", () => {
   it("compact mode still shows agent activity without worktree label", () => {
     const agent = makeRunningAgent("a1", "builder", "feature");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => l.includes("reading"))).toBe(true);

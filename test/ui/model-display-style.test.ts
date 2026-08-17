@@ -5,6 +5,8 @@ import { describe, it, expect } from "vitest";
 import { ConfigStore, type ConfigIO } from "../../src/config/config-store.ts";
 import type { RawConfig } from "../../src/config/config-io.ts";
 import type { AgentWidget } from "../../src/ui/agent-widget.ts";
+import type { StatsVisibility } from "../../src/ui/format.ts";
+import type { ModelThinkingPlacement } from "../../src/config/types.ts";
 
 /** In-memory ConfigIO over raw global layers, recording saves. */
 function memIO(initial: { global?: RawConfig } = {}): {
@@ -28,21 +30,60 @@ function memIO(initial: { global?: RawConfig } = {}): {
 
 function widgetStub(): { w: AgentWidget; calls: string[] } {
   const calls: string[] = [];
-  const w = {
-    setShowCost: (e: boolean) => calls.push(`setShowCost:${e}`),
-    setForceCompact: (e: boolean) => calls.push(`setForceCompact:${e}`),
-    setWidgetShortcut: (e: boolean) => calls.push(`setWidgetShortcut:${e}`),
-    setMaxLines: (n: number) => calls.push(`setMaxLines:${n}`),
-    setMaxLinesCompact: (n: number) => calls.push(`setMaxLinesCompact:${n}`),
-    setNavHint: (e: boolean) => calls.push(`setNavHint:${e}`),
-    setFinishedRetentionMinutes: (n: number) => calls.push(`setFinishedRetentionMinutes:${n}`),
-    setCompactMode: (c: boolean) => calls.push(`setCompactMode:${c}`),
-    setStatsVisibility: (v: any) => calls.push(`setStatsVisibility:${JSON.stringify(v)}`),
-    setModelDisplayStyle: (s: string) => calls.push(`setModelDisplayStyle:${s}`),
-    setModelThinkingPlacement: (p: string) => calls.push(`setModelThinkingPlacement:${p}`),
-    setStatusBarFormat: (f: string) => calls.push(`setStatusBarFormat:${f}`),
+  // Stub shape stays comparable to the real AgentWidget (real param types,
+  // void returns) so a single `as` cast is legal.
+  const w: {
+    setShowCost: (e: boolean) => void;
+    setForceCompact: (e: boolean) => void;
+    setWidgetShortcut: (e: boolean) => void;
+    setMaxLines: (n: number) => void;
+    setMaxLinesCompact: (n: number) => void;
+    setNavHint: (e: boolean) => void;
+    setFinishedRetentionMinutes: (n: number) => void;
+    setCompactMode: (c: boolean) => void;
+    setStatsVisibility: (v: StatsVisibility) => void;
+    setModelDisplayStyle: (s: "id" | "name") => void;
+    setModelThinkingPlacement: (p: ModelThinkingPlacement) => void;
+    setStatusBarFormat: (f: "full" | "compact") => void;
+  } = {
+    setShowCost: (e) => {
+      calls.push(`setShowCost:${e}`);
+    },
+    setForceCompact: (e) => {
+      calls.push(`setForceCompact:${e}`);
+    },
+    setWidgetShortcut: (e) => {
+      calls.push(`setWidgetShortcut:${e}`);
+    },
+    setMaxLines: (n) => {
+      calls.push(`setMaxLines:${n}`);
+    },
+    setMaxLinesCompact: (n) => {
+      calls.push(`setMaxLinesCompact:${n}`);
+    },
+    setNavHint: (e) => {
+      calls.push(`setNavHint:${e}`);
+    },
+    setFinishedRetentionMinutes: (n) => {
+      calls.push(`setFinishedRetentionMinutes:${n}`);
+    },
+    setCompactMode: (c) => {
+      calls.push(`setCompactMode:${c}`);
+    },
+    setStatsVisibility: (v) => {
+      calls.push(`setStatsVisibility:${JSON.stringify(v)}`);
+    },
+    setModelDisplayStyle: (s) => {
+      calls.push(`setModelDisplayStyle:${s}`);
+    },
+    setModelThinkingPlacement: (p) => {
+      calls.push(`setModelThinkingPlacement:${p}`);
+    },
+    setStatusBarFormat: (f) => {
+      calls.push(`setStatusBarFormat:${f}`);
+    },
   };
-  return { w: w as unknown as AgentWidget, calls };
+  return { w: w as AgentWidget, calls };
 }
 
 /* ------------------------------------------------------------------ */
