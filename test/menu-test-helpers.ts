@@ -14,13 +14,15 @@ import { vi, type Mock } from "vitest";
 
 /** The ui.custom component factory as the mock invokes it: the real
  * (tui, theme, keybindings, done) signature with test-fake argument shapes
- * (the real TUI/Theme/KeybindingsManager are not constructible fakes here). */
-type ComponentFactory = (
+ * (the real TUI/Theme/KeybindingsManager are not constructible fakes here).
+ * Theme members mirror src's Theme: only fg/bold are required, so each
+ * menu test's theme fake can provide just the functions its menu uses. */
+export type ComponentFactory = (
   tui: { terminal: { rows: number } },
   theme: {
     fg: (color: string, text: string) => string;
     bold: (text: string) => string;
-    italic: (text: string) => string;
+    italic?: (text: string) => string;
   },
   keybindings: unknown,
   done: (result: unknown) => void,
