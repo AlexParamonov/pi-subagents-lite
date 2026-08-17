@@ -58,17 +58,9 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown>; isError?: boolean },
       options: { expanded?: boolean },
       theme: any,
-      context?: { isError?: boolean },
     ) => {
       const store = getStore();
-      const isError = context?.isError ?? result.isError;
-      return renderAgentToolResult(
-        { ...result, isError },
-        options,
-        theme,
-        store.agent.showCost,
-        store.agent.modelDisplayStyle,
-      );
+      return renderAgentToolResult(result, options, theme, store.agent.showCost, store.agent.modelDisplayStyle);
     },
   };
   // @ts-expect-error — description removed to save prompt tokens

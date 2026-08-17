@@ -97,24 +97,6 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   ERROR_STATUSES: new Set(),
 }));
 
-const { mockRenderAgentToolResult } = vi.hoisted(() => ({
-  mockRenderAgentToolResult: vi.fn(),
-}));
-
-vi.mock("../src/ui/renderer.js", () => ({
-  renderAgentToolCall: vi.fn(() => "mocked-call"),
-  renderAgentToolResult: mockRenderAgentToolResult,
-  renderSubagentResult: vi.fn(
-    () =>
-      new (class {
-        children: unknown[] = [];
-        addChild(c: unknown) {
-          this.children.push(c);
-        }
-      })(),
-  ),
-}));
-
 // Mutable state shared between the shell mock and tests.
 const { mutableStore, spawnGuard } = vi.hoisted(() => ({
   mutableStore: {
@@ -487,75 +469,5 @@ describe("constrained sampling — toggle ON", () => {
   it("Agent schema has additionalProperties: false when toggle is ON", () => {
     const tool = findTool(api, "Agent");
     expect(tool!.parameters.additionalProperties).toBe(false);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/*  Agent renderResult — uses context.isError, not result.isError      */
-/* ------------------------------------------------------------------ */
-
-describe("Agent renderResult — context.isError override", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
-  beforeEach(() => {
-    mockRenderAgentToolResult.mockReset();
-  });
-
-  it("passes context.isError through instead of result.isError", () => {
-    const tool = findTool(api, "Agent");
-    expect(tool?.renderResult).toBeDefined();
-
-    const result = {
-      content: [{ type: "text", text: "some output" }],
-      details: { type: "builder" },
-      isError: false, // agent-loop overwrites this to false
-    };
-    const context = { isError: true, toolCallId: "call_123" }; // agent-loop's correct value
-
-    tool!.renderResult!(result, { expanded: false }, {}, context);
-
-    // renderAgentToolResult must receive isError: true from context, not false from result
-    expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
-    const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
-    expect(passedResult.isError).toBe(true);
-  });
-
-  it("falls back to result.isError when context is absent", () => {
-    const tool = findTool(api, "Agent");
-
-    const result = {
-      content: [{ type: "text", text: "some output" }],
-      details: { type: "builder" },
-      isError: true,
-    };
-
-    // No context parameter (old pi versions)
-    tool!.renderResult!(result, { expanded: false }, {});
-
-    expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
-    const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
-    expect(passedResult.isError).toBe(true);
-  });
-
-  it("shows success icon when both result.isError and context.isError are false", () => {
-    const tool = findTool(api, "Agent");
-
-    const result = {
-      content: [{ type: "text", text: "success" }],
-      details: { type: "builder" },
-      isError: false,
-    };
-    const context = { isError: false };
-
-    tool!.renderResult!(result, { expanded: false }, {}, context);
-
-    expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
-    const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
-    expect(passedResult.isError).toBe(false);
   });
 });

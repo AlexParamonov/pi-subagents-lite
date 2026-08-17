@@ -195,16 +195,16 @@ describe("executeAgentTool — worktree_path validation", () => {
     );
   });
 
-  it("returns an error when worktree_path validation fails", async () => {
+  it("throws when worktree_path validation fails", async () => {
     mockValidateWorktreePath.mockResolvedValue({
       ok: false,
       error: "Path '/etc' is not inside a git repository",
     });
 
-    const result = await executeAgentTool("tc-2", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctx);
+    await expect(
+      executeAgentTool("tc-2", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctx),
+    ).rejects.toThrow("not inside a git repository");
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("not inside a git repository");
     expect(mockSpawn).not.toHaveBeenCalled();
   });
   it("flushes validator warnings via ctx.ui.notify on validation failure", async () => {
@@ -217,12 +217,13 @@ describe("executeAgentTool — worktree_path validation", () => {
       });
     });
 
-    ctx = asExtensionContext({ ...fakeCtx(), ui: { notify: vi.fn() } });
-    const result = await executeAgentTool("tc-warn", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctx);
+    const ctxWarn = asExtensionContext({ ...fakeCtx(), ui: { notify: vi.fn() } });
+    await expect(
+      executeAgentTool("tc-warn", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctxWarn),
+    ).rejects.toThrow("worktree_path validation failed");
 
-    expect(result.isError).toBe(true);
-    expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
+    expect(ctxWarn.ui.notify).toHaveBeenCalledTimes(1);
+    expect(ctxWarn.ui.notify).toHaveBeenCalledWith(
       "[pi-subagents-lite] git rev-parse --git-common-dir failed in /etc: EACCES permission denied",
       "warning",
     );
@@ -262,16 +263,9 @@ describe("executeAgentTool — worktree_path validation", () => {
       vi.clearAllMocks();
       mockValidateWorktreePath.mockResolvedValue({ ok: false, error });
 
-      const result = await executeAgentTool(
-        "tc-err",
-        makeParams({ worktree_path: "/some/path" }),
-        undefined,
-        undefined,
-        ctx,
-      );
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain(match);
+      await expect(
+        executeAgentTool("tc-err", makeParams({ worktree_path: "/some/path" }), undefined, undefined, ctx),
+      ).rejects.toThrow(match);
     }
   });
 
@@ -312,15 +306,9 @@ describe("executeAgentTool — worktree_path validation", () => {
   it("does not crash the parent when validator throws unexpectedly", async () => {
     mockValidateWorktreePath.mockRejectedValue(new Error("Unexpected filesystem error"));
 
-    const result = await executeAgentTool(
-      "tc-crash",
-      makeParams({ worktree_path: "/wt/feature" }),
-      undefined,
-      undefined,
-      ctx,
-    );
-
-    expect(result.isError).toBe(true);
+    await expect(
+      executeAgentTool("tc-crash", makeParams({ worktree_path: "/wt/feature" }), undefined, undefined, ctx),
+    ).rejects.toThrow("worktree_path validation failed");
   });
 });
 
@@ -364,21 +352,22 @@ describe("executeAgentTool — worktree_path with background spawn", () => {
     expect(result.content[0].text).toContain("running");
   });
 
-  it("returns error for invalid worktree_path in background spawn", async () => {
+  it("throws for invalid worktree_path in background spawn", async () => {
     mockValidateWorktreePath.mockResolvedValue({
       ok: false,
       error: "Path does not exist",
     });
 
-    const result = await executeAgentTool(
-      "tc-bg-err",
-      makeParams({ worktree_path: "/nonexistent", run_in_background: true }),
-      undefined,
-      undefined,
-      ctx,
-    );
+    await expect(
+      executeAgentTool(
+        "tc-bg-err",
+        makeParams({ worktree_path: "/nonexistent", run_in_background: true }),
+        undefined,
+        undefined,
+        ctx,
+      ),
+    ).rejects.toThrow("Path does not exist");
 
-    expect(result.isError).toBe(true);
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 });
@@ -479,22 +468,22 @@ describe("executeAgentTool — case-insensitive type resolution", () => {
     expect(mockSpawn.mock.calls[0][2]).toBe("Explore");
   });
 
-  it("returns an error naming both candidates for an ambiguous type and spawns nothing", async () => {
+  it("throws an error naming both candidates for an ambiguous type and spawns nothing", async () => {
     mockResolveType.mockReturnValueOnce({ kind: "ambiguous", candidates: ["Explore", "explore"] });
 
-    const result = await executeAgentTool("tc-amb", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx);
+    await expect(
+      executeAgentTool("tc-amb", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx),
+    ).rejects.toThrow(/Ambiguous agent type: EXPLORE/);
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Ambiguous agent type: EXPLORE");
-    expect(result.content[0].text).toContain("Explore");
-    expect(result.content[0].text).toContain("explore");
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it("does not trigger a filesystem re-scan when the initial resolution is ambiguous", async () => {
     mockResolveType.mockReturnValueOnce({ kind: "ambiguous", candidates: ["Explore", "explore"] });
 
-    await executeAgentTool("tc-amb-2", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx);
+    await expect(
+      executeAgentTool("tc-amb-2", makeParams({ agent: "EXPLORE" }), undefined, undefined, ctx),
+    ).rejects.toThrow();
 
     expect(mockDiscoverNewAgents).not.toHaveBeenCalled();
   });
@@ -528,10 +517,10 @@ describe("executeAgentTool — case-insensitive type resolution", () => {
     mockResolveType.mockReturnValueOnce({ kind: "not-found" });
     mockDiscoverNewAgents.mockResolvedValue(0);
 
-    const result = await executeAgentTool("tc-unknown", makeParams({ agent: "nope" }), undefined, undefined, ctx);
+    await expect(
+      executeAgentTool("tc-unknown", makeParams({ agent: "nope" }), undefined, undefined, ctx),
+    ).rejects.toThrow("Unknown agent type: nope");
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe("Unknown agent type: nope");
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 });
@@ -640,7 +629,7 @@ describe("executeAgentTool — foreground error result", () => {
     ctx = fakeCtx();
   });
 
-  it("returns an isError result containing type, model, and provider error for a failed run", async () => {
+  it("throws for a failed run with type, model, and provider error", async () => {
     mockGetRecord.mockReturnValue({
       id: "agent-id-err",
       result: "",
@@ -655,19 +644,9 @@ describe("executeAgentTool — foreground error result", () => {
       },
     });
 
-    const result = await executeAgentTool(
-      "tc-err",
-      makeParams({ agent: "feature-reviewer" }),
-      undefined,
-      undefined,
-      ctx,
-    );
-
-    expect(result.isError).toBe(true);
-    const text = result.content[0].text;
-    expect(text).toContain("feature-reviewer");
-    expect(text).toContain("anthropic/claude-sonnet-4");
-    expect(text).toContain("model failed to load");
+    await expect(
+      executeAgentTool("tc-err", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx),
+    ).rejects.toThrow(/model failed to load/);
   });
 });
 

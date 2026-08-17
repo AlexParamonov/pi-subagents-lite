@@ -154,7 +154,7 @@ export async function executeAgentTool(
   // Validate worktree_path early — needed for on-demand agent discovery
   const rawWorktreePath = params.worktree_path as string | undefined;
   const resolved = await resolveWorktree(ctx, rawWorktreePath);
-  if (!resolved.ok) return errorResult(resolved.error);
+  if (!resolved.ok) throw new Error(resolved.error);
   const validatedWorktreePath = resolved.resolvedPath;
   const worktreeLabel = resolved.worktreeLabel;
   const projectTrusted = resolved.projectTrusted;
@@ -166,12 +166,12 @@ export async function executeAgentTool(
   const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
   if (resolution.kind === "ambiguous") {
     // Two or more registered types differ only by case — never a silent pick.
-    return errorResult(
+    throw new Error(
       `Ambiguous agent type: ${type}. Candidates: ${resolution.candidates.join(", ")}. Use the exact registered name.`,
     );
   }
   if (resolution.kind === "not-found") {
-    return errorResult(`Unknown agent type: ${type}`);
+    throw new Error(`Unknown agent type: ${type}`);
   }
   const resolvedType = resolution.key;
 
@@ -232,7 +232,7 @@ export async function executeAgentTool(
   const details = buildAgentDetails(record, { includeStats: true });
 
   if (record.lifecycle.status === "error") {
-    return errorResult(`Agent failed: ${record.error || "unknown error"}`, details);
+    throw new Error(`Agent failed: ${record.error || "unknown error"}`);
   }
 
   return successResult(formatResultContent(record), details);
@@ -266,13 +266,13 @@ export async function executeStopAgentTool(
   const agentId = params.agent_id as string | undefined;
 
   if (!agentId) {
-    return errorResult("agent_id is required");
+    throw new Error("agent_id is required");
   }
 
   const record = getManager()!.getRecord(agentId);
 
   if (!record) {
-    return errorResult(`Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`);
+    throw new Error(`Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`);
   }
 
   if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
@@ -285,7 +285,7 @@ export async function executeStopAgentTool(
     return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
   }
 
-  return errorResult(`Failed to stop agent ${agentId}`);
+  throw new Error(`Failed to stop agent ${agentId}`);
 }
 
 // --- Tool_call listener — inject model into Agent tool calls ---
