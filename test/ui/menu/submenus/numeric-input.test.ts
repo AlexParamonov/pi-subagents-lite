@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMockCtx } from "../../../menu-test-helpers.js";
 
 let inputInstances: Array<{
   value: string;
@@ -34,16 +35,12 @@ vi.mock("@earendil-works/pi-tui", () => ({
       return this.value;
     }
     constructor() {
-      inputInstances.push(this as any);
+      inputInstances.push(this);
     }
   },
 }));
 
 import { createNumericSubmenu } from "../../../../src/ui/menu/submenus/numeric-input.js";
-
-function mockCtx() {
-  return { ui: { notify: vi.fn() } } as any;
-}
 
 describe("createNumericSubmenu", () => {
   beforeEach(() => {
@@ -52,7 +49,7 @@ describe("createNumericSubmenu", () => {
   });
 
   it("returns a function that creates an Input component", () => {
-    const factory = createNumericSubmenu(mockCtx(), vi.fn<(parsed: number) => void>());
+    const factory = createNumericSubmenu(createMockCtx(), vi.fn<(parsed: number) => void>());
     expect(typeof factory).toBe("function");
 
     factory("5", vi.fn());
@@ -63,14 +60,14 @@ describe("createNumericSubmenu", () => {
   it("calls onValid and done with parsed value on valid submit", () => {
     const onValid = vi.fn();
     const done = vi.fn();
-    createNumericSubmenu(mockCtx(), onValid)("5", done);
+    createNumericSubmenu(createMockCtx(), onValid)("5", done);
     inputInstances[0].onSubmit!("10");
     expect(onValid).toHaveBeenCalledWith(10);
     expect(done).toHaveBeenCalledWith("10");
   });
 
   it("calls onError and does NOT call done on invalid submit", () => {
-    const ctx = mockCtx();
+    const ctx = createMockCtx();
     const onValid = vi.fn();
     const done = vi.fn();
     createNumericSubmenu(ctx, onValid)("5", done);
@@ -81,7 +78,7 @@ describe("createNumericSubmenu", () => {
   });
 
   it("rejects non-numeric input", () => {
-    const ctx = mockCtx();
+    const ctx = createMockCtx();
     const done = vi.fn();
     createNumericSubmenu(ctx, { min: 0 })("5", done);
     inputInstances[0].onSubmit!("abc");
@@ -92,7 +89,7 @@ describe("createNumericSubmenu", () => {
   it("accepts value at exact minimum", () => {
     const onValid = vi.fn();
     const done = vi.fn();
-    createNumericSubmenu(mockCtx(), { min: 5 }, onValid)("5", done);
+    createNumericSubmenu(createMockCtx(), { min: 5 }, onValid)("5", done);
     inputInstances[0].onSubmit!("5");
     expect(onValid).toHaveBeenCalledWith(5);
     expect(done).toHaveBeenCalledWith("5");
@@ -100,7 +97,7 @@ describe("createNumericSubmenu", () => {
 
   it("calls done() without argument on escape", () => {
     const done = vi.fn();
-    createNumericSubmenu(mockCtx())("5", done);
+    createNumericSubmenu(createMockCtx())("5", done);
     inputInstances[0].onEscape!();
     expect(done).toHaveBeenCalledWith();
   });
@@ -108,7 +105,7 @@ describe("createNumericSubmenu", () => {
   it("calls onEmpty and done('(not set)') on empty input", () => {
     const onEmpty = vi.fn();
     const done = vi.fn();
-    createNumericSubmenu(mockCtx(), {}, vi.fn(), onEmpty)("5", done);
+    createNumericSubmenu(createMockCtx(), {}, vi.fn(), onEmpty)("5", done);
     inputInstances[0].onSubmit!("");
     expect(onEmpty).toHaveBeenCalled();
     expect(done).toHaveBeenCalledWith("(not set)");
@@ -117,14 +114,14 @@ describe("createNumericSubmenu", () => {
   it("calls onEmpty and done('(not set)') when input is 'unlimited'", () => {
     const onEmpty = vi.fn();
     const done = vi.fn();
-    createNumericSubmenu(mockCtx(), {}, vi.fn(), onEmpty)("5", done);
+    createNumericSubmenu(createMockCtx(), {}, vi.fn(), onEmpty)("5", done);
     inputInstances[0].onSubmit!("unlimited");
     expect(onEmpty).toHaveBeenCalled();
     expect(done).toHaveBeenCalledWith("(not set)");
   });
 
   it("errors on empty input when required", () => {
-    const ctx = mockCtx();
+    const ctx = createMockCtx();
     const done = vi.fn();
     createNumericSubmenu(ctx, { min: 1, required: true })("5", done);
     inputInstances[0].onSubmit!("");

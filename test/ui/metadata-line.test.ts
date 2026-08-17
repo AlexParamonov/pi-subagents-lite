@@ -9,9 +9,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/types.js";
+import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
+import { asAgentSession } from "../pi-boundaries.js";
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   getConfig: (type: string) => ({
@@ -28,7 +29,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => text.length,
 }));
 
-function makeRunningAgent(id: string, type: string = "builder"): any {
+function makeRunningAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: {
@@ -41,8 +42,13 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
     lifecycle: {
       status: "running",
       startedAt: Date.now() - 60000,
+      started: true,
     },
-    execution: { session: { model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" } },
+    execution: {
+      settled: false,
+      settlementCount: 0,
+      session: asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }),
+    },
     stats: {
       toolUses: 5,
       compactionCount: 0,
@@ -53,7 +59,7 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeFinishedAgent(id: string, type: string = "builder"): any {
+function makeFinishedAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: {
@@ -67,8 +73,13 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
       status: "completed",
       startedAt: Date.now() - 120000,
       completedAt: Date.now() - 30000,
+      started: true,
     },
-    execution: { session: { model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" } },
+    execution: {
+      settled: false,
+      settlementCount: 0,
+      session: asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }),
+    },
     stats: {
       toolUses: 10,
       compactionCount: 0,
@@ -106,7 +117,7 @@ describe("metadata line assembly", () => {
     it("moves model + thinking from header to metadata line for running agents", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
 
@@ -118,7 +129,7 @@ describe("metadata line assembly", () => {
 
     it("moves model + thinking from header to metadata line for finished agents", () => {
       const agent = makeFinishedAgent("a1");
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
 
@@ -131,7 +142,7 @@ describe("metadata line assembly", () => {
     it("metadata line uses bare format (no parentheses) for model + thinking", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
 
@@ -145,7 +156,7 @@ describe("metadata line assembly", () => {
       agent.display.worktreeLabel = "my-feature";
       agent.display.outputFile = "/tmp/test.log";
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
 
@@ -164,7 +175,7 @@ describe("metadata line assembly", () => {
     it("keeps model + thinking in header for running agents", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
 
@@ -174,7 +185,7 @@ describe("metadata line assembly", () => {
 
     it("keeps model + thinking in header for finished agents", () => {
       const agent = makeFinishedAgent("a1");
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
 
@@ -195,7 +206,7 @@ describe("metadata line assembly", () => {
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       // heading (1) + header (1) + metadata line (1) + activity (1)
@@ -209,7 +220,7 @@ describe("metadata line assembly", () => {
       // Ensure no worktree/outputFile
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       // heading (1) + header (1) + metadata line (1)
@@ -224,7 +235,7 @@ describe("metadata line assembly", () => {
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       expect(lines.length - 1).toBe(1);
@@ -239,7 +250,7 @@ describe("metadata line assembly", () => {
       agent.display.worktreeLabel = "my-feature";
       agent.display.outputFile = undefined;
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       // heading + header + metadata (worktree) + activity

@@ -28,6 +28,12 @@
 - Never name a snapshot variable after a callback parameter in scope; don't read `.length` off something that might be a function.
 - Vacuous-test grep list: `.find()` with no expect; global `some()` passing from initial state; `expect.any(String)` for branch-specific messages.
 - Verify the mock is actually called — a test that passes if the feature was deleted is worse than no test.
+- Replacing `: any` fixtures with real types: a factory like makeContentRecord must not clobber base fields with `undefined` overrides — merge with `?? base` so absent overrides keep the base value ("" still overrides; only null/undefined fall back).
+- `vi.fn(impl)` infers its generic from `impl`'s return type, so `.mockReturnValue()` demands that exact shape — widen the mock's generic (`vi.fn<() => MockSettingsManager>()`) when tests replace returns with structurally-different fakes.
+- A local object spread of an `any` (`{ ...fakeCtx(), ui: {...} }`) stays valid under a single `as T` boundary helper — no `as unknown as` needed when the intersection target is assignable to the source.
+- A batched edit that fails on ambiguity aborts ALL its sibling edits — after a rejected batch, re-audit whether earlier intends applied (a dropped events-navigation batch surfaced only via the final any-scan).
+- The edit tool's tree-sitter pre-write guard rejects files containing `vi.importActual<typeof import(...)>()` (a parse false positive on valid TS) — fall back to a targeted script for those files.
+- For a class with private members (AgentManager/DefaultResourceLoader), mock the object at the real class's call boundary with one `as AgentManager & S` intersection cast — legal because the intersection is assignable to `S`.
 - A "no render after close" test is vacuous without its trigger: fire the session event and run the debounce timer, or the closed guard is never exercised.
 - Redundant guards (subscriber closed-check + timer-callback closed-check) mean a post-close test can only pin the combined no-render contract — verify which guard a test actually fails on before claiming it pins one of them.
 - Prove each consumer reaches an extracted shared mock — a mock is vacuous when the importing modules are themselves mocked.
@@ -92,6 +98,8 @@
 - When a merge needs tombstone markers to express deletions, stop and consider one-file-wins — the tombstone requirement is a design smell, not a feature.
 - When overriding a property accessor via defineProperty, check pre-install state reads through the getter — a bootstrap read through the new getter silently stores the wrong value.
 - When rewriting a class wholesale, grep the codebase for every public member the old class exposed before dropping any — a removed getter (hasSessionShowCost) surfaces only as a typecheck break in a caller test you haven't run yet.
+- vitest 4 mock-type gap: a bare `vi.fn()` at the call site infers `Mock<Procedure>`, but `ReturnType<typeof vi.fn>` resolves the generic to its constraint, `Mock<Procedure | Constructable>`; only the narrow→wide direction is assignable. When a shared mock field gets swapped by consumers, annotate the field with `ReturnType<typeof vi.fn>`, not the inferred type.
+- Intersection returns (`RealType & FakeShape`) don't fix consumer reassignments: reassigned members keep the real member's type (generic `ui.custom`, full `ui` object), so partial/bare-mock reassignments stay illegal. If the reassigning consumers are out of scope, keep the return `any` and type the fake's internals instead.
 
 ## pi-ai API & Subagent Lifecycle
 
@@ -168,6 +176,7 @@
 - The edit tool may reject anchors as stale even when git shows the file clean; fall back to `replace_text` with unique content instead of re-reading.
 - The shell guard refuses `>>` redirection to existing files — append to existing files with the edit tool, not bash.
 - Worktree discipline: the main checkout and the issue buildtree have identical trees, so reading a file from the wrong checkout and editing it there silently edits `main`. Verify the path prefix before editing; recover a mistaken main-checkout edit with an inverse edit-tool patch (`git checkout --` is shell-guarded).
+- File searches use the grep/find tools, not bash `grep`/`find`/`rg` (enforced twice in one launch): pipelines filtering command output are fine, but `cat file | grep` is still a file search.
 ## fix-gitroot-perf-and-ellipsis - 2026-08-15
 **What worked:** the maintenance-run report's flagged production items shipped as a single standalone issue through the full loop (grill → write-issue → worktree → voice-of-reason → builder → review → refactor → merge → AC → manual test). The alternatives menu caught one real micro-decision (existsSync follows symlinks, so a broken `.git` symlink stops being detected — matches git's own semantics, so the issue-prescribed option won). Manual testing verified the perf claim with strace: 4 `access` probes, 0 `getdents64` on a 30k-entry dir, whole walk+load 7.6ms vs ~10ms for one old readdirSync level.
 **What failed:** nothing in the loop. One docs-only merge conflict in lessons.md (both sides appended) — resolved by folding both intents.

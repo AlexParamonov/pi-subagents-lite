@@ -7,33 +7,39 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
-import { createMockCtx } from "../../menu-test-helpers.js";
+import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
+import type { SelectItem, SettingItem, SettingsListTheme, SelectListTheme } from "@earendil-works/pi-tui";
 
 // Capture SelectList constructor calls from pi-tui
 let selectListCalls: Array<{
-  items: any[];
-  maxVisible: number;
-  onSelect?: (item: any) => void;
+  items: SelectItem[];
+  onSelect?: (item: SelectItem) => void;
   onCancel?: () => void;
 }> = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
-    items: any[];
-    constructor(items: any[], _maxVisible: number, _theme: any, _onChange: any, _onCancel: any) {
+    items: SettingItem[];
+    constructor(
+      items: SettingItem[],
+      _maxVisible: number,
+      _theme: SettingsListTheme,
+      _onChange: (id: string, newValue: string) => void,
+      _onCancel: () => void,
+    ) {
       this.items = items;
     }
   },
   SelectList: class MockSelectList {
-    items: any[];
+    items: SelectItem[];
     maxVisible: number;
-    onSelect?: (item: any) => void;
+    onSelect?: (item: SelectItem) => void;
     onCancel?: () => void;
-    constructor(items: any[], maxVisible: number, _theme: any) {
+    constructor(items: SelectItem[], maxVisible: number, _theme: SelectListTheme) {
       this.items = items;
       this.maxVisible = maxVisible;
-      selectListCalls.push(this as any);
+      selectListCalls.push(this);
     }
   },
   Input: class MockInput {},
@@ -68,8 +74,8 @@ describe("showAgentsMainMenu — SelectList dispatcher", () => {
     const ctx = createMockCtx();
     await showAgentsMainMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     expect(selectListCalls.length).toBe(1);
-    expect(selectListCalls[0].items.map((i: any) => i.value)).toEqual(["running", "spawn", "settings", "debug"]);
-    expect(selectListCalls[0].items.map((i: any) => i.label)).toEqual([
+    expect(selectListCalls[0].items.map((i) => i.value)).toEqual(["running", "spawn", "settings", "debug"]);
+    expect(selectListCalls[0].items.map((i) => i.label)).toEqual([
       "Running agents",
       "Spawn agent",
       "Settings",
@@ -113,7 +119,7 @@ describe("main menu — submenu navigation", () => {
     resetAgentState();
     selectListCalls = [];
     vi.clearAllMocks();
-    (getAgentConfig as any).mockImplementation((name: string) => {
+    vi.mocked(getAgentConfig).mockImplementation((name: string) => {
       if (name === "Explore")
         return { name: "Explore", description: "Explore agent", extensions: false, skills: false, systemPrompt: "" };
       if (name === "general-purpose")
@@ -134,10 +140,10 @@ describe("main menu — submenu navigation", () => {
     // Second custom call: debug menu (via showDebugMenu), returns undefined
     // Third custom call: back to main menu, returns undefined
     let customCallCount = 0;
-    ctx.ui.custom.mockImplementation(async (factory: any) => {
+    ctx.ui.custom.mockImplementation(async (factory: ComponentFactory) => {
       customCallCount++;
       // Build the menu component so its SelectList is captured
-      factory(null, { fg: (_c: string, t: string) => t, bold: (t: string) => t }, null, () => {});
+      factory({ terminal: { rows: 40 } }, { fg: (_c: string, t: string) => t, bold: (t: string) => t }, null, () => {});
       if (customCallCount === 1) return "debug"; // main menu → select debug
       return undefined; // debug menu and main menu escape
     });
@@ -145,7 +151,7 @@ describe("main menu — submenu navigation", () => {
     // Dispatch ran (2nd call = debug menu) and the loop re-invoked after it (3rd call)
     expect(ctx.ui.custom).toHaveBeenCalledTimes(3);
     // The debug dispatch rendered the debug SelectList with its two items
-    const debugItems = selectListCalls[1].items.map((i: any) => i.value);
+    const debugItems = selectListCalls[1].items.map((i) => i.value);
     expect(debugItems).toEqual(["agent-types", "agent-briefing"]);
   });
 });

@@ -9,32 +9,50 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { Component, SelectItem, SelectListTheme, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
-import { createMockCtx } from "../../menu-test-helpers.js";
+import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
 import { asCommandContext } from "../../pi-boundaries.ts";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
+import type { SettingsListWrapperOptions } from "../../../src/ui/menu/wrappers/settings-list.js";
 
 // Capture constructor calls
-let selectListCalls: any[] = [];
-let settingsListCalls: any[] = [];
+let selectListCalls: Array<{ items: SelectItem[] }> = [];
+let settingsListCalls: Array<{
+  items: SettingItem[];
+  onChange: (id: string, newValue: string) => void;
+  onCancel: () => void;
+}> = [];
 let wrapperCalls: Array<{ title: string }> = [];
-let inputInstances: any[] = [];
+let inputInstances: Array<{
+  value: string;
+  onSubmit?: (value: string) => void;
+  onEscape?: () => void;
+  setValue: (v: string) => void;
+  getValue: () => string;
+}> = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
-    items: any[];
-    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any) {
+    items: SettingItem[];
+    constructor(
+      items: SettingItem[],
+      _maxVisible: number,
+      _theme: SettingsListTheme,
+      onChange: (id: string, newValue: string) => void,
+      onCancel: () => void,
+    ) {
       this.items = items;
-      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel });
+      settingsListCalls.push({ items, onChange, onCancel });
     }
   },
   SelectList: class MockSelectList {
-    items: any[];
-    onSelect?: (item: any) => void;
+    items: SelectItem[];
+    onSelect?: (item: SelectItem) => void;
     onCancel?: () => void;
-    constructor(items: any[], maxVisible: number, theme: any) {
+    constructor(items: SelectItem[], _maxVisible: number, _theme: SelectListTheme) {
       this.items = items;
-      selectListCalls.push({ items, maxVisible, theme });
+      selectListCalls.push({ items });
     }
   },
   Input: class MockInput {
@@ -48,14 +66,14 @@ vi.mock("@earendil-works/pi-tui", () => ({
       return this.value;
     }
     constructor() {
-      inputInstances.push(this as any);
+      inputInstances.push(this);
     }
   },
 }));
 
 vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
   SettingsListWrapper: class MockSettingsListWrapper {
-    constructor(_list: any, options: { title: string; theme: any; onCancel?: () => void }) {
+    constructor(_list: Component, options: SettingsListWrapperOptions) {
       wrapperCalls.push({ title: options.title });
     }
   },
@@ -109,7 +127,7 @@ function createDispatchCtx(choice: string): ExtensionCommandContext {
   let toolExpanded = false;
   return asCommandContext({
     ui: {
-      custom: vi.fn(async (factory: any) => {
+      custom: vi.fn(async (factory: ComponentFactory) => {
         callCount++;
         if (callCount === 1) {
           // Top-level: return the category choice
@@ -141,7 +159,7 @@ describe("showWidgetSettingsMenu — SelectList top-level", () => {
     setupMockConfig();
     vi.clearAllMocks();
     resetState();
-    (getAgentConfig as any).mockImplementation(() => undefined);
+    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
   });
 
   it("uses ctx.ui.custom (not ctx.ui.select)", async () => {
@@ -162,8 +180,8 @@ describe("showWidgetSettingsMenu — SelectList top-level", () => {
     const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const items = selectListCalls[0].items;
-    expect(items.map((i: any) => i.label)).toEqual(["Layout", "Display", "Behavior", "Stats"]);
-    expect(items.map((i: any) => i.value)).toEqual(["layout", "display", "behavior", "stats"]);
+    expect(items.map((i) => i.label)).toEqual(["Layout", "Display", "Behavior", "Stats"]);
+    expect(items.map((i) => i.value)).toEqual(["layout", "display", "behavior", "stats"]);
     // Each category also carries a description (folded from the former standalone typeof-check).
     for (const item of items) expect(typeof item.description).toBe("string");
   });
@@ -180,14 +198,14 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
     setupMockConfig();
     vi.clearAllMocks();
     resetState();
-    (getAgentConfig as any).mockImplementation(() => undefined);
+    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
   });
 
   it("dispatches to Layout SettingsList with 5 items", async () => {
     const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toEqual(["compact", "maxLines", "maxLinesCompact"]);
   });
 
@@ -195,7 +213,7 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
     mockModules.mockConfig.agent.widgetCompact = false;
     const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "compact");
+    const item = settingsListCalls[0].items.find((i) => i.id === "compact")!;
     expect(item.currentValue).toBe("OFF");
   });
 
@@ -210,7 +228,7 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
   it("maxLines has submenu function", async () => {
     const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
+    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
     expect(item.currentValue).toBe("12");
     expect(typeof item.submenu).toBe("function");
   });
@@ -218,17 +236,17 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
   it("maxLines submenu creates Input with initial value", async () => {
     const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
-    item.submenu("12", vi.fn());
+    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
+    item.submenu!("12", vi.fn());
     expect(inputInstances[0].value).toBe("12");
   });
 
   it("maxLines submenu accepts valid value", async () => {
     const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
+    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
     const done = vi.fn();
-    item.submenu("12", done);
+    item.submenu!("12", done);
     inputInstances[0].onSubmit!("10");
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
     expect(done).toHaveBeenCalledWith("10");
@@ -237,9 +255,9 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
   it("maxLines submenu rejects value below minimum", async () => {
     const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "maxLines");
+    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
     const done = vi.fn();
-    item.submenu("12", done);
+    item.submenu!("12", done);
     inputInstances[0].onSubmit!("1");
     expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
     expect(done).not.toHaveBeenCalled();
@@ -257,13 +275,13 @@ describe("showWidgetSettingsMenu — Display submenu", () => {
     setupMockConfig();
     vi.clearAllMocks();
     resetState();
-    (getAgentConfig as any).mockImplementation(() => undefined);
+    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
   });
 
   it("dispatches to Display SettingsList with 6 items", async () => {
     const ctx = createDispatchCtx("display");
     await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toEqual([
       "showModel",
       "modelDisplayStyle",
@@ -327,13 +345,13 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     setupMockConfig();
     vi.clearAllMocks();
     resetState();
-    (getAgentConfig as any).mockImplementation(() => undefined);
+    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
   });
 
   it("dispatches to Behavior SettingsList with completion visibility", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toEqual([
       "finishedRetention",
       "agentStatusLimit",
@@ -343,7 +361,7 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
       "thinkingBuffer",
     ]);
 
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "showCompletionCards");
+    const item = settingsListCalls[0].items.find((i) => i.id === "showCompletionCards")!;
     expect(item.label).toBe("Show completion cards");
     expect(typeof item.description).toBe("string");
   });
@@ -387,21 +405,21 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
   it("finishedRetention has submenu", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "finishedRetention");
+    const item = settingsListCalls[0].items.find((i) => i.id === "finishedRetention")!;
     expect(typeof item.submenu).toBe("function");
   });
 
   it("agentStatusLimit has a numeric submenu", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
     expect(typeof item.submenu).toBe("function");
   });
 
   it("agentStatusLimit shows 0 (auto) when unset", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
     expect(item.currentValue).toBe("0");
     expect(typeof item.description).toBe("string");
   });
@@ -410,16 +428,16 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     mockModules.mockConfig.agent.agentStatusLimit = 12;
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
+    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
     expect(item.currentValue).toBe("12");
   });
 
   it("agentStatusLimit submenu submit persists the value", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i: any) => i.id === "agentStatusLimit");
-    const input = item.submenu("0", () => {}) as any;
-    input.onSubmit("15");
+    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
+    item.submenu!("0", () => {});
+    inputInstances[0].onSubmit!("15");
     expect(mockModules.mockConfig.agent.agentStatusLimit).toBe(15);
   });
 
@@ -435,13 +453,13 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     setupMockConfig();
     vi.clearAllMocks();
     resetState();
-    (getAgentConfig as any).mockImplementation(() => undefined);
+    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
   });
 
   it("dispatches to Stats SettingsList with 7 items", async () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime"]);
   });
 
@@ -464,8 +482,8 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
     const items = settingsListCalls[0].items;
-    expect(items.find((i: any) => i.id === "showTools").currentValue).toBe("ON");
-    expect(items.find((i: any) => i.id === "showCost").currentValue).toBe("OFF");
+    expect(items.find((i) => i.id === "showTools")!.currentValue).toBe("ON");
+    expect(items.find((i) => i.id === "showCost")!.currentValue).toBe("OFF");
   });
 
   it("has title 'Stats'", async () => {
@@ -476,7 +494,7 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
   it("stat labels have no 'Show' prefix", async () => {
     const ctx = createDispatchCtx("stats");
     await showWidgetSettingsMenu(ctx);
-    const labels = settingsListCalls[0].items.filter((i: any) => i.id !== "__sep__").map((i: any) => i.label);
+    const labels = settingsListCalls[0].items.filter((i) => i.id !== "__sep__").map((i) => i.label);
     expect(labels).toEqual(["Tools", "Turns", "Input tokens", "Output tokens", "Context %", "Cost", "Time"]);
   });
 });

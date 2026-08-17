@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { KeyId } from "@earendil-works/pi-tui";
 import type { AgentConfig } from "../src/agents/types.js";
+import { asExtensionContext } from "./pi-boundaries.ts";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => "/home/test/.pi/agent",
@@ -105,12 +106,12 @@ vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((type: string) => type),
 }));
 
-const mockManager: any = {
+const mockManager = {
   listAgents: vi.fn(() => []),
   getTotalAgentCost: vi.fn(() => 0),
 };
 
-const mockWidget: any = {
+const mockWidget = {
   isViewerOpen: vi.fn(() => false),
   isEditorFocused: vi.fn(() => true),
   isNavActive: vi.fn(() => false),
@@ -125,7 +126,7 @@ const mockWidget: any = {
   update: vi.fn(),
 };
 
-const mockStore: any = {
+const mockStore = {
   notifyToolsExpanded: vi.fn(),
 };
 
@@ -159,13 +160,13 @@ describe("navigation key handler (createNavInputHandler)", () => {
     mockManager.listAgents.mockReturnValue([]);
     mockMatchesKey.mockReturnValue(false);
     mockIsKeyRelease.mockReturnValue(false);
-    ctx = {
+    ctx = asExtensionContext({
       ui: {
         getEditorText: vi.fn(() => ""),
         notify: vi.fn(),
         getToolsExpanded: vi.fn(() => false),
       },
-    } as unknown as ExtensionContext;
+    });
   });
 
   afterEach(() => {
@@ -216,7 +217,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
   describe("activation", () => {
     it("activates on down + empty editor + agents exist", () => {
       mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
-      (ctx.ui.getEditorText as any).mockReturnValue("");
+      vi.mocked(ctx.ui.getEditorText).mockReturnValue("");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toEqual({ consume: true });
@@ -225,7 +226,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
     it("does not activate when editor has text", () => {
       mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
-      (ctx.ui.getEditorText as any).mockReturnValue("hello");
+      vi.mocked(ctx.ui.getEditorText).mockReturnValue("hello");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toBeUndefined();
@@ -235,7 +236,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     it("does not activate when no visible agents", () => {
       mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "down");
       mockWidget.hasVisibleAgents.mockReturnValue(false);
-      (ctx.ui.getEditorText as any).mockReturnValue("");
+      vi.mocked(ctx.ui.getEditorText).mockReturnValue("");
       const handler = createNavInputHandler(ctx);
       const result = handler("some_data");
       expect(result).toBeUndefined();
@@ -307,7 +308,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     });
 
     it("passes raw input to matchesKey and syncs expanded state", () => {
-      (ctx.ui.getToolsExpanded as any).mockReturnValue(true);
+      vi.mocked(ctx.ui.getToolsExpanded).mockReturnValue(true);
       const handler = createNavInputHandler(ctx);
 
       // Legacy format: ctrl+o as control character 0x0F

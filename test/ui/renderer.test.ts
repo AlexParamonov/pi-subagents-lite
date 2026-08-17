@@ -1,15 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Component } from "@earendil-works/pi-tui";
+import type { Theme } from "../../src/ui/types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup — capture Text content for assertions                  */
 /* ------------------------------------------------------------------ */
 
-const textInstances: any[] = [];
+/** The mock Text instances the pi-tui mock records for assertions. */
+interface MockText {
+  text: string;
+}
+const textInstances: MockText[] = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
   Container: class {
-    children: any[] = [];
-    addChild(c: any) {
+    children: Component[] = [];
+    addChild(c: Component) {
       this.children.push(c);
     }
     clear() {
@@ -25,8 +31,8 @@ vi.mock("@earendil-works/pi-tui", () => ({
     }
   },
   Box: class {
-    children: any[] = [];
-    addChild(c: any) {
+    children: Component[] = [];
+    addChild(c: Component) {
       this.children.push(c);
     }
   },
@@ -51,8 +57,9 @@ import { renderSubagentResult } from "../../src/ui/renderer.js";
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-const noopTheme: any = {
+const noopTheme: Theme = {
   fg: (_color: string, text: string) => text,
+  bg: (_color: string, text: string) => text,
   bold: (text: string) => text,
 };
 

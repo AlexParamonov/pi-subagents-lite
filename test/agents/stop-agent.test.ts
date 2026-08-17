@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { shellMock } from "../fixtures.ts";
+import { asExtensionContext } from "../pi-boundaries.ts";
 
 const { mockAbort, mockGetRecord, mockListAgents } = vi.hoisted(() => ({
   mockAbort: vi.fn(),
@@ -29,7 +30,7 @@ describe("executeStopAgentTool", () => {
   });
 
   it("returns error when agent_id is missing", async () => {
-    const result = await executeStopAgentTool("call_1", {}, undefined, undefined, {} as any);
+    const result = await executeStopAgentTool("call_1", {}, undefined, undefined, asExtensionContext({}));
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe("agent_id is required");
   });
@@ -49,7 +50,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "abc123def456ghi" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(mockAbort).toHaveBeenCalledWith("abc123def456ghi", "agent");
@@ -72,7 +73,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "xyz789xyz789abc" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.content[0].text).toMatch(/^Stopped agent [a-z0-9]{8}$/);
@@ -94,7 +95,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "abc123def456ghi" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.isError).toBe(true);
@@ -114,7 +115,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "nonexistent-id" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.isError).toBe(true);
@@ -140,7 +141,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "abc123def456ghi" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.isError).toBeFalsy();
@@ -162,7 +163,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "abc123def456ghi" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.isError).toBeFalsy();
@@ -184,7 +185,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "abc123def456ghi" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.isError).toBeFalsy();
@@ -211,7 +212,7 @@ describe("executeStopAgentTool", () => {
       { agent_id: "abc123def456ghi" },
       undefined,
       undefined,
-      {} as any,
+      asExtensionContext({}),
     );
 
     expect(result.content[0].text).toContain("r1 (builder)");

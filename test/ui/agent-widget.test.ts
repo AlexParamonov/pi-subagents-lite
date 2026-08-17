@@ -5,9 +5,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/types.js";
+import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
 import { makeMockManager, makeMockTheme, makeMockTUI, renderWidgetLines } from "./widget-helpers.js";
+import { asAgentSession } from "../pi-boundaries.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -43,7 +44,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => stripAnsi(text).length,
 }));
 
-function makeRunningAgent(id: string, type: string = "builder"): any {
+function makeRunningAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: {
@@ -53,8 +54,9 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
     lifecycle: {
       status: "running",
       startedAt: Date.now() - 60000,
+      started: true,
     },
-    execution: {},
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 5,
       compactionCount: 0,
@@ -65,7 +67,7 @@ function makeRunningAgent(id: string, type: string = "builder"): any {
   };
 }
 
-function makeFinishedAgent(id: string, type: string = "builder"): any {
+function makeFinishedAgent(id: string, type: string = "builder"): AgentRecord {
   return {
     id,
     display: {
@@ -76,8 +78,9 @@ function makeFinishedAgent(id: string, type: string = "builder"): any {
       status: "completed",
       startedAt: Date.now() - 120000,
       completedAt: Date.now() - 30000,
+      started: true,
     },
-    execution: {},
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 10,
       compactionCount: 0,
@@ -92,6 +95,14 @@ function makeActivity(agentId: string): LiveView {
   return {
     activeTools: new Map([["read", "reading"]]),
     responseText: "",
+  };
+}
+
+/** UI context mock with the real setStatus signature for typed call inspection. */
+function makeUICtx() {
+  return {
+    setStatus: vi.fn<(key: string, text?: string) => void>(),
+    setWidget: vi.fn(),
   };
 }
 
@@ -114,7 +125,7 @@ describe("widget rendering format", () => {
     it("uses 2-space prefix for last running agent header", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /);
@@ -123,7 +134,7 @@ describe("widget rendering format", () => {
     it("uses │ for last running agent activity line", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       // Activity line is the second line (index 2, after heading)
@@ -134,7 +145,7 @@ describe("widget rendering format", () => {
       const agent = makeRunningAgent("a1");
       agent.display.outputFile = "/tmp/pi-agent-outputs/test.log";
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       // line[1] = header, line[2] = outputFile, line[3] = activity
@@ -146,7 +157,7 @@ describe("widget rendering format", () => {
     it("activity line uses └ connector", () => {
       const agent = makeRunningAgent("a1");
       activity.set("a1", makeActivity("a1"));
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
       expect(lines[2]).toMatch(/^\[dim:  └/);
@@ -159,7 +170,7 @@ describe("widget rendering format", () => {
       const a2 = makeRunningAgent("a2");
       activity.set("a1", makeActivity("a1"));
       activity.set("a2", makeActivity("a2"));
-      (manager as any).listAgents = () => [a1, a2];
+      manager.listAgents = () => [a1, a2];
 
       const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /);
@@ -171,7 +182,7 @@ describe("widget rendering format", () => {
       const a2 = makeRunningAgent("a2");
       activity.set("a1", makeActivity("a1"));
       activity.set("a2", makeActivity("a2"));
-      (manager as any).listAgents = () => [a1, a2];
+      manager.listAgents = () => [a1, a2];
 
       const lines = renderWidgetLines(widget);
       expect(lines[2]).toMatch(/^\[dim:  [│└]/);
@@ -185,7 +196,7 @@ describe("widget rendering format", () => {
       a2.display.outputFile = "/tmp/out2.log";
       activity.set("a1", makeActivity("a1"));
       activity.set("a2", makeActivity("a2"));
-      (manager as any).listAgents = () => [a1, a2];
+      manager.listAgents = () => [a1, a2];
 
       const lines = renderWidgetLines(widget);
       // a1: header[1], outputFile[2], activity[3]; a2: header[4], outputFile[5], activity[6]
@@ -200,7 +211,7 @@ describe("widget rendering format", () => {
     it("uses 2-space prefix for finished agent headers", () => {
       const a1 = makeFinishedAgent("a1");
       const a2 = makeFinishedAgent("a2");
-      (manager as any).listAgents = () => [a1, a2];
+      manager.listAgents = () => [a1, a2];
 
       const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /);
@@ -210,7 +221,7 @@ describe("widget rendering format", () => {
     it("uses spaces for tail-f line of last finished agent", () => {
       const a1 = makeFinishedAgent("a1");
       a1.display.outputFile = "/tmp/pi-agent-outputs/test.log";
-      (manager as any).listAgents = () => [a1];
+      manager.listAgents = () => [a1];
       const lines = renderWidgetLines(widget);
       // tail-f line should have spaces only (no connector)
       expect(lines[2]).toMatch(/^\[dim:\s{4}/);
@@ -222,7 +233,7 @@ describe("widget rendering format", () => {
       a1.display.outputFile = "/tmp/out1.log";
       const a2 = makeFinishedAgent("a2");
       a2.display.outputFile = "/tmp/out2.log";
-      (manager as any).listAgents = () => [a1, a2];
+      manager.listAgents = () => [a1, a2];
       const lines = renderWidgetLines(widget);
       // All tail-f lines use spaces only (no connector) for finished agents
       expect(lines[2]).toMatch(/^\[dim:\s{4}/);
@@ -237,7 +248,7 @@ describe("widget rendering format", () => {
       const running = makeRunningAgent("r1");
       const finished = makeFinishedAgent("f1");
       activity.set("r1", makeActivity("r1"));
-      (manager as any).listAgents = () => [finished, running];
+      manager.listAgents = () => [finished, running];
 
       const lines = renderWidgetLines(widget);
       expect(lines[1]).toMatch(/^  /); // finished agent
@@ -248,7 +259,7 @@ describe("widget rendering format", () => {
 
 describe("status bar format", () => {
   it("shows '◈ Agents: N active' when running agents with no cost", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 0);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -257,14 +268,14 @@ describe("status bar format", () => {
 
     const a1 = makeRunningAgent("a1");
     a1.stats.lifetimeUsage.cost = 0;
-    (manager as any).listAgents = () => [a1];
+    manager.listAgents = () => [a1];
     widget.update();
 
     expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", expect.stringContaining("◈ Agents: 1 active"));
   });
 
   it("shows '◈ Agents: N active · M done · $cost' with running, done, and cost", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0.12, 5);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -273,15 +284,15 @@ describe("status bar format", () => {
 
     const a1 = makeRunningAgent("a1");
     a1.stats.lifetimeUsage.cost = 0;
-    (manager as any).listAgents = () => [a1];
+    manager.listAgents = () => [a1];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("◈ Agents: 1 active · 5 done · ");
   });
 
   it("shows '◇ Agents: M done · $cost' when no running agents but finished exist", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0.01, 1);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -289,15 +300,15 @@ describe("status bar format", () => {
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1");
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("◇ Agents: 1 done · ");
   });
 
   it("omits cost section when cost is zero", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 2);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -306,16 +317,16 @@ describe("status bar format", () => {
 
     const agent = makeRunningAgent("a1");
     agent.stats.lifetimeUsage.cost = 0;
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).not.toContain("$");
     expect(statusCall[1]).toContain("1 active");
   });
 
   it("omits active count when active is 0", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0.5, 3);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -323,16 +334,16 @@ describe("status bar format", () => {
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1");
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).not.toContain("active");
     expect(statusCall[1]).toContain("done");
   });
 
   it("omits done count when done is 0", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 0);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -340,16 +351,16 @@ describe("status bar format", () => {
     widget.setUICtx(uiCtx);
 
     const agent = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).not.toContain("done");
     expect(statusCall[1]).toContain("active");
   });
 
   it("shows '◇ Agents: M done' without cost when done exists but cost is zero", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 1);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -357,10 +368,10 @@ describe("status bar format", () => {
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1");
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toBe("◇ Agents: 1 done");
   });
 });
@@ -371,10 +382,7 @@ describe("status bar cost from accumulator", () => {
   let activity: Map<string, LiveView>;
 
   it("uses getTotalAgentCost for status bar when no running agents", () => {
-    const uiCtx = {
-      setStatus: vi.fn(),
-      setWidget: vi.fn(),
-    };
+    const uiCtx = makeUICtx();
     activity = new Map();
     // No running agents, but totalAgentCost is $1.23 (from evicted agents)
     manager = makeMockManager([], 1.23, 2);
@@ -385,19 +393,16 @@ describe("status bar cost from accumulator", () => {
     // Trigger an update with a running agent so the status bar is emitted
     const agent = makeRunningAgent("a1");
     agent.stats.lifetimeUsage.cost = 0.05;
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     widget.update();
 
     // Status bar should include $1.28 ($1.23 session + $0.05 running)
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("$1.28");
   });
 
   it("shows accumulated cost even when no running agents have cost", () => {
-    const uiCtx = {
-      setStatus: vi.fn(),
-      setWidget: vi.fn(),
-    };
+    const uiCtx = makeUICtx();
     activity = new Map();
     // Running agent with $0 cost, but session accumulator has $2.50
     manager = makeMockManager([], 2.5, 1);
@@ -407,18 +412,15 @@ describe("status bar cost from accumulator", () => {
 
     const agent = makeRunningAgent("a1");
     agent.stats.lifetimeUsage.cost = 0; // Running agent has no cost yet
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("$2.50");
   });
 
   it("hides cost when showCost is false", () => {
-    const uiCtx = {
-      setStatus: vi.fn(),
-      setWidget: vi.fn(),
-    };
+    const uiCtx = makeUICtx();
     activity = new Map();
     manager = makeMockManager([], 1.5, 1);
     widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -427,17 +429,17 @@ describe("status bar cost from accumulator", () => {
 
     const agent = makeRunningAgent("a1");
     agent.stats.lifetimeUsage.cost = 0.05;
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).not.toContain("$");
   });
 });
 
 describe("status bar compact format", () => {
   it("compact format: '◈ 2 5Σ $0.12' with active, done, and cost", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0.12, 5);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -449,15 +451,15 @@ describe("status bar compact format", () => {
     a1.stats.lifetimeUsage.cost = 0;
     const a2 = makeRunningAgent("a2");
     a2.stats.lifetimeUsage.cost = 0;
-    (manager as any).listAgents = () => [a1, a2];
+    manager.listAgents = () => [a1, a2];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toBe("◈ 2 5Σ $0.12");
   });
 
   it("compact format omits cost section when cost is zero", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 2);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -466,15 +468,15 @@ describe("status bar compact format", () => {
     widget.setUICtx(uiCtx);
 
     const a1 = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [a1];
+    manager.listAgents = () => [a1];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toBe("◈ 1 2Σ");
   });
 
   it("compact format omits active count when 0", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0.5, 3);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -483,15 +485,15 @@ describe("status bar compact format", () => {
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1");
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toBe("◇ 3Σ $0.50");
   });
 
   it("compact format omits done count when 0", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 0);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -500,15 +502,15 @@ describe("status bar compact format", () => {
     widget.setUICtx(uiCtx);
 
     const a1 = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [a1];
+    manager.listAgents = () => [a1];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toBe("◈ 1");
   });
 
   it("compact format shows '◇' when no active agents exist", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([], 0, 0);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -517,24 +519,24 @@ describe("status bar compact format", () => {
 
     // finished agent triggers update
     const finished = makeFinishedAgent("f1");
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("◇");
   });
 });
 
 describe("status line lifecycle (record-existence-driven)", () => {
   it("stays visible, dimmed, after rows age out of the retention window", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const manager = makeMockManager([], 0.01, 2);
     const widget = new AgentWidget(manager, () => undefined);
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1"); // 30s old, inside the default 1-min window
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update(); // block and status up
 
     // The row ages past the window; the record persists (ADR-0006).
@@ -543,22 +545,22 @@ describe("status line lifecycle (record-existence-driven)", () => {
 
     expect(uiCtx.setWidget).toHaveBeenCalledWith("agents", undefined); // block dropped
     expect(uiCtx.setStatus).not.toHaveBeenCalledWith("subagents", undefined); // status kept
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("◇ Agents: 2 done · $0.01");
   });
 
   it("hides the status line when zero records exist (Clear)", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const manager = makeMockManager([], 0.01, 2);
     const widget = new AgentWidget(manager, () => undefined);
     widget.setShowCost(true);
     widget.setUICtx(uiCtx);
 
     const finished = makeFinishedAgent("f1");
-    (manager as any).listAgents = () => [finished];
+    manager.listAgents = () => [finished];
     widget.update(); // status and block up
 
-    (manager as any).listAgents = () => []; // every record removed (Clear)
+    manager.listAgents = () => []; // every record removed (Clear)
     widget.update();
 
     expect(uiCtx.setStatus).toHaveBeenCalledWith("subagents", undefined);
@@ -566,20 +568,20 @@ describe("status line lifecycle (record-existence-driven)", () => {
   });
 
   it("re-shows with the active count when a new record spawns after a full clear", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const manager = makeMockManager([], 0, 0);
     const widget = new AgentWidget(manager, () => undefined);
     widget.setUICtx(uiCtx);
 
-    (manager as any).listAgents = () => [];
+    manager.listAgents = () => [];
     widget.update();
 
     const queued = makeRunningAgent("q1");
-    queued.lifecycle = { status: "queued", startedAt: Date.now() };
-    (manager as any).listAgents = () => [queued];
+    queued.lifecycle = { status: "queued", startedAt: Date.now(), started: false };
+    manager.listAgents = () => [queued];
     widget.update();
 
-    const statusCall = (uiCtx.setStatus as any).mock.calls.find((c: any[]) => c[0] === "subagents");
+    const statusCall = uiCtx.setStatus.mock.calls.find((c) => c[0] === "subagents")!;
     expect(statusCall[1]).toContain("◈ Agents: 1 active");
     expect(uiCtx.setWidget).toHaveBeenCalledWith(
       "agents",
@@ -589,7 +591,7 @@ describe("status line lifecycle (record-existence-driven)", () => {
   });
 
   it("does not rewrite the status text on ticks when unchanged", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const manager = makeMockManager([], 0.01, 2);
     const widget = new AgentWidget(manager, () => undefined);
     widget.setShowCost(true);
@@ -598,7 +600,7 @@ describe("status line lifecycle (record-existence-driven)", () => {
 
     const agedOut = makeFinishedAgent("f1");
     agedOut.lifecycle.completedAt = Date.now() - 10 * 60_000; // outside the 5-min window
-    (manager as any).listAgents = () => [agedOut];
+    manager.listAgents = () => [agedOut];
     widget.update();
     widget.update();
     widget.update();
@@ -626,7 +628,7 @@ describe("compact mode", () => {
   it("defaults to non-compact mode and renders multi-line", () => {
     const agent = makeRunningAgent("a1");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     // Full mode: heading + 1 header + 1 activity metadata line = 3 lines
@@ -638,7 +640,7 @@ describe("compact mode", () => {
     widget.setWidgetShortcut(true);
     const agent = makeRunningAgent("a1");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     // Heading + 1 line for compact agent (no activity metadata line)
@@ -651,7 +653,7 @@ describe("compact mode", () => {
     widget.setCompactMode(false);
     const agent = makeRunningAgent("a1");
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     // Heading + 1 header + 1 activity metadata line
@@ -674,7 +676,7 @@ describe("max lines configuration", () => {
     widget.setMaxLines(8);
     const agents = Array.from({ length: 8 }, (_, i) => makeRunningAgent(`a${i}`));
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     const lines = renderWidgetLines(widget);
     // Should be capped at 8 lines (1 heading + 7 body max)
@@ -687,7 +689,7 @@ describe("max lines configuration", () => {
     widget.setMaxLinesCompact(3);
     const agents = Array.from({ length: 5 }, (_, i) => makeRunningAgent(`a${i}`));
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     const lines = renderWidgetLines(widget);
     // Should be capped at 3 lines (1 heading + 2 body max)
@@ -698,7 +700,7 @@ describe("max lines configuration", () => {
     widget.setMaxLines(5);
     const agents = Array.from({ length: 10 }, (_, i) => makeRunningAgent(`a${i}`));
     for (const a of agents) activity.set(a.id, makeActivity(a.id));
-    (manager as any).listAgents = () => agents;
+    manager.listAgents = () => agents;
 
     const lines = renderWidgetLines(widget);
     const hasOverflow = lines.some((l: string) => l.includes("more"));
@@ -773,7 +775,7 @@ describe("getLiveView callback", () => {
     const widget = new AgentWidget(manager, (id: string) => coordinatorViews.get(id));
 
     const agent = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     // lines[0] = heading, lines[1] = header (└─), lines[2] = activity metadata line
@@ -791,7 +793,7 @@ describe("getLiveView callback", () => {
     const widget = new AgentWidget(manager, (id: string) => liveViews.get(id));
 
     const agent = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThanOrEqual(3);
@@ -810,7 +812,7 @@ describe("getLiveView callback", () => {
     const widget = new AgentWidget(manager, (id: string) => liveViews.get(id));
 
     const agent = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThanOrEqual(3);
@@ -828,7 +830,7 @@ describe("getLiveView callback", () => {
     const widget = new AgentWidget(manager, (id: string) => liveViews.get(id));
 
     const agent = makeRunningAgent("a1");
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThanOrEqual(3);
@@ -839,7 +841,7 @@ describe("getLiveView callback", () => {
 
 describe("renderFinishedLine context percent", () => {
   it("uses stats.contextPercent for finished agents without execution.session", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([]);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -849,8 +851,8 @@ describe("renderFinishedLine context percent", () => {
     // Set context percent in stats (what agent-manager writes at completion)
     finished.stats.contextPercent = 72;
     // No session on execution — the display code must NOT reach here
-    finished.execution = {};
-    (manager as any).listAgents = () => [finished];
+    finished.execution = { settled: false, settlementCount: 0 };
+    manager.listAgents = () => [finished];
 
     // Track what buildStatsParts receives by mocking getSessionContextPercent
     // indirectly: the widget should render without needing execution.session
@@ -861,7 +863,7 @@ describe("renderFinishedLine context percent", () => {
   });
 
   it("prefers record execution.session for running agents context percent", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([]);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -870,12 +872,14 @@ describe("renderFinishedLine context percent", () => {
     const running = makeRunningAgent("a1");
     running.stats.contextPercent = 50;
     running.execution = {
-      session: {
+      settled: false,
+      settlementCount: 0,
+      session: asAgentSession({
         getSessionStats: () => ({ contextUsage: { percent: 85 } }),
-      },
+      }),
     };
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [running];
+    manager.listAgents = () => [running];
 
     const lines = renderWidgetLines(widget);
     expect(lines.length).toBeGreaterThan(0);
@@ -888,7 +892,7 @@ describe("renderFinishedLine context percent", () => {
 
 describe("renderFinishedLine watchdog stop", () => {
   it("shows the watchdog reason for a tool-timeout kill", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([]);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -898,14 +902,14 @@ describe("renderFinishedLine watchdog stop", () => {
     agent.lifecycle.status = "stopped";
     agent.lifecycle.stoppedBy = "watchdog";
     agent.lifecycle.stopDetail = { kind: "tool", toolName: "bash", elapsedMs: 45 * 60_000 };
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     expect(lines.some((l: string) => l.includes("watchdog: bash >45m"))).toBe(true);
   });
 
   it("shows a plain stopped line for a user stop (no watchdog summary)", () => {
-    const uiCtx = { setStatus: vi.fn(), setWidget: vi.fn() };
+    const uiCtx = makeUICtx();
     const activity = new Map();
     const manager = makeMockManager([]);
     const widget = new AgentWidget(manager, (id) => activity.get(id));
@@ -914,7 +918,7 @@ describe("renderFinishedLine watchdog stop", () => {
     const agent = makeFinishedAgent("f1");
     agent.lifecycle.status = "stopped";
     agent.lifecycle.stoppedBy = "user";
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const stoppedLine = lines.find((l: string) => l.includes("Finished agent f1"));
@@ -943,7 +947,7 @@ describe("stats visibility integration", () => {
     const agent = makeRunningAgent("a1");
     agent.stats.toolUses = 10;
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -955,7 +959,7 @@ describe("stats visibility integration", () => {
     const agent = makeRunningAgent("a1");
     agent.lifecycle.startedAt = Date.now() - 65_000; // would render "1m 5s"
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -967,7 +971,7 @@ describe("stats visibility integration", () => {
     const agent = makeRunningAgent("a1");
     agent.lifecycle.startedAt = Date.now() - 65_000; // renders "1m 5s"
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -979,12 +983,14 @@ describe("stats visibility integration", () => {
     const agent = makeRunningAgent("a1");
     agent.stats.compactionCount = 3;
     agent.execution = {
-      session: {
+      settled: false,
+      settlementCount: 0,
+      session: asAgentSession({
         getSessionStats: () => ({ contextUsage: { percent: 75 } }),
-      },
+      }),
     };
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -997,7 +1003,7 @@ describe("stats visibility integration", () => {
     const agent = makeRunningAgent("a1");
     agent.stats.lifetimeUsage.cost = 1.5;
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -1008,7 +1014,7 @@ describe("stats visibility integration", () => {
     widget.setStatsVisibility({ showTools: false });
     const agent = makeFinishedAgent("a1");
     agent.stats.toolUses = 15;
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -1021,12 +1027,14 @@ describe("stats visibility integration", () => {
     agent.stats.compactionCount = 1;
     agent.stats.lifetimeUsage.cost = 0.5;
     agent.execution = {
-      session: {
+      settled: false,
+      settlementCount: 0,
+      session: asAgentSession({
         getSessionStats: () => ({ contextUsage: { percent: 60 } }),
-      },
+      }),
     };
     activity.set("a1", makeActivity("a1"));
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
@@ -1169,7 +1177,7 @@ describe("finished-agent time window", () => {
     return { visible, arrow, readout };
   }
 
-  function finishedAgent(id: string, completedMinutesAgo: number): any {
+  function finishedAgent(id: string, completedMinutesAgo: number): AgentRecord {
     const agent = makeFinishedAgent(id);
     agent.lifecycle.completedAt = Date.now() - completedMinutesAgo * 60_000;
     return agent;
@@ -1182,13 +1190,13 @@ describe("finished-agent time window", () => {
 
   it("shows a finished agent while it is inside the retention window", () => {
     widget.setFinishedRetentionMinutes(5);
-    (manager as any).listAgents = () => [finishedAgent("a1", 2)];
+    manager.listAgents = () => [finishedAgent("a1", 2)];
     expect(renderState(widget).visible).toEqual(["a1"]);
   });
 
   it("hides a finished agent once the retention window has elapsed", () => {
     widget.setFinishedRetentionMinutes(5);
-    (manager as any).listAgents = () => [finishedAgent("a1", 10)];
+    manager.listAgents = () => [finishedAgent("a1", 10)];
     expect(renderState(widget).visible).toEqual([]);
   });
 
@@ -1196,11 +1204,11 @@ describe("finished-agent time window", () => {
     widget.setFinishedRetentionMinutes(1);
     const running = makeRunningAgent("r1");
     running.lifecycle.startedAt = Date.now() - 30 * 60_000;
-    const queued: any = {
+    const queued: AgentRecord = {
       id: "q1",
       display: { type: "builder", description: "Queued agent q1" },
-      lifecycle: { status: "queued", startedAt: Date.now() - 30 * 60_000 },
-      execution: {},
+      lifecycle: { status: "queued", startedAt: Date.now() - 30 * 60_000, started: false },
+      execution: { settled: false, settlementCount: 0 },
       stats: {
         toolUses: 0,
         compactionCount: 0,
@@ -1209,7 +1217,7 @@ describe("finished-agent time window", () => {
         maxTurns: 30,
       },
     };
-    (manager as any).listAgents = () => [running, queued];
+    manager.listAgents = () => [running, queued];
     widget.navActivate(); // queued rows render individually during navigation
     expect(renderState(widget).visible).toEqual(["r1", "q1"]);
   });
@@ -1218,14 +1226,14 @@ describe("finished-agent time window", () => {
     widget.setFinishedRetentionMinutes(5);
     const stopped = finishedAgent("s1", 10);
     stopped.lifecycle.status = "stopped";
-    (manager as any).listAgents = () => [stopped];
+    manager.listAgents = () => [stopped];
     expect(renderState(widget).visible).toEqual([]);
   });
 
   it("hides a finished row from the widget while the menu still lists the record", () => {
     widget.setFinishedRetentionMinutes(5);
     const agent = finishedAgent("a1", 10);
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     expect(renderState(widget).visible).toEqual([]);
     expect(manager.listAgents()).toHaveLength(1);
   });
@@ -1234,7 +1242,7 @@ describe("finished-agent time window", () => {
     vi.useFakeTimers();
     try {
       const agent = finishedAgent("a1", 2);
-      (manager as any).listAgents = () => [agent];
+      manager.listAgents = () => [agent];
       widget.setFinishedRetentionMinutes(5);
       expect(renderState(widget).visible).toEqual(["a1"]);
       vi.advanceTimersByTime(4 * 60_000); // now 6 minutes past completion
@@ -1246,7 +1254,7 @@ describe("finished-agent time window", () => {
 
   it("applies a window change on the next render", () => {
     const agent = finishedAgent("a1", 2);
-    (manager as any).listAgents = () => [agent];
+    manager.listAgents = () => [agent];
     widget.setFinishedRetentionMinutes(5);
     expect(renderState(widget).visible).toEqual(["a1"]);
     widget.setFinishedRetentionMinutes(1);
@@ -1255,10 +1263,10 @@ describe("finished-agent time window", () => {
 
   it("defaults to a 1-minute window when no setter has been called", () => {
     // 15s old — inside the default window
-    (manager as any).listAgents = () => [finishedAgent("a1", 0.25)];
+    manager.listAgents = () => [finishedAgent("a1", 0.25)];
     expect(renderState(widget).visible).toEqual(["a1"]);
     // 3 min old — outside the default window
-    (manager as any).listAgents = () => [finishedAgent("a1", 3)];
+    manager.listAgents = () => [finishedAgent("a1", 3)];
     expect(renderState(widget).visible).toEqual([]);
   });
 });

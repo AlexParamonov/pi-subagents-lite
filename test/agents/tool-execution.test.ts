@@ -9,6 +9,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fakeCtx, makeResolvablePromise } from "../fixtures.ts";
+import { asExtensionContext } from "../pi-boundaries.ts";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
+import type { AgentLifecycle, AgentRecord } from "../../src/types.js";
 import type { TypeResolution } from "../../src/agents/agent-types.js";
 
 /* ------------------------------------------------------------------ */
@@ -66,7 +70,7 @@ vi.mock("../../src/shell.js", () => ({
     get agent() {
       return { graceTurns: 5, forceBackground: mockStoreState.forceBackground };
     },
-    modelFor(type: string, parentModelId: string, agentConfig?: any) {
+    modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }) {
       // Simplified model resolution for testing
       if (agentConfig?.model) return agentConfig.model;
       return parentModelId;
@@ -86,13 +90,13 @@ vi.mock("../../src/shell.js", () => ({
     update: vi.fn(),
   }),
   getCoordinator: () => ({
-    spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
+    spawn: vi.fn(async (pi: ExtensionAPI, ctx: ExtensionContext, intent: SpawnIntent) => {
       // Delegate to the mocked manager.spawn
       const manager = {
         spawn: mockSpawn,
         getRecord: mockGetRecord,
       };
-      const id = mockSpawn(_pi, _ctx, intent.type, intent.prompt, {
+      const id = mockSpawn(pi, ctx, intent.type, intent.prompt, {
         description: intent.description,
         model: intent.model,
         maxTurns: intent.maxTurns,
@@ -145,7 +149,7 @@ function makeParams(overrides: Record<string, unknown> = {}): Record<string, unk
 /* ------------------------------------------------------------------ */
 
 describe("executeAgentTool — worktree_path validation", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -205,7 +209,7 @@ describe("executeAgentTool — worktree_path validation", () => {
       });
     });
 
-    ctx.ui = { notify: vi.fn() };
+    ctx = asExtensionContext({ ...fakeCtx(), ui: { notify: vi.fn() } });
     const result = await executeAgentTool("tc-warn", makeParams({ worktree_path: "/etc" }), undefined, undefined, ctx);
 
     expect(result.isError).toBe(true);
@@ -313,7 +317,7 @@ describe("executeAgentTool — worktree_path validation", () => {
 });
 
 describe("executeAgentTool — worktree_path with background spawn", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -372,7 +376,7 @@ describe("executeAgentTool — worktree_path with background spawn", () => {
 });
 
 describe("executeAgentTool — worktree_path discovery integration", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -434,7 +438,7 @@ describe("executeAgentTool — worktree_path discovery integration", () => {
 });
 
 describe("executeAgentTool — case-insensitive type resolution", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -524,12 +528,12 @@ describe("executeAgentTool — case-insensitive type resolution", () => {
   });
 });
 describe("executeAgentTool — cross-repo trust gate", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
-    ctx.ui = { notify: vi.fn() };
+    ctx = asExtensionContext({ ...fakeCtx(), ui: { notify: vi.fn() } });
     mockResolveSubagentTrust.mockReturnValue(true);
     mockGetRecord.mockReturnValue({
       id: "agent-id-trust",
@@ -621,7 +625,7 @@ describe("executeAgentTool — cross-repo trust gate", () => {
 });
 
 describe("executeAgentTool — foreground error result", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -660,12 +664,27 @@ describe("executeAgentTool — foreground error result", () => {
 });
 
 describe("formatResultContent", () => {
-  function makeContentRecord(overrides: Record<string, unknown> = {}) {
-    return {
+  function makeContentRecord(
+    overrides: { result?: string; error?: string; lifecycle?: Partial<AgentLifecycle> } = {},
+  ): AgentRecord {
+    const base: AgentRecord = {
+      id: "agent-id",
       result: "done",
-      lifecycle: { status: "completed", startedAt: Date.now() },
-      ...overrides,
-    } as any;
+      display: { type: "general-purpose", description: "Test agent" },
+      lifecycle: { status: "completed", startedAt: Date.now(), started: true },
+      execution: { settled: false, settlementCount: 0 },
+      stats: {
+        lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+        toolUses: 0,
+        compactionCount: 0,
+      },
+    };
+    return {
+      ...base,
+      result: overrides.result ?? base.result,
+      error: overrides.error ?? base.error,
+      lifecycle: { ...base.lifecycle, ...overrides.lifecycle },
+    };
   }
 
   it("appends the recorded error message for error status", () => {
@@ -757,7 +776,7 @@ describe("formatResultContent", () => {
 });
 
 describe("executeAgentTool — parent signal forwarding", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -808,7 +827,7 @@ describe("executeAgentTool — parent signal forwarding", () => {
 });
 
 describe("executeAgentTool — queued foreground spawn", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -819,12 +838,12 @@ describe("executeAgentTool — queued foreground spawn", () => {
 
   it("returns the real result for a queued foreground spawn, never an early empty string", async () => {
     const gate = makeResolvablePromise();
-    const record: any = {
+    const record: AgentRecord = {
       id: "agent-id-queued",
       result: undefined,
       display: { type: "general-purpose", description: "Test agent" },
-      lifecycle: { status: "queued", startedAt: Date.now() },
-      execution: { promise: gate.promise },
+      lifecycle: { status: "queued", startedAt: Date.now(), started: true },
+      execution: { promise: gate.promise as Promise<string>, settled: false, settlementCount: 0 },
       stats: {
         lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
         toolUses: 0,

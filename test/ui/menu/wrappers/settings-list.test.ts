@@ -12,8 +12,9 @@ import { SettingsListWrapper } from "../../../../src/ui/menu/wrappers/settings-l
 import { buildSelectListTheme, createDelegatingComponent } from "../../../../src/ui/menu/helpers.js";
 import { SearchableSelectDialog } from "../../../../src/ui/searchable-select.js";
 import { selectListView } from "../../../pi-boundaries.ts";
+import type { Theme } from "../../../../src/ui/types.js";
 
-const theme = {
+const theme: Theme = {
   fg: (_color: string, text: string) => text,
   bg: (_color: string, text: string) => text,
   bold: (text: string) => text,
@@ -111,8 +112,8 @@ describe("SettingsListWrapper — __sep__ navigation", () => {
     new SettingsListWrapper(list, { title: "T", theme, onCancel: () => {} });
     expect(list.selectedIndex).toBe(0);
     // down past the separator
-    (list as any).selectedIndex = 1;
-    expect((list.items as any[])[list.selectedIndex].id).toBe("b");
+    list.selectedIndex = 1;
+    expect(list.items[list.selectedIndex].id).toBe("b");
   });
 
   it("selectedIndex never lands on a __sep__ item when moving up", () => {
@@ -122,11 +123,11 @@ describe("SettingsListWrapper — __sep__ navigation", () => {
       { id: "b", label: "B", currentValue: "" },
     ]);
     new SettingsListWrapper(list, { title: "T", theme, onCancel: () => {} });
-    (list as any).selectedIndex = 2;
-    expect((list.items as any[])[list.selectedIndex].id).toBe("b");
+    list.selectedIndex = 2;
+    expect(list.items[list.selectedIndex].id).toBe("b");
     // up past the separator
-    (list as any).selectedIndex = 1;
-    expect((list.items as any[])[list.selectedIndex].id).toBe("a");
+    list.selectedIndex = 1;
+    expect(list.items[list.selectedIndex].id).toBe("a");
   });
 
   it("falls back to the opposite direction when a trailing separator is the target", () => {
@@ -138,15 +139,15 @@ describe("SettingsListWrapper — __sep__ navigation", () => {
     new SettingsListWrapper(list, { title: "T", theme, onCancel: () => {} });
     // moving down past the end lands on the trailing sep, which clamp +
     // backward fallback should resolve back to the last real item
-    (list as any).selectedIndex = 5;
-    expect((list.items as any[])[list.selectedIndex].id).toBe("b");
+    list.selectedIndex = 5;
+    expect(list.items[list.selectedIndex].id).toBe("b");
   });
 });
 
 describe("SettingsListWrapper — onRebuild sets items directly", () => {
   it("rebuild replaces items without appending wrapper (__sep__/__back__) items", () => {
     const list = makeSettingsList([{ id: "a", label: "A", currentValue: "" }]);
-    let rebuild: ((items: any[]) => void) | undefined;
+    let rebuild: ((items: SettingItem[]) => void) | undefined;
     new SettingsListWrapper(list, {
       title: "T",
       theme,
@@ -166,7 +167,7 @@ describe("SettingsListWrapper — onRebuild sets items directly", () => {
 describe("SettingsListWrapper — render frame", () => {
   it("renders the list content between top/bottom separators with a header", () => {
     const list = {
-      items: [{ id: "a", label: "A", currentValue: "" }] as any[],
+      items: [{ id: "a", label: "A", currentValue: "" }],
       selectedIndex: 0,
       render: () => ["  → A     value"],
       handleInput: () => {},
@@ -199,7 +200,7 @@ describe("SettingsListWrapper — j/k navigation", () => {
     ]);
     selectList.handleInput = vi.fn();
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = createDelegatingComponent(selectList as any);
+    settings.submenuComponent = createDelegatingComponent(selectList);
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     wrapper.handleInput("j");
     expect(selectList.handleInput).toHaveBeenCalledWith("\x1b[B");
@@ -210,7 +211,7 @@ describe("SettingsListWrapper — j/k navigation", () => {
   it("resolves nested delegators to the leaf SelectList", () => {
     const selectList = makeSelectList([{ value: "a", label: "A" }]);
     selectList.handleInput = vi.fn();
-    const inner = createDelegatingComponent(selectList as any);
+    const inner = createDelegatingComponent(selectList);
     const outer = createDelegatingComponent(inner);
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
     settings.submenuComponent = outer;
@@ -220,9 +221,15 @@ describe("SettingsListWrapper — j/k navigation", () => {
   });
 
   it("passes j/k through as letters for an Input leaf (getValue)", () => {
-    const input = { focused: false, getValue: () => "", handleInput: vi.fn() };
+    const input = {
+      focused: false,
+      getValue: () => "",
+      render: () => [] as string[],
+      invalidate: () => {},
+      handleInput: vi.fn(),
+    };
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = createDelegatingComponent(input as any);
+    settings.submenuComponent = createDelegatingComponent(input);
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     wrapper.handleInput("j");
     expect(input.handleInput).toHaveBeenCalledWith("j");
@@ -231,9 +238,15 @@ describe("SettingsListWrapper — j/k navigation", () => {
   });
 
   it("passes j/k through as letters for a SearchableSelectDialog leaf (searchInput)", () => {
-    const dialog = { focused: false, searchInput: {}, handleInput: vi.fn() };
+    const dialog = {
+      focused: false,
+      searchInput: {},
+      render: () => [] as string[],
+      invalidate: () => {},
+      handleInput: vi.fn(),
+    };
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = createDelegatingComponent(dialog as any);
+    settings.submenuComponent = createDelegatingComponent(dialog);
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     wrapper.handleInput("k");
     expect(dialog.handleInput).toHaveBeenCalledWith("k");
@@ -246,7 +259,7 @@ describe("SettingsListWrapper — j/k navigation", () => {
     ]);
     selectList.handleInput = vi.fn();
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = selectList as any;
+    settings.submenuComponent = selectList;
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     wrapper.handleInput("j");
     expect(selectList.handleInput).toHaveBeenCalledWith("\x1b[B");
@@ -255,15 +268,23 @@ describe("SettingsListWrapper — j/k navigation", () => {
   it("sees through a SettingsList picker (focused + getActive) to a text-input leaf", () => {
     // The level pickers are SettingsLists with a chained step as their own
     // submenuComponent; getActive exposes it so j/k stay letters.
-    const input = { focused: false, getValue: () => "", handleInput: vi.fn() };
+    const input = {
+      focused: false,
+      getValue: () => "",
+      render: () => [] as string[],
+      invalidate: () => {},
+      handleInput: vi.fn(),
+    };
     const picker = {
       focused: true,
       submenuComponent: input,
       getActive: () => input,
       handleInput: (d: string) => input.handleInput(d),
+      render: () => [] as string[],
+      invalidate: () => {},
     };
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = picker as any;
+    settings.submenuComponent = picker;
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     wrapper.handleInput("j");
     expect(input.handleInput).toHaveBeenCalledWith("j");
@@ -282,7 +303,7 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
       buildSelectListTheme(theme),
     );
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = createDelegatingComponent(list as any);
+    settings.submenuComponent = createDelegatingComponent(list);
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     expect(selectListView(list).selectedIndex).toBe(0);
     wrapper.handleInput("j");
@@ -305,7 +326,7 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
       buildSelectListTheme(theme),
     );
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = list as any;
+    settings.submenuComponent = list;
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     expect(selectListView(list).selectedIndex).toBe(0);
     wrapper.handleInput("j");
@@ -329,7 +350,7 @@ describe("SettingsListWrapper — j/k drive a real SelectList submenu", () => {
       theme,
     );
     const settings = makeSettingsList([{ id: "x", label: "X", currentValue: "" }]);
-    settings.submenuComponent = createDelegatingComponent(dialog as any);
+    settings.submenuComponent = createDelegatingComponent(dialog);
     const wrapper = new SettingsListWrapper(settings, { title: "T", theme, onCancel: () => {} });
     // 'j'/'k' must reach the search input and accumulate in the query, not
     // move the list: after "k" + "a" the query is "ka", matching nothing.

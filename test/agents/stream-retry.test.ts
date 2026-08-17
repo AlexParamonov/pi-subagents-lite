@@ -13,14 +13,22 @@ import { patchRetryClassifier } from "../../src/agents/stream-retry.js";
 
 // --- Helpers ---
 
-function makeMockSession(originalRetryable: (msg: any) => boolean = () => false) {
-  const session = {
-    _isRetryableError: originalRetryable,
-  } as any;
-  return session;
+/** The duck-typed message surface the retry classifier reads (src-internal shape). */
+interface RetryMessage {
+  stopReason: string;
+  errorMessage?: string;
 }
 
-function msg(opts: { stopReason?: string; errorMessage?: string } = {}): any {
+/** The retry-classifier slot patchRetryClassifier patches, when present. */
+interface MockRetrySession {
+  _isRetryableError?: ((message: RetryMessage) => boolean) | string | null;
+}
+
+function makeMockSession(originalRetryable: (msg: RetryMessage) => boolean = () => false) {
+  return { _isRetryableError: originalRetryable };
+}
+
+function msg(opts: { stopReason?: string; errorMessage?: string } = {}): RetryMessage {
   return {
     stopReason: opts.stopReason ?? "end",
     errorMessage: opts.errorMessage,
@@ -170,7 +178,7 @@ describe("patchRetryClassifier", () => {
   // ── Chains with original classifier ──
 
   it("preserves original classifier's retryable errors", () => {
-    const original = vi.fn((m: any) => m.errorMessage === "rate limit exceeded");
+    const original = vi.fn((m: RetryMessage) => m.errorMessage === "rate limit exceeded");
     const session = makeMockSession(original);
     patchRetryClassifier(session);
 
@@ -205,19 +213,19 @@ describe("patchRetryClassifier", () => {
   // ── Defensive: no _isRetryableError ──
 
   it("is a no-op when _isRetryableError is absent", () => {
-    const session = {} as any;
+    const session: MockRetrySession = {};
     patchRetryClassifier(session);
     expect(session._isRetryableError).toBeUndefined();
   });
 
   it("is a no-op when _isRetryableError is not a function", () => {
-    const session = { _isRetryableError: "not a function" } as any;
+    const session: MockRetrySession = { _isRetryableError: "not a function" };
     patchRetryClassifier(session);
     expect(session._isRetryableError).toBe("not a function");
   });
 
   it("is a no-op when _isRetryableError is null", () => {
-    const session = { _isRetryableError: null } as any;
+    const session: MockRetrySession = { _isRetryableError: null };
     patchRetryClassifier(session);
     expect(session._isRetryableError).toBeNull();
   });

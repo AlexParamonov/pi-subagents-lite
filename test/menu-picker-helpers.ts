@@ -9,9 +9,22 @@
  * helper does the same against the mock instances, so tests can drive pickers
  * faithfully without duplicating the wiring in every mock class.
  */
-export function activatePickerRow(list: any, id: string): void {
-  const item = list.items.find((i: any) => i.id === id);
-  list.submenuComponent = item.submenu(item.currentValue, (value?: string) => {
+import type { Component, SettingItem } from "@earendil-works/pi-tui";
+
+/** The public surface of the mocked SettingsList the picker simulation drives. */
+export interface SettingsListView {
+  items: SettingItem[];
+  submenuComponent: Component | null;
+  onChange: (id: string, newValue: string) => void;
+}
+
+export function activatePickerRow(list: SettingsListView, id: string): void {
+  const found = list.items.find((i) => i.id === id);
+  // Consts so the non-null-asserted bindings keep their narrowed types
+  // inside the callback (a bare union would lose them in the closure).
+  const item = found!;
+  const submenu = item.submenu!;
+  list.submenuComponent = submenu(item.currentValue, (value?: string) => {
     if (value !== undefined) {
       item.currentValue = value;
       list.onChange(item.id, value);

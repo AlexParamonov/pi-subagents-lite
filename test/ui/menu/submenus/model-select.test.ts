@@ -4,29 +4,37 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Component, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
+import type { SelectOption } from "../../../../src/ui/searchable-select.js";
+import type { Theme } from "../../../../src/ui/types.js";
 
-let settingsListCalls: Array<any> = [];
-let selectListInstances: Array<{
-  items: any[];
-  onSelect?: (item: any) => void;
-  onCancel?: () => void;
-  render: (w: number) => string[];
-  handleInput: (d: string) => void;
+let settingsListCalls: Array<{
+  items: SettingItem[];
+  onChange: (id: string, newValue: string) => void;
+  onCancel: () => void;
+  submenuComponent: Component | null;
+  activate: (id: string) => void;
 }> = [];
 
 vi.mock("@earendil-works/pi-tui", async () => {
   const { activatePickerRow } = await import("../../../menu-picker-helpers.js");
   return {
     SettingsList: class MockSettingsList {
-      items: any[];
-      onChange: any;
-      onCancel: any;
-      submenuComponent: any = null;
-      constructor(items: any[], _max: number, _theme: any, onChange: any, onCancel: any) {
+      items: SettingItem[];
+      onChange: (id: string, newValue: string) => void;
+      onCancel: () => void;
+      submenuComponent: Component | null = null;
+      constructor(
+        items: SettingItem[],
+        _max: number,
+        _theme: SettingsListTheme,
+        onChange: (id: string, newValue: string) => void,
+        onCancel: () => void,
+      ) {
         this.items = items;
         this.onChange = onChange;
         this.onCancel = onCancel;
-        settingsListCalls.push(this as any);
+        settingsListCalls.push(this);
       }
       render() {
         return this.submenuComponent ? this.submenuComponent.render(80) : [];
@@ -66,16 +74,22 @@ vi.mock("@earendil-works/pi-tui", async () => {
   };
 });
 
-let searchableSelectInstances: Array<{ items: any[]; callbacks: any }> = [];
+let searchableSelectInstances: Array<{ items: SelectOption[]; callbacks: SelectDialogCallbacks }> = [];
+
+// Mirrors the (non-exported) SelectDialogCallbacks in src/ui/searchable-select.ts.
+interface SelectDialogCallbacks {
+  onSelect: (value: string) => void;
+  onCancel: () => void;
+}
 
 vi.mock("../../../../src/ui/searchable-select.js", () => ({
   SearchableSelectDialog: class MockSearchableSelectDialog {
-    items: any[];
-    callbacks: any;
-    constructor(items: any[], _currentValue: any, callbacks: any, _theme: any) {
+    items: SelectOption[];
+    callbacks: SelectDialogCallbacks;
+    constructor(items: SelectOption[], _currentValue: string | null, callbacks: SelectDialogCallbacks, _theme: Theme) {
       this.items = items;
       this.callbacks = callbacks;
-      searchableSelectInstances.push(this as any);
+      searchableSelectInstances.push(this);
     }
     // Distinct sentinel so tests can observe which component the delegator renders
     render() {
@@ -99,12 +113,11 @@ import { createModelSelectSubmenu } from "../../../../src/ui/menu/submenus/model
 describe("createModelSelectSubmenu", () => {
   beforeEach(() => {
     settingsListCalls = [];
-    selectListInstances = [];
     searchableSelectInstances = [];
     vi.clearAllMocks();
   });
 
-  const mockTheme = {
+  const mockTheme: Theme = {
     fg: (_c: string, t: string) => t,
     bg: (_c: string, t: string) => t,
     bold: (t: string) => t,
@@ -138,7 +151,7 @@ describe("createModelSelectSubmenu", () => {
     const factory = createModelSelectSubmenu({ ...baseOptions, projectOffered: true });
     factory("(inherits parent)", vi.fn());
     const items = settingsListCalls[0].items;
-    expect(items.map((i: any) => i.description)).toEqual([
+    expect(items.map((i) => i.description)).toEqual([
       "Not saved",
       "Saves to the global config file",
       "Saves to the project config file",
@@ -149,7 +162,7 @@ describe("createModelSelectSubmenu", () => {
     const factory = createModelSelectSubmenu({ ...baseOptions, projectOffered: true });
     factory("(inherits parent)", vi.fn());
     const items = settingsListCalls[0].items;
-    expect(items.map((i: any) => i.id)).toEqual(["session", "global", "project"]);
+    expect(items.map((i) => i.id)).toEqual(["session", "global", "project"]);
   });
 
   it("shows Clear option when showClear is true", () => {
@@ -169,7 +182,7 @@ describe("createModelSelectSubmenu", () => {
 
     // The nested target picker is a second SettingsList with "all levels".
     const targetList = settingsListCalls[1];
-    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "all"]);
+    expect(targetList.items.map((i) => i.id)).toEqual(["session", "global", "all"]);
     targetList.activate("global");
 
     expect(onClear).toHaveBeenCalledWith("global");
@@ -185,11 +198,11 @@ describe("createModelSelectSubmenu", () => {
     });
     factory("openai/gpt-4o", vi.fn());
     // The set entries are not filtered; only the nested clear picker is.
-    expect(settingsListCalls[0].items.map((i: any) => i.id)).toEqual(["session", "global", "project", "clear"]);
+    expect(settingsListCalls[0].items.map((i) => i.id)).toEqual(["session", "global", "project", "clear"]);
     settingsListCalls[0].activate("clear");
     const targetList = settingsListCalls[1];
     // One level → no "All levels".
-    expect(targetList.items.map((i: any) => i.id)).toEqual(["project"]);
+    expect(targetList.items.map((i) => i.id)).toEqual(["project"]);
   });
 
   it("with availableLevels, offers 'All levels' only when at least two levels have the setting", () => {
@@ -202,7 +215,7 @@ describe("createModelSelectSubmenu", () => {
     factory("openai/gpt-4o", vi.fn());
     settingsListCalls[0].activate("clear");
     const targetList = settingsListCalls[1];
-    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "all"]);
+    expect(targetList.items.map((i) => i.id)).toEqual(["session", "global", "all"]);
   });
 
   it("describes the clear picker levels as removals", () => {
@@ -210,7 +223,7 @@ describe("createModelSelectSubmenu", () => {
     factory("openai/gpt-4o", vi.fn());
     // The mode list keeps the set wording; the nested clear picker switches
     // to "Removes from...".
-    expect(settingsListCalls[0].items.map((i: any) => i.description)).toEqual([
+    expect(settingsListCalls[0].items.map((i) => i.description)).toEqual([
       "Not saved",
       "Saves to the global config file",
       "Saves to the project config file",
@@ -218,7 +231,7 @@ describe("createModelSelectSubmenu", () => {
     ]);
     settingsListCalls[0].activate("clear");
     const targetList = settingsListCalls[1];
-    expect(targetList.items.map((i: any) => i.description)).toEqual([
+    expect(targetList.items.map((i) => i.description)).toEqual([
       "Removes from the session",
       "Removes from the global config file",
       "Removes from the project config file",
@@ -231,7 +244,7 @@ describe("createModelSelectSubmenu", () => {
     factory("openai/gpt-4o", vi.fn());
     settingsListCalls[0].activate("clear");
     const targetList = settingsListCalls[1];
-    expect(targetList.items.map((i: any) => i.id)).toEqual(["session", "global", "project", "all"]);
+    expect(targetList.items.map((i) => i.id)).toEqual(["session", "global", "project", "all"]);
   });
 
   it("transitions to model selection when session is selected", () => {

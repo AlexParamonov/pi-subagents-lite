@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { Theme } from "../../src/ui/types.js";
 import { buildModelThinkingTag } from "../../src/ui/format.js";
 import { agentNameLabel } from "../../src/ui/renderer.js";
 
@@ -72,7 +73,11 @@ describe("buildModelThinkingTag", () => {
 });
 
 describe("agentNameLabel", () => {
-  const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+  const theme: Theme = {
+    fg: (_c: string, t: string) => t,
+    bg: (_c: string, t: string) => t,
+    bold: (t: string) => t,
+  };
 
   it("returns just the type name when no model or thinking", () => {
     const d = { type: "builder" };

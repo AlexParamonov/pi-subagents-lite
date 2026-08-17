@@ -8,19 +8,24 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { Component, SelectItem, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
 // Capture SettingsList constructor calls from pi-tui
 let settingsListCalls: Array<{
-  items: any[];
+  items: SettingItem[];
   maxVisible: number;
-  theme: any;
+  theme: SettingsListTheme;
   onChange: (id: string, newValue: string) => void;
   onCancel: () => void;
-  options?: any;
+  options?: { enableSearch?: boolean };
   /** The SettingsList instance, so tests can observe in-place rebuilds. */
-  list: any;
+  list: {
+    items: SettingItem[];
+    activate: (id: string) => void;
+    onCancel: () => void;
+  };
 }> = [];
 
 let inputInstances: Array<{
@@ -32,8 +37,8 @@ let inputInstances: Array<{
 }> = [];
 
 let selectListInstances: Array<{
-  items: any[];
-  onSelect?: (item: any) => void;
+  items: SelectItem[];
+  onSelect?: (item: SelectItem) => void;
   onCancel?: () => void;
 }> = [];
 
@@ -41,27 +46,34 @@ vi.mock("@earendil-works/pi-tui", async () => {
   const { activatePickerRow } = await import("../../menu-picker-helpers.js");
   return {
     SettingsList: class MockSettingsList {
-      items: any[];
-      onChange: any;
-      onCancel: any;
-      submenuComponent: any = null;
-      constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+      items: SettingItem[];
+      onChange: (id: string, newValue: string) => void;
+      onCancel: () => void;
+      submenuComponent: Component | null = null;
+      constructor(
+        items: SettingItem[],
+        maxVisible: number,
+        theme: SettingsListTheme,
+        onChange: (id: string, newValue: string) => void,
+        onCancel: () => void,
+        options?: { enableSearch?: boolean },
+      ) {
         this.items = items;
         this.onChange = onChange;
         this.onCancel = onCancel;
-        settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options, list: this as any });
+        settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options, list: this });
       }
       activate(id: string) {
         activatePickerRow(this, id);
       }
     },
     SelectList: class MockSelectList {
-      items: any[];
-      onSelect?: (item: any) => void;
+      items: SelectItem[];
+      onSelect?: (item: SelectItem) => void;
       onCancel?: () => void;
-      constructor(items: any[]) {
+      constructor(items: SelectItem[]) {
         this.items = items;
-        selectListInstances.push(this as any);
+        selectListInstances.push(this);
       }
     },
     Input: class MockInput {
@@ -75,7 +87,7 @@ vi.mock("@earendil-works/pi-tui", async () => {
         return this.value;
       }
       constructor() {
-        inputInstances.push(this as any);
+        inputInstances.push(this);
       }
     },
   };
@@ -115,7 +127,7 @@ describe("showSpawnOptionsMenu — force background", () => {
   it("shows 'Force background · OFF' when disabled", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const fb = settingsListCalls[0].items.find((i: any) => i.id === "forceBackground");
+    const fb = settingsListCalls[0].items.find((i) => i.id === "forceBackground")!;
     expect(fb.currentValue).toBe("OFF");
   });
 
@@ -123,7 +135,7 @@ describe("showSpawnOptionsMenu — force background", () => {
     mockModules.mockConfig.agent.forceBackground = true;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const fb = settingsListCalls[0].items.find((i: any) => i.id === "forceBackground");
+    const fb = settingsListCalls[0].items.find((i) => i.id === "forceBackground")!;
     expect(fb.currentValue).toBe("ON");
   });
 
@@ -143,7 +155,7 @@ describe("showSpawnOptionsMenu — grace turns", () => {
   it("shows 'Grace turns · 6' with default value", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const gt = settingsListCalls[0].items.find((i: any) => i.id === "graceTurns");
+    const gt = settingsListCalls[0].items.find((i) => i.id === "graceTurns")!;
     expect(gt.currentValue).toBe("6");
     expect(typeof gt.submenu).toBe("function");
   });
@@ -152,7 +164,7 @@ describe("showSpawnOptionsMenu — grace turns", () => {
     mockModules.mockConfig.agent.graceTurns = 10;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const gt = settingsListCalls[0].items.find((i: any) => i.id === "graceTurns");
+    const gt = settingsListCalls[0].items.find((i) => i.id === "graceTurns")!;
     expect(gt.currentValue).toBe("10");
   });
 
@@ -161,9 +173,9 @@ describe("showSpawnOptionsMenu — grace turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const gt = settingsListCalls[0].items.find((i: any) => i.id === "graceTurns");
+    const gt = settingsListCalls[0].items.find((i) => i.id === "graceTurns")!;
     const mockDone = vi.fn();
-    gt.submenu("5", mockDone);
+    gt.submenu!("5", mockDone);
 
     expect(inputInstances.length).toBe(1);
     expect(inputInstances[0].value).toBe("5");
@@ -179,9 +191,9 @@ describe("showSpawnOptionsMenu — grace turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const gt = settingsListCalls[0].items.find((i: any) => i.id === "graceTurns");
+    const gt = settingsListCalls[0].items.find((i) => i.id === "graceTurns")!;
     const mockDone = vi.fn();
-    gt.submenu("3", mockDone);
+    gt.submenu!("3", mockDone);
 
     inputInstances[0].onSubmit!("-1");
     expect(mockModules.mockConfig.agent.graceTurns).toBe(3);
@@ -193,9 +205,9 @@ describe("showSpawnOptionsMenu — grace turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const gt = settingsListCalls[0].items.find((i: any) => i.id === "graceTurns");
+    const gt = settingsListCalls[0].items.find((i) => i.id === "graceTurns")!;
     const mockDone = vi.fn();
-    gt.submenu("6", mockDone);
+    gt.submenu!("6", mockDone);
 
     inputInstances[0].onEscape!();
     expect(mockDone).toHaveBeenCalled();
@@ -208,7 +220,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
   it("shows 'Default max turns · (not set)' when no default is set", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     expect(dmt.currentValue).toBe("(not set)");
     expect(typeof dmt.submenu).toBe("function");
   });
@@ -217,7 +229,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     mockModules.mockConfig.agent.defaultMaxTurns = 50;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     expect(dmt.currentValue).toBe("50");
   });
 
@@ -225,7 +237,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     mockModules.mockProjectConfig.agent.defaultMaxTurns = 50;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     expect(dmt.currentValue).toBe("50 [project]");
   });
 
@@ -234,13 +246,13 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("unlimited", mockDone);
+    dmt.submenu!("unlimited", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     // No session layer for max turns; project offered.
-    expect(targetList.items.map((i: any) => i.id)).toEqual(["global", "project", "clear"]);
+    expect(targetList.items.map((i) => i.id)).toEqual(["global", "project", "clear"]);
     targetList.activate("project");
 
     const input = inputInstances[inputInstances.length - 1];
@@ -257,9 +269,9 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("30", mockDone);
+    dmt.submenu!("30", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("clear");
@@ -267,7 +279,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     // The nested clear picker offers the persisted layers plus "all"; no session layer.
     const clearList = settingsListCalls[settingsListCalls.length - 1].list;
     expect(clearList).not.toBe(targetList);
-    expect(clearList.items.map((i: any) => i.id)).toEqual(["global", "project", "all"]);
+    expect(clearList.items.map((i) => i.id)).toEqual(["global", "project", "all"]);
     clearList.activate("project");
 
     expect(mockModules.mockProjectConfig.agent.defaultMaxTurns).toBeUndefined();
@@ -283,9 +295,9 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("30", mockDone);
+    dmt.submenu!("30", mockDone);
 
     settingsListCalls[settingsListCalls.length - 1].list.activate("clear");
     settingsListCalls[settingsListCalls.length - 1].list.activate("all");
@@ -299,14 +311,14 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("", mockDone);
+    dmt.submenu!("", mockDone);
 
     settingsListCalls[settingsListCalls.length - 1].list.activate("clear");
 
     const clearList = settingsListCalls[settingsListCalls.length - 1].list;
-    expect(clearList.items.map((i: any) => i.id)).toEqual(["global", "all"]);
+    expect(clearList.items.map((i) => i.id)).toEqual(["global", "all"]);
   });
 
   it("max turns submenu: escape from the nested Clear... picker returns to the outer picker", async () => {
@@ -314,9 +326,9 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("50", mockDone);
+    dmt.submenu!("50", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("clear");
@@ -344,7 +356,7 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     mockModules.mockProjectConfig.agent.defaultMaxTurns = 50;
     recorded.onChange("defaultMaxTurns", "50");
 
-    const dmt = recorded.list.items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = recorded.list.items.find((i) => i.id === "defaultMaxTurns")!;
     expect(dmt.currentValue).toBe("50 [project]");
   });
 
@@ -353,9 +365,9 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("50", mockDone);
+    dmt.submenu!("50", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("global");
@@ -369,9 +381,9 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("unlimited", mockDone);
+    dmt.submenu!("unlimited", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("global");
@@ -386,9 +398,9 @@ describe("showSpawnOptionsMenu — default max turns", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const dmt = settingsListCalls[0].items.find((i: any) => i.id === "defaultMaxTurns");
+    const dmt = settingsListCalls[0].items.find((i) => i.id === "defaultMaxTurns")!;
     const mockDone = vi.fn();
-    dmt.submenu("unlimited", mockDone);
+    dmt.submenu!("unlimited", mockDone);
 
     settingsListCalls[settingsListCalls.length - 1].list.onCancel();
     expect(mockDone).toHaveBeenCalled();
@@ -401,7 +413,7 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
   it("shows 'Default thinking level · inherit' when no default is set", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
     expect(dt.currentValue).toBe("inherit");
   });
 
@@ -409,7 +421,7 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
     expect(dt.currentValue).toBe("high");
   });
 
@@ -417,22 +429,22 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     mockModules.mockProjectConfig.agent.defaultThinking = "medium";
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
     expect(dt.currentValue).toBe("medium [project]");
   });
 
   it("sets thinking level at global via target pick then level pick", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
     const mockDone = vi.fn();
-    dt.submenu("", mockDone);
+    dt.submenu!("", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("global");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
-    expect(levelList.items.map((i: any) => i.value)).toEqual([
+    expect(levelList.items.map((i) => i.value)).toEqual([
       "off",
       "minimal",
       "low",
@@ -442,7 +454,7 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
       "max",
       "inherit",
     ]);
-    levelList.onSelect!({ value: "medium" });
+    levelList.onSelect!({ value: "medium", label: "medium" });
 
     expect(mockModules.mockConfig.agent.defaultThinking).toBe("medium");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
@@ -453,15 +465,15 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     mockModules.mockProjectTargetOffered = true;
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
     const mockDone = vi.fn();
-    dt.submenu("", mockDone);
+    dt.submenu!("", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("project");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
-    levelList.onSelect!({ value: "high" });
+    levelList.onSelect!({ value: "high", label: "high" });
 
     expect(mockModules.mockProjectConfig.agent.defaultThinking).toBe("high");
     expect(mockDone).toHaveBeenCalledWith("high");
@@ -471,15 +483,15 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
-    const dt = settingsListCalls[0].items.find((i: any) => i.id === "defaultThinking");
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
     const mockDone = vi.fn();
-    dt.submenu("", mockDone);
+    dt.submenu!("", mockDone);
 
     const targetList = settingsListCalls[settingsListCalls.length - 1].list;
     targetList.activate("global");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
-    levelList.onSelect!({ value: "inherit" });
+    levelList.onSelect!({ value: "inherit", label: "inherit" });
 
     expect(mockModules.mockConfig.agent.defaultThinking).toBeUndefined();
     expect(mockDone).toHaveBeenCalledWith("inherit");
@@ -494,15 +506,15 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     await showSpawnOptionsMenu(ctx);
     const items = settingsListCalls[0].items;
 
-    const tt = items.find((i: any) => i.id === "toolTimeout");
+    const tt = items.find((i) => i.id === "toolTimeout")!;
     expect(tt.currentValue).toBe("45");
     expect(typeof tt.submenu).toBe("function");
 
-    const itm = items.find((i: any) => i.id === "idleTimeout");
+    const itm = items.find((i) => i.id === "idleTimeout")!;
     expect(itm.currentValue).toBe("45");
     expect(typeof itm.submenu).toBe("function");
 
-    const gtIdx = items.findIndex((i: any) => i.id === "graceTurns");
+    const gtIdx = items.findIndex((i) => i.id === "graceTurns");
     expect(items[gtIdx + 1].id).toBe("toolTimeout");
     expect(items[gtIdx + 2].id).toBe("idleTimeout");
   });
@@ -513,8 +525,8 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const items = settingsListCalls[0].items;
-    expect(items.find((i: any) => i.id === "toolTimeout").currentValue).toBe("10");
-    expect(items.find((i: any) => i.id === "idleTimeout").currentValue).toBe("20");
+    expect(items.find((i) => i.id === "toolTimeout")!.currentValue).toBe("10");
+    expect(items.find((i) => i.id === "idleTimeout")!.currentValue).toBe("20");
   });
 
   it("tool timeout submenu pre-fills the current value and accepts 0", async () => {
@@ -522,9 +534,9 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const tt = settingsListCalls[0].items.find((i: any) => i.id === "toolTimeout");
+    const tt = settingsListCalls[0].items.find((i) => i.id === "toolTimeout")!;
     const mockDone = vi.fn();
-    tt.submenu("5", mockDone);
+    tt.submenu!("5", mockDone);
     expect(inputInstances[0].value).toBe("5");
 
     inputInstances[0].onSubmit!("0");
@@ -537,9 +549,9 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const tt = settingsListCalls[0].items.find((i: any) => i.id === "toolTimeout");
+    const tt = settingsListCalls[0].items.find((i) => i.id === "toolTimeout")!;
     const mockDone = vi.fn();
-    tt.submenu("45", mockDone);
+    tt.submenu!("45", mockDone);
 
     inputInstances[0].onSubmit!("-1");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
@@ -559,9 +571,9 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const itm = settingsListCalls[0].items.find((i: any) => i.id === "idleTimeout");
+    const itm = settingsListCalls[0].items.find((i) => i.id === "idleTimeout")!;
     const mockDone = vi.fn();
-    itm.submenu("5", mockDone);
+    itm.submenu!("5", mockDone);
     expect(inputInstances[0].value).toBe("5");
 
     inputInstances[0].onSubmit!("0");
@@ -574,9 +586,9 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
 
-    const itm = settingsListCalls[0].items.find((i: any) => i.id === "idleTimeout");
+    const itm = settingsListCalls[0].items.find((i) => i.id === "idleTimeout")!;
     const mockDone = vi.fn();
-    itm.submenu("45", mockDone);
+    itm.submenu!("45", mockDone);
 
     inputInstances[0].onSubmit!("-1");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
@@ -604,7 +616,7 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     it("shows 'Output transcript · ON' when enabled (default)", async () => {
       const ctx = createMockCtx();
       await showSpawnOptionsMenu(ctx);
-      const ot = settingsListCalls[0].items.find((i: any) => i.id === "outputTranscript");
+      const ot = settingsListCalls[0].items.find((i) => i.id === "outputTranscript")!;
       expect(ot.currentValue).toBe("ON");
     });
 
@@ -612,7 +624,7 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
       mockModules.mockConfig.agent.outputTranscript = false;
       const ctx = createMockCtx();
       await showSpawnOptionsMenu(ctx);
-      const ot = settingsListCalls[0].items.find((i: any) => i.id === "outputTranscript");
+      const ot = settingsListCalls[0].items.find((i) => i.id === "outputTranscript")!;
       expect(ot.currentValue).toBe("OFF");
     });
 

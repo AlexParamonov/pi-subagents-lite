@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
-import type { LiveView } from "../../src/types.js";
+import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { renderWidgetLines } from "./widget-helpers.js";
 
@@ -33,23 +33,22 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => text.length,
 }));
 
-function makeMockManager(getAgents: () => any[]): AgentManager {
-  return {
-    // Mirror the real manager: newest first (sorted by startedAt desc).
+function makeMockManager(getAgents: () => AgentRecord[]): AgentManager {
+  // Mirror the real manager: newest first (sorted by startedAt desc).
+  const m = {
     listAgents: () => [...getAgents()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt),
-    getAgent: () => undefined,
-    setConcurrency: () => {},
     getTotalAgentCost: () => 0,
     getTotalAgentCount: () => 0,
-  } as any as AgentManager;
+  };
+  return m as AgentManager;
 }
 
-function makeRunningAgent(id: string): any {
+function makeRunningAgent(id: string): AgentRecord {
   return {
     id,
     display: { type: "builder", description: `Running agent ${id}` },
-    lifecycle: { status: "running", startedAt: Date.now() - 60000 },
-    execution: {},
+    lifecycle: { status: "running", startedAt: Date.now() - 60000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 5,
       compactionCount: 0,
@@ -60,12 +59,12 @@ function makeRunningAgent(id: string): any {
   };
 }
 
-function makeFinishedAgent(id: string): any {
+function makeFinishedAgent(id: string): AgentRecord {
   return {
     id,
     display: { type: "builder", description: `Finished agent ${id}` },
-    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000 },
-    execution: {},
+    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 10,
       compactionCount: 0,
@@ -76,12 +75,12 @@ function makeFinishedAgent(id: string): any {
   };
 }
 
-function makeQueuedAgent(id: string): any {
+function makeQueuedAgent(id: string): AgentRecord {
   return {
     id,
     display: { type: "builder", description: `Queued agent ${id}` },
-    lifecycle: { status: "queued", startedAt: Date.now() - 30000 },
-    execution: {},
+    lifecycle: { status: "queued", startedAt: Date.now() - 30000, started: false },
+    execution: { settled: false, settlementCount: 0 },
     stats: {
       toolUses: 0,
       compactionCount: 0,
@@ -93,7 +92,7 @@ function makeQueuedAgent(id: string): any {
 }
 
 /** Flip an agent record to the completed state (live truth, in place). */
-function completeAgent(agent: any): void {
+function completeAgent(agent: AgentRecord): void {
   agent.lifecycle.status = "completed";
   agent.lifecycle.completedAt = Date.now();
 }
@@ -131,7 +130,7 @@ function renderNavState(widget: AgentWidget): NavState {
 describe("deferred re-rank freeze window", () => {
   let widget: AgentWidget;
   let manager: AgentManager;
-  let agents: any[];
+  let agents: AgentRecord[];
 
   // Live order: finished (f0) → running (r1) → queued (q2).
   beforeEach(() => {

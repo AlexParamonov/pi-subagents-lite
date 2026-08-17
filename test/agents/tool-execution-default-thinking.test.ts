@@ -15,6 +15,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fakeCtx } from "../fixtures.ts";
+import type { ExtensionAPI, ExtensionContext, CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
+import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 
 /* ------------------------------------------------------------------ */
@@ -87,8 +89,8 @@ vi.mock("../../src/shell.js", () => ({
     abort: vi.fn(() => false),
   }),
   getCoordinator: () => ({
-    spawn: vi.fn(async (_pi: any, _ctx: any, intent: any) => {
-      mockSpawn(_pi, _ctx, intent.type, intent.prompt, {
+    spawn: vi.fn(async (pi: ExtensionAPI, ctx: ExtensionContext, intent: SpawnIntent) => {
+      mockSpawn(pi, ctx, intent.type, intent.prompt, {
         thinkingLevel: intent.thinkingLevel,
         maxTurns: intent.maxTurns,
       });
@@ -131,13 +133,18 @@ beforeEach(() => {
 /* ------------------------------------------------------------------ */
 
 describe("toolCallListener — defaultThinking injection", () => {
-  function makeEvent(input: Record<string, unknown> = {}) {
-    return { toolName: "Agent", input: { agent: "general-purpose", prompt: "do it", ...input } };
+  function makeEvent(input: Record<string, unknown> = {}): CustomToolCallEvent {
+    return {
+      type: "tool_call",
+      toolName: "Agent",
+      toolCallId: "call-1",
+      input: { agent: "general-purpose", prompt: "do it", ...input },
+    };
   }
 
   it("injects store defaultThinking when no explicit thinking and no agent frontmatter", async () => {
     storeState.defaultThinking = "max";
-    const event = makeEvent() as any;
+    const event = makeEvent();
 
     await toolCallListener(event, fakeCtx());
 
@@ -147,7 +154,7 @@ describe("toolCallListener — defaultThinking injection", () => {
   it("prefers agent frontmatter thinking over store defaultThinking", async () => {
     storeState.defaultThinking = "max";
     mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "low" }));
-    const event = makeEvent() as any;
+    const event = makeEvent();
 
     await toolCallListener(event, fakeCtx());
 
@@ -156,7 +163,7 @@ describe("toolCallListener — defaultThinking injection", () => {
 
   it("keeps an explicit thinking param unchanged", async () => {
     storeState.defaultThinking = "max";
-    const event = makeEvent({ thinking: "high" }) as any;
+    const event = makeEvent({ thinking: "high" });
 
     await toolCallListener(event, fakeCtx());
 
@@ -164,7 +171,7 @@ describe("toolCallListener — defaultThinking injection", () => {
   });
 
   it("leaves thinking undefined when nothing is configured (inherit parent)", async () => {
-    const event = makeEvent() as any;
+    const event = makeEvent();
 
     await toolCallListener(event, fakeCtx());
 
@@ -177,7 +184,7 @@ describe("toolCallListener — defaultThinking injection", () => {
 /* ------------------------------------------------------------------ */
 
 describe("executeAgentTool — defaultThinking fallback", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     ctx = fakeCtx();
@@ -242,7 +249,7 @@ describe("executeAgentTool — defaultThinking fallback", () => {
 /* ------------------------------------------------------------------ */
 
 describe("executeAgentTool — defaultMaxTurns fallback", () => {
-  let ctx: any;
+  let ctx: ExtensionContext;
 
   beforeEach(() => {
     ctx = fakeCtx();
