@@ -432,7 +432,7 @@ describe("showDebugMenu — restart last agents action (SelectList)", () => {
   it("notifies when no Agent tool calls exist in session history", async () => {
     const ctx = createMockCtx();
     // Mock sessionManager.getEntries to return empty
-    ctx.sessionManager = { getEntries: vi.fn(() => []) };
+    ctx.sessionManager = { ...ctx.sessionManager, getEntries: vi.fn(() => []) };
     await showDebugMenu(ctx);
     await selectListCalls[0].onSelect!({ value: "restart-last-agents", label: "Restart last agents" });
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("No recent Agent tool calls found"), "info");
