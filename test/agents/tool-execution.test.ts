@@ -8,8 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fakeCtx, makeResolvablePromise } from "../fixtures.ts";
-import { asExtensionContext } from "../pi-boundaries.ts";
+import { fakeCtx, makeResolvablePromise } from "../fixtures.js";
+import { asExtensionContext } from "../pi-boundaries.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
 import type { AgentLifecycle, AgentRecord } from "../../src/types.js";

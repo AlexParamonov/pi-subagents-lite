@@ -9,12 +9,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { preloadSkills, loadSkillMeta, loadAllSkills } from "../../src/prompt/skill-loader.ts";
-import { buildAgentPrompt } from "../../src/prompt/prompts.ts";
-import type { AgentConfig } from "../../src/agents/types.ts";
-import type { EnvInfo } from "../../src/types.ts";
+import { preloadSkills, loadSkillMeta, loadAllSkills } from "../../src/prompt/skill-loader.js";
+import { buildAgentPrompt } from "../../src/prompt/prompts.js";
+import type { AgentConfig } from "../../src/agents/types.js";
+import type { EnvInfo } from "../../src/types.js";
 import type { Skill, SourceInfo } from "@earendil-works/pi-coding-agent";
-import { createSkillDir, createFlatSkill } from "../fixtures.ts";
+import { createSkillDir, createFlatSkill } from "../fixtures.js";
 
 const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt, fsExistsSyncMock, fsReaddirSyncMock } =
   vi.hoisted(() => ({

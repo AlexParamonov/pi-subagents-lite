@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { ConfigStore } from "../../src/config/config-store.ts";
-import { memIO, widgetStub, managerStub, statsVisibilityPayloads } from "./config-store-helpers.ts";
+import { ConfigStore } from "../../src/config/config-store.js";
+import { memIO, widgetStub, managerStub, statsVisibilityPayloads } from "./config-store-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Session concurrency                                                */

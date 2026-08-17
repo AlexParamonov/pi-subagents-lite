@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { join } from "node:path";
-import { asExtensionContext } from "./pi-boundaries.ts";
+import { asExtensionContext } from "./pi-boundaries.js";
 
 const mockSetAgentScanDirs = vi.fn();
 const mockSetProjectDir = vi.fn();

@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord, AgentStatus } from "../../src/types.js";
 import type { AgentManager, SpawnOptions } from "../../src/agents/agent-manager.js";
-import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.ts";
+import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
 
 // --- Mock modules ---
 

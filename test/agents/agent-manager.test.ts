@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.ts";
-import { asAgentSession } from "../pi-boundaries.ts";
+import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
+import { asAgentSession } from "../pi-boundaries.js";
 import {
   mockModules,
   mockStoreState,
@@ -14,7 +14,7 @@ import {
   mockRunResult,
   type FakeSessionModel,
   type OnAgentComplete,
-} from "./manager-mocks.ts";
+} from "./manager-mocks.js";
 import { AgentManager, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {

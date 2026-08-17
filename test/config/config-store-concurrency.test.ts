@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { ConfigStore } from "../../src/config/config-store.ts";
-import { memIO } from "./config-store-helpers.ts";
+import { ConfigStore } from "../../src/config/config-store.js";
+import { memIO } from "./config-store-helpers.js";
 
 describe("ConfigStore concurrency layers", () => {
   it("setProvider at project writes only the project layer", () => {

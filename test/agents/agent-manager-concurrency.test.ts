@@ -2,8 +2,8 @@
  * agent-manager-concurrency.test.ts — Concurrency limiting for AgentManager.
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.ts";
-import { mockModules, mockRunResult, type OnAgentComplete } from "./manager-mocks.ts";
+import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
+import { mockModules, mockRunResult, type OnAgentComplete } from "./manager-mocks.js";
 import { AgentManager } from "../../src/agents/agent-manager.js";
 import type { ConcurrencyConfig } from "../../src/agents/agent-manager.js";
 

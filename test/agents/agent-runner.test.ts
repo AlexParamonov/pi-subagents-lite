@@ -11,8 +11,8 @@ import {
   type LoadExtensionsResult,
 } from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage, Model, UserMessage } from "@earendil-works/pi-ai";
-import { fakeCtx, fakePi as makeFakePi } from "../fixtures.ts";
-import { asAgentSession } from "../pi-boundaries.ts";
+import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
+import { asAgentSession } from "../pi-boundaries.js";
 
 const fakePi = makeFakePi();
 

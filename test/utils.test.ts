@@ -10,7 +10,7 @@ import {
   parseThinkingLevel,
   safeReadFile,
   summarizeToolArgs,
-} from "../src/utils.ts";
+} from "../src/utils.js";
 import { tempDirFixture } from "./fixtures";
 import type { Api, Model } from "@earendil-works/pi-ai";
 

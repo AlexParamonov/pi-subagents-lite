@@ -4,8 +4,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
-import { createMockSession, tempDirFixture } from "../fixtures.ts";
-import { asAgentSession } from "../pi-boundaries.ts";
+import { createMockSession, tempDirFixture } from "../fixtures.js";
+import { asAgentSession } from "../pi-boundaries.js";
 import { createOutputFilePath, writeInitialEntry, streamToOutputFile } from "../../src/agents/output-file.js";
 
 const testAgentId = "test-thinking-streaming";

@@ -12,7 +12,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Component, SelectItem, SelectListTheme, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
-import { asCommandContext } from "../../pi-boundaries.ts";
+import { asCommandContext } from "../../pi-boundaries.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import type { SettingsListWrapperOptions } from "../../../src/ui/menu/wrappers/settings-list.js";
 

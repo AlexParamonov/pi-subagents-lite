@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { asExtensionContext } from "../pi-boundaries.ts";
-import { shellMock } from "../fixtures.ts";
+import { asExtensionContext } from "../pi-boundaries.js";
+import { shellMock } from "../fixtures.js";
 
 /* ------------------------------------------------------------------ */
 /*  Module-level mock variables — defined before vi.mock calls so they  */

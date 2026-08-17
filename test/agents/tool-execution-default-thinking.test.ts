@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fakeCtx } from "../fixtures.ts";
+import { fakeCtx } from "../fixtures.js";
 import type { ExtensionAPI, ExtensionContext, CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
 import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
 import type { AgentConfig } from "../../src/agents/types.js";

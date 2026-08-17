@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseAgentFile, scanAgentFilesInDir, mergeAgents, parseExtensions } from "../../src/agents/agent-discovery.ts";
-import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.ts";
-import type { AgentConfig } from "../../src/agents/types.ts";
-import { makeAgentMd, tempDirWithFiles } from "../fixtures.ts";
+import { parseAgentFile, scanAgentFilesInDir, mergeAgents, parseExtensions } from "../../src/agents/agent-discovery.js";
+import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.js";
+import type { AgentConfig } from "../../src/agents/types.js";
+import { makeAgentMd, tempDirWithFiles } from "../fixtures.js";
 
 /* ------------------------------------------------------------------ */
 /*  parseExtensions                                                    */
