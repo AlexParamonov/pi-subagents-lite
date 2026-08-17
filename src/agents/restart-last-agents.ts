@@ -7,8 +7,9 @@
  */
 
 import type { ExtensionCommandContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { UICtx } from "../ui/agent-widget.js";
 import type { ToolCall } from "@earendil-works/pi-ai";
-import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.js";
+import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.js";
 import { parseThinkingLevel, findModelInRegistry } from "../utils.js";
 import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.js";
 
@@ -121,8 +122,10 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     const agentConfig = getAgentConfig(resolvedType);
     const maxTurns = call.max_turns ?? agentConfig?.maxTurns ?? getStore().agent.defaultMaxTurns;
 
-    // Resolve model: same logic as executeAgentTool
-    const model = call.model ? findModelInRegistry(call.model, ctx.modelRegistry, ctx.model) : undefined;
+    // Resolve model: use current config (modelFor) not historical call.model
+    const parentModelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
+    const effectiveModelStr = getStore().modelFor(resolvedType, parentModelId, agentConfig);
+    const model = effectiveModelStr ? findModelInRegistry(effectiveModelStr, ctx.modelRegistry, ctx.model) : undefined;
     const modelKey = model ? `${model.provider}/${model.id}` : undefined;
 
     const isBackground = call.run_in_background || getStore().agent.forceBackground;
@@ -130,6 +133,13 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     // Inject thinking: explicit > agent config > store default
     const thinkingLevel =
       parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
+
+    // Ensure widget is set up so spawned agents appear in the UI
+    const widget = getWidget();
+    if (widget) {
+      widget.setUICtx(ctx.ui as unknown as UICtx);
+      widget.ensureTimer();
+    }
 
     await coordinator.spawn(pi, ctx, {
       type: resolvedType,
