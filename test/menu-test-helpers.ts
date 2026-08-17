@@ -78,8 +78,8 @@ export function selectByName(name: string): (title: string, items: string[]) => 
   };
 }
 
-/** Deep-merge two objects: source values win over defaults for each key. */
-function deepMerge<T>(defaults: T, overrides: Partial<T>): T {
+/** Shallow-merge two objects: source values win over defaults for each key. */
+function shallowMerge<T>(defaults: T, overrides: Partial<T>): T {
   const result: Record<string, unknown> = { ...(defaults as Record<string, unknown>) };
   for (const key of Object.keys(overrides) as string[]) {
     const val = (overrides as Record<string, unknown>)[key];
@@ -298,5 +298,5 @@ export function createMockCtx(
     ...options,
     ui: Object.keys(uiRest).length > 0 ? uiRest : undefined,
   } as Partial<ExtensionCommandContext>;
-  return deepMerge(defaults, mergedOptions);
+  return shallowMerge(defaults, mergedOptions);
 }

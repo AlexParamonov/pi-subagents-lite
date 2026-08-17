@@ -11,7 +11,6 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
   ExtensionUIContext,
-  ContextUsage,
 } from "@earendil-works/pi-coding-agent";
 import type { TObject } from "@sinclair/typebox";
 import { asExtensionAPI } from "./pi-boundaries.js";
@@ -450,8 +449,8 @@ export function tempDirWithFiles(
 /*  Fake context / pi                                                 */
 /* ------------------------------------------------------------------ */
 
-/** Deep-merge two objects: source values win over defaults for each key. */
-function deepMerge<T>(defaults: T, overrides: Partial<T>): T {
+/** Shallow-merge two objects: source values win over defaults for each key. */
+function shallowMerge<T>(defaults: T, overrides: Partial<T>): T {
   const result: Record<string, unknown> = { ...(defaults as Record<string, unknown>) };
   for (const key of Object.keys(overrides) as string[]) {
     result[key] = (overrides as Record<string, unknown>)[key];
@@ -587,7 +586,7 @@ export function fakeCtx(options: FakeCtxOptions = {}): ExtensionContext {
     compact: fn(),
     getSystemPrompt: fn(() => ""),
   };
-  return deepMerge(defaults, options as Partial<ExtensionContext>);
+  return shallowMerge(defaults, options as Partial<ExtensionContext>);
 }
 
 /**
