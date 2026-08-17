@@ -5,10 +5,13 @@
  * Exports:
  *   - shallowMerge: shallow-merge two objects with optional undefined skipping
  *   - defaultUi: default ExtensionUIContext with all required members as stubs
+ *   - defaultSessionManager: default ReadonlySessionManager with typed stubs
+ *   - defaultModel: default model config object
+ *   - defaultModelRegistry: default ModelRegistry mock (declare class, needs cast)
  */
 
 import { vi } from "vitest";
-import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 
 /**
  * Shallow-merge two objects: source values win over defaults for each key.
@@ -64,3 +67,75 @@ export const defaultUi: ExtensionUIContext = {
   getToolsExpanded: vi.fn(() => false),
   setToolsExpanded: vi.fn(),
 };
+
+/** Default ReadonlySessionManager with typed stubs for all required methods. */
+export function defaultSessionManager(): ExtensionContext["sessionManager"] {
+  return {
+    getCwd: vi.fn(() => "/home/test"),
+    getSessionDir: vi.fn(() => "/home/test/.pi/sessions"),
+    getSessionId: vi.fn(() => "session-1"),
+    getSessionFile: vi.fn(() => "/home/test/.pi/sessions/session.json"),
+    getLeafId: vi.fn(() => "leaf-1"),
+    getLeafEntry: vi.fn(() => undefined),
+    getEntry: vi.fn(() => undefined),
+    getLabel: vi.fn(() => "test"),
+    getBranch: vi.fn(() => []),
+    buildContextEntries: vi.fn(() => []),
+    getHeader: vi.fn(() => ({
+      type: "session" as const,
+      id: "session-1",
+      timestamp: "2024-01-01T00:00:00Z",
+      cwd: "/home/test",
+    })),
+    getEntries: vi.fn(() => []),
+    getTree: vi.fn(() => []),
+    getSessionName: vi.fn(() => "test-session"),
+  } as unknown as ExtensionContext["sessionManager"];
+}
+
+/** Default model config object. */
+export function defaultModel(): ExtensionContext["model"] {
+  return {
+    provider: "test",
+    id: "model",
+    name: "Test Model",
+    api: "anthropic-messages",
+    baseUrl: "https://api.test.com",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 100000,
+    maxTokens: 8192,
+  };
+}
+
+/** Default ModelRegistry mock (declare class, cannot be structurally satisfied). */
+export function defaultModelRegistry(
+  overrides: Partial<Record<string, unknown>> = {},
+): ExtensionContext["modelRegistry"] {
+  const base: Record<string, unknown> = {
+    find: vi.fn(),
+    list: vi.fn(() => []),
+    getAll: vi.fn(() => []),
+    getAvailable: vi.fn(() => []),
+    refresh: vi.fn(async () => ({})),
+    getError: vi.fn(() => undefined),
+    hasConfiguredAuth: vi.fn(() => false),
+    getApiKeyAndHeaders: vi.fn(async () => ({ ok: false, error: "mock" })),
+    getProviderAuthStatus: vi.fn(() => ({})),
+    getProvider: vi.fn(() => undefined),
+    complete: vi.fn(async () => ({})),
+    getProviderDisplayName: vi.fn(() => "mock"),
+    getProviderAuth: vi.fn(async () => undefined),
+    getApiKeyForProvider: vi.fn(async () => undefined),
+    isUsingOAuth: vi.fn(() => false),
+    registerProvider: vi.fn(),
+    unregisterProvider: vi.fn(),
+    getRegisteredProviderConfig: vi.fn(() => undefined),
+    getRegisteredNativeProvider: vi.fn(() => undefined),
+    getRegisteredProviderIds: vi.fn(() => []),
+    ...overrides,
+  };
+  // ModelRegistry is a declare class; structural satisfaction is impossible.
+  return base as unknown as ExtensionContext["modelRegistry"];
+}

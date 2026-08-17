@@ -10,9 +10,9 @@
  *   - selectByName: helper to select menu items by short name
  */
 
-import { vi, type Mock } from "vitest";
+import { vi } from "vitest";
 import type { ExtensionCommandContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { shallowMerge, defaultUi } from "./mock-utils.js";
+import { defaultUi, defaultSessionManager, defaultModel, defaultModelRegistry } from "./mock-utils.js";
 
 /** The ui.custom component factory as the mock invokes it: the real
  * (tui, theme, keybindings, done) signature with test-fake argument shapes
@@ -30,22 +30,6 @@ export type ComponentFactory = (
   keybindings?: unknown,
   done?: (result: unknown) => void,
 ) => unknown;
-
-/** The type for a mock ui.custom override that matches ExtensionUIContext["custom"]
- * while accepting the simpler ComponentFactory parameter shape in tests.
- * tui is optional to satisfy contravariance with the full TUI type. */
-export type CustomMockFn = (
-  factory?: (
-    tui?: { terminal: { rows: number } },
-    theme?: {
-      fg: (color: string, text: string) => string;
-      bold: (text: string) => string;
-      italic?: (text: string) => string;
-    },
-    keybindings?: unknown,
-    done?: (result: unknown) => void,
-  ) => unknown,
-) => Promise<unknown>;
 
 /** Options for overriding specific fields of the default fake command context.
  * ui.custom uses a looser type to accommodate test mocks; cast to the real
@@ -129,109 +113,29 @@ export function createMockCtx(
     return undefined;
   }) as ExtensionUIContext["custom"];
 
-  const notifyMock = vi.fn();
+  // Build UI by overriding defaultUi's select/input/custom with controllable mocks.
+  const ui: ExtensionUIContext = {
+    ...defaultUi,
+    select: selectMock as ExtensionUIContext["select"],
+    input: inputMock as ExtensionUIContext["input"],
+    custom: defaultCustom,
+  };
 
   const defaults: ExtensionCommandContext = {
-    ui: {
-      select: selectMock as ExtensionUIContext["select"],
-      confirm: vi.fn(async () => false),
-      input: inputMock as ExtensionUIContext["input"],
-      notify: notifyMock,
-      onTerminalInput: vi.fn(() => () => {}),
-      setStatus: vi.fn(),
-      setWorkingMessage: vi.fn(),
-      setWorkingVisible: vi.fn(),
-      setWorkingIndicator: vi.fn(),
-      setHiddenThinkingLabel: vi.fn(),
-      setWidget: vi.fn() as ExtensionUIContext["setWidget"],
-      setFooter: vi.fn() as ExtensionUIContext["setFooter"],
-      setHeader: vi.fn() as ExtensionUIContext["setHeader"],
-      setTitle: vi.fn(),
-      custom: defaultCustom,
-      pasteToEditor: vi.fn(),
-      setEditorText: vi.fn(),
-      getEditorText: vi.fn(() => ""),
-      editor: vi.fn(async () => undefined),
-      addAutocompleteProvider: vi.fn(),
-      setEditorComponent: vi.fn() as ExtensionUIContext["setEditorComponent"],
-      getEditorComponent: vi.fn(() => undefined) as ExtensionUIContext["getEditorComponent"],
-      theme: {
-        fg: vi.fn(),
-        bg: vi.fn(),
-        bold: vi.fn(),
-        italic: vi.fn(),
-        dim: vi.fn(),
-        underline: vi.fn(),
-        inverse: vi.fn(),
-        strikethrough: vi.fn(),
-      } as never,
-      getAllThemes: vi.fn(() => []),
-      getTheme: vi.fn(() => undefined),
-      setTheme: vi.fn(() => ({ success: true })),
-      getToolsExpanded: vi.fn(() => false),
-      setToolsExpanded: vi.fn(),
-    },
+    ui,
     mode: "tui",
     hasUI: true,
     cwd: "/home/test",
-    sessionManager: {
-      getCwd: vi.fn(() => "/home/test"),
-      getSessionDir: vi.fn(() => "/home/test/.pi/sessions"),
-      getSessionId: vi.fn(() => "session-1"),
-      getSessionFile: vi.fn(() => "/home/test/.pi/sessions/session.json"),
-      getLeafId: vi.fn(() => "leaf-1"),
-      getLeafEntry: vi.fn(() => undefined),
-      getEntry: vi.fn(() => undefined),
-      getLabel: vi.fn(() => "test"),
-      getBranch: vi.fn(() => []),
-      buildContextEntries: vi.fn(() => []),
-      getHeader: vi.fn(() => ({
-        type: "session" as const,
-        id: "session-1",
-        timestamp: "2024-01-01T00:00:00Z",
-        cwd: "/home/test",
-      })),
-      getEntries: vi.fn(() => []),
-      getTree: vi.fn(() => []),
-      getSessionName: vi.fn(() => "test-session"),
-    },
-    modelRegistry: {
-      find: vi.fn(),
-      list: vi.fn(() => []),
-      getAll: vi.fn(() => []),
-      getAvailable: vi.fn(() => [
-        { provider: "anthropic", id: "claude-sonnet-4-20250514" },
-        { provider: "openai", id: "gpt-4o" },
-      ]),
-      refresh: vi.fn(async () => ({})),
-      getError: vi.fn(() => undefined),
-      hasConfiguredAuth: vi.fn(() => false),
-      getApiKeyAndHeaders: vi.fn(async () => ({ ok: false, error: "mock" })),
-      getProviderAuthStatus: vi.fn(() => ({})),
-      getProvider: vi.fn(() => undefined),
-      complete: vi.fn(async () => ({})),
-      getProviderDisplayName: vi.fn(() => "mock"),
-      getProviderAuth: vi.fn(async () => undefined),
-      getApiKeyForProvider: vi.fn(async () => undefined),
-      isUsingOAuth: vi.fn(() => false),
-      registerProvider: vi.fn(),
-      unregisterProvider: vi.fn(),
-      getRegisteredProviderConfig: vi.fn(() => undefined),
-      getRegisteredNativeProvider: vi.fn(() => undefined),
-      getRegisteredProviderIds: vi.fn(() => []),
-    } as unknown as ExtensionCommandContext["modelRegistry"],
-    model: {
-      provider: "test",
-      id: "model",
-      name: "Test Model",
-      api: "anthropic-messages",
-      baseUrl: "https://api.test.com",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 100000,
-      maxTokens: 8192,
-    },
+    sessionManager: defaultSessionManager(),
+    modelRegistry:
+      options.modelRegistry ??
+      defaultModelRegistry({
+        getAvailable: vi.fn(() => [
+          { provider: "anthropic", id: "claude-sonnet-4-20250514" },
+          { provider: "openai", id: "gpt-4o" },
+        ]),
+      }),
+    model: defaultModel(),
     scopedModels: [],
     isIdle: vi.fn(() => true),
     isProjectTrusted: vi.fn(() => true),
@@ -251,16 +155,14 @@ export function createMockCtx(
     reload: vi.fn(async () => {}),
   };
 
-  // Handle ui.custom separately: cast the looser override type to the real type
+  // Handle ui.custom override: the looser type is compatible at runtime;
+  // the structural mismatch is due to the generic T in ExtensionUIContext["custom"].
   if (options.ui?.custom !== undefined) {
-    // The override type is compatible at runtime; the structural mismatch is
-    // due to the generic T in ExtensionUIContext["custom"].
     Object.assign(defaults.ui, { custom: options.ui.custom });
   }
   const { custom: _, ...uiRest } = options.ui ?? {};
-  const mergedOptions = {
-    ...options,
-    ui: Object.keys(uiRest).length > 0 ? uiRest : undefined,
-  } as Partial<ExtensionCommandContext>;
-  return shallowMerge(defaults, mergedOptions);
+  if (Object.keys(uiRest).length > 0) {
+    Object.assign(defaults.ui, uiRest);
+  }
+  return defaults;
 }
