@@ -219,7 +219,7 @@ function usageFromAssistantMessage(msg: Record<string, unknown>): AgentUsage | u
 
 export function subscribeToSessionEvents(
   session: AgentSession,
-  options: Pick<RunOptions, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
+  options: Pick<RunCallbacks, "onToolActivity" | "onAssistantUsage" | "onCompaction">,
 ): () => void {
   if (!options.onToolActivity && !options.onAssistantUsage && !options.onCompaction) {
     return () => {};
