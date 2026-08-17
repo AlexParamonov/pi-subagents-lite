@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.
+
 - **Agents status line stays visible for the session.** The status line's visibility is now
   driven by record existence (ADR-0006), not by the finished-row retention window: after the
   last agent finishes and its row ages out, the line keeps showing the session done count and
