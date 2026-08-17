@@ -165,14 +165,17 @@ function setupMocks() {
  *   undefined = cancel at that step.
  */
 function createMockWizardCtx(stepResults: (string | undefined)[]) {
-  const ctx = createMockCtx();
   let callCount = 0;
-  ctx.ui.custom = vi.fn(async (factory) => {
-    const stepIndex = callCount++;
-    // Call factory to create component (captured by pi-tui mocks)
-    const theme = { fg: (c: string, t: string) => t, bold: (t: string) => t };
-    factory(null, theme, null, () => {});
-    return stepResults[stepIndex];
+  const ctx = createMockCtx([], [], [], {
+    ui: {
+      custom: vi.fn(async (factory) => {
+        const stepIndex = callCount++;
+        // Call factory to create component (captured by pi-tui mocks)
+        const theme = { fg: (c: string, t: string) => t, bold: (t: string) => t };
+        factory(null, theme, null, () => {});
+        return stepResults[stepIndex];
+      }),
+    },
   });
   return ctx;
 }

@@ -361,7 +361,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
       excludeTools: ["write"],
     });
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -384,7 +384,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
       excludeTools: ["write", "grep"],
     });
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -452,7 +452,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -485,7 +485,7 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -1045,7 +1045,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -1080,7 +1080,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -1155,7 +1155,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tool "foobar" not found in any loaded extension'));
 
@@ -1189,7 +1189,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('extension "tavily" is loaded but none of its tools are in tools'),
@@ -1223,7 +1223,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('extension "tavily" is not loaded, "tavily/*" will have no effect'),
@@ -1317,7 +1317,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -1352,7 +1352,7 @@ describe("tools field — extension tool names and ext/all syntax", () => {
       },
     ]);
 
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
 
     const activeTools = session.getActiveTools()!;
     expect(activeTools).toContain("read");
@@ -2173,11 +2173,12 @@ describe("runAgent — system prompt modes", () => {
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
 
-    const ctx = fakeCtx();
-    ctx.getSystemPrompt = vi.fn().mockImplementation(() => {
-      throw new Error("no prompt");
+    const ctx = fakeCtx({
+      getSystemPrompt: vi.fn().mockImplementation(() => {
+        throw new Error("no prompt");
+      }),
+      ui: { notify: vi.fn() },
     });
-    ctx.ui = { notify: vi.fn() };
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
@@ -2243,8 +2244,7 @@ describe("runAgent — custom mode", () => {
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
 
-    const ctx = fakeCtx();
-    ctx.ui = { notify: vi.fn() };
+    const ctx = fakeCtx({ ui: { notify: vi.fn() } });
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
@@ -2265,8 +2265,7 @@ describe("runAgent — custom mode", () => {
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
 
-    const ctx = fakeCtx();
-    ctx.ui = { notify: vi.fn() };
+    const ctx = fakeCtx({ ui: { notify: vi.fn() } });
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
@@ -2288,8 +2287,7 @@ describe("runAgent — custom mode", () => {
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
 
-    const ctx = fakeCtx();
-    ctx.ui = { notify: vi.fn() };
+    const ctx = fakeCtx({ ui: { notify: vi.fn() } });
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
@@ -2342,10 +2340,7 @@ describe("runAgent — notify buffering", () => {
       excludeTools: ["write"],
     });
 
-    const ctx = fakeCtx();
-    ctx.ui = {
-      notify: vi.fn(),
-    };
+    const ctx = fakeCtx({ ui: { notify: vi.fn() } });
 
     const promise = runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
@@ -2374,8 +2369,7 @@ describe("runAgent — notify buffering", () => {
       excludeTools: ["write"],
     });
 
-    const ctx = fakeCtx();
-    ctx.ui = { notify: vi.fn() };
+    const ctx = fakeCtx({ ui: { notify: vi.fn() } });
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
 
@@ -2395,7 +2389,7 @@ describe("runAgent — notify buffering", () => {
       excludeTools: ["write"],
     });
 
-    const ctx = fakeCtx();
+    const ctx = fakeCtx({ ui: undefined });
     // No ctx.ui — should fall back to console.warn
 
     await runAgent(ctx, "test-agent", "do something", { pi: fakePi });
@@ -2415,7 +2409,7 @@ describe("runAgent — notify buffering", () => {
       excludeTools: ["write"],
     });
 
-    const ctx = fakeCtx();
+    const ctx = fakeCtx({ ui: undefined });
     // No ctx.ui — console.warn fallback
 
     const promise = runAgent(ctx, "test-agent", "do something", { pi: fakePi });

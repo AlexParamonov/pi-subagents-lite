@@ -5,7 +5,7 @@
  * The debug menu is a SelectList with 2 items that execute actions on select.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import {
@@ -169,7 +169,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
     // The notification text we show the user is the observable outcome.
-    const [msg] = ctx.ui.notify.mock.calls[0];
+    const [msg] = (ctx.ui.notify as unknown as Mock).mock.calls[0];
     expect(msg).toContain("general-purpose");
     expect(msg).toContain("General-purpose agent");
     expect(msg).toContain("Explore");
@@ -275,7 +275,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     const ctx = createMockCtx();
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
-    const [msg] = ctx.ui.notify.mock.calls[0];
+    const [msg] = (ctx.ui.notify as unknown as Mock).mock.calls[0];
     expect(msg).toContain("known");
     expect(msg).not.toContain("unknown");
   });

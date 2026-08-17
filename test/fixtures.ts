@@ -6,7 +6,13 @@
  */
 
 import { vi, type Mock } from "vitest";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+  ExtensionUIContext,
+  ContextUsage,
+} from "@earendil-works/pi-coding-agent";
 import type { TObject } from "@sinclair/typebox";
 import { asExtensionAPI } from "./pi-boundaries.js";
 import type { AgentManager } from "../src/agents/agent-manager.js";
@@ -444,23 +450,144 @@ export function tempDirWithFiles(
 /*  Fake context / pi                                                 */
 /* ------------------------------------------------------------------ */
 
+/** Deep-merge two objects: source values win over defaults for each key. */
+function deepMerge<T>(defaults: T, overrides: Partial<T>): T {
+  const result: Record<string, unknown> = { ...(defaults as Record<string, unknown>) };
+  for (const key of Object.keys(overrides) as string[]) {
+    result[key] = (overrides as Record<string, unknown>)[key];
+  }
+  return result as T;
+}
+
+/** Options for overriding specific fields of the default fake context. */
+export interface FakeCtxOptions {
+  ui?: Partial<ExtensionUIContext>;
+  mode?: "tui" | "rpc" | "json" | "print";
+  hasUI?: boolean;
+  cwd?: string;
+  modelRegistry?: ExtensionContext["modelRegistry"];
+  model?: ExtensionContext["model"];
+  scopedModels?: ExtensionContext["scopedModels"];
+  thinkingLevel?: ExtensionContext["thinkingLevel"];
+  isIdle?: ExtensionContext["isIdle"];
+  isProjectTrusted?: ExtensionContext["isProjectTrusted"];
+  signal?: ExtensionContext["signal"];
+  abort?: ExtensionContext["abort"];
+  hasPendingMessages?: ExtensionContext["hasPendingMessages"];
+  shutdown?: ExtensionContext["shutdown"];
+  getContextUsage?: ExtensionContext["getContextUsage"];
+  compact?: ExtensionContext["compact"];
+  getSystemPrompt?: ExtensionContext["getSystemPrompt"];
+}
+
+/** A vi.fn() stub for any ExtensionContext method. */
+const fn = vi.fn;
+
+/** Default fake UI context with all required ExtensionUIContext members. */
+const defaultUi: ExtensionUIContext = {
+  select: fn(async () => undefined),
+  confirm: fn(async () => false),
+  input: fn(async () => undefined),
+  notify: fn(),
+  onTerminalInput: fn(() => () => {}),
+  setStatus: fn(),
+  setWorkingMessage: fn(),
+  setWorkingVisible: fn(),
+  setWorkingIndicator: fn(),
+  setHiddenThinkingLabel: fn(),
+  setWidget: fn() as ExtensionUIContext["setWidget"],
+  setFooter: fn() as ExtensionUIContext["setFooter"],
+  setHeader: fn() as ExtensionUIContext["setHeader"],
+  setTitle: fn(),
+  custom: fn(async () => undefined) as ExtensionUIContext["custom"],
+  pasteToEditor: fn(),
+  setEditorText: fn(),
+  getEditorText: fn(() => ""),
+  editor: fn(async () => undefined),
+  addAutocompleteProvider: fn(),
+  setEditorComponent: fn() as ExtensionUIContext["setEditorComponent"],
+  getEditorComponent: fn(() => undefined) as ExtensionUIContext["getEditorComponent"],
+  theme: {
+    fg: fn(),
+    bg: fn(),
+    bold: fn(),
+    italic: fn(),
+    dim: fn(),
+    underline: fn(),
+    inverse: fn(),
+    strikethrough: fn(),
+  } as never,
+  getAllThemes: fn(() => []),
+  getTheme: fn(() => undefined),
+  setTheme: fn(() => ({ success: true })),
+  getToolsExpanded: fn(() => false),
+  setToolsExpanded: fn(),
+};
+
 /**
- * Create a minimal fake pi context for agent tests.
- *
- * The return type stays `any` (not ExtensionContext): the agent test suites
- * reassign members with partial mocks — `ctx.ui = { notify: vi.fn() }` and
- * `ctx.getSystemPrompt = vi.fn()...` — and strict TS rejects a partial object
- * against the real ExtensionContext.ui (every ui member required). No non-any
- * type both accepts that reassignment and stays assignable to ExtensionContext
- * for spawn/runAgent (reproduced: TS2740 at the reassignment sites).
+ * Create a fake ExtensionContext with typed defaults for all required fields.
+ * Pass an options object to override specific fields.
  */
-export function fakeCtx(): any {
-  return {
+export function fakeCtx(options: FakeCtxOptions = {}): ExtensionContext {
+  const defaults: ExtensionContext = {
+    ui: defaultUi,
+    mode: "tui",
+    hasUI: true,
     cwd: "/home/test/project",
-    modelRegistry: { find: vi.fn() },
-    model: { provider: "test", id: "model" },
-    getSystemPrompt: vi.fn(),
+    sessionManager: {
+      getActive: fn(() => undefined),
+      getInfo: fn(() => undefined),
+      getCwd: fn(() => "/home/test"),
+      getSessionDir: fn(() => "/home/test/.pi/sessions"),
+      getSessionId: fn(() => "session-1"),
+      getSessionFile: fn(() => "/home/test/.pi/sessions/session.json"),
+      getLeafId: fn(() => "leaf-1"),
+      getLeafEntry: fn(() => undefined),
+      getEntry: fn(() => undefined),
+      getLabel: fn(() => "test"),
+      getBranch: fn(() => []),
+      buildContextEntries: fn(() => []),
+      getHeader: fn(() => ({})),
+      getEntries: fn(() => []),
+      getTree: fn(() => []),
+      getSessionName: fn(() => "test-session"),
+    } as unknown as ExtensionContext["sessionManager"],
+    modelRegistry: {
+      find: fn(),
+      list: fn(() => []),
+      getAll: fn(() => []),
+      getAvailable: fn(() => []),
+      refresh: fn(async () => ({})),
+      getError: fn(() => undefined),
+      hasConfiguredAuth: fn(() => false),
+      getApiKeyAndHeaders: fn(async () => ({ ok: false, error: "mock" })),
+      getProviderAuthStatus: fn(() => ({})),
+      getProvider: fn(() => undefined),
+      complete: fn(async () => ({})),
+      getProviderDisplayName: fn(() => "mock"),
+      getProviderAuth: fn(async () => undefined),
+      getApiKeyForProvider: fn(async () => undefined),
+      isUsingOAuth: fn(() => false),
+      registerProvider: fn(),
+      unregisterProvider: fn(),
+      getRegisteredProviderConfig: fn(() => undefined),
+      getRegisteredNativeProvider: fn(() => undefined),
+      getRegisteredProviderIds: fn(() => []),
+    } as unknown as ExtensionContext["modelRegistry"],
+    model: { provider: "test", id: "model" } as unknown as ExtensionContext["model"],
+    scopedModels: [],
+    thinkingLevel: undefined,
+    isIdle: fn(() => true),
+    isProjectTrusted: fn(() => true),
+    signal: undefined,
+    abort: fn(),
+    hasPendingMessages: fn(() => false),
+    shutdown: fn(),
+    getContextUsage: fn(() => undefined),
+    compact: fn(),
+    getSystemPrompt: fn(() => ""),
   };
+  return deepMerge(defaults, options as Partial<ExtensionContext>);
 }
 
 /**
