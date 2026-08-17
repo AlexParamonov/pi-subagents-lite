@@ -3,10 +3,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { SelectItem } from "@earendil-works/pi-tui";
+import type { Theme } from "../../../../src/ui/types.js";
 
 let selectListInstances: Array<{
-  items: any[];
-  onSelect?: (item: any) => void;
+  items: SelectItem[];
+  onSelect?: (item: SelectItem) => void;
   onCancel?: () => void;
   render: (w: number) => string[];
   handleInput: (d: string) => void;
@@ -14,12 +16,12 @@ let selectListInstances: Array<{
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SelectList: class MockSelectList {
-    items: any[];
-    onSelect?: (item: any) => void;
+    items: SelectItem[];
+    onSelect?: (item: SelectItem) => void;
     onCancel?: () => void;
-    constructor(items: any[]) {
+    constructor(items: SelectItem[]) {
       this.items = items;
-      selectListInstances.push(this as any);
+      selectListInstances.push(this);
     }
     render() {
       return [];
@@ -41,7 +43,7 @@ describe("createConfirmSubmenu", () => {
     selectListInstances = [];
   });
 
-  const mockTheme = {
+  const mockTheme: Theme = {
     fg: (_c: string, t: string) => t,
     bg: (_c: string, t: string) => t,
     bold: (t: string) => t,
@@ -69,7 +71,7 @@ describe("createConfirmSubmenu", () => {
     const done = vi.fn();
     const factory = createConfirmSubmenu({ message: "Are you sure?", theme: mockTheme, onConfirm });
     factory("", done);
-    selectListInstances[0].onSelect!({ value: "Yes" });
+    selectListInstances[0].onSelect!({ value: "Yes", label: "Yes" });
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(done).toHaveBeenCalledWith("Yes");
   });
@@ -79,7 +81,7 @@ describe("createConfirmSubmenu", () => {
     const done = vi.fn();
     const factory = createConfirmSubmenu({ message: "Are you sure?", theme: mockTheme, onConfirm });
     factory("", done);
-    selectListInstances[0].onSelect!({ value: "No" });
+    selectListInstances[0].onSelect!({ value: "No", label: "No" });
     expect(onConfirm).not.toHaveBeenCalled();
     expect(done).toHaveBeenCalledWith();
   });
