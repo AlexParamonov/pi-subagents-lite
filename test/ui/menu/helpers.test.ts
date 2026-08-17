@@ -115,7 +115,17 @@ describe("buildSelectListTheme", () => {
 });
 
 describe("installSeparatorSkip", () => {
-  function makeList(items: any[]) {
+  /** A menu row the separator-skip helper navigates over. SettingsList and
+   * SelectList items carry different identity keys (id vs value); the helper
+   * duck-types both, so the row shape unions them. */
+  interface MenuRow {
+    id?: string;
+    value?: string;
+    label: string;
+    currentValue?: string;
+  }
+
+  function makeList(items: MenuRow[]) {
     return { items, selectedIndex: 0 };
   }
 

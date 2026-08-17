@@ -9,23 +9,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
+import type { SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 
 // Capture SettingsList constructor calls from pi-tui
 let settingsListCalls: Array<{
-  items: any[];
-  maxVisible: number;
-  theme: any;
+  items: SettingItem[];
   onChange: (id: string, newValue: string) => void;
-  onCancel: () => void;
-  options?: any;
 }> = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
-    items: any[];
-    constructor(items: any[], maxVisible: number, theme: any, onChange: any, onCancel: any, options?: any) {
+    items: SettingItem[];
+    constructor(
+      items: SettingItem[],
+      _maxVisible: number,
+      _theme: SettingsListTheme,
+      onChange: (id: string, newValue: string) => void,
+      _onCancel: () => void,
+    ) {
       this.items = items;
-      settingsListCalls.push({ items, maxVisible, theme, onChange, onCancel, options });
+      settingsListCalls.push({ items, onChange });
     }
   },
   Input: class MockInput {
@@ -76,7 +79,7 @@ describe("showSystemPromptMenu — system prompt mode", () => {
   it("shows 'System prompt mode · replace' by default", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const spm = settingsListCalls[0].items.find((i: any) => i.id === "systemPromptMode");
+    const spm = settingsListCalls[0].items.find((i) => i.id === "systemPromptMode")!;
     expect(spm.currentValue).toBe("replace");
   });
 
@@ -84,7 +87,7 @@ describe("showSystemPromptMenu — system prompt mode", () => {
     mockModules.mockConfig.agent.systemPromptMode = "inherit";
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const spm = settingsListCalls[0].items.find((i: any) => i.id === "systemPromptMode");
+    const spm = settingsListCalls[0].items.find((i) => i.id === "systemPromptMode")!;
     expect(spm.currentValue).toBe("inherit");
   });
 
@@ -109,7 +112,7 @@ describe("showSystemPromptMenu — Create prompt file", () => {
     vi.clearAllMocks();
     settingsListCalls = [];
     existsSyncSpy = vi.spyOn(fs, "existsSync");
-    mkdirSyncSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined as any);
+    mkdirSyncSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined);
     writeFileSyncSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {});
   });
 
@@ -123,9 +126,9 @@ describe("showSystemPromptMenu — Create prompt file", () => {
     existsSyncSpy.mockReturnValue(false);
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toContain("createPromptFile");
-    const cpf = settingsListCalls[0].items.find((i: any) => i.id === "createPromptFile");
+    const cpf = settingsListCalls[0].items.find((i) => i.id === "createPromptFile")!;
     expect(cpf.currentValue).toContain("subagents-lite-prompt.md");
   });
 
@@ -133,7 +136,7 @@ describe("showSystemPromptMenu — Create prompt file", () => {
     existsSyncSpy.mockReturnValue(true);
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).not.toContain("createPromptFile");
   });
 
@@ -142,7 +145,7 @@ describe("showSystemPromptMenu — Create prompt file", () => {
     existsSyncSpy.mockReturnValue(false);
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).not.toContain("createPromptFile");
   });
 
@@ -180,7 +183,7 @@ describe("showSystemPromptMenu — Include AGENTS.md", () => {
   it("shows 'Include AGENTS.md · ON' when includeContextFiles is true", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const icf = settingsListCalls[0].items.find((i: any) => i.id === "includeContextFiles");
+    const icf = settingsListCalls[0].items.find((i) => i.id === "includeContextFiles")!;
     expect(icf.currentValue).toBe("ON");
   });
 
@@ -188,7 +191,7 @@ describe("showSystemPromptMenu — Include AGENTS.md", () => {
     mockModules.mockConfig.agent.includeContextFiles = false;
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const icf = settingsListCalls[0].items.find((i: any) => i.id === "includeContextFiles");
+    const icf = settingsListCalls[0].items.find((i) => i.id === "includeContextFiles")!;
     expect(icf.currentValue).toBe("OFF");
   });
 
@@ -214,7 +217,7 @@ describe("showSystemPromptMenu — Load skills implicitly", () => {
   it("shows 'Load skills implicitly · ON' when loadSkillsImplicitly is true", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const lsi = settingsListCalls[0].items.find((i: any) => i.id === "loadSkillsImplicitly");
+    const lsi = settingsListCalls[0].items.find((i) => i.id === "loadSkillsImplicitly")!;
     expect(lsi.currentValue).toBe("ON");
   });
 
@@ -222,7 +225,7 @@ describe("showSystemPromptMenu — Load skills implicitly", () => {
     mockModules.mockConfig.agent.loadSkillsImplicitly = false;
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const lsi = settingsListCalls[0].items.find((i: any) => i.id === "loadSkillsImplicitly");
+    const lsi = settingsListCalls[0].items.find((i) => i.id === "loadSkillsImplicitly")!;
     expect(lsi.currentValue).toBe("OFF");
   });
 
@@ -248,7 +251,7 @@ describe("showSystemPromptMenu — Load extensions implicitly", () => {
   it("shows 'Load extensions implicitly · ON' when loadExtensionsImplicitly is true", async () => {
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const lei = settingsListCalls[0].items.find((i: any) => i.id === "loadExtensionsImplicitly");
+    const lei = settingsListCalls[0].items.find((i) => i.id === "loadExtensionsImplicitly")!;
     expect(lei.currentValue).toBe("ON");
   });
 
@@ -256,7 +259,7 @@ describe("showSystemPromptMenu — Load extensions implicitly", () => {
     mockModules.mockConfig.agent.loadExtensionsImplicitly = false;
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const lei = settingsListCalls[0].items.find((i: any) => i.id === "loadExtensionsImplicitly");
+    const lei = settingsListCalls[0].items.find((i) => i.id === "loadExtensionsImplicitly")!;
     expect(lei.currentValue).toBe("OFF");
   });
 
@@ -284,7 +287,7 @@ describe("showSystemPromptMenu — item order", () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(false);
     const ctx = createMockCtx();
     await showSystemPromptMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i: any) => i.id);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toContain("createPromptFile");
     vi.restoreAllMocks();
   });

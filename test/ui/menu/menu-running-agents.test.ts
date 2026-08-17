@@ -8,25 +8,39 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
-import { createMockCtx } from "../../menu-test-helpers.js";
-import { selectListView } from "../../pi-boundaries.ts";
+import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
+import { asAgentSession, selectListView } from "../../pi-boundaries.ts";
+import type { AgentRecord, AgentDisplayInfo, AgentExecutionState, AgentLifecycle } from "../../../src/types.js";
+import type { Theme } from "../../../src/ui/types.js";
+import type { Component, Input, SelectItem, SelectListTheme } from "@earendil-works/pi-tui";
+
+/** The mocked SelectList surface the tests drive: the items the menu built
+ * plus the selection state the navigation tests step by hand. */
+interface SelectListCapture {
+  items: SelectItem[];
+  maxVisible: number;
+  selectedIndex: number;
+  onSelect?: (item: SelectItem) => void;
+  onCancel?: () => void;
+}
 
 // Capture SelectList constructor calls
-let selectListCalls: Array<any> = [];
+let selectListCalls: SelectListCapture[] = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
   SettingsList: class MockSettingsList {
     constructor() {}
   },
   SelectList: class MockSelectList {
-    items: any[];
+    items: SelectItem[];
     maxVisible: number;
-    onSelect?: (item: any) => void;
+    selectedIndex = 0;
+    onSelect?: (item: SelectItem) => void;
     onCancel?: () => void;
-    constructor(items: any[], maxVisible: number, _theme: any) {
+    constructor(items: SelectItem[], maxVisible: number, _theme: SelectListTheme) {
       this.items = items;
       this.maxVisible = maxVisible;
-      selectListCalls.push(this as any);
+      selectListCalls.push(this);
     }
     render() {
       return [];
@@ -64,12 +78,28 @@ vi.mock("@earendil-works/pi-tui", () => ({
 // Import AFTER mock setup
 import { showRunningAgentsMenu, buildAgentActionsList } from "../../../src/ui/menu/menu-running-agents.js";
 
-function makeRecord(overrides: any = {}): any {
-  return {
+/** Nested-partial overrides the record factory merges over its base record. */
+interface RecordOverrides {
+  id?: string;
+  display?: Partial<AgentDisplayInfo>;
+  lifecycle?: Partial<AgentLifecycle>;
+  execution?: Partial<AgentExecutionState>;
+  result?: string;
+  error?: string;
+}
+
+/** A session handle the menu only checks for truthiness; the real
+ * ConversationViewer (never constructed here) would consume it. */
+function makeMockSession(messages: { role: string; content: string }[]) {
+  return asAgentSession({ messages, subscribe: vi.fn(() => () => {}) });
+}
+
+function makeRecord(overrides: RecordOverrides = {}): AgentRecord {
+  const base: AgentRecord = {
     id: "test-id-123",
     display: { type: "general-purpose", description: "Test agent" },
-    lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
-    execution: {},
+    lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000, started: true },
+    execution: { settled: false, settlementCount: 0 },
     result: "some result",
     error: "",
     stats: {
@@ -78,10 +108,28 @@ function makeRecord(overrides: any = {}): any {
       turnCount: 15,
       compactionCount: 0,
     },
+  };
+  return {
+    ...base,
     ...overrides,
+    display: { ...base.display, ...overrides.display },
+    lifecycle: { ...base.lifecycle, ...overrides.lifecycle },
+    execution: { ...base.execution, ...overrides.execution },
   };
 }
-const noopTheme = { fg: (_c: string, t: string) => t, bg: (_c: string, t: string) => t, bold: (t: string) => t };
+const noopTheme: Theme = { fg: (_c: string, t: string) => t, bg: (_c: string, t: string) => t, bold: (t: string) => t };
+
+/** The factory's unknown return narrowed at the render boundary: the real
+ * showTextViewer builds a plain Component the tests render and feed keys to. */
+function asComponent(component: unknown): Component {
+  return component as Component;
+}
+
+/** The steer branch hands the delegator a pi-tui Input; assert it at the
+ * setActive boundary, where Component is the wider declared type. */
+function asInput(component: Component): Input {
+  return component as Input;
+}
 
 afterEach(() => resetConfig());
 
@@ -120,8 +168,8 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls.length).toBe(1);
     // Bulk rows (separator, Clear all / Clear done) follow the agent entries
-    const agentItems = selectListCalls[0].items.filter((i: any) => i.value.startsWith("agent-"));
-    expect(agentItems.map((i: any) => i.value)).toEqual(["agent-1", "agent-2"]);
+    const agentItems = selectListCalls[0].items.filter((i) => i.value.startsWith("agent-"));
+    expect(agentItems.map((i) => i.value)).toEqual(["agent-1", "agent-2"]);
   });
 
   it("includes agent type in label", async () => {
@@ -137,11 +185,11 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
 describe("showRunningAgentsMenu — __sep__ navigation skip", () => {
   // Mirrors the pi-tui SelectList handleInput wrap-around writes: up is
   // cur === 0 ? len-1 : cur-1, down is cur === len-1 ? 0 : cur+1.
-  function pressUp(list: any) {
+  function pressUp(list: SelectListCapture) {
     const len = list.items.length;
     list.selectedIndex = list.selectedIndex === 0 ? len - 1 : list.selectedIndex - 1;
   }
-  function pressDown(list: any) {
+  function pressDown(list: SelectListCapture) {
     const len = list.items.length;
     list.selectedIndex = list.selectedIndex === len - 1 ? 0 : list.selectedIndex + 1;
   }
@@ -170,7 +218,7 @@ describe("showRunningAgentsMenu — __sep__ navigation skip", () => {
 
   it("never lands on a __sep__ row while sweeping down the whole list", async () => {
     const list = await openMenu();
-    const seps = new Set(list.items.map((i: any, idx: number) => (i.value === "__sep__" ? idx : -1)));
+    const seps = new Set(list.items.map((i, idx) => (i.value === "__sep__" ? idx : -1)));
     for (let step = 0; step < 3 * list.items.length; step++) {
       pressDown(list);
       expect(seps.has(list.selectedIndex)).toBe(false);
@@ -255,7 +303,7 @@ describe("buildAgentActionsList — actions submenu", () => {
   it("shows View snapshot action for running agent with session", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "",
     });
     const list = buildAgentActionsList(
@@ -273,7 +321,7 @@ describe("buildAgentActionsList — actions submenu", () => {
   it("shows Steer and Stop actions for running agent", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [] } },
+      execution: { session: makeMockSession([]) },
       result: "",
     });
     const list = buildAgentActionsList(
@@ -311,10 +359,10 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
   });
 
   it("opens text viewer when selecting view-result", async () => {
-    let capturedFactory: any = null;
+    let capturedFactory: ComponentFactory | null = null;
     const record = makeRecord({ result: "hello world\nline 2" });
     const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: any) => {
+    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
       capturedFactory = factory;
       return undefined;
     });
@@ -333,14 +381,14 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
   });
 
   it("opens text viewer when selecting view-error", async () => {
-    let capturedFactory: any = null;
+    let capturedFactory: ComponentFactory | null = null;
     const record = makeRecord({
       lifecycle: { status: "error", startedAt: Date.now() - 30000 },
       result: "",
       error: "something went wrong",
     });
     const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: any) => {
+    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
       capturedFactory = factory;
       return undefined;
     });
@@ -359,14 +407,14 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
   });
 
   it("opens ConversationViewer when selecting view-snapshot", async () => {
-    let capturedFactory: any = null;
+    let capturedFactory: ComponentFactory | null = null;
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }], subscribe: vi.fn(() => () => {}) } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "",
     });
     const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: any) => {
+    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
       capturedFactory = factory;
       return undefined;
     });
@@ -391,10 +439,10 @@ describe("showTextViewer — component behavior", () => {
     vi.clearAllMocks();
   });
 
-  async function getComponent(record: any, kind: "result" | "error", text: string) {
-    let factory: any = null;
+  async function getComponent(record: AgentRecord, kind: "result" | "error", text: string) {
+    let factory: ComponentFactory | null = null;
     const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (f: any) => {
+    ctx.ui.custom = vi.fn(async (f: ComponentFactory) => {
       factory = f;
       return undefined;
     });
@@ -412,11 +460,8 @@ describe("showTextViewer — component behavior", () => {
     });
     // Invoke the factory to get the component
     const doneFn = vi.fn();
-    const component = factory!(
-      { terminal: { rows: 40, cols: 80 } },
-      { fg: (_c: string, t: string) => t, bold: (t: string) => t },
-      null,
-      doneFn,
+    const component = asComponent(
+      factory!({ terminal: { rows: 40 } }, { fg: (_c: string, t: string) => t, bold: (t: string) => t }, null, doneFn),
     );
     return { component, done: doneFn };
   }
@@ -463,7 +508,7 @@ describe("showTextViewer — component behavior", () => {
     const record = makeRecord({ result: "test" });
     const { component, done } = await getComponent(record, "result", "test");
 
-    component.handleInput("q");
+    component.handleInput!("q");
     expect(done).toHaveBeenCalledTimes(1);
   });
 
@@ -471,7 +516,7 @@ describe("showTextViewer — component behavior", () => {
     const record = makeRecord({ result: "test" });
     const { component, done } = await getComponent(record, "result", "test");
 
-    component.handleInput("\x1b");
+    component.handleInput!("\x1b");
     expect(done).toHaveBeenCalledTimes(1);
   });
 
@@ -485,14 +530,14 @@ describe("showTextViewer — component behavior", () => {
     expect(initial).toContain("line 49");
 
     // Up scrolls the visible window toward the top
-    component.handleInput("\x1b[A"); // up
-    component.handleInput("\x1b[A"); // up again
+    component.handleInput!("\x1b[A"); // up
+    component.handleInput!("\x1b[A"); // up again
     const scrolledUp = component.render(80).join("\n");
     expect(scrolledUp).toContain("line 25");
     expect(scrolledUp).not.toContain("line 49");
 
     // Down scrolls back toward the bottom
-    component.handleInput("\x1b[B"); // down
+    component.handleInput!("\x1b[B"); // down
     const scrolledDown = component.render(80).join("\n");
     expect(scrolledDown).toContain("line 48");
     expect(scrolledDown).not.toContain("line 25");
@@ -504,11 +549,11 @@ describe("showTextViewer — component behavior", () => {
     const { component } = await getComponent(record, "result", longText);
 
     component.render(80); // auto-scrolls to bottom
-    component.handleInput("G"); // jump to bottom
+    component.handleInput!("G"); // jump to bottom
     // Last content line stays visible after G
     expect(component.render(80).join("\n")).toContain("line 49");
 
-    component.handleInput("g"); // jump to top
+    component.handleInput!("g"); // jump to top
     const text = component.render(80).join("\n");
     expect(text).toContain("line 0");
     expect(text).not.toContain("line 49");
@@ -532,7 +577,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
   it("calls manager.abort on stop selection", async () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [] } },
+      execution: { session: makeMockSession([]) },
       result: "",
     });
     const ctx = createMockCtx();
@@ -556,13 +601,13 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
   it("opens steer input on steer selection", async () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [] } },
+      execution: { session: makeMockSession([]) },
       result: "",
     });
     const ctx = createMockCtx();
-    let capturedInput: any = null;
-    const setActive = vi.fn((c: any) => {
-      capturedInput = c;
+    let capturedInput: Input | null = null;
+    const setActive = vi.fn((c: Component) => {
+      capturedInput = asInput(c);
     });
 
     const list = buildAgentActionsList(
@@ -577,20 +622,20 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
 
     expect(setActive).toHaveBeenCalled();
     expect(capturedInput).toBeTruthy();
-    expect(capturedInput.onSubmit).toBeDefined();
-    expect(capturedInput.onEscape).toBeDefined();
+    expect(capturedInput!.onSubmit).toBeDefined();
+    expect(capturedInput!.onEscape).toBeDefined();
   });
 
   it("routes steer message to manager.steer on submit", async () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [] } },
+      execution: { session: makeMockSession([]) },
       result: "",
     });
     const ctx = createMockCtx();
-    let capturedInput: any = null;
-    const setActive = vi.fn((c: any) => {
-      capturedInput = c;
+    let capturedInput: Input | null = null;
+    const setActive = vi.fn((c: Component) => {
+      capturedInput = asInput(c);
     });
     mockModules.mockManager.steer.mockResolvedValue(true);
 
@@ -605,7 +650,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     await list.onSelect!({ value: "steer", label: "Steer" });
 
     // Submit a steer message
-    await capturedInput.onSubmit("please do this");
+    await capturedInput!.onSubmit!("please do this");
 
     expect(mockModules.mockManager.steer).toHaveBeenCalledWith("test-id-123", "please do this");
     // After submit, should switch back to the list
@@ -615,13 +660,13 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
   it("cancels steer on escape", async () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [] } },
+      execution: { session: makeMockSession([]) },
       result: "",
     });
     const ctx = createMockCtx();
-    let capturedInput: any = null;
-    const setActive = vi.fn((c: any) => {
-      capturedInput = c;
+    let capturedInput: Input | null = null;
+    const setActive = vi.fn((c: Component) => {
+      capturedInput = asInput(c);
     });
 
     const list = buildAgentActionsList(
@@ -635,7 +680,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     await list.onSelect!({ value: "steer", label: "Steer" });
 
     // Cancel steer
-    capturedInput.onEscape();
+    capturedInput!.onEscape!();
 
     // setActive should have been called twice: once with Input, once with list
     expect(setActive).toHaveBeenCalledTimes(2);
@@ -651,7 +696,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
   it("shows View conversation action for completed agent with session", () => {
     const record = makeRecord({
       lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "done",
     });
     const list = buildAgentActionsList(
@@ -669,7 +714,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
   it("shows View conversation for completed agent without result", () => {
     const record = makeRecord({
       lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "",
     });
     const list = buildAgentActionsList(
@@ -705,7 +750,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
   it("does not show View conversation for running agent (still View snapshot)", () => {
     const record = makeRecord({
       lifecycle: { status: "running", startedAt: Date.now() - 20000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "",
     });
     const list = buildAgentActionsList(
@@ -722,14 +767,14 @@ describe("buildAgentActionsList — completed agent with session", () => {
   });
 
   it("opens ConversationViewer when selecting view-conversation", async () => {
-    let capturedFactory: any = null;
+    let capturedFactory: ComponentFactory | null = null;
     const record = makeRecord({
       lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }], subscribe: vi.fn(() => () => {}) } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "done",
     });
     const ctx = createMockCtx();
-    ctx.ui.custom = vi.fn(async (factory: any) => {
+    ctx.ui.custom = vi.fn(async (factory: ComponentFactory) => {
       capturedFactory = factory;
       return undefined;
     });
@@ -751,7 +796,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
   it("shows both View conversation and View result for completed agent with session and result", () => {
     const record = makeRecord({
       lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
-      execution: { session: { messages: [{ role: "user", content: "hi" }] } },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
       result: "done",
     });
     const list = buildAgentActionsList(
@@ -796,7 +841,7 @@ describe("clear actions for finished agents", () => {
         createMockCtx(),
         makeRecord({
           lifecycle: { status, startedAt: Date.now() - 20000 },
-          execution: { session: { messages: [] } },
+          execution: { session: makeMockSession([]) },
           result: "",
         }),
         noopTheme,
@@ -833,7 +878,7 @@ describe("clear actions for finished agents", () => {
     ]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
-    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    const labels = selectListCalls[0].items.map((i) => i.label);
     expect(labels).toContain("Clear all");
   });
 
@@ -844,7 +889,7 @@ describe("clear actions for finished agents", () => {
     ]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
-    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    const labels = selectListCalls[0].items.map((i) => i.label);
     expect(labels).not.toContain("Clear all");
     expect(labels).not.toContain("Clear done");
   });
@@ -861,7 +906,7 @@ describe("clear actions for finished agents", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
 
-    const row = selectListCalls[0].items.find((i: any) => i.label === "Clear all");
+    const row = selectListCalls[0].items.find((i) => i.label === "Clear all")!;
     expect(row).toBeDefined();
 
     const list = selectListCalls[0];
@@ -879,7 +924,7 @@ describe("clear actions for finished agents", () => {
     ]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
-    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    const labels = selectListCalls[0].items.map((i) => i.label);
     expect(labels).toContain("Clear all");
     expect(labels).toContain("Clear done");
   });
@@ -891,7 +936,7 @@ describe("clear actions for finished agents", () => {
     ]);
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
-    const labels = selectListCalls[0].items.map((i: any) => i.label);
+    const labels = selectListCalls[0].items.map((i) => i.label);
     expect(labels).toContain("Clear all");
     expect(labels).not.toContain("Clear done");
   });
@@ -908,7 +953,7 @@ describe("clear actions for finished agents", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
 
-    const row = selectListCalls[0].items.find((i: any) => i.label === "Clear done");
+    const row = selectListCalls[0].items.find((i) => i.label === "Clear done")!;
     expect(row).toBeDefined();
 
     const list = selectListCalls[0];
@@ -928,7 +973,7 @@ describe("clear actions for finished agents", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
 
-    const row = selectListCalls[0].items.find((i: any) => i.label === "Stop 2 running agent(s)");
+    const row = selectListCalls[0].items.find((i) => i.label === "Stop 2 running agent(s)")!;
     expect(row).toBeDefined();
 
     const list = selectListCalls[0];
@@ -955,7 +1000,7 @@ describe("clear actions for finished agents", () => {
       ]);
       const ctx = createMockCtx();
       await showRunningAgentsMenu(ctx);
-      const values = selectListCalls[0].items.map((i: any) => i.value);
+      const values = selectListCalls[0].items.map((i) => i.value);
       expect(values).toEqual([
         "agent-1",
         "agent-2",
@@ -975,7 +1020,7 @@ describe("clear actions for finished agents", () => {
       ]);
       const ctx = createMockCtx();
       await showRunningAgentsMenu(ctx);
-      const values = selectListCalls[0].items.map((i: any) => i.value);
+      const values = selectListCalls[0].items.map((i) => i.value);
       expect(values).toEqual(["agent-1", "agent-2", "__sep__", "__stop-all", "__sep__", "__clear-all"]);
     });
   });
