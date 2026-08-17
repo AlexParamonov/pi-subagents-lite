@@ -314,7 +314,7 @@ vi.mock("../src/shell.js", async () => {
     agentConfigSnapshot() {
       return { ...mockModules.mockConfig.agent, ...mockModules.mockProjectConfig.agent };
     },
-    modelFor(type: string, parentModelId: string, agentConfig?: any) {
+    modelFor(type: string, parentModelId: string, agentConfig?: { model?: string }) {
       // Delegate to the real chain so the mock cannot drift from resolveModel.
       return resolveModel({
         subagentType: type,
