@@ -17,7 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **No explicit `any` type usage remains in test code.** `typecheck` already covered `test/`; every explicit `any` annotation across the test suite is now replaced with the real `src/` or pi-package type, or with a structural fake asserted at a single call boundary. Type-level only: all 1592 tests behave identically.
 
+- **Test `any` regression gate.** `npm run test:any-gate` scans `test/` for explicit `any` annotations and fails if any are found (whitelisting the two documented load-bearing sites and `expect.any(...)` vitest matchers). Import specifiers in test files unified to `.js` (no `.ts` extensions in import paths).
+
+- **Typed test context helpers.** `fakeCtx()` and `createMockCtx()` in `test/fixtures.ts` now return properly typed `ExtensionContext` / `ExtensionCommandContext` with typed defaults and an options parameter for overrides, eliminating the two documented `any` return annotations.
+
+- **`subscribeToSessionEvents` annotation corrected.** The function's parameter type now references `RunCallbacks` (the interface that defines the callback keys) instead of `RunOptions` (which carries extra fields the function never reads). Purely defensive; no call sites changed.
+
 ### Fixed
+
+- **Restart last agents: one failing spawn no longer kills the entire batch.** Each agent spawn is now individually try/caught, so a failure (e.g., model not found) is logged in the skipped list and the remaining agents continue restarting.
 
 - **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.
 
