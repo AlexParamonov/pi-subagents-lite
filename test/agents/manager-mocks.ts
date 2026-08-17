@@ -11,6 +11,7 @@ import { vi, type Mock } from "vitest";
 import type { AgentSession, AgentSessionEventListener } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentRecord } from "../../src/types.js";
+
 let uuidCounter = 0;
 const hoisted = vi.hoisted(() => ({
   mockRunAgent: vi.fn(),
@@ -34,6 +35,7 @@ const hoisted = vi.hoisted(() => ({
   }),
   mockGetAgentConfig: vi.fn(() => undefined),
 }));
+
 export const mockModules = {
   mockRunAgent: hoisted.mockRunAgent,
   mockContinueAgentSession: hoisted.mockContinueAgentSession,
@@ -43,6 +45,7 @@ export const mockModules = {
   mockAgentOutputLog: hoisted.mockAgentOutputLog,
   mockGetAgentConfig: hoisted.mockGetAgentConfig,
 };
+
 // Controllable store values; the shell mock below reads them via getters so
 // tests can flip a value and have the next store access see it.
 export const mockStoreState = {
@@ -51,6 +54,7 @@ export const mockStoreState = {
   outputThinkingBufferSize: 0,
   outputTranscript: true,
 };
+
 // Shared agent object so getStore() returns the same reference each time.
 const mockStoreAgent = {
   get toolTimeoutMinutes() {
@@ -66,20 +70,25 @@ const mockStoreAgent = {
     return mockStoreState.outputTranscript;
   },
 };
+
 vi.mock("node:crypto", () => ({
   randomUUID: mockModules.mockRandomUUID,
 }));
+
 vi.mock("node:fs", () => mockModules.fsMock);
 vi.mock("../../src/agents/agent-runner.js", () => ({
   runAgent: mockModules.mockRunAgent,
   continueAgentSession: mockModules.mockContinueAgentSession,
 }));
+
 vi.mock("../../src/agents/output-file.js", () => ({
   AgentOutputLog: mockModules.mockAgentOutputLog,
 }));
+
 vi.mock("../../src/agents/agent-types.js", () => ({
   getAgentConfig: mockModules.mockGetAgentConfig,
 }));
+
 vi.mock("../../src/shell.js", () => ({
   getStore: () => ({ agent: mockStoreAgent }),
   // Real coordinator calls (one persistence test drives the real spawn path).
@@ -87,14 +96,17 @@ vi.mock("../../src/shell.js", () => ({
   getPiInstance: () => undefined,
   getSessionCtx: () => undefined,
 }));
+
 /** Mirrors AgentManager's private OnAgentComplete callback signature. */
 export type OnAgentComplete = (record: AgentRecord) => void;
+
 /** The model subset of a fake session — what src reads (provider/id/name). */
 export interface FakeSessionModel {
   provider: string;
   id: string;
   name?: string;
 }
+
 /** Shape of the fake session objects mockRunResult resolves with. */
 export interface MockAgentSession {
   subscribe: Mock<(listener: AgentSessionEventListener) => () => void>;
@@ -105,10 +117,12 @@ export interface MockAgentSession {
   abort: Mock<() => Promise<void>>;
   model?: FakeSessionModel;
 }
+
 export interface MockAgentSessionOptions {
   isStreaming?: boolean;
   model?: FakeSessionModel;
 }
+
 export function mockAgentSession(options: MockAgentSessionOptions = {}): MockAgentSession {
   return {
     subscribe: vi.fn<(listener: AgentSessionEventListener) => () => void>(),
@@ -120,6 +134,7 @@ export function mockAgentSession(options: MockAgentSessionOptions = {}): MockAge
     model: options.model,
   };
 }
+
 /** Shape the runAgent/continueAgentSession mocks resolve with. */
 export interface MockRunResult {
   responseText: string;
@@ -128,6 +143,7 @@ export interface MockRunResult {
   turnLimited: boolean;
   modelError?: string;
 }
+
 export function mockRunResult(overrides?: Partial<MockRunResult>): MockRunResult {
   return {
     responseText: "done",
