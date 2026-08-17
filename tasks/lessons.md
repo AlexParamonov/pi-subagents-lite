@@ -92,6 +92,8 @@
 - When a merge needs tombstone markers to express deletions, stop and consider one-file-wins — the tombstone requirement is a design smell, not a feature.
 - When overriding a property accessor via defineProperty, check pre-install state reads through the getter — a bootstrap read through the new getter silently stores the wrong value.
 - When rewriting a class wholesale, grep the codebase for every public member the old class exposed before dropping any — a removed getter (hasSessionShowCost) surfaces only as a typecheck break in a caller test you haven't run yet.
+- vitest 4 mock-type gap: a bare `vi.fn()` at the call site infers `Mock<Procedure>`, but `ReturnType<typeof vi.fn>` resolves the generic to its constraint, `Mock<Procedure | Constructable>`; only the narrow→wide direction is assignable. When a shared mock field gets swapped by consumers, annotate the field with `ReturnType<typeof vi.fn>`, not the inferred type.
+- Intersection returns (`RealType & FakeShape`) don't fix consumer reassignments: reassigned members keep the real member's type (generic `ui.custom`, full `ui` object), so partial/bare-mock reassignments stay illegal. If the reassigning consumers are out of scope, keep the return `any` and type the fake's internals instead.
 
 ## pi-ai API & Subagent Lifecycle
 
