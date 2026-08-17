@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Restart last agents from debug menu.** A new "Restart last agents" command in the debug menu finds the most recent Agent tool call(s) in session history and replays them, spawning fresh agents with the same configuration. Useful when agents are cancelled by mistake or lost after reload. Running agents are skipped. Uses current config model (not historical) and spawns as background for steer support.
+
 - **Limit-bounded AgentStatus output.** The AgentStatus tool now always lists in-progress agents (running, queued) and then shows settled agents (completed, turn_limited, aborted, stopped, error) most-recently-settled first, capped at `agentStatusLimit` settled agents; when settled agents are hidden, the output ends with "and N more settled agents". The new `agentStatusLimit` config key (Widget settings > Behavior, numeric entry) defaults to 0 = auto: 2 × the configured default concurrency (8 at the built-in default of 4), so the cap scales with how many agents can run at once. Records are unaffected — the limit only changes what the tool prints.
 
 ### Changed
