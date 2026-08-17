@@ -176,6 +176,8 @@ function resolveToolEntries(
         } else {
           notify?.(`extension "${extName}" is not loaded, "${entry}" will have no effect`);
         }
+      } else if (toolPart === "none") {
+        // ext/none: acknowledge extension exists without adding any tools
       } else {
         // ext/tool syntax: e.g. "tavily/web_search"
         resolved.add(toolPart);
@@ -249,9 +251,18 @@ export function resolveVisibleTools(opts: {
     }
 
     if (extToolMap) {
+      // Build set of extensions explicitly acknowledged with ext/none
+      const acknowledgedExts = new Set<string>();
+      for (const entry of tools) {
+        const slashIdx = entry.indexOf("/");
+        if (slashIdx !== -1 && entry.slice(slashIdx + 1) === "none") {
+          acknowledgedExts.add(entry.slice(0, slashIdx));
+        }
+      }
+
       for (const [extName, extTools] of extToolMap) {
         const hasAny = extTools.some((t) => allowedTools.has(t));
-        if (!hasAny) {
+        if (!hasAny && !acknowledgedExts.has(extName)) {
           notify?.(`extension "${extName}" is loaded but none of its tools are in tools: [${tools.join(", ")}]`);
         }
       }
