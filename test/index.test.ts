@@ -153,17 +153,21 @@ function findTool(api: MockExtensionAPI, name: string) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Shared extension load                                             */
+/* ------------------------------------------------------------------ */
+
+let api: MockExtensionAPI;
+
+beforeAll(async () => {
+  api = createMockExtensionAPI();
+  await loadExtension(api.api);
+});
+
+/* ------------------------------------------------------------------ */
 /*  Agent tool schema — stealth                                       */
 /* ------------------------------------------------------------------ */
 
 describe("Agent tool schema — stealth", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   const agentTool = () => findTool(api, "Agent");
 
   it("has no description (stealth)", () => {
@@ -194,13 +198,6 @@ describe("Agent tool schema — stealth", () => {
 /* ------------------------------------------------------------------ */
 
 describe("message renderer registration", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   beforeEach(() => {
     mutableStore.agent.showCompletionCards = true;
   });
@@ -224,13 +221,6 @@ describe("message renderer registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tool registration", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   it("registers Agent, StopAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
     expect(names).toEqual(["Agent", "StopAgent", "AgentStatus"]);
@@ -242,13 +232,6 @@ describe("tool registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tool_call listener — guards", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   const toolCallHandler = () => api.listeners.find((l) => l.event === "tool_call")?.handler;
 
   it("does not mutate event.input.model for non-Agent tools", async () => {
@@ -298,13 +281,6 @@ describe("tool_call listener — guards", () => {
 /* ------------------------------------------------------------------ */
 
 describe("command registration", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   it("registers only the /agents command", () => {
     expect(api.commands.map((c) => c.name)).toEqual(["agents"]);
     expect(api.commands[0].description).toBeDefined();
@@ -316,13 +292,6 @@ describe("command registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("event listener registration", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   it("registers tool_call listener", () => {
     expect(api.listeners.some((l) => l.event === "tool_call")).toBe(true);
   });
@@ -341,17 +310,6 @@ describe("event listener registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("subagent spawn guard", () => {
-  // Uses the mocked shell from vi.mock above; spawn guard state is shared via vi.hoisted.
-  const shell = {
-    isInsideSubagentSpawn: () => spawnGuard.depth > 0,
-    enterSubagentSpawn: () => {
-      spawnGuard.depth++;
-    },
-    exitSubagentSpawn: () => {
-      spawnGuard.depth--;
-    },
-  };
-
   beforeEach(() => {
     // Defensive: start every test from a clean depth.
     while (spawnGuard.depth > 0) spawnGuard.depth--;
@@ -406,13 +364,6 @@ describe("subagent spawn guard", () => {
 /* ------------------------------------------------------------------ */
 
 describe("constrained sampling — default OFF", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   it("Agent has no constrainedSampling when toggle is OFF", () => {
     const tool = findTool(api, "Agent");
     expect(tool).toBeDefined();
@@ -503,13 +454,6 @@ describe("constrained sampling — toggle ON", () => {
 /* ------------------------------------------------------------------ */
 
 describe("Agent renderResult — context.isError override", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   beforeEach(() => {
     mockRenderAgentToolResult.mockReset();
   });
@@ -569,13 +513,6 @@ describe("Agent renderResult — context.isError override", () => {
 /* ------------------------------------------------------------------ */
 
 describe("StopAgent renderResult — context.isError", () => {
-  let api: MockExtensionAPI;
-
-  beforeAll(async () => {
-    api = createMockExtensionAPI();
-    await loadExtension(api.api);
-  });
-
   const theme = {
     fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
   };
