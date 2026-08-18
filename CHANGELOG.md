@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`subscribeToSessionEvents` annotation corrected.** The function's parameter type now references `RunCallbacks` (the interface that defines the callback keys) instead of `RunOptions` (which carries extra fields the function never reads). Purely defensive; no call sites changed.
 
+- **ext/none syntax suppresses extension warning.** Agent tool configs can now use `ext/none` in the tools list to explicitly register zero extension tools, suppressing the warning about missing extensions. Previously `tools: []` meant zero built-in tools but extensions were still warned about; `ext/none` now makes the intent explicit.
+
+- **TypeScript 7 toolchain and test typechecking.** The development toolchain now uses TypeScript 7.0.2 (the native compiler, `tsc`); the package swap is behavior-neutral for the extension itself. `npm run typecheck` now covers `test/` as well as `src/` (tests were previously transpiled by vitest but never typechecked); the type errors this surfaced were fixed in test code only (stale mock typings, fixtures, and imports), with no change to extension behavior.
+
+- **Subagents honor pi's `defaultTools` setting.** Agent types without explicit tool config now use pi's `defaultTools` (global `~/.pi/agent/settings.json` + project `.pi/settings.json`) as their registered built-in tool set. Unconfigured keeps the hardcoded `read`/`bash`/`edit`/`write` set, explicit `[]` means zero built-in tools, and explicit agent tool config (whitelist, `exclude_tools`, `tools: false`, read-only sets) still wins. Extension tools remain always-enabled. On pi < 0.84.2 the setting is honored via the merged-settings read; only the `getDefaultTools` API is missing (pi ≤ 0.84.1 lacks the accessor — 0.84.2 ships it — so the read feature-detects and falls back to the merged settings field).
+
+- **Model settings grouped by resolved model.** Per-type overrides are grouped alphabetically by the model they resolve to; each row shows the spawn-effective (clamped) thinking level and the winning layer's tag (`[session]`/`[project]`, global-won rows untagged). Only explicit per-type overrides are listed; frontmatter-only and inheriting types stay hidden (hint arrows gone). The session default is a session-wide override that beats config per-type overrides and frontmatter models. Concurrency settings share the style: rows set targets inline with a nested Clear, section headers in bold accent, and clear/remove pickers offer only the levels that carry the setting ("All levels" only when at least two do), and `j`/`k` navigate list submenus.
+
+- **Debug menu shows each agent type's effective tool set.** The Agent types listing and the Agent briefing now display the tools an agent actually gets: the explicit `registeredTools` when configured, otherwise pi's `defaultTools` setting, otherwise the hardcoded `read`/`bash`/`edit`/`write` set. The generic "all built-in tools" placeholder is gone, the briefing always includes a Tools line, and an explicitly empty set renders as `(none)`. The menu reads `defaultTools` through the same version-tolerant accessor as the spawn path, so the two displays and the session gate cannot diverge. `tools: []` in an agent config now means zero built-in tools everywhere — no consumer silently falls back to the default set.
+
 ### Fixed
 
 - **Restart last agents: one failing spawn no longer kills the entire batch.** Each agent spawn is now individually try/caught, so a failure (e.g., model not found) is logged in the skipped list and the remaining agents continue restarting.
@@ -31,32 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.
 
-- **Agents status line stays visible for the session.** The status line's visibility is now
-  driven by record existence (ADR-0006), not by the finished-row retention window: after the
-  last agent finishes and its row ages out, the line keeps showing the session done count and
-  cost in its dimmed form, and it hides only when no agent records exist. The widget block
-  still drops once every row leaves the `finishedRetentionMinutes` window; row retention and
-  the ↓ navigation gate are unchanged.
+- **Agents status line stays visible for the session.** The status line's visibility is now: after the last agent finishes and its row ages out, the line keeps showing the session done count and cost in its dimmed form, and it hides only when no agent records exist.
 
-- **Git-root discovery during skill loading is constant-time per ancestor level.**
-  `findGitRoot` now probes `.git` with a single `existsSync` per level instead of reading the
-  full directory listing, so skill loading no longer stalls on large directories. Detection
-  semantics are unchanged: `.git` directories (checkouts) and `.git` files (worktrees) both
-  mark the root, and the walk still stops at the filesystem root.
-- **Tool-argument summaries truncate with the ellipsis character.** Long single string
-  arguments to arbitrary tools now end with `…` (U+2026) like bash commands, instead of
-  three ASCII dots.
-- **Write-tool summaries show the real file path.** `summarizeToolArgs` now reads the
-  `path` argument key that pi's write tool actually sends, so summaries render as
-  `write("/path/to/file", N chars)` instead of `write("", N chars)`.
+- **Git-root discovery during skill loading is constant-time per ancestor level.** `findGitRoot` now probes `.git` with a single `existsSync` per level instead of reading the full directory listing
 
+- **Tool-argument summaries truncate with the ellipsis character.** Long single string arguments to arbitrary tools now end with `…` (U+2026) like bash commands, instead of three ASCII dots.
 
-### Changed
-- **TypeScript 7 toolchain and test typechecking.** The development toolchain now uses TypeScript 7.0.2 (the native compiler, `tsc`); the package swap is behavior-neutral for the extension itself. `npm run typecheck` now covers `test/` as well as `src/` (tests were previously transpiled by vitest but never typechecked); the type errors this surfaced were fixed in test code only (stale mock typings, fixtures, and imports), with no change to extension behavior.
-
-- **Subagents honor pi's `defaultTools` setting.** Agent types without explicit tool config now use pi's `defaultTools` (global `~/.pi/agent/settings.json` + project `.pi/settings.json`) as their registered built-in tool set. Unconfigured keeps the hardcoded `read`/`bash`/`edit`/`write` set, explicit `[]` means zero built-in tools, and explicit agent tool config (whitelist, `exclude_tools`, `tools: false`, read-only sets) still wins. Extension tools remain always-enabled. On pi < 0.84.2 the setting is honored via the merged-settings read; only the `getDefaultTools` API is missing (pi ≤ 0.84.1 lacks the accessor — 0.84.2 ships it — so the read feature-detects and falls back to the merged settings field).
-- **Model settings grouped by resolved model.** Per-type overrides are grouped alphabetically by the model they resolve to; each row shows the spawn-effective (clamped) thinking level and the winning layer's tag (`[session]`/`[project]`, global-won rows untagged). Only explicit per-type overrides are listed; frontmatter-only and inheriting types stay hidden (hint arrows gone). The session default is a session-wide override that beats config per-type overrides and frontmatter models. Concurrency settings share the style: rows set targets inline with a nested Clear, section headers in bold accent, and clear/remove pickers offer only the levels that carry the setting ("All levels" only when at least two do), and `j`/`k` navigate list submenus.
-- **Debug menu shows each agent type's effective tool set.** The Agent types listing and the Agent briefing now display the tools an agent actually gets: the explicit `registeredTools` when configured, otherwise pi's `defaultTools` setting, otherwise the hardcoded `read`/`bash`/`edit`/`write` set. The generic "all built-in tools" placeholder is gone, the briefing always includes a Tools line, and an explicitly empty set renders as `(none)`. The menu reads `defaultTools` through the same version-tolerant accessor as the spawn path, so the two displays and the session gate cannot diverge. `tools: []` in an agent config now means zero built-in tools everywhere — no consumer silently falls back to the default set.
+- **Write-tool summaries show the real file path.** `summarizeToolArgs` now reads the `path` argument key that pi's write tool actually sends, so summaries render as `write("/path/to/file", N chars)` instead of `write("", N chars)`.
 
 ## [1.11.0] - 2026-08-14
 
@@ -228,11 +219,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extension tools available to subagent sessions.** Tools registered by extensions now pass through to subagent sessions correctly.
 - **Nav breakage after eviction fixed.** Roster navigation stays consistent when agents are evicted.
 
-
 ## [1.5.1] - 2026-07-26
 
 ### Fixed
-
 - **Extension tools no longer missing from subagent sessions.** `createAgentSession({ tools })` is a registry allowlist gate in pi; a builtins-only list silently filtered out every extension tool before registration. Fix: expand `tavily/*` and bare extension tool names in the whitelist *before* session creation so they enter the gate. `resolveSessionAllowedTools` (new, in `agent-types.ts`) owns this policy; in whitelist mode the gate derives from the expansion alone (no raw wildcards, no unlisted builtins leak). `tools: undefined` agents register all loaded extension tools consistent with pi's own `includeAllExtensionTools` semantics.
 - **Whitelist no longer leaks unlisted builtins into the registry gate.** A secondary bug where `registeredTools` was used as an unconditional base alongside the whitelist. Under strict semantics, builtins not named in `tools:` do not enter the allowlist, and raw wildcard literals like `"tavily/*"` never reach pi as bogus tool names.
 
