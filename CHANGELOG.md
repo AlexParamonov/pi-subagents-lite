@@ -7,46 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-08-15
+
 ### Added
 
 - **Restart last agents from debug menu.** A new "Restart last agents" command in the debug menu finds the most recent Agent tool call(s) in session history and replays them, spawning fresh agents with the same configuration. Useful when agents are cancelled by mistake or lost after reload. Running agents are skipped. Uses current config model (not historical) and spawns as background for steer support.
-
 - **Limit-bounded AgentStatus output.** The AgentStatus tool now always lists in-progress agents (running, queued) and then shows settled agents (completed, turn_limited, aborted, stopped, error) most-recently-settled first, capped at `agentStatusLimit` settled agents; when settled agents are hidden, the output ends with "and N more settled agents". The new `agentStatusLimit` config key (Widget settings > Behavior, numeric entry) defaults to 0 = auto: 2 × the configured default concurrency (8 at the built-in default of 4), so the cap scales with how many agents can run at once. Records are unaffected — the limit only changes what the tool prints.
+- **ext/none syntax suppresses extension warning.** Agent tool configs can now use `ext/none` in the tools list to explicitly register zero extension tools, suppressing the warning about missing extensions. Previously `tools: []` meant zero built-in tools but extensions were still warned about; `ext/none` now makes the intent explicit.
 
 ### Changed
 
 - **No explicit `any` type usage remains in test code.** `typecheck` already covered `test/`; every explicit `any` annotation across the test suite is now replaced with the real `src/` or pi-package type, or with a structural fake asserted at a single call boundary. Type-level only: all 1592 tests behave identically.
-
 - **Test `any` regression gate.** `npm run test:any-gate` scans `test/` for explicit `any` annotations and fails if any are found (whitelisting the two documented load-bearing sites and `expect.any(...)` vitest matchers). Import specifiers in test files unified to `.js` (no `.ts` extensions in import paths).
-
 - **Typed test context helpers.** `fakeCtx()` and `createMockCtx()` in `test/fixtures.ts` now return properly typed `ExtensionContext` / `ExtensionCommandContext` with typed defaults and an options parameter for overrides, eliminating the two documented `any` return annotations.
-
 - **`subscribeToSessionEvents` annotation corrected.** The function's parameter type now references `RunCallbacks` (the interface that defines the callback keys) instead of `RunOptions` (which carries extra fields the function never reads). Purely defensive; no call sites changed.
-
-- **ext/none syntax suppresses extension warning.** Agent tool configs can now use `ext/none` in the tools list to explicitly register zero extension tools, suppressing the warning about missing extensions. Previously `tools: []` meant zero built-in tools but extensions were still warned about; `ext/none` now makes the intent explicit.
-
 - **TypeScript 7 toolchain and test typechecking.** The development toolchain now uses TypeScript 7.0.2 (the native compiler, `tsc`); the package swap is behavior-neutral for the extension itself. `npm run typecheck` now covers `test/` as well as `src/` (tests were previously transpiled by vitest but never typechecked); the type errors this surfaced were fixed in test code only (stale mock typings, fixtures, and imports), with no change to extension behavior.
-
 - **Subagents honor pi's `defaultTools` setting.** Agent types without explicit tool config now use pi's `defaultTools` (global `~/.pi/agent/settings.json` + project `.pi/settings.json`) as their registered built-in tool set. Unconfigured keeps the hardcoded `read`/`bash`/`edit`/`write` set, explicit `[]` means zero built-in tools, and explicit agent tool config (whitelist, `exclude_tools`, `tools: false`, read-only sets) still wins. Extension tools remain always-enabled. On pi < 0.84.2 the setting is honored via the merged-settings read; only the `getDefaultTools` API is missing (pi ≤ 0.84.1 lacks the accessor — 0.84.2 ships it — so the read feature-detects and falls back to the merged settings field).
-
 - **Model settings grouped by resolved model.** Per-type overrides are grouped alphabetically by the model they resolve to; each row shows the spawn-effective (clamped) thinking level and the winning layer's tag (`[session]`/`[project]`, global-won rows untagged). Only explicit per-type overrides are listed; frontmatter-only and inheriting types stay hidden (hint arrows gone). The session default is a session-wide override that beats config per-type overrides and frontmatter models. Concurrency settings share the style: rows set targets inline with a nested Clear, section headers in bold accent, and clear/remove pickers offer only the levels that carry the setting ("All levels" only when at least two do), and `j`/`k` navigate list submenus.
-
 - **Debug menu shows each agent type's effective tool set.** The Agent types listing and the Agent briefing now display the tools an agent actually gets: the explicit `registeredTools` when configured, otherwise pi's `defaultTools` setting, otherwise the hardcoded `read`/`bash`/`edit`/`write` set. The generic "all built-in tools" placeholder is gone, the briefing always includes a Tools line, and an explicitly empty set renders as `(none)`. The menu reads `defaultTools` through the same version-tolerant accessor as the spawn path, so the two displays and the session gate cannot diverge. `tools: []` in an agent config now means zero built-in tools everywhere — no consumer silently falls back to the default set.
 
 ### Fixed
 
-- **Restart last agents: one failing spawn no longer kills the entire batch.** Each agent spawn is now individually try/caught, so a failure (e.g., model not found) is logged in the skipped list and the remaining agents continue restarting.
-
 - **Agent tool error display shows ✗ instead of ✓.** Agent and StopAgent tools now throw on errors instead of returning `errorResult()`, matching how built-in tools (bash, edit, read, write) handle errors. Agent-loop's catch block sets `isError: true`, so the renderResult callbacks use `context?.isError` (from the agent-loop's correct error flag) instead of `result.isError`, which is absent from the production data flow. Failed tool calls now correctly display a red cross (✗) and error background color.
-
 - **nanoid bumped to 3.3.18.** The dev-only transitive dependency (via postcss) is now locked at 3.3.18, clearing the high-severity `npm audit` finding for nanoid's zero-size generator loop (GHSA-2v37-7h3g-55p8). No runtime or extension behavior change.
-
 - **Agents status line stays visible for the session.** The status line's visibility is now: after the last agent finishes and its row ages out, the line keeps showing the session done count and cost in its dimmed form, and it hides only when no agent records exist.
-
 - **Git-root discovery during skill loading is constant-time per ancestor level.** `findGitRoot` now probes `.git` with a single `existsSync` per level instead of reading the full directory listing
-
 - **Tool-argument summaries truncate with the ellipsis character.** Long single string arguments to arbitrary tools now end with `…` (U+2026) like bash commands, instead of three ASCII dots.
-
 - **Write-tool summaries show the real file path.** `summarizeToolArgs` now reads the `path` argument key that pi's write tool actually sends, so summaries render as `write("/path/to/file", N chars)` instead of `write("", N chars)`.
 
 ## [1.11.0] - 2026-08-14
