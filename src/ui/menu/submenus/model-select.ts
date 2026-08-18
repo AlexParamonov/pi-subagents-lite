@@ -12,7 +12,8 @@
 import type { Component } from "@earendil-works/pi-tui";
 import type { Theme } from "../../types.js";
 import { SearchableSelectDialog } from "../../../ui/searchable-select.js";
-import { buildModelOptions } from "../helpers.js";
+import { buildModelOptions, extractConfiguredModels } from "../helpers.js";
+import { getStore } from "../../../shell.js";
 import {
   buildLevelItems,
   createClearPickerSubmenu,
@@ -60,8 +61,10 @@ export function createModelSelectSubmenu(
         })("", subDone);
       }
       const target = id as "session" | "global" | "project";
+      const store = getStore();
+      const configuredModels = extractConfiguredModels(store.agentConfigSnapshot());
       return new SearchableSelectDialog(
-        buildModelOptions(options.modelOptions),
+        buildModelOptions(options.modelOptions, currentModel, configuredModels),
         currentModel,
         {
           onSelect: (modelValue) => {

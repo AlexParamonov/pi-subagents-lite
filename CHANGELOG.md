@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Model picker prioritizes configured models.** The model picker (via `/model`, model settings, concurrency settings, and spawn wizard) now shows models sorted: current model first, then models from `subagents-lite.json` agent config (default + per-type overrides), then all remaining models. This makes configured models easy to find without searching. Search/filter still works correctly with the new sort order.
+
 ## [1.12.0] - 2026-08-15
 
 ### Added

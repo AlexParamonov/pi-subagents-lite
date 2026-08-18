@@ -8,6 +8,8 @@ import {
   validateNumeric,
   buildSettingsListTheme,
   buildSelectListTheme,
+  buildModelOptions,
+  extractConfiguredModels,
 } from "../../../src/ui/menu/helpers.js";
 
 const mockTheme = {
@@ -197,5 +199,161 @@ describe("installSeparatorSkip", () => {
   it("is a no-op when items is not an array", () => {
     const list = { selectedIndex: 0 };
     expect(() => installSeparatorSkip(list)).not.toThrow();
+  });
+});
+
+describe("buildModelOptions", () => {
+  const rawOptions = ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "anthropic/claude-3-haiku"];
+
+  it("returns inherits parent as first option", () => {
+    const result = buildModelOptions(rawOptions);
+    expect(result[0]).toEqual({ value: "(inherits parent)", label: "(inherits parent)", provider: "" });
+  });
+
+  it("parses model options correctly", () => {
+    const result = buildModelOptions(rawOptions);
+    expect(result).toHaveLength(4); // inherits + 3 models
+    expect(result[1]).toEqual({
+      value: "anthropic/claude-3.5-sonnet",
+      label: "claude-3.5-sonnet",
+      provider: "anthropic",
+    });
+    expect(result[2]).toEqual({ value: "openai/gpt-4o", label: "gpt-4o", provider: "openai" });
+    expect(result[3]).toEqual({ value: "anthropic/claude-3-haiku", label: "claude-3-haiku", provider: "anthropic" });
+  });
+
+  describe("sorting with currentModel and configuredModels", () => {
+    it("places current model first after inherits parent", () => {
+      const result = buildModelOptions(rawOptions, "openai/gpt-4o");
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "openai/gpt-4o",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+
+    it("places configured models after current model", () => {
+      const result = buildModelOptions(rawOptions, "openai/gpt-4o", ["anthropic/claude-3.5-sonnet"]);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "openai/gpt-4o",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+
+    it("places configured models first when no current model", () => {
+      const result = buildModelOptions(rawOptions, undefined, ["anthropic/claude-3.5-sonnet"]);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "anthropic/claude-3.5-sonnet",
+        "openai/gpt-4o",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+
+    it("handles multiple configured models", () => {
+      const result = buildModelOptions(rawOptions, undefined, ["openai/gpt-4o", "anthropic/claude-3-haiku"]);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "openai/gpt-4o",
+        "anthropic/claude-3-haiku",
+        "anthropic/claude-3.5-sonnet",
+      ]);
+    });
+
+    it("preserves original order within configured models", () => {
+      // Config order is haiku, then sonnet
+      const result = buildModelOptions(rawOptions, undefined, [
+        "anthropic/claude-3-haiku",
+        "anthropic/claude-3.5-sonnet",
+      ]);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "anthropic/claude-3-haiku",
+        "anthropic/claude-3.5-sonnet",
+        "openai/gpt-4o",
+      ]);
+    });
+
+    it("degrades gracefully with no current model and no configured models", () => {
+      const result = buildModelOptions(rawOptions);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "anthropic/claude-3.5-sonnet",
+        "openai/gpt-4o",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+
+    it("current model that is also configured appears only once", () => {
+      const result = buildModelOptions(rawOptions, "openai/gpt-4o", ["openai/gpt-4o"]);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "openai/gpt-4o",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+
+    it("current model not in raw options appears at top", () => {
+      const result = buildModelOptions(rawOptions, "google/gemini-pro");
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "google/gemini-pro",
+        "anthropic/claude-3.5-sonnet",
+        "openai/gpt-4o",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+
+    it("configured model not in raw options appears after current", () => {
+      const result = buildModelOptions(rawOptions, undefined, ["google/gemini-pro"]);
+      expect(result.map((r) => r.value)).toEqual([
+        "(inherits parent)",
+        "google/gemini-pro",
+        "anthropic/claude-3.5-sonnet",
+        "openai/gpt-4o",
+        "anthropic/claude-3-haiku",
+      ]);
+    });
+  });
+});
+
+describe("extractConfiguredModels", () => {
+  it("extracts default model", () => {
+    const config = { default: "anthropic/claude-3.5-sonnet" };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
+  });
+
+  it("extracts per-type overrides", () => {
+    const config = { default: null, coder: "openai/gpt-4o", reviewer: "anthropic/claude-3-haiku" };
+    expect(extractConfiguredModels(config)).toEqual(["openai/gpt-4o", "anthropic/claude-3-haiku"]);
+  });
+
+  it("ignores non-model strings (no slash)", () => {
+    const config = {
+      default: "anthropic/claude-3.5-sonnet",
+      forceBackground: true,
+      maxTokens: 1000,
+      systemPromptMode: "auto",
+    };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
+  });
+
+  it("deduplicates models while preserving order", () => {
+    const config = { default: "anthropic/claude-3.5-sonnet", coder: "anthropic/claude-3.5-sonnet" };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
+  });
+
+  it("returns empty array for empty config", () => {
+    const config = { default: null };
+    expect(extractConfiguredModels(config)).toEqual([]);
+  });
+
+  it("handles undefined per-type values", () => {
+    const config = { default: "anthropic/claude-3.5-sonnet", coder: undefined };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
   });
 });
