@@ -8,6 +8,7 @@ import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "../types.js";
 import { SearchableSelectDialog, type SelectOption } from "../searchable-select.js";
 import { parseModelKey } from "../../utils.js";
+import { getStore } from "../../shell.js";
 
 /**
  * Item id that marks a separator/section-header row in SettingsList/SelectList
@@ -71,16 +72,98 @@ export function installSeparatorSkip(list: any): void {
 /**
  * Build SelectOption[] from raw "provider/model-id" strings.
  * Includes "(inherits parent)" as the first option.
+ *
+ * When currentModel and/or configuredModels are provided, sorts the list:
+ *   1. "(inherits parent)" (always first)
+ *   2. Current model
+ *   3. Configured models (from subagents-lite.json agent config)
+ *   4. Remaining models (original order)
  */
-export function buildModelOptions(rawOptions: string[]): SelectOption[] {
+export function buildModelOptions(
+  rawOptions: string[],
+  currentModel?: string | null,
+  configuredModels?: string[],
+): SelectOption[] {
   const items: SelectOption[] = [{ value: "(inherits parent)", label: "(inherits parent)", provider: "" }];
 
+  // Parse all options into SelectOption objects
+  const parsed: SelectOption[] = [];
   for (const opt of rawOptions) {
-    const parsed = parseModelKey(opt);
-    if (!parsed) continue;
-    items.push({ value: opt, label: parsed.modelId, provider: parsed.provider });
+    const parsedKey = parseModelKey(opt);
+    if (!parsedKey) continue;
+    parsed.push({ value: opt, label: parsedKey.modelId, provider: parsedKey.provider });
   }
+
+  // If no sorting requested, return parsed options directly
+  if (!currentModel && !configuredModels) {
+    items.push(...parsed);
+    return items;
+  }
+
+  // Partition into three groups: current, configured, remaining
+  const configuredSet = new Set(configuredModels ?? []);
+  const current: SelectOption[] = [];
+  const configured: SelectOption[] = [];
+  const remaining: SelectOption[] = [];
+
+  // Track which models we've already added to avoid duplicates
+  const added = new Set<string>();
+
+  // Add current model first (even if not in rawOptions)
+  if (currentModel) {
+    const currentParsed = parseModelKey(currentModel);
+    if (currentParsed) {
+      current.push({ value: currentModel, label: currentParsed.modelId, provider: currentParsed.provider });
+      added.add(currentModel);
+    }
+  }
+
+  // Add configured models in their original order
+  for (const modelId of configuredModels ?? []) {
+    if (added.has(modelId)) continue;
+    const parsedKey = parseModelKey(modelId);
+    if (parsedKey) {
+      configured.push({ value: modelId, label: parsedKey.modelId, provider: parsedKey.provider });
+      added.add(modelId);
+    }
+  }
+
+  // Add remaining models in their original order
+  for (const item of parsed) {
+    if (!added.has(item.value)) {
+      remaining.push(item);
+    }
+  }
+
+  items.push(...current, ...configured, ...remaining);
   return items;
+}
+
+/**
+ * Extract configured model IDs from agent config snapshot.
+ * Returns deduplicated model strings ("provider/model-id") from:
+ *   - agent.default (global default model)
+ *   - agent[type] for each agent type (per-type overrides)
+ */
+export function extractConfiguredModels(
+  agentConfig: Readonly<{ default: string | null; [agentType: string]: string | null | undefined | boolean | number }>,
+): string[] {
+  const models: string[] = [];
+
+  // Add default model if set
+  if (agentConfig.default && typeof agentConfig.default === "string") {
+    models.push(agentConfig.default);
+  }
+
+  // Add per-type overrides (strings containing "/" are model IDs)
+  for (const [key, value] of Object.entries(agentConfig)) {
+    if (key !== "default" && typeof value === "string" && value.includes("/")) {
+      models.push(value);
+    }
+  }
+
+  // Deduplicate while preserving order
+  return [...new Set(models)];
 }
 
 /** Build a SettingsListTheme from a pi-coding-agent Theme. */

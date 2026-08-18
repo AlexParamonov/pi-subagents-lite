@@ -14,7 +14,13 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID, buildSettingsListTheme, buildModelOptions, createSearchableSelect } from "./helpers.js";
+import {
+  SEPARATOR_ID,
+  buildSettingsListTheme,
+  buildModelOptions,
+  createSearchableSelect,
+  extractConfiguredModels,
+} from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import {
   buildLevelItems,
@@ -221,15 +227,19 @@ export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, 
 
     items.push({ id: SEPARATOR_ID, label: "─────────────────────────", currentValue: "────────" });
     if (modelOptions.length > 0) {
+      const configuredModels = extractConfiguredModels(store.agentConfigSnapshot());
       items.push({
         id: "addModelLimit",
         label: "Add per-model limit...",
         currentValue: "",
         description: "Cap how many agents run at once for a single model.",
-        submenu: addPickThenValueSubmenu(buildModelOptions(modelOptions), (modelKey, target, parsed) => {
-          store.mutate.concurrency.setModel(modelKey, parsed, target);
-          ctx.ui.notify(`${modelKey} concurrency set to ${parsed} (${target})`, "info");
-        }),
+        submenu: addPickThenValueSubmenu(
+          buildModelOptions(modelOptions, undefined, configuredModels),
+          (modelKey, target, parsed) => {
+            store.mutate.concurrency.setModel(modelKey, parsed, target);
+            ctx.ui.notify(`${modelKey} concurrency set to ${parsed} (${target})`, "info");
+          },
+        ),
       });
     }
 
