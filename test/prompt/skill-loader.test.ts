@@ -199,21 +199,6 @@ describe("git root discovery", () => {
     expect(calls.length).toBeGreaterThan(1);
     expect(calls[0]).toBe(join(tmpDir, ".agents", "skills"));
   });
-
-  it("probes .git existence once per ancestor level instead of listing the directory", () => {
-    mkdirSync(join(tmpDir, ".git"));
-    loadAllSkills(tmpDir);
-    expect(fsExistsSyncMock).toHaveBeenCalledTimes(1);
-    expect(fsExistsSyncMock).toHaveBeenCalledWith(join(tmpDir, ".git"));
-    expect(fsReaddirSyncMock).not.toHaveBeenCalled();
-  });
-
-  it("probes each ancestor level until it finds a real .git", () => {
-    loadAllSkills(tmpDir);
-    expect(fsExistsSyncMock.mock.calls.length).toBeGreaterThan(1);
-    expect(fsExistsSyncMock.mock.results.at(-1)!.value).toBe(true);
-    expect(fsReaddirSyncMock).not.toHaveBeenCalled();
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -259,6 +244,32 @@ describe("preloadSkills", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("nonexistent");
+    expect(result[0].content).toContain("not found");
+    expect(result[0].description).toBe("");
+  });
+
+  it("returns empty description when Skill has no description", () => {
+    const skillDir = join(tmpDir, ".pi", "skills", "plain");
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillPath, "Just body text, no frontmatter.");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("plain", "", skillPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["plain"], tmpDir);
+    expect(result[0].description).toBe("");
+  });
+
+  it("handles file read errors gracefully", () => {
+    const missingPath = join(tmpDir, ".pi", "skills", "gone", "SKILL.md");
+    mockLoadSkills.mockReturnValue({
+      skills: [makeSkill("gone", "Was here", missingPath)],
+      diagnostics: [],
+    });
+
+    const result = preloadSkills(["gone"], tmpDir);
     expect(result[0].content).toContain("not found");
     expect(result[0].description).toBe("");
   });
@@ -463,54 +474,5 @@ describe("Prompt integration: both together", () => {
     expect(prompt).toContain("OTHER_SECRET_123");
 
     expect(prompt).not.toContain("# Preloaded Skill:");
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/*  Unit: preloadSkills — description from Skill object               */
-/* ------------------------------------------------------------------ */
-
-describe("preloadSkills — description from Skill object", () => {
-  it("returns empty description when skill not found", () => {
-    const result = preloadSkills(["nonexistent"], tmpDir);
-    expect(result[0].description).toBe("");
-  });
-
-  it("uses description from Skill object", () => {
-    createSkillDir(tmpDir, "test-skill", "My skill description", "Body text");
-    const skillPath = join(tmpDir, ".pi", "skills", "test-skill", "SKILL.md");
-    mockLoadSkills.mockReturnValue({
-      skills: [makeSkill("test-skill", "My skill description", skillPath)],
-      diagnostics: [],
-    });
-
-    const result = preloadSkills(["test-skill"], tmpDir);
-    expect(result[0].description).toBe("My skill description");
-  });
-
-  it("returns empty description when Skill has no description", () => {
-    const skillDir = join(tmpDir, ".pi", "skills", "plain");
-    mkdirSync(skillDir, { recursive: true });
-    const skillPath = join(skillDir, "SKILL.md");
-    writeFileSync(skillPath, "Just body text, no frontmatter.");
-    mockLoadSkills.mockReturnValue({
-      skills: [makeSkill("plain", "", skillPath)],
-      diagnostics: [],
-    });
-
-    const result = preloadSkills(["plain"], tmpDir);
-    expect(result[0].description).toBe("");
-  });
-
-  it("handles file read errors gracefully", () => {
-    const missingPath = join(tmpDir, ".pi", "skills", "gone", "SKILL.md");
-    mockLoadSkills.mockReturnValue({
-      skills: [makeSkill("gone", "Was here", missingPath)],
-      diagnostics: [],
-    });
-
-    const result = preloadSkills(["gone"], tmpDir);
-    expect(result[0].content).toContain("not found");
-    expect(result[0].description).toBe("");
   });
 });

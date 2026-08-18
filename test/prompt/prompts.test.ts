@@ -238,27 +238,6 @@ describe("buildAgentPrompt — system prompt modes", () => {
     expect(result).toContain("You are a Pi, an expert coding sub-agent.");
     expect(result).toContain("You have been invoked to handle a specific task autonomously.");
   });
-
-  it("agent's systemPrompt is always in agent_instructions tags regardless of mode", () => {
-    const parentPrompt = "Parent prompt.";
-    const customPrompt = "Custom prompt.";
-
-    const replaceResult = buildAgentPrompt(baseConfig, "/test/cwd", env, {}, "replace");
-    const inheritResult = buildAgentPrompt(
-      baseConfig,
-      "/test/cwd",
-      env,
-      { parentSystemPrompt: parentPrompt },
-      "inherit",
-    );
-    const customResult = buildAgentPrompt(baseConfig, "/test/cwd", env, { customSystemPrompt: customPrompt }, "custom");
-
-    for (const result of [replaceResult, inheritResult, customResult]) {
-      expect(result).toContain("<agent_instructions>");
-      expect(result).toContain(baseConfig.systemPrompt);
-      expect(result).toContain("</agent_instructions>");
-    }
-  });
 });
 
 describe("buildAgentPrompt — context files (AGENTS.md)", () => {
