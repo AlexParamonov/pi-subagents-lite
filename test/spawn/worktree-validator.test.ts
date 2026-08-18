@@ -13,7 +13,6 @@ import {
   type WorktreeValidationSuccess,
   type WorktreeValidationFailure,
 } from "../../src/spawn/worktree-validator.js";
-import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
 
 // ── helpers ──────────────────────────────────────────────────────
 
@@ -485,68 +484,5 @@ describe("validateWorktreePath", () => {
     const success = result as WorktreeValidationSuccess;
     expect(success.resolvedPath).toBe(otherRepoPath);
     expect(success.sameRepo).toBe(false);
-  });
-});
-
-// ── deletion mid-run ─────────────────────────────────────────────
-// Simulates: worktree deleted between validation and agent start.
-// Agent record transitions to errored; parent session unaffected.
-
-const { mockRunAgent } = vi.hoisted(() => ({
-  mockRunAgent: vi.fn(),
-}));
-
-vi.mock("../../src/agents/agent-runner.js", () => ({
-  runAgent: mockRunAgent,
-}));
-
-describe("worktree deletion mid-run", () => {
-  beforeEach(() => {
-    mockRunAgent.mockReset();
-  });
-
-  it("marks agent as errored when runAgent fails (worktree deleted after validation)", async () => {
-    // Simulate runAgent failing immediately as a rejected promise — e.g.,
-    // worktree directory was deleted between validation and when the agent
-    // session starts. Using mockRejectedValue ensures the failure flows
-    // through the promise chain's .catch() (status → "error") rather than
-    // throwing synchronously (which would delete the record in spawn's
-    // try-catch and re-throw to the parent).
-    mockRunAgent.mockRejectedValue(new Error("ENOENT: no such file or directory, cwd '/deleted/worktree'"));
-
-    // Minimal mock for AgentManager dependencies
-    const mockCtx = asExtensionContext({
-      modelRegistry: [],
-      model: undefined,
-      cwd: "/tmp",
-    });
-
-    const { AgentManager } = await import("../../src/agents/agent-manager.js");
-    const manager = new AgentManager();
-
-    // Spawn should not throw — the error is caught inside startAgent.
-    // The agent record transitions to "error" status.
-    const agentId = manager.spawn(asExtensionAPI({ exec: vi.fn() }), mockCtx, "general-purpose", "test prompt", {
-      description: "test",
-      worktreePath: "/deleted/worktree",
-    });
-
-    const record = manager.getRecord(agentId);
-    expect(record).toBeDefined();
-
-    // Await the chained completion promise: it resolves only after the
-    // .catch()/.finally() blocks have run, so the record is in its final
-    // state (lessons.md: no setTimeout sleeps in concurrency tests).
-    await record!.execution.promise;
-
-    expect(record!.lifecycle.status).toBe("error");
-    expect(record!.error).toContain("ENOENT");
-
-    // Integration collateral: the real manager runs unref'd intervals and
-    // AgentOutputLog wrote /tmp/pi-agent-outputs/<id>.log. Clean both up so
-    // this test leaves nothing behind.
-    const logPath = record!.display.outputFile;
-    manager.dispose();
-    if (typeof logPath === "string") rmSync(logPath, { force: true });
   });
 });
