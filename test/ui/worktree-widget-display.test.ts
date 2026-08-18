@@ -10,7 +10,13 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
-import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
+import {
+  makeMockManager,
+  renderWidgetLines,
+  makeRunningAgent,
+  makeFinishedAgent,
+  makeActivity,
+} from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup (same as agent-widget.test.ts)                         */
@@ -32,66 +38,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
 }));
 
 /* ------------------------------------------------------------------ */
-/*  Factories                                                         */
-/* ------------------------------------------------------------------ */
-
-function makeRunningAgent(id: string, type: string = "builder", worktreeLabel?: string): AgentRecord {
-  return {
-    id,
-    display: {
-      type,
-      description: `Test agent ${id}`,
-      worktreeLabel,
-    },
-    lifecycle: {
-      status: "running",
-      startedAt: Date.now() - 60000,
-      started: true,
-    },
-    execution: { settled: false, settlementCount: 0 },
-    stats: {
-      toolUses: 5,
-      compactionCount: 0,
-      lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
-      turnCount: 3,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeFinishedAgent(id: string, type: string = "builder", worktreeLabel?: string): AgentRecord {
-  return {
-    id,
-    display: {
-      type,
-      description: `Finished agent ${id}`,
-      worktreeLabel,
-    },
-    lifecycle: {
-      status: "completed",
-      startedAt: Date.now() - 120000,
-      completedAt: Date.now() - 30000,
-      started: true,
-    },
-    execution: { settled: false, settlementCount: 0 },
-    stats: {
-      toolUses: 10,
-      compactionCount: 0,
-      lifetimeUsage: { input: 2000, output: 1000, cacheWrite: 0, cost: 0 },
-      turnCount: 8,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeActivity(_agentId: string): LiveView {
-  return {
-    activeTools: new Map([["read", "reading"]]),
-    responseText: "",
-  };
-}
-
-/* ------------------------------------------------------------------ */
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -108,7 +54,7 @@ describe("widget worktree label — full mode", () => {
   });
 
   it("shows worktreeLabel on the metadata line for a running agent", () => {
-    const agent = makeRunningAgent("a1", "builder", "feature/packages/web");
+    const agent = makeRunningAgent("a1", { worktreeLabel: "feature/packages/web" });
     activity.set("a1", makeActivity("a1"));
     manager.listAgents = () => [agent];
 
@@ -119,7 +65,7 @@ describe("widget worktree label — full mode", () => {
   });
 
   it("shows worktreeLabel for a finished agent", () => {
-    const agent = makeFinishedAgent("a1", "builder", "feature");
+    const agent = makeFinishedAgent("a1", { worktreeLabel: "feature" });
     manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
@@ -128,7 +74,7 @@ describe("widget worktree label — full mode", () => {
   });
 
   it("does not show worktreeLabel when agent has no worktree", () => {
-    const agent = makeRunningAgent("a1", "builder"); // no worktreeLabel
+    const agent = makeRunningAgent("a1"); // no worktreeLabel
     activity.set("a1", makeActivity("a1"));
     manager.listAgents = () => [agent];
 
@@ -140,7 +86,7 @@ describe("widget worktree label — full mode", () => {
   });
 
   it("shows worktreeLabel and tail -f on the same metadata line", () => {
-    const agent = makeRunningAgent("a1", "builder", "feature");
+    const agent = makeRunningAgent("a1", { worktreeLabel: "feature" });
     agent.display.outputFile = "/tmp/pi-agent-outputs/test.log";
     activity.set("a1", makeActivity("a1"));
     manager.listAgents = () => [agent];
@@ -152,7 +98,7 @@ describe("widget worktree label — full mode", () => {
   });
 
   it("shows worktreeLabel on its own line when no outputFile", () => {
-    const agent = makeRunningAgent("a1", "builder", "feature");
+    const agent = makeRunningAgent("a1", { worktreeLabel: "feature" });
     activity.set("a1", makeActivity("a1"));
     manager.listAgents = () => [agent];
 
@@ -163,8 +109,8 @@ describe("widget worktree label — full mode", () => {
   });
 
   it("shows distinct worktree labels for parallel agents with different worktrees", () => {
-    const a1 = makeRunningAgent("a1", "builder", "feature");
-    const a2 = makeRunningAgent("a2", "builder", "bugfix");
+    const a1 = makeRunningAgent("a1", { worktreeLabel: "feature" });
+    const a2 = makeRunningAgent("a2", { worktreeLabel: "bugfix" });
     activity.set("a1", makeActivity("a1"));
     activity.set("a2", makeActivity("a2"));
     manager.listAgents = () => [a1, a2];
@@ -191,7 +137,7 @@ describe("widget worktree label — compact mode", () => {
   });
 
   it("does NOT show worktreeLabel in compact mode for a running agent", () => {
-    const agent = makeRunningAgent("a1", "builder", "feature/packages/web");
+    const agent = makeRunningAgent("a1", { worktreeLabel: "feature/packages/web" });
     activity.set("a1", makeActivity("a1"));
     manager.listAgents = () => [agent];
 
@@ -201,7 +147,7 @@ describe("widget worktree label — compact mode", () => {
   });
 
   it("does NOT show worktreeLabel in compact mode for a finished agent", () => {
-    const agent = makeFinishedAgent("a1", "builder", "feature");
+    const agent = makeFinishedAgent("a1", { worktreeLabel: "feature" });
     manager.listAgents = () => [agent];
 
     const lines = renderWidgetLines(widget);
@@ -210,7 +156,7 @@ describe("widget worktree label — compact mode", () => {
   });
 
   it("compact mode still shows agent activity without worktree label", () => {
-    const agent = makeRunningAgent("a1", "builder", "feature");
+    const agent = makeRunningAgent("a1", { worktreeLabel: "feature" });
     activity.set("a1", makeActivity("a1"));
     manager.listAgents = () => [agent];
 

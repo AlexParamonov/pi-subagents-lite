@@ -7,7 +7,14 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
-import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
+import {
+  makeMockManager,
+  renderWidgetLines,
+  makeRunningAgent,
+  makeFinishedAgent,
+  makeQueuedAgent,
+  makeActivity,
+} from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
@@ -27,58 +34,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
   truncateToWidth: (text: string, width: number) => text,
   visibleWidth: (text: string) => text.length,
 }));
-
-function makeRunningAgent(id: string, type: string = "builder"): AgentRecord {
-  return {
-    id,
-    display: { type, description: `Running agent ${id}` },
-    lifecycle: { status: "running", startedAt: Date.now() - 60000, started: true },
-    execution: { settled: false, settlementCount: 0 },
-    stats: {
-      toolUses: 5,
-      compactionCount: 0,
-      lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
-      turnCount: 3,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeFinishedAgent(id: string, type: string = "builder"): AgentRecord {
-  return {
-    id,
-    display: { type, description: `Finished agent ${id}` },
-    lifecycle: { status: "completed", startedAt: Date.now() - 120000, completedAt: Date.now() - 30000, started: true },
-    execution: { settled: false, settlementCount: 0 },
-    stats: {
-      toolUses: 10,
-      compactionCount: 0,
-      lifetimeUsage: { input: 2000, output: 1000, cacheWrite: 0, cost: 0 },
-      turnCount: 8,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeQueuedAgent(id: string, type: string = "builder"): AgentRecord {
-  return {
-    id,
-    display: { type, description: `Queued agent ${id}` },
-    lifecycle: { status: "queued", startedAt: Date.now() - 30000, started: false },
-    execution: { settled: false, settlementCount: 0 },
-    stats: {
-      toolUses: 0,
-      compactionCount: 0,
-      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
-      turnCount: 0,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeActivity(agentId: string): LiveView {
-  return { activeTools: new Map([["read", "reading"]]), responseText: "" };
-}
 
 type RenderedState = {
   visible: string[];

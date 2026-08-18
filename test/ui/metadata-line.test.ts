@@ -11,8 +11,13 @@ import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
-import { makeMockManager, renderWidgetLines } from "./widget-helpers.js";
-import { asAgentSession } from "../pi-boundaries.js";
+import {
+  makeMockManager,
+  renderWidgetLines,
+  makeRunningAgent,
+  makeFinishedAgent,
+  makeActivity,
+} from "./widget-helpers.js";
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   getConfig: (type: string) => ({
@@ -29,73 +34,10 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => text.length,
 }));
 
-function makeRunningAgent(id: string, type: string = "builder"): AgentRecord {
-  return {
-    id,
-    display: {
-      type,
-      description: `Test agent ${id}`,
-      worktreeLabel: undefined,
-      outputFile: undefined,
-      invocation: { modelName: "haiku", thinkingLevel: "medium" },
-    },
-    lifecycle: {
-      status: "running",
-      startedAt: Date.now() - 60000,
-      started: true,
-    },
-    execution: {
-      settled: false,
-      settlementCount: 0,
-      session: asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }),
-    },
-    stats: {
-      toolUses: 5,
-      compactionCount: 0,
-      lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0, cost: 0 },
-      turnCount: 3,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeFinishedAgent(id: string, type: string = "builder"): AgentRecord {
-  return {
-    id,
-    display: {
-      type,
-      description: `Finished agent ${id}`,
-      worktreeLabel: undefined,
-      outputFile: undefined,
-      invocation: { modelName: "haiku", thinkingLevel: "medium" },
-    },
-    lifecycle: {
-      status: "completed",
-      startedAt: Date.now() - 120000,
-      completedAt: Date.now() - 30000,
-      started: true,
-    },
-    execution: {
-      settled: false,
-      settlementCount: 0,
-      session: asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }),
-    },
-    stats: {
-      toolUses: 10,
-      compactionCount: 0,
-      lifetimeUsage: { input: 2000, output: 1000, cacheWrite: 0, cost: 0 },
-      turnCount: 8,
-      maxTurns: 30,
-    },
-  };
-}
-
-function makeActivity(agentId: string): LiveView {
-  return {
-    activeTools: new Map([["read", "reading"]]),
-    responseText: "",
-  };
-}
+const MODEL_THINKING_OPTS = {
+  invocation: { modelName: "haiku", thinkingLevel: "medium" as const },
+  withSession: true,
+};
 
 describe("metadata line assembly", () => {
   let widget: AgentWidget;
@@ -115,7 +57,7 @@ describe("metadata line assembly", () => {
     });
 
     it("moves model + thinking from header to metadata line for running agents", () => {
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       activity.set("a1", makeActivity("a1"));
       manager.listAgents = () => [agent];
 
@@ -128,7 +70,7 @@ describe("metadata line assembly", () => {
     });
 
     it("moves model + thinking from header to metadata line for finished agents", () => {
-      const agent = makeFinishedAgent("a1");
+      const agent = makeFinishedAgent("a1", MODEL_THINKING_OPTS);
       manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
@@ -140,7 +82,7 @@ describe("metadata line assembly", () => {
     });
 
     it("metadata line uses bare format (no parentheses) for model + thinking", () => {
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       activity.set("a1", makeActivity("a1"));
       manager.listAgents = () => [agent];
 
@@ -152,7 +94,7 @@ describe("metadata line assembly", () => {
     });
 
     it("metadata line combines worktree, model/thinking, and outputFile", () => {
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       agent.display.worktreeLabel = "my-feature";
       agent.display.outputFile = "/tmp/test.log";
       activity.set("a1", makeActivity("a1"));
@@ -173,7 +115,7 @@ describe("metadata line assembly", () => {
     });
 
     it("keeps model + thinking in header for running agents", () => {
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       activity.set("a1", makeActivity("a1"));
       manager.listAgents = () => [agent];
 
@@ -184,7 +126,7 @@ describe("metadata line assembly", () => {
     });
 
     it("keeps model + thinking in header for finished agents", () => {
-      const agent = makeFinishedAgent("a1");
+      const agent = makeFinishedAgent("a1", MODEL_THINKING_OPTS);
       manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
@@ -201,7 +143,7 @@ describe("metadata line assembly", () => {
     });
 
     it("renders a running agent with model but no worktree/outputFile as a 3-line block", () => {
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       // Ensure no worktree/outputFile - model/thinking should still produce metadata line
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
@@ -216,7 +158,7 @@ describe("metadata line assembly", () => {
     });
 
     it("renders a finished agent with model but no worktree/outputFile as a 2-line block", () => {
-      const agent = makeFinishedAgent("a1");
+      const agent = makeFinishedAgent("a1", MODEL_THINKING_OPTS);
       // Ensure no worktree/outputFile
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
@@ -231,7 +173,7 @@ describe("metadata line assembly", () => {
 
     it("renders a compact-mode agent as a 1-line block regardless of model", () => {
       widget.setForceCompact(true);
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       agent.display.worktreeLabel = undefined;
       agent.display.outputFile = undefined;
       activity.set("a1", makeActivity("a1"));
@@ -242,7 +184,7 @@ describe("metadata line assembly", () => {
     });
 
     it("renders a running agent with worktree but no model as a 3-line block", () => {
-      const agent = makeRunningAgent("a1");
+      const agent = makeRunningAgent("a1", MODEL_THINKING_OPTS);
       // Remove model/thinking
       agent.execution.session = undefined;
       agent.display.invocation = undefined;
