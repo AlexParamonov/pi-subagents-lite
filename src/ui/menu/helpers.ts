@@ -8,7 +8,6 @@ import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "../types.js";
 import { SearchableSelectDialog, type SelectOption } from "../searchable-select.js";
 import { parseModelKey } from "../../utils.js";
-import { getStore } from "../../shell.js";
 
 /**
  * Item id that marks a separator/section-header row in SettingsList/SelectList

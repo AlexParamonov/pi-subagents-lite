@@ -9,6 +9,7 @@ import {
   buildSettingsListTheme,
   buildSelectListTheme,
   buildModelOptions,
+  extractConfiguredModels,
 } from "../../../src/ui/menu/helpers.js";
 
 const mockTheme = {
@@ -317,5 +318,42 @@ describe("buildModelOptions", () => {
         "anthropic/claude-3-haiku",
       ]);
     });
+  });
+});
+
+describe("extractConfiguredModels", () => {
+  it("extracts default model", () => {
+    const config = { default: "anthropic/claude-3.5-sonnet" };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
+  });
+
+  it("extracts per-type overrides", () => {
+    const config = { default: null, coder: "openai/gpt-4o", reviewer: "anthropic/claude-3-haiku" };
+    expect(extractConfiguredModels(config)).toEqual(["openai/gpt-4o", "anthropic/claude-3-haiku"]);
+  });
+
+  it("ignores non-model strings (no slash)", () => {
+    const config = {
+      default: "anthropic/claude-3.5-sonnet",
+      forceBackground: true,
+      maxTokens: 1000,
+      systemPromptMode: "auto",
+    };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
+  });
+
+  it("deduplicates models while preserving order", () => {
+    const config = { default: "anthropic/claude-3.5-sonnet", coder: "anthropic/claude-3.5-sonnet" };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
+  });
+
+  it("returns empty array for empty config", () => {
+    const config = { default: null };
+    expect(extractConfiguredModels(config)).toEqual([]);
+  });
+
+  it("handles undefined per-type values", () => {
+    const config = { default: "anthropic/claude-3.5-sonnet", coder: undefined };
+    expect(extractConfiguredModels(config)).toEqual(["anthropic/claude-3.5-sonnet"]);
   });
 });
