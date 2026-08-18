@@ -100,8 +100,7 @@ export function buildModelOptions(
   }
 
   // Partition into three groups: current, configured, remaining
-  const configuredSet = new Set(configuredModels ?? []);
-  const current: SelectOption[] = [];
+  const current: SelectOption[] = []
   const configured: SelectOption[] = [];
   const remaining: SelectOption[] = [];
 
