@@ -7,14 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent `color` frontmatter field.** Agent `.md` files can set `color: <named-color>` or `color: #RRGGBB`. The agent's display name renders as a colored badge (background + inverse text) in the widget, tool call lines, and subagent-result messages. Supports 22 named colors (Claude Code palette + Agency Agents aliases), 6-digit hex, and WCAG-correct black/white foreground selection.
+- **Background agent status indicators.** When an agent is scheduled to run in the background, the UI now clearly shows its status in the call-line icon: `◆` (accent) when queued, `◈` (accent) when running, `✓` (success) when completed or turn-limited, `✗` (error) on error or abort, and `■` (dim) when stopped; foreground call lines show `▸`. The result line shows the model tag and stats for finished foreground agents and the description only for background agents (icon lives in the call line). Live status updates via invalidation map — the icon flips as the agent progresses.
+- **Model picker prioritizes configured models.** The model picker (via `/model`, model settings, concurrency settings, and spawn wizard) now shows models sorted: current model first, then models from `subagents-lite.json` agent config (default + per-type overrides), then all remaining models. This makes configured models easy to find without searching. Search/filter still works correctly with the new sort order.
+
 ### Changed
 
 - **Unified agent status icons across all UI surfaces.** Tool call lines, the subagent status widget, and the conversation viewer now share one status→icon map (`statusIcon` in `format.ts`): `◆` queued, `◈` running, `✓` completed (success), `✓` turn-limited (warning), `✗` error/aborted, `■` stopped (dim), `▸` when no status yet. The viewer's stopped icon was `✗` (error) and its queued icon `◇` (dim); turn-limited was success-colored in call lines. Stopped is neutral, not a failure.
-
-### Added
-
-- **Background agent status indicators.** When an agent is scheduled to run in the background, the UI now clearly shows its status in the call-line icon: `◆` (accent) when queued, `◈` (accent) when running, `✓` (success) when completed or turn-limited, `✗` (error) on error or abort, and `■` (dim) when stopped; foreground call lines show `▸`. The result line shows the model tag and stats for finished foreground agents and the description only for background agents (icon lives in the call line). Live status updates via invalidation map — the icon flips as the agent progresses.
-- **Model picker prioritizes configured models.** The model picker (via `/model`, model settings, concurrency settings, and spawn wizard) now shows models sorted: current model first, then models from `subagents-lite.json` agent config (default + per-type overrides), then all remaining models. This makes configured models easy to find without searching. Search/filter still works correctly with the new sort order.
 
 ## [1.12.0] - 2026-08-15
 

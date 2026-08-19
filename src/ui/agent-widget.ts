@@ -20,6 +20,7 @@ import {
   statusIcon,
   type StatsVisibility,
 } from "./format.js";
+import { renderAgentBadge } from "../agent-color.js";
 import type { LiveView } from "../types.js";
 
 // Backward-compat re-export for consumers importing Theme from this module.
@@ -539,7 +540,7 @@ export class AgentWidget {
   }
 
   private renderFinishedLine(a: AgentRecord, theme: Theme, w: number): string {
-    const name = getDisplayName(a.display.type);
+    const nameText = renderAgentBadge(a.display.type, theme, (name) => theme.fg("dim", name));
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -561,7 +562,7 @@ export class AgentWidget {
     const statsLine = statsParts.join("·");
     const tagPart = this.modelThinkingHeaderTag(a, theme);
 
-    return `${icon} ${theme.fg("dim", name)}${tagPart}  ${theme.fg("dim", a.display.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
+    return `${icon} ${nameText}${tagPart}  ${theme.fg("dim", a.display.description)}  ${wrapInDim(theme, statsLine)}${statusText}`;
   }
 
   /** Build the dim-styled model/thinking tag for the header line, or "" when it belongs on the metadata line. */
@@ -625,17 +626,17 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of running) {
-      const name = getDisplayName(a.display.type);
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
+      const nameText = renderAgentBadge(a.display.type, theme);
 
       if (this.isCompact()) {
         // Compact: single line; description after model, stats, then activity.
         // Truncate description to preserve stats visibility; activity fills remainder
         // and gets cut by truncate() (which cuts from the right).
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  `;
+        const fixedParts = `  ${theme.fg("accent", frame)} ${nameText}${tagPart}  `;
         const fixedWidth = visibleWidth(fixedParts);
         const statsWidth = visibleWidth(`  ${statsLine}`);
         const availableForDesc = Math.max(0, w - fixedWidth - statsWidth);
@@ -652,11 +653,11 @@ export class AgentWidget {
         // Full: header + metadata lines (model/thinking on metadata line)
         // Truncate description to preserve stats visibility.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}    ${statsLine}`;
+        const fixedParts = `  ${theme.fg("accent", frame)} ${nameText}${tagPart}    ${statsLine}`;
         const fixedWidth = visibleWidth(fixedParts);
         const availableWidth = w - fixedWidth;
         const truncatedDesc = truncateToWidth(a.display.description, Math.max(0, availableWidth));
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${truncatedDesc}  ${statsLine}`;
+        const headerLine = `  ${theme.fg("accent", frame)} ${nameText}${tagPart}  ${truncatedDesc}  ${statsLine}`;
         const metadataLines: string[] = [];
         const line = this.buildMetadataLine(a, "  │ ", theme, truncate);
         if (line) metadataLines.push(line);
@@ -843,9 +844,9 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of queued) {
-      const name = getDisplayName(a.display.type);
+      const nameText = renderAgentBadge(a.display.type, theme, (name) => theme.fg("dim", name));
       const desc = a.display.description;
-      const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
+      const header = `  ${theme.fg("muted", "◦")} ${nameText}  ${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), metadataLines: [] });
     }
     return blocks;
