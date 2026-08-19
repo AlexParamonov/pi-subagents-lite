@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Background agent status indicators.** When an agent is scheduled to run in the background, the UI now clearly shows its status: `◇` (empty diamond) with `(queued)` when waiting, `◈` (filled diamond) with `(running)` when executing, and `✓` (checkmark) when completed. The first line shows the agent name with status, the second line shows the description without a checkmark until completion. Live status updates via invalidation map — the row flips to `✓` when the agent finishes.
 - **Model picker prioritizes configured models.** The model picker (via `/model`, model settings, concurrency settings, and spawn wizard) now shows models sorted: current model first, then models from `subagents-lite.json` agent config (default + per-type overrides), then all remaining models. This makes configured models easy to find without searching. Search/filter still works correctly with the new sort order.
 
 ## [1.12.0] - 2026-08-15

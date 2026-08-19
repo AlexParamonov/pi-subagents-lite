@@ -93,7 +93,11 @@ function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: st
 export function renderAgentToolCall(args: Record<string, unknown>, theme: Theme): Text {
   const typeName = getDisplayName((args.agent as string) || "");
   const label = typeName || "Agent";
-  let text = `▸ ${theme.fg("accent", theme.bold(label))}`;
+
+  // Background agents: show queued state (◇) instead of play (▸)
+  const isBackground = args.run_in_background === true;
+  const icon = isBackground ? theme.fg("dim", "◇") : theme.fg("accent", "▸");
+  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
   const modelOverride = args._modelOverride as string | undefined;
   if (modelOverride) {
@@ -138,11 +142,11 @@ export function renderAgentToolResult(
   const status = liveRecord?.lifecycle.status ?? (d?.status as string | undefined);
 
   const { icon, statusText } = resolveStatusIcon(status, theme);
-  const namePart = agentNameLabel(d ?? {}, theme, modelDisplayStyle);
-  const firstLine = `${icon} ${namePart}${statusText}`;
+  // For background agents, don't show agent name (it's in the call line)
+  // Only show status icon + description
   const secondLine = desc ? `\n  ${theme.fg("text", desc)}` : "";
 
-  return new Text(`${firstLine}${secondLine}`, 0, 0);
+  return new Text(`${icon}${statusText}${secondLine}`, 0, 0);
 }
 
 // --- Message renderer — subagent-result ---

@@ -57,6 +57,7 @@ vi.mock("../../src/ui/format.js", () => ({
 // Import after mocks are set up
 import {
   renderSubagentResult,
+  renderAgentToolCall,
   renderAgentToolResult,
   registerAgentInvalidation,
   invalidateAgentRow,
@@ -233,7 +234,8 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("◇");
     expect(allText).toContain("(queued)");
-    expect(allText).toContain("Builder");
+    // Agent name is NOT in result for background agents (it's in the call line)
+    expect(allText).not.toContain("Builder");
     expect(allText).not.toContain("✓");
     expect(allText).not.toContain("✗");
   });
@@ -249,7 +251,8 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("◈");
     expect(allText).toContain("(running)");
-    expect(allText).toContain("Builder");
+    // Agent name is NOT in result for background agents (it's in the call line)
+    expect(allText).not.toContain("Builder");
     expect(allText).not.toContain("✓");
     expect(allText).not.toContain("✗");
   });
@@ -316,11 +319,11 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // First line has agent name with queued status
+    // First line has status icon with queued status (no agent name)
     const lines = allText.split("\n");
     expect(lines[0]).toContain("◇");
-    expect(lines[0]).toContain("Builder");
     expect(lines[0]).toContain("(queued)");
+    expect(lines[0]).not.toContain("Builder");
     // Second line (description) has no checkmark prefix
     const descLine = lines.find((l) => l.includes("Fix vendor approach"));
     expect(descLine).toBeDefined();
@@ -337,10 +340,10 @@ describe("renderAgentToolResult — background agent status indicators", () => {
 
     const allText = textInstances.map((t) => t.text).join("\n");
     const lines = allText.split("\n");
-    // First line has agent name with running status
+    // First line has status icon with running status (no agent name)
     expect(lines[0]).toContain("◈");
-    expect(lines[0]).toContain("Builder");
     expect(lines[0]).toContain("(running)");
+    expect(lines[0]).not.toContain("Builder");
     // Second line (description) has no checkmark prefix
     const descLine = lines.find((l) => l.includes("Fix vendor approach"));
     expect(descLine).toBeDefined();
@@ -391,5 +394,48 @@ describe("agent invalidation map", () => {
     invalidateAgentRow("agent-1");
     expect(fn1).not.toHaveBeenCalled();
     expect(fn2).toHaveBeenCalledOnce();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  renderAgentToolCall — background agent icon                        */
+/* ------------------------------------------------------------------ */
+
+describe("renderAgentToolCall — background agent icon", () => {
+  beforeEach(() => {
+    textInstances.length = 0;
+  });
+
+  it("shows ▸ icon for foreground agents", () => {
+    renderAgentToolCall({ agent: "builder" }, noopTheme);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("▸");
+    expect(allText).toContain("Builder");
+    expect(allText).not.toContain("◇");
+  });
+
+  it("shows ◇ icon for background agents", () => {
+    renderAgentToolCall({ agent: "builder", run_in_background: true }, noopTheme);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("◇");
+    expect(allText).toContain("Builder");
+    expect(allText).not.toContain("▸");
+  });
+
+  it("shows ▸ icon when run_in_background is false", () => {
+    renderAgentToolCall({ agent: "builder", run_in_background: false }, noopTheme);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("▸");
+    expect(allText).not.toContain("◇");
+  });
+
+  it("shows model override when present", () => {
+    renderAgentToolCall({ agent: "builder", _modelOverride: "claude-3" }, noopTheme);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("(claude-3)");
   });
 });
