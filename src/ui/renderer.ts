@@ -103,15 +103,47 @@ export function renderAgentToolCall(
   const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
   let icon: string;
   let statusText = "";
-  
+
   if (isBackground) {
     // Look up live status from manager using stored agentId
-    const agentId = context?.state?.agentId as string | undefined;
+    // Try context.state first, then fall back to searching all agents by description
+    let agentId = context?.state?.agentId as string | undefined;
+    if (!agentId) {
+      // Fallback: find agent by description (args.description)
+      const desc = args.description as string | undefined;
+      if (desc) {
+        const manager = getManager();
+        if (manager) {
+          const record = manager
+            .listAgents()
+            .find(
+              (r) =>
+                r.display.description === desc && (r.lifecycle.status === "running" || r.lifecycle.status === "queued"),
+            );
+          if (record) {
+            agentId = record.id;
+            // Store in context.state for future renders
+            if (context?.state) {
+              context.state.agentId = agentId;
+              context.state.isBackground = true;
+            }
+          }
+        }
+      }
+    }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
     const resolved = resolveStatusIcon(status, theme);
     icon = resolved.icon;
     statusText = resolved.statusText;
+    let text = `${icon} ${theme.fg("accent", theme.bold(label))}${statusText}`;
+
+    const modelOverride = args._modelOverride as string | undefined;
+    if (modelOverride) {
+      text += ` (${modelOverride})`;
+    }
+
+    return new Text(text, 0, 0);
   } else {
     icon = theme.fg("accent", "▸");
   }
