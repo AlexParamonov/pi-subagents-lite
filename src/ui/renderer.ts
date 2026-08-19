@@ -64,6 +64,22 @@ export function invalidateAgentRow(agentId: string): void {
 /** Clear all invalidation registrations. Called on session_shutdown. */
 export function cleanupInvalidations(): void {
   agentInvalidations.clear();
+  toolCallToAgentId.clear();
+}
+
+// --- Tool call to agent ID mapping ---
+
+/** Map from pi's toolCallId to our agentId. Used by call renderer to find agent status. */
+const toolCallToAgentId = new Map<string, string>();
+
+/** Register a mapping from toolCallId to agentId. Called when agent is spawned. */
+export function registerToolCallAgentId(toolCallId: string, agentId: string): void {
+  toolCallToAgentId.set(toolCallId, agentId);
+}
+
+/** Get agentId from toolCallId. */
+export function getAgentIdFromToolCall(toolCallId: string): string | undefined {
+  return toolCallToAgentId.get(toolCallId);
 }
 
 // --- Status icon mapping ---
@@ -93,7 +109,7 @@ function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: st
 export function renderAgentToolCall(
   args: Record<string, unknown>,
   theme: Theme,
-  context?: { state?: Record<string, unknown> },
+  context?: { state?: Record<string, unknown>; toolCallId?: string },
 ): Text {
   const typeName = getDisplayName((args.agent as string) || "");
   const label = typeName || "Agent";
@@ -106,8 +122,19 @@ export function renderAgentToolCall(
 
   if (isBackground) {
     // Look up live status from manager using stored agentId
-    // Try context.state first, then fall back to searching all agents by description
+    // Try context.state first, then toolCallId mapping, then description fallback
     let agentId = context?.state?.agentId as string | undefined;
+    if (!agentId) {
+      // Try toolCallId mapping (most reliable)
+      const toolCallId = context?.toolCallId as string | undefined;
+      if (toolCallId) {
+        agentId = getAgentIdFromToolCall(toolCallId);
+        if (agentId && context?.state) {
+          context.state.agentId = agentId;
+          context.state.isBackground = true;
+        }
+      }
+    }
     if (!agentId) {
       // Fallback: find agent by description (args.description)
       const desc = args.description as string | undefined;
@@ -122,7 +149,6 @@ export function renderAgentToolCall(
             );
           if (record) {
             agentId = record.id;
-            // Store in context.state for future renders
             if (context?.state) {
               context.state.agentId = agentId;
               context.state.isBackground = true;

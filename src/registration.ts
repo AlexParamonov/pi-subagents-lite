@@ -58,8 +58,11 @@ export function registerAgentTool(pi: ExtensionAPI): void {
     execute: executeAgentTool,
     ...(useConstrained ? { constrainedSampling: CONSTRAINED_SAMPLING } : {}),
 
-    renderCall: (args: Record<string, unknown>, theme: any, context?: { state?: Record<string, unknown> }) =>
-      renderAgentToolCall(args, theme, context),
+    renderCall: (
+      args: Record<string, unknown>,
+      theme: any,
+      context?: { state?: Record<string, unknown>; toolCallId?: string },
+    ) => renderAgentToolCall(args, theme, context),
 
     renderResult: (
       result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
