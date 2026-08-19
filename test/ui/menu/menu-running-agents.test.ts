@@ -181,7 +181,7 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     expect(selectListCalls[0].items[0].label).toContain("general-purpose");
   });
 
-  it("uses agentBulletPrefix and agentColoredText for agent labels", async () => {
+  it("uses agentBulletPrefix for agent labels (plain type name, no agent color)", async () => {
     mockModules.mockManager.listAgents.mockReturnValue([
       makeRecord({ id: "agent-1", display: { type: "general-purpose", description: "Test" } }),
     ]);
