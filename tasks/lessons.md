@@ -175,6 +175,7 @@
 - pi-tui's ToolExecutionComponent renders tool calls in phases: initial render, markExecutionStarted, setArgsComplete, updateResult. The AgentManager's onStart callback fires BEFORE pi's tool_execution_start event, so the ToolExecutionComponent doesn't exist yet when onStart fires. Use pi's render lifecycle events, not AgentManager callbacks, for UI updates.
 - context.state in pi-tui's ToolRenderContext is shared across call and result renderers via rendererState. Store data in context.state during result render to make it available to call renderer on re-render.
 - When the call renderer needs data that isn't in context.state initially, use toolCallId (available in context) to look up the data from the agent record. Store toolCallId in AgentDisplayInfo when the tool is executed. Don't use description-based search as it may not be unique.
+- Icon progression for agents: ◇ (initial) → ◆ (queued) → ◈ (running) → ✓ (complete) / ✗ (error). Use executionStarted flag from context to determine when to show final icon.
 
 ## Orchestration
 
