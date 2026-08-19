@@ -5,11 +5,13 @@
 
 Sub-agents for [pi](https://pi.dev). Schema-first, minimal token overhead.
 
-Spawn specialized agents with isolated sessions, custom tools, and per-type models. Three tools, no bloated descriptions, no prompt snippets, no usage guidelines. Names like `Agent`, `run_in_background`, and `worktree_path` are the schema.
+Spawn custom agents in isolated session with own tools, extensions and model. Three tools, no descriptions, minimal token overhead. Names like `Agent`, `run_in_background`, and `worktree_path` are the schema.
 
-Foreground and background agents with parent interrupt binding, custom agent types, per-type models, steering and continuation, cross-repo worktree support, configurable system prompt modes, a live widget and conversation viewer with cost tracking, a watchdog for stuck agents, and per-model concurrency limits.
+Foreground and background agents with detailed model configuration, concurrency, custom agent types, steering and continuation, cross-repo worktree support, configurable system prompt modes, a live widget and conversation viewer with cost tracking, and a watchdog for stuck agents.
 
 ## Install
+
+Requires Node.js >= 18 and pi >= 0.82.0.
 
 ```bash
 pi install npm:pi-subagents-lite
@@ -17,7 +19,7 @@ pi install -l npm:pi-subagents-lite   # project-local
 pi -e npm:pi-subagents-lite           # try without installing
 ```
 
-## Quick start
+## Usage
 
 The LLM calls `Agent` like any other tool. Foreground agents return inline with stats. Background agents acknowledge immediately and auto-deliver on completion.
 
@@ -31,22 +33,32 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
   └ Now I have enough information to provide a comprehensive answer.
 ```
 
+The widget shows running and recently finished agents above the editor. `↓`/`↑` highlights an agent, `Enter` opens the conversation viewer, `Esc` closes navigation. The viewer streams the live transcript: thinking blocks, tool calls, compaction summaries, and results.
+
 The `/agents` menu covers running agents (view, steer, continue settled agents, stop, clear), manual spawns without an LLM round-trip, model settings, concurrency, and widget layout.
 
-## Tools
+### Agent tools
 
-- **`Agent`**: spawn a sub-agent:
-  - `prompt` is a required task text.
-  - `agent` is an agent type; defaults to `general-purpose`.
-  - `run_in_background` is a boolean toggle for fire-and-forget. Agent will return immediately and notify the parent on completion.
-  - `worktree_path` can be any git repository on disk: a worktree of the parent's repo, its main checkout, or a different repo entirely. See [Worktree paths and trust](#worktree-paths-and-trust).
-  `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM. Foreground agents are bound to the parent's interrupt: stopping the parent stops them (partial output preserved); background agents are not affected.
-- **`StopAgent`**: stop a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
-- **`AgentStatus`**: list all agents with type, short ID, and status.
+- `Agent` spawns a sub-agent (see [Agent options](#agent-options) for parameters).
+- `StopAgent` stops a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
+- `AgentStatus` lists all agents with type, short ID, and status.
 
-## Custom agent types
+Foreground agents dont lock the session and can be stopped by parent's interrupt. Background agents are fully autonomous.
 
-Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, so nothing needs registering. Built-ins `general-purpose` and `Explore` are always available; on name clash, project > shared > user > built-in. Type names resolve case-insensitively.
+### Steering and continuation
+
+Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, or `Steer` in the `/agents` menu. Settled agents (completed, errored, stopped, turn-limited) can be continued manually from the conversation viewer.
+
+## Built-in agents
+
+- `general-purpose` does general task execution using the configured session tools.
+- `Explore` does read-only codebase exploration.
+
+Built-ins can be overridden by custom agents or disabled from `/agents`. Disabling takes effect immediately for future `Agent` calls. Running and queued agents continue with the policy captured at spawn.
+
+## Custom agents
+
+Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, so nothing needs registering. On name clash, project > shared > user > built-in. Type names resolve case-insensitively.
 
 ```markdown
 ---
@@ -79,7 +91,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `exclude_extensions` | `string[]` | none | Extension blacklist. |
 | `skills` | `true` \| `string[]` \| `false` | `true` | Skill whitelist (metadata-only in system prompt). |
 | `preload_skills` | `string[]` \| `false` | `false` | Dump full SKILL.md content into the system prompt. Expensive. |
-| `model` | string | inherit parent | `"provider/model-id"`. See [Model Resolution](#model-resolution). |
+| `model` | string | inherit parent | `"provider/model-id"`. See [Model resolution](#model-resolution). |
 | `thinking` | string | inherit parent | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |
 | `max_turns` | number | unlimited | Soft turn limit, then grace turns before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. |
@@ -88,9 +100,23 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `include_context_files` | boolean | inherit global | Include AGENTS.md files as `<project_context>` in the system prompt. `true` = load, `false` = none, unset = global "Include AGENTS.md" setting. |
 | `include_system_prompt` | boolean | inherit global | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`. |
 
-Tool and extension lists accept built-in names (`read`, `bash`, `edit`, `write`, `grep`), extension tool names (`web_search`), and `ext/*` globs (`tavily/*`). `exclude_tools: [tavily/*]` hides the tools but the extension still loads; use `exclude_extensions: [tavily]` to prevent loading.
+Tool and extension lists accept built-in names (`read`, `bash`, `edit`, `write`, `grep`), extension tool names (`web_search`), and `ext/*` globs (`tavily/*`). `exclude_tools: [tavily/*]` hides the tools but the extension still loads. Use `exclude_extensions: [tavily]` to prevent loading.
 
 `loadSkillsImplicitly` and `loadExtensionsImplicitly` (config, default ON) decide what an agent gets when frontmatter omits `skills` or `extensions`. Turn them OFF to default new agents to nothing and opt in explicitly.
+
+## Agent options
+
+`Agent` accepts:
+
+- `prompt` (required) is the task text.
+- `description` is a short label for the widget; defaults to the first line of the prompt.
+- `agent` is the agent type; defaults to `general-purpose`.
+- `run_in_background` makes the agent return immediately and notify the parent when complete.
+- `worktree_path` is any git repository on disk: a worktree of the parent's repo, its main checkout, or a different repo entirely. See [Worktree paths and trust](#worktree-paths-and-trust).
+
+`model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM. Set them once and forget.
+
+Subagents cannot spawn further subagents.
 
 ## Model resolution
 
@@ -103,48 +129,15 @@ Precedence, highest first:
 5. Agent frontmatter `model`
 6. Parent model
 
-The LLM never passes `model`. Set it once in config or frontmatter and forget.
+## Concurrency
 
-## Steering and continuation
+`concurrency` caps parallel agents. A per-model limit overrides a per-provider limit, which overrides the `default` per-model limit. Excess spawns queue until a slot frees.
 
-Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, or `Steer` in the `/agents` menu. Settled agents (completed, errored, stopped, turn-limited) can be continued manually from the conversation viewer.
+## Settings
 
-## Worktree paths and trust
+All settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly.
 
-`worktree_path` accepts a path inside **any git repository on disk**: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
-
-Cross-repo targets are gated by pi's existing trust framework: the target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting: anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, the extension's project config (`.pi/subagents-lite.json`) is not loaded, and pi surfaces a warning. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
-
-## System prompt mode
-
-`systemPromptMode` (default `replace`):
-
-- **`replace`**: minimal generic prompt plus the agent's instructions. Lowest cost and most isolated.
-- **`inherit`**: parent's system prompt plus the agent's instructions.
-- **`custom`**: `~/.pi/agent/subagents-lite-prompt.md` plus the agent's instructions.
-
-When `includeContextFiles` is `true` (default), AGENTS.md files load as shared context before agent instructions, which improves KV cache prefix hits.
-
-## Widget
-
-The widget keeps a live roster of agents and a status bar in pi's status area. `↑`/`↓` navigates it, `Enter` opens the conversation viewer, `Esc` closes it; `ctrl+o` toggles compact mode when the shortcut is enabled. The viewer streams the live transcript: thinking blocks, tool calls, compaction summaries, and results.
-
-Finished agents stay in the widget for `finishedRetentionMinutes` (decimal) after settling, and in the Running Agents menu for the rest of the session. `Clear` removes one agent, `Clear done` all completed, `Clear all` all finished.
-
-Most of the widget is configurable: per-stat visibility, model and thinking display, widget sizing, etc.
-
-## Watchdog
-
-The watchdog stops agents that hang. Two independent checks, both default 45 minutes, `0` disables:
-
-- `toolTimeoutMinutes`: a single tool call running longer than this stops the agent.
-- `idleTimeoutMinutes`: no activity (tool events or streamed response text) for this long stops the agent.
-
-The watchdog notifies the main session on a kill so it can act accordingly.
-
-## Configuration
-
-`~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly. Per-type model overrides are dynamic keys alongside the special fields.
+### Configuration reference
 
 ```json
 {
@@ -193,20 +186,42 @@ The watchdog notifies the main session on a kill so it can act accordingly.
 }
 ```
 
-Widget, stats visibility, and spawn defaults are all under `/agents` > Settings.
+Widget, stats visibility, and spawn defaults are all under `/agents` > Settings. Per-type model overrides are dynamic keys alongside the special fields.
 
-`concurrency` caps parallel agents: a per-model limit overrides a per-provider limit, which overrides the `default` per-model limit; excess spawns queue until a slot frees. `agentToolStrictMode` makes Agent-tool sampling use strict json_schema, which produces fewer malformed calls at a higher token cost.
+`agentToolStrictMode` makes Agent-tool sampling use strict json_schema, which produces fewer malformed calls at a higher token cost.
 
 ### Project-level config
 
-A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). It is an **override layer**, not a full config: it may contain only model and concurrency settings (`agent.default`, per-type model overrides, `concurrency`), and each key it sets overrides the global file's value. Every other setting — widget, watchdog, spawn defaults — always comes from the global file. The effective value of each key resolves as: session override > project file > global file > built-in default.
+A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). This is an override layer, not a full config. It may contain only model and concurrency settings (`agent.default`, per-type model overrides, `concurrency`), and each key it sets overrides the global file's value. Every other setting (widget, watchdog, spawn defaults) always comes from the global file. The effective value of each key resolves as: session override > project file > global file > built-in default.
 
-Output transcripts are disabled by default; enable them globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, the transcript streams to `/tmp/pi-agent-outputs/<agentId>.log` (append-only, `tail -f` friendly) and the widget shows the `tail -f` line. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
+### System prompt mode
 
-## Requirements
+`systemPromptMode` (default `replace`):
 
-- Node.js >= 18
-- pi >= 0.82.0
+- `replace` uses a minimal generic prompt plus the agent's instructions. Lowest cost and most isolated.
+- `inherit` uses the parent's system prompt plus the agent's instructions.
+- `custom` uses `~/.pi/agent/subagents-lite-prompt.md` plus the agent's instructions.
+
+When `includeContextFiles` is `true` (default), AGENTS.md files load as shared context before agent instructions, which improves KV cache prefix hits.
+
+### Worktree paths and trust
+
+`worktree_path` accepts a path inside any git repository on disk: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
+
+Cross-repo targets are gated by pi's existing trust framework. The target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting. Anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, the extension's project config (`.pi/subagents-lite.json`) is not loaded, and pi surfaces a warning. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
+
+### Watchdog
+
+The watchdog stops agents that hang. Two independent checks, both default 45 minutes, `0` disables:
+
+- `toolTimeoutMinutes`: a single tool call running longer than this stops the agent.
+- `idleTimeoutMinutes`: no activity (tool events or streamed response text) for this long stops the agent.
+
+The watchdog notifies the main session on a kill so it can act accordingly.
+
+### Output transcripts
+
+Output transcripts are disabled by default. Enable them globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, the transcript streams to `/tmp/pi-agent-outputs/<agentId>.log` (append-only, `tail -f` friendly) and the widget shows the `tail -f` line. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
 
 ## License
 
