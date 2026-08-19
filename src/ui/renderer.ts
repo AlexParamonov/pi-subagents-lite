@@ -18,15 +18,11 @@ export function agentNameLabel(
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
   const typeName = getDisplayName((d.type as string) || "");
-  const tag = modelTag(d, theme, modelDisplayStyle)
+  const tag = modelTag(d, theme, modelDisplayStyle);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
 
-function modelTag(
-  d: Record<string, unknown>,
-  theme: Theme,
-  modelDisplayStyle: "id" | "name" = "id",
-): string {
+function modelTag(d: Record<string, unknown>, theme: Theme, modelDisplayStyle: "id" | "name" = "id"): string {
   const modelLabel = resolveModelLabel(
     modelDisplayStyle,
     d.modelName as string | undefined,
@@ -80,17 +76,17 @@ export function cleanupInvalidations(): void {
 function resolveStatusIcon(status: string | undefined, theme: Theme): string {
   switch (status) {
     case "queued":
-      return theme.fg("accent", "◆")
+      return theme.fg("accent", "◆");
     case "running":
-      return theme.fg("accent", "◈")
+      return theme.fg("accent", "◈");
     case "error":
     case "aborted":
-      return theme.fg("error", "✗")
+      return theme.fg("error", "✗");
     case "stopped":
-      return theme.fg("dim", "■")
+      return theme.fg("dim", "■");
     case "completed":
     case "turn_limited":
-      return theme.fg("success", "✓")
+      return theme.fg("success", "✓");
     default:
       return "▸";
   }
@@ -111,7 +107,6 @@ export function renderAgentToolCall(
   // Check args.run_in_background (initial render) OR context.state.isBackground (re-render after result)
   const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
   let icon: string;
-  let statusText = "";
 
   if (isBackground) {
     // Look up live status from manager using stored agentId
@@ -196,9 +191,9 @@ export function renderAgentToolResult(
   // Foreground agents (stats present) — show model + stats + description (icon + name in call line)
   if (d && d.turnCount != null) {
     const statsLine = buildStatsLine(d, theme, showCost);
-    // Build model label from details
-    const tag = modelTag(d, theme, modelDisplayStyle)
-    let lines = `  ${theme.fg("dim", tag)}·${statsLine}\n  ${theme.fg("text", desc)}`;
+    const tag = modelTag(d, theme, modelDisplayStyle);
+    const modelPart = tag ? `${theme.fg("dim", tag)}·` : "";
+    let lines = `  ${modelPart}${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
       lines +=
         "\n" +

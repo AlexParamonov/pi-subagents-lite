@@ -264,6 +264,14 @@ describe("renderAgentToolResult — error icon", () => {
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("(claude-sonnet-4-5)·");
   });
+
+  it("does not lead with a separator when the model tag is empty", () => {
+    renderAgentToolResult(baseResult, { expanded: false }, noopTheme, SHOW_COST, "id");
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("3 turns");
+    expect(allText).not.toContain("  ·");
+  });
 });
 
 /* ------------------------------------------------------------------ */
