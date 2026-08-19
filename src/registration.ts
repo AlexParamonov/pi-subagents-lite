@@ -58,13 +58,14 @@ export function registerAgentTool(pi: ExtensionAPI): void {
     execute: executeAgentTool,
     ...(useConstrained ? { constrainedSampling: CONSTRAINED_SAMPLING } : {}),
 
-    renderCall: (args: Record<string, unknown>, theme: any) => renderAgentToolCall(args, theme),
+    renderCall: (args: Record<string, unknown>, theme: any, context?: { state?: Record<string, unknown> }) =>
+      renderAgentToolCall(args, theme, context),
 
     renderResult: (
       result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
       options: { expanded?: boolean },
       theme: any,
-      context: { isError?: boolean; invalidate?: () => void },
+      context: { isError?: boolean; invalidate?: () => void; state?: Record<string, unknown> },
     ) => {
       const isError = context?.isError ?? false;
       const store = getStore();
@@ -72,6 +73,10 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       // Register invalidate callback so onComplete can trigger a re-render
       if (agentId && context?.invalidate) {
         registerAgentInvalidation(agentId, context.invalidate);
+        // Store agentId in context state so call renderer can access it on re-render
+        if (context.state) {
+          context.state.agentId = agentId;
+        }
       }
       return renderAgentToolResult(
         { ...result, isError },
@@ -79,6 +84,7 @@ export function registerAgentTool(pi: ExtensionAPI): void {
         theme,
         store.agent.showCost,
         store.agent.modelDisplayStyle,
+        context,
       );
     },
   };

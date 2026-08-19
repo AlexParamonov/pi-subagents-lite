@@ -90,14 +90,32 @@ function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: st
 // --- Agent tool renderers ---
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
-export function renderAgentToolCall(args: Record<string, unknown>, theme: Theme): Text {
+export function renderAgentToolCall(
+  args: Record<string, unknown>,
+  theme: Theme,
+  context?: { state?: Record<string, unknown> },
+): Text {
   const typeName = getDisplayName((args.agent as string) || "");
   const label = typeName || "Agent";
 
-  // Background agents: show queued state (◇) instead of play (▸)
+  // Background agents: show live status from manager, fallback to queued state
   const isBackground = args.run_in_background === true;
-  const icon = isBackground ? theme.fg("dim", "◇") : theme.fg("accent", "▸");
-  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
+  let icon: string;
+  let statusText = "";
+
+  if (isBackground) {
+    // Look up live status from manager using stored agentId
+    const agentId = context?.state?.agentId as string | undefined;
+    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
+    const status = liveRecord?.lifecycle.status ?? "queued";
+    const resolved = resolveStatusIcon(status, theme);
+    icon = resolved.icon;
+    statusText = resolved.statusText;
+  } else {
+    icon = theme.fg("accent", "▸");
+  }
+
+  let text = `${icon} ${theme.fg("accent", theme.bold(label))}${statusText}`;
 
   const modelOverride = args._modelOverride as string | undefined;
   if (modelOverride) {
@@ -113,6 +131,7 @@ export function renderAgentToolResult(
   theme: Theme,
   showCost: boolean,
   modelDisplayStyle: "id" | "name" = "id",
+  context?: { state?: Record<string, unknown> },
 ): Text {
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
