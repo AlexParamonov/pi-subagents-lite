@@ -138,9 +138,11 @@ export function renderAgentToolResult(
   const status = liveRecord?.lifecycle.status ?? (d?.status as string | undefined);
 
   const { icon, statusText } = resolveStatusIcon(status, theme);
-  const line = `${icon} ${theme.fg("text", desc)}${statusText}`;
+  const namePart = agentNameLabel(d ?? {}, theme, modelDisplayStyle);
+  const firstLine = `${icon} ${namePart}${statusText}`;
+  const secondLine = desc ? `\n  ${theme.fg("text", desc)}` : "";
 
-  return new Text(line, 0, 0);
+  return new Text(`${firstLine}${secondLine}`, 0, 0);
 }
 
 // --- Message renderer — subagent-result ---

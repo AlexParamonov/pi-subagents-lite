@@ -233,6 +233,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("◇");
     expect(allText).toContain("(queued)");
+    expect(allText).toContain("Builder");
     expect(allText).not.toContain("✓");
     expect(allText).not.toContain("✗");
   });
@@ -248,6 +249,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("◈");
     expect(allText).toContain("(running)");
+    expect(allText).toContain("Builder");
     expect(allText).not.toContain("✓");
     expect(allText).not.toContain("✗");
   });
@@ -267,9 +269,9 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     expect(allText).not.toContain("(running)");
   });
 
-  it("shows ✗ icon when status is error", () => {
+  it.each(["error", "aborted", "stopped"])("shows ✗ icon when status is %s", (status) => {
     renderAgentToolResult(
-      { ...backgroundResult, details: { ...backgroundResult.details, status: "error" } },
+      { ...backgroundResult, details: { ...backgroundResult.details, status } },
       { expanded: false },
       noopTheme,
       SHOW_COST,
@@ -314,10 +316,12 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // The second line (description) should not have a checkmark prefix
-    expect(allText).toContain("Fix vendor approach");
-    // Check: description line should not start with ✓
+    // First line has agent name with queued status
     const lines = allText.split("\n");
+    expect(lines[0]).toContain("◇");
+    expect(lines[0]).toContain("Builder");
+    expect(lines[0]).toContain("(queued)");
+    // Second line (description) has no checkmark prefix
     const descLine = lines.find((l) => l.includes("Fix vendor approach"));
     expect(descLine).toBeDefined();
     expect(descLine).not.toMatch(/^\s*✓/);
@@ -333,6 +337,11 @@ describe("renderAgentToolResult — background agent status indicators", () => {
 
     const allText = textInstances.map((t) => t.text).join("\n");
     const lines = allText.split("\n");
+    // First line has agent name with running status
+    expect(lines[0]).toContain("◈");
+    expect(lines[0]).toContain("Builder");
+    expect(lines[0]).toContain("(running)");
+    // Second line (description) has no checkmark prefix
     const descLine = lines.find((l) => l.includes("Fix vendor approach"));
     expect(descLine).toBeDefined();
     expect(descLine).not.toMatch(/^\s*✓/);
