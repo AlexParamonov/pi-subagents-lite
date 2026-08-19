@@ -14,7 +14,6 @@ import {
   resolveModelLabel,
   statusIcon,
 } from "./format.js";
-import { agentColorAnsi } from "../agent-color.js";
 import { getManager } from "../shell.js";
 
 // --- Stats rendering helpers ---
@@ -263,7 +262,7 @@ function buildFallbackResultLine(
   theme: Theme,
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
-  const icon = theme.fg("success", "✓");
+  const icon = statusIcon("completed", theme, (d?.type as string) || undefined);
   let line = icon;
   if (d?.type) {
     line += ` ${agentNameLabel(d, theme, modelDisplayStyle)}`;
