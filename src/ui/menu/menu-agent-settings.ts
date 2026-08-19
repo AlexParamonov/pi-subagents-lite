@@ -1,26 +1,23 @@
 /**
- * menu-spawn-options.ts — Spawn options menu concern.
+ * menu-agent-settings.ts — Agent settings menu concern.
  *
  * Uses SettingsList from @earendil-works/pi-tui via ctx.ui.custom.
  * SettingsList maintains internal cursor state, fixing the cursor-position
  * reset bug that occurred with ctx.ui.select.
  *
  * Exports:
- *   - showSpawnOptionsMenu: default spawn-time options (thinking, max turns, force background, grace turns)
+ *   - showSpawnOptionsMenu: agent limit, colors, output, thinking
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem, type Component } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
+import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, headerItem } from "./helpers.js";
 import { createTargetSelectSubmenu } from "./submenus/target-select.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
-import type { SystemPromptMode } from "../../agents/types.js";
 import type { Theme } from "../types.js";
-import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES, CUSTOM_PROMPT_PATH } from "../../config/config-io.js";
+import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES, CUSTOM_PROMPT_PATH, canonicalAgentStatusLimit } from "../../config/config-io.js";
 import { VALID_THINKING_LEVELS } from "../../utils.js";
 import { getStore } from "../../shell.js";
 
@@ -43,13 +40,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     });
 
   const buildItems = (theme: Theme): SettingItem[] => [
-    {
-      id: "forceBackground",
-      label: "Force background",
-      currentValue: store.agent.forceBackground ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description: "Spawn every agent in the background by default (no foreground wait).",
-    },
+    // --- Spawn behavior ---
     {
       id: "graceTurns",
       label: "Grace turns",
@@ -59,27 +50,6 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         ctx.ui.notify(`Grace turns set to ${parsed}`, "info");
       }),
       description: "Extra turns after the soft turn limit before a hard abort.",
-    },
-    {
-      id: "toolTimeout",
-      label: "Tool timeout",
-      currentValue: String(store.agent.toolTimeoutMinutes),
-      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_WATCHDOG_TIMEOUT_MINUTES }, (parsed) => {
-        store.mutate.agent.setToolTimeoutMinutes(parsed);
-        ctx.ui.notify(`Tool timeout set to ${parsed} minutes`, "info");
-      }),
-      description: "Stop an agent when a single tool call runs longer than this. 0 disables the check.",
-    },
-    {
-      id: "idleTimeout",
-      label: "Idle timeout",
-      currentValue: String(store.agent.idleTimeoutMinutes),
-      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_WATCHDOG_TIMEOUT_MINUTES }, (parsed) => {
-        store.mutate.agent.setIdleTimeoutMinutes(parsed);
-        ctx.ui.notify(`Idle timeout set to ${parsed} minutes`, "info");
-      }),
-      description:
-        "Stop an agent with no activity (tool events or streamed text) for longer than this. 0 disables the check.",
     },
     {
       id: "defaultMaxTurns",
@@ -139,51 +109,66 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       description: "Thinking level applied when agent frontmatter omits one.",
     },
     {
+      id: "toolTimeout",
+      label: "Tool timeout watchdog",
+      currentValue: String(store.agent.toolTimeoutMinutes),
+      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_WATCHDOG_TIMEOUT_MINUTES }, (parsed) => {
+        store.mutate.agent.setToolTimeoutMinutes(parsed);
+        ctx.ui.notify(`Tool timeout set to ${parsed} minutes`, "info");
+      }),
+      description: "Stop an agent when a single tool call runs longer than this. 0 disables the check.",
+    },
+    {
+      id: "idleTimeout",
+      label: "Idle timeout watchdog",
+      currentValue: String(store.agent.idleTimeoutMinutes),
+      submenu: createNumericSubmenu(ctx, { min: 0, default: DEFAULT_WATCHDOG_TIMEOUT_MINUTES }, (parsed) => {
+        store.mutate.agent.setIdleTimeoutMinutes(parsed);
+        ctx.ui.notify(`Idle timeout set to ${parsed} minutes`, "info");
+      }),
+      description:
+        "Stop an agent with no activity (tool events or streamed text) for longer than this. 0 disables the check.",
+    },
+    // --- Delivery ---
+    { id: SEPARATOR_ID, label: " ", currentValue: "" },
+    headerItem(theme, "Delivery & Display"),
+    {
+      id: "forceBackground",
+      label: "Force background",
+      currentValue: store.agent.forceBackground ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Spawn every agent in the background by default (no foreground wait).",
+    },
+    {
+      id: "showCompletionCards",
+      label: "Completion cards",
+      currentValue: store.agent.showCompletionCards ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Show background-agent completion cards in the transcript; turn OFF to hide them.",
+    },
+    {
+      id: "showAgentColors",
+      label: "Agent colors",
+      currentValue: store.agent.showAgentColors ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Enable colored spinner frames, status icons, and picker bullets.",
+    },
+    {
+      id: "statusBarFormat",
+      label: "Status bar format",
+      currentValue: store.agent.statusBarFormat,
+      values: ["full", "compact"],
+      description: "Status bar format: full (Agents: N active · M done) or compact (N MΣ).",
+    },
+    // --- Tools ---
+    { id: SEPARATOR_ID, label: " ", currentValue: "" },
+    headerItem(theme, "Tools"),
+    {
       id: "disableDefaultAgents",
       label: "Disable default agents",
       currentValue: store.agent.disableDefaultAgents ? "ON" : "OFF",
       values: ["ON", "OFF"],
       description: "Skip auto-loading built-in agent types next session; only .pi/agents types load.",
-    },
-    {
-      id: "systemPromptMode",
-      label: "System prompt mode",
-      currentValue: store.agent.systemPromptMode,
-      values: ["replace", "inherit", "custom"],
-      description: "How the subagent system prompt is built: replace, inherit, or custom.",
-    },
-    // Create prompt file (only when mode is custom and file doesn't exist)
-    ...(store.agent.systemPromptMode === "custom" && !fs.existsSync(CUSTOM_PROMPT_PATH)
-      ? [
-          {
-            id: "createPromptFile",
-            label: "Create prompt file",
-            currentValue: CUSTOM_PROMPT_PATH,
-            values: ["Create"],
-            description: `Create ${CUSTOM_PROMPT_PATH} with a starter template for custom mode.`,
-          },
-        ]
-      : []),
-    {
-      id: "includeContextFiles",
-      label: "Include AGENTS.md",
-      currentValue: store.agent.includeContextFiles ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description: "Load project and ~/.pi/agent AGENTS.md as shared <project_context>.",
-    },
-    {
-      id: "loadSkillsImplicitly",
-      label: "Load skills implicitly",
-      currentValue: store.agent.loadSkillsImplicitly ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description: "Give new agents all skills when frontmatter omits the field.",
-    },
-    {
-      id: "loadExtensionsImplicitly",
-      label: "Load extensions implicitly",
-      currentValue: store.agent.loadExtensionsImplicitly ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description: "Give new agents all extensions when frontmatter omits the field.",
     },
     {
       id: "agentToolStrictMode",
@@ -192,6 +177,30 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       values: ["ON", "OFF"],
       description:
         "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
+    },
+    {
+      id: "agentStatusLimit",
+      label: "Agent status limit",
+      currentValue: String(canonicalAgentStatusLimit(store.agentConfigSnapshot().agentStatusLimit)),
+      submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
+        store.mutate.agent.setAgentStatusLimit(parsed);
+        ctx.ui.notify(`Agent status limit set to ${parsed}`, "info");
+      }),
+      description: "Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency).",
+    },
+    {
+      id: "outputTranscript",
+      label: "Output transcript",
+      currentValue: store.agent.outputTranscript ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Write streaming transcript to /tmp/pi-agent-outputs/<agentId>.log (frontmatter overrides).",
+    },
+    {
+      id: "thinkingBuffer",
+      label: "Thinking buffer",
+      currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
+      values: ["OFF", "80", "200", "500", "1000"],
+      description: "Controls output transcript thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
     },
   ];
 
@@ -205,38 +214,32 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
         ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
         break;
-      case "systemPromptMode":
-        store.mutate.agent.setSystemPromptMode(newValue as SystemPromptMode);
-        ctx.ui.notify(`System prompt mode set to ${newValue}`, "info");
-        break;
-      case "createPromptFile":
-        try {
-          fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
-          fs.writeFileSync(
-            CUSTOM_PROMPT_PATH,
-            "You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously",
-            "utf-8",
-          );
-          ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
-        } catch (err: any) {
-          ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
-        }
-        return;
-      case "includeContextFiles":
-        store.mutate.agent.setIncludeContextFiles(newValue === "ON");
-        ctx.ui.notify(`Include AGENTS.md set to ${newValue}`, "info");
-        break;
-      case "loadSkillsImplicitly":
-        store.mutate.agent.setLoadSkillsImplicitly(newValue === "ON");
-        ctx.ui.notify(`Load skills implicitly set to ${newValue}`, "info");
-        break;
-      case "loadExtensionsImplicitly":
-        store.mutate.agent.setLoadExtensionsImplicitly(newValue === "ON");
-        ctx.ui.notify(`Load extensions implicitly set to ${newValue}`, "info");
+      case "agentStatusLimit":
+        // Handled by numeric submenu
         break;
       case "agentToolStrictMode":
         store.mutate.agent.setAgentToolStrictMode(newValue === "ON");
         ctx.ui.notify(`Agent tool strict mode ${newValue} (requires reload)`, "info");
+        break;
+      case "showAgentColors":
+        store.mutate.agent.setShowAgentColors(newValue === "ON");
+        ctx.ui.notify(`Agent colors ${newValue}`, "info");
+        break;
+      case "showCompletionCards":
+        store.mutate.widget.setShowCompletionCards(newValue === "ON");
+        ctx.ui.notify(`Show completion cards ${newValue}`, "info");
+        break;
+      case "statusBarFormat":
+        store.mutate.widget.setStatusBarFormat(newValue as "full" | "compact");
+        ctx.ui.notify(`Status bar format: ${newValue}`, "info");
+        break;
+      case "outputTranscript":
+        store.mutate.agent.setOutputTranscript(newValue === "ON");
+        ctx.ui.notify(`Output transcript set to ${newValue}`, "info");
+        break;
+      case "thinkingBuffer":
+        store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
+        ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
         break;
     }
   };
@@ -254,13 +257,12 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         onChange(id, newValue);
         // Submenu-driven rows rebuild to refresh value + provenance tag; toggle
         // rows update in place via SettingsList (a rebuild would reset the cursor).
-        // System prompt mode change also rebuilds: "custom" adds createPromptFile item.
-        if (items.some((i) => i.id === id && i.submenu) || id === "systemPromptMode") triggerRebuild();
+        if (items.some((i) => i.id === id && i.submenu)) triggerRebuild();
       },
       () => done(undefined),
     );
     return new SettingsListWrapper(settingsList, {
-      title: "Spawn Options",
+      title: "Agent settings",
       theme,
       onCancel: () => done(undefined),
       onRebuild: (r) => {

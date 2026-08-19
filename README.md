@@ -149,11 +149,11 @@ Global settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents`
 ```
 Settings
 
-→ Model settings                  Set global default and per-type model overrides
-  Concurrency settings            Set per-model slot limits
-  Spawn options                   Default thinking, max turns, background, grace turns
-  System prompt                   Prompt mode, custom prompt file, AGENTS.md
-  Widget settings                 Configure widget display options
+→ Model                           Set global default and per-type model overrides
+  Concurrency                     Set per-model slot limits
+  Agent                           Agent limit, colors, output, thinking
+  System prompt                   Prompt mode, AGENTS.md, skills, extensions
+  Widget                          Configure widget display options
 ```
 
 Widget is higly customizable as the rest of the extension

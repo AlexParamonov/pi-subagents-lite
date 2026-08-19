@@ -100,8 +100,6 @@ function buildItems(
   statConfig: Map<string, StatToggleConfig>,
 ): SettingItem[] {
   const items: SettingItem[] = [
-    // --- Layout (no separator before first section) ---
-    headerItem(theme, "Layout"),
     {
       id: "compact",
       label: "Force compact mode",
@@ -129,6 +127,31 @@ function buildItems(
       }),
       description: "Max body lines in compact widget mode.",
     },
+    {
+      id: "shortcut",
+      label: "Ctrl+o shortcut",
+      currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description:
+        "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
+    },
+    {
+      id: "finishedRetention",
+      label: "Hide finished agents in",
+      currentValue: String(store.agent.finishedRetentionMinutes),
+      submenu: createNumericSubmenu(ctx, { min: MIN_FINISHED_RETENTION_MINUTES }, (parsed) => {
+        store.mutate.agent.setFinishedRetentionMinutes(parsed);
+        ctx.ui.notify(`Finished agent retention set to ${parsed} min`, "info");
+      }),
+      description: "Removes finished agents from widget in X minutes (decimals OK, min 1 sec).",
+    },
+    {
+      id: "navHint",
+      label: "Navigation hint",
+      currentValue: store.agent.widgetNavHint ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Show navigation tip (↓ to navigate) in the widget heading.",
+    },
     // --- Display ---
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
     headerItem(theme, "Display"),
@@ -140,13 +163,6 @@ function buildItems(
       description: "Show the model name next to each agent in the widget.",
     },
     {
-      id: "modelDisplayStyle",
-      label: "Model display",
-      currentValue: store.agent.modelDisplayStyle === "name" ? "Name" : "ID",
-      values: ["ID", "Name"],
-      description: "Show model short ID (e.g. '27b_mtp') or full name (e.g. 'Qwen3.6 27B FP8').",
-    },
-    {
       id: "showThinking",
       label: "Show thinking",
       currentValue: store.agent.widgetShowThinking ? "ON" : "OFF",
@@ -154,43 +170,18 @@ function buildItems(
       description: "Show the thinking level next to each agent in the widget.",
     },
     {
+      id: "modelDisplayStyle",
+      label: "Model display",
+      currentValue: store.agent.modelDisplayStyle === "name" ? "Name" : "ID",
+      values: ["ID", "Name"],
+      description: "Show model short ID (e.g. '27b_mtp') or full name (e.g. 'Qwen3.6 27B FP8').",
+    },
+    {
       id: "modelThinkingPlacement",
       label: "Model/thinking placement",
       currentValue: store.agent.modelThinkingPlacement === "header" ? "header" : "metadata",
       values: ["header", "metadata"],
       description: "Show model/thinking on header or metadata line in full mode.",
-    },
-    {
-      id: "statusBarFormat",
-      label: "Status bar format",
-      currentValue: store.agent.statusBarFormat,
-      values: ["full", "compact"],
-      description: "Status bar format: full (Agents: N active · M done) or compact (N MΣ).",
-    },
-    {
-      id: "navHint",
-      label: "Navigation hint",
-      currentValue: store.agent.widgetNavHint ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description: "Show navigation tip (↓ to navigate) in the widget heading.",
-    },
-    {
-      id: "finishedRetention",
-      label: "Finished agent retention",
-      currentValue: String(store.agent.finishedRetentionMinutes),
-      submenu: createNumericSubmenu(ctx, { min: MIN_FINISHED_RETENTION_MINUTES }, (parsed) => {
-        store.mutate.agent.setFinishedRetentionMinutes(parsed);
-        ctx.ui.notify(`Finished agent retention set to ${parsed} min`, "info");
-      }),
-      description: "Minutes to keep finished agents visible (decimals OK, min 1 sec).",
-    },
-    {
-      id: "shortcut",
-      label: "Ctrl+o shortcut",
-      currentValue: store.agent.widgetShortcut ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description:
-        "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
     },
     // --- Stats ---
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
@@ -232,10 +223,7 @@ function buildOnChange(
         break;
 
       // Display
-      case "statusBarFormat":
-        store.mutate.widget.setStatusBarFormat(newValue as "full" | "compact");
-        ctx.ui.notify(`Status bar format: ${newValue}`, "info");
-        break;
+
       case "showModel":
         store.mutate.widget.setShowModel(newValue === "ON");
         ctx.ui.notify(`Show model ${newValue}`, "info");
