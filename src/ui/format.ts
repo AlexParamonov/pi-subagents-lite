@@ -9,6 +9,7 @@
  */
 
 import { getAgentConfig } from "../agents/agent-types.js";
+import { agentColorAnsi } from "../agent-color.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
@@ -29,10 +30,17 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
   stopped: { icon: "■", color: "dim" },
 };
 
-/** Colored icon for an agent status, or a plain ▸ when no status is known yet. */
-export function statusIcon(status: string | undefined, theme: Theme): string {
+/** Colored icon for an agent status, or a plain ▸ when no status is known yet.
+ * When agentType has a configured color, the icon is tinted with that color
+ * instead of the theme's status color. */
+export function statusIcon(status: string | undefined, theme: Theme, agentType?: string): string {
   const entry = STATUS_ICON[status as AgentStatus];
-  return entry ? theme.fg(entry.color, entry.icon) : "▸";
+  if (!entry) return "▸";
+  const colorAnsi = agentColorAnsi(agentType);
+  if (colorAnsi) {
+    return `${colorAnsi}${entry.icon}\u001b[39m`;
+  }
+  return theme.fg(entry.color, entry.icon);
 }
 
 // ---- Internal helpers (used by buildStatsParts) ----

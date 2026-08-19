@@ -20,6 +20,7 @@ import {
   statusIcon,
   type StatsVisibility,
 } from "./format.js";
+import { agentColorAnsi } from "../agent-color.js";
 import type { LiveView } from "../types.js";
 
 // Backward-compat re-export for consumers importing Theme from this module.
@@ -514,8 +515,9 @@ export class AgentWidget {
     lifecycle: AgentLifecycle,
     error: string | undefined,
     theme: Theme,
+    agentType?: string,
   ): { icon: string; statusText: string } {
-    const icon = statusIcon(lifecycle.status, theme);
+    const icon = statusIcon(lifecycle.status, theme, agentType);
     switch (lifecycle.status) {
       case "completed":
         return { icon, statusText: "" };
@@ -540,7 +542,7 @@ export class AgentWidget {
 
   private renderFinishedLine(a: AgentRecord, theme: Theme, w: number): string {
     const name = getDisplayName(a.display.type);
-    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
+    const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme, a.display.type || undefined);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
     const statsParts = buildStatsParts(
@@ -621,6 +623,12 @@ export class AgentWidget {
     return blocks;
   }
 
+  /** Colored spinner frame for an agent: uses agent color when configured, else theme accent. */
+  private coloredFrame(frame: string, agentType: string | undefined, theme: Theme): string {
+    const colorAnsi = agentColorAnsi(agentType);
+    return colorAnsi ? `${colorAnsi}${frame}\u001b[39m` : theme.fg("accent", frame);
+  }
+
   private buildRunningBlocks(running: AgentRecord[], theme: Theme, w: number, frame: string): RenderBlock[] {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
@@ -629,13 +637,14 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
+      const coloredFrame = this.coloredFrame(frame, a.display.type || undefined, theme);
 
       if (this.isCompact()) {
         // Compact: single line; description after model, stats, then activity.
         // Truncate description to preserve stats visibility; activity fills remainder
         // and gets cut by truncate() (which cuts from the right).
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  `;
+        const fixedParts = `  ${coloredFrame} ${theme.bold(name)}${tagPart}  `;
         const fixedWidth = visibleWidth(fixedParts);
         const statsWidth = visibleWidth(`  ${statsLine}`);
         const availableForDesc = Math.max(0, w - fixedWidth - statsWidth);
@@ -652,11 +661,11 @@ export class AgentWidget {
         // Full: header + metadata lines (model/thinking on metadata line)
         // Truncate description to preserve stats visibility.
         const tagPart = this.modelThinkingHeaderTag(a, theme);
-        const fixedParts = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}    ${statsLine}`;
+        const fixedParts = `  ${coloredFrame} ${theme.bold(name)}${tagPart}    ${statsLine}`;
         const fixedWidth = visibleWidth(fixedParts);
         const availableWidth = w - fixedWidth;
         const truncatedDesc = truncateToWidth(a.display.description, Math.max(0, availableWidth));
-        const headerLine = `  ${theme.fg("accent", frame)} ${theme.bold(name)}${tagPart}  ${truncatedDesc}  ${statsLine}`;
+        const headerLine = `  ${coloredFrame} ${theme.bold(name)}${tagPart}  ${truncatedDesc}  ${statsLine}`;
         const metadataLines: string[] = [];
         const line = this.buildMetadataLine(a, "  │ ", theme, truncate);
         if (line) metadataLines.push(line);

@@ -14,6 +14,7 @@ import {
   resolveModelLabel,
   statusIcon,
 } from "./format.js";
+import { agentColorAnsi } from "../agent-color.js";
 import { getManager } from "../shell.js";
 
 // --- Stats rendering helpers ---
@@ -116,7 +117,7 @@ export function renderAgentToolCall(
     }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
-    icon = statusIcon(status, theme);
+    icon = statusIcon(status, theme, (args.agent as string) || undefined);
     let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
     const modelOverride = args._modelOverride as string | undefined;
@@ -146,7 +147,7 @@ export function renderAgentToolCall(
     }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status;
-    icon = statusIcon(status, theme);
+    icon = statusIcon(status, theme, (args.agent as string) || undefined);
   }
 
   // Build the call line text
@@ -217,7 +218,7 @@ export function renderSubagentResult(
   inner.addChild(new Spacer(1));
 
   if (d && d.turnCount != null) {
-    const icon = statusIcon(d.status as string, theme);
+    const icon = statusIcon(d.status as string, theme, (d.type as string) || undefined);
 
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);

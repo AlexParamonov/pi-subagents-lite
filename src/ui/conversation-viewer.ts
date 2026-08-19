@@ -250,7 +250,7 @@ export class ConversationViewer implements Component {
     lines.push(hrTop);
     const name = getDisplayName(this.record.display.type);
 
-    const icon = statusIcon(this.record.lifecycle.status, th);
+    const icon = statusIcon(this.record.lifecycle.status, th, this.record.display.type || undefined);
     // Build stats line like the widget
     const durationMs = (this.record.lifecycle.completedAt ?? Date.now()) - this.record.lifecycle.startedAt;
     const statsParts = buildStatsParts(

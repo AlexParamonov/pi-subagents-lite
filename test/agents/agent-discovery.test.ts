@@ -82,6 +82,7 @@ describe("parseAgentFile", () => {
 name: explorer
 display_name: Explorer Agent
 description: A fast exploration agent
+color: red
 model: anthropic/claude-haiku-4-5-20251001
 tools: read, bash, grep
 extensions: none
@@ -98,6 +99,7 @@ This is the system prompt body.
     expect(result.name).toBe("explorer");
     expect(result.display_name).toBe("Explorer Agent");
     expect(result.description).toBe("A fast exploration agent");
+    expect(result.color).toBe("red");
     expect(result.model).toBe("anthropic/claude-haiku-4-5-20251001");
     expect(result.tools).toEqual(["read", "bash", "grep"]);
     expect(result.extensions).toBe(false); // "none" → false
@@ -120,6 +122,7 @@ Just a body.
     expect(result.name).toBe("minimal");
     expect(result.display_name).toBeUndefined();
     expect(result.description).toBeUndefined();
+    expect(result.color).toBeUndefined();
     expect(result.model).toBeUndefined();
     expect(result.tools).toBeUndefined();
     expect(result.extensions).toBeUndefined();
@@ -633,6 +636,43 @@ describe("mergeAgents", () => {
     expect(agent.description).toBe("From shared");
     expect(agent.model).toBe("model/shared");
     expect(agent.systemPrompt).toBe("shared prompt");
+  });
+
+  it("color threads through fromMd and survives merge", () => {
+    const defaults = new Map<string, AgentConfig>();
+    const userAgents: AgentConfigFromMd[] = [
+      {
+        name: "colored-agent",
+        color: "red",
+        source: "user",
+        systemPrompt: "user prompt",
+      },
+    ];
+    const result = mergeAgents(defaults, userAgents, [], []);
+    const agent = result.get("colored-agent")!;
+    expect(agent.color).toBe("red");
+  });
+
+  it("project agent color overrides user agent color", () => {
+    const defaults = new Map<string, AgentConfig>();
+    const userAgents: AgentConfigFromMd[] = [
+      {
+        name: "agent",
+        color: "red",
+        source: "user",
+        systemPrompt: "",
+      },
+    ];
+    const projectAgents: AgentConfigFromMd[] = [
+      {
+        name: "agent",
+        color: "blue",
+        source: "project",
+        systemPrompt: "",
+      },
+    ];
+    const result = mergeAgents(defaults, userAgents, [], projectAgents);
+    expect(result.get("agent")?.color).toBe("blue");
   });
 
   it("include_context_files / include_system_prompt thread through fromMd with per-layer merge", () => {
