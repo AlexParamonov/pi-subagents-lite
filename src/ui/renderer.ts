@@ -90,7 +90,7 @@ export function renderAgentToolResult(
   }
 
   // Minimal card — background spawns (no stats) use space placeholder
-  const isBackground = text.includes("running in background") || text.includes("queued");
+  const isBackground = text.includes("[Agent queued]") || text.includes("[Agent running]");
   const prefix = isBackground ? "  " : `${icon} `;
   if (desc) {
     return new Text(`${prefix}${theme.fg("text", desc)}`, 0, 0);
