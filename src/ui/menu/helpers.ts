@@ -4,10 +4,24 @@
  * model-option building, separator-skip installation, a swappable
  * delegating component, and a searchable pick-list submenu factory.
  */
-import type { Component, SettingsListTheme } from "@earendil-works/pi-tui";
+import type { Component, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme } from "../types.js";
 import { SearchableSelectDialog, type SelectOption } from "../searchable-select.js";
 import { parseModelKey } from "../../utils.js";
+
+/** Group header marker — shared by model-settings and widget-settings. */
+export const GROUP_HEADER_KIND = "group-header";
+export type GroupHeaderItem = SettingItem & { kind: typeof GROUP_HEADER_KIND };
+
+/** Create a non-selectable group header row for SettingsList. */
+export function headerItem(theme: Theme, label: string): GroupHeaderItem {
+  return {
+    id: SEPARATOR_ID,
+    kind: GROUP_HEADER_KIND,
+    label: theme.bold(theme.fg("accent", label)),
+    currentValue: "",
+  };
+}
 
 /**
  * Item id that marks a separator/section-header row in SettingsList/SelectList

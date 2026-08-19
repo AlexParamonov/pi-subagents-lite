@@ -13,7 +13,7 @@
  *   - menu-running-agents.ts: showRunningAgentsMenu
  *   - menu-debug.ts: showDebugMenu
  *   - menu-spawn-options.ts: showSpawnOptionsMenu
- *   - menu-system-prompt.ts: showSystemPromptMenu
+ *   - menu-general-settings.ts: showGeneralSettingsMenu (Display)
  *   - menus.ts (this file): dispatcher — main menu and settings menu
  */
 
@@ -28,7 +28,6 @@ import { showRunningAgentsMenu } from "./menu-running-agents.js";
 import { showDebugMenu } from "./menu-debug.js";
 import { showSpawnOptionsMenu } from "./menu-spawn-options.js";
 import { showGeneralSettingsMenu } from "./menu-general-settings.js";
-import { showSystemPromptMenu } from "./menu-system-prompt.js";
 
 // Spawn wizard — co-located in this folder.
 import { showSpawnAgentMenu } from "./menu-spawn-wizard.js";
@@ -58,16 +57,15 @@ async function runSelectMenu(
 
 export async function showSettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   const items: SelectItem[] = [
-    { value: "model", label: "Model settings", description: "Set global default and per-type model overrides" },
-    { value: "concurrency", label: "Concurrency settings", description: "Set per-model slot limits" },
+    { value: "model", label: "Model", description: "Set global default and per-type model overrides" },
+    { value: "concurrency", label: "Concurrency", description: "Set per-model slot limits" },
     {
       value: "spawnoptions",
       label: "Spawn options",
-      description: "Default thinking, max turns, background, grace turns",
+      description: "Default thinking, max turns, background, grace turns, prompt mode",
     },
-    { value: "general", label: "General", description: "Agent colors, completion cards, output, agent status limit" },
-    { value: "systemprompt", label: "System prompt", description: "Prompt mode, custom prompt file, AGENTS.md" },
-    { value: "widget", label: "Widget settings", description: "Configure widget display options" },
+    { value: "display", label: "Display", description: "Agent colors, completion cards, output, agent status limit" },
+    { value: "widget", label: "Widget", description: "Configure widget display options" },
   ];
 
   await runSelectMenu(ctx, "Settings", items, async (choice) => {
@@ -81,11 +79,8 @@ export async function showSettingsMenu(ctx: ExtensionCommandContext, modelOption
       case "spawnoptions":
         await showSpawnOptionsMenu(ctx);
         break;
-      case "general":
+      case "display":
         await showGeneralSettingsMenu(ctx);
-        break;
-      case "systemprompt":
-        await showSystemPromptMenu(ctx);
         break;
       case "widget":
         await showWidgetSettingsMenu(ctx);
@@ -98,7 +93,7 @@ export async function showAgentsMainMenu(ctx: ExtensionCommandContext, modelOpti
   const items: SelectItem[] = [
     { value: "running", label: "Running agents", description: "List running/queued agents" },
     { value: "spawn", label: "Spawn agent", description: "Manually spawn a new agent" },
-    { value: "settings", label: "Settings", description: "Model, concurrency, and widget settings" },
+    { value: "settings", label: "Settings", description: "Model, concurrency, widget, and display settings" },
     { value: "debug", label: "Debug", description: "Agent types, briefing, diagnostics" },
   ];
 

@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "node:fs";
 import type { Component, SelectItem, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
@@ -601,5 +602,163 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     inputInstances[0].onSubmit!("12x");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("showSpawnOptionsMenu — system prompt items (absorbed)", () => {
+  beforeEach(resetMenuState);
+
+  it("includes systemPromptMode item", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const spm = settingsListCalls[0].items.find((i) => i.id === "systemPromptMode")!;
+    expect(spm.currentValue).toBe("replace");
+    expect(spm.values).toEqual(["replace", "inherit", "custom"]);
+  });
+
+  it("sets systemPromptMode via onChange and triggers rebuild", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    // The onChange handler calls setSystemPromptMode and triggers rebuild
+    // for systemPromptMode changes (to show/hide createPromptFile)
+    settingsListCalls[0].onChange("systemPromptMode", "custom");
+    expect(mockModules.mockConfig.agent.systemPromptMode).toBe("custom");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("includes includeContextFiles item", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const icf = settingsListCalls[0].items.find((i) => i.id === "includeContextFiles")!;
+    expect(icf.currentValue).toBe("ON");
+  });
+
+  it("toggles includeContextFiles via onChange", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("includeContextFiles", "OFF");
+    expect(mockModules.mockConfig.agent.includeContextFiles).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("includes loadSkillsImplicitly item", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const lsi = settingsListCalls[0].items.find((i) => i.id === "loadSkillsImplicitly")!;
+    expect(lsi.currentValue).toBe("ON");
+  });
+
+  it("toggles loadSkillsImplicitly via onChange", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("loadSkillsImplicitly", "OFF");
+    expect(mockModules.mockConfig.agent.loadSkillsImplicitly).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("includes loadExtensionsImplicitly item", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const lei = settingsListCalls[0].items.find((i) => i.id === "loadExtensionsImplicitly")!;
+    expect(lei.currentValue).toBe("ON");
+  });
+
+  it("toggles loadExtensionsImplicitly via onChange", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("loadExtensionsImplicitly", "OFF");
+    expect(mockModules.mockConfig.agent.loadExtensionsImplicitly).toBe(false);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("includes agentToolStrictMode item", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const atsm = settingsListCalls[0].items.find((i) => i.id === "agentToolStrictMode")!;
+    expect(atsm.currentValue).toBe("OFF");
+  });
+
+  it("toggles agentToolStrictMode via onChange", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("agentToolStrictMode", "ON");
+    expect(mockModules.mockConfig.agent.agentToolStrictMode).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
+  });
+
+  it("has all 12 non-conditional items in correct order", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
+    expect(ids).toEqual([
+      "forceBackground",
+      "graceTurns",
+      "toolTimeout",
+      "idleTimeout",
+      "defaultMaxTurns",
+      "defaultThinking",
+      "disableDefaultAgents",
+      "systemPromptMode",
+      "includeContextFiles",
+      "loadSkillsImplicitly",
+      "loadExtensionsImplicitly",
+      "agentToolStrictMode",
+    ]);
+  });
+
+  it("includes createPromptFile when mode is custom and file does not exist", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "custom";
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
+    expect(ids).toContain("createPromptFile");
+    vi.restoreAllMocks();
+  });
+
+  it("does NOT include createPromptFile when mode is not custom", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "replace";
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
+    expect(ids).not.toContain("createPromptFile");
+  });
+
+  it("does NOT include createPromptFile when file already exists", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "custom";
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const ids = settingsListCalls[0].items.map((i) => i.id);
+    expect(ids).not.toContain("createPromptFile");
+    vi.restoreAllMocks();
+  });
+
+  it("creates file and shows notification via onChange", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "custom";
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined);
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {});
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("createPromptFile", "Create");
+    expect(mkdirSpy).toHaveBeenCalled();
+    expect(writeSpy).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Created prompt file"), "info");
+    vi.restoreAllMocks();
+  });
+
+  it("shows error notification when file creation fails", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "custom";
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    vi.spyOn(fs, "mkdirSync").mockImplementation(() => {
+      throw new Error("permission denied");
+    });
+    vi.spyOn(fs, "writeFileSync").mockImplementation(() => {});
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("createPromptFile", "Create");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Failed to create prompt file"), "error");
+    vi.restoreAllMocks();
   });
 });

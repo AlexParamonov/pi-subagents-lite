@@ -160,3 +160,31 @@ describe("main menu — submenu navigation", () => {
     expect(debugItems).toEqual(["agent-types", "agent-briefing", "restart-last-agents"]);
   });
 });
+
+describe("showSettingsMenu — item labels", () => {
+  beforeEach(() => {
+    resetAgentState();
+    selectListCalls = [];
+    vi.clearAllMocks();
+  });
+
+  it("shows 5 items: Model, Concurrency, Spawn options, Display, Widget", async () => {
+    const ctx = createMockCtx();
+    await showSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(selectListCalls.length).toBe(1);
+    expect(selectListCalls[0].items.map((i) => i.value)).toEqual([
+      "model",
+      "concurrency",
+      "spawnoptions",
+      "display",
+      "widget",
+    ]);
+    expect(selectListCalls[0].items.map((i) => i.label)).toEqual([
+      "Model",
+      "Concurrency",
+      "Spawn options",
+      "Display",
+      "Widget",
+    ]);
+  });
+});

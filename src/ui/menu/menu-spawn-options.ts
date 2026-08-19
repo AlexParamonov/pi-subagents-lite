@@ -9,6 +9,8 @@
  *   - showSpawnOptionsMenu: default spawn-time options (thinking, max turns, force background, grace turns)
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem, type Component } from "@earendil-works/pi-tui";
 import { buildSettingsListTheme, buildSelectListTheme } from "./helpers.js";
@@ -16,8 +18,9 @@ import { createTargetSelectSubmenu } from "./submenus/target-select.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
+import type { SystemPromptMode } from "../../agents/types.js";
 import type { Theme } from "../types.js";
-import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES } from "../../config/config-io.js";
+import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES, CUSTOM_PROMPT_PATH } from "../../config/config-io.js";
 import { VALID_THINKING_LEVELS } from "../../utils.js";
 import { getStore } from "../../shell.js";
 
@@ -142,6 +145,54 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       values: ["ON", "OFF"],
       description: "Skip auto-loading built-in agent types next session; only .pi/agents types load.",
     },
+    {
+      id: "systemPromptMode",
+      label: "System prompt mode",
+      currentValue: store.agent.systemPromptMode,
+      values: ["replace", "inherit", "custom"],
+      description: "How the subagent system prompt is built: replace, inherit, or custom.",
+    },
+    // Create prompt file (only when mode is custom and file doesn't exist)
+    ...(store.agent.systemPromptMode === "custom" && !fs.existsSync(CUSTOM_PROMPT_PATH)
+      ? [
+          {
+            id: "createPromptFile",
+            label: "Create prompt file",
+            currentValue: CUSTOM_PROMPT_PATH,
+            values: ["Create"],
+            description: `Create ${CUSTOM_PROMPT_PATH} with a starter template for custom mode.`,
+          },
+        ]
+      : []),
+    {
+      id: "includeContextFiles",
+      label: "Include AGENTS.md",
+      currentValue: store.agent.includeContextFiles ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Load project and ~/.pi/agent AGENTS.md as shared <project_context>.",
+    },
+    {
+      id: "loadSkillsImplicitly",
+      label: "Load skills implicitly",
+      currentValue: store.agent.loadSkillsImplicitly ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Give new agents all skills when frontmatter omits the field.",
+    },
+    {
+      id: "loadExtensionsImplicitly",
+      label: "Load extensions implicitly",
+      currentValue: store.agent.loadExtensionsImplicitly ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Give new agents all extensions when frontmatter omits the field.",
+    },
+    {
+      id: "agentToolStrictMode",
+      label: "Strict schema for Agent tool",
+      currentValue: store.agent.agentToolStrictMode ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description:
+        "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
+    },
   ];
 
   const onChange = (id: string, newValue: string) => {
@@ -154,10 +205,43 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         store.mutate.agent.setDisableDefaultAgents(newValue === "ON");
         ctx.ui.notify(`Disable default agents ${newValue} (takes effect on next session)`, "info");
         break;
+      case "systemPromptMode":
+        store.mutate.agent.setSystemPromptMode(newValue as SystemPromptMode);
+        ctx.ui.notify(`System prompt mode set to ${newValue}`, "info");
+        break;
+      case "createPromptFile":
+        try {
+          fs.mkdirSync(path.dirname(CUSTOM_PROMPT_PATH), { recursive: true });
+          fs.writeFileSync(
+            CUSTOM_PROMPT_PATH,
+            "You are a Pi, an expert coding sub-agent.\nYou have been invoked to handle a specific task autonomously",
+            "utf-8",
+          );
+          ctx.ui.notify(`Created prompt file: ${CUSTOM_PROMPT_PATH}`, "info");
+        } catch (err: any) {
+          ctx.ui.notify(`Failed to create prompt file: ${err.message}`, "error");
+        }
+        return;
+      case "includeContextFiles":
+        store.mutate.agent.setIncludeContextFiles(newValue === "ON");
+        ctx.ui.notify(`Include AGENTS.md set to ${newValue}`, "info");
+        break;
+      case "loadSkillsImplicitly":
+        store.mutate.agent.setLoadSkillsImplicitly(newValue === "ON");
+        ctx.ui.notify(`Load skills implicitly set to ${newValue}`, "info");
+        break;
+      case "loadExtensionsImplicitly":
+        store.mutate.agent.setLoadExtensionsImplicitly(newValue === "ON");
+        ctx.ui.notify(`Load extensions implicitly set to ${newValue}`, "info");
+        break;
+      case "agentToolStrictMode":
+        store.mutate.agent.setAgentToolStrictMode(newValue === "ON");
+        ctx.ui.notify(`Agent tool strict mode ${newValue} (requires reload)`, "info");
+        break;
     }
   };
 
-  let rebuild: ((items: any[]) => void) | undefined;
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const items = buildItems(theme);
@@ -170,7 +254,8 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         onChange(id, newValue);
         // Submenu-driven rows rebuild to refresh value + provenance tag; toggle
         // rows update in place via SettingsList (a rebuild would reset the cursor).
-        if (items.some((i) => i.id === id && i.submenu)) triggerRebuild();
+        // System prompt mode change also rebuilds: "custom" adds createPromptFile item.
+        if (items.some((i) => i.id === id && i.submenu) || id === "systemPromptMode") triggerRebuild();
       },
       () => done(undefined),
     );

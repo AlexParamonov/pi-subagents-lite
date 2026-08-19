@@ -17,7 +17,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID, buildSettingsListTheme } from "./helpers.js";
+import { buildSettingsListTheme } from "./helpers.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
@@ -34,35 +34,34 @@ function buildItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getSt
     },
     {
       id: "showCompletionCards",
-      label: "Show completion cards",
+      label: "Completion cards",
       currentValue: store.agent.showCompletionCards ? "ON" : "OFF",
       values: ["ON", "OFF"],
       description: "Show background-agent completion cards in the transcript; turn OFF to hide them.",
     },
     {
       id: "agentStatusLimit",
-      label: "Agent status settled limit",
+      label: "Agent status limit",
       currentValue: String(canonicalAgentStatusLimit(store.agentConfigSnapshot().agentStatusLimit)),
       submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
         store.mutate.agent.setAgentStatusLimit(parsed);
-        ctx.ui.notify(`Agent status settled limit set to ${parsed}`, "info");
+        ctx.ui.notify(`Agent status limit set to ${parsed}`, "info");
       }),
       description: "Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency).",
     },
-    {
-      id: "thinkingBuffer",
-      label: "Log file thinking buffer",
-      currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
-      values: ["OFF", "80", "200", "500", "1000"],
-      description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
-    },
-    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "outputTranscript",
       label: "Output transcript",
       currentValue: store.agent.outputTranscript ? "ON" : "OFF",
       values: ["ON", "OFF"],
       description: "Write streaming transcript to /tmp/pi-agent-outputs/<agentId>.log (frontmatter overrides).",
+    },
+    {
+      id: "thinkingBuffer",
+      label: "Thinking buffer",
+      currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
+      values: ["OFF", "80", "200", "500", "1000"],
+      description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
     },
   ];
 }
@@ -123,7 +122,7 @@ export async function showGeneralSettingsMenu(ctx: ExtensionCommandContext): Pro
       () => done(undefined),
     );
     return new SettingsListWrapper(settingsList, {
-      title: "General Settings",
+      title: "Display",
       theme,
       onCancel: () => done(undefined),
       onRebuild: (r) => {

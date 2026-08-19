@@ -451,6 +451,9 @@ vi.mock("../src/shell.js", async () => {
         setLoadExtensionsImplicitly(value: boolean) {
           mockModules.mockConfig.agent.loadExtensionsImplicitly = value;
         },
+        setAgentToolStrictMode(value: boolean) {
+          mockModules.mockConfig.agent.agentToolStrictMode = value;
+        },
         setShowTools(enabled: boolean) {
           mockModules.mockConfig.agent.showTools = enabled;
         },

@@ -1,16 +1,17 @@
 /**
  * menu-widget-settings.ts — Widget settings menu concern.
  *
- * Top-level: SelectList with 4 categories (Layout, Display, Behavior, Stats).
- * Each category dispatches to a SettingsList submenu.
+ * Single flat SettingsList with 3 section headers (Layout, Display, Stats).
+ * Behavior items (Finished agent retention, Ctrl+o shortcut) folded into Display.
  *
  * Exports:
  *   - showWidgetSettingsMenu
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SelectList, SettingsList, type SelectItem, type SettingItem } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID, buildSelectListTheme, buildSettingsListTheme } from "./helpers.js";
+import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
+import { SEPARATOR_ID, buildSettingsListTheme, headerItem } from "./helpers.js";
+import type { Theme } from "../types.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
@@ -88,8 +89,19 @@ function buildStatConfig(store: ReturnType<typeof getStore>): Map<string, StatTo
   ]);
 }
 
-function buildLayoutItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>): SettingItem[] {
-  return [
+/**
+ * Build the flat item list with 3 section headers (Layout, Display, Stats).
+ * Behavior items (finishedRetention, shortcut) are folded into Display.
+ */
+function buildItems(
+  ctx: ExtensionCommandContext,
+  store: ReturnType<typeof getStore>,
+  theme: Theme,
+  statConfig: Map<string, StatToggleConfig>,
+): SettingItem[] {
+  const items: SettingItem[] = [
+    // --- Layout ---
+    headerItem(theme, "Layout"),
     {
       id: "compact",
       label: "Force compact mode",
@@ -117,11 +129,8 @@ function buildLayoutItems(ctx: ExtensionCommandContext, store: ReturnType<typeof
       }),
       description: "Max body lines in compact widget mode.",
     },
-  ];
-}
-
-function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
-  return [
+    // --- Display ---
+    headerItem(theme, "Display"),
     {
       id: "showModel",
       label: "Show model",
@@ -150,7 +159,6 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
       values: ["header", "metadata"],
       description: "Show model/thinking on header or metadata line in full mode.",
     },
-    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "statusBarFormat",
       label: "Status bar format",
@@ -165,11 +173,6 @@ function buildDisplayItems(store: ReturnType<typeof getStore>): SettingItem[] {
       values: ["ON", "OFF"],
       description: "Show navigation tip (↓ to navigate) in the widget heading.",
     },
-  ];
-}
-
-function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>): SettingItem[] {
-  return [
     {
       id: "finishedRetention",
       label: "Finished agent retention",
@@ -180,7 +183,6 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       }),
       description: "Minutes to keep finished agents visible (decimals OK, min 1 sec).",
     },
-    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "shortcut",
       label: "Ctrl+o shortcut",
@@ -189,21 +191,24 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       description:
         "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
     },
+    // --- Stats ---
+    headerItem(theme, "Stats"),
+    ...[...statConfig.entries()].map(([id, cfg]) => ({
+      id,
+      label: cfg.label,
+      currentValue: cfg.get() ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: cfg.description,
+    })),
   ];
+  return items;
 }
 
-function buildStatsItems(statConfig: Map<string, StatToggleConfig>): SettingItem[] {
-  return [...statConfig.entries()].map(([id, cfg]) => ({
-    id,
-    label: cfg.label,
-    currentValue: cfg.get() ? "ON" : "OFF",
-    values: ["ON", "OFF"],
-    description: cfg.description,
-  }));
-}
-
-function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>) {
-  const statConfig = buildStatConfig(store);
+function buildOnChange(
+  ctx: ExtensionCommandContext,
+  store: ReturnType<typeof getStore>,
+  statConfig: Map<string, StatToggleConfig>,
+) {
   return (id: string, newValue: string) => {
     // Stats toggles
     const stat = statConfig.get(id);
@@ -221,8 +226,6 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         break;
       case "maxLines":
       case "maxLinesCompact":
-      case "descLengthFull":
-      case "descLengthCompact":
         // Handled by numeric submenus, not onChange
         break;
 
@@ -252,7 +255,7 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Model/thinking placement: ${newValue}`, "info");
         break;
 
-      // Behavior
+      // Behavior (now in Display section)
       case "shortcut":
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
@@ -264,58 +267,33 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
   };
 }
 
-async function showCategorySubmenu(
-  ctx: ExtensionCommandContext,
-  title: string,
-  buildItems: () => SettingItem[],
-): Promise<void> {
-  const store = getStore();
-  const onChange = buildOnChange(ctx, store);
-
-  await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const items = buildItems();
-    const settingsList = new SettingsList(items, 15, buildSettingsListTheme(theme), onChange, () => done(undefined));
-    return new SettingsListWrapper(settingsList, { title, theme, onCancel: () => done(undefined) });
-  });
-}
-
 export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
 
-  const items: SelectItem[] = [
-    { value: "layout", label: "Layout", description: "Compact mode, max lines, description length" },
-    { value: "display", label: "Display", description: "Status bar, model/thinking visibility, navigation hint" },
-    {
-      value: "behavior",
-      label: "Behavior",
-      description: "Shortcuts, finished agent retention",
-    },
-    { value: "stats", label: "Stats", description: "Toggle which usage stats appear in the widget" },
-  ];
-
-  while (true) {
-    const choice = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
-      const list = new SelectList(items, 10, buildSelectListTheme(theme));
-      list.onSelect = (item) => done(item.value);
-      return new SettingsListWrapper(list, { title: "Widget Settings", theme, onCancel: () => done(undefined) });
+  await ctx.ui.custom((_tui, theme, _kb, done) => {
+    const statConfig = buildStatConfig(store);
+    const items = buildItems(ctx, store, theme, statConfig);
+    const onChange = buildOnChange(ctx, store, statConfig);
+    const settingsList = new SettingsList(
+      items,
+      15,
+      buildSettingsListTheme(theme),
+      (id, newValue) => {
+        onChange(id, newValue);
+        // Submenu-driven rows rebuild to refresh value; toggle
+        // rows update in place via SettingsList.
+        if (items.some((i) => i.id === id && i.submenu)) rebuild?.(buildItems(ctx, store, theme, statConfig));
+      },
+      () => done(undefined),
+    );
+    return new SettingsListWrapper(settingsList, {
+      title: "Widget",
+      theme,
+      onCancel: () => done(undefined),
+      onRebuild: (r) => {
+        rebuild = r;
+      },
     });
-    if (choice === undefined) return;
-
-    switch (choice) {
-      case "layout":
-        await showCategorySubmenu(ctx, "Layout", () => buildLayoutItems(ctx, store));
-        break;
-      case "display":
-        await showCategorySubmenu(ctx, "Display", () => buildDisplayItems(store));
-        break;
-      case "behavior":
-        await showCategorySubmenu(ctx, "Behavior", () => buildBehaviorItems(ctx, store));
-        break;
-      case "stats": {
-        const statConfig = buildStatConfig(store);
-        await showCategorySubmenu(ctx, "Stats", () => buildStatsItems(statConfig));
-        break;
-      }
-    }
-  }
+  });
 }
