@@ -64,42 +64,26 @@ export function invalidateAgentRow(agentId: string): void {
 /** Clear all invalidation registrations. Called on session_shutdown. */
 export function cleanupInvalidations(): void {
   agentInvalidations.clear();
-  toolCallToAgentId.clear();
-}
-
-// --- Tool call to agent ID mapping ---
-
-/** Map from pi's toolCallId to our agentId. Used by call renderer to find agent status. */
-const toolCallToAgentId = new Map<string, string>();
-
-/** Register a mapping from toolCallId to agentId. Called when agent is spawned. */
-export function registerToolCallAgentId(toolCallId: string, agentId: string): void {
-  toolCallToAgentId.set(toolCallId, agentId);
-}
-
-/** Get agentId from toolCallId. */
-export function getAgentIdFromToolCall(toolCallId: string): string | undefined {
-  return toolCallToAgentId.get(toolCallId);
 }
 
 // --- Status icon mapping ---
 
-/** Resolve icon and optional status text for a background agent status. */
-function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: string; statusText: string } {
+/** Resolve icon for a background agent status. */
+function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: string } {
   switch (status) {
     case "queued":
-      return { icon: theme.fg("dim", "◇"), statusText: " (queued)" };
+      return { icon: theme.fg("dim", "◇") };
     case "running":
-      return { icon: theme.fg("accent", "◈"), statusText: " (running)" };
+      return { icon: theme.fg("accent", "◈") };
     case "error":
     case "aborted":
     case "stopped":
-      return { icon: theme.fg("error", "✗"), statusText: "" };
+      return { icon: theme.fg("error", "✗") };
     case "completed":
     case "turn_limited":
-      return { icon: theme.fg("success", "✓"), statusText: "" };
+      return { icon: theme.fg("success", "✓") };
     default:
-      return { icon: theme.fg("success", "✓"), statusText: "" };
+      return { icon: theme.fg("success", "✓") };
   }
 }
 
@@ -122,31 +106,15 @@ export function renderAgentToolCall(
 
   if (isBackground) {
     // Look up live status from manager using stored agentId
-    // Try context.state first, then toolCallId mapping, then description fallback
+    // Try context.state first, then toolCallId from manager records
     let agentId = context?.state?.agentId as string | undefined;
     if (!agentId) {
-      // Try toolCallId mapping (most reliable)
+      // Find agent by toolCallId from context
       const toolCallId = context?.toolCallId as string | undefined;
       if (toolCallId) {
-        agentId = getAgentIdFromToolCall(toolCallId);
-        if (agentId && context?.state) {
-          context.state.agentId = agentId;
-          context.state.isBackground = true;
-        }
-      }
-    }
-    if (!agentId) {
-      // Fallback: find agent by description (args.description)
-      const desc = args.description as string | undefined;
-      if (desc) {
         const manager = getManager();
         if (manager) {
-          const record = manager
-            .listAgents()
-            .find(
-              (r) =>
-                r.display.description === desc && (r.lifecycle.status === "running" || r.lifecycle.status === "queued"),
-            );
+          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
           if (record) {
             agentId = record.id;
             if (context?.state) {
@@ -161,8 +129,7 @@ export function renderAgentToolCall(
     const status = liveRecord?.lifecycle.status ?? "queued";
     const resolved = resolveStatusIcon(status, theme);
     icon = resolved.icon;
-    statusText = resolved.statusText;
-    let text = `${icon} ${theme.fg("accent", theme.bold(label))}${statusText}`;
+    let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
     const modelOverride = args._modelOverride as string | undefined;
     if (modelOverride) {
@@ -174,7 +141,7 @@ export function renderAgentToolCall(
     icon = theme.fg("accent", "▸");
   }
 
-  let text = `${icon} ${theme.fg("accent", theme.bold(label))}${statusText}`;
+  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
   const modelOverride = args._modelOverride as string | undefined;
   if (modelOverride) {

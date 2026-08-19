@@ -18,7 +18,6 @@ import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning 
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
-import { registerToolCallAgentId } from "../ui/renderer.js";
 
 // --- Tool result helpers ---
 
@@ -218,9 +217,9 @@ export async function executeAgentTool(
 
   const { agentId, record } = result;
 
-  // Register mapping from toolCallId to agentId for call renderer
-  if (isBackground && _toolCallId) {
-    registerToolCallAgentId(_toolCallId, agentId);
+  // Store toolCallId in record for call renderer to find agent
+  if (_toolCallId) {
+    record.display.toolCallId = _toolCallId;
   }
 
   if (isBackground) {
