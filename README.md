@@ -23,11 +23,12 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
 
 ```
 ◈ Agents
-├─ ⠙ Agent  Write model precedence unit tests  6🛠︎ ·3⟳ ·↑6.8k↓1.3k 6%·12s
-│  │ tail -f /tmp/pi-agent-outputs/bb3382a9-1f7e-474.log
-│  └ The file already exists but is ~175 lines. The user wants a …
-└─ ⠙ Explore  Explore codebase architecture  13🛠︎ ·4⟳ ·↑16.1k↓2.9k 15%·12s
-   └ ## Architecture Summary: pi-subagents-lite
+  ⠧ builder  Bump all gpu_inference_proxy deps to latest  6⟳ ·↑7k↓2k 2%·$0.00·54s
+  │ MiMo V2.5 • high
+  └ running command…
+  ⠧ scout  Explore keepalive events config  25⟳ ·↑79k↓5k 8%·$0.01·2m 39s
+  │ MiMo V2.5 • high
+  └ Now I have enough information to provide a comprehensive answer.
 ```
 
 The `/agents` menu covers running agents (view, steer, continue settled agents, stop, clear), manual spawns without an LLM round-trip, model settings, concurrency, and widget layout.
