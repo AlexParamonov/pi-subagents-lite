@@ -2,4 +2,6 @@
 
 > Only lessons that measurably improve the next outcome survive.
 
-## Lessons
+## Ingest (append new lessons at EOF)
+
+> Empty. New `## <name> (<detail>) - YYYY-MM-DD` entries land here.
