@@ -155,17 +155,9 @@ export function renderAgentToolResult(
     return new Text(lines, 0, 0);
   }
 
-  // Background agents — look up live status via manager, fallback to details.status
-  const agentId = d?.agentId as string | undefined;
-  const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-  const status = liveRecord?.lifecycle.status ?? (d?.status as string | undefined);
-
-  const { icon, statusText } = resolveStatusIcon(status, theme);
-  // For background agents, don't show agent name (it's in the call line)
-  // Only show status icon + description
-  const secondLine = desc ? `\n  ${theme.fg("text", desc)}` : "";
-
-  return new Text(`${icon}${statusText}${secondLine}`, 0, 0);
+  // Background agents — description only (icon + status are in the call line)
+  // The call renderer handles the icon and status text
+  return new Text(desc ? `  ${theme.fg("text", desc)}` : "", 0, 0);
 }
 
 // --- Message renderer — subagent-result ---

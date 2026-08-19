@@ -228,19 +228,21 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     },
   };
 
-  it("shows ◇ icon and (queued) text when status is queued", () => {
+  it("shows only description when status is queued", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("◇");
-    expect(allText).toContain("(queued)");
-    // Agent name is NOT in result for background agents (it's in the call line)
+    // Result renderer only shows description for background agents
+    // Icon and status are in the call line
+    expect(allText).toContain("Fix vendor approach");
+    expect(allText).not.toContain("◇");
+    expect(allText).not.toContain("(queued)");
     expect(allText).not.toContain("Builder");
     expect(allText).not.toContain("✓");
     expect(allText).not.toContain("✗");
   });
 
-  it("shows ◈ icon and (running) text when status is running", () => {
+  it("shows only description when status is running", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status: "running" } },
       { expanded: false },
@@ -249,15 +251,16 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     );
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("◈");
-    expect(allText).toContain("(running)");
-    // Agent name is NOT in result for background agents (it's in the call line)
+    // Result renderer only shows description for background agents
+    expect(allText).toContain("Fix vendor approach");
+    expect(allText).not.toContain("◈");
+    expect(allText).not.toContain("(running)");
     expect(allText).not.toContain("Builder");
     expect(allText).not.toContain("✓");
     expect(allText).not.toContain("✗");
   });
 
-  it("shows ✓ icon when status is completed", () => {
+  it("shows only description when status is completed", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status: "completed" } },
       { expanded: false },
@@ -266,13 +269,15 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     );
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("✓");
+    // Result renderer only shows description for background agents
+    expect(allText).toContain("Fix vendor approach");
+    expect(allText).not.toContain("✓");
     expect(allText).not.toContain("◇");
     expect(allText).not.toContain("(queued)");
     expect(allText).not.toContain("(running)");
   });
 
-  it.each(["error", "aborted", "stopped"])("shows ✗ icon when status is %s", (status) => {
+  it.each(["error", "aborted", "stopped"])("shows only description when status is %s", (status) => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status } },
       { expanded: false },
@@ -281,11 +286,13 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     );
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("✗");
+    // Result renderer only shows description for background agents
+    expect(allText).toContain("Fix vendor approach");
+    expect(allText).not.toContain("✗");
     expect(allText).not.toContain("◇");
   });
 
-  it("uses live status from manager when agentId is present", () => {
+  it("result renderer does not call manager (status is in call line)", () => {
     const mockManager = {
       getRecord: vi.fn(() => ({
         lifecycle: { status: "completed" },
@@ -293,44 +300,40 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     };
     vi.mocked(getManager).mockReturnValue(mockManager as any);
 
-    // Details say queued, but manager says completed
     renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("✓");
+    // Result renderer only shows description, doesn't call manager
+    expect(allText).toContain("Fix vendor approach");
+    expect(mockManager.getRecord).not.toHaveBeenCalled();
+
+    vi.mocked(getManager).mockReturnValue(null);
+  });
+
+  it("result renderer shows description regardless of manager status", () => {
+    vi.mocked(getManager).mockReturnValue(null);
+
+    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    // Result renderer only shows description
+    expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("◇");
     expect(allText).not.toContain("(queued)");
-    expect(mockManager.getRecord).toHaveBeenCalledWith("agent-abc-123");
-
-    vi.mocked(getManager).mockReturnValue(null);
   });
 
-  it("falls back to details.status when manager returns null", () => {
-    vi.mocked(getManager).mockReturnValue(null);
-
+  it("result renderer shows only description when agent is queued", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("◇");
-    expect(allText).toContain("(queued)");
+    // Result renderer only shows description for background agents
+    expect(allText).toContain("Fix vendor approach");
+    expect(allText).not.toContain("◇");
+    expect(allText).not.toContain("(queued)");
+    expect(allText).not.toContain("Builder");
   });
 
-  it("second line has no checkmark when agent is queued", () => {
-    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
-
-    const allText = textInstances.map((t) => t.text).join("\n");
-    // First line has status icon with queued status (no agent name)
-    const lines = allText.split("\n");
-    expect(lines[0]).toContain("◇");
-    expect(lines[0]).toContain("(queued)");
-    expect(lines[0]).not.toContain("Builder");
-    // Second line (description) has no checkmark prefix
-    const descLine = lines.find((l) => l.includes("Fix vendor approach"));
-    expect(descLine).toBeDefined();
-    expect(descLine).not.toMatch(/^\s*✓/);
-  });
-
-  it("second line has no checkmark when agent is running", () => {
+  it("result renderer shows only description when agent is running", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status: "running" } },
       { expanded: false },
@@ -339,15 +342,11 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     );
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    const lines = allText.split("\n");
-    // First line has status icon with running status (no agent name)
-    expect(lines[0]).toContain("◈");
-    expect(lines[0]).toContain("(running)");
-    expect(lines[0]).not.toContain("Builder");
-    // Second line (description) has no checkmark prefix
-    const descLine = lines.find((l) => l.includes("Fix vendor approach"));
-    expect(descLine).toBeDefined();
-    expect(descLine).not.toMatch(/^\s*✓/);
+    // Result renderer only shows description for background agents
+    expect(allText).toContain("Fix vendor approach");
+    expect(allText).not.toContain("◈");
+    expect(allText).not.toContain("(running)");
+    expect(allText).not.toContain("Builder");
   });
 });
 
