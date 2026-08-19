@@ -10,6 +10,7 @@ import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { ConversationViewer } from "./ui/conversation-viewer.js";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
 import { toolCallListener } from "./agents/tool-execution.js";
+import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.js";
 import { registerAgentTool } from "./registration.js";
 import {
   getManager,
@@ -45,6 +46,7 @@ export function ensureManagerAndWidget(): void {
 
     newManager.setOnComplete((record) => {
       coordinator.onAgentComplete(record);
+      invalidateAgentRow(record.id);
       getWidget()?.update();
     });
   }
@@ -225,6 +227,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
       }
     }
     // Dispose coordinator, store, widget, then manager
+    cleanupInvalidations();
     getCoordinator()?.dispose();
     setCoordinator(null);
     getStore().dispose();

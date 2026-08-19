@@ -4,7 +4,12 @@ import { Text } from "@earendil-works/pi-tui";
 import { getAvailableTypes } from "./agents/agent-types.js";
 import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
-import { renderAgentToolCall, renderAgentToolResult, renderSubagentResult } from "./ui/renderer.js";
+import {
+  renderAgentToolCall,
+  renderAgentToolResult,
+  renderSubagentResult,
+  registerAgentInvalidation,
+} from "./ui/renderer.js";
 import { showAgentsMainMenu } from "./ui/menu/menus.js";
 import { getStore } from "./shell.js";
 
@@ -59,10 +64,15 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
       options: { expanded?: boolean },
       theme: any,
-      context: { isError?: boolean },
+      context: { isError?: boolean; invalidate?: () => void },
     ) => {
       const isError = context?.isError ?? false;
       const store = getStore();
+      const agentId = result.details?.agentId as string | undefined;
+      // Register invalidate callback so onComplete can trigger a re-render
+      if (agentId && context?.invalidate) {
+        registerAgentInvalidation(agentId, context.invalidate);
+      }
       return renderAgentToolResult(
         { ...result, isError },
         options,

@@ -7,6 +7,7 @@
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
 import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag, resolveModelLabel } from "./format.js";
+import { getManager } from "../shell.js";
 
 // --- Stats rendering helpers ---
 
@@ -45,6 +46,47 @@ export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCos
   return parts.join("·");
 }
 
+// --- Agent invalidation map ---
+
+/** Per-session map: agentId → invalidate callback. Wired in registration.ts, triggered by onComplete in events.ts. */
+const agentInvalidations = new Map<string, () => void>();
+
+/** Register a row's invalidate function for an agent. Called when rendering a background agent row. */
+export function registerAgentInvalidation(agentId: string, invalidate: () => void): void {
+  agentInvalidations.set(agentId, invalidate);
+}
+
+/** Trigger re-render of a completed/errored agent's tool row. Called by onComplete callback. */
+export function invalidateAgentRow(agentId: string): void {
+  agentInvalidations.get(agentId)?.();
+}
+
+/** Clear all invalidation registrations. Called on session_shutdown. */
+export function cleanupInvalidations(): void {
+  agentInvalidations.clear();
+}
+
+// --- Status icon mapping ---
+
+/** Resolve icon and optional status text for a background agent status. */
+function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: string; statusText: string } {
+  switch (status) {
+    case "queued":
+      return { icon: theme.fg("dim", "◇"), statusText: " (queued)" };
+    case "running":
+      return { icon: theme.fg("accent", "◈"), statusText: " (running)" };
+    case "error":
+    case "aborted":
+    case "stopped":
+      return { icon: theme.fg("error", "✗"), statusText: "" };
+    case "completed":
+    case "turn_limited":
+      return { icon: theme.fg("success", "✓"), statusText: "" };
+    default:
+      return { icon: theme.fg("success", "✓"), statusText: "" };
+  }
+}
+
 // --- Agent tool renderers ---
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
@@ -71,10 +113,11 @@ export function renderAgentToolResult(
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
   const d = result.details;
-  const icon = result.isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
   const desc = (d?.description as string) || "";
 
+  // Foreground agents (stats present) — use error/success icon
   if (d && d.turnCount != null) {
+    const icon = result.isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
     let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
@@ -89,14 +132,17 @@ export function renderAgentToolResult(
     return new Text(lines, 0, 0);
   }
 
-  // Minimal card — background spawns (no stats) use space placeholder
-  const isBackground = text.includes("running in background") || text.includes("queued");
-  const prefix = isBackground ? "  " : `${icon} `;
-  if (desc) {
-    return new Text(`${prefix}${theme.fg("text", desc)}`, 0, 0);
-  }
+  // Background agents — look up live status via manager, fallback to details.status
+  const agentId = d?.agentId as string | undefined;
+  const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
+  const status = liveRecord?.lifecycle.status ?? (d?.status as string | undefined);
 
-  return new Text(`${prefix}${theme.fg("dim", text)}`, 0, 0);
+  const { icon, statusText } = resolveStatusIcon(status, theme);
+  const namePart = agentNameLabel(d ?? {}, theme, modelDisplayStyle);
+  const firstLine = `${icon} ${namePart}${statusText}`;
+  const secondLine = desc ? `\n  ${theme.fg("text", desc)}` : "";
+
+  return new Text(`${firstLine}${secondLine}`, 0, 0);
 }
 
 // --- Message renderer — subagent-result ---
