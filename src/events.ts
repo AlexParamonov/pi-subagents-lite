@@ -34,7 +34,6 @@ export function ensureManagerAndWidget(): void {
     // Coordinator needs the manager, so wire onComplete after creating it.
     // Invalidate row when agent starts running (queued → running transition)
     const onStart = (record: AgentRecord) => {
-      getStore().sessionCtx?.ui.notify(`[DEBUG] onStart: ${record.id} status=${record.lifecycle.status}`, "warning");
       invalidateAgentRow(record.id);
       getWidget()?.update();
     };
