@@ -18,14 +18,22 @@ export function agentNameLabel(
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
   const typeName = getDisplayName((d.type as string) || "");
+  const tag = modelTag(d, theme, modelDisplayStyle)
+  return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
+}
+
+function modelTag(
+  d: Record<string, unknown>,
+  theme: Theme,
+  modelDisplayStyle: "id" | "name" = "id",
+): string {
   const modelLabel = resolveModelLabel(
     modelDisplayStyle,
     d.modelName as string | undefined,
     d.modelId as string | undefined,
   );
   const thinkingLevel = d.thinkingLevel as string | undefined;
-  const tag = buildModelThinkingTag(modelLabel, thinkingLevel);
-  return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
+  return buildModelThinkingTag(modelLabel, thinkingLevel);
 }
 
 export function buildStatsLine(d: Record<string, unknown>, theme: Theme, showCost: boolean): string {
@@ -69,21 +77,22 @@ export function cleanupInvalidations(): void {
 // --- Status icon mapping ---
 
 /** Resolve icon for a background agent status. */
-function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: string } {
+function resolveStatusIcon(status: string | undefined, theme: Theme): string {
   switch (status) {
     case "queued":
-      return { icon: theme.fg("accent", "◆") };
+      return theme.fg("accent", "◆")
     case "running":
-      return { icon: theme.fg("accent", "◈") };
+      return theme.fg("accent", "◈")
     case "error":
     case "aborted":
+      return theme.fg("error", "✗")
     case "stopped":
-      return { icon: theme.fg("error", "✗") };
+      return theme.fg("dim", "■")
     case "completed":
     case "turn_limited":
-      return { icon: theme.fg("success", "✓") };
+      return theme.fg("success", "✓")
     default:
-      return { icon: theme.fg("success", "✓") };
+      return "▸";
   }
 }
 
@@ -127,8 +136,7 @@ export function renderAgentToolCall(
     }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
-    const resolved = resolveStatusIcon(status, theme);
-    icon = resolved.icon;
+    icon = resolveStatusIcon(status, theme);
     let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
     const modelOverride = args._modelOverride as string | undefined;
@@ -158,18 +166,7 @@ export function renderAgentToolCall(
     }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status;
-    // Show icon based on status: queued → running → complete/error
-    if (status === "queued") {
-      icon = theme.fg("accent", "◆");
-    } else if (status === "running") {
-      icon = theme.fg("accent", "◈");
-    } else if (status === "completed" || status === "turn_limited") {
-      icon = theme.fg("success", "✓");
-    } else if (status === "error" || status === "aborted" || status === "stopped") {
-      icon = theme.fg("error", "✗");
-    } else {
-      icon = theme.fg("dim", "◇");
-    }
+    icon = resolveStatusIcon(status, theme);
   }
 
   // Build the call line text
@@ -196,10 +193,12 @@ export function renderAgentToolResult(
   const d = result.details;
   const desc = (d?.description as string) || "";
 
-  // Foreground agents (stats present) — show stats + description (icon + name in call line)
+  // Foreground agents (stats present) — show model + stats + description (icon + name in call line)
   if (d && d.turnCount != null) {
     const statsLine = buildStatsLine(d, theme, showCost);
-    let lines = `  ${statsLine}\n  ${theme.fg("text", desc)}`;
+    // Build model label from details
+    const tag = modelTag(d, theme, modelDisplayStyle)
+    let lines = `  ${theme.fg("dim", tag)}·${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
       lines +=
         "\n" +
@@ -238,8 +237,7 @@ export function renderSubagentResult(
   inner.addChild(new Spacer(1));
 
   if (d && d.turnCount != null) {
-    const isError = d.status === "error" || d.status === "aborted" || d.status === "stopped";
-    const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+    const icon = resolveStatusIcon(d.status as string, theme);
 
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
