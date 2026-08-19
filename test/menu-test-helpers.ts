@@ -47,8 +47,8 @@ export interface CreateMockCtxOptions {
  */
 export function selectByName(name: string): (title: string, items: string[]) => string | undefined {
   const nameMap: Record<string, string> = {
-    model: "Model settings",
-    concurrency: "Concurrency settings",
+    model: "Model",
+    concurrency: "Concurrency",
     running: "Running agents",
     widget: "Widget",
     debug: "Debug",

@@ -686,7 +686,7 @@ describe("showSpawnOptionsMenu — system prompt items (absorbed)", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
   });
 
-  it("has all 13 items in correct order", async () => {
+  it("has all 12 non-conditional items in correct order", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i) => i.id);
@@ -745,6 +745,20 @@ describe("showSpawnOptionsMenu — system prompt items (absorbed)", () => {
     expect(mkdirSpy).toHaveBeenCalled();
     expect(writeSpy).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Created prompt file"), "info");
+    vi.restoreAllMocks();
+  });
+
+  it("shows error notification when file creation fails", async () => {
+    mockModules.mockConfig.agent.systemPromptMode = "custom";
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    vi.spyOn(fs, "mkdirSync").mockImplementation(() => {
+      throw new Error("permission denied");
+    });
+    vi.spyOn(fs, "writeFileSync").mockImplementation(() => {});
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("createPromptFile", "Create");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Failed to create prompt file"), "error");
     vi.restoreAllMocks();
   });
 });
