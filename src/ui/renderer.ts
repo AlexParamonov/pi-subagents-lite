@@ -195,11 +195,10 @@ export function renderAgentToolResult(
   const d = result.details;
   const desc = (d?.description as string) || "";
 
-  // Foreground agents (stats present) — show stats only (icon is in call line)
+  // Foreground agents (stats present) — show stats only (icon + name are in call line)
   if (d && d.turnCount != null) {
-    const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
-    let lines = `${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
+    let lines = `${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
       lines +=
         "\n" +

@@ -189,10 +189,10 @@ describe("renderAgentToolResult — error icon", () => {
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // Result line shows stats, not icon (icon is in call line)
-    expect(allText).toContain("Builder");
+    // Result line shows stats only (icon + name are in call line)
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
+    expect(allText).toContain("Test agent");
   });
 
   it("shows stats for foreground agent without error", () => {
@@ -201,10 +201,10 @@ describe("renderAgentToolResult — error icon", () => {
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // Result line shows stats, not icon (icon is in call line)
-    expect(allText).toContain("Builder");
+    // Result line shows stats only (icon + name are in call line)
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
+    expect(allText).toContain("Test agent");
   });
 
   it("shows stats for foreground agent when isError is undefined", () => {
@@ -213,10 +213,10 @@ describe("renderAgentToolResult — error icon", () => {
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // Result line shows stats, not icon (icon is in call line)
-    expect(allText).toContain("Builder");
+    // Result line shows stats only (icon + name are in call line)
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
+    expect(allText).toContain("Test agent");
   });
 });
 
