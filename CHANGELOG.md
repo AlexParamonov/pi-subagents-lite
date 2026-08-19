@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Flattened settings menu.** Reduced from 6 to 5 top-level categories with shorter names: Model, Concurrency, Spawn options, Display, Widget. Widget settings flattened from 4 submenus to a single scrollable list with 3 section headers (Layout, Display, Stats). System prompt settings merged into Spawn options. General settings renamed to Display with reordered items.
+
 - **Unified agent status icons across all UI surfaces.** Tool call lines, the subagent status widget, and the conversation viewer now share one status→icon map (`statusIcon` in `format.ts`): `◆` queued, `◈` running, `✓` completed (success), `✓` turn-limited (warning), `✗` error/aborted, `■` stopped (dim), `▸` when no status yet. The viewer's stopped icon was `✗` (error) and its queued icon `◇` (dim); turn-limited was success-colored in call lines. Stopped is neutral, not a failure.
 
 ### Added

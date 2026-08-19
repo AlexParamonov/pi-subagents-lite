@@ -50,11 +50,12 @@ export function selectByName(name: string): (title: string, items: string[]) => 
     model: "Model settings",
     concurrency: "Concurrency settings",
     running: "Running agents",
-    widget: "Widget settings",
+    widget: "Widget",
     debug: "Debug",
     settings: "Settings",
     spawn: "Spawn agent",
     spawnoptions: "Spawn options",
+    display: "Display",
   };
   const search = nameMap[name.toLowerCase()] ?? name;
   return (_title: string, items: string[]) => {

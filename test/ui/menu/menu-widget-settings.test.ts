@@ -1,15 +1,13 @@
 /**
  * menu-widget-settings.test.ts — Tests for showWidgetSettingsMenu.
  *
- * Top-level: SelectList with 4 categories (Layout, Display, Behavior, Stats).
- * Each category dispatches to a SettingsList submenu.
- *
- * Pattern: capture constructor calls, verify structure, test onChange directly.
+ * Single flat SettingsList with 3 section headers (Layout, Display, Stats).
+ * Behavior items (Finished agent retention, Ctrl+o shortcut) folded into Display.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Component, SelectItem, SelectListTheme, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
+import type { Component, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
 import { asCommandContext } from "../../pi-boundaries.js";
@@ -17,7 +15,6 @@ import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import type { SettingsListWrapperOptions } from "../../../src/ui/menu/wrappers/settings-list.js";
 
 // Capture constructor calls
-let selectListCalls: Array<{ items: SelectItem[] }> = [];
 let settingsListCalls: Array<{
   items: SettingItem[];
   onChange: (id: string, newValue: string) => void;
@@ -44,15 +41,6 @@ vi.mock("@earendil-works/pi-tui", () => ({
     ) {
       this.items = items;
       settingsListCalls.push({ items, onChange, onCancel });
-    }
-  },
-  SelectList: class MockSelectList {
-    items: SelectItem[];
-    onSelect?: (item: SelectItem) => void;
-    onCancel?: () => void;
-    constructor(items: SelectItem[], _maxVisible: number, _theme: SelectListTheme) {
-      this.items = items;
-      selectListCalls.push({ items });
     }
   },
   Input: class MockInput {
@@ -83,7 +71,6 @@ vi.mock("../../../src/ui/menu/wrappers/settings-list.js", () => ({
 import { showWidgetSettingsMenu } from "../../../src/ui/menu/menu-widget-settings.js";
 
 function resetState() {
-  selectListCalls = [];
   settingsListCalls = [];
   wrapperCalls = [];
   inputInstances = [];
@@ -119,42 +106,9 @@ function setupMockConfig() {
   mockModules.mockSessionShowCost = undefined;
 }
 
-/** Create a ctx that dispatches a specific category choice on first custom call. */
-function createDispatchCtx(choice: string): ExtensionCommandContext {
-  let callCount = 0;
-  // Stateful: setToolsExpanded updates the value getToolsExpanded reads, so the
-  // test can assert the refresh restores the original expansion state.
-  let toolExpanded = false;
-  return asCommandContext({
-    ui: {
-      custom: vi.fn(async (factory: ComponentFactory) => {
-        callCount++;
-        if (callCount === 1) {
-          // Top-level: return the category choice
-          return choice;
-        }
-        // Submenu and loop-continue: invoke factory, return undefined
-        factory(
-          { terminal: { rows: 40 } },
-          { fg: (_c: string, t: string) => t, bold: (t: string) => t, italic: (t: string) => t },
-          null,
-          () => {},
-        );
-        return undefined;
-      }),
-      notify: vi.fn(),
-      getToolsExpanded: vi.fn(() => toolExpanded),
-      setToolsExpanded: vi.fn((expanded: boolean) => {
-        toolExpanded = expanded;
-      }),
-    },
-    modelRegistry: { getAvailable: vi.fn(() => []) },
-  });
-}
-
 afterEach(() => resetConfig());
 
-describe("showWidgetSettingsMenu — SelectList top-level", () => {
+describe("showWidgetSettingsMenu — flat SettingsList", () => {
   beforeEach(() => {
     setupMockConfig();
     vi.clearAllMocks();
@@ -169,49 +123,57 @@ describe("showWidgetSettingsMenu — SelectList top-level", () => {
     expect(ctx.ui.select).not.toHaveBeenCalled();
   });
 
-  it("creates a SelectList with 4 category items", async () => {
+  it("creates a SettingsList with 3 headers + 18 items", async () => {
     const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    expect(selectListCalls.length).toBe(1);
-    expect(selectListCalls[0].items).toHaveLength(4);
-  });
-
-  it("has correct category labels and values", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    const items = selectListCalls[0].items;
-    expect(items.map((i) => i.label)).toEqual(["Layout", "Display", "Behavior", "Stats"]);
-    expect(items.map((i) => i.value)).toEqual(["layout", "display", "behavior", "stats"]);
-    // Each category also carries a description (folded from the former standalone typeof-check).
-    for (const item of items) expect(typeof item.description).toBe("string");
-  });
-
-  it("wraps in SettingsListWrapper with title 'Widget Settings'", async () => {
-    const ctx = createMockCtx();
-    await showWidgetSettingsMenu(ctx);
-    expect(wrapperCalls).toContainEqual({ title: "Widget Settings" });
-  });
-});
-
-describe("showWidgetSettingsMenu — Layout submenu", () => {
-  beforeEach(() => {
-    setupMockConfig();
-    vi.clearAllMocks();
-    resetState();
-    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
-  });
-
-  it("dispatches to Layout SettingsList with 5 items", async () => {
-    const ctx = createDispatchCtx("layout");
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
-    const ids = settingsListCalls[0].items.map((i) => i.id);
-    expect(ids).toEqual(["compact", "maxLines", "maxLinesCompact"]);
+    const items = settingsListCalls[0].items;
+    // 3 group headers + 18 setting items = 21 total
+    expect(items.length).toBe(21);
+  });
+
+  it("has correct item order with Layout, Display, Stats sections", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const items = settingsListCalls[0].items;
+    const ids = items.map((i) => i.id);
+    expect(ids).toEqual([
+      // Layout header
+      "__sep__",
+      "compact",
+      "maxLines",
+      "maxLinesCompact",
+      // Display header
+      "__sep__",
+      "showModel",
+      "modelDisplayStyle",
+      "showThinking",
+      "modelThinkingPlacement",
+      "statusBarFormat",
+      "navHint",
+      "finishedRetention",
+      "shortcut",
+      // Stats header
+      "__sep__",
+      "showTools",
+      "showTurns",
+      "showInput",
+      "showOutput",
+      "showContext",
+      "showCost",
+      "showTime",
+    ]);
+  });
+
+  it("wraps in SettingsListWrapper with title 'Widget'", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    expect(wrapperCalls).toContainEqual({ title: "Widget" });
   });
 
   it("compact item shows correct value", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
-    const ctx = createDispatchCtx("layout");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i) => i.id === "compact")!;
     expect(item.currentValue).toBe("OFF");
@@ -219,83 +181,23 @@ describe("showWidgetSettingsMenu — Layout submenu", () => {
 
   it("compact onChange toggles store", async () => {
     mockModules.mockConfig.agent.widgetCompact = false;
-    const ctx = createDispatchCtx("layout");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("compact", "ON");
     expect(mockModules.mockConfig.agent.widgetCompact).toBe(true);
   });
 
   it("maxLines has submenu function", async () => {
-    const ctx = createDispatchCtx("layout");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
     expect(item.currentValue).toBe("12");
     expect(typeof item.submenu).toBe("function");
   });
 
-  it("maxLines submenu creates Input with initial value", async () => {
-    const ctx = createDispatchCtx("layout");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
-    item.submenu!("12", vi.fn());
-    expect(inputInstances[0].value).toBe("12");
-  });
-
-  it("maxLines submenu accepts valid value", async () => {
-    const ctx = createDispatchCtx("layout");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
-    const done = vi.fn();
-    item.submenu!("12", done);
-    inputInstances[0].onSubmit!("10");
-    expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(10);
-    expect(done).toHaveBeenCalledWith("10");
-  });
-
-  it("maxLines submenu rejects value below minimum", async () => {
-    const ctx = createDispatchCtx("layout");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "maxLines")!;
-    const done = vi.fn();
-    item.submenu!("12", done);
-    inputInstances[0].onSubmit!("1");
-    expect(mockModules.mockConfig.agent.widgetMaxLines).toBe(12);
-    expect(done).not.toHaveBeenCalled();
-  });
-
-  it("has title 'Layout'", async () => {
-    const ctx = createDispatchCtx("layout");
-    await showWidgetSettingsMenu(ctx);
-    expect(wrapperCalls).toContainEqual({ title: "Layout" });
-  });
-});
-
-describe("showWidgetSettingsMenu — Display submenu", () => {
-  beforeEach(() => {
-    setupMockConfig();
-    vi.clearAllMocks();
-    resetState();
-    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
-  });
-
-  it("dispatches to Display SettingsList with 6 items", async () => {
-    const ctx = createDispatchCtx("display");
-    await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i) => i.id);
-    expect(ids).toEqual([
-      "showModel",
-      "modelDisplayStyle",
-      "showThinking",
-      "modelThinkingPlacement",
-      "__sep__",
-      "statusBarFormat",
-      "navHint",
-    ]);
-  });
-
   it("showModel onChange toggles store", async () => {
     mockModules.mockConfig.agent.widgetShowModel = true;
-    const ctx = createDispatchCtx("display");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("showModel", "OFF");
     expect(mockModules.mockConfig.agent.widgetShowModel).toBe(false);
@@ -303,7 +205,7 @@ describe("showWidgetSettingsMenu — Display submenu", () => {
 
   it("statusBarFormat onChange updates store", async () => {
     mockModules.mockConfig.agent.statusBarFormat = "full";
-    const ctx = createDispatchCtx("display");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("statusBarFormat", "compact");
     expect(mockModules.mockConfig.agent.statusBarFormat).toBe("compact");
@@ -311,7 +213,7 @@ describe("showWidgetSettingsMenu — Display submenu", () => {
 
   it("modelDisplayStyle onChange toggles between id/name", async () => {
     mockModules.mockConfig.agent.modelDisplayStyle = "id";
-    const ctx = createDispatchCtx("display");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("modelDisplayStyle", "Name");
     expect(mockModules.mockConfig.agent.modelDisplayStyle).toBe("name");
@@ -319,7 +221,7 @@ describe("showWidgetSettingsMenu — Display submenu", () => {
 
   it("showThinking onChange toggles store", async () => {
     mockModules.mockConfig.agent.widgetShowThinking = true;
-    const ctx = createDispatchCtx("display");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("showThinking", "OFF");
     expect(mockModules.mockConfig.agent.widgetShowThinking).toBe(false);
@@ -327,77 +229,29 @@ describe("showWidgetSettingsMenu — Display submenu", () => {
 
   it("navHint onChange toggles store", async () => {
     mockModules.mockConfig.agent.widgetNavHint = true;
-    const ctx = createDispatchCtx("display");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("navHint", "OFF");
     expect(mockModules.mockConfig.agent.widgetNavHint).toBe(false);
   });
 
-  it("has title 'Display'", async () => {
-    const ctx = createDispatchCtx("display");
-    await showWidgetSettingsMenu(ctx);
-    expect(wrapperCalls).toContainEqual({ title: "Display" });
-  });
-});
-
-describe("showWidgetSettingsMenu — Behavior submenu", () => {
-  beforeEach(() => {
-    setupMockConfig();
-    vi.clearAllMocks();
-    resetState();
-    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
-  });
-
-  it("dispatches to Behavior SettingsList with completion visibility", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i) => i.id);
-    expect(ids).toEqual(["finishedRetention", "__sep__", "shortcut"]);
-
-    const item = settingsListCalls[0].items.find((i) => i.id === "shortcut")!;
-    expect(item.label).toBe("Ctrl+o shortcut");
-    expect(typeof item.description).toBe("string");
-  });
-
-  it("shortcut onChange toggles store", async () => {
+  it("shortcut onChange toggles store (now in Display section)", async () => {
     mockModules.mockConfig.agent.widgetShortcut = false;
-    const ctx = createDispatchCtx("behavior");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     settingsListCalls[0].onChange("shortcut", "ON");
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
   });
 
-  it("finishedRetention has submenu", async () => {
-    const ctx = createDispatchCtx("behavior");
+  it("finishedRetention has submenu (now in Display section)", async () => {
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i) => i.id === "finishedRetention")!;
     expect(typeof item.submenu).toBe("function");
   });
 
-  it("has title 'Behavior'", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    expect(wrapperCalls).toContainEqual({ title: "Behavior" });
-  });
-});
-
-describe("showWidgetSettingsMenu — Stats submenu", () => {
-  beforeEach(() => {
-    setupMockConfig();
-    vi.clearAllMocks();
-    resetState();
-    vi.mocked(getAgentConfig).mockImplementation(() => undefined);
-  });
-
-  it("dispatches to Stats SettingsList with 7 items", async () => {
-    const ctx = createDispatchCtx("stats");
-    await showWidgetSettingsMenu(ctx);
-    const ids = settingsListCalls[0].items.map((i) => i.id);
-    expect(ids).toEqual(["showTools", "showTurns", "showInput", "showOutput", "showContext", "showCost", "showTime"]);
-  });
-
   it("stat toggles update store", async () => {
-    const ctx = createDispatchCtx("stats");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const onChange = settingsListCalls[0].onChange;
 
@@ -412,22 +266,36 @@ describe("showWidgetSettingsMenu — Stats submenu", () => {
   it("stat items show correct ON/OFF values", async () => {
     mockModules.mockConfig.agent.showTools = true;
     mockModules.mockConfig.agent.showCost = false;
-    const ctx = createDispatchCtx("stats");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const items = settingsListCalls[0].items;
     expect(items.find((i) => i.id === "showTools")!.currentValue).toBe("ON");
     expect(items.find((i) => i.id === "showCost")!.currentValue).toBe("OFF");
   });
 
-  it("has title 'Stats'", async () => {
-    const ctx = createDispatchCtx("stats");
-    await showWidgetSettingsMenu(ctx);
-    expect(wrapperCalls).toContainEqual({ title: "Stats" });
-  });
   it("stat labels have no 'Show' prefix", async () => {
-    const ctx = createDispatchCtx("stats");
+    const ctx = createMockCtx();
     await showWidgetSettingsMenu(ctx);
     const labels = settingsListCalls[0].items.filter((i) => i.id !== "__sep__").map((i) => i.label);
-    expect(labels).toEqual(["Tools", "Turns", "Input tokens", "Output tokens", "Context %", "Cost", "Time"]);
+    expect(labels).toEqual([
+      "Force compact mode",
+      "Max lines (full)",
+      "Max lines (compact)",
+      "Show model",
+      "Model display",
+      "Show thinking",
+      "Model/thinking placement",
+      "Status bar format",
+      "Navigation hint",
+      "Finished agent retention",
+      "Ctrl+o shortcut",
+      "Tools",
+      "Turns",
+      "Input tokens",
+      "Output tokens",
+      "Context %",
+      "Cost",
+      "Time",
+    ]);
   });
 });
