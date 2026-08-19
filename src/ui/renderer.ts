@@ -102,12 +102,13 @@ export function renderAgentToolCall(
   const isBackground = args.run_in_background === true;
   let icon: string;
   let statusText = "";
-
+  
   if (isBackground) {
     // Look up live status from manager using stored agentId
     const agentId = context?.state?.agentId as string | undefined;
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
+    console.error(`[DEBUG] renderAgentToolCall: agentId=${agentId}, status=${status}`);
     const resolved = resolveStatusIcon(status, theme);
     icon = resolved.icon;
     statusText = resolved.statusText;
