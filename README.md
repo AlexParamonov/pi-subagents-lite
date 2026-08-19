@@ -84,6 +84,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 |---|---|---|---|
 | `name` | string | — | Agent type name. Must be unique; a file without it is skipped. |
 | `display_name` | string | `name` | Label in the UI. |
+| `color` | string | none | Agent color for icon tinting. Named colors: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`. Palette aliases: `amber`, `teal`, `indigo`, `gold`, `violet`, `rose`, `lime`, `gray`, `slate`, `navy`, etc. Also accepts `#RRGGBB` hex. |
 | `description` | string | `""` | One-sentence description. |
 | `tools` | `true` \| `string[]` \| `false` | `true` | Tool whitelist. Mutually exclusive with `exclude_tools`. |
 | `exclude_tools` | `string[]` | none | Tool blacklist. Mutually exclusive with `tools`. |
