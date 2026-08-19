@@ -58,7 +58,7 @@ export interface AgentNameTheme {
   getColorMode?(): ColorMode;
 }
 
-export interface AgentNameStyle {
+interface AgentNameStyle {
   /** Existing theme foreground used when no valid agent color is configured. */
   fallbackColor?: string;
   /** Reapply an enclosing background after the badge instead of resetting it. */
