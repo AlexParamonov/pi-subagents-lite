@@ -138,40 +138,11 @@ export function renderAgentToolCall(
 
     return new Text(text, 0, 0);
   } else {
-    // Foreground agents: look up live status from manager using stored agentId
-    let agentId = context?.state?.agentId as string | undefined;
-    if (!agentId) {
-      // Find agent by toolCallId from context
-      const toolCallId = context?.toolCallId as string | undefined;
-      if (toolCallId) {
-        const manager = getManager();
-        if (manager) {
-          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
-          if (record) {
-            agentId = record.id;
-            if (context?.state) {
-              context.state.agentId = agentId;
-            }
-          }
-        }
-      }
-    }
-    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-    const status = liveRecord?.lifecycle.status;
-    // Show icon based on status: queued → running → complete/error
-    if (status === "queued") {
-      icon = theme.fg("accent", "◆");
-    } else if (status === "running") {
-      icon = theme.fg("accent", "◈");
-    } else if (status === "completed" || status === "turn_limited") {
-      icon = theme.fg("success", "✓");
-    } else if (status === "error" || status === "aborted" || status === "stopped") {
-      icon = theme.fg("error", "✗");
-    } else {
-      icon = theme.fg("dim", "◇");
-    }
+    // Foreground agents: return initial icon (result renderer shows final icon + stats)
+    icon = theme.fg("dim", "◇");
   }
 
+  // Build the call line text
   let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
   const modelOverride = args._modelOverride as string | undefined;
@@ -195,11 +166,17 @@ export function renderAgentToolResult(
   const d = result.details;
   const desc = (d?.description as string) || "";
 
-  // Foreground agents (stats present) — show name + stats (icon is in call line)
+  // Foreground agents (stats present) — show icon + name + stats + description
   if (d && d.turnCount != null) {
+    const hasStarted = context?.executionStarted === true;
+    const icon = hasStarted
+      ? result.isError
+        ? theme.fg("error", "✗")
+        : theme.fg("success", "✓")
+      : theme.fg("accent", "◈");
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
-    let lines = `${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
+    let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
       lines +=
         "\n" +

@@ -183,37 +183,43 @@ describe("renderAgentToolResult — error icon", () => {
     },
   };
 
-  it("shows stats for foreground agent with error", () => {
+  it("shows icon + name + stats for foreground agent with error", () => {
     renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // Result line shows stats only (icon + name are in call line)
+    // Result line shows icon + name + stats
+    expect(allText).toContain("✗");
+    expect(allText).toContain("Builder");
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
     expect(allText).toContain("Test agent");
   });
 
-  it("shows stats for foreground agent without error", () => {
+  it("shows icon + name + stats for foreground agent without error", () => {
     renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // Result line shows stats only (icon + name are in call line)
+    // Result line shows icon + name + stats
+    expect(allText).toContain("✓");
+    expect(allText).toContain("Builder");
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
     expect(allText).toContain("Test agent");
   });
 
-  it("shows stats for foreground agent when isError is undefined", () => {
+  it("shows icon + name + stats for foreground agent when isError is undefined", () => {
     renderAgentToolResult({ ...baseResult }, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    // Result line shows stats only (icon + name are in call line)
+    // Result line shows icon + name + stats
+    expect(allText).toContain("✓");
+    expect(allText).toContain("Builder");
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
     expect(allText).toContain("Test agent");
