@@ -241,7 +241,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     }
   };
 
-  let rebuild: ((items: any[]) => void) | undefined;
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const items = buildItems(theme);

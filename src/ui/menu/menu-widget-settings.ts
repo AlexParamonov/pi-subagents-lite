@@ -10,12 +10,12 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID, buildSettingsListTheme } from "./helpers.js";
+import { SEPARATOR_ID, buildSettingsListTheme, headerItem } from "./helpers.js";
+import type { Theme } from "../types.js";
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
 import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
-import type { Theme } from "../types.js";
 
 /** One stat visibility toggle: menu label, description, and store get/set accessors. */
 type StatToggleConfig = { label: string; description: string; get: () => boolean; set: (v: boolean) => void };
@@ -89,25 +89,16 @@ function buildStatConfig(store: ReturnType<typeof getStore>): Map<string, StatTo
   ]);
 }
 
-/** Group header marker — same pattern as model-settings. */
-const GROUP_HEADER_KIND = "group-header";
-type GroupHeaderItem = SettingItem & { kind: typeof GROUP_HEADER_KIND };
-
-function headerItem(theme: Theme, label: string): GroupHeaderItem {
-  return {
-    id: SEPARATOR_ID,
-    kind: GROUP_HEADER_KIND,
-    label: theme.bold(theme.fg("accent", label)),
-    currentValue: "",
-  };
-}
-
 /**
  * Build the flat item list with 3 section headers (Layout, Display, Stats).
  * Behavior items (finishedRetention, shortcut) are folded into Display.
  */
-function buildItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>, theme: Theme): SettingItem[] {
-  const statConfig = buildStatConfig(store);
+function buildItems(
+  ctx: ExtensionCommandContext,
+  store: ReturnType<typeof getStore>,
+  theme: Theme,
+  statConfig: Map<string, StatToggleConfig>,
+): SettingItem[] {
   const items: SettingItem[] = [
     // --- Layout ---
     headerItem(theme, "Layout"),
@@ -213,8 +204,11 @@ function buildItems(ctx: ExtensionCommandContext, store: ReturnType<typeof getSt
   return items;
 }
 
-function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof getStore>) {
-  const statConfig = buildStatConfig(store);
+function buildOnChange(
+  ctx: ExtensionCommandContext,
+  store: ReturnType<typeof getStore>,
+  statConfig: Map<string, StatToggleConfig>,
+) {
   return (id: string, newValue: string) => {
     // Stats toggles
     const stat = statConfig.get(id);
@@ -278,16 +272,18 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
   let rebuild: ((items: SettingItem[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const items = buildItems(ctx, store, theme);
+    const statConfig = buildStatConfig(store);
+    const items = buildItems(ctx, store, theme, statConfig);
+    const onChange = buildOnChange(ctx, store, statConfig);
     const settingsList = new SettingsList(
       items,
       15,
       buildSettingsListTheme(theme),
       (id, newValue) => {
-        buildOnChange(ctx, store)(id, newValue);
+        onChange(id, newValue);
         // Submenu-driven rows rebuild to refresh value; toggle
         // rows update in place via SettingsList.
-        if (items.some((i) => i.id === id && i.submenu)) rebuild?.(buildItems(ctx, store, theme));
+        if (items.some((i) => i.id === id && i.submenu)) rebuild?.(buildItems(ctx, store, theme, statConfig));
       },
       () => done(undefined),
     );

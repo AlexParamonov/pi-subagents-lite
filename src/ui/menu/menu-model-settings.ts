@@ -17,7 +17,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import type { Theme } from "../types.js";
-import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
+import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect, headerItem } from "./helpers.js";
 import { agentBulletPrefix } from "../format.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createClearAllSubmenu, type AvailableLevels, type TargetChoice } from "./submenus/target-select.js";
@@ -34,14 +34,6 @@ import type { SessionModelOverrides } from "../../models/model-precedence.js";
  * union.
  */
 const THINKING_COLUMN_WIDTH = 7;
-
-/**
- * Marker on model-group header rows. Headers keep id SEPARATOR_ID so
- * separator-skip never lands the cursor on them; the marker lets tests
- * identify headers directly instead of by label shape.
- */
-const GROUP_HEADER_KIND = "group-header";
-type GroupHeaderItem = SettingItem & { kind: typeof GROUP_HEADER_KIND };
 
 /**
  * Display value for the "Global default model" row. Tag precedence:
@@ -174,13 +166,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       // separator are the same row; the long rule divides after the last group.
       items.push({ id: SEPARATOR_ID, label: " ", currentValue: "" });
       // Section title: bare model id in bold accent, matching the menu title
-      const header: GroupHeaderItem = {
-        id: SEPARATOR_ID,
-        kind: GROUP_HEADER_KIND,
-        label: theme.bold(theme.fg("accent", group.modelId)),
-        currentValue: "",
-      };
-      items.push(header);
+      items.push(headerItem(theme, group.modelId));
       for (const row of group.rows) {
         items.push({
           id: `type:${row.type}`,
