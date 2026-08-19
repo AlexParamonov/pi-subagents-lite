@@ -604,7 +604,12 @@ export class AgentWidget {
   ): string | undefined {
     const parts = buildMetadataLineParts(a, this.modelDisplayStyle, this.statsVisibility, this.modelThinkingPlacement);
     if (parts.length === 0) return undefined;
-    return truncate(theme.fg("dim", prefix + parts.join("  ")));
+    // Only color connector characters (│, └), not plain indentation spaces
+    const hasConnector = prefix.trim().length > 0;
+    const coloredPrefix = hasConnector
+      ? applyAgentColor(prefix, agentColorAnsi(a.display.type || undefined), () => theme.fg("dim", prefix))
+      : theme.fg("dim", prefix);
+    return truncate(coloredPrefix + theme.fg("dim", parts.join("  ")));
   }
 
   private buildFinishedBlocks(finished: AgentRecord[], theme: Theme, w: number): RenderBlock[] {
@@ -669,7 +674,11 @@ export class AgentWidget {
         const metadataLines: string[] = [];
         const line = this.buildMetadataLine(a, "  │ ", theme, truncate);
         if (line) metadataLines.push(line);
-        metadataLines.push(truncate(theme.fg("dim", "  └ " + activity)));
+        const connectorPrefix = "  └ ";
+        const coloredConnector = applyAgentColor(connectorPrefix, agentColorAnsi(a.display.type || undefined), () =>
+          theme.fg("dim", connectorPrefix),
+        );
+        metadataLines.push(truncate(coloredConnector + theme.fg("dim", activity)));
         blocks.push({
           header: truncate(headerLine),
           metadataLines,

@@ -471,7 +471,9 @@ describe("agentBulletPrefix", () => {
     const result = agentBulletPrefix("colored-agent");
     expect(result).toContain("•");
     expect(result).toMatch(/\x1b\[38;2;\d+;\d+;\d+m/);
-    expect(result).toContain("\x1b[39m");
+    // No fg reset (\x1b[39m) — the outer color context (e.g. accent highlight)
+    // flows through the agent name that follows the bullet.
+    expect(result).not.toContain("\x1b[39m");
     expect(result).toContain(" ");
   });
 

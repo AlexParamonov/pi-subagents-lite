@@ -92,6 +92,7 @@ describe("widget rendering format", () => {
 
       const lines = renderWidgetLines(widget);
       // Activity line is the second line (index 2, after heading)
+      // Connector is colored with agent color (dim fallback)
       expect(lines[2]).toMatch(/^\[dim:  [│└]/);
     });
 
@@ -104,6 +105,7 @@ describe("widget rendering format", () => {
       const lines = renderWidgetLines(widget);
       // line[1] = header, line[2] = outputFile, line[3] = activity
       expect(lines[2]).toContain("tail -f");
+      // Connector is colored with agent color (dim fallback)
       expect(lines[3]).toMatch(/^\[dim:  [│└]/);
       expect(lines[3]).toContain("reading");
     });
@@ -114,6 +116,7 @@ describe("widget rendering format", () => {
       manager.listAgents = () => [agent];
 
       const lines = renderWidgetLines(widget);
+      // Connector is colored with agent color (dim fallback)
       expect(lines[2]).toMatch(/^\[dim:  └/);
     });
   });
@@ -139,6 +142,7 @@ describe("widget rendering format", () => {
       manager.listAgents = () => [a1, a2];
 
       const lines = renderWidgetLines(widget);
+      // Connectors are colored with agent color (dim fallback)
       expect(lines[2]).toMatch(/^\[dim:  [│└]/);
       expect(lines[4]).toMatch(/^\[dim:  [│└]/);
     });
