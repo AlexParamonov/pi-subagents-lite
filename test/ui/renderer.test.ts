@@ -39,6 +39,10 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: (text: string) => text.length,
 }));
 
+vi.mock("../../src/shell.js", () => ({
+  getManager: vi.fn(() => null),
+}));
+
 vi.mock("../../src/ui/format.js", () => ({
   buildStatsParts: vi.fn(() => ["5 uses", "3 turns"]),
   formatMs: vi.fn(() => "1m0s"),
@@ -51,7 +55,14 @@ vi.mock("../../src/ui/format.js", () => ({
 }));
 
 // Import after mocks are set up
-import { renderSubagentResult, renderAgentToolResult } from "../../src/ui/renderer.js";
+import {
+  renderSubagentResult,
+  renderAgentToolResult,
+  registerAgentInvalidation,
+  invalidateAgentRow,
+  cleanupInvalidations,
+} from "../../src/ui/renderer.js";
+import { getManager } from "../../src/shell.js";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -193,5 +204,183 @@ describe("renderAgentToolResult — error icon", () => {
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("✓");
     expect(allText).not.toContain("✗");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  renderAgentToolResult — background agent status indicators        */
+/* ------------------------------------------------------------------ */
+
+describe("renderAgentToolResult — background agent status indicators", () => {
+  beforeEach(() => {
+    textInstances.length = 0;
+    cleanupInvalidations();
+  });
+
+  const backgroundResult = {
+    content: [{ type: "text", text: "[Agent queued] Success! You delegated to an agent." }],
+    details: {
+      type: "builder",
+      description: "Fix vendor approach",
+      agentId: "agent-abc-123",
+      status: "queued",
+    },
+  };
+
+  it("shows ◇ icon and (queued) text when status is queued", () => {
+    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("◇");
+    expect(allText).toContain("(queued)");
+    expect(allText).not.toContain("✓");
+    expect(allText).not.toContain("✗");
+  });
+
+  it("shows ◈ icon and (running) text when status is running", () => {
+    renderAgentToolResult(
+      { ...backgroundResult, details: { ...backgroundResult.details, status: "running" } },
+      { expanded: false },
+      noopTheme,
+      SHOW_COST,
+    );
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("◈");
+    expect(allText).toContain("(running)");
+    expect(allText).not.toContain("✓");
+    expect(allText).not.toContain("✗");
+  });
+
+  it("shows ✓ icon when status is completed", () => {
+    renderAgentToolResult(
+      { ...backgroundResult, details: { ...backgroundResult.details, status: "completed" } },
+      { expanded: false },
+      noopTheme,
+      SHOW_COST,
+    );
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("✓");
+    expect(allText).not.toContain("◇");
+    expect(allText).not.toContain("(queued)");
+    expect(allText).not.toContain("(running)");
+  });
+
+  it("shows ✗ icon when status is error", () => {
+    renderAgentToolResult(
+      { ...backgroundResult, details: { ...backgroundResult.details, status: "error" } },
+      { expanded: false },
+      noopTheme,
+      SHOW_COST,
+    );
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("✗");
+    expect(allText).not.toContain("◇");
+  });
+
+  it("uses live status from manager when agentId is present", () => {
+    const mockManager = {
+      getRecord: vi.fn(() => ({
+        lifecycle: { status: "completed" },
+      })),
+    };
+    vi.mocked(getManager).mockReturnValue(mockManager as any);
+
+    // Details say queued, but manager says completed
+    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("✓");
+    expect(allText).not.toContain("◇");
+    expect(allText).not.toContain("(queued)");
+    expect(mockManager.getRecord).toHaveBeenCalledWith("agent-abc-123");
+
+    vi.mocked(getManager).mockReturnValue(null);
+  });
+
+  it("falls back to details.status when manager returns null", () => {
+    vi.mocked(getManager).mockReturnValue(null);
+
+    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("◇");
+    expect(allText).toContain("(queued)");
+  });
+
+  it("second line has no checkmark when agent is queued", () => {
+    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    // The second line (description) should not have a checkmark prefix
+    expect(allText).toContain("Fix vendor approach");
+    // Check: description line should not start with ✓
+    const lines = allText.split("\n");
+    const descLine = lines.find((l) => l.includes("Fix vendor approach"));
+    expect(descLine).toBeDefined();
+    expect(descLine).not.toMatch(/^\s*✓/);
+  });
+
+  it("second line has no checkmark when agent is running", () => {
+    renderAgentToolResult(
+      { ...backgroundResult, details: { ...backgroundResult.details, status: "running" } },
+      { expanded: false },
+      noopTheme,
+      SHOW_COST,
+    );
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    const lines = allText.split("\n");
+    const descLine = lines.find((l) => l.includes("Fix vendor approach"));
+    expect(descLine).toBeDefined();
+    expect(descLine).not.toMatch(/^\s*✓/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  registerAgentInvalidation / invalidateAgentRow                    */
+/* ------------------------------------------------------------------ */
+
+describe("agent invalidation map", () => {
+  beforeEach(() => {
+    cleanupInvalidations();
+  });
+
+  it("registerAgentInvalidation stores and invalidateAgentRow calls the function", () => {
+    const fn = vi.fn();
+    registerAgentInvalidation("agent-1", fn);
+    invalidateAgentRow("agent-1");
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it("invalidateAgentRow is a no-op for unknown agent ids", () => {
+    const fn = vi.fn();
+    registerAgentInvalidation("agent-1", fn);
+    invalidateAgentRow("agent-unknown");
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("cleanupInvalidations clears all entries", () => {
+    const fn1 = vi.fn();
+    const fn2 = vi.fn();
+    registerAgentInvalidation("agent-1", fn1);
+    registerAgentInvalidation("agent-2", fn2);
+    cleanupInvalidations();
+    invalidateAgentRow("agent-1");
+    invalidateAgentRow("agent-2");
+    expect(fn1).not.toHaveBeenCalled();
+    expect(fn2).not.toHaveBeenCalled();
+  });
+
+  it("registerAgentInvalidation overwrites previous entry for same agent", () => {
+    const fn1 = vi.fn();
+    const fn2 = vi.fn();
+    registerAgentInvalidation("agent-1", fn1);
+    registerAgentInvalidation("agent-1", fn2);
+    invalidateAgentRow("agent-1");
+    expect(fn1).not.toHaveBeenCalled();
+    expect(fn2).toHaveBeenCalledOnce();
   });
 });

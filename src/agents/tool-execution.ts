@@ -221,6 +221,8 @@ export async function executeAgentTool(
     const suffix = `Success! You delegated to an agent. A notification will arrive when done - USER: do not poll, don't check status and don't duplicate the delegated work!\n\nAgent ID: ${agentId}`;
     const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
     const details = buildAgentDetails(record);
+    details.agentId = agentId;
+    details.status = record.lifecycle.status;
     return successResult(`[${label}] ${suffix}`, details);
   }
 
