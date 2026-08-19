@@ -191,6 +191,12 @@ export function agentBulletPrefix(agentType: string | undefined): string {
   return bullet ? `${bullet} ` : "";
 }
 
+/** Wrap text with agent color when showAgentColors is ON and agent has a configured color.
+ * Returns plain text when colors are off, agent has no color, or agentType is undefined. */
+export function agentColoredText(text: string, agentType: string | undefined): string {
+  return applyAgentColor(text, agentColorAnsi(agentType), () => text);
+}
+
 /** Tool name to human-readable action for activity descriptions. */
 const TOOL_DISPLAY: Record<string, string> = {
   read: "reading",

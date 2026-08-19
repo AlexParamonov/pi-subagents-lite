@@ -17,6 +17,7 @@ import {
   describeActivity,
   statusIcon,
   agentBulletPrefix,
+  agentColoredText,
 } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
@@ -488,5 +489,44 @@ describe("agentBulletPrefix", () => {
   it("returns empty string when agentType is undefined", () => {
     const result = agentBulletPrefix(undefined);
     expect(result).toBe("");
+  });
+});
+
+describe("agentColoredText", () => {
+  beforeEach(() => {
+    registerAgents(
+      new Map([
+        ["colored-agent", { name: "colored-agent", description: "Colored", color: "#ff0000", systemPrompt: "" }],
+        ["uncolored-agent", { name: "uncolored-agent", description: "No color", systemPrompt: "" }],
+      ]),
+    );
+    mockShowAgentColors = true;
+  });
+
+  afterEach(() => {
+    mockShowAgentColors = true;
+  });
+
+  it("returns colored text when showAgentColors is true and agent has a color", () => {
+    const result = agentColoredText("my-name", "colored-agent");
+    expect(result).toContain("my-name");
+    expect(result).toMatch(/\x1b\[38;2;\d+;\d+;\d+m/);
+    expect(result).toContain("\x1b[39m");
+  });
+
+  it("returns plain text when showAgentColors is true but agent has no color", () => {
+    const result = agentColoredText("my-name", "uncolored-agent");
+    expect(result).toBe("my-name");
+  });
+
+  it("returns plain text when showAgentColors is false", () => {
+    mockShowAgentColors = false;
+    const result = agentColoredText("my-name", "colored-agent");
+    expect(result).toBe("my-name");
+  });
+
+  it("returns plain text when agentType is undefined", () => {
+    const result = agentColoredText("my-name", undefined);
+    expect(result).toBe("my-name");
   });
 });

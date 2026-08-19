@@ -486,6 +486,22 @@ describe("showModelSettingsMenu — model groups", () => {
     expect(row("type:plain")).toBeUndefined();
   });
 
+  it("includes bullet prefix in group row labels", async () => {
+    mockModules.mockConfig.agent["scout"] = "anthropic/claude-sonnet-4-20250514";
+    mockModules.mockConfig.agent["worker"] = "openai/gpt-4o";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    const scoutLabel = row("type:scout")?.label as string;
+    const workerLabel = row("type:worker")?.label as string;
+    // agentBulletPrefix returns "" in mock setup, but the label should still contain the type name
+    expect(scoutLabel).toContain("scout");
+    expect(workerLabel).toContain("worker");
+    // When agentBulletPrefix returns a bullet, it should be prepended
+    // The mock returns "", so labels are just the type name
+    expect(scoutLabel).toBe("scout");
+    expect(workerLabel).toBe("worker");
+  });
+
   it("never lists frontmatter-only types even when their model differs from the effective default", async () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);

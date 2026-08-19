@@ -184,7 +184,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       for (const row of group.rows) {
         items.push({
           id: `type:${row.type}`,
-          label: row.type,
+          label: `${agentBulletPrefix(row.type)}${row.type}`,
           currentValue: `${row.thinking.padEnd(THINKING_COLUMN_WIDTH)} ${row.tag}`,
           description: `Model for the ${row.type} agent type. Select to set or clear its override.`,
           // Every listed row carries an explicit per-type override, so Clear is always offered.

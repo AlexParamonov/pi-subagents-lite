@@ -27,8 +27,7 @@ import {
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
-import { getDisplayName } from "../format.js";
-import { agentBulletPrefix } from "../format.js";
+import { getDisplayName, agentBulletPrefix } from "../format.js";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
