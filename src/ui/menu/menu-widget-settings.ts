@@ -258,7 +258,6 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
       case "finishedRetention":
-      case "agentStatusLimit":
         // Handled by the numeric submenu, not onChange
         break;
     }
@@ -289,7 +288,7 @@ export async function showWidgetSettingsMenu(ctx: ExtensionCommandContext): Prom
     {
       value: "behavior",
       label: "Behavior",
-      description: "Shortcuts, completion cards, thinking buffer, retention, agent status limit",
+      description: "Shortcuts, finished agent retention",
     },
     { value: "stats", label: "Stats", description: "Toggle which usage stats appear in the widget" },
   ];

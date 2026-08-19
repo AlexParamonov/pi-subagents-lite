@@ -108,7 +108,7 @@ export async function showGeneralSettingsMenu(ctx: ExtensionCommandContext): Pro
     }
   };
 
-  let rebuild: ((items: any[]) => void) | undefined;
+  let rebuild: ((items: SettingItem[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const items = buildItems(ctx, store);
