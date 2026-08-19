@@ -27,8 +27,7 @@ import {
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
-import { getDisplayName } from "../format.js";
-import { agentBulletPrefix } from "../format.js";
+import { getDisplayName, agentBulletPrefix, agentColoredText } from "../format.js";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
@@ -268,9 +267,10 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         const headline = record.display.description ? record.display.description : "";
         const suffix = headline ? ` \u2014 ${headline}` : "";
         const bullet = agentBulletPrefix(record.display.type);
+        const coloredType = agentColoredText(record.display.type, record.display.type);
         return {
           value: record.id,
-          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
+          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${coloredType}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
         };
       });
       if (running.length > 0) {

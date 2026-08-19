@@ -198,6 +198,7 @@ vi.mock("../src/ui/searchable-select.js", () => ({
 vi.mock("../src/ui/format.js", () => ({
   getDisplayName: vi.fn((t: string) => t),
   agentBulletPrefix: vi.fn(() => ""),
+  agentColoredText: vi.fn((text: string) => text),
 }));
 
 vi.mock("../src/config/config-io.js", async () => {

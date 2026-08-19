@@ -15,6 +15,7 @@ import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
+import { agentBulletPrefix } from "../format.js";
 import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
@@ -168,7 +169,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
       const items: SettingItem[] = types.map((t) => ({
         id: t,
-        label: t,
+        label: `${agentBulletPrefix(t)}${t}`,
         currentValue: t,
         description: getAgentConfig(t)?.description ?? "Agent type",
         submenu: (_v: string, _subDone: (value?: string) => void) => {

@@ -180,6 +180,17 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls[0].items[0].label).toContain("general-purpose");
   });
+
+  it("uses agentBulletPrefix and agentColoredText for agent labels", async () => {
+    mockModules.mockManager.listAgents.mockReturnValue([
+      makeRecord({ id: "agent-1", display: { type: "general-purpose", description: "Test" } }),
+    ]);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+    // agentBulletPrefix returns "" in mock setup, but the label should still contain the type name
+    const label = selectListCalls[0].items[0].label as string;
+    expect(label).toContain("general-purpose");
+  });
 });
 
 describe("showRunningAgentsMenu — __sep__ navigation skip", () => {

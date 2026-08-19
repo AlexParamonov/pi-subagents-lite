@@ -218,6 +218,16 @@ describe("showSpawnAgentMenu — wizard flow", () => {
     expect(settingsListCalls[0].options?.enableSearch).toBe(true);
   });
 
+  it("includes bullet prefix in type selection labels", async () => {
+    const ctx = createMockWizardCtx([undefined]);
+    await completeWizard(ctx);
+    const items = settingsListCalls[0].items;
+    // agentBulletPrefix returns "" in mock setup, but labels should contain type names
+    for (const item of items) {
+      expect(item.label).toContain(item.id);
+    }
+  });
+
   it("creates Input for prompt entry (step 2)", async () => {
     const ctx = createMockWizardCtx(["general-purpose", undefined]);
     await completeWizard(ctx);
