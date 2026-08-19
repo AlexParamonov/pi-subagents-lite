@@ -118,6 +118,12 @@ Tool and extension lists accept built-in names (`read`, `bash`, `edit`, `write`,
 
 Subagents cannot spawn further subagents.
 
+### Worktree paths and trust
+
+`worktree_path` accepts a path inside any git repository on disk: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
+
+Cross-repo targets are gated by pi's existing trust framework. The target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting. Anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, the extension's project config (`.pi/subagents-lite.json`) is not loaded, and pi surfaces a warning. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
+
 ## Model resolution
 
 Precedence, highest first:
@@ -135,60 +141,21 @@ Precedence, highest first:
 
 ## Settings
 
-All settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly.
+Global settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly. 
 
-### Configuration reference
+`/agents` covers model settings per-type overrides, concurrency, widget, spawn defaults (thinking, max turns, force-background), system prompt mode, watchdog timeouts.
 
-```json
-{
-  "agent": {
-    "default": "zai/glm-5.2",
-    "forceBackground": true,
-    "graceTurns": 6,
-    "showCost": true,
-    "showTools": false,
-    "showTurns": true,
-    "showInput": true,
-    "showOutput": true,
-    "showContext": true,
-    "showTime": true,
-    "widgetMaxLines": 12,
-    "widgetMaxLinesCompact": 6,
-    "widgetCompact": true,
-    "showCompletionCards": true,
-    "widgetShortcut": false,
-    "finishedRetentionMinutes": 1,
-    "modelDisplayStyle": "name",
-    "modelThinkingPlacement": "metadata",
-    "statusBarFormat": "full",
-    "agentToolStrictMode": false,
-    "toolTimeoutMinutes": 45,
-    "idleTimeoutMinutes": 45,
-    "systemPromptMode": "inherit",
-    "includeContextFiles": true,
-    "loadSkillsImplicitly": false,
-    "loadExtensionsImplicitly": false,
-    "disableDefaultAgents": false,
-    "outputTranscript": true,
-    "Explore": "xiaomi/mimo-v2.5",
-    "builder": "xiaomi/mimo-v2-pro",
-    "architecture-reviewer": "zai/glm-5.2",
-    "planner": "zai/glm-5.2"
-  },
-  "concurrency": {
-    "default": 4,
-    "providers": {
-      "llamacpp": 1,
-      "ai.lan": 2
-    },
-    "models": {}
-  }
-}
+```
+Settings
+
+→ Model settings                  Set global default and per-type model overrides
+  Concurrency settings            Set per-model slot limits
+  Spawn options                   Default thinking, max turns, background, grace turns
+  System prompt                   Prompt mode, custom prompt file, AGENTS.md
+  Widget settings                 Configure widget display options
 ```
 
-Widget, stats visibility, and spawn defaults are all under `/agents` > Settings. Per-type model overrides are dynamic keys alongside the special fields.
-
-`agentToolStrictMode` makes Agent-tool sampling use strict json_schema, which produces fewer malformed calls at a higher token cost.
+Widget is higly customizable as the rest of the extension
 
 ### Project-level config
 
@@ -203,12 +170,6 @@ A project can commit its own defaults as `.pi/subagents-lite.json` (same file na
 - `custom` uses `~/.pi/agent/subagents-lite-prompt.md` plus the agent's instructions.
 
 When `includeContextFiles` is `true` (default), AGENTS.md files load as shared context before agent instructions, which improves KV cache prefix hits.
-
-### Worktree paths and trust
-
-`worktree_path` accepts a path inside any git repository on disk: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
-
-Cross-repo targets are gated by pi's existing trust framework. The target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting. Anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, the extension's project config (`.pi/subagents-lite.json`) is not loaded, and pi surfaces a warning. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
 
 ### Watchdog
 
