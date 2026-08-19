@@ -87,7 +87,6 @@ tools: read, bash, grep
 extensions: none
 skills: all
 thinking: high
-color: red
 max_turns: "50"
 max_tokens: "2048"
 hidden: "false"
@@ -98,7 +97,6 @@ This is the system prompt body.
     const result = parseAgentFile(content, "user");
     expect(result.name).toBe("explorer");
     expect(result.display_name).toBe("Explorer Agent");
-    expect(result.color).toBe("red");
     expect(result.description).toBe("A fast exploration agent");
     expect(result.model).toBe("anthropic/claude-haiku-4-5-20251001");
     expect(result.tools).toEqual(["read", "bash", "grep"]);
@@ -662,29 +660,5 @@ describe("mergeAgents", () => {
     // Each layer's explicitly-set field survives; unset fields stay undefined (→ global).
     expect(agent.includeContextFiles).toBe(false);
     expect(agent.includeSystemPrompt).toBe(false);
-  });
-
-  it("color propagates from frontmatter through mergeAgents", () => {
-    const defaults = new Map<string, AgentConfig>();
-    const userAgents: AgentConfigFromMd[] = [{ name: "explorer", color: "red", source: "user", systemPrompt: "" }];
-    const result = mergeAgents(defaults, userAgents, [], []);
-    expect(result.get("explorer")?.color).toBe("red");
-  });
-
-  it("project color overrides user color", () => {
-    const defaults = new Map<string, AgentConfig>();
-    const userAgents: AgentConfigFromMd[] = [{ name: "explorer", color: "red", source: "user", systemPrompt: "" }];
-    const projectAgents: AgentConfigFromMd[] = [
-      { name: "explorer", color: "blue", source: "project", systemPrompt: "" },
-    ];
-    const result = mergeAgents(defaults, userAgents, [], projectAgents);
-    expect(result.get("explorer")?.color).toBe("blue");
-  });
-
-  it("color is undefined when not specified in frontmatter", () => {
-    const defaults = new Map<string, AgentConfig>();
-    const userAgents: AgentConfigFromMd[] = [{ name: "explorer", source: "user", systemPrompt: "" }];
-    const result = mergeAgents(defaults, userAgents, [], []);
-    expect(result.get("explorer")?.color).toBeUndefined();
   });
 });

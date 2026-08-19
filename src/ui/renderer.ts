@@ -14,7 +14,6 @@ import {
   resolveModelLabel,
   statusIcon,
 } from "./format.js";
-import { renderAgentBadge } from "../agent-color.js";
 import { getManager } from "../shell.js";
 
 // --- Stats rendering helpers ---
@@ -25,10 +24,9 @@ export function agentNameLabel(
   theme: Theme,
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
-  const agentType = (d.type as string) || "";
-  const nameText = renderAgentBadge(agentType, theme);
+  const typeName = getDisplayName((d.type as string) || "");
   const tag = modelTag(d, theme, modelDisplayStyle);
-  return tag ? `${nameText} ${theme.fg("dim", tag)}` : nameText;
+  return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
 
 function modelTag(d: Record<string, unknown>, theme: Theme, modelDisplayStyle: "id" | "name" = "id"): string {
@@ -87,35 +85,73 @@ export function renderAgentToolCall(
   theme: Theme,
   context?: { state?: Record<string, unknown>; toolCallId?: string },
 ): Text {
-  const agentType = (args.agent as string) || "";
-  const label = getDisplayName(agentType) || "Agent";
-  const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
+  const typeName = getDisplayName((args.agent as string) || "");
+  const label = typeName || "Agent";
 
-  // Resolve live agentId and status from manager
-  let agentId = context?.state?.agentId as string | undefined;
-  if (!agentId) {
-    const toolCallId = context?.toolCallId as string | undefined;
-    if (toolCallId) {
-      const manager = getManager();
-      if (manager) {
-        const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
-        if (record) {
-          agentId = record.id;
-          if (context?.state) {
-            context.state.agentId = agentId;
-            if (isBackground) context.state.isBackground = true;
+  // Background agents: show live status from manager, fallback to queued state
+  // Check args.run_in_background (initial render) OR context.state.isBackground (re-render after result)
+  const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
+  let icon: string;
+
+  if (isBackground) {
+    // Look up live status from manager using stored agentId
+    // Try context.state first, then toolCallId from manager records
+    let agentId = context?.state?.agentId as string | undefined;
+    if (!agentId) {
+      // Find agent by toolCallId from context
+      const toolCallId = context?.toolCallId as string | undefined;
+      if (toolCallId) {
+        const manager = getManager();
+        if (manager) {
+          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
+          if (record) {
+            agentId = record.id;
+            if (context?.state) {
+              context.state.agentId = agentId;
+              context.state.isBackground = true;
+            }
           }
         }
       }
     }
-  }
-  const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-  const status = liveRecord?.lifecycle.status ?? (isBackground ? "queued" : undefined);
-  const icon = statusIcon(status, theme);
+    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
+    const status = liveRecord?.lifecycle.status ?? "queued";
+    icon = statusIcon(status, theme);
+    let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
-  // Shared: badge name + optional model override
-  const nameText = renderAgentBadge(agentType, theme, (n) => theme.fg("accent", theme.bold(n)));
-  let text = `${icon} ${nameText}`;
+    const modelOverride = args._modelOverride as string | undefined;
+    if (modelOverride) {
+      text += ` (${modelOverride})`;
+    }
+
+    return new Text(text, 0, 0);
+  } else {
+    // Foreground agents: look up live status from manager using stored agentId
+    let agentId = context?.state?.agentId as string | undefined;
+    if (!agentId) {
+      // Find agent by toolCallId from context
+      const toolCallId = context?.toolCallId as string | undefined;
+      if (toolCallId) {
+        const manager = getManager();
+        if (manager) {
+          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
+          if (record) {
+            agentId = record.id;
+            if (context?.state) {
+              context.state.agentId = agentId;
+            }
+          }
+        }
+      }
+    }
+    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
+    const status = liveRecord?.lifecycle.status;
+    icon = statusIcon(status, theme);
+  }
+
+  // Build the call line text
+  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
+
   const modelOverride = args._modelOverride as string | undefined;
   if (modelOverride) {
     text += ` (${modelOverride})`;
@@ -229,9 +265,7 @@ function buildFallbackResultLine(
   const icon = theme.fg("success", "✓");
   let line = icon;
   if (d?.type) {
-    const agentType = d.type as string;
-    const nameText = renderAgentBadge(agentType, theme, () => agentNameLabel(d, theme, modelDisplayStyle));
-    line += ` ${nameText}`;
+    line += ` ${agentNameLabel(d, theme, modelDisplayStyle)}`;
   }
   const desc = (d?.description as string) || "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;

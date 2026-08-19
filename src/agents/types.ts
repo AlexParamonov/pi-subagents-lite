@@ -29,7 +29,6 @@ export interface AgentConfig {
   skills?: true | string[] | false;
   /** Skills to preload with full content into system prompt. string[] = listed, false/undefined = none */
   preloadSkills?: string[] | false;
-  color?: string;
   model?: string;
   thinkingLevel?: ThinkingLevel;
   maxTurns?: number;

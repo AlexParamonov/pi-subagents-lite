@@ -21,7 +21,6 @@ import { parseThinkingLevel } from "../utils.js";
 export interface AgentConfigFromMd {
   name?: string;
   display_name?: string;
-  color?: string;
   description?: string;
   tools?: string[];
   exclude_tools?: string[];
@@ -235,7 +234,6 @@ export function parseAgentFile(content: string, source: "user" | "project"): Age
   return {
     name: parseString(frontmatter, "name"),
     display_name: parseString(frontmatter, "display_name"),
-    color: parseString(frontmatter, "color"),
     description: parseString(frontmatter, "description"),
     tools: parseStringArray(frontmatter, "tools"),
     exclude_tools: parseStringArray(frontmatter, "exclude_tools"),
@@ -352,7 +350,6 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
   const obj: Record<string, unknown> = {
     name: md.name,
     displayName: md.display_name,
-    color: md.color,
     description: md.description,
     registeredTools: md.tools,
     tools: md.tools,
