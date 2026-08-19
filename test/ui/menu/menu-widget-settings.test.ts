@@ -352,17 +352,10 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i) => i.id);
-    expect(ids).toEqual([
-      "finishedRetention",
-      "agentStatusLimit",
-      "__sep__",
-      "shortcut",
-      "showCompletionCards",
-      "thinkingBuffer",
-    ]);
+    expect(ids).toEqual(["finishedRetention", "__sep__", "shortcut"]);
 
-    const item = settingsListCalls[0].items.find((i) => i.id === "showCompletionCards")!;
-    expect(item.label).toBe("Show completion cards");
+    const item = settingsListCalls[0].items.find((i) => i.id === "shortcut")!;
+    expect(item.label).toBe("Ctrl+o shortcut");
     expect(typeof item.description).toBe("string");
   });
 
@@ -374,71 +367,11 @@ describe("showWidgetSettingsMenu — Behavior submenu", () => {
     expect(mockModules.mockConfig.agent.widgetShortcut).toBe(true);
   });
 
-  it("completion visibility onChange toggles store and refreshes chat cards", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    settingsListCalls[0].onChange("showCompletionCards", "OFF");
-    expect(mockModules.mockConfig.agent.showCompletionCards).toBe(false);
-    // Cards already in the transcript only re-render when the host rebuilds them,
-    // so the toggle must request a chat refresh...
-    expect(ctx.ui.setToolsExpanded).toHaveBeenCalled();
-    // ...and the refresh must leave the user's tool-output expansion state untouched.
-    expect(ctx.ui.getToolsExpanded()).toBe(false);
-  });
-
-  it("thinkingBuffer onChange updates numeric value", async () => {
-    mockModules.mockConfig.agent.outputThinkingBufferSize = 0;
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    settingsListCalls[0].onChange("thinkingBuffer", "500");
-    expect(mockModules.mockConfig.agent.outputThinkingBufferSize).toBe(500);
-  });
-
-  it("thinkingBuffer OFF sets to 0", async () => {
-    mockModules.mockConfig.agent.outputThinkingBufferSize = 200;
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    settingsListCalls[0].onChange("thinkingBuffer", "OFF");
-    expect(mockModules.mockConfig.agent.outputThinkingBufferSize).toBe(0);
-  });
-
   it("finishedRetention has submenu", async () => {
     const ctx = createDispatchCtx("behavior");
     await showWidgetSettingsMenu(ctx);
     const item = settingsListCalls[0].items.find((i) => i.id === "finishedRetention")!;
     expect(typeof item.submenu).toBe("function");
-  });
-
-  it("agentStatusLimit has a numeric submenu", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
-    expect(typeof item.submenu).toBe("function");
-  });
-
-  it("agentStatusLimit shows 0 (auto) when unset", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
-    expect(item.currentValue).toBe("0");
-    expect(typeof item.description).toBe("string");
-  });
-
-  it("agentStatusLimit shows the explicit value when set", async () => {
-    mockModules.mockConfig.agent.agentStatusLimit = 12;
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
-    expect(item.currentValue).toBe("12");
-  });
-
-  it("agentStatusLimit submenu submit persists the value", async () => {
-    const ctx = createDispatchCtx("behavior");
-    await showWidgetSettingsMenu(ctx);
-    const item = settingsListCalls[0].items.find((i) => i.id === "agentStatusLimit")!;
-    item.submenu!("0", () => {});
-    inputInstances[0].onSubmit!("15");
-    expect(mockModules.mockConfig.agent.agentStatusLimit).toBe(15);
   });
 
   it("has title 'Behavior'", async () => {

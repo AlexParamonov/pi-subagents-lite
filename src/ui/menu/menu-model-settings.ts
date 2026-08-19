@@ -18,6 +18,7 @@ import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
 import type { Theme } from "../types.js";
 import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect } from "./helpers.js";
+import { agentBulletPrefix } from "../format.js";
 import { createModelSelectSubmenu } from "./submenus/model-select.js";
 import { createClearAllSubmenu, type AvailableLevels, type TargetChoice } from "./submenus/target-select.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
@@ -206,7 +207,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         description: "Add a model override for an agent type that currently inherits.",
         submenu: (_currentValue, subDone) =>
           createSearchableSelect(
-            nonOverridden.map((typeName) => ({ value: typeName, label: typeName })),
+            nonOverridden.map((typeName) => ({ value: typeName, label: `${agentBulletPrefix(typeName)}${typeName}` })),
             {
               onSelect: (typeName) => {
                 const effectiveModel = store.modelFor(typeName, parentModelId, getAgentConfig(typeName));

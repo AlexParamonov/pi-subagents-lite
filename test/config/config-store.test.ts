@@ -35,6 +35,7 @@ describe("ConfigStore reads", () => {
     expect(store.agent.finishedRetentionMinutes).toBe(1);
     expect(store.agent.toolTimeoutMinutes).toBe(45);
     expect(store.agent.idleTimeoutMinutes).toBe(45);
+    expect(store.agent.showAgentColors).toBe(true);
   });
 
   it("derives widgetMaxLinesCompact from widgetMaxLines when absent", () => {

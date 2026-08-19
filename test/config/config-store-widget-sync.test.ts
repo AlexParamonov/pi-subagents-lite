@@ -255,6 +255,7 @@ describe("ConfigStore clearAllModelOverrides preserves widget-sync non-model set
           outputThinkingBufferSize: 500,
           modelThinkingPlacement: "metadata",
           outputTranscript: false,
+          showAgentColors: false,
           Explore: "m1",
         },
       },
@@ -265,6 +266,36 @@ describe("ConfigStore clearAllModelOverrides preserves widget-sync non-model set
     expect(snap.outputThinkingBufferSize).toBe(500);
     expect(snap.modelThinkingPlacement).toBe("metadata");
     expect(snap.outputTranscript).toBe(false);
+    expect(snap.showAgentColors).toBe(false);
     expect(snap.Explore).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  showAgentColors                                                    */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore showAgentColors", () => {
+  it("defaults to true", () => {
+    const store = new ConfigStore(minimalIO());
+    expect(store.agent.showAgentColors).toBe(true);
+  });
+
+  it("can be toggled off via mutate.agent.setShowAgentColors", () => {
+    const { io, saves } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setShowAgentColors(false);
+    expect(store.agent.showAgentColors).toBe(false);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(saves[0].config.agent!.showAgentColors).toBe(false);
+  });
+
+  it("can be toggled back on", () => {
+    const { io } = memIO({ global: { agent: { showAgentColors: false } } });
+    const store = new ConfigStore(io);
+    expect(store.agent.showAgentColors).toBe(false);
+    store.mutate.agent.setShowAgentColors(true);
+    expect(store.agent.showAgentColors).toBe(true);
   });
 });

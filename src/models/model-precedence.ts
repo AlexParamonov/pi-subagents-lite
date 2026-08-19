@@ -63,6 +63,8 @@ export interface SubagentsConfig {
     showTime?: boolean;
     /** Whether to stream the agent transcript to the output file. Default: false. */
     outputTranscript?: boolean;
+    /** When true, agent colors (spinner, status icons, picker bullets) are enabled. Default: true. */
+    showAgentColors?: boolean;
 
     /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
     outputThinkingBufferSize?: number;

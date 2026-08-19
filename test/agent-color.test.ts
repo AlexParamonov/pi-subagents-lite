@@ -26,13 +26,26 @@ describe("resolveAgentColor", () => {
   });
 
   describe("agency agents palette aliases", () => {
-    it.each(["amber", "teal", "indigo", "gold", "neon-green", "neon-cyan", "metallic-blue", "violet", "rose", "lime", "gray", "grey", "fuchsia", "slate", "navy"])(
-      "resolves '%s' to a valid hex",
-      (name) => {
-        const hex = resolveAgentColor(name);
-        expect(hex).toMatch(HEX_RE);
-      },
-    );
+    it.each([
+      "amber",
+      "teal",
+      "indigo",
+      "gold",
+      "neon-green",
+      "neon-cyan",
+      "metallic-blue",
+      "violet",
+      "rose",
+      "lime",
+      "gray",
+      "grey",
+      "fuchsia",
+      "slate",
+      "navy",
+    ])("resolves '%s' to a valid hex", (name) => {
+      const hex = resolveAgentColor(name);
+      expect(hex).toMatch(HEX_RE);
+    });
   });
 
   describe("hex colors", () => {

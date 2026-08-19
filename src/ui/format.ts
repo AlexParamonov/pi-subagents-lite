@@ -5,16 +5,32 @@
  * the UI layer. Previously scattered across agent-widget.ts, output-file.ts,
  * and agent-types.ts by historical accident.
  *
- * Pure functions — no module-level state, no side effects.
+ * Display formatting helpers with minimal runtime dependencies (config store, agent registry).
+ *
+ * Color-gated functions use applyAgentColor to check the showAgentColors toggle
+ * via getStore() and disable agent-specific coloring globally.
  */
 
 import { getAgentConfig } from "../agents/agent-types.js";
 import { agentColorAnsi } from "../agent-color.js";
+import { getStore } from "../shell.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 import type { ModelThinkingPlacement } from "../config/types.js";
+
+// ---- Agent color toggle ----
+
+/** Wrap text with an agent's ANSI color when showAgentColors is ON and a color is available.
+ * @param text the text to wrap
+ * @param ansiColor raw ANSI foreground code from agentColorAnsi()
+ * @param fallback called when colors are off or no agent color is configured
+ */
+export function applyAgentColor(text: string, ansiColor: string, fallback: () => string): string {
+  if (!getStore().agent.showAgentColors) return fallback();
+  return ansiColor ? `${ansiColor}${text}\u001b[39m` : fallback();
+}
 
 // ---- Status icons ----
 
@@ -36,11 +52,7 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
 export function statusIcon(status: string | undefined, theme: Theme, agentType?: string): string {
   const entry = STATUS_ICON[status as AgentStatus];
   if (!entry) return "▸";
-  const colorAnsi = agentColorAnsi(agentType);
-  if (colorAnsi) {
-    return `${colorAnsi}${entry.icon}\u001b[39m`;
-  }
-  return theme.fg(entry.color, entry.icon);
+  return applyAgentColor(entry.icon, agentColorAnsi(agentType), () => theme.fg(entry.color, entry.icon));
 }
 
 // ---- Internal helpers (used by buildStatsParts) ----
@@ -169,6 +181,14 @@ export function buildStatsParts(
 export function getDisplayName(type: SubagentType): string {
   const config = getAgentConfig(type);
   return config?.displayName ?? config?.name ?? "Agent";
+}
+
+/** Colored bullet prefix for agent names in pickers/menus.
+ * Returns "• " with agent color when showAgentColors is ON and agent has a configured color,
+ * or empty string when colors are off or agent has no color. */
+export function agentBulletPrefix(agentType: string | undefined): string {
+  const bullet = applyAgentColor("•", agentColorAnsi(agentType), () => "");
+  return bullet ? `${bullet} ` : "";
 }
 
 /** Tool name to human-readable action for activity descriptions. */

@@ -39,4 +39,5 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "modelThinkingPlacement",
   "statusBarFormat",
   "outputTranscript",
+  "showAgentColors",
 ];

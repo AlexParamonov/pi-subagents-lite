@@ -9,18 +9,32 @@
  * hidden) from the type registry, falling back to name / "Agent".
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   buildStatsParts,
   getDisplayName,
   buildMetadataLineParts,
   describeActivity,
   statusIcon,
+  agentBulletPrefix,
 } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 import type { AgentRecord } from "../../src/types.js";
 import { asAgentSession } from "../pi-boundaries.js";
+
+// Mutable mock store state for testing functions that depend on getStore()
+let mockShowAgentColors = true;
+
+vi.mock("../../src/shell.js", () => ({
+  getStore: () => ({
+    agent: {
+      get showAgentColors() {
+        return mockShowAgentColors;
+      },
+    },
+  }),
+}));
 
 const mockTheme = {
   fg: (_color: string, text: string) => text,
@@ -423,5 +437,56 @@ describe("statusIcon", () => {
     const result = statusIcon("completed", theme, "red-agent");
     expect(result).toContain("✓");
     expect(result).toMatch(/\x1b\[38;2;\d+;\d+;\d+m/);
+  });
+
+  it("falls back to theme.fg when showAgentColors is false", () => {
+    const theme = makeTrackingTheme();
+    mockShowAgentColors = false;
+    const result = statusIcon("running", theme, "red-agent");
+    // Should use theme.fg, not agent color ANSI
+    expect(result).toBe("[accent:◈]");
+    expect(theme.calls).toHaveLength(1);
+    expect(theme.calls[0].color).toBe("accent");
+    mockShowAgentColors = true;
+  });
+});
+
+describe("agentBulletPrefix", () => {
+  beforeEach(() => {
+    registerAgents(
+      new Map([
+        ["colored-agent", { name: "colored-agent", description: "Colored", color: "#ff0000", systemPrompt: "" }],
+        ["uncolored-agent", { name: "uncolored-agent", description: "No color", systemPrompt: "" }],
+      ]),
+    );
+    mockShowAgentColors = true;
+  });
+
+  afterEach(() => {
+    mockShowAgentColors = true;
+  });
+
+  it("returns colored bullet when showAgentColors is true and agent has a color", () => {
+    const result = agentBulletPrefix("colored-agent");
+    expect(result).toContain("•");
+    expect(result).toMatch(/\x1b\[38;2;\d+;\d+;\d+m/);
+    expect(result).toContain("\x1b[39m");
+    expect(result).toContain(" ");
+  });
+
+  it("returns empty string when showAgentColors is true but agent has no color", () => {
+    const result = agentBulletPrefix("uncolored-agent");
+    expect(result).toBe("");
+  });
+
+  it("returns empty string when showAgentColors is false", () => {
+    mockShowAgentColors = false;
+    const result = agentBulletPrefix("colored-agent");
+    expect(result).toBe("");
+  });
+
+  it("returns empty string when agentType is undefined", () => {
+    const result = agentBulletPrefix(undefined);
+    expect(result).toBe("");
   });
 });
