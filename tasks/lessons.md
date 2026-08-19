@@ -170,6 +170,12 @@
 - Split big suites at the existing describe boundaries and extract the shared fakes (in-memory IO, call-recording stubs) into a `*-helpers.ts` — moving tests unchanged keeps the split verifiable by test count.
 - Node builtin ESM namespaces (node:os, node:fs) reject `vi.spyOn` — "namespace is not configurable in ESM". Fake a home dir with a partial `vi.mock("node:os", async (importOriginal) => ({ ...(await importOriginal()), homedir: vi.fn() }))` so the rest of the module (tmpdir, etc.) stays real.
 - Mocking a schema library (TypeBox) produces mock-specific shapes: the hand-rolled mock emitted `optional: true`, which real TypeBox never does — optionality is absence from the parent `required` array. Assert against the real library; a mock that drifts from the real output lets tests pin a shape production never emits.
+## pi-tui Rendering
+
+- pi-tui's ToolExecutionComponent renders tool calls in phases: initial render, markExecutionStarted, setArgsComplete, updateResult. The AgentManager's onStart callback fires BEFORE pi's tool_execution_start event, so the ToolExecutionComponent doesn't exist yet when onStart fires. Use pi's render lifecycle events, not AgentManager callbacks, for UI updates.
+- context.state in pi-tui's ToolRenderContext is shared across call and result renderers via rendererState. Store data in context.state during result render to make it available to call renderer on re-render.
+- When the call renderer needs data that isn't in context.state initially, search by description or other stable identifiers. Store the found data in context.state for future renders.
+
 ## Orchestration
 
 - Never edit source files directly, even for a small, well-understood change — route through the loop pipeline (grill → write-issue → worktree → builder → review → merge). Direct edits get reverted and the work redone.
