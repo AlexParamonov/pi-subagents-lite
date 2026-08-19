@@ -32,10 +32,16 @@ export function ensureManagerAndWidget(): void {
 
   if (!currentManager) {
     // Coordinator needs the manager, so wire onComplete after creating it.
+    // Invalidate row when agent starts running (queued → running transition)
+    const onStart = (record: AgentRecord) => {
+      invalidateAgentRow(record.id);
+      getWidget()?.update();
+    };
+
     const newManager = new AgentManager(
       undefined,
       getStore().concurrency as unknown as ConstructorParameters<typeof AgentManager>[1],
-      undefined,
+      onStart,
     );
     setManager(newManager);
     // Sync the manager as a config side-effect target (concurrency setters call setConcurrency).
