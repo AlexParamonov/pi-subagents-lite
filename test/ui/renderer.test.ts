@@ -160,6 +160,36 @@ describe("renderSubagentResult — worktree path display", () => {
   });
 });
 
+describe("renderSubagentResult — status icon", () => {
+  beforeEach(() => {
+    textInstances.length = 0;
+  });
+
+  it.each([
+    ["queued", "◆"],
+    ["running", "◈"],
+    ["completed", "✓"],
+    ["turn_limited", "✓"],
+    ["error", "✗"],
+    ["aborted", "✗"],
+    ["stopped", "■"],
+    ["unknown-status", "▸"],
+  ])("shows %s icon for status %s", (status, icon) => {
+    renderSubagentResult(
+      {
+        content: "Agent output",
+        details: { type: "builder", description: "Build something", turnCount: 5, status },
+      },
+      { expanded: false },
+      noopTheme,
+      SHOW_COST,
+    );
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain(icon);
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  renderAgentToolResult — icon tests                                */
 /* ------------------------------------------------------------------ */
@@ -210,7 +240,7 @@ describe("renderAgentToolResult — error icon", () => {
   });
 
   it("shows stats + description for foreground agent when isError is undefined", () => {
-    renderAgentToolResult({ ...baseResult }, { expanded: false }, noopTheme, SHOW_COST, "id", {
+    renderAgentToolResult(baseResult, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
@@ -220,6 +250,19 @@ describe("renderAgentToolResult — error icon", () => {
     expect(allText).toContain("3 turns");
     expect(allText).toContain("Test agent");
     expect(allText).not.toContain("Builder");
+  });
+
+  it("shows model tag before stats in the foreground result line", () => {
+    renderAgentToolResult(
+      { ...baseResult, details: { ...baseResult.details, modelName: "Sonnet", modelId: "claude-sonnet-4-5" } },
+      { expanded: false },
+      noopTheme,
+      SHOW_COST,
+      "id",
+    );
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("(claude-sonnet-4-5)·");
   });
 });
 
@@ -411,13 +454,12 @@ describe("renderAgentToolCall — background agent icon", () => {
     textInstances.length = 0;
   });
 
-  it("shows ◇ icon for foreground agents (initial state)", () => {
+  it("shows ▸ icon for foreground agents", () => {
     renderAgentToolCall({ agent: "builder" }, noopTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("◇");
+    expect(allText).toContain("▸");
     expect(allText).toContain("Builder");
-    expect(allText).not.toContain("◆");
   });
 
   it("shows ◆ icon for background agents (queued state)", () => {
@@ -429,12 +471,11 @@ describe("renderAgentToolCall — background agent icon", () => {
     expect(allText).not.toContain("◇");
   });
 
-  it("shows ◇ icon when run_in_background is false", () => {
+  it("shows ▸ icon when run_in_background is false", () => {
     renderAgentToolCall({ agent: "builder", run_in_background: false }, noopTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("◇");
-    expect(allText).not.toContain("▸");
+    expect(allText).toContain("▸");
   });
 
   it("shows model override when present", () => {
