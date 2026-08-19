@@ -9,6 +9,8 @@
  */
 
 import type { Theme } from "./ui/types.js";
+import { getDisplayName } from "./ui/format.js";
+import { getAgentConfig } from "./agents/agent-types.js";
 
 // --- Named color maps (identical to fork) ---
 
@@ -132,6 +134,18 @@ export function themeForBadge(theme: Theme): AgentNameTheme {
     bold: (text) => theme.bold(text),
     getColorMode: () => "truecolor",
   };
+}
+
+// --- Shared badge helper ---
+
+/** Render agent name as a colored badge when the agent has a configured color, or fall back to a theme-styled name. */
+export function renderAgentBadge(agentType: string, theme: Theme, fallback?: (name: string) => string): string {
+  const name = getDisplayName(agentType);
+  const color = getAgentConfig(agentType)?.color;
+  if (resolveAgentColor(color)) {
+    return renderAgentNameLabel(name, color, themeForBadge(theme));
+  }
+  return fallback ? fallback(name) : theme.bold(name);
 }
 
 // --- Badge rendering ---

@@ -20,8 +20,7 @@ import {
   statusIcon,
   type StatsVisibility,
 } from "./format.js";
-import { renderAgentNameLabel, themeForBadge, resolveAgentColor } from "../agent-color.js";
-import { getAgentConfig } from "../agents/agent-types.js";
+import { renderAgentBadge } from "../agent-color.js";
 import type { LiveView } from "../types.js";
 
 // Backward-compat re-export for consumers importing Theme from this module.
@@ -205,16 +204,6 @@ export class AgentWidget {
   }
   setModelThinkingPlacement(placement: ModelThinkingPlacement) {
     this.modelThinkingPlacement = placement;
-  }
-
-  /** Render agent display name as a colored badge when the agent has a configured color. */
-  private agentNameBadge(agentType: string, theme: Theme, fallback?: (name: string) => string): string {
-    const name = getDisplayName(agentType);
-    const color = getAgentConfig(agentType)?.color;
-    if (resolveAgentColor(color)) {
-      return renderAgentNameLabel(name, color, themeForBadge(theme));
-    }
-    return fallback ? fallback(name) : theme.bold(name);
   }
 
   // ---- Navigation state machine ----
@@ -551,7 +540,7 @@ export class AgentWidget {
   }
 
   private renderFinishedLine(a: AgentRecord, theme: Theme, w: number): string {
-    const nameText = this.agentNameBadge(a.display.type, theme, (name) => theme.fg("dim", name));
+    const nameText = renderAgentBadge(a.display.type, theme, (name) => theme.fg("dim", name));
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -640,7 +629,7 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
-      const nameText = this.agentNameBadge(a.display.type, theme);
+      const nameText = renderAgentBadge(a.display.type, theme);
 
       if (this.isCompact()) {
         // Compact: single line; description after model, stats, then activity.
@@ -855,7 +844,7 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of queued) {
-      const nameText = this.agentNameBadge(a.display.type, theme, (name) => theme.fg("dim", name));
+      const nameText = renderAgentBadge(a.display.type, theme, (name) => theme.fg("dim", name));
       const desc = a.display.description;
       const header = `  ${theme.fg("muted", "◦")} ${nameText}  ${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), metadataLines: [] });
