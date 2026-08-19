@@ -68,7 +68,12 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
       options: { expanded?: boolean },
       theme: any,
-      context: { isError?: boolean; invalidate?: () => void; state?: Record<string, unknown> },
+      context: {
+        isError?: boolean;
+        invalidate?: () => void;
+        state?: Record<string, unknown>;
+        executionStarted?: boolean;
+      },
     ) => {
       const isError = context?.isError ?? false;
       const store = getStore();

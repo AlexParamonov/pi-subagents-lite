@@ -183,24 +183,30 @@ describe("renderAgentToolResult — error icon", () => {
     },
   };
 
-  it("uses error icon (✗) when isError is true", () => {
-    renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, noopTheme, SHOW_COST);
+  it("uses error icon (✗) when isError is true and execution started", () => {
+    renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, noopTheme, SHOW_COST, "id", {
+      executionStarted: true,
+    });
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("✗");
     expect(allText).not.toContain("✓");
   });
 
-  it("uses success icon (✓) when isError is false", () => {
-    renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, noopTheme, SHOW_COST);
+  it("uses success icon (✓) when isError is false and execution started", () => {
+    renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, noopTheme, SHOW_COST, "id", {
+      executionStarted: true,
+    });
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("✓");
     expect(allText).not.toContain("✗");
   });
 
-  it("uses success icon (✓) when isError is undefined", () => {
-    renderAgentToolResult({ ...baseResult }, { expanded: false }, noopTheme, SHOW_COST);
+  it("uses success icon (✓) when isError is undefined and execution started", () => {
+    renderAgentToolResult({ ...baseResult }, { expanded: false }, noopTheme, SHOW_COST, "id", {
+      executionStarted: true,
+    });
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("✓");
@@ -396,30 +402,30 @@ describe("renderAgentToolCall — background agent icon", () => {
     textInstances.length = 0;
   });
 
-  it("shows ▸ icon for foreground agents", () => {
+  it("shows ◇ icon for foreground agents (initial state)", () => {
     renderAgentToolCall({ agent: "builder" }, noopTheme);
-
-    const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("▸");
-    expect(allText).toContain("Builder");
-    expect(allText).not.toContain("◇");
-  });
-
-  it("shows ◇ icon for background agents", () => {
-    renderAgentToolCall({ agent: "builder", run_in_background: true }, noopTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("◇");
     expect(allText).toContain("Builder");
-    expect(allText).not.toContain("▸");
+    expect(allText).not.toContain("◆");
   });
 
-  it("shows ▸ icon when run_in_background is false", () => {
+  it("shows ◆ icon for background agents (queued state)", () => {
+    renderAgentToolCall({ agent: "builder", run_in_background: true }, noopTheme);
+
+    const allText = textInstances.map((t) => t.text).join("\n");
+    expect(allText).toContain("◆");
+    expect(allText).toContain("Builder");
+    expect(allText).not.toContain("◇");
+  });
+
+  it("shows ◇ icon when run_in_background is false", () => {
     renderAgentToolCall({ agent: "builder", run_in_background: false }, noopTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("▸");
-    expect(allText).not.toContain("◇");
+    expect(allText).toContain("◇");
+    expect(allText).not.toContain("▸");
   });
 
   it("shows model override when present", () => {

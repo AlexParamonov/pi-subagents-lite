@@ -72,7 +72,7 @@ export function cleanupInvalidations(): void {
 function resolveStatusIcon(status: string | undefined, theme: Theme): { icon: string } {
   switch (status) {
     case "queued":
-      return { icon: theme.fg("dim", "◇") };
+      return { icon: theme.fg("accent", "◆") };
     case "running":
       return { icon: theme.fg("accent", "◈") };
     case "error":
@@ -138,7 +138,8 @@ export function renderAgentToolCall(
 
     return new Text(text, 0, 0);
   } else {
-    icon = theme.fg("accent", "▸");
+    // Foreground agents: show initial state (◇ empty diamond)
+    icon = theme.fg("dim", "◇");
   }
 
   let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
@@ -157,16 +158,22 @@ export function renderAgentToolResult(
   theme: Theme,
   showCost: boolean,
   modelDisplayStyle: "id" | "name" = "id",
-  context?: { state?: Record<string, unknown> },
+  context?: { state?: Record<string, unknown>; executionStarted?: boolean },
 ): Text {
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
   const d = result.details;
   const desc = (d?.description as string) || "";
 
-  // Foreground agents (stats present) — use error/success icon
+  // Foreground agents (stats present) — show running then complete
   if (d && d.turnCount != null) {
-    const icon = result.isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+    // Check if execution has started via context
+    const hasStarted = context?.executionStarted === true;
+    const icon = hasStarted
+      ? result.isError
+        ? theme.fg("error", "✗")
+        : theme.fg("success", "✓")
+      : theme.fg("accent", "◈");
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
     let lines = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", desc)}`;
