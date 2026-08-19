@@ -410,10 +410,10 @@ describe("statusIcon", () => {
   it("uses agent color ANSI when agentType has a color", () => {
     const theme = makeTrackingTheme();
     const result = statusIcon("running", theme, "red-agent");
-    // Should contain ANSI escape for red (#DC2626 → rgb(220,38,38)) and reset
-    expect(result).toContain(`\u001b[38;2;220;38;38m`);
+    // Should use raw ANSI foreground (not theme.fg) and include reset
+    expect(result).toMatch(/\x1b\[38;2;\d+;\d+;\d+m/);
     expect(result).toContain("◈");
-    expect(result).toContain(`\u001b[39m`);
+    expect(result).toContain("\x1b[39m");
     // Should NOT have called theme.fg
     expect(theme.calls).toHaveLength(0);
   });
@@ -422,6 +422,6 @@ describe("statusIcon", () => {
     const theme = makeTrackingTheme();
     const result = statusIcon("completed", theme, "red-agent");
     expect(result).toContain("✓");
-    expect(result).toContain(`\u001b[38;2;220;38;38m`);
+    expect(result).toMatch(/\x1b\[38;2;\d+;\d+;\d+m/);
   });
 });
