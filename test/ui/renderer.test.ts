@@ -183,34 +183,40 @@ describe("renderAgentToolResult — error icon", () => {
     },
   };
 
-  it("uses error icon (✗) when isError is true and execution started", () => {
+  it("shows stats for foreground agent with error", () => {
     renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("✗");
-    expect(allText).not.toContain("✓");
+    // Result line shows stats, not icon (icon is in call line)
+    expect(allText).toContain("Builder");
+    expect(allText).toContain("5 uses");
+    expect(allText).toContain("3 turns");
   });
 
-  it("uses success icon (✓) when isError is false and execution started", () => {
+  it("shows stats for foreground agent without error", () => {
     renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("✓");
-    expect(allText).not.toContain("✗");
+    // Result line shows stats, not icon (icon is in call line)
+    expect(allText).toContain("Builder");
+    expect(allText).toContain("5 uses");
+    expect(allText).toContain("3 turns");
   });
 
-  it("uses success icon (✓) when isError is undefined and execution started", () => {
+  it("shows stats for foreground agent when isError is undefined", () => {
     renderAgentToolResult({ ...baseResult }, { expanded: false }, noopTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
     const allText = textInstances.map((t) => t.text).join("\n");
-    expect(allText).toContain("✓");
-    expect(allText).not.toContain("✗");
+    // Result line shows stats, not icon (icon is in call line)
+    expect(allText).toContain("Builder");
+    expect(allText).toContain("5 uses");
+    expect(allText).toContain("3 turns");
   });
 });
 
