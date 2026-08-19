@@ -128,8 +128,8 @@ describe("showWidgetSettingsMenu — flat SettingsList", () => {
     await showWidgetSettingsMenu(ctx);
     expect(settingsListCalls.length).toBe(1);
     const items = settingsListCalls[0].items;
-    // 3 group headers + 18 setting items = 21 total
-    expect(items.length).toBe(21);
+    // 3 group headers + 2 separators (no separator before first header) + 18 setting items = 23 total
+    expect(items.length).toBe(23);
   });
 
   it("has correct item order with Layout, Display, Stats sections", async () => {
@@ -138,12 +138,13 @@ describe("showWidgetSettingsMenu — flat SettingsList", () => {
     const items = settingsListCalls[0].items;
     const ids = items.map((i) => i.id);
     expect(ids).toEqual([
-      // Layout header
+      // Layout header (no separator before first section)
       "__sep__",
       "compact",
       "maxLines",
       "maxLinesCompact",
-      // Display header
+      // Display separator + header
+      "__sep__",
       "__sep__",
       "showModel",
       "modelDisplayStyle",
@@ -153,7 +154,8 @@ describe("showWidgetSettingsMenu — flat SettingsList", () => {
       "navHint",
       "finishedRetention",
       "shortcut",
-      // Stats header
+      // Stats separator + header
+      "__sep__",
       "__sep__",
       "showTools",
       "showTurns",

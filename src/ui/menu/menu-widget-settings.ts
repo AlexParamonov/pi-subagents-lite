@@ -100,7 +100,7 @@ function buildItems(
   statConfig: Map<string, StatToggleConfig>,
 ): SettingItem[] {
   const items: SettingItem[] = [
-    // --- Layout ---
+    // --- Layout (no separator before first section) ---
     headerItem(theme, "Layout"),
     {
       id: "compact",
@@ -130,6 +130,7 @@ function buildItems(
       description: "Max body lines in compact widget mode.",
     },
     // --- Display ---
+    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     headerItem(theme, "Display"),
     {
       id: "showModel",
@@ -192,6 +193,7 @@ function buildItems(
         "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
     },
     // --- Stats ---
+    { id: SEPARATOR_ID, label: " ", currentValue: "" },
     headerItem(theme, "Stats"),
     ...[...statConfig.entries()].map(([id, cfg]) => ({
       id,

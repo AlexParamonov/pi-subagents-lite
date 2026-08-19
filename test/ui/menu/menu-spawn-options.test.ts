@@ -691,6 +691,9 @@ describe("showSpawnOptionsMenu — system prompt items (absorbed)", () => {
     await showSpawnOptionsMenu(ctx);
     const ids = settingsListCalls[0].items.map((i) => i.id);
     expect(ids).toEqual([
+      // Spawn behavior header + items
+      "__sep__",
+      "__sep__",
       "forceBackground",
       "graceTurns",
       "toolTimeout",
@@ -698,10 +701,16 @@ describe("showSpawnOptionsMenu — system prompt items (absorbed)", () => {
       "defaultMaxTurns",
       "defaultThinking",
       "disableDefaultAgents",
+      // System prompt header + items
+      "__sep__",
+      "__sep__",
       "systemPromptMode",
       "includeContextFiles",
       "loadSkillsImplicitly",
       "loadExtensionsImplicitly",
+      // Agent tool header + items
+      "__sep__",
+      "__sep__",
       "agentToolStrictMode",
     ]);
   });
