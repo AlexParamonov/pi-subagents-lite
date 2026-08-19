@@ -14,6 +14,8 @@ import {
   resolveModelLabel,
   statusIcon,
 } from "./format.js";
+import { renderAgentNameLabel, themeForBadge, resolveAgentColor } from "../agent-color.js";
+import { getAgentConfig } from "../agents/agent-types.js";
 import { getManager } from "../shell.js";
 
 // --- Stats rendering helpers ---
@@ -24,9 +26,15 @@ export function agentNameLabel(
   theme: Theme,
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
-  const typeName = getDisplayName((d.type as string) || "");
+  const agentType = (d.type as string) || "";
+  const typeName = getDisplayName(agentType);
+  const agentColor = agentType ? getAgentConfig(agentType)?.color : undefined;
+  const badgeTheme = themeForBadge(theme);
+  const nameText = resolveAgentColor(agentColor)
+    ? renderAgentNameLabel(typeName, agentColor, badgeTheme)
+    : theme.bold(typeName);
   const tag = modelTag(d, theme, modelDisplayStyle);
-  return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
+  return tag ? `${nameText} ${theme.fg("dim", tag)}` : nameText;
 }
 
 function modelTag(d: Record<string, unknown>, theme: Theme, modelDisplayStyle: "id" | "name" = "id"): string {
@@ -85,8 +93,11 @@ export function renderAgentToolCall(
   theme: Theme,
   context?: { state?: Record<string, unknown>; toolCallId?: string },
 ): Text {
-  const typeName = getDisplayName((args.agent as string) || "");
+  const agentType = (args.agent as string) || "";
+  const typeName = getDisplayName(agentType);
   const label = typeName || "Agent";
+  const agentColor = agentType ? getAgentConfig(agentType)?.color : undefined;
+  const badgeTheme = themeForBadge(theme);
 
   // Background agents: show live status from manager, fallback to queued state
   // Check args.run_in_background (initial render) OR context.state.isBackground (re-render after result)
@@ -117,7 +128,10 @@ export function renderAgentToolCall(
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
     icon = statusIcon(status, theme);
-    let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
+    const nameText = resolveAgentColor(agentColor)
+      ? renderAgentNameLabel(label, agentColor, badgeTheme)
+      : theme.fg("accent", theme.bold(label));
+    let text = `${icon} ${nameText}`;
 
     const modelOverride = args._modelOverride as string | undefined;
     if (modelOverride) {
@@ -150,7 +164,10 @@ export function renderAgentToolCall(
   }
 
   // Build the call line text
-  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
+  const nameText = resolveAgentColor(agentColor)
+    ? renderAgentNameLabel(label, agentColor, badgeTheme)
+    : theme.fg("accent", theme.bold(label));
+  let text = `${icon} ${nameText}`;
 
   const modelOverride = args._modelOverride as string | undefined;
   if (modelOverride) {
@@ -265,7 +282,13 @@ function buildFallbackResultLine(
   const icon = theme.fg("success", "✓");
   let line = icon;
   if (d?.type) {
-    line += ` ${agentNameLabel(d, theme, modelDisplayStyle)}`;
+    const agentType = d.type as string;
+    const agentColor = getAgentConfig(agentType)?.color;
+    const badgeTheme = themeForBadge(theme);
+    const nameText = resolveAgentColor(agentColor)
+      ? renderAgentNameLabel(getDisplayName(agentType), agentColor, badgeTheme)
+      : agentNameLabel(d, theme, modelDisplayStyle);
+    line += ` ${nameText}`;
   }
   const desc = (d?.description as string) || "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
