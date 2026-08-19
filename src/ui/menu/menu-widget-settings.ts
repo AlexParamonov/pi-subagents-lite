@@ -14,7 +14,7 @@ import { SEPARATOR_ID, buildSelectListTheme, buildSettingsListTheme } from "./he
 import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getStore } from "../../shell.js";
-import { MIN_FINISHED_RETENTION_MINUTES, canonicalAgentStatusLimit } from "../../config/config-io.js";
+import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
 
 /** One stat visibility toggle: menu label, description, and store get/set accessors. */
 type StatToggleConfig = { label: string; description: string; get: () => boolean; set: (v: boolean) => void };
@@ -180,18 +180,6 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       }),
       description: "Minutes to keep finished agents visible (decimals OK, min 1 sec).",
     },
-    {
-      id: "agentStatusLimit",
-      label: "Agent status settled limit",
-      // The stored value is what the submenu edits: 0 means auto (2 × default
-      // concurrency); the resolved effective number lives in store.agent.
-      currentValue: String(canonicalAgentStatusLimit(store.agentConfigSnapshot().agentStatusLimit)),
-      submenu: createNumericSubmenu(ctx, { min: 0 }, (parsed) => {
-        store.mutate.agent.setAgentStatusLimit(parsed);
-        ctx.ui.notify(`Agent status settled limit set to ${parsed}`, "info");
-      }),
-      description: "Max settled agents AgentStatus lists. 0 = auto (2 × default concurrency).",
-    },
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
     {
       id: "shortcut",
@@ -200,20 +188,6 @@ function buildBehaviorItems(ctx: ExtensionCommandContext, store: ReturnType<type
       values: ["ON", "OFF"],
       description:
         "When ON, ctrl+o toggles compact mode; when OFF, compact is set manually. Takes effect on next reload.",
-    },
-    {
-      id: "showCompletionCards",
-      label: "Show completion cards",
-      currentValue: store.agent.showCompletionCards ? "ON" : "OFF",
-      values: ["ON", "OFF"],
-      description: "Show background-agent completion cards in the transcript; turn OFF to hide them.",
-    },
-    {
-      id: "thinkingBuffer",
-      label: "Log file thinking buffer",
-      currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
-      values: ["OFF", "80", "200", "500", "1000"],
-      description: "Controls log file thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
     },
   ];
 }
@@ -283,34 +257,12 @@ function buildOnChange(ctx: ExtensionCommandContext, store: ReturnType<typeof ge
         store.mutate.widget.setShortcut(newValue === "ON");
         ctx.ui.notify(`Ctrl+o shortcut ${newValue}`, "info");
         break;
-      case "showCompletionCards":
-        store.mutate.widget.setShowCompletionCards(newValue === "ON");
-        refreshChatComponents(ctx);
-        ctx.ui.notify(`Show completion cards ${newValue}`, "info");
-        break;
-      case "thinkingBuffer":
-        store.mutate.agent.setOutputThinkingBufferSize(newValue === "OFF" ? 0 : Number(newValue));
-        ctx.ui.notify(`Thinking buffer ${newValue}`, "info");
-        break;
       case "finishedRetention":
       case "agentStatusLimit":
         // Handled by the numeric submenu, not onChange
         break;
     }
   };
-}
-
-/**
- * Rebuild cached chat cards via the only host lever: flipping the tool-output
- * expansion state triggers setExpanded on every expandable chat component, which
- * re-runs the message renderer (its result is otherwise cached). The double flip
- * restores the original state. No-op on hosts without the expansion API.
- */
-function refreshChatComponents(ctx: ExtensionCommandContext): void {
-  if (typeof ctx.ui.getToolsExpanded !== "function" || typeof ctx.ui.setToolsExpanded !== "function") return;
-  const expanded = ctx.ui.getToolsExpanded();
-  ctx.ui.setToolsExpanded(!expanded);
-  ctx.ui.setToolsExpanded(expanded);
 }
 
 async function showCategorySubmenu(

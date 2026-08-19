@@ -69,6 +69,7 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   modelDisplayStyle: "name",
   modelThinkingPlacement: "header",
   statusBarFormat: "full",
+  showAgentColors: true,
 };
 
 /**

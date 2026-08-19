@@ -3,7 +3,7 @@
  */
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { getSessionCtx } from "../shell.js";
+import { getSessionCtx, getStore } from "../shell.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import { formatWatchdogSummary } from "../status-note.js";
 import type { AgentRecord, AgentLifecycle } from "../types.js";
@@ -625,6 +625,7 @@ export class AgentWidget {
 
   /** Colored spinner frame for an agent: uses agent color when configured, else theme accent. */
   private coloredFrame(frame: string, agentType: string | undefined, theme: Theme): string {
+    if (!getStore().agent.showAgentColors) return theme.fg("accent", frame);
     const colorAnsi = agentColorAnsi(agentType);
     return colorAnsi ? `${colorAnsi}${frame}\u001b[39m` : theme.fg("accent", frame);
   }

@@ -41,6 +41,18 @@ vi.mock("@earendil-works/pi-tui", () => ({
 
 vi.mock("../../src/shell.js", () => ({
   getManager: vi.fn(() => null),
+  getStore: vi.fn(() => ({
+    agent: {
+      showAgentColors: true,
+      outputTranscript: false,
+      outputThinkingBufferSize: 0,
+      showCompletionCards: true,
+      agentStatusLimit: 0,
+      modelDisplayStyle: "name" as const,
+      modelThinkingPlacement: "header" as const,
+      statusBarFormat: "full" as const,
+    },
+  })),
 }));
 
 vi.mock("../../src/ui/format.js", async (importOriginal) => {

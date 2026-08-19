@@ -27,6 +27,7 @@ import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
 import { showRunningAgentsMenu } from "./menu-running-agents.js";
 import { showDebugMenu } from "./menu-debug.js";
 import { showSpawnOptionsMenu } from "./menu-spawn-options.js";
+import { showGeneralSettingsMenu } from "./menu-general-settings.js";
 import { showSystemPromptMenu } from "./menu-system-prompt.js";
 
 // Spawn wizard — co-located in this folder.
@@ -64,6 +65,7 @@ export async function showSettingsMenu(ctx: ExtensionCommandContext, modelOption
       label: "Spawn options",
       description: "Default thinking, max turns, background, grace turns",
     },
+    { value: "general", label: "General", description: "Agent colors, completion cards, output, agent status limit" },
     { value: "systemprompt", label: "System prompt", description: "Prompt mode, custom prompt file, AGENTS.md" },
     { value: "widget", label: "Widget settings", description: "Configure widget display options" },
   ];
@@ -78,6 +80,9 @@ export async function showSettingsMenu(ctx: ExtensionCommandContext, modelOption
         break;
       case "spawnoptions":
         await showSpawnOptionsMenu(ctx);
+        break;
+      case "general":
+        await showGeneralSettingsMenu(ctx);
         break;
       case "systemprompt":
         await showSystemPromptMenu(ctx);

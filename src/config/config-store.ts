@@ -134,6 +134,8 @@ export interface ResolvedAgentSettings {
   readonly idleTimeoutMinutes: number;
   /** Whether to stream the agent transcript to the output file. Default: false. */
   readonly outputTranscript: boolean;
+  /** Whether agent colors (spinner, status icons, picker bullets) are enabled. Default: true. */
+  readonly showAgentColors: boolean;
 }
 
 /** Side-effect targets, injected after construction. */
@@ -230,6 +232,7 @@ export class ConfigStore {
       toolTimeoutMinutes: a.toolTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       outputTranscript: a.outputTranscript === true,
+      showAgentColors: a.showAgentColors !== false,
     };
   }
 
@@ -416,6 +419,7 @@ export class ConfigStore {
       setAgentStatusLimit: (limit: number): void => {
         this.setAgentLayerEntry("agentStatusLimit", canonicalAgentStatusLimit(limit), "global");
       },
+      setShowAgentColors: (enabled: boolean) => this.setAgentLayerEntry("showAgentColors", enabled, "global"),
     },
     widget: {
       setCompact: (enabled: boolean): void => {

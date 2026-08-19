@@ -10,6 +10,7 @@
 
 import { getAgentConfig } from "../agents/agent-types.js";
 import { agentColorAnsi } from "../agent-color.js";
+import { getStore } from "../shell.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
 import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
@@ -36,9 +37,11 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
 export function statusIcon(status: string | undefined, theme: Theme, agentType?: string): string {
   const entry = STATUS_ICON[status as AgentStatus];
   if (!entry) return "▸";
-  const colorAnsi = agentColorAnsi(agentType);
-  if (colorAnsi) {
-    return `${colorAnsi}${entry.icon}\u001b[39m`;
+  if (getStore().agent.showAgentColors) {
+    const colorAnsi = agentColorAnsi(agentType);
+    if (colorAnsi) {
+      return `${colorAnsi}${entry.icon}\u001b[39m`;
+    }
   }
   return theme.fg(entry.color, entry.icon);
 }
@@ -169,6 +172,15 @@ export function buildStatsParts(
 export function getDisplayName(type: SubagentType): string {
   const config = getAgentConfig(type);
   return config?.displayName ?? config?.name ?? "Agent";
+}
+
+/** Colored bullet prefix for agent names in pickers/menus.
+ * Returns "• " with agent color when showAgentColors is ON and agent has a configured color,
+ * or empty string when colors are off or agent has no color. */
+export function agentBulletPrefix(agentType: string | undefined): string {
+  if (!getStore().agent.showAgentColors) return "";
+  const colorAnsi = agentColorAnsi(agentType);
+  return colorAnsi ? `${colorAnsi}•\u001b[39m ` : "";
 }
 
 /** Tool name to human-readable action for activity descriptions. */

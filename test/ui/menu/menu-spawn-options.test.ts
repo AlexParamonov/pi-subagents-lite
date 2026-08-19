@@ -602,48 +602,4 @@ describe("showSpawnOptionsMenu — watchdog timeouts", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "error");
     expect(mockDone).not.toHaveBeenCalled();
   });
-
-  describe("showSpawnOptionsMenu — output transcript", () => {
-    beforeEach(() => {
-      resetMenuState();
-      mockModules.mockConfig.agent = {
-        default: null,
-        forceBackground: false,
-        outputTranscript: true,
-      };
-    });
-
-    it("shows 'Output transcript · ON' when enabled (default)", async () => {
-      const ctx = createMockCtx();
-      await showSpawnOptionsMenu(ctx);
-      const ot = settingsListCalls[0].items.find((i) => i.id === "outputTranscript")!;
-      expect(ot.currentValue).toBe("ON");
-    });
-
-    it("shows 'Output transcript · OFF' when disabled", async () => {
-      mockModules.mockConfig.agent.outputTranscript = false;
-      const ctx = createMockCtx();
-      await showSpawnOptionsMenu(ctx);
-      const ot = settingsListCalls[0].items.find((i) => i.id === "outputTranscript")!;
-      expect(ot.currentValue).toBe("OFF");
-    });
-
-    it("toggles output transcript via onChange", async () => {
-      mockModules.mockConfig.agent.outputTranscript = true;
-      const ctx = createMockCtx();
-      await showSpawnOptionsMenu(ctx);
-      settingsListCalls[0].onChange("outputTranscript", "OFF");
-      expect(mockModules.mockConfig.agent.outputTranscript).toBe(false);
-      expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
-    });
-
-    it("toggles output transcript back on via onChange", async () => {
-      mockModules.mockConfig.agent.outputTranscript = false;
-      const ctx = createMockCtx();
-      await showSpawnOptionsMenu(ctx);
-      settingsListCalls[0].onChange("outputTranscript", "ON");
-      expect(mockModules.mockConfig.agent.outputTranscript).toBe(true);
-      expect(ctx.ui.notify).toHaveBeenCalledWith(expect.any(String), "info");
-    });
-  });
 });
