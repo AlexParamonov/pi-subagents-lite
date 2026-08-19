@@ -10,7 +10,13 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { buildStatsParts, getDisplayName, buildMetadataLineParts, describeActivity } from "../../src/ui/format.js";
+import {
+  buildStatsParts,
+  getDisplayName,
+  buildMetadataLineParts,
+  describeActivity,
+  statusIcon,
+} from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 import type { AgentRecord } from "../../src/types.js";
@@ -357,5 +363,65 @@ describe("describeActivity", () => {
     const result = describeActivity(new Map(), longResponse);
     expect(result.length).toBe(100);
     expect(result).toBe(longResponse);
+  });
+});
+
+describe("statusIcon", () => {
+  // Theme that records which color was used, returns color name as text
+  function makeTrackingTheme() {
+    const calls: Array<{ color: string; text: string }> = [];
+    return {
+      fg: (color: string, text: string) => {
+        calls.push({ color, text });
+        return `[${color}:${text}]`;
+      },
+      bg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+      calls,
+    };
+  }
+
+  beforeEach(() => {
+    registerAgents(
+      new Map([
+        ["red-agent", { name: "red-agent", description: "Red", color: "red", systemPrompt: "" }],
+        ["uncolored-agent", { name: "uncolored-agent", description: "No color", systemPrompt: "" }],
+      ]),
+    );
+  });
+
+  it("returns plain icon when status is unknown", () => {
+    const theme = makeTrackingTheme();
+    expect(statusIcon(undefined, theme)).toBe("▸");
+  });
+
+  it("uses theme.fg for agent without color", () => {
+    const theme = makeTrackingTheme();
+    const result = statusIcon("running", theme, "uncolored-agent");
+    expect(result).toBe("[accent:◈]");
+  });
+
+  it("uses theme.fg when no agentType is passed", () => {
+    const theme = makeTrackingTheme();
+    const result = statusIcon("running", theme);
+    expect(result).toBe("[accent:◈]");
+  });
+
+  it("uses agent color ANSI when agentType has a color", () => {
+    const theme = makeTrackingTheme();
+    const result = statusIcon("running", theme, "red-agent");
+    // Should contain ANSI escape for red (#ff0000 → rgb(255,0,0)) and reset
+    expect(result).toContain(`\u001b[38;2;255;0;0m`);
+    expect(result).toContain("◈");
+    expect(result).toContain(`\u001b[39m`);
+    // Should NOT have called theme.fg
+    expect(theme.calls).toHaveLength(0);
+  });
+
+  it("tints completed status icon with agent color", () => {
+    const theme = makeTrackingTheme();
+    const result = statusIcon("completed", theme, "red-agent");
+    expect(result).toContain("✓");
+    expect(result).toContain(`\u001b[38;2;255;0;0m`);
   });
 });

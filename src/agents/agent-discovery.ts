@@ -28,6 +28,7 @@ export interface AgentConfigFromMd {
   exclude_extensions?: string[];
   skills?: boolean | string[];
   preload_skills?: string[] | false;
+  color?: string;
   model?: string;
   thinking?: ThinkingLevel;
   max_turns?: number;
@@ -241,6 +242,7 @@ export function parseAgentFile(content: string, source: "user" | "project"): Age
     exclude_extensions: parseStringArray(frontmatter, "exclude_extensions"),
     skills: parseExtensions(frontmatter.skills),
     preload_skills: parsePreloadSkills(frontmatter.preload_skills),
+    color: parseString(frontmatter, "color"),
     model: parseString(frontmatter, "model"),
     thinking: parseThinkingLevel(parseString(frontmatter, "thinking")),
     max_turns: parseNumber(frontmatter, "max_turns"),
@@ -358,6 +360,7 @@ function fromMd(md: AgentConfigFromMd): Partial<AgentConfig> {
     excludeExtensions: md.exclude_extensions,
     skills: md.skills,
     preloadSkills: md.preload_skills,
+    color: md.color,
     model: md.model,
     thinkingLevel: md.thinking,
     maxTurns: md.max_turns,
