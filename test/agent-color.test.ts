@@ -10,40 +10,41 @@ import type { AgentConfig } from "../src/agents/types.js";
 describe("resolveAgentColor", () => {
   describe("named colors", () => {
     it.each([
-      ["red", "#ff0000"],
-      ["green", "#00ff00"],
-      ["blue", "#0000ff"],
-      ["yellow", "#ffff00"],
-      ["cyan", "#00ffff"],
-      ["magenta", "#ff00ff"],
-      ["white", "#ffffff"],
-      ["gray", "#808080"],
+      ["red", "#DC2626"],
+      ["blue", "#6A9BCC"],
+      ["green", "#16A34A"],
+      ["yellow", "#CA8A04"],
+      ["purple", "#827DBD"],
+      ["orange", "#D97757"],
+      ["pink", "#C46686"],
+      ["cyan", "#0891B2"],
     ])("resolves '%s' to %s", (name, hex) => {
       expect(resolveAgentColor(name)).toBe(hex);
     });
 
     it("is case-insensitive", () => {
-      expect(resolveAgentColor("RED")).toBe("#ff0000");
-      expect(resolveAgentColor("Red")).toBe("#ff0000");
+      expect(resolveAgentColor("RED")).toBe("#DC2626");
+      expect(resolveAgentColor("Red")).toBe("#DC2626");
     });
   });
 
   describe("agency agents palette aliases", () => {
     it.each([
-      ["coral", "#ff7f50"],
+      ["amber", "#F59E0B"],
       ["teal", "#008080"],
-      ["violet", "#9400d3"],
-      ["amber", "#ffbf00"],
-      ["emerald", "#50c878"],
-      ["rose", "#ff007f"],
-      ["indigo", "#4b0082"],
-      ["chartreuse", "#7fff00"],
-      ["cerulean", "#007ba7"],
-      ["crimson", "#dc143c"],
-      ["lavender", "#e6e6fa"],
-      ["ochre", "#cc7722"],
-      ["sienna", "#a0522d"],
-      ["cobalt", "#0047ab"],
+      ["indigo", "#6366F1"],
+      ["gold", "#EAB308"],
+      ["neon-green", "#10B981"],
+      ["neon-cyan", "#06B6D4"],
+      ["metallic-blue", "#3B82F6"],
+      ["violet", "#8B5CF6"],
+      ["rose", "#F43F5E"],
+      ["lime", "#84CC16"],
+      ["gray", "#6B7280"],
+      ["grey", "#6B7280"],
+      ["fuchsia", "#D946EF"],
+      ["slate", "#64748B"],
+      ["navy", "#1E3A8A"],
     ])("resolves '%s' to %s", (name, hex) => {
       expect(resolveAgentColor(name)).toBe(hex);
     });
@@ -123,7 +124,8 @@ describe("agentColorAnsi", () => {
 
   it("returns ANSI escape for agent with named color", () => {
     const result = agentColorAnsi("color-agent");
-    expect(result).toBe("\x1b[38;2;255;0;0m");
+    // red → #DC2626 → rgb(220, 38, 38)
+    expect(result).toBe("\x1b[38;2;220;38;38m");
   });
 
   it("returns ANSI escape for agent with hex color", () => {

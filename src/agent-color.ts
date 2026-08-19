@@ -11,30 +11,31 @@ import { getAgentConfig } from "./agents/agent-types.js";
 
 /** 8 Claude Code named colors + 14 Agency Agents palette aliases. */
 const NAMED_COLORS: Record<string, string> = {
-  // Claude Code colors
-  red: "#ff0000",
-  green: "#00ff00",
-  blue: "#0000ff",
-  yellow: "#ffff00",
-  cyan: "#00ffff",
-  magenta: "#ff00ff",
-  white: "#ffffff",
-  gray: "#808080",
-  // Agency Agents palette
-  coral: "#ff7f50",
+  // Claude Code's eight subagent colors, as its default theme renders them.
+  red: "#DC2626",
+  blue: "#6A9BCC",
+  green: "#16A34A",
+  yellow: "#CA8A04",
+  purple: "#827DBD",
+  orange: "#D97757",
+  pink: "#C46686",
+  cyan: "#0891B2",
+  // Agency Agents palette aliases.
+  amber: "#F59E0B",
   teal: "#008080",
-  violet: "#9400d3",
-  amber: "#ffbf00",
-  emerald: "#50c878",
-  rose: "#ff007f",
-  indigo: "#4b0082",
-  chartreuse: "#7fff00",
-  cerulean: "#007ba7",
-  crimson: "#dc143c",
-  lavender: "#e6e6fa",
-  ochre: "#cc7722",
-  sienna: "#a0522d",
-  cobalt: "#0047ab",
+  indigo: "#6366F1",
+  gold: "#EAB308",
+  "neon-green": "#10B981",
+  "neon-cyan": "#06B6D4",
+  "metallic-blue": "#3B82F6",
+  violet: "#8B5CF6",
+  rose: "#F43F5E",
+  lime: "#84CC16",
+  gray: "#6B7280",
+  grey: "#6B7280",
+  fuchsia: "#D946EF",
+  slate: "#64748B",
+  navy: "#1E3A8A",
 };
 
 const HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
