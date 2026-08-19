@@ -99,7 +99,8 @@ export function renderAgentToolCall(
   const label = typeName || "Agent";
 
   // Background agents: show live status from manager, fallback to queued state
-  const isBackground = args.run_in_background === true;
+  // Check args.run_in_background (initial render) OR context.state.isBackground (re-render after result)
+  const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
   let icon: string;
   let statusText = "";
   
@@ -108,7 +109,6 @@ export function renderAgentToolCall(
     const agentId = context?.state?.agentId as string | undefined;
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
-    console.error(`[DEBUG] renderAgentToolCall: agentId=${agentId}, status=${status}`);
     const resolved = resolveStatusIcon(status, theme);
     icon = resolved.icon;
     statusText = resolved.statusText;

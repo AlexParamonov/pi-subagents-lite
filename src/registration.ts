@@ -73,9 +73,10 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       // Register invalidate callback so onComplete can trigger a re-render
       if (agentId && context?.invalidate) {
         registerAgentInvalidation(agentId, context.invalidate);
-        // Store agentId in context state so call renderer can access it on re-render
+        // Store agentId and background flag in context state so call renderer can access it on re-render
         if (context.state) {
           context.state.agentId = agentId;
+          context.state.isBackground = true;
         }
       }
       return renderAgentToolResult(
