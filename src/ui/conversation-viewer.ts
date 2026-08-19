@@ -19,7 +19,7 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord, AgentStatus } from "../types.js";
+import type { AgentRecord } from "../types.js";
 import { getSessionContextPercent } from "../agents/usage.js";
 import { extractText } from "../prompt/context.js";
 import type { Theme } from "./types.js";
@@ -30,6 +30,7 @@ import {
   fgPreservingNestedStyles,
   getDisplayName,
   resolveAgentModelLabel,
+  statusIcon,
 } from "./format.js";
 import { summarizeToolArgs } from "../utils.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
@@ -43,16 +44,6 @@ const TOOL_RESULT_MAX_CHARS = 500;
 const TOOL_RESULT_MAX_LINES = 5;
 /** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
 const STREAM_RENDER_DEBOUNCE_MS = 100;
-
-const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
-  running: { icon: "◈", color: "accent" },
-  completed: { icon: "✓", color: "success" },
-  turn_limited: { icon: "✓", color: "warning" },
-  error: { icon: "✗", color: "error" },
-  aborted: { icon: "✗", color: "error" },
-  stopped: { icon: "✗", color: "error" },
-  queued: { icon: "◇", color: "dim" },
-};
 
 export class ConversationViewer implements Component {
   private modelDisplayStyle: "id" | "name" = "id";
@@ -259,9 +250,7 @@ export class ConversationViewer implements Component {
     lines.push(hrTop);
     const name = getDisplayName(this.record.display.type);
 
-    const status = this.record.lifecycle.status;
-    const { icon, color } = STATUS_ICON[status];
-    const statusIcon = th.fg(color, icon);
+    const icon = statusIcon(this.record.lifecycle.status, th);
     // Build stats line like the widget
     const durationMs = (this.record.lifecycle.completedAt ?? Date.now()) - this.record.lifecycle.startedAt;
     const statsParts = buildStatsParts(
@@ -283,7 +272,7 @@ export class ConversationViewer implements Component {
       ? th.fg("muted", ` @${this.record.display.worktreeLabel}`)
       : "";
     // Row 1: status icon, name, description, worktree
-    lines.push(row(`${statusIcon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag}`));
+    lines.push(row(`${icon} ${th.bold(name)}  ${th.fg("muted", this.record.display.description)}${worktreeTag}`));
 
     // Row 2: model name + compact usage stats
     const resolvedInvocation = {

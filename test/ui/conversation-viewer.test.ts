@@ -735,6 +735,23 @@ describe("ConversationViewer", () => {
       expect(text).toContain("waiting");
     });
 
+    it.each([
+      ["stopped", "■"],
+      ["queued", "◆"],
+    ] as const)("shows %s icon in header for status %s", (status, icon) => {
+      const session = makeMockSession([]);
+      const record = makeMockRecord({
+        execution: { settled: true, settlementCount: 1, session },
+        lifecycle: { ...makeMockRecord().lifecycle, status },
+      });
+      const tui = makeTui();
+
+      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const lines = viewer.render(80);
+
+      expect(lines.join("\n")).toContain(icon);
+    });
+
     it("renders worktree label in header when present", () => {
       const session = makeMockSession([{ role: "user", content: "hello" }]);
       const record = makeMockRecord({

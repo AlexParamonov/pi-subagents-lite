@@ -17,6 +17,7 @@ import {
   buildModelThinkingTag,
   resolveAgentModelThinking,
   buildMetadataLineParts,
+  statusIcon,
   type StatsVisibility,
 } from "./format.js";
 import type { LiveView } from "../types.js";
@@ -514,25 +515,26 @@ export class AgentWidget {
     error: string | undefined,
     theme: Theme,
   ): { icon: string; statusText: string } {
+    const icon = statusIcon(lifecycle.status, theme);
     switch (lifecycle.status) {
       case "completed":
-        return { icon: theme.fg("success", "✓"), statusText: "" };
+        return { icon, statusText: "" };
       case "turn_limited":
-        return { icon: theme.fg("warning", "✓"), statusText: theme.fg("warning", " (turn limit)") };
+        return { icon, statusText: theme.fg("warning", " (turn limit)") };
       case "stopped": {
         const summary = formatWatchdogSummary(lifecycle);
         return {
-          icon: theme.fg("dim", "■"),
+          icon,
           statusText: summary ? theme.fg("dim", ` stopped (${summary})`) : theme.fg("dim", " stopped"),
         };
       }
       case "error": {
         const errMsg = error ? `: ${error.slice(0, 60)}` : "";
-        return { icon: theme.fg("error", "✗"), statusText: theme.fg("error", ` error${errMsg}`) };
+        return { icon, statusText: theme.fg("error", ` error${errMsg}`) };
       }
       default:
         // aborted
-        return { icon: theme.fg("error", "✗"), statusText: theme.fg("warning", " aborted") };
+        return { icon, statusText: theme.fg("warning", " aborted") };
     }
   }
 

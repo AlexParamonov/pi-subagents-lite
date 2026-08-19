@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Unified agent status icons across all UI surfaces.** Tool call lines, the subagent status widget, and the conversation viewer now share one status→icon map (`statusIcon` in `format.ts`): `◆` queued, `◈` running, `✓` completed (success), `✓` turn-limited (warning), `✗` error/aborted, `■` stopped (dim), `▸` when no status yet. The viewer's stopped icon was `✗` (error) and its queued icon `◇` (dim); turn-limited was success-colored in call lines. Stopped is neutral, not a failure.
+
 ### Added
 
 - **Background agent status indicators.** When an agent is scheduled to run in the background, the UI now clearly shows its status in the call-line icon: `◆` (accent) when queued, `◈` (accent) when running, `✓` (success) when completed or turn-limited, `✗` (error) on error or abort, and `■` (dim) when stopped; foreground call lines show `▸`. The result line shows the model tag and stats for finished foreground agents and the description only for background agents (icon lives in the call line). Live status updates via invalidation map — the icon flips as the agent progresses.

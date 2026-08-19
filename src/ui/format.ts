@@ -10,10 +10,30 @@
 
 import { getAgentConfig } from "../agents/agent-types.js";
 import type { SubagentType, AgentInvocation } from "../agents/types.js";
-import type { AgentRecord } from "../types.js";
+import type { AgentRecord, AgentStatus } from "../types.js";
 import type { Theme } from "./types.js";
 import { formatTokens, formatCost } from "../agents/usage.js";
 import type { ModelThinkingPlacement } from "../config/types.js";
+
+// ---- Status icons ----
+
+/** Single source of truth for per-agent status icons, shared by the tool call lines,
+ * the subagent status widget, and the conversation viewer. */
+const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
+  queued: { icon: "◆", color: "accent" },
+  running: { icon: "◈", color: "accent" },
+  completed: { icon: "✓", color: "success" },
+  turn_limited: { icon: "✓", color: "warning" },
+  error: { icon: "✗", color: "error" },
+  aborted: { icon: "✗", color: "error" },
+  stopped: { icon: "■", color: "dim" },
+};
+
+/** Colored icon for an agent status, or a plain ▸ when no status is known yet. */
+export function statusIcon(status: string | undefined, theme: Theme): string {
+  const entry = STATUS_ICON[status as AgentStatus];
+  return entry ? theme.fg(entry.color, entry.icon) : "▸";
+}
 
 // ---- Internal helpers (used by buildStatsParts) ----
 

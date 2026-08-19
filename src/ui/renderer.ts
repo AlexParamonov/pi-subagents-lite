@@ -6,7 +6,14 @@
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
 import type { Theme } from "./types.js";
-import { buildStatsParts, formatMs, getDisplayName, buildModelThinkingTag, resolveModelLabel } from "./format.js";
+import {
+  buildStatsParts,
+  formatMs,
+  getDisplayName,
+  buildModelThinkingTag,
+  resolveModelLabel,
+  statusIcon,
+} from "./format.js";
 import { getManager } from "../shell.js";
 
 // --- Stats rendering helpers ---
@@ -70,28 +77,6 @@ export function cleanupInvalidations(): void {
   agentInvalidations.clear();
 }
 
-// --- Status icon mapping ---
-
-/** Resolve icon for a background agent status. */
-function resolveStatusIcon(status: string | undefined, theme: Theme): string {
-  switch (status) {
-    case "queued":
-      return theme.fg("accent", "◆");
-    case "running":
-      return theme.fg("accent", "◈");
-    case "error":
-    case "aborted":
-      return theme.fg("error", "✗");
-    case "stopped":
-      return theme.fg("dim", "■");
-    case "completed":
-    case "turn_limited":
-      return theme.fg("success", "✓");
-    default:
-      return "▸";
-  }
-}
-
 // --- Agent tool renderers ---
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
@@ -131,7 +116,7 @@ export function renderAgentToolCall(
     }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status ?? "queued";
-    icon = resolveStatusIcon(status, theme);
+    icon = statusIcon(status, theme);
     let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
 
     const modelOverride = args._modelOverride as string | undefined;
@@ -161,7 +146,7 @@ export function renderAgentToolCall(
     }
     const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
     const status = liveRecord?.lifecycle.status;
-    icon = resolveStatusIcon(status, theme);
+    icon = statusIcon(status, theme);
   }
 
   // Build the call line text
@@ -232,7 +217,7 @@ export function renderSubagentResult(
   inner.addChild(new Spacer(1));
 
   if (d && d.turnCount != null) {
-    const icon = resolveStatusIcon(d.status as string, theme);
+    const icon = statusIcon(d.status as string, theme);
 
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
