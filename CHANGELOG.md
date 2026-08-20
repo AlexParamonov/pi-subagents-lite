@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-08-20
+
 ### Added
 
 - **Agent `color` frontmatter.** Agent `.md` files can set `color: <named-color>` or `color: #RRGGBB` in frontmatter. The agent's status icon is tinted with that color across all UI surfaces, including widget connector lines and a new toggle in General settings.
