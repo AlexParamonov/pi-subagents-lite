@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import type { SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
+import type { Component, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 
@@ -31,6 +31,7 @@ vi.mock("@earendil-works/pi-tui", async () => {
       theme: SettingsListTheme;
       onChange: (id: string, newValue: string) => void;
       onCancel: () => void;
+      submenuComponent: Component | null = null;
       selectedIndex = 0;
       constructor(
         items: SettingItem[],
@@ -54,7 +55,7 @@ vi.mock("@earendil-works/pi-tui", async () => {
             get items() {
               return items;
             },
-            activate: (id: string) => activatePickerRow(items, id, onChange),
+            activate: (id: string) => activatePickerRow(this, id),
             onCancel,
           },
         });
