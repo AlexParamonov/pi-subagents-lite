@@ -17,7 +17,12 @@ import { createNumericSubmenu } from "./submenus/numeric-input.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
-import { DEFAULT_GRACE_TURNS, DEFAULT_WATCHDOG_TIMEOUT_MINUTES, CUSTOM_PROMPT_PATH, canonicalAgentStatusLimit } from "../../config/config-io.js";
+import {
+  DEFAULT_GRACE_TURNS,
+  DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+  CUSTOM_PROMPT_PATH,
+  canonicalAgentStatusLimit,
+} from "../../config/config-io.js";
 import { VALID_THINKING_LEVELS } from "../../utils.js";
 import { getStore } from "../../shell.js";
 
@@ -200,7 +205,8 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Thinking buffer",
       currentValue: store.agent.outputThinkingBufferSize === 0 ? "OFF" : String(store.agent.outputThinkingBufferSize),
       values: ["OFF", "80", "200", "500", "1000"],
-      description: "Controls output transcript thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
+      description:
+        "Controls output transcript thinking buffering in chars. OFF = only at turn end, 80 = flush after 80 chars.",
     },
   ];
 

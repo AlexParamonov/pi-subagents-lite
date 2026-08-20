@@ -187,8 +187,6 @@ describe("showWidgetSettingsMenu — flat SettingsList", () => {
     expect(mockModules.mockConfig.agent.widgetShowModel).toBe(false);
   });
 
-
-
   it("modelDisplayStyle onChange toggles between id/name", async () => {
     mockModules.mockConfig.agent.modelDisplayStyle = "id";
     const ctx = createMockCtx();

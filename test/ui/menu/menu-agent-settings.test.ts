@@ -612,5 +612,4 @@ describe("showSpawnOptionsMenu — item order", () => {
     const seps = ids.filter((id) => id === "__sep__");
     expect(seps.length).toBeGreaterThanOrEqual(4); // At least 2 sections with headers
   });
-
 });

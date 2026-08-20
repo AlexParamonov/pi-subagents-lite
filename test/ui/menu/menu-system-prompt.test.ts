@@ -67,7 +67,10 @@ vi.mock("@earendil-works/pi-tui", async () => {
       handleInput(_data: string) {}
     },
     SettingsListWrapper: class MockWrapper {
-      constructor(public inner: unknown, public options: Record<string, unknown>) {}
+      constructor(
+        public inner: unknown,
+        public options: Record<string, unknown>,
+      ) {}
       invalidate() {}
       render(_width: number) {
         return "";

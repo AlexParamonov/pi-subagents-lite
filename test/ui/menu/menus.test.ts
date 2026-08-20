@@ -166,7 +166,7 @@ describe("showSettingsMenu — item labels", () => {
     vi.clearAllMocks();
   });
 
-   it("shows expected settings menu items", async () => {
+  it("shows expected settings menu items", async () => {
     const ctx = createMockCtx();
     await showSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     expect(selectListCalls.length).toBe(1);
