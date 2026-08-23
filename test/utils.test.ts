@@ -186,6 +186,13 @@ describe("parseModelKey", () => {
     expect(parseModelKey("no-slash")).toBeNull();
     expect(parseModelKey("/leading-slash")).toBeNull();
   });
+
+  it("returns null for non-string arguments (malformed config backstop)", () => {
+    expect(parseModelKey(null)).toBeNull();
+    expect(parseModelKey(undefined)).toBeNull();
+    expect(parseModelKey({ model: "x" } as unknown as string)).toBeNull();
+    expect(parseModelKey(42 as unknown as string)).toBeNull();
+  });
 });
 
 describe("findModelInRegistry", () => {

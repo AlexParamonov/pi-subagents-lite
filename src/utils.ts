@@ -58,8 +58,9 @@ export function errorMessage(err: unknown): string {
   return toSingleLine(err instanceof Error ? err.message : String(err));
 }
 
-/** Parse "provider/model-id" into { provider, modelId }; null if invalid (no slash or empty provider). */
-export function parseModelKey(modelStr: string): { provider: string; modelId: string } | null {
+/** Parse "provider/model-id" into { provider, modelId }; null if invalid (no slash, empty provider, or a non-string argument). */
+export function parseModelKey(modelStr: unknown): { provider: string; modelId: string } | null {
+  if (typeof modelStr !== "string") return null;
   const slashIdx = modelStr.indexOf("/");
   if (slashIdx <= 0) return null;
   return { provider: modelStr.slice(0, slashIdx), modelId: modelStr.slice(slashIdx + 1) };

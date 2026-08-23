@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`parseModelKey` is now total.** A malformed config value (object, number, null) reaching `parseModelKey` no longer crashes `pi` with `TypeError: modelStr.indexOf is not a function`. The parameter is widened to `unknown` and a `typeof` guard returns `null` for non-strings, rendering "(inherits parent)" instead of exiting. Backstop for the Model Settings menu crash described in `PI_SUBAGENT_LITE_BUG.md`.
+
 ## [1.13.0] - 2026-08-20
 
 ### Added
