@@ -244,13 +244,39 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
 
 // ── Load ─────────────────────────────────────────────────────────────
 
+/** Drop malformed model-override values from a raw agent layer and warn.
+ *  `default` and per-type override keys (any key not in
+ *  CONFIG_AGENT_NON_MODEL_KEYS) must be string|null; a non-string, non-null
+ *  value is deleted so it falls back to the baked default / next chain layer
+ *  instead of crashing parseModelKey downstream. Non-model keys are untouched. */
+function dropMalformedModelOverrides(rawAgent: Record<string, unknown>): void {
+  const def = rawAgent.default;
+  if (def != null && typeof def !== "string") {
+    console.warn(
+      `[subagents] Ignoring malformed model override in config: agent.default expected "provider/model-id" string, got ${typeof def} (${JSON.stringify(def)}).`,
+    );
+    delete rawAgent.default;
+  }
+  for (const [key, value] of Object.entries(rawAgent)) {
+    if (CONFIG_AGENT_NON_MODEL_KEYS.includes(key)) continue;
+    if (value == null || typeof value === "string") continue;
+    console.warn(
+      `[subagents] Ignoring malformed model override in config: agent.${key} expected "provider/model-id" string, got ${typeof value} (${JSON.stringify(value)}).`,
+    );
+    delete rawAgent[key];
+  }
+}
+
 /** Read the global file; any failure (missing, malformed) reads as {} — as today. */
 function readGlobalRaw(): RawConfig {
+  let raw: RawConfig;
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as RawConfig;
+    raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as RawConfig;
   } catch {
     return {};
   }
+  if (raw.agent) dropMalformedModelOverrides(raw.agent);
+  return raw;
 }
 
 /** Read the project file; missing = absent, unreadable/invalid = malformed + warning. */
@@ -279,6 +305,7 @@ function readProjectRaw(projectPath: string): ProjectRead {
     return malformedSection(projectPath, "concurrency.models");
   }
   const unknownKeys = Object.keys(raw.agent ?? {}).filter((key) => !isProjectAllowedAgentKey(key));
+  if (raw.agent) dropMalformedModelOverrides(raw.agent);
   return { raw, unknownKeys };
 }
 

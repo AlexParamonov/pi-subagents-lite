@@ -4,7 +4,7 @@
  * file; absent keys inherit. Unknown keys are ignored with a warning, a
  * malformed file is never written, and per-layer saves touch only their layer.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll, type Mock } from "vitest";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -250,6 +250,98 @@ describe("mergeDefaults / loadConfig", () => {
 
     expect(loadConfig()).toEqual(
       mergeDefaults({ agent: { default: "g", graceTurns: 5 }, concurrency: { default: 2 } }),
+    );
+  });
+});
+
+describe("malformed model overrides — drop + warn at load", () => {
+  let warn: Mock;
+  beforeEach(() => {
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it("drops a non-string global default and warns, falling back to null", () => {
+    writeGlobal({ agent: { default: 42 }, concurrency: { default: 2 } });
+
+    const config = loadConfig();
+
+    expect(config.agent.default).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('agent.default expected "provider/model-id" string, got number (42)'),
+    );
+  });
+
+  it("drops an object global default and warns", () => {
+    writeGlobal({ agent: { default: { model: "x" } } });
+
+    expect(loadConfig().agent.default).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("got object"));
+  });
+
+  it("drops a non-string per-type override and warns", () => {
+    writeGlobal({ agent: { "general-purpose": 99 } });
+
+    const config = loadConfig();
+
+    expect(config.agent["general-purpose"]).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('agent.general-purpose expected "provider/model-id" string, got number (99)'),
+    );
+  });
+
+  it("keeps valid model overrides and emits no warning", () => {
+    writeGlobal({ agent: { default: "anthropic/claude", "general-purpose": "openai/gpt" } });
+
+    const config = loadConfig();
+
+    expect(config.agent.default).toBe("anthropic/claude");
+    expect(config.agent["general-purpose"]).toBe("openai/gpt");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps null and empty-string model overrides (valid unset) without warning", () => {
+    writeGlobal({ agent: { default: null, "general-purpose": "" } });
+
+    const config = loadConfig();
+
+    expect(config.agent.default).toBeNull();
+    expect(config.agent["general-purpose"]).toBe("");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("does not touch non-model keys (number/boolean values are legitimate)", () => {
+    writeGlobal({ agent: { graceTurns: 7, forceBackground: true } });
+
+    const config = loadConfig();
+
+    expect(config.agent.graceTurns).toBe(7);
+    expect(config.agent.forceBackground).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("drops a non-string project default at io.load and warns", () => {
+    writeProject({ agent: { default: 7 } });
+
+    const loaded = createConfigIO(projectDir).load();
+
+    expect(loaded.project?.agent?.default).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('agent.default expected "provider/model-id" string, got number (7)'),
+    );
+  });
+
+  it("drops a non-string project per-type override at io.load and warns", () => {
+    writeProject({ agent: { explore: [1, 2] } });
+
+    const loaded = createConfigIO(projectDir).load();
+
+    expect(loaded.project?.agent?.["explore"]).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('agent.explore expected "provider/model-id" string, got object'),
     );
   });
 });

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`parseModelKey` is now total.** A malformed config value (object, number, null) reaching `parseModelKey` no longer crashes `pi` with `TypeError: modelStr.indexOf is not a function`. The parameter is widened to `unknown` and a `typeof` guard returns `null` for non-strings, rendering "(inherits parent)" instead of exiting. Backstop for the Model Settings menu crash described in `PI_SUBAGENT_LITE_BUG.md`.
 
+### Changed
+
+- **Malformed model overrides are dropped at load with a warning.** A non-string, non-null value for `agent.default` or a per-type override key in `subagents-lite.json` (e.g. `"default": 42` or `"general-purpose": { ... }`) is now deleted at load time and reported via a `[subagents] Ignoring malformed model override…` `console.warn`, rather than silently propagating to the Model Settings menu. Validation lives at the load boundary (`readGlobalRaw`/`readProjectRaw`), so it fires once on init/reload — not on every config mutation — and `parseModelKey`'s `unknown` guard remains as a pure backstop.
+
 ## [1.13.0] - 2026-08-20
 
 ### Added
