@@ -556,7 +556,7 @@ describe("stats visibility integration", () => {
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
-    expect(allText).not.toContain("🛠︎");
+    expect(allText).not.toContain("⚒");
   });
 
   it("hides time when showTime is false", () => {
@@ -623,7 +623,7 @@ describe("stats visibility integration", () => {
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
-    expect(allText).not.toContain("🛠︎");
+    expect(allText).not.toContain("⚒");
   });
 
   it("shows all stats when visibility flags are all true (default)", () => {
@@ -643,7 +643,7 @@ describe("stats visibility integration", () => {
 
     const lines = renderWidgetLines(widget);
     const allText = lines.join(" ");
-    expect(allText).toContain("🛠︎");
+    expect(allText).toContain("⚒");
     expect(allText).toContain("⟳");
     expect(allText).toContain("↑");
     expect(allText).toContain("$");

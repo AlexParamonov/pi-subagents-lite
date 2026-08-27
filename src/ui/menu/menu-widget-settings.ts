@@ -27,7 +27,7 @@ function buildStatConfig(store: ReturnType<typeof getStore>): Map<string, StatTo
       "showTools",
       {
         label: "Tools",
-        description: "Show tool count 🛠︎  in the widget.",
+        description: "Show tool count ⚒  in the widget.",
         get: () => store.agent.showTools,
         set: (v) => store.mutate.agent.setShowTools(v),
       },

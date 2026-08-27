@@ -58,12 +58,13 @@ const allStats = {
 describe("buildStatsParts — visible flag: showTools", () => {
   it("excludes toolUses when showTools is false", () => {
     const parts = buildStatsParts(allStats, mockTheme, { showTools: false });
-    expect(parts.some((p) => p.includes("🛠︎"))).toBe(false);
+    expect(parts.some((p) => p.includes("⚒"))).toBe(false);
   });
 
-  it("includes toolUses when showTools is true (default)", () => {
+  it("includes the exact tool count marker when showTools is true (default)", () => {
     const parts = buildStatsParts(allStats, mockTheme);
-    expect(parts.some((p) => p.includes("🛠︎"))).toBe(true);
+    expect(parts[0]).toBe("5⚒ ");
+    expect(parts.join("")).not.toContain("\uFE0E");
   });
 });
 
