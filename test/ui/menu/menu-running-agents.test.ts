@@ -839,6 +839,120 @@ describe("buildAgentActionsList — completed agent with session", () => {
   });
 });
 
+describe("showRunningAgentsMenu — duration display", () => {
+  const NOW = new Date("2025-01-01T00:00:00.000Z").getTime();
+
+  beforeEach(() => {
+    selectListCalls = [];
+    vi.clearAllMocks();
+    mockModules.mockManager.listAgents.mockReset();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Open the menu and return the agent-row labels (bulk rows excluded). */
+  async function openAgentLabels(records: AgentRecord[]): Promise<string[]> {
+    mockModules.mockManager.listAgents.mockReturnValue(records);
+    const ctx = createMockCtx();
+    await showRunningAgentsMenu(ctx);
+    return selectListCalls[0].items.filter((i) => !i.value.startsWith("__")).map((i) => i.label);
+  }
+
+  function runningRecord(startedAgoMs: number, description = "my task"): AgentRecord {
+    return makeRecord({
+      id: "agent-1",
+      display: { type: "general-purpose", description },
+      lifecycle: { status: "running", startedAt: NOW - startedAgoMs },
+      result: "",
+    });
+  }
+
+  it("shows a formatted run duration on running rows with no ago suffix", async () => {
+    const labels = await openAgentLabels([runningRecord(337_000)]);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toContain("5m 37s");
+    expect(labels[0]).not.toContain("337s");
+    expect(labels[0]).not.toContain("ago");
+  });
+
+  it("shows a frozen run duration plus ago at the end of finished rows", async () => {
+    const record = makeRecord({
+      id: "agent-1",
+      display: { type: "general-purpose", description: "my task" },
+      lifecycle: { status: "completed", startedAt: NOW - 400_000, completedAt: NOW - 120_000 },
+    });
+    const labels = await openAgentLabels([record]);
+    expect(labels[0]).toContain("4m 40s");
+    expect(labels[0]).not.toContain("6m 40s");
+    expect(labels[0].endsWith("\u2014 my task 2m ago")).toBe(true);
+  });
+
+  it("shows queued duration on the same path with no ago suffix", async () => {
+    const record = makeRecord({
+      id: "agent-1",
+      display: { type: "general-purpose", description: "queued task" },
+      lifecycle: { status: "queued", startedAt: NOW - 500 },
+      result: "",
+    });
+    const labels = await openAgentLabels([record]);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toContain("<1s");
+    expect(labels[0]).not.toContain("ago");
+  });
+
+  it("falls back to now for duration and ago when completedAt is missing", async () => {
+    const record = makeRecord({
+      id: "agent-1",
+      display: { type: "general-purpose", description: "my task" },
+      lifecycle: { status: "completed", startedAt: NOW - 65_000, completedAt: NOW - 10_000 },
+      result: "done",
+    });
+    delete record.lifecycle.completedAt;
+    const labels = await openAgentLabels([record]);
+    expect(labels[0]).toContain("1m 5s");
+    expect(labels[0].endsWith("<1s ago")).toBe(true);
+  });
+
+  it("formats long runs with hours", async () => {
+    const labels = await openAgentLabels([runningRecord(3_661_000)]);
+    expect(labels[0]).toContain("1h 1m 1s");
+    expect(labels[0]).not.toContain("ago");
+  });
+
+  it.each(["completed", "error", "stopped", "aborted", "turn_limited"] as const)(
+    "appends ago for %s rows",
+    async (status) => {
+      const record = makeRecord({
+        id: "agent-1",
+        display: { type: "general-purpose", description: "my task" },
+        lifecycle: { status, startedAt: NOW - 200_000, completedAt: NOW - 60_000 },
+        result: "",
+      });
+      const labels = await openAgentLabels([record]);
+      expect(labels[0]).toContain("2m 20s");
+      expect(labels[0].endsWith("1m ago")).toBe(true);
+    },
+  );
+
+  it("ends finished rows without a headline in the ago stamp", async () => {
+    const record = makeRecord({
+      id: "agent-1",
+      display: { type: "general-purpose", description: "" },
+      lifecycle: { status: "error", startedAt: NOW - 200_000, completedAt: NOW - 60_000 },
+      result: "",
+      error: "boom",
+    });
+    const labels = await openAgentLabels([record]);
+    expect(labels[0]).toContain("2m 20s");
+    expect(labels[0].endsWith("1m ago")).toBe(true);
+    expect(labels[0]).not.toContain("\u2014");
+  });
+});
+
 describe("clear actions for finished agents", () => {
   beforeEach(() => {
     selectListCalls = [];

@@ -195,11 +195,17 @@ vi.mock("../src/ui/searchable-select.js", () => ({
   },
 }));
 
-vi.mock("../src/ui/format.js", () => ({
-  getDisplayName: vi.fn((t: string) => t),
-  agentBulletPrefix: vi.fn(() => ""),
-  agentColoredText: vi.fn((text: string) => text),
-}));
+vi.mock("../src/ui/format.js", async () => {
+  // formatMs is the real implementation: menu tests pin its actual output
+  // in row labels instead of a hand-copied shape.
+  const actual = await vi.importActual<typeof import("../src/ui/format.js")>("../src/ui/format.js");
+  return {
+    getDisplayName: vi.fn((t: string) => t),
+    agentBulletPrefix: vi.fn(() => ""),
+    agentColoredText: vi.fn((text: string) => text),
+    formatMs: actual.formatMs,
+  };
+});
 
 vi.mock("../src/config/config-io.js", async () => {
   // Re-export the real constants so the shell mock below derives its defaults

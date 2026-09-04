@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Running Agents menu shows readable durations.** Each row now shows a formatted run duration (`5m 37s`, `1h 1m 1s`) instead of a raw second count. Finished rows freeze the duration at completion and append how long ago the run settled (`... — my task 2m ago`).
+
 ## [1.13.0] - 2026-08-20
 
 ### Added
