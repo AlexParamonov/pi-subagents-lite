@@ -152,7 +152,7 @@ export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
 
   if (raw.concurrency !== undefined) {
     const concurrency = cleanConcurrencySection(raw.concurrency, filePath);
-    if (concurrency && Object.keys(concurrency).length > 0) cleaned.concurrency = concurrency;
+    if (Object.keys(concurrency).length > 0) cleaned.concurrency = concurrency;
   }
 
   return cleaned;
@@ -181,12 +181,12 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
 function cleanConcurrencySection(
   concurrency: unknown,
   filePath: string,
-): NonNullable<RawConfig["concurrency"]> | undefined {
+): NonNullable<RawConfig["concurrency"]> {
+  const kept: NonNullable<RawConfig["concurrency"]> = {};
   if (!isPlainObject(concurrency)) {
     console.warn(formatIncompatibleWarning(filePath, "concurrency", concurrency, EXPECTED_OBJECT));
-    return undefined;
+    return kept;
   }
-  const kept: NonNullable<RawConfig["concurrency"]> = {};
   if (concurrency.default !== undefined) {
     if (typeof concurrency.default === "number") kept.default = concurrency.default;
     else console.warn(formatIncompatibleWarning(filePath, "concurrency.default", concurrency.default, NUM.expected));
