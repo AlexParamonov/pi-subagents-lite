@@ -147,7 +147,6 @@ export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
     } else {
       const agent = cleanAgentEntries(raw.agent, filePath);
       if (Object.keys(agent).length > 0) cleaned.agent = agent;
-      else if (Object.keys(raw.agent).length === 0) cleaned.agent = {};
     }
   }
 
