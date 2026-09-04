@@ -13,7 +13,7 @@ import type {
   ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 import { shallowMerge, defaultUi, defaultSessionManager, defaultModel, defaultModelRegistry } from "./mock-utils.js";
-import type { TObject } from "@sinclair/typebox";
+import type { TObject } from "typebox";
 import { asExtensionAPI } from "./pi-boundaries.js";
 import type { AgentManager } from "../src/agents/agent-manager.js";
 import type { SubagentsConfig } from "../src/models/model-precedence.js";

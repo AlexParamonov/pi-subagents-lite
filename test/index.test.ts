@@ -152,6 +152,18 @@ function findTool(api: MockExtensionAPI, name: string) {
   return api.tools.find((t) => t.name === name);
 }
 
+/**
+ * Emitted-JSON view of a TypeBox 1.x schema. 1.x declares concrete fields
+ * (type, anyOf, additionalProperties) only on specific schema interfaces,
+ * while these tests assert the plain JSON data the extension hands to pi.
+ */
+interface SchemaJson {
+  type?: unknown;
+  description?: unknown;
+  anyOf?: SchemaJson[];
+  additionalProperties?: unknown;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Shared extension load                                             */
 /* ------------------------------------------------------------------ */
@@ -184,7 +196,7 @@ describe("Agent tool schema — stealth", () => {
   });
 
   it("exposes exactly the documented param set, each without a description", () => {
-    const props = agentTool()!.parameters.properties;
+    const props = agentTool()!.parameters.properties as Record<string, SchemaJson>;
     expect(Object.keys(props).sort()).toEqual(["agent", "description", "prompt", "run_in_background", "worktree_path"]);
     // Params carry no description: the model learns them from the tool name alone.
     expect(props.prompt.description).toBeUndefined();
@@ -390,7 +402,7 @@ describe("constrained sampling — default OFF", () => {
     it(`${toolName} schema has additionalProperties: false`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
-      expect(tool!.parameters.additionalProperties).toBe(false);
+      expect((tool!.parameters as SchemaJson).additionalProperties).toBe(false);
     });
   }
 });
@@ -433,19 +445,20 @@ describe("constrained sampling — toggle ON", () => {
 
   it("Agent optional fields use nullable anyOf pattern when toggle is ON", () => {
     const tool = findTool(api, "Agent");
-    const props = tool!.parameters.properties;
+    const props = tool!.parameters.properties as Record<string, SchemaJson>;
     for (const name of ["description", "agent", "run_in_background", "worktree_path"]) {
       // Real TypeBox emits { anyOf: [...] } for Type.Union (no `type` field).
-      expect(props[name].anyOf).toBeDefined();
+      const anyOf = props[name]!.anyOf;
+      expect(anyOf).toBeDefined();
       // Strict-mode JSON schema rejects null values unless the union
       // explicitly includes the null variant (Type.Null in registration.ts).
-      expect(props[name].anyOf.some((s: { type?: unknown }) => s.type === "null")).toBe(true);
+      expect(anyOf!.some((s) => s.type === "null")).toBe(true);
     }
   });
 
   it("Agent schema has additionalProperties: false when toggle is ON", () => {
     const tool = findTool(api, "Agent");
-    expect(tool!.parameters.additionalProperties).toBe(false);
+    expect((tool!.parameters as SchemaJson).additionalProperties).toBe(false);
   });
 });
 

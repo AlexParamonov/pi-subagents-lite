@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Schemas migrated to pi's `typebox` 1.x line, declared as a peer dependency.** Tool parameter schemas and config validation now build on the unscoped `typebox` package instead of `@sinclair/typebox` 0.34 — a package the pi host does not ship, so the extension and host previously maintained different schema libraries. `typebox` (>= 1.3.7) joins the three pi packages as a peer: pi's extension loader aliases it to the host's own copy in every runtime mode, dev/CI gets it via npm peer auto-install (lockfile-pinned), and the extension ships no schema-library copy at all. Emitted schemas are unchanged JSON data; the full suite passes without behavior changes.
+- **Dev dependency on pi dropped; the peer declaration is the single contract.** The `@earendil-works/pi-coding-agent` devDependency entry is removed — npm provides the package in dev/CI by auto-installing the existing peer dependency (`>=0.82.0`), so typecheck and tests are unchanged while the version floor is declared once instead of twice. The lockfile keeps pinning the resolved version. Dev-only: no impact on the published package.
+
 ## [1.13.1] - 2026-09-04
 
 ### Changed

@@ -7,8 +7,8 @@
  * and one loud warning per bad value names the file, key, got, expected,
  * and fix hint. Never migrates fork shapes or throws.
  */
-import { Type, type TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { Type, type TSchema } from "typebox";
+import { Check } from "typebox/value";
 import type { RawConfig } from "./config-io.js";
 
 /** One known key's runtime rule plus its human-readable expected shape. */
@@ -128,7 +128,7 @@ const EXPECTED_OBJECT = "object";
  */
 function isValidValue(spec: KeySpec, value: unknown): boolean {
   try {
-    return Value.Check(spec.schema, value);
+    return Check(spec.schema, value);
   } catch {
     return false;
   }
