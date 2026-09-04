@@ -5,9 +5,11 @@
  * field goes through the compat chain (explicit `model.compat.maxTokensField`
  * wins, otherwise auto-detected from provider name and baseUrl); for the
  * OpenAI Responses family pi sends `max_output_tokens` clamped to a minimum
- * of 16 (the Responses API rejects values below it). pi-ai does not export
- * its resolution functions, so the detection below is a verbatim copy — keep
- * it in sync when upgrading pi.
+ * of 16 (the Responses API rejects values below it), and on openai-responses
+ * only when `compat.supportsMaxOutputTokens` (default true — some gateways
+ * reject the field; newer pi-ai releases, inert on older ones). pi-ai does
+ * not export its resolution functions, so the detection below is a verbatim
+ * copy — keep it in sync when upgrading pi.
  */
 
 export type MaxTokensField = "max_tokens" | "max_completion_tokens";
@@ -36,12 +38,20 @@ export interface OutputLimit {
 // max_output_tokens below 16 (pi issue #6265).
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
-/** Resolve the output-limit field and value pi sends for this model. */
-export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: number): OutputLimit {
+/**
+ * Resolve the output-limit field and value pi sends for this model.
+ * Returns undefined when pi sends no output-limit field at all (the model
+ * disabled `supportsMaxOutputTokens`), so the caller must not inject.
+ */
+export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: number): OutputLimit | undefined {
   switch (model.api) {
     case "openai-completions":
       return { field: resolveMaxTokensField(model), value: maxTokens };
     case "openai-responses":
+      if (supportsMaxOutputTokens(model.compat)) {
+        return { field: "max_output_tokens", value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
+      }
+      return undefined;
     case "azure-openai-responses":
       return { field: "max_output_tokens", value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
     default:
@@ -50,6 +60,12 @@ export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: numbe
       // (issue #22), unchanged by this fix.
       return { field: "max_tokens", value: maxTokens };
   }
+}
+
+function supportsMaxOutputTokens(compat: unknown): boolean {
+  // pi: `model.compat?.supportsMaxOutputTokens ?? true`
+  if (!compat || typeof compat !== "object") return true;
+  return (compat as Record<string, unknown>).supportsMaxOutputTokens !== false;
 }
 
 export function resolveMaxTokensField(model: MaxTokensFieldSource): MaxTokensField {

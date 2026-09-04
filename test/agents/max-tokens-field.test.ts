@@ -10,7 +10,11 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { resolveMaxTokensField, resolveOutputLimit } from "../../src/agents/max-tokens-field.js";
+import {
+  resolveMaxTokensField,
+  resolveOutputLimit,
+  type MaxTokensFieldSource,
+} from "../../src/agents/max-tokens-field.js";
 
 function model(overrides: Partial<Model<Api>> = {}): Model<Api> {
   return {
@@ -141,6 +145,20 @@ describe("resolveOutputLimit", () => {
       field: "max_output_tokens",
       value: 16,
     });
+  });
+
+  it("skips injection when the model disables supportsMaxOutputTokens", () => {
+    // Newer pi-ai releases gate the responses field on
+    // compat.supportsMaxOutputTokens (default true); some gateways reject
+    // it. Built on the extension's own source interface: the installed
+    // pi-ai types do not declare the field yet.
+    const m: MaxTokensFieldSource = {
+      api: "openai-responses",
+      provider: "opencode",
+      baseUrl: "https://opencode.ai/zen",
+      compat: { supportsMaxOutputTokens: false },
+    };
+    expect(resolveOutputLimit(m, 4096)).toBeUndefined();
   });
 
   it("keeps max_tokens for anthropic-messages (pi's native field)", () => {

@@ -21,6 +21,7 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { SelectItem, SelectList } from "@earendil-works/pi-tui";
 
 /** Assert a fake session against the real AgentSession at a call boundary. */
@@ -56,4 +57,14 @@ export interface SelectListView {
  */
 export function selectListView(list: SelectList): SelectListView {
   return list as unknown as SelectListView;
+}
+
+/**
+ * Attach a forward-looking compat field that the installed pi-ai types do
+ * not yet declare (e.g. OpenAIResponsesCompat.supportsMaxOutputTokens,
+ * present in newer pi-ai releases). One boundary cast so the output-limit
+ * gate test can build a real-shaped model without an inline cast.
+ */
+export function withCompatField(model: Model<Api>, compat: Record<string, unknown>): Model<Api> {
+  return { ...model, compat: compat as Model<Api>["compat"] };
 }

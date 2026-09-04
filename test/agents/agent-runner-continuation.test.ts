@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
-import { asAgentSession } from "../pi-boundaries.js";
+import { asAgentSession, withCompatField } from "../pi-boundaries.js";
 import {
   mockModules,
   defaultConfig,
@@ -448,6 +448,27 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     const finalPayload = await session.agent.onPayload!({ model: "m", messages: [] }, model);
 
     expect(finalPayload.max_output_tokens).toBe(16);
+  });
+
+  it("injects no output limit when supportsMaxOutputTokens is false", async () => {
+    // Newer pi-ai releases only send the responses field when
+    // compat.supportsMaxOutputTokens (default true); some gateways reject
+    // it. The hook must not inject a field pi would not send.
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = withCompatField(makeMockModel({ api: "openai-responses" }), {
+      supportsMaxOutputTokens: false,
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = { model: "m", messages: [] };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual(rawPayload);
   });
 
   it("injects max_output_tokens for azure-openai-responses models", async () => {
