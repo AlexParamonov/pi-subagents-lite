@@ -29,3 +29,15 @@
 **What worked:** TRIVIAL alternatives verdict still surfaced the one genuine decision (unknown agent keys as per-type model keys); per-key TypeBox schema map with error-path mapping dropped fork shapes with loud warnings while valid keys survived.
 **What failed:** Manual tester used global-only `graceTurns` in a project file as the valid-key-kept case and got a correct second warning, since project files accept only model-family plus per-type keys by design (`isProjectAllowedAgentKey`).
 **Next time:** For manual config scenarios use per-type overrides in project files, not global-only keys.
+
+## pi-toolchain-0.85 (lockfile-only pin) - 2026-09-04
+
+**What worked:** Keeping the pi toolchain version pinned only in the lockfile (no devDep; peers `>=0.82.0` auto-install) made the 0.85 upgrade attempt a pure `npm update` with zero manifest churn, and the failure was instantly diagnosable to pi's packaging rather than our code.
+**What failed:** pi-coding-agent 0.85.0's dist bare-imports the undeclared `@earendil-works/pi-server` (`index.js` → `main.js` → `experimental/server.js`), so 44 test files die on `ERR_MODULE_NOT_FOUND` at import, before any assertion runs.
+**Next time:** Before `npm update` of the pi toolchain, check pi's release notes for packaging changes. If the tree goes red with module-not-found inside pi's dist, hold the lockfile until pi ships the fix or install the missing package explicitly.
+
+## typebox-peer (host-owned schema library) - 2026-09-04
+
+**What worked:** Migrating to the unscoped `typebox` package at pi's own exact pin (1.3.7) and declaring it a peer: pi's extension loader aliases `typebox`/`typebox/value` to the host's copy in every runtime mode (jiti aliases, SEA virtualModules), dev/CI gets it via npm peer auto-install, and emitted schemas were unchanged, so the whole suite passed without assertion edits.
+**What failed:** The extension built schemas with `@sinclair/typebox` 0.34 — a package the pi host does not ship — so the two schema lineages drifted; typebox 1.x's thin base `TSchema` then broke seven test typechecks that poked at concrete fields (`type`, `anyOf`, `additionalProperties`).
+**Next time:** Import `Type`/`TSchema` from `typebox` and `Check` from `typebox/value`, never `@sinclair/typebox`. When tests assert schema internals, narrow to the emitted JSON shape via a structural view instead of the library interfaces.
