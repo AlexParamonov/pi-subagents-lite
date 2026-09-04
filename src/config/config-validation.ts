@@ -108,8 +108,25 @@ export function formatIncompatibleWarning(filePath: string, keyPath: string, val
   );
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+/** Plain-object guard, shared with config-io for its project malformed checks. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Expected-shape label for JSON-object sections. */
+const EXPECTED_OBJECT = "object";
+
+/**
+ * Check a value against one known key's rule. Never throws: TypeBox is an
+ * external call at a file-load boundary, so a missed check warns and drops
+ * instead of crashing the load.
+ */
+function isValidValue(spec: KeySpec, value: unknown): boolean {
+  try {
+    return Value.Check(spec.schema, value);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -120,60 +137,74 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
   const cleaned: RawConfig = {};
   if (!isPlainObject(raw)) {
-    console.warn(formatIncompatibleWarning(filePath, "(config)", raw, "object"));
+    console.warn(formatIncompatibleWarning(filePath, "(config)", raw, EXPECTED_OBJECT));
     return cleaned;
   }
 
   if (raw.agent !== undefined) {
     if (!isPlainObject(raw.agent)) {
-      console.warn(formatIncompatibleWarning(filePath, "agent", raw.agent, "object"));
+      console.warn(formatIncompatibleWarning(filePath, "agent", raw.agent, EXPECTED_OBJECT));
     } else {
-      const agent: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(raw.agent)) {
-        if (SILENTLY_DROPPED_KEYS.has(key)) continue;
-        if (value === undefined) continue;
-        const spec = AGENT_KEY_SPECS[key] ?? MODEL_KEY;
-        let ok = false;
-        try {
-          ok = Value.Check(spec.schema, value);
-        } catch {
-          ok = false;
-        }
-        if (ok) agent[key] = value;
-        else console.warn(formatIncompatibleWarning(filePath, `agent.${key}`, value, spec.expected));
-      }
+      const agent = cleanAgentEntries(raw.agent, filePath);
       if (Object.keys(agent).length > 0) cleaned.agent = agent;
-      else if (raw.agent && Object.keys(raw.agent).length === 0) cleaned.agent = {};
+      else if (Object.keys(raw.agent).length === 0) cleaned.agent = {};
     }
   }
 
   if (raw.concurrency !== undefined) {
-    if (!isPlainObject(raw.concurrency)) {
-      console.warn(formatIncompatibleWarning(filePath, "concurrency", raw.concurrency, "object"));
-    } else {
-      const concurrency: NonNullable<RawConfig["concurrency"]> = {};
-      const src = raw.concurrency;
-      if (src.default !== undefined) {
-        if (typeof src.default === "number") concurrency.default = src.default;
-        else console.warn(formatIncompatibleWarning(filePath, "concurrency.default", src.default, "number"));
-      }
-      for (const section of ["providers", "models"] as const) {
-        const entries = src[section];
-        if (entries === undefined) continue;
-        if (!isPlainObject(entries)) {
-          console.warn(formatIncompatibleWarning(filePath, `concurrency.${section}`, entries, "object"));
-          continue;
-        }
-        const kept: Record<string, number> = {};
-        for (const [key, value] of Object.entries(entries)) {
-          if (typeof value === "number") kept[key] = value;
-          else console.warn(formatIncompatibleWarning(filePath, `concurrency.${section}.${key}`, value, "number"));
-        }
-        if (Object.keys(kept).length > 0) concurrency[section] = kept;
-      }
-      if (Object.keys(concurrency).length > 0) cleaned.concurrency = concurrency;
-    }
+    const concurrency = cleanConcurrencySection(raw.concurrency, filePath);
+    if (concurrency && Object.keys(concurrency).length > 0) cleaned.concurrency = concurrency;
   }
 
   return cleaned;
+}
+
+/**
+ * Keep valid agent entries, warn and drop the rest. Unknown keys are
+ * per-type model keys; legacy keys in SILENTLY_DROPPED_KEYS vanish quietly.
+ */
+function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(agent)) {
+    if (SILENTLY_DROPPED_KEYS.has(key)) continue;
+    if (value === undefined) continue;
+    const spec = AGENT_KEY_SPECS[key] ?? MODEL_KEY;
+    if (isValidValue(spec, value)) kept[key] = value;
+    else console.warn(formatIncompatibleWarning(filePath, `agent.${key}`, value, spec.expected));
+  }
+  return kept;
+}
+
+/**
+ * Keep valid concurrency entries, warn and drop the rest. Plain typeof
+ * checks: every value here is a bare number, so TypeBox adds nothing.
+ */
+function cleanConcurrencySection(
+  concurrency: unknown,
+  filePath: string,
+): NonNullable<RawConfig["concurrency"]> | undefined {
+  if (!isPlainObject(concurrency)) {
+    console.warn(formatIncompatibleWarning(filePath, "concurrency", concurrency, EXPECTED_OBJECT));
+    return undefined;
+  }
+  const kept: NonNullable<RawConfig["concurrency"]> = {};
+  if (concurrency.default !== undefined) {
+    if (typeof concurrency.default === "number") kept.default = concurrency.default;
+    else console.warn(formatIncompatibleWarning(filePath, "concurrency.default", concurrency.default, NUM.expected));
+  }
+  for (const section of ["providers", "models"] as const) {
+    const entries = concurrency[section];
+    if (entries === undefined) continue;
+    if (!isPlainObject(entries)) {
+      console.warn(formatIncompatibleWarning(filePath, `concurrency.${section}`, entries, EXPECTED_OBJECT));
+      continue;
+    }
+    const keptEntries: Record<string, number> = {};
+    for (const [key, value] of Object.entries(entries)) {
+      if (typeof value === "number") keptEntries[key] = value;
+      else console.warn(formatIncompatibleWarning(filePath, `concurrency.${section}.${key}`, value, NUM.expected));
+    }
+    if (Object.keys(keptEntries).length > 0) kept[section] = keptEntries;
+  }
+  return kept;
 }
