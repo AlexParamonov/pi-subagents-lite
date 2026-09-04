@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { SubagentsConfig } from "../models/model-precedence.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
+import { isPlainObject, validateRawLayer } from "./config-validation.js";
 
 /** File name of the config in both the global agent dir and a project's .pi dir. */
 const CONFIG_FILE_NAME = "subagents-lite.json";
@@ -140,8 +141,6 @@ export function createConfigIO(projectDir?: string): ConfigIO {
   return {
     load: () => {
       const global = readGlobalRaw();
-      // Legacy key never written back: drop it from the raw global layer.
-      if (global.agent) delete global.agent.finishedEvictTurns;
       if (projectPath) {
         const read = readProjectRaw(projectPath);
         if (read === null) {
@@ -246,11 +245,14 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
 
 /** Read the global file; any failure (missing, malformed) reads as {} — as today. */
 function readGlobalRaw(): RawConfig {
+  let parsed: unknown;
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) as RawConfig;
+    parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
   } catch {
     return {};
   }
+  // Per-value validation: drop bad values with a warning, keep valid keys.
+  return validateRawLayer(parsed, CONFIG_PATH);
 }
 
 /** Read the project file; missing = absent, unreadable/invalid = malformed + warning. */
@@ -278,17 +280,17 @@ function readProjectRaw(projectPath: string): ProjectRead {
   if (raw.concurrency?.models !== undefined && !isPlainObject(raw.concurrency.models)) {
     return malformedSection(projectPath, "concurrency.models");
   }
-  const unknownKeys = Object.keys(raw.agent ?? {}).filter((key) => !isProjectAllowedAgentKey(key));
-  return { raw, unknownKeys };
+  // Per-value validation first so dropped keys warn once (type error), not
+  // twice (type error plus unknown-key). Unknown keys are computed on the
+  // cleaned layer; the file bytes stay untouched.
+  const cleaned = validateRawLayer(raw, projectPath);
+  const unknownKeys = Object.keys(cleaned.agent ?? {}).filter((key) => !isProjectAllowedAgentKey(key));
+  return { raw: cleaned, unknownKeys };
 }
 
 function malformedSection(projectPath: string, section: string): "malformed" {
   console.warn(`[subagents] Ignoring malformed project config ${projectPath}: "${section}" is not a JSON object`);
   return "malformed";
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // ── Save ─────────────────────────────────────────────────────────────
