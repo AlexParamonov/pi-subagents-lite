@@ -258,9 +258,10 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
       const items: SelectItem[] = agents.map((record) => {
         // Finished runs freeze at completion; the now fallback is defensive only
         // (completedAt is stamped on every terminal path and cleared on continue).
-        const end = isActive(record) ? now : (record.lifecycle.completedAt ?? now);
+        const active = isActive(record);
+        const end = active ? now : (record.lifecycle.completedAt ?? now);
         const duration = formatMs(end - record.lifecycle.startedAt);
-        const ago = isActive(record) ? "" : ` ${formatMs(now - end)} ago`;
+        const ago = active ? "" : ` ${formatMs(now - end)} ago`;
         const statusIcon =
           record.lifecycle.status === "running"
             ? "\u25B6"
