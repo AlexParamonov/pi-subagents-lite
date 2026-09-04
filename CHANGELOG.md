@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Running Agents menu shows readable durations.** Each row now shows a formatted run duration (`5m 37s`, `1h 1m 1s`) instead of a raw second count. Finished rows freeze the duration at completion and append how long ago the run settled (`... — my task 2m ago`).
+
 ### Fixed
 
 - **Manual spawn runs in background by default.** The spawn wizard Background toggle now defaults to ON, so the parent session gets the result via nudge. Foreground menu spawns had no tool return to deliver through, so their result never reached the main session.

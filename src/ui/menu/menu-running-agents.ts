@@ -27,7 +27,7 @@ import {
 import type { AgentRecord } from "../../types.js";
 import { SHORT_ID_LENGTH } from "../../types.js";
 import { ConversationViewer } from "../conversation-viewer.js";
-import { getDisplayName, agentBulletPrefix } from "../format.js";
+import { getDisplayName, agentBulletPrefix, formatMs } from "../format.js";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.js";
 import { getManager, getStore } from "../../shell.js";
 import type { Theme } from "../types.js";
@@ -252,8 +252,16 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const buildAgentItems = (): SelectItem[] => {
+      // One timestamp for every row: rows stay mutually consistent instead of
+      // skewing by a millisecond per Date.now() call.
+      const now = Date.now();
       const items: SelectItem[] = agents.map((record) => {
-        const elapsed = Math.round((Date.now() - record.lifecycle.startedAt) / 1000);
+        // Finished runs freeze at completion; the now fallback is defensive only
+        // (completedAt is stamped on every terminal path and cleared on continue).
+        const active = isActive(record);
+        const end = active ? now : (record.lifecycle.completedAt ?? now);
+        const duration = formatMs(end - record.lifecycle.startedAt);
+        const ago = active ? "" : ` ${formatMs(now - end)} ago`;
         const statusIcon =
           record.lifecycle.status === "running"
             ? "\u25B6"
@@ -269,7 +277,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         const bullet = agentBulletPrefix(record.display.type);
         return {
           value: record.id,
-          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${record.display.type}  ${record.lifecycle.status}  ${elapsed}s${suffix}`,
+          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${record.display.type}  ${record.lifecycle.status}  ${duration}${suffix}${ago}`,
         };
       });
       if (running.length > 0) {
