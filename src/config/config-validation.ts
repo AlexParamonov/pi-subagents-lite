@@ -108,6 +108,11 @@ function formatIncompatibleWarning(filePath: string, keyPath: string, value: unk
   );
 }
 
+/** Emit one loud warning for a dropped value. Pure formatting stays in formatIncompatibleWarning. */
+function warnIncompatible(filePath: string, keyPath: string, value: unknown, expected: string): void {
+  console.warn(formatIncompatibleWarning(filePath, keyPath, value, expected));
+}
+
 /** Plain-object guard, shared with config-io for its project malformed checks. */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -137,13 +142,13 @@ function isValidValue(spec: KeySpec, value: unknown): boolean {
 export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
   const cleaned: RawConfig = {};
   if (!isPlainObject(raw)) {
-    console.warn(formatIncompatibleWarning(filePath, "(config)", raw, EXPECTED_OBJECT));
+    warnIncompatible(filePath, "(config)", raw, EXPECTED_OBJECT);
     return cleaned;
   }
 
   if (raw.agent !== undefined) {
     if (!isPlainObject(raw.agent)) {
-      console.warn(formatIncompatibleWarning(filePath, "agent", raw.agent, EXPECTED_OBJECT));
+      warnIncompatible(filePath, "agent", raw.agent, EXPECTED_OBJECT);
     } else {
       const agent = cleanAgentEntries(raw.agent, filePath);
       if (Object.keys(agent).length > 0) cleaned.agent = agent;
@@ -169,7 +174,7 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
     if (value === undefined) continue;
     const spec = AGENT_KEY_SPECS[key] ?? MODEL_KEY;
     if (isValidValue(spec, value)) kept[key] = value;
-    else console.warn(formatIncompatibleWarning(filePath, `agent.${key}`, value, spec.expected));
+    else warnIncompatible(filePath, `agent.${key}`, value, spec.expected);
   }
   return kept;
 }
@@ -181,24 +186,24 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
 function cleanConcurrencySection(concurrency: unknown, filePath: string): NonNullable<RawConfig["concurrency"]> {
   const kept: NonNullable<RawConfig["concurrency"]> = {};
   if (!isPlainObject(concurrency)) {
-    console.warn(formatIncompatibleWarning(filePath, "concurrency", concurrency, EXPECTED_OBJECT));
+    warnIncompatible(filePath, "concurrency", concurrency, EXPECTED_OBJECT);
     return kept;
   }
   if (concurrency.default !== undefined) {
     if (typeof concurrency.default === "number") kept.default = concurrency.default;
-    else console.warn(formatIncompatibleWarning(filePath, "concurrency.default", concurrency.default, NUM.expected));
+    else warnIncompatible(filePath, "concurrency.default", concurrency.default, NUM.expected);
   }
   for (const section of ["providers", "models"] as const) {
     const entries = concurrency[section];
     if (entries === undefined) continue;
     if (!isPlainObject(entries)) {
-      console.warn(formatIncompatibleWarning(filePath, `concurrency.${section}`, entries, EXPECTED_OBJECT));
+      warnIncompatible(filePath, `concurrency.${section}`, entries, EXPECTED_OBJECT);
       continue;
     }
     const keptEntries: Record<string, number> = {};
     for (const [key, value] of Object.entries(entries)) {
       if (typeof value === "number") keptEntries[key] = value;
-      else console.warn(formatIncompatibleWarning(filePath, `concurrency.${section}.${key}`, value, NUM.expected));
+      else warnIncompatible(filePath, `concurrency.${section}.${key}`, value, NUM.expected);
     }
     if (Object.keys(keptEntries).length > 0) kept[section] = keptEntries;
   }
