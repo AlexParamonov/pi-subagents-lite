@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Subagent `max_tokens` injection follows pi's compat chain.** When an agent sets `max_tokens`, the injected provider field is now resolved exactly like pi resolves it: an explicit `model.compat.maxTokensField` wins, otherwise the field is auto-detected from the provider name and baseUrl (the provider families that use `max_tokens`), defaulting to `max_completion_tokens`. Previously the extension defaulted to `max_tokens` whenever the model's compat was silent, so custom models (e.g. `opencode-go` models absent from the generated catalog) sent `max_tokens` where pi sends `max_completion_tokens` and the provider rejected the request with `unknown parameter max_tokens`. Catalog models with explicit compat and all other models behave exactly as before.
+
 ## [1.13.0] - 2026-08-20
 
 ### Added

@@ -320,6 +320,61 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     expect(finalPayload.max_tokens).toBeUndefined();
   });
 
+  it("resolves the field via pi's compat chain when model compat is silent", async () => {
+    // The failing case: a model absent from the generated catalog has no
+    // compat. The extension must resolve the field exactly like pi does
+    // (detection finds no max_tokens family → max_completion_tokens), not
+    // default to max_tokens, or the provider rejects the request.
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({
+      id: "custom-model",
+      name: "Custom Model",
+      provider: "opencode-go",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!(
+      { model: "custom-model", messages: [{ role: "user", content: "do something" }] },
+      model,
+    );
+
+    expect(finalPayload.max_completion_tokens).toBe(4096);
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("keeps sending max_tokens for catalog models with explicit compat", async () => {
+    // Catalog opencode-go models carry compat.maxTokensField = max_tokens;
+    // the explicit override wins over detection and behavior is unchanged.
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({
+      id: "catalog-model",
+      name: "Catalog Model",
+      provider: "opencode-go",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      compat: { maxTokensField: "max_tokens" },
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!(
+      { model: "catalog-model", messages: [{ role: "user", content: "do something" }] },
+      model,
+    );
+
+    expect(finalPayload.max_tokens).toBe(4096);
+    expect(finalPayload.max_completion_tokens).toBeUndefined();
+  });
+
   it("no max_tokens injected when agent config omits it", async () => {
     mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig });
 
