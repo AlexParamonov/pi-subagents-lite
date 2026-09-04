@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tool count marker renders reliably across terminal fonts.** Replaced the forced text-presentation emoji with a one-cell text symbol, avoiding the Unicode replacement glyph when that text variant is unavailable.
+
 ## [1.13.0] - 2026-08-20
 
 ### Added
