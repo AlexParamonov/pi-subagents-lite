@@ -93,7 +93,7 @@ const AGENT_KEY_SPECS: Record<string, KeySpec> = {
 const SILENTLY_DROPPED_KEYS = new Set(["finishedEvictTurns"]);
 
 /** Received-kind label for warnings: arrays and null get their own names. */
-export function describeValue(value: unknown): string {
+function describeValue(value: unknown): string {
   if (Array.isArray(value)) return "array";
   if (value === null) return "null";
   if (typeof value === "object") return "object";
@@ -101,7 +101,7 @@ export function describeValue(value: unknown): string {
 }
 
 /** One loud warning naming file, key, got, expected, and the fix path. */
-export function formatIncompatibleWarning(filePath: string, keyPath: string, value: unknown, expected: string): string {
+function formatIncompatibleWarning(filePath: string, keyPath: string, value: unknown, expected: string): string {
   return (
     `[subagents] Incompatible value in ${filePath}: "${keyPath}" is ${describeValue(value)}, ` +
     `expected ${expected}. Set it again in the /agents menu, or edit or delete the file to fix it.`
@@ -178,10 +178,7 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
  * Keep valid concurrency entries, warn and drop the rest. Plain typeof
  * checks: every value here is a bare number, so TypeBox adds nothing.
  */
-function cleanConcurrencySection(
-  concurrency: unknown,
-  filePath: string,
-): NonNullable<RawConfig["concurrency"]> {
+function cleanConcurrencySection(concurrency: unknown, filePath: string): NonNullable<RawConfig["concurrency"]> {
   const kept: NonNullable<RawConfig["concurrency"]> = {};
   if (!isPlainObject(concurrency)) {
     console.warn(formatIncompatibleWarning(filePath, "concurrency", concurrency, EXPECTED_OBJECT));
