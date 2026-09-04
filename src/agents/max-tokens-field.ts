@@ -1,12 +1,13 @@
 /**
  * Output-limit field resolution for OpenAI-compatible models.
  *
- * Mirrors pi-ai's compat chain (openai-completions `getCompat`/
- * `detectCompat`, maxTokensField portion): an explicit
- * `model.compat.maxTokensField` wins, otherwise the field is
- * auto-detected from the provider name and baseUrl. pi-ai does not
- * export its detection function, so the detection below is a verbatim
- * copy — keep it in sync when upgrading pi.
+ * Mirrors pi-ai's per-API output-limit handling: for openai-completions the
+ * field goes through the compat chain (explicit `model.compat.maxTokensField`
+ * wins, otherwise auto-detected from provider name and baseUrl); for the
+ * OpenAI Responses family pi sends `max_output_tokens` clamped to a minimum
+ * of 16 (the Responses API rejects values below it). pi-ai does not export
+ * its resolution functions, so the detection below is a verbatim copy — keep
+ * it in sync when upgrading pi.
  */
 
 export type MaxTokensField = "max_tokens" | "max_completion_tokens";
@@ -19,9 +20,36 @@ export type MaxTokensField = "max_tokens" | "max_completion_tokens";
  * like pi's `model.compat.maxTokensField ?? detected`.
  */
 export interface MaxTokensFieldSource {
+  api: string;
   provider: string;
   baseUrl: string;
   compat?: unknown;
+}
+
+/** The output-limit field and value to inject for a model, per pi's per-API algorithm. */
+export interface OutputLimit {
+  field: MaxTokensField | "max_output_tokens";
+  value: number;
+}
+
+// pi-ai openai-responses/azure-openai-responses: the Responses API rejects
+// max_output_tokens below 16 (pi issue #6265).
+const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
+
+/** Resolve the output-limit field and value pi sends for this model. */
+export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: number): OutputLimit {
+  switch (model.api) {
+    case "openai-completions":
+      return { field: resolveMaxTokensField(model), value: maxTokens };
+    case "openai-responses":
+    case "azure-openai-responses":
+      return { field: "max_output_tokens", value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
+    default:
+      // Pre-fix injection for the remaining APIs: matches anthropic's native
+      // field. The other non-completions fields are a pre-existing gap
+      // (issue #22), unchanged by this fix.
+      return { field: "max_tokens", value: maxTokens };
+  }
 }
 
 export function resolveMaxTokensField(model: MaxTokensFieldSource): MaxTokensField {
