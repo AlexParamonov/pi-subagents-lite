@@ -141,8 +141,6 @@ export function createConfigIO(projectDir?: string): ConfigIO {
   return {
     load: () => {
       const global = readGlobalRaw();
-      // Legacy key never written back: drop it from the raw global layer.
-      if (global.agent) delete global.agent.finishedEvictTurns;
       if (projectPath) {
         const read = readProjectRaw(projectPath);
         if (read === null) {
