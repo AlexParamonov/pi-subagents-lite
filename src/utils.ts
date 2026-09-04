@@ -59,23 +59,23 @@ export function errorMessage(err: unknown): string {
 }
 
 /** Parse "provider/model-id" into { provider, modelId }; null if invalid (no slash or empty provider). */
-export function parseModelKey(modelStr: unknown): { provider: string; modelId: string } | null {
+export function parseModelKey(value: unknown): { provider: string; modelId: string } | null {
   // Backstop: config values flow from JSON, so a mistyped value can reach
   // here at runtime. Never throw on non-strings; report unparseable instead.
-  if (typeof modelStr !== "string") return null;
-  const slashIdx = modelStr.indexOf("/");
+  if (typeof value !== "string") return null;
+  const slashIdx = value.indexOf("/");
   if (slashIdx <= 0) return null;
-  return { provider: modelStr.slice(0, slashIdx), modelId: modelStr.slice(slashIdx + 1) };
+  return { provider: value.slice(0, slashIdx), modelId: value.slice(slashIdx + 1) };
 }
 
 /** Find a model by "provider/model-id"; fallback if unparseable or not in registry. */
 export function findModelInRegistry(
-  modelStr: unknown,
+  value: unknown,
   registry: { find(provider: string, modelId: string): Model<any> | undefined },
   fallback: Model<any> | undefined,
 ): Model<any> | undefined {
-  if (!modelStr) return fallback;
-  const parsed = parseModelKey(modelStr);
+  if (!value) return fallback;
+  const parsed = parseModelKey(value);
   if (!parsed) return fallback;
   return registry.find(parsed.provider, parsed.modelId) ?? fallback;
 }
