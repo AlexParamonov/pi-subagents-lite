@@ -633,11 +633,11 @@ describe("showSpawnAgentMenu — background toggle", () => {
     setupMocks();
   });
 
-  it("shows 'OFF' when disabled", async () => {
+  it("shows 'ON' by default so the parent gets the result", async () => {
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
     const item = settingsListCalls[1].items.find((i) => i.id === "background")!;
-    expect(item.currentValue).toBe("OFF");
+    expect(item.currentValue).toBe("ON");
   });
 
   it("shows 'ON' when enabled", async () => {
@@ -818,13 +818,13 @@ describe("showSpawnAgentMenu — spawn action", () => {
       maxTurns: 25,
       thinkingLevel: "medium",
       graceTurns: 6,
-      isBackground: false,
+      isBackground: true,
       worktreePath: undefined,
       invocation: {
         modelName: "claude-sonnet-4-20250514",
         thinkingLevel: "medium",
         maxTurns: 25,
-        runInBackground: false,
+        runInBackground: true,
       },
     });
     // Menu-wizard spawns have no parent run — the intent carries no signal,

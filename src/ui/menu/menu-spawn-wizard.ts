@@ -227,7 +227,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
   let currentMaxTokens: number | undefined = agentConfig.maxTokens;
   let currentGraceTurns: number = store.agent.graceTurns ?? DEFAULT_GRACE_TURNS;
-  let currentBackground: boolean = store.agent.forceBackground;
+  let currentBackground: boolean = true;
   let currentWorktreePath: string | undefined;
   let currentWorktreeLabel = "Inherits parent cwd";
   let currentDescription = prompt.length > 50 ? prompt.slice(0, 50) : prompt;
