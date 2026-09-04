@@ -21,6 +21,11 @@
 **What failed:** first fix scoped to openai-completions without checking which API family the failing model uses, so both reported cases still 400d after merge; assumed sibling model coverage without testing the exact reported model plus provider strings.
 **Next time:** for provider param rejections, first identify the API family from the exact reported model string, then scope the fix; retest the verbatim reported cases, not neighboring ones.
 
+## fix-max-tokens-other-apis - 2026-09-04
+**What worked:** issue told the builder to verify each API against installed pi source before changing anything, which settled the responses overlap without rework; alternatives menu picked explicitly (unified payload-path over model-clone and flat swap); manual tester ran the exact previously failing model live and confirmed the fix.
+**What failed:** nothing blocking; builder covered a wider API tail (mistral, pi-messages, codex) than the issue listed, accepted at review but scope could have been confirmed first.
+**Next time:** when the builder widens scope beyond the listed APIs, flag it as a deviation for explicit approval before merge rather than carrying it silently.
+
 ## running-agents-duration-display - 2026-09-04
 **What worked:** Frozen-time unit tests pinning exact menu labels plus reusing existing formatMs kept the slice trivial. Voice-of-reason alternatives doc forced explicit choice before build. Review plus refactor loops passed clean with no rework.
 **What failed:** None in this slice.
