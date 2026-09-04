@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Config files validate on load.** Every value in the global and project config files is checked against a runtime schema at load. A wrong-typed value is dropped from the effective config (built-in defaults apply), valid keys are kept, the file on disk is left unchanged, and one warning per bad value names the file, the key, what was got, what was expected, and how to fix it in the `/agents` menu or by editing or deleting the file. Fork-shaped object model values are dropped with a warning, never migrated. A `parseModelKey` typeof guard stays as a backstop so a missed check can never throw an unhandled `TypeError` again.
+
 ## [1.13.0] - 2026-08-20
 
 ### Added
