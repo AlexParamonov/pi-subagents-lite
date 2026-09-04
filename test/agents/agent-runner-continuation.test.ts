@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
-import { asAgentSession } from "../pi-boundaries.js";
+import { asAgentSession, withCompatField } from "../pi-boundaries.js";
 import {
   mockModules,
   defaultConfig,
@@ -404,29 +404,87 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     expect(finalPayload.max_completion_tokens).toBeUndefined();
   });
 
-  it("keeps max_tokens injection for other non-completions APIs (openai-responses)", async () => {
+  it("injects max_output_tokens for openai-responses models (pi's responses field)", async () => {
+    // The manual-test failing case: opencode zen / console go models on the
+    // Responses API. pi's openai-responses algorithm sends
+    // max_output_tokens; the pre-fix hook injected max_tokens, which the
+    // provider rejects with 400 ("unknown parameter max_tokens").
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       maxTokens: 4096,
     });
 
     const model = makeMockModel({
-      id: "gpt-5",
-      name: "GPT-5",
-      provider: "openai",
+      id: "muse-spark",
+      name: "Muse Spark",
+      provider: "opencode",
       api: "openai-responses",
-      baseUrl: "https://api.openai.com/v1",
+      baseUrl: "https://opencode.ai/zen",
     });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
 
     const finalPayload = await session.agent.onPayload!(
-      { model: "gpt-5", messages: [{ role: "user", content: "do something" }] },
+      { model: "muse-spark", messages: [{ role: "user", content: "do something" }] },
       model,
     );
 
-    expect(finalPayload.max_tokens).toBe(4096);
-    expect(finalPayload.max_completion_tokens).toBeUndefined();
+    expect(finalPayload.max_output_tokens).toBe(4096);
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("clamps small maxTokens to pi's responses minimum for openai-responses", async () => {
+    // OpenAI Responses rejects max_output_tokens below 16 (pi issue #6265);
+    // pi clamps with Math.max(maxTokens, 16).
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 8,
+    });
+
+    const model = makeMockModel({ api: "openai-responses" });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!({ model: "m", messages: [] }, model);
+
+    expect(finalPayload.max_output_tokens).toBe(16);
+  });
+
+  it("injects no output limit when supportsMaxOutputTokens is false", async () => {
+    // Newer pi-ai releases only send the responses field when
+    // compat.supportsMaxOutputTokens (default true); some gateways reject
+    // it. The hook must not inject a field pi would not send.
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = withCompatField(makeMockModel({ api: "openai-responses" }), {
+      supportsMaxOutputTokens: false,
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = { model: "m", messages: [] };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual(rawPayload);
+  });
+
+  it("injects max_output_tokens for azure-openai-responses models", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({ api: "azure-openai-responses" });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!({ model: "m", messages: [] }, model);
+
+    expect(finalPayload.max_output_tokens).toBe(4096);
+    expect(finalPayload.max_tokens).toBeUndefined();
   });
 
   it("resolves the field from the per-request model when the model changed mid-run", async () => {

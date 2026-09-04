@@ -10,7 +10,11 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { resolveMaxTokensField } from "../../src/agents/max-tokens-field.js";
+import {
+  resolveMaxTokensField,
+  resolveOutputLimit,
+  type MaxTokensFieldSource,
+} from "../../src/agents/max-tokens-field.js";
 
 function model(overrides: Partial<Model<Api>> = {}): Model<Api> {
   return {
@@ -112,5 +116,74 @@ describe("resolveMaxTokensField", () => {
     expect(resolveMaxTokensField(model({ provider: "openrouter", baseUrl: "https://openrouter.ai/v1" }))).toBe(
       "max_completion_tokens",
     );
+  });
+});
+
+describe("resolveOutputLimit", () => {
+  it("resolves an openai-responses model to max_output_tokens (pi's responses field)", () => {
+    // The failing case: opencode zen / console go models on the Responses API.
+    // pi's openai-responses algorithm sends max_output_tokens, not max_tokens;
+    // the provider rejects the injected max_tokens with 400.
+    const m = model({ provider: "opencode", baseUrl: "https://opencode.ai/zen", api: "openai-responses" });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_output_tokens", value: 4096 });
+  });
+
+  it("clamps openai-responses values below pi's minimum to 16", () => {
+    // OpenAI Responses rejects max_output_tokens below 16 (pi-ai issue #6265).
+    expect(resolveOutputLimit(model({ api: "openai-responses" }), 8)).toEqual({
+      field: "max_output_tokens",
+      value: 16,
+    });
+  });
+
+  it("resolves azure-openai-responses to max_output_tokens with the same minimum", () => {
+    expect(resolveOutputLimit(model({ api: "azure-openai-responses" }), 4096)).toEqual({
+      field: "max_output_tokens",
+      value: 4096,
+    });
+    expect(resolveOutputLimit(model({ api: "azure-openai-responses" }), 8)).toEqual({
+      field: "max_output_tokens",
+      value: 16,
+    });
+  });
+
+  it("skips injection when the model disables supportsMaxOutputTokens", () => {
+    // Newer pi-ai releases gate the responses field on
+    // compat.supportsMaxOutputTokens (default true); some gateways reject
+    // it. Built on the extension's own source interface: the installed
+    // pi-ai types do not declare the field yet.
+    const m: MaxTokensFieldSource = {
+      api: "openai-responses",
+      provider: "opencode",
+      baseUrl: "https://opencode.ai/zen",
+      compat: { supportsMaxOutputTokens: false },
+    };
+    expect(resolveOutputLimit(m, 4096)).toBeUndefined();
+  });
+
+  it("keeps max_tokens for anthropic-messages (pi's native field)", () => {
+    const m = model({ provider: "anthropic", baseUrl: "https://api.anthropic.com", api: "anthropic-messages" });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", value: 4096 });
+  });
+
+  it("keeps the pre-fix max_tokens injection for other non-completions APIs", () => {
+    // Pre-existing gap for these APIs (issue #22): behavior unchanged by this fix.
+    const m = model({
+      provider: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      api: "google-generative-ai",
+    });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", value: 4096 });
+  });
+
+  it("resolves openai-completions through the compat chain", () => {
+    const silent = model({ provider: "opencode-go", baseUrl: "https://opencode.ai/zen/go/v1" });
+    expect(resolveOutputLimit(silent, 4096)).toEqual({ field: "max_completion_tokens", value: 4096 });
+    const explicit = model({
+      provider: "opencode-go",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      compat: { maxTokensField: "max_tokens" },
+    });
+    expect(resolveOutputLimit(explicit, 4096)).toEqual({ field: "max_tokens", value: 4096 });
   });
 });
