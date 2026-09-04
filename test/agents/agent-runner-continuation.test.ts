@@ -559,6 +559,154 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  runAgent — maxTokens: native fields per non-completions API       */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — maxTokens: native fields per non-completions API", () => {
+  let session: ReturnType<typeof createMockSession>;
+
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+
+    session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    session.agent = { onPayload: undefined };
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, maxTokens: 4096 });
+  });
+
+  it("injects a bedrock cap at nested inferenceConfig.maxTokens", async () => {
+    // pi's bedrock-converse-stream receives commandInput; the cap lives at
+    // inferenceConfig.maxTokens, so a flat top-level field drops the cap.
+    const model = makeMockModel({
+      id: "anthropic.claude-sonnet",
+      provider: "bedrock",
+      api: "bedrock-converse-stream",
+      baseUrl: "https://bedrock.us-east-1.amazonaws.com",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = {
+      modelId: "anthropic.claude-sonnet",
+      messages: [{ role: "user", content: [{ text: "do something" }] }],
+      inferenceConfig: { temperature: 0.5 },
+      toolConfig: { tools: [] },
+    };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual({
+      ...rawPayload,
+      inferenceConfig: { temperature: 0.5, maxTokens: 4096 },
+    });
+    expect(finalPayload.max_tokens).toBeUndefined();
+    expect(finalPayload.maxTokens).toBeUndefined();
+  });
+
+  it("injects a google-generative-ai cap at nested config.maxOutputTokens", async () => {
+    // pi's google APIs receive params = { model, contents, config }; the cap
+    // lives at config.maxOutputTokens.
+    const model = makeMockModel({
+      id: "gemini-2.5-flash",
+      provider: "google",
+      api: "google-generative-ai",
+      baseUrl: "https://generativelanguage.googleapis.com",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = {
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: "do something" }] }],
+      config: { systemInstruction: "be brief" },
+    };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual({
+      ...rawPayload,
+      config: { systemInstruction: "be brief", maxOutputTokens: 4096 },
+    });
+    expect(finalPayload.max_tokens).toBeUndefined();
+    expect(finalPayload.maxOutputTokens).toBeUndefined();
+  });
+
+  it("injects a google-vertex cap at the same nested config.maxOutputTokens", async () => {
+    const model = makeMockModel({
+      id: "gemini-2.5-pro",
+      provider: "google-vertex",
+      api: "google-vertex",
+      baseUrl: "https://us-central1-aiplatform.googleapis.com",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = { model: "gemini-2.5-pro", contents: [], config: {} };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual({
+      model: "gemini-2.5-pro",
+      contents: [],
+      config: { maxOutputTokens: 4096 },
+    });
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("injects a mistral cap at top-level maxTokens", async () => {
+    const model = makeMockModel({
+      id: "mistral-large",
+      provider: "mistral",
+      api: "mistral-conversations",
+      baseUrl: "https://api.mistral.ai",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!({ agent: "m", messages: [] }, model);
+
+    expect(finalPayload.maxTokens).toBe(4096);
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("injects a pi-messages cap at nested options.maxTokens", async () => {
+    const model = makeMockModel({
+      id: "pi-model",
+      provider: "pi",
+      api: "pi-messages",
+      baseUrl: "https://pi.local",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = { model: "pi-model", context: [], options: { temperature: 0.7 } };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual({
+      model: "pi-model",
+      context: [],
+      options: { temperature: 0.7, maxTokens: 4096 },
+    });
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("injects no cap for openai-codex-responses (pi sends no output-limit field)", async () => {
+    const model = makeMockModel({
+      id: "gpt-5.5-codex",
+      provider: "openai-codex",
+      api: "openai-codex-responses",
+      baseUrl: "https://chatgpt.com/backend-api",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const rawPayload = { model: "gpt-5.5-codex", input: [] };
+    const finalPayload = await session.agent.onPayload!(rawPayload, model);
+
+    expect(finalPayload).toEqual(rawPayload);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  runAgent — context file gating (includeContextFiles)              */
 /* ------------------------------------------------------------------ */
 

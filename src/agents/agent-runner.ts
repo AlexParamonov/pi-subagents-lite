@@ -37,7 +37,7 @@ import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 import { patchRetryClassifier } from "./stream-retry.js";
-import { resolveOutputLimit } from "./max-tokens-field.js";
+import { applyOutputLimit, resolveOutputLimit } from "./max-tokens-field.js";
 
 // Cache: extension path → unscoped package name (lowercased), or undefined if not found
 const packageNameCache = new Map<string, string | undefined>();
@@ -534,14 +534,15 @@ async function initSession(
   patchRetryClassifier(session);
 
   // Inject the output-limit field into provider payloads; spawn-time value wins
-  // over agent config. Field per request, per pi's per-API algorithm:
+  // over agent config. Location per request, per pi's per-API algorithm:
   // openai-completions follows the compat chain (explicit
   // model.compat.maxTokensField, else provider/URL detection, else
   // max_completion_tokens); the OpenAI Responses family uses max_output_tokens
   // clamped to pi's minimum of 16 (openai-responses only when the model
-  // hasn't disabled compat.supportsMaxOutputTokens); other APIs keep the
-  // pre-fix max_tokens injection (it matches anthropic's native field; the
-  // other non-completions fields are a pre-existing gap, issue #22).
+  // hasn't disabled compat.supportsMaxOutputTokens); anthropic uses
+  // top-level max_tokens; bedrock nests the cap at inferenceConfig.maxTokens;
+  // both google APIs nest it at config.maxOutputTokens; mistral uses
+  // top-level maxTokens; pi-messages nests it at options.maxTokens.
   const maxTokens = options.maxTokens ?? agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
     const origOnPayload = session.agent.onPayload;
@@ -550,10 +551,11 @@ async function initSession(
       // Resolved per request so a mid-run setModel stays in sync with pi
       // instead of desyncing on a captured field. Undefined means pi sends
       // no output-limit field for this model; the hook must not inject one.
+      // Post-build overwrite by design (as in the prior fix): pi's context
+      // clamp and thinking-budget adjust already ran on the model default.
       const limit = resolveOutputLimit(m, maxTokens);
       if (!limit) return applied;
-      const obj = typeof applied === "object" && applied && !Array.isArray(applied) ? applied : {};
-      return { ...obj, [limit.field]: limit.value };
+      return applyOutputLimit(applied, limit);
     };
   }
 
