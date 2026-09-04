@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
+  applyOutputLimit,
   resolveMaxTokensField,
   resolveOutputLimit,
   type MaxTokensFieldSource,
@@ -125,13 +126,18 @@ describe("resolveOutputLimit", () => {
     // pi's openai-responses algorithm sends max_output_tokens, not max_tokens;
     // the provider rejects the injected max_tokens with 400.
     const m = model({ provider: "opencode", baseUrl: "https://opencode.ai/zen", api: "openai-responses" });
-    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_output_tokens", value: 4096 });
+    expect(resolveOutputLimit(m, 4096)).toEqual({
+      field: "max_output_tokens",
+      path: ["max_output_tokens"],
+      value: 4096,
+    });
   });
 
   it("clamps openai-responses values below pi's minimum to 16", () => {
     // OpenAI Responses rejects max_output_tokens below 16 (pi-ai issue #6265).
     expect(resolveOutputLimit(model({ api: "openai-responses" }), 8)).toEqual({
       field: "max_output_tokens",
+      path: ["max_output_tokens"],
       value: 16,
     });
   });
@@ -139,10 +145,12 @@ describe("resolveOutputLimit", () => {
   it("resolves azure-openai-responses to max_output_tokens with the same minimum", () => {
     expect(resolveOutputLimit(model({ api: "azure-openai-responses" }), 4096)).toEqual({
       field: "max_output_tokens",
+      path: ["max_output_tokens"],
       value: 4096,
     });
     expect(resolveOutputLimit(model({ api: "azure-openai-responses" }), 8)).toEqual({
       field: "max_output_tokens",
+      path: ["max_output_tokens"],
       value: 16,
     });
   });
@@ -163,27 +171,191 @@ describe("resolveOutputLimit", () => {
 
   it("keeps max_tokens for anthropic-messages (pi's native field)", () => {
     const m = model({ provider: "anthropic", baseUrl: "https://api.anthropic.com", api: "anthropic-messages" });
-    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", value: 4096 });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", path: ["max_tokens"], value: 4096 });
   });
 
-  it("keeps the pre-fix max_tokens injection for other non-completions APIs", () => {
-    // Pre-existing gap for these APIs (issue #22): behavior unchanged by this fix.
+  it("keeps the pre-fix max_tokens injection for unknown future APIs", () => {
+    // Unknown API families keep the anthropic-compatible default so a new pi
+    // API fails toward a widely accepted field, not toward no cap at all.
     const m = model({
-      provider: "google",
-      baseUrl: "https://generativelanguage.googleapis.com",
-      api: "google-generative-ai",
+      provider: "future",
+      baseUrl: "https://future.example.com",
+      api: "future-chat",
     });
-    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", value: 4096 });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", path: ["max_tokens"], value: 4096 });
   });
 
   it("resolves openai-completions through the compat chain", () => {
     const silent = model({ provider: "opencode-go", baseUrl: "https://opencode.ai/zen/go/v1" });
-    expect(resolveOutputLimit(silent, 4096)).toEqual({ field: "max_completion_tokens", value: 4096 });
+    expect(resolveOutputLimit(silent, 4096)).toEqual({
+      field: "max_completion_tokens",
+      path: ["max_completion_tokens"],
+      value: 4096,
+    });
     const explicit = model({
       provider: "opencode-go",
       baseUrl: "https://opencode.ai/zen/go/v1",
       compat: { maxTokensField: "max_tokens" },
     });
-    expect(resolveOutputLimit(explicit, 4096)).toEqual({ field: "max_tokens", value: 4096 });
+    expect(resolveOutputLimit(explicit, 4096)).toEqual({
+      field: "max_tokens",
+      path: ["max_tokens"],
+      value: 4096,
+    });
+  });
+});
+
+describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", () => {
+  it("resolves a bedrock model to nested inferenceConfig.maxTokens", () => {
+    // pi's bedrock-converse-stream builds commandInput.inferenceConfig =
+    // { maxTokens: options.maxTokens ?? claudeDefault, temperature }; the
+    // hook receives commandInput, so a flat top-level injection misses.
+    const m = model({
+      provider: "bedrock",
+      baseUrl: "https://bedrock.us-east-1.amazonaws.com",
+      api: "bedrock-converse-stream",
+    });
+    expect(resolveOutputLimit(m, 4096)).toEqual({
+      field: "maxTokens",
+      path: ["inferenceConfig", "maxTokens"],
+      value: 4096,
+    });
+  });
+
+  it("resolves google-generative-ai to nested config.maxOutputTokens", () => {
+    // pi's google-generative-ai builds params = { model, contents, config }
+    // with generationConfig.maxOutputTokens spread into config.
+    const m = model({
+      provider: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      api: "google-generative-ai",
+    });
+    expect(resolveOutputLimit(m, 2048)).toEqual({
+      field: "maxOutputTokens",
+      path: ["config", "maxOutputTokens"],
+      value: 2048,
+    });
+  });
+
+  it("resolves google-vertex to the same nested config.maxOutputTokens", () => {
+    // google-vertex shares the { model, contents, config } params shape.
+    const m = model({
+      provider: "google-vertex",
+      baseUrl: "https://us-central1-aiplatform.googleapis.com",
+      api: "google-vertex",
+    });
+    expect(resolveOutputLimit(m, 2048)).toEqual({
+      field: "maxOutputTokens",
+      path: ["config", "maxOutputTokens"],
+      value: 2048,
+    });
+  });
+
+  it("resolves mistral-conversations to top-level maxTokens", () => {
+    // pi's mistral-conversations sets payload.maxTokens (camelCase).
+    const m = model({ provider: "mistral", baseUrl: "https://api.mistral.ai", api: "mistral-conversations" });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "maxTokens", path: ["maxTokens"], value: 4096 });
+  });
+
+  it("resolves pi-messages to nested options.maxTokens", () => {
+    // pi's pi-messages posts { model, context, options: { maxTokens, ... } }.
+    const m = model({ provider: "pi", baseUrl: "https://pi.local", api: "pi-messages" });
+    expect(resolveOutputLimit(m, 4096)).toEqual({
+      field: "maxTokens",
+      path: ["options", "maxTokens"],
+      value: 4096,
+    });
+  });
+
+  it("injects the responses clamp through the same top-level path", () => {
+    // Triangulation: a second value forces the real clamp, not a constant.
+    const m = model({ api: "openai-responses" });
+    expect(resolveOutputLimit(m, 4)).toEqual({
+      field: "max_output_tokens",
+      path: ["max_output_tokens"],
+      value: 16,
+    });
+  });
+
+  it("injects nothing for openai-codex-responses (pi sends no output-limit field)", () => {
+    // pi's codex buildRequestBody never reads options.maxTokens, so the hook
+    // must not inject a field pi would not send.
+    const m = model({
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      api: "openai-codex-responses",
+    });
+    expect(resolveOutputLimit(m, 4096)).toBeUndefined();
+  });
+});
+
+describe("applyOutputLimit", () => {
+  it("sets a top-level field and preserves siblings", () => {
+    const payload = { model: "m", messages: [], stream: true };
+    const out = applyOutputLimit(payload, { field: "max_tokens", path: ["max_tokens"], value: 4096 });
+    expect(out).toEqual({ model: "m", messages: [], stream: true, max_tokens: 4096 });
+    expect(out).not.toBe(payload);
+  });
+
+  it("merges a nested bedrock cap without dropping inferenceConfig siblings", () => {
+    // pi builds inferenceConfig = { maxTokens?, temperature? }; the hook
+    // must not drop temperature or replace the whole object.
+    const payload = {
+      modelId: "anthropic.claude-sonnet",
+      messages: [],
+      inferenceConfig: { temperature: 0.5 },
+      toolConfig: { tools: [] },
+    };
+    const out = applyOutputLimit(payload, {
+      field: "maxTokens",
+      path: ["inferenceConfig", "maxTokens"],
+      value: 4096,
+    });
+    expect(out).toEqual({
+      modelId: "anthropic.claude-sonnet",
+      messages: [],
+      inferenceConfig: { temperature: 0.5, maxTokens: 4096 },
+      toolConfig: { tools: [] },
+    });
+  });
+
+  it("merges a nested google cap without dropping config siblings", () => {
+    // pi keeps systemInstruction, tools, thinkingConfig, and abortSignal in
+    // params.config; replacing config would drop the abort signal.
+    const abortSignal = new AbortController().signal;
+    const payload = {
+      model: "gemini-2.5-flash",
+      contents: [],
+      config: { systemInstruction: "be brief", abortSignal },
+    };
+    const out = applyOutputLimit(payload, {
+      field: "maxOutputTokens",
+      path: ["config", "maxOutputTokens"],
+      value: 2048,
+    });
+    expect(out).toEqual({
+      model: "gemini-2.5-flash",
+      contents: [],
+      config: { systemInstruction: "be brief", abortSignal, maxOutputTokens: 2048 },
+    });
+  });
+
+  it("creates missing intermediate objects", () => {
+    const out = applyOutputLimit(
+      { model: "m", contents: [] },
+      { field: "maxOutputTokens", path: ["config", "maxOutputTokens"], value: 2048 },
+    );
+    expect(out).toEqual({ model: "m", contents: [], config: { maxOutputTokens: 2048 } });
+  });
+
+  it("treats a non-object payload as an empty object", () => {
+    // Matches the hook's pre-existing coercion (opaque payloads still get
+    // the cap instead of crashing the run).
+    expect(applyOutputLimit(null, { field: "max_tokens", path: ["max_tokens"], value: 1 })).toEqual({
+      max_tokens: 1,
+    });
+    expect(applyOutputLimit([], { field: "max_tokens", path: ["max_tokens"], value: 1 })).toEqual({
+      max_tokens: 1,
+    });
   });
 });

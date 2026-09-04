@@ -1,5 +1,5 @@
 /**
- * Output-limit field resolution for OpenAI-compatible models.
+ * Output-limit field resolution per pi-ai API family.
  *
  * Mirrors pi-ai's per-API output-limit handling: for openai-completions the
  * field goes through the compat chain (explicit `model.compat.maxTokensField`
@@ -7,9 +7,14 @@
  * OpenAI Responses family pi sends `max_output_tokens` clamped to a minimum
  * of 16 (the Responses API rejects values below it), and on openai-responses
  * only when `compat.supportsMaxOutputTokens` (default true — some gateways
- * reject the field; newer pi-ai releases, inert on older ones). pi-ai does
- * not export its resolution functions, so the detection below is a verbatim
- * copy — keep it in sync when upgrading pi.
+ * reject the field; newer pi-ai releases, inert on older ones). Anthropic
+ * uses top-level `max_tokens`; bedrock nests the cap at
+ * `commandInput.inferenceConfig.maxTokens`; both google APIs nest it at
+ * `params.config.maxOutputTokens`; mistral uses top-level `maxTokens`;
+ * pi-messages nests it at `payload.options.maxTokens`; codex sends no
+ * output-limit field at all. pi-ai does not export its resolution
+ * functions, so the detection below is a verbatim copy — keep it in sync
+ * when upgrading pi.
  */
 
 export type MaxTokensField = "max_tokens" | "max_completion_tokens";
@@ -28,9 +33,18 @@ export interface MaxTokensFieldSource {
   compat?: unknown;
 }
 
-/** The output-limit field and value to inject for a model, per pi's per-API algorithm. */
+/** The output-limit location and value to inject for a model, per pi's per-API algorithm. */
 export interface OutputLimit {
-  field: MaxTokensField | "max_output_tokens";
+  /** Leaf key pi writes the cap to; documents the wire contract per API. */
+  field: string;
+  /**
+   * Path from the onPayload payload root to the leaf. One segment addresses
+   * a top-level field; longer paths address pi's nested payload shapes
+   * (bedrock commandInput.inferenceConfig, google params.config,
+   * pi-messages payload.options). Applied with immutable spreads so sibling
+   * keys (temperature, tools, abortSignal) survive.
+   */
+  path: string[];
   value: number;
 }
 
@@ -46,20 +60,63 @@ const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: number): OutputLimit | undefined {
   switch (model.api) {
     case "openai-completions":
-      return { field: resolveMaxTokensField(model), value: maxTokens };
+      return topLevel(resolveMaxTokensField(model), maxTokens);
     case "openai-responses":
       if (supportsMaxOutputTokens(model.compat)) {
-        return { field: "max_output_tokens", value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
+        return topLevel("max_output_tokens", Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS));
       }
       return undefined;
     case "azure-openai-responses":
-      return { field: "max_output_tokens", value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
+      return topLevel("max_output_tokens", Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS));
+    case "anthropic-messages":
+      return topLevel("max_tokens", maxTokens);
+    case "bedrock-converse-stream":
+      // pi builds commandInput.inferenceConfig = { maxTokens, temperature }.
+      return { field: "maxTokens", path: ["inferenceConfig", "maxTokens"], value: maxTokens };
+    case "google-generative-ai":
+    case "google-vertex":
+      // Both google APIs build params = { model, contents, config } with
+      // generationConfig.maxOutputTokens spread into config.
+      return { field: "maxOutputTokens", path: ["config", "maxOutputTokens"], value: maxTokens };
+    case "mistral-conversations":
+      return topLevel("maxTokens", maxTokens);
+    case "pi-messages":
+      // pi posts { model, context, options: { maxTokens, ... } }.
+      return { field: "maxTokens", path: ["options", "maxTokens"], value: maxTokens };
+    case "openai-codex-responses":
+      // pi's codex body carries no output-limit field; injecting one would
+      // hand an unknown field to the endpoint.
+      return undefined;
     default:
-      // Pre-fix injection for the remaining APIs: matches anthropic's native
-      // field. The other non-completions fields are a pre-existing gap
-      // (issue #22), unchanged by this fix.
-      return { field: "max_tokens", value: maxTokens };
+      // Unknown future APIs keep the pre-fix injection: it matches
+      // anthropic's native field.
+      return topLevel("max_tokens", maxTokens);
   }
+}
+
+/** A top-level output-limit field: path and leaf coincide. */
+function topLevel(field: string, value: number): OutputLimit {
+  return { field, path: [field], value };
+}
+
+/** True for plain payload objects; arrays and primitives coerce to empty. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Inject the resolved cap into an onPayload payload at the limit's path.
+ * Every level on the path is spread, so sibling keys (temperature, tools,
+ * abortSignal) survive; missing intermediates are created. A non-object
+ * payload or intermediate is treated as an empty object, matching the
+ * hook's pre-existing coercion of opaque payloads.
+ */
+export function applyOutputLimit(payload: unknown, limit: OutputLimit): Record<string, unknown> {
+  const obj = isRecord(payload) ? payload : {};
+  const [head, ...rest] = limit.path;
+  if (head === undefined) return obj;
+  if (rest.length === 0) return { ...obj, [head]: limit.value };
+  return { ...obj, [head]: applyOutputLimit(obj[head], { ...limit, path: rest }) };
 }
 
 function supportsMaxOutputTokens(compat: unknown): boolean {
