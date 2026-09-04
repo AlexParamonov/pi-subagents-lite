@@ -35,14 +35,12 @@ export interface MaxTokensFieldSource {
 
 /** The output-limit location and value to inject for a model, per pi's per-API algorithm. */
 export interface OutputLimit {
-  /** Leaf key pi writes the cap to; documents the wire contract per API. */
-  field: string;
   /**
-   * Path from the onPayload payload root to the leaf. One segment addresses
-   * a top-level field; longer paths address pi's nested payload shapes
-   * (bedrock commandInput.inferenceConfig, google params.config,
-   * pi-messages payload.options). Applied with immutable spreads so sibling
-   * keys (temperature, tools, abortSignal) survive.
+   * Path from the onPayload payload root to the leaf pi writes the cap to.
+   * One segment addresses a top-level field; longer paths address pi's
+   * nested payload shapes (bedrock commandInput.inferenceConfig, google
+   * params.config, pi-messages payload.options). Applied with immutable
+   * spreads so sibling keys (temperature, tools, abortSignal) survive.
    */
   path: string[];
   value: number;
@@ -60,29 +58,29 @@ const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: number): OutputLimit | undefined {
   switch (model.api) {
     case "openai-completions":
-      return topLevel(resolveMaxTokensField(model), maxTokens);
+      return { path: [resolveMaxTokensField(model)], value: maxTokens };
     case "openai-responses":
       if (supportsMaxOutputTokens(model.compat)) {
-        return topLevel("max_output_tokens", Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS));
+        return { path: ["max_output_tokens"], value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
       }
       return undefined;
     case "azure-openai-responses":
-      return topLevel("max_output_tokens", Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS));
+      return { path: ["max_output_tokens"], value: Math.max(maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS) };
     case "anthropic-messages":
-      return topLevel("max_tokens", maxTokens);
+      return { path: ["max_tokens"], value: maxTokens };
     case "bedrock-converse-stream":
       // pi builds commandInput.inferenceConfig = { maxTokens, temperature }.
-      return { field: "maxTokens", path: ["inferenceConfig", "maxTokens"], value: maxTokens };
+      return { path: ["inferenceConfig", "maxTokens"], value: maxTokens };
     case "google-generative-ai":
     case "google-vertex":
       // Both google APIs build params = { model, contents, config } with
       // generationConfig.maxOutputTokens spread into config.
-      return { field: "maxOutputTokens", path: ["config", "maxOutputTokens"], value: maxTokens };
+      return { path: ["config", "maxOutputTokens"], value: maxTokens };
     case "mistral-conversations":
-      return topLevel("maxTokens", maxTokens);
+      return { path: ["maxTokens"], value: maxTokens };
     case "pi-messages":
       // pi posts { model, context, options: { maxTokens, ... } }.
-      return { field: "maxTokens", path: ["options", "maxTokens"], value: maxTokens };
+      return { path: ["options", "maxTokens"], value: maxTokens };
     case "openai-codex-responses":
       // pi's codex body carries no output-limit field; injecting one would
       // hand an unknown field to the endpoint.
@@ -90,13 +88,8 @@ export function resolveOutputLimit(model: MaxTokensFieldSource, maxTokens: numbe
     default:
       // Unknown future APIs keep the pre-fix injection: it matches
       // anthropic's native field.
-      return topLevel("max_tokens", maxTokens);
+      return { path: ["max_tokens"], value: maxTokens };
   }
-}
-
-/** A top-level output-limit field: path and leaf coincide. */
-function topLevel(field: string, value: number): OutputLimit {
-  return { field, path: [field], value };
 }
 
 /** True for plain payload objects; arrays and primitives coerce to empty. */
@@ -112,11 +105,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * hook's pre-existing coercion of opaque payloads.
  */
 export function applyOutputLimit(payload: unknown, limit: OutputLimit): Record<string, unknown> {
-  const obj = isRecord(payload) ? payload : {};
-  const [head, ...rest] = limit.path;
+  return setPath(isRecord(payload) ? payload : {}, limit.path, limit.value);
+}
+
+/** Immutable nested set: every level on the path is spread, missing intermediates are created. */
+function setPath(obj: Record<string, unknown>, path: string[], value: number): Record<string, unknown> {
+  const [head, ...rest] = path;
   if (head === undefined) return obj;
-  if (rest.length === 0) return { ...obj, [head]: limit.value };
-  return { ...obj, [head]: applyOutputLimit(obj[head], { ...limit, path: rest }) };
+  if (rest.length === 0) return { ...obj, [head]: value };
+  const child = isRecord(obj[head]) ? obj[head] : {};
+  return { ...obj, [head]: setPath(child, rest, value) };
 }
 
 function supportsMaxOutputTokens(compat: unknown): boolean {

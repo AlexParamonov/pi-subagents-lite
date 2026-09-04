@@ -127,7 +127,6 @@ describe("resolveOutputLimit", () => {
     // the provider rejects the injected max_tokens with 400.
     const m = model({ provider: "opencode", baseUrl: "https://opencode.ai/zen", api: "openai-responses" });
     expect(resolveOutputLimit(m, 4096)).toEqual({
-      field: "max_output_tokens",
       path: ["max_output_tokens"],
       value: 4096,
     });
@@ -136,7 +135,6 @@ describe("resolveOutputLimit", () => {
   it("clamps openai-responses values below pi's minimum to 16", () => {
     // OpenAI Responses rejects max_output_tokens below 16 (pi-ai issue #6265).
     expect(resolveOutputLimit(model({ api: "openai-responses" }), 8)).toEqual({
-      field: "max_output_tokens",
       path: ["max_output_tokens"],
       value: 16,
     });
@@ -144,12 +142,10 @@ describe("resolveOutputLimit", () => {
 
   it("resolves azure-openai-responses to max_output_tokens with the same minimum", () => {
     expect(resolveOutputLimit(model({ api: "azure-openai-responses" }), 4096)).toEqual({
-      field: "max_output_tokens",
       path: ["max_output_tokens"],
       value: 4096,
     });
     expect(resolveOutputLimit(model({ api: "azure-openai-responses" }), 8)).toEqual({
-      field: "max_output_tokens",
       path: ["max_output_tokens"],
       value: 16,
     });
@@ -171,7 +167,7 @@ describe("resolveOutputLimit", () => {
 
   it("keeps max_tokens for anthropic-messages (pi's native field)", () => {
     const m = model({ provider: "anthropic", baseUrl: "https://api.anthropic.com", api: "anthropic-messages" });
-    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", path: ["max_tokens"], value: 4096 });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ path: ["max_tokens"], value: 4096 });
   });
 
   it("keeps the pre-fix max_tokens injection for unknown future APIs", () => {
@@ -182,13 +178,12 @@ describe("resolveOutputLimit", () => {
       baseUrl: "https://future.example.com",
       api: "future-chat",
     });
-    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "max_tokens", path: ["max_tokens"], value: 4096 });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ path: ["max_tokens"], value: 4096 });
   });
 
   it("resolves openai-completions through the compat chain", () => {
     const silent = model({ provider: "opencode-go", baseUrl: "https://opencode.ai/zen/go/v1" });
     expect(resolveOutputLimit(silent, 4096)).toEqual({
-      field: "max_completion_tokens",
       path: ["max_completion_tokens"],
       value: 4096,
     });
@@ -198,7 +193,6 @@ describe("resolveOutputLimit", () => {
       compat: { maxTokensField: "max_tokens" },
     });
     expect(resolveOutputLimit(explicit, 4096)).toEqual({
-      field: "max_tokens",
       path: ["max_tokens"],
       value: 4096,
     });
@@ -216,7 +210,6 @@ describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", 
       api: "bedrock-converse-stream",
     });
     expect(resolveOutputLimit(m, 4096)).toEqual({
-      field: "maxTokens",
       path: ["inferenceConfig", "maxTokens"],
       value: 4096,
     });
@@ -231,7 +224,6 @@ describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", 
       api: "google-generative-ai",
     });
     expect(resolveOutputLimit(m, 2048)).toEqual({
-      field: "maxOutputTokens",
       path: ["config", "maxOutputTokens"],
       value: 2048,
     });
@@ -245,7 +237,6 @@ describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", 
       api: "google-vertex",
     });
     expect(resolveOutputLimit(m, 2048)).toEqual({
-      field: "maxOutputTokens",
       path: ["config", "maxOutputTokens"],
       value: 2048,
     });
@@ -254,14 +245,13 @@ describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", 
   it("resolves mistral-conversations to top-level maxTokens", () => {
     // pi's mistral-conversations sets payload.maxTokens (camelCase).
     const m = model({ provider: "mistral", baseUrl: "https://api.mistral.ai", api: "mistral-conversations" });
-    expect(resolveOutputLimit(m, 4096)).toEqual({ field: "maxTokens", path: ["maxTokens"], value: 4096 });
+    expect(resolveOutputLimit(m, 4096)).toEqual({ path: ["maxTokens"], value: 4096 });
   });
 
   it("resolves pi-messages to nested options.maxTokens", () => {
     // pi's pi-messages posts { model, context, options: { maxTokens, ... } }.
     const m = model({ provider: "pi", baseUrl: "https://pi.local", api: "pi-messages" });
     expect(resolveOutputLimit(m, 4096)).toEqual({
-      field: "maxTokens",
       path: ["options", "maxTokens"],
       value: 4096,
     });
@@ -271,7 +261,6 @@ describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", 
     // Triangulation: a second value forces the real clamp, not a constant.
     const m = model({ api: "openai-responses" });
     expect(resolveOutputLimit(m, 4)).toEqual({
-      field: "max_output_tokens",
       path: ["max_output_tokens"],
       value: 16,
     });
@@ -292,7 +281,7 @@ describe("resolveOutputLimit — non-completions native fields (pi-ai 0.84.4)", 
 describe("applyOutputLimit", () => {
   it("sets a top-level field and preserves siblings", () => {
     const payload = { model: "m", messages: [], stream: true };
-    const out = applyOutputLimit(payload, { field: "max_tokens", path: ["max_tokens"], value: 4096 });
+    const out = applyOutputLimit(payload, { path: ["max_tokens"], value: 4096 });
     expect(out).toEqual({ model: "m", messages: [], stream: true, max_tokens: 4096 });
     expect(out).not.toBe(payload);
   });
@@ -307,7 +296,6 @@ describe("applyOutputLimit", () => {
       toolConfig: { tools: [] },
     };
     const out = applyOutputLimit(payload, {
-      field: "maxTokens",
       path: ["inferenceConfig", "maxTokens"],
       value: 4096,
     });
@@ -329,7 +317,6 @@ describe("applyOutputLimit", () => {
       config: { systemInstruction: "be brief", abortSignal },
     };
     const out = applyOutputLimit(payload, {
-      field: "maxOutputTokens",
       path: ["config", "maxOutputTokens"],
       value: 2048,
     });
@@ -341,20 +328,17 @@ describe("applyOutputLimit", () => {
   });
 
   it("creates missing intermediate objects", () => {
-    const out = applyOutputLimit(
-      { model: "m", contents: [] },
-      { field: "maxOutputTokens", path: ["config", "maxOutputTokens"], value: 2048 },
-    );
+    const out = applyOutputLimit({ model: "m", contents: [] }, { path: ["config", "maxOutputTokens"], value: 2048 });
     expect(out).toEqual({ model: "m", contents: [], config: { maxOutputTokens: 2048 } });
   });
 
   it("treats a non-object payload as an empty object", () => {
     // Matches the hook's pre-existing coercion (opaque payloads still get
     // the cap instead of crashing the run).
-    expect(applyOutputLimit(null, { field: "max_tokens", path: ["max_tokens"], value: 1 })).toEqual({
+    expect(applyOutputLimit(null, { path: ["max_tokens"], value: 1 })).toEqual({
       max_tokens: 1,
     });
-    expect(applyOutputLimit([], { field: "max_tokens", path: ["max_tokens"], value: 1 })).toEqual({
+    expect(applyOutputLimit([], { path: ["max_tokens"], value: 1 })).toEqual({
       max_tokens: 1,
     });
   });
