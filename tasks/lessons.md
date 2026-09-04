@@ -25,3 +25,8 @@
 **What worked:** Frozen-time unit tests pinning exact menu labels plus reusing existing formatMs kept the slice trivial. Voice-of-reason alternatives doc forced explicit choice before build. Review plus refactor loops passed clean with no rework.
 **What failed:** None in this slice.
 **Next time:** For display-format changes keep reusing the single formatter and assert full label strings, not substrings.
+
+## validate-config-on-load - 2026-09-04
+**What worked:** TRIVIAL alternatives verdict still surfaced the one genuine decision (unknown agent keys as per-type model keys) for the builder to resolve explicitly; per-key TypeBox schema map with error-path mapping kept fork shapes dropped with loud warnings while valid keys survived; review plus AC plus manual-tester chain passed with no rework.
+**What failed:** Refactor loop hit its 3-round cap with REFACTORED every round, so no NOOP closeout. Manual tester first used `graceTurns` in a project file as the valid-key-kept case and got a correct second warning since `graceTurns` is global-only by design.
+**Next time:** Cap refactor expectations for validation-heavy issues and treat repeated REFACTORED as diminishing returns, not blockers. For manual config scenarios use per-type overrides in project files, not global-only keys.
