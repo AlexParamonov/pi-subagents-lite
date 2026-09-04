@@ -17,7 +17,7 @@ import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { SubagentsConfig } from "../models/model-precedence.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
-import { validateRawLayer } from "./config-validation.js";
+import { isPlainObject, validateRawLayer } from "./config-validation.js";
 
 /** File name of the config in both the global agent dir and a project's .pi dir. */
 const CONFIG_FILE_NAME = "subagents-lite.json";
@@ -293,10 +293,6 @@ function readProjectRaw(projectPath: string): ProjectRead {
 function malformedSection(projectPath: string, section: string): "malformed" {
   console.warn(`[subagents] Ignoring malformed project config ${projectPath}: "${section}" is not a JSON object`);
   return "malformed";
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // ── Save ─────────────────────────────────────────────────────────────
