@@ -375,6 +375,97 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     expect(finalPayload.max_completion_tokens).toBeUndefined();
   });
 
+  it("keeps max_tokens injection for non-openai-completions APIs (anthropic-messages)", async () => {
+    // The compat chain is openai-completions-only. For other APIs the hook
+    // must keep the pre-fix max_tokens injection: it matches anthropic's
+    // native field, and the wrong field here would silently drop the
+    // user's limit (pi's base params set the model default instead).
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({
+      id: "claude-sonnet",
+      name: "Claude Sonnet",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!(
+      { model: "claude-sonnet", messages: [{ role: "user", content: "do something" }] },
+      model,
+    );
+
+    expect(finalPayload.max_tokens).toBe(4096);
+    expect(finalPayload.max_completion_tokens).toBeUndefined();
+  });
+
+  it("keeps max_tokens injection for other non-completions APIs (openai-responses)", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({
+      id: "gpt-5",
+      name: "GPT-5",
+      provider: "openai",
+      api: "openai-responses",
+      baseUrl: "https://api.openai.com/v1",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const finalPayload = await session.agent.onPayload!(
+      { model: "gpt-5", messages: [{ role: "user", content: "do something" }] },
+      model,
+    );
+
+    expect(finalPayload.max_tokens).toBe(4096);
+    expect(finalPayload.max_completion_tokens).toBeUndefined();
+  });
+
+  it("resolves the field from the per-request model when the model changed mid-run", async () => {
+    // setModel can swap the model mid-run; pi's base params follow the new
+    // model, so the hook must resolve the field per request instead of
+    // capturing it from the session's spawn-time model.
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    // Spawn-time model: deepseek family → max_tokens.
+    const initialModel = makeMockModel({
+      id: "deepseek-chat",
+      name: "DeepSeek Chat",
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/v1",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model: initialModel });
+
+    // Per-request model after a mid-run switch: no max_tokens family →
+    // max_completion_tokens.
+    const switchedModel = makeMockModel({
+      id: "custom-model",
+      name: "Custom Model",
+      provider: "opencode-go",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+    });
+
+    const finalPayload = await session.agent.onPayload!(
+      { model: "custom-model", messages: [{ role: "user", content: "do something" }] },
+      switchedModel,
+    );
+
+    expect(finalPayload.max_completion_tokens).toBe(4096);
+    expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
   it("no max_tokens injected when agent config omits it", async () => {
     mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig });
 

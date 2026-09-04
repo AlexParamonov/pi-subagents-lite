@@ -534,16 +534,21 @@ async function initSession(
   patchRetryClassifier(session);
 
   // Inject the output-limit field into provider payloads; spawn-time value wins
-  // over agent config. The field name follows pi's compat chain (explicit
-  // model.compat.maxTokensField, else provider/URL detection, else
-  // max_completion_tokens) so it always agrees with pi's base params.
+  // over agent config. Field name per request: openai-completions models
+  // follow pi's compat chain (explicit model.compat.maxTokensField, else
+  // provider/URL detection, else max_completion_tokens) so they always agree
+  // with pi's base params; other APIs keep the pre-fix max_tokens injection
+  // (it matches anthropic's native field; the other non-completions fields
+  // are a pre-existing gap, issue #22).
   const maxTokens = options.maxTokens ?? agentConfig?.maxTokens;
   if (maxTokens != null && maxTokens > 0 && model) {
-    const field = resolveMaxTokensField(model);
     const origOnPayload = session.agent.onPayload;
     session.agent.onPayload = async (payload, m) => {
       const applied = origOnPayload ? ((await origOnPayload(payload, m)) ?? payload) : payload;
       const obj = typeof applied === "object" && applied && !Array.isArray(applied) ? applied : {};
+      // Resolved per request so a mid-run setModel stays in sync with pi's
+      // base params instead of desyncing on a captured field.
+      const field = m.api === "openai-completions" ? resolveMaxTokensField(m) : "max_tokens";
       return { ...obj, [field]: maxTokens };
     };
   }
