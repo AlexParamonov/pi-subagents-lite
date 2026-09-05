@@ -27,6 +27,83 @@ function successResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], details };
 }
 
+/** The spawn target a `worktree_path` resolves to, plus warnings to surface. */
+type SpawnTarget =
+  | { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean; warnings: string[] }
+  | { ok: false; error: string; warnings: string[] };
+
+/**
+ * Compute the spawn target for a `worktree_path` value: path validation plus
+ * the project-trust decision, without user-facing notifications. Execution
+ * (resolveWorktree) wraps this and surfaces the warnings; the tool-call
+ * listener calls it directly so its per-model prediction is gated by the same
+ * trust decision as the spawn's own settings read — silently, and without a
+ * second set of user-facing warnings.
+ */
+async function computeSpawnTarget(ctx: ExtensionContext, rawWorktreePath: string | undefined): Promise<SpawnTarget> {
+  // Empty/whitespace → omitted: nothing to validate, nothing to gate.
+  if (!rawWorktreePath || rawWorktreePath.trim() === "") {
+    return { ok: true, projectTrusted: true, warnings: [] };
+  }
+  const warnings: string[] = [];
+  try {
+    const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
+    const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, (msg) =>
+      warnings.push(msg),
+    );
+    if (!validation.ok) {
+      return { ok: false, error: validation.error, warnings };
+    }
+
+    const resolvedPath = validation.resolvedPath!; // non-empty paths always resolve
+
+    // Cross-repo targets are gated by pi's trust framework. Same-repo paths
+    // are never gated; an untrusted target still spawns but with its project
+    // resources ignored and a warning surfaced.
+    const projectTrusted = resolveSubagentTrust({
+      targetPath: resolvedPath,
+      sameRepo: validation.sameRepo === true,
+      deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
+    });
+    return {
+      ok: true,
+      resolvedPath,
+      worktreeLabel: validation.label,
+      projectTrusted,
+      warnings,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `worktree_path validation failed: ${msg}`, warnings };
+  }
+}
+
+/**
+ * Validate worktree_path and gate cross-repo trust, surfacing warnings via
+ * ctx.ui. Errors are LLM-facing and self-correctable.
+ */
+async function resolveWorktree(
+  ctx: ExtensionContext,
+  rawWorktreePath: string | undefined,
+): Promise<
+  { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean } | { ok: false; error: string }
+> {
+  const target = await computeSpawnTarget(ctx, rawWorktreePath);
+  const notify = (msg: string) => {
+    if (ctx.ui?.notify) ctx.ui.notify(msg, "warning");
+  };
+  for (const msg of target.warnings) {
+    notify(`[pi-subagents-lite] ${msg}`);
+  }
+  if (!target.ok) {
+    return { ok: false, error: target.error };
+  }
+  if (!target.projectTrusted && target.resolvedPath) {
+    notify(`[pi-subagents-lite] ${untrustedProjectWarning(target.resolvedPath)}`);
+  }
+  return target;
+}
+
 /**
  * Build a details record from an AgentRecord. Always includes type and
  * description; includeStatus adds status/outputFile/stopReason, includeStats
@@ -88,59 +165,6 @@ export function formatResultContent(record: AgentRecord): string {
 }
 
 // --- Tool execute handlers ---
-
-/**
- * Validate worktree_path and gate cross-repo trust, surfacing warnings via
- * ctx.ui. Errors are LLM-facing and self-correctable.
- */
-async function resolveWorktree(
-  ctx: ExtensionContext,
-  rawWorktreePath: string | undefined,
-): Promise<
-  { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean } | { ok: false; error: string }
-> {
-  // Empty/whitespace → omitted: nothing to validate, nothing to gate.
-  if (!rawWorktreePath || rawWorktreePath.trim() === "") {
-    return { ok: true, projectTrusted: true };
-  }
-  try {
-    const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
-    const warnings: string[] = [];
-    const onWarning = (msg: string) => {
-      warnings.push(msg);
-    };
-    const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, onWarning);
-    if (!validation.ok) {
-      for (const msg of warnings) {
-        if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
-      }
-      return { ok: false, error: validation.error };
-    }
-
-    const resolvedPath = validation.resolvedPath!; // non-empty paths always resolve
-
-    // Cross-repo targets are gated by pi's trust framework. Same-repo paths
-    // are never gated; an untrusted target still spawns but with its project
-    // resources ignored and a warning surfaced.
-    const projectTrusted = resolveSubagentTrust({
-      targetPath: resolvedPath,
-      sameRepo: validation.sameRepo === true,
-      deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
-    });
-    if (!projectTrusted && ctx.ui?.notify) {
-      ctx.ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(resolvedPath)}`, "warning");
-    }
-    return {
-      ok: true,
-      resolvedPath,
-      worktreeLabel: validation.label,
-      projectTrusted,
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `worktree_path validation failed: ${msg}` };
-  }
-}
 
 export async function executeAgentTool(
   _toolCallId: string,
@@ -321,17 +345,27 @@ export async function toolCallListener(event: ToolCallEvent, ctx: ExtensionConte
   // frontmatter > pi per-model > defaultThinking. The injected value becomes
   // the explicit param at execution, so it must mirror the runtime chain —
   // an injection that diverged would change behavior, not just display. The
-  // per-model read is a pre-execution prediction over a fresh settings read
-  // at the spawn's target cwd, keyed by the resolved model; the session is
-  // the source of truth once it exists.
+  // per-model term obeys the same project-trust gate as the spawn's own
+  // settings read: resolveWorktree-equivalent validation plus trust decision,
+  // run silently (execution owns the user-facing warnings). Without the gate,
+  // an untrusted cross-repo target's settings file could set the spawn's
+  // thinking through the injected value, which wins as the explicit param.
+  // The session is the source of truth once it exists.
   if (input.thinking === undefined) {
     const rawWorktree = input.worktree_path;
-    const targetCwd = typeof rawWorktree === "string" && rawWorktree.trim() !== "" ? rawWorktree : ctx.cwd;
+    const target = await computeSpawnTarget(
+      ctx,
+      typeof rawWorktree === "string" && rawWorktree.trim() !== "" ? rawWorktree : undefined,
+    );
     const modelKey = effectiveModel || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "");
     const parsed = parseModelKey(modelKey);
+    const perModel =
+      target.ok && target.projectTrusted && parsed
+        ? getPiModelThinkingLevel(target.resolvedPath ?? ctx.cwd, parsed.provider, parsed.modelId)
+        : undefined;
     input.thinking = resolveThinkingLevel({
       frontmatter: agentConfig?.thinkingLevel,
-      perModel: parsed ? getPiModelThinkingLevel(targetCwd, parsed.provider, parsed.modelId) : undefined,
+      perModel,
       defaultThinking: getStore().agent.defaultThinking,
     });
   }
