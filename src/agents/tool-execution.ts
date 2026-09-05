@@ -7,76 +7,25 @@ import { getStatusNote, formatStopReason } from "../status-note.js";
  * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
  */
 
-import { getAgentDir, type ExtensionContext, type ToolCallEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentRecord, ThinkingLevel } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
 import type { AgentConfig } from "./types.js";
 import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
-import { validateWorktreePath } from "../spawn/worktree-validator.js";
-import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "../spawn/project-trust.js";
+import { computeSpawnTarget, type SpawnTarget } from "../spawn/spawn-target.js";
+import { untrustedProjectWarning } from "../spawn/project-trust.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import { getPiModelThinkingLevel } from "../pi-settings.js";
-import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
+import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.js";
 
 // --- Tool result helpers ---
 
 function successResult(text: string, details?: Record<string, unknown>) {
   return { content: [{ type: "text", text }], details };
-}
-
-/** The spawn target a `worktree_path` resolves to, plus warnings to surface. */
-type SpawnTarget =
-  | { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean; warnings: string[] }
-  | { ok: false; error: string; warnings: string[] };
-
-/**
- * Compute the spawn target for a `worktree_path` value: path validation plus
- * the project-trust decision, without user-facing notifications. Execution
- * (resolveWorktree) wraps this and surfaces the warnings; the tool-call
- * listener calls it directly so its per-model prediction is gated by the same
- * trust decision as the spawn's own settings read — silently, and without a
- * second set of user-facing warnings.
- */
-async function computeSpawnTarget(ctx: ExtensionContext, rawWorktreePath: string | undefined): Promise<SpawnTarget> {
-  // Empty/whitespace → omitted: nothing to validate, nothing to gate.
-  if (!rawWorktreePath || rawWorktreePath.trim() === "") {
-    return { ok: true, projectTrusted: true, warnings: [] };
-  }
-  const warnings: string[] = [];
-  try {
-    const parentCwd = getSessionCtx()?.cwd ?? ctx.cwd;
-    const validation = await validateWorktreePath(getPiInstance(), rawWorktreePath, parentCwd, (msg) =>
-      warnings.push(msg),
-    );
-    if (!validation.ok) {
-      return { ok: false, error: validation.error, warnings };
-    }
-
-    const resolvedPath = validation.resolvedPath!; // non-empty paths always resolve
-
-    // Cross-repo targets are gated by pi's trust framework. Same-repo paths
-    // are never gated; an untrusted target still spawns but with its project
-    // resources ignored and a warning surfaced.
-    const projectTrusted = resolveSubagentTrust({
-      targetPath: resolvedPath,
-      sameRepo: validation.sameRepo === true,
-      deps: createSubagentTrustDeps(getAgentDir(), parentCwd),
-    });
-    return {
-      ok: true,
-      resolvedPath,
-      worktreeLabel: validation.label,
-      projectTrusted,
-      warnings,
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `worktree_path validation failed: ${msg}`, warnings };
-  }
 }
 
 /**
