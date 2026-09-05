@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Subagents respect pi's per-model thinking level setting.** A `modelThinkingLevels` entry in pi's settings.json (keyed `provider/modelId`, project layer over global) now participates in subagent thinking resolution at the position above the `defaultThinking` setting: explicit spawn param > agent frontmatter `thinking` > pi's per-model level for the resolved model > `defaultThinking` > pi's own fallback (`defaultThinkingLevel` setting, then medium, clamped to the model's supported levels). Previously the per-model level was ignored everywhere: `defaultThinking` silently overrode it, and session creation never consulted it. The Model settings menu, the spawn wizard, and the Agent tool call display show the same spawn-effective chain. The wizard's thinking value is now a Derived/UserSet state: it shows the level the spawn will actually run with and re-derives when you switch the model, while any explicit pick (including Inherit) is kept across model switches and only clamped to the new model. `defaultThinking` keeps its purpose — overriding pi's global default — but no longer overrides an explicit per-model choice.
+- **`@earendil-works/pi-coding-agent` floor raised to `>=0.84.3`.** The per-model thinking setting and its `SettingsManager` accessors shipped in pi 0.84.3, so the per-model read calls the accessor directly instead of degrading through raw settings reads for older versions. Lockfile regenerated through npm.
+
+### Fixed
+
+- **Agent tool call thinking injection obeys the project-trust gate.** The pre-execution injection read pi's `modelThinkingLevels` at the spawn target through an ungated `SettingsManager`, so an untrusted cross-repo `worktree_path` target's settings file could set the spawn's thinking level — the injected value runs as the explicit param, above every configured source, while pi's trust warning says the project's `.pi/` settings are ignored. The listener now resolves the spawn target exactly as execution does (validation plus the same trust decision, silently, without duplicate warnings) and skips the per-model term for untrusted targets; the runner's own trust-gated read still decides. The read also now uses the validated target path instead of the raw tool argument.
+- **Spawn wizard no longer passes its derived thinking level as an explicit override.** The Derived display value is a prediction read at the parent cwd; passing it as the explicit param shadowed a worktree target's own per-model entry and pi's per-model fallback. In the Derived state the wizard now spawns with nothing — frontmatter, per-model, and defaultThinking are exactly the runner's chain, resolved at the actual target cwd — and re-reads the pi settings snapshot when the selected worktree changes, so the displayed level keeps tracking the spawn target. A user-chosen level (including Inherit) is still passed as chosen.
+
 ## [1.13.1] - 2026-09-04
 
 ### Changed

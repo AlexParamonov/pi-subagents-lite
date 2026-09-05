@@ -1,13 +1,17 @@
 /**
- * tool-execution-default-thinking.test.ts — Regression tests for
- * defaultThinking fallback in the LLM-driven spawn path.
- *
- * Verifies the resolution chain for thinking level:
- *   explicit param > agent frontmatter > store.agent.defaultThinking > undefined (inherit)
+ * tool-execution-default-thinking.test.ts — Regression tests for the
+ * thinking-level chain in the LLM-driven spawn path.
  *
  * Two seams are covered:
- *   - toolCallListener: injects thinking into the Agent tool call input
- *   - executeAgentTool: resolves thinkingLevel passed to the spawn coordinator
+ *   - toolCallListener: injects the spawn-effective thinking into the Agent
+ *     tool call input as frontmatter > pi per-model > defaultThinking, never
+ *     overwriting an explicit param. The per-model term obeys the same
+ *     project-trust gate as the spawn's own settings read: an untrusted
+ *     cross-repo worktree target's settings file must not reach the spawn
+ *     through the injected value.
+ *   - executeAgentTool: resolves explicit param > frontmatter and defers
+ *     per-model / defaultThinking to the spawn runner (whose chain keeps
+ *     per-model above defaultThinking)
  *
  * Tests observable behavior (the injected input / the spawn intent), not
  * internal call order.
@@ -18,21 +22,40 @@ import { fakeCtx } from "../fixtures.js";
 import type { ExtensionAPI, ExtensionContext, CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
 import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
 import type { AgentConfig } from "../../src/agents/types.js";
+import type { ThinkingLevel } from "../../src/types.js";
+import type { WorktreeValidationResult } from "../../src/spawn/worktree-validator.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup                                                        */
 /* ------------------------------------------------------------------ */
 
 // Mutable state so per-test values are visible to the hoisted mock factories.
-const { mockGetAgentConfig, mockSpawn, mockGetRecord, mockDiscoverNewAgents, mockValidateWorktreePath, storeState } =
-  vi.hoisted(() => ({
-    mockGetAgentConfig: vi.fn<() => AgentConfig | undefined>(defaultAgentConfig),
-    mockSpawn: vi.fn(),
-    mockGetRecord: vi.fn(),
-    mockDiscoverNewAgents: vi.fn(),
-    mockValidateWorktreePath: vi.fn(),
-    storeState: { defaultThinking: undefined as string | undefined, defaultMaxTurns: undefined as number | undefined },
-  }));
+const {
+  mockGetAgentConfig,
+  mockSpawn,
+  mockGetRecord,
+  mockDiscoverNewAgents,
+  mockValidateWorktreePath,
+  mockResolveSubagentTrust,
+  storeState,
+  perModelState,
+} = vi.hoisted(() => ({
+  mockGetAgentConfig: vi.fn<() => AgentConfig | undefined>(defaultAgentConfig),
+  mockSpawn: vi.fn(),
+  mockGetRecord: vi.fn(),
+  mockDiscoverNewAgents: vi.fn(),
+  mockValidateWorktreePath: vi.fn<() => Promise<WorktreeValidationResult>>(async () => ({
+    ok: false,
+    error: "no validation result configured",
+  })),
+  mockResolveSubagentTrust: vi.fn<() => boolean>(() => true),
+  storeState: {
+    defaultThinking: undefined as string | undefined,
+    defaultMaxTurns: undefined as number | undefined,
+    modelFor: undefined as string | undefined,
+  },
+  perModelState: { value: undefined as ThinkingLevel | undefined },
+}));
 /** Baseline agent config; tests override the fields under test. */
 function defaultAgentConfig(): AgentConfig {
   return {
@@ -54,6 +77,14 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
   computeLabel: vi.fn((resolved: string) => resolved.split("/").pop() || resolved),
 }));
 
+// The trust decision is a controlled value: the listener must gate its
+// per-model read on it exactly as the spawn runtime does.
+vi.mock("../../src/spawn/project-trust.js", () => ({
+  resolveSubagentTrust: mockResolveSubagentTrust,
+  createSubagentTrustDeps: vi.fn(() => ({})),
+  untrustedProjectWarning: vi.fn((targetPath: string) => `untrusted: ${targetPath}`),
+}));
+
 vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
   resolveTypeOrDiscover: vi.fn(async (type: string, worktreeDir?: string) => {
@@ -65,10 +96,22 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 }));
 
 vi.mock("../../src/utils.js", () => ({
-  parseModelKey: vi.fn(() => null),
+  parseModelKey: vi.fn((value: unknown) => {
+    if (typeof value !== "string") return null;
+    const idx = value.indexOf("/");
+    return idx <= 0 ? null : { provider: value.slice(0, idx), modelId: value.slice(idx + 1) };
+  }),
   findModelInRegistry: vi.fn(() => undefined),
   // Faithful to the real parser: valid levels pass through, everything else is undefined.
   parseThinkingLevel: vi.fn((raw?: string) => (raw !== undefined && VALID_THINKING.includes(raw) ? raw : undefined)),
+}));
+
+// The per-model read is the injection's pi-settings seam; the target cwd and
+// provider/modelId key are pinned by the listener tests below.
+vi.mock("../../src/pi-settings.js", () => ({
+  getPiModelThinkingLevel: vi.fn(
+    (_cwd: string, _provider: string, _modelId: string, _agentDir?: string) => perModelState.value,
+  ),
 }));
 
 vi.mock("../../src/shell.js", () => ({
@@ -81,7 +124,7 @@ vi.mock("../../src/shell.js", () => ({
         defaultMaxTurns: storeState.defaultMaxTurns,
       };
     },
-    modelFor: vi.fn(() => undefined),
+    modelFor: vi.fn(() => storeState.modelFor),
   }),
   getPiInstance: () => ({ sendMessage: vi.fn(), exec: vi.fn() }),
   getSessionCtx: () => ({ cwd: "/home/test/project" }),
@@ -120,6 +163,7 @@ vi.mock("../../src/agents/usage.js", () => ({
 
 // Import after mocks are in place
 import { executeAgentTool, toolCallListener } from "../../src/agents/tool-execution.js";
+import { getPiModelThinkingLevel } from "../../src/pi-settings.js";
 
 /* ------------------------------------------------------------------ */
 /*  Shared setup                                                      */
@@ -127,16 +171,21 @@ import { executeAgentTool, toolCallListener } from "../../src/agents/tool-execut
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps implementations; reset the stateful ones explicitly.
+  mockValidateWorktreePath.mockReset();
+  mockResolveSubagentTrust.mockReset().mockReturnValue(true);
   storeState.defaultThinking = undefined;
   storeState.defaultMaxTurns = undefined;
+  storeState.modelFor = undefined;
+  perModelState.value = undefined;
   mockGetAgentConfig.mockReturnValue(defaultAgentConfig());
 });
 
 /* ------------------------------------------------------------------ */
-/*  toolCallListener — defaultThinking injection                       */
+/*  toolCallListener — spawn-effective thinking injection              */
 /* ------------------------------------------------------------------ */
 
-describe("toolCallListener — defaultThinking injection", () => {
+describe("toolCallListener — thinking injection (frontmatter > per-model > defaultThinking)", () => {
   function makeEvent(input: Record<string, unknown> = {}): CustomToolCallEvent {
     return {
       type: "tool_call",
@@ -146,7 +195,7 @@ describe("toolCallListener — defaultThinking injection", () => {
     };
   }
 
-  it("injects store defaultThinking when no explicit thinking and no agent frontmatter", async () => {
+  it("injects store defaultThinking when no explicit thinking, frontmatter, or per-model level", async () => {
     storeState.defaultThinking = "max";
     const event = makeEvent();
 
@@ -155,8 +204,95 @@ describe("toolCallListener — defaultThinking injection", () => {
     expect(event.input.thinking).toBe("max");
   });
 
-  it("prefers agent frontmatter thinking over store defaultThinking", async () => {
+  it("injects the per-model level, which beats defaultThinking", async () => {
+    perModelState.value = "high";
     storeState.defaultThinking = "max";
+    const event = makeEvent();
+
+    await toolCallListener(event, fakeCtx());
+
+    expect(event.input.thinking).toBe("high");
+  });
+
+  it("reads the per-model level keyed by the parent model's provider/modelId", async () => {
+    const event = makeEvent();
+
+    await toolCallListener(event, fakeCtx());
+
+    expect(vi.mocked(getPiModelThinkingLevel)).toHaveBeenCalledWith("/home/test/project", "test", "model");
+  });
+
+  it("reads the per-model level at the resolved target path and model when the target is trusted", async () => {
+    perModelState.value = "low";
+    storeState.modelFor = "anthropic/claude-opus-4-1";
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeRoot: "/repo-b-resolved",
+      label: "repo-b-resolved",
+      sameRepo: true,
+    });
+    const event = makeEvent({ worktree_path: "/repo-b" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project" }));
+
+    // Keyed by the validated path (what the spawn will use), not the raw argument.
+    expect(vi.mocked(getPiModelThinkingLevel)).toHaveBeenCalledWith("/repo-b-resolved", "anthropic", "claude-opus-4-1");
+    expect(event.input.thinking).toBe("low");
+  });
+
+  it("does not read an untrusted cross-repo target's per-model level (project-trust gate)", async () => {
+    perModelState.value = "max";
+    storeState.modelFor = "anthropic/claude-opus-4-1";
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeRoot: "/repo-b-resolved",
+      label: "repo-b-resolved",
+      sameRepo: false,
+    });
+    mockResolveSubagentTrust.mockReturnValue(false);
+    const event = makeEvent({ worktree_path: "/repo-b" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project" }));
+
+    // The untrusted project's settings file must not set the spawn's thinking
+    // through the injected value (it would win as the explicit param).
+    expect(vi.mocked(getPiModelThinkingLevel)).not.toHaveBeenCalled();
+    expect(event.input.thinking).toBeUndefined();
+  });
+
+  it("still injects frontmatter and defaultThinking for an untrusted target, without the per-model term", async () => {
+    storeState.defaultThinking = "medium";
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeRoot: "/repo-b-resolved",
+      label: "repo-b-resolved",
+      sameRepo: false,
+    });
+    mockResolveSubagentTrust.mockReturnValue(false);
+    const event = makeEvent({ worktree_path: "/repo-b" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project" }));
+
+    expect(event.input.thinking).toBe("medium");
+  });
+
+  it("skips the per-model read when worktree validation fails (no spawn will run)", async () => {
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: false,
+      error: "worktree_path does not exist: the specified path was not found on disk",
+    });
+    const event = makeEvent({ worktree_path: "/missing" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project" }));
+
+    expect(vi.mocked(getPiModelThinkingLevel)).not.toHaveBeenCalled();
+  });
+
+  it("prefers agent frontmatter thinking over the per-model level", async () => {
+    perModelState.value = "high";
     mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "low" }));
     const event = makeEvent();
 
@@ -167,11 +303,14 @@ describe("toolCallListener — defaultThinking injection", () => {
 
   it("keeps an explicit thinking param unchanged", async () => {
     storeState.defaultThinking = "max";
-    const event = makeEvent({ thinking: "high" });
+    perModelState.value = "high";
+    const event = makeEvent({ thinking: "medium" });
 
     await toolCallListener(event, fakeCtx());
 
-    expect(event.input.thinking).toBe("high");
+    expect(event.input.thinking).toBe("medium");
+    // An explicit param means the chain is never consulted.
+    expect(vi.mocked(getPiModelThinkingLevel)).not.toHaveBeenCalled();
   });
 
   it("leaves thinking undefined when nothing is configured (inherit parent)", async () => {
@@ -187,7 +326,7 @@ describe("toolCallListener — defaultThinking injection", () => {
 /*  executeAgentTool — defaultThinking fallback                        */
 /* ------------------------------------------------------------------ */
 
-describe("executeAgentTool — defaultThinking fallback", () => {
+describe("executeAgentTool — explicit/frontmatter resolution, per-model + defaultThinking deferred", () => {
   let ctx: ExtensionContext;
 
   beforeEach(() => {
@@ -209,12 +348,12 @@ describe("executeAgentTool — defaultThinking fallback", () => {
     return mockSpawn.mock.calls[0]?.[4]?.thinkingLevel;
   }
 
-  it("falls back to store defaultThinking when no explicit param and no frontmatter", async () => {
+  it("defers defaultThinking to the spawn runner (its chain keeps per-model above it)", async () => {
     storeState.defaultThinking = "max";
 
     await executeAgentTool("tc-1", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 
-    expect(spawnThinkingLevel()).toBe("max");
+    expect(spawnThinkingLevel()).toBeUndefined();
   });
 
   it("prefers agent frontmatter thinking over store defaultThinking", async () => {

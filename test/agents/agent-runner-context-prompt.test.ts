@@ -311,7 +311,11 @@ describe("runAgent — project trust threading", () => {
   });
 
   it("threads the same settings manager into the resource loader and the session", async () => {
-    const settingsManager = { isProjectTrusted: () => false, getDefaultTools: () => undefined };
+    const settingsManager = {
+      isProjectTrusted: () => false,
+      getDefaultTools: () => undefined,
+      getModelThinkingLevel: () => undefined,
+    };
     mockModules.mockSettingsManagerCreate.mockReturnValue(settingsManager);
 
     const session = createMockSession();
@@ -347,6 +351,7 @@ describe("runAgent — defaultTools setting wiring", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockSettingsManagerCreate.mockReturnValue({
       getDefaultTools: () => ["read", "bash", "grep"],
+      getModelThinkingLevel: () => undefined,
     });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
@@ -367,6 +372,7 @@ describe("runAgent — defaultTools setting wiring", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockSettingsManagerCreate.mockReturnValue({
       getDefaultTools: () => undefined,
+      getModelThinkingLevel: () => undefined,
     });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
@@ -381,6 +387,7 @@ describe("runAgent — defaultTools setting wiring", () => {
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
     mockModules.mockSettingsManagerCreate.mockReturnValue({
       getDefaultTools: () => [],
+      getModelThinkingLevel: () => undefined,
     });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
