@@ -313,6 +313,20 @@ describe("restart without a worktree_path", () => {
     expect(intent.worktreePath).toBeUndefined();
     expect(mockResolveTypeOrDiscover).toHaveBeenCalledWith("general-purpose", undefined);
   });
+
+  it("treats a non-string worktree_path from history as omitted, not a spawn failure", async () => {
+    // Historical arguments are raw model output; a malformed value must not
+    // surface as a downstream TypeError in the skipped list.
+    const result = await handleRestartLastAgents(
+      commandCtx(entriesWithCalls([{ prompt: "Do it", worktree_path: 123 }])),
+    );
+
+    expect(result).toEqual({ restarted: ["general-purpose: Do it"], skipped: [] });
+    expect(mockValidateWorktreePath).not.toHaveBeenCalled();
+    const intent = lastSpawnIntent();
+    expect(intent.projectTrusted).toBe(true);
+    expect(intent.worktreePath).toBeUndefined();
+  });
 });
 
 /* ------------------------------------------------------------------ */

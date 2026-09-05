@@ -44,9 +44,9 @@ async function predictSpawnThinking(
   agentConfig: AgentConfig | undefined,
   effectiveModel: string | undefined,
 ): Promise<ThinkingLevel | undefined> {
-  // Non-string values count as omitted; computeSpawnTarget skips blank
-  // strings the same way.
-  const target = await computeSpawnTarget(ctx, typeof rawWorktree === "string" ? rawWorktree : undefined);
+  // Non-string values count as omitted — computeSpawnTarget owns that
+  // convention (raw arguments are unchecked), so the raw value passes through.
+  const target = await computeSpawnTarget(ctx, rawWorktree);
   const modelKey = effectiveModel || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "");
   const parsed = parseModelKey(modelKey);
   const perModel =

@@ -25,13 +25,15 @@ export type SpawnTarget =
  * the project-trust decision, without user-facing notifications. Callers own
  * the warnings (execution notifies them; the tool-call listener and restart
  * consume the trust decision silently or through their own channels).
+ *
+ * The raw value comes from unchecked tool arguments and replayed history, so
+ * anything that is not a non-blank string counts as omitted — the convention
+ * the live path established, enforced here so both entry points share it.
  */
-export async function computeSpawnTarget(
-  ctx: ExtensionContext,
-  rawWorktreePath: string | undefined,
-): Promise<SpawnTarget> {
-  // Empty/whitespace → omitted: nothing to validate, nothing to gate.
-  if (!rawWorktreePath || rawWorktreePath.trim() === "") {
+export async function computeSpawnTarget(ctx: ExtensionContext, rawWorktreePath: unknown): Promise<SpawnTarget> {
+  // Non-strings and empty/whitespace → omitted: nothing to validate, nothing
+  // to gate.
+  if (typeof rawWorktreePath !== "string" || rawWorktreePath.trim() === "") {
     return { ok: true, projectTrusted: true, warnings: [] };
   }
   const warnings: string[] = [];

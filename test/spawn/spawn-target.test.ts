@@ -93,6 +93,14 @@ describe("computeSpawnTarget — omitted and blank paths", () => {
     expect(target).toEqual({ ok: true, projectTrusted: true, warnings: [] });
     expect(mockValidateWorktreePath).not.toHaveBeenCalled();
   });
+
+  it("treats a non-string path as omitted (raw tool arguments and history are unchecked)", async () => {
+    const target = await computeSpawnTarget(fakeCtx(), 123);
+
+    expect(target).toEqual({ ok: true, projectTrusted: true, warnings: [] });
+    expect(mockValidateWorktreePath).not.toHaveBeenCalled();
+    expect(mockResolveSubagentTrust).not.toHaveBeenCalled();
+  });
 });
 
 /* ------------------------------------------------------------------ */
