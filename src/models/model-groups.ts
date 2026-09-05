@@ -24,10 +24,10 @@
  *     the menu's "Override another type..." list)
  */
 
-import { clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.js";
 import { resolveModelSource } from "./model-precedence.js";
-import { resolveThinkingLevel, PI_FALLBACK_THINKING_LEVEL } from "./thinking-resolution.js";
+import { resolveDisplayThinkingLevel } from "./thinking-resolution.js";
 import type { ThinkingLevel } from "../types.js";
 
 /** Frontmatter fields the group builder reads per type. */
@@ -138,24 +138,22 @@ export function hasExplicitPerTypeOverride(
 }
 
 /**
- * The thinking level a spawn under `modelId` would actually run with:
- * frontmatter thinking > pi per-model > defaultThinking > pi's
- * defaultThinkingLevel > medium, clamped to the model's supported levels
- * (unclamped when the model is not in the registry).
+ * The thinking level a spawn under `modelId` would actually run with, as the
+ * menu displays it: frontmatter thinking > pi per-model > defaultThinking >
+ * pi's defaultThinkingLevel > medium, clamped to the model's supported levels.
  */
 function displayThinking(
   cfg: AgentTypeModelConfig | undefined,
   modelId: string,
   input: ModelGroupsInput,
 ): ThinkingLevel {
-  const base =
-    resolveThinkingLevel({
+  return resolveDisplayThinkingLevel(
+    {
       frontmatter: cfg?.thinkingLevel,
       perModel: input.piModelThinking?.(modelId),
       defaultThinking: input.config.defaultThinking,
-    }) ??
-    input.piDefaultThinking ??
-    PI_FALLBACK_THINKING_LEVEL;
-  const model = input.findModel(modelId);
-  return model ? clampThinkingLevel(model, base) : base;
+    },
+    input.piDefaultThinking,
+    input.findModel(modelId),
+  );
 }

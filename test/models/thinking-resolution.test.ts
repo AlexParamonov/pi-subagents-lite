@@ -1,5 +1,5 @@
 /**
- * thinking-resolution.test.ts — The shared thinking precedence chain, pure.
+ * thinking-resolution.test.ts — The shared thinking precedence chain.
  *
  * Pins the spawn-effective precedence:
  *   explicit > frontmatter > per-model > defaultThinking > undefined
@@ -8,11 +8,13 @@
  * creation and pi's own fallback applies (defaultThinkingLevel setting,
  * else medium, clamped to the model's supported levels). Display surfaces
  * additionally fall through to pi's global default, then medium — that
- * display-only tail lives with the callers, not here.
+ * display-only tail is resolveDisplayThinkingLevel, pinned below.
  */
 
 import { describe, it, expect } from "vitest";
-import { resolveThinkingLevel } from "../../src/models/thinking-resolution.js";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import { resolveThinkingLevel, resolveDisplayThinkingLevel } from "../../src/models/thinking-resolution.js";
 
 describe("resolveThinkingLevel", () => {
   it("returns the explicit spawn param when set, beating every other source", () => {
@@ -43,5 +45,37 @@ describe("resolveThinkingLevel", () => {
 
   it("treats explicit undefined keys the same as absent keys", () => {
     expect(resolveThinkingLevel({ explicit: undefined, frontmatter: undefined, perModel: undefined })).toBeUndefined();
+  });
+});
+
+describe("resolveDisplayThinkingLevel", () => {
+  // Minimal reasoning model; real clampThinkingLevel runs against it.
+  const MODEL = {
+    provider: "test",
+    id: "model",
+    reasoning: true,
+    thinkingLevelMap: { xhigh: "xhigh" },
+  } as Model<Api>;
+
+  it("returns the chain result when a source wins", () => {
+    expect(resolveDisplayThinkingLevel({ perModel: "high", defaultThinking: "low" }, "xhigh", MODEL)).toBe("high");
+  });
+
+  it("falls through the chain to pi's global defaultThinkingLevel", () => {
+    expect(resolveDisplayThinkingLevel({}, "xhigh", MODEL)).toBe("xhigh");
+  });
+
+  it("falls through to medium when no source and no pi default is set", () => {
+    expect(resolveDisplayThinkingLevel({}, undefined, MODEL)).toBe("medium");
+  });
+
+  it("clamps the result to the model's supported levels", () => {
+    expect(resolveDisplayThinkingLevel({ defaultThinking: "xhigh" }, undefined, MODEL)).toBe("xhigh");
+    expect(clampThinkingLevel(MODEL, "max")).toBe("xhigh"); // sanity: the model really lacks max
+    expect(resolveDisplayThinkingLevel({ defaultThinking: "max" }, undefined, MODEL)).toBe("xhigh");
+  });
+
+  it("leaves the result unclamped when the model is not in the registry", () => {
+    expect(resolveDisplayThinkingLevel({ defaultThinking: "max" }, undefined, undefined)).toBe("max");
   });
 });

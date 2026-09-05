@@ -16,7 +16,7 @@ import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
 import { agentBulletPrefix } from "../format.js";
-import { resolveThinkingLevel, PI_FALLBACK_THINKING_LEVEL } from "../../models/thinking-resolution.js";
+import { resolveDisplayThinkingLevel } from "../../models/thinking-resolution.js";
 import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
 import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
@@ -258,17 +258,16 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
   /** The spawn-effective level for a model key string, clamped to the model. */
   const deriveThinking = (modelKeyStr: string): ThinkingLevel => {
     const key = modelKeyStr || parentModelId;
-    const base =
-      resolveThinkingLevel({
+    const registry = session?.modelRegistry ?? ctx.modelRegistry;
+    return resolveDisplayThinkingLevel(
+      {
         frontmatter: agentConfig.thinkingLevel,
         perModel: key ? modelThinkingLevels[key] : undefined,
         defaultThinking: store.agent.defaultThinking,
-      }) ??
-      piDefaultThinking ??
-      PI_FALLBACK_THINKING_LEVEL;
-    const registry = session?.modelRegistry ?? ctx.modelRegistry;
-    const model = findModelInRegistry(modelKeyStr, registry, session?.model);
-    return model ? clampThinkingLevel(model, base) : base;
+      },
+      piDefaultThinking,
+      findModelInRegistry(modelKeyStr, registry, session?.model),
+    );
   };
 
   /** The value this wizard currently holds: the user's choice, or the derived level. */
