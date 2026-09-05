@@ -71,6 +71,11 @@ function agentCallDescription(call: AgentCallParams): string {
   return firstLine.length > 80 ? firstLine.slice(0, 80) : firstLine || call.prompt.slice(0, 80);
 }
 
+/** User-facing label for a skipped call: "type: description (reason)". */
+function skippedCallLabel(call: AgentCallParams, reason: string): string {
+  return `${call.agent || "general-purpose"}: ${agentCallDescription(call)} (${reason})`;
+}
+
 /**
  * Resolve and spawn a single agent from historical parameters.
  *
@@ -88,7 +93,7 @@ async function resolveAndSpawn(
   const key = `${type}::${description}`;
 
   if (running.has(key)) {
-    return { skipped: `${type}: ${description} (already running)` };
+    return { skipped: skippedCallLabel(call, "already running") };
   }
 
   // Same spawn-target computation as a live Agent tool call: path validation
@@ -99,7 +104,7 @@ async function resolveAndSpawn(
   const target = await computeSpawnTarget(ctx, call.worktree_path);
   surfaceSpawnTargetWarnings(ctx.ui, target);
   if (!target.ok) {
-    return { skipped: `${type}: ${description} (${target.error})` };
+    return { skipped: skippedCallLabel(call, target.error) };
   }
 
   // The target's .pi/agents/ types load only when trusted, and only when the
@@ -111,7 +116,7 @@ async function resolveAndSpawn(
       : undefined;
   const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
   if (resolution.kind === "not-found" || resolution.kind === "ambiguous") {
-    return { skipped: `${type}: ${description} (unknown type)` };
+    return { skipped: skippedCallLabel(call, "unknown type") };
   }
 
   const resolvedType = resolution.key;
@@ -188,9 +193,7 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
       if ("restarted" in result) restarted.push(result.restarted);
       else skipped.push(result.skipped);
     } catch (err) {
-      const desc = agentCallDescription(call);
-      const type = call.agent || "general-purpose";
-      skipped.push(`${type}: ${desc} (spawn failed: ${String(err).slice(0, 80)})`);
+      skipped.push(skippedCallLabel(call, `spawn failed: ${String(err).slice(0, 80)}`));
     }
   }
 
