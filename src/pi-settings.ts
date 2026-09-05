@@ -45,6 +45,31 @@ export function getPiDefaultThinkingLevel(cwd: string, agentDir?: string): Think
 }
 
 /**
+ * pi's per-model thinking level for one model (project layer over global),
+ * keyed the way pi keys `modelThinkingLevels`: `provider/modelId`. Undefined
+ * when the model has no entry. agentDir is injectable for tests; defaults to
+ * pi's agent dir.
+ */
+export function getPiModelThinkingLevel(
+  cwd: string,
+  provider: string,
+  modelId: string,
+  agentDir?: string,
+): ThinkingLevel | undefined {
+  return SettingsManager.create(cwd, agentDir ?? getAgentDir()).getModelThinkingLevel(provider, modelId);
+}
+
+/**
+ * pi's whole per-model thinking map (project over global), keyed
+ * `provider/modelId`. For surfaces that look up many models (menus): one
+ * settings read instead of one per row. Returns a copy. agentDir is
+ * injectable for tests; defaults to pi's agent dir.
+ */
+export function getPiModelThinkingLevels(cwd: string, agentDir?: string): Record<string, ThinkingLevel> {
+  return SettingsManager.create(cwd, agentDir ?? getAgentDir()).getAllModelThinkingLevels();
+}
+
+/**
  * pi's defaultTools setting for a SettingsManager.
  *
  * pi >= 0.84.2 exposes SettingsManager.getDefaultTools(); older pi has no

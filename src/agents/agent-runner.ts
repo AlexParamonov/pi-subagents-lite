@@ -27,6 +27,7 @@ import {
 } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
 import { readDefaultTools } from "../pi-settings.js";
+import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import type { AgentUsage } from "./usage.js";
 import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
@@ -513,7 +514,17 @@ async function initSession(
   defaultTools: string[] | undefined,
 ): Promise<AgentSession> {
   const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
-  const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinkingLevel;
+  // Per-model comes from the same trust-gated instance the session is created
+  // with, so the project-trust gate applies to the read identically. When
+  // every source is unset nothing is passed and pi's own fallback applies
+  // (defaultThinkingLevel setting → medium, clamped to the model).
+  const perModelLevel = model ? settingsManager.getModelThinkingLevel(model.provider, model.id) : undefined;
+  const thinkingLevel = resolveThinkingLevel({
+    explicit: options.thinkingLevel,
+    frontmatter: agentConfig?.thinkingLevel,
+    perModel: perModelLevel,
+    defaultThinking: getStore().agent.defaultThinking,
+  });
   const agentDir = getAgentDir();
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd,

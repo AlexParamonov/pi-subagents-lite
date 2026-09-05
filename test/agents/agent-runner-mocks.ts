@@ -47,6 +47,7 @@ interface MockLoaderInstance {
 /** The SettingsManager surface the spawn path reads from SettingsManager.create. */
 export interface MockSettingsManager {
   getDefaultTools?: () => string[] | undefined;
+  getModelThinkingLevel?: (provider: string, modelId: string) => import("../../src/types.js").ThinkingLevel | undefined;
   isProjectTrusted?: () => boolean;
 }
 
@@ -77,7 +78,10 @@ const hoisted = vi.hoisted(() => ({
   mockDefaultResourceLoader: MockDefaultResourceLoader,
   mockGetAgentDir: vi.fn().mockReturnValue("/home/test/.pi/agent"),
   mockLoadProjectContextFiles: vi.fn().mockReturnValue([]),
-  mockSettingsManagerCreate: vi.fn<() => MockSettingsManager>(() => ({ getDefaultTools: vi.fn(() => undefined) })),
+  mockSettingsManagerCreate: vi.fn<() => MockSettingsManager>(() => ({
+    getDefaultTools: vi.fn(() => undefined),
+    getModelThinkingLevel: vi.fn(() => undefined),
+  })),
   mockIncludeContextFiles: true as boolean,
   mockSystemPromptMode: "replace" as string,
   getLoaderOpts: () => _loaderOpts[_loaderOpts.length - 1] ?? null,
@@ -92,6 +96,7 @@ const hoisted = vi.hoisted(() => ({
   },
   mockEnterSubagentSpawn: vi.fn(),
   mockExitSubagentSpawn: vi.fn(),
+  mockDefaultThinking: undefined as import("../../src/types.js").ThinkingLevel | undefined,
 }));
 
 /** Mutable mock state accessible from test files. */
@@ -126,6 +131,12 @@ export const mockModules = {
   clearLoaderExtensions: hoisted.clearLoaderExtensions,
   mockEnterSubagentSpawn: hoisted.mockEnterSubagentSpawn,
   mockExitSubagentSpawn: hoisted.mockExitSubagentSpawn,
+  get mockDefaultThinking() {
+    return hoisted.mockDefaultThinking;
+  },
+  set mockDefaultThinking(v: import("../../src/types.js").ThinkingLevel | undefined) {
+    hoisted.mockDefaultThinking = v;
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -165,6 +176,9 @@ vi.mock("../../src/shell.js", () => ({
       forceBackground: false,
       showCost: false,
       defaultModel: null,
+      get defaultThinking() {
+        return mockModules.mockDefaultThinking;
+      },
     },
   }),
   enterSubagentSpawn: mockModules.mockEnterSubagentSpawn,
@@ -220,6 +234,7 @@ export function resetMocks() {
   mockModules.mockExtractText.mockReturnValue("");
   mockModules.mockGetAgentDir.mockReturnValue("/home/test/.pi/agent");
   mockModules.mockPreloadSkills.mockReturnValue([]);
+  mockModules.mockDefaultThinking = undefined;
 }
 
 /* ------------------------------------------------------------------ */
