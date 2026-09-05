@@ -45,7 +45,7 @@ The model an Agent type runs on: session per-type > session default > config per
 _Avoid_: Effective model, assigned model
 
 **Thinking level**:
-Per-spawn reasoning effort (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Resolved as frontmatter `thinking` > `defaultThinking` (project over global) > the pi session default (pi's `defaultThinkingLevel` setting, else `medium`), then clamped to the **Resolved model**'s supported levels (non-reasoning models support only `off`).
+Per-spawn reasoning effort (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Resolved as the explicit spawn param > frontmatter `thinking` > pi's per-model level for the **Resolved model** (pi's `modelThinkingLevels` setting, keyed `provider/modelId`, project over global) > `defaultThinking` (project over global) > pi's own fallback (pi's `defaultThinkingLevel` setting, else `medium`), then clamped to the model's supported levels (non-reasoning models support only `off`).
 _Avoid_: Reasoning effort, thinking mode
 
 ### Worktrees

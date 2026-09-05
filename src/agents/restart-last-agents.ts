@@ -106,8 +106,9 @@ async function resolveAndSpawn(
   const effectiveModelStr = getStore().modelFor(resolvedType, parentModelId, agentConfig);
   const model = effectiveModelStr ? findModelInRegistry(effectiveModelStr, ctx.modelRegistry, ctx.model) : undefined;
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
-  const thinkingLevel =
-    parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
+  // Explicit > frontmatter only: per-model and defaultThinking are owned by
+  // the spawn runner, whose chain keeps per-model above defaultThinking.
+  const thinkingLevel = parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel;
 
   await coordinator!.spawn(pi!, ctx, {
     type: resolvedType,

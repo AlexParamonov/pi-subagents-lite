@@ -14,6 +14,7 @@ import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import { clampThinkingLevel, type Api, type Model, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { Component, SelectItem, SettingItem, SettingsListTheme, SelectListTheme } from "@earendil-works/pi-tui";
 import type { ThinkingLevel } from "../../../src/types.js";
+import type { SpawnOptions } from "../../../src/agents/agent-manager.js";
 
 // Mock pi's settings reads (per-model map + global default)
 const piSettingsMock = vi.hoisted(() => ({
@@ -497,10 +498,10 @@ describe("showSpawnAgentMenu — per-model thinking (Derived/UserSet)", () => {
     settingsListCalls[1].onChange("thinkingLevel", level);
   }
 
-  function spawnOptions(): Record<string, any> {
+  function spawnOptions(): SpawnOptions {
     thinkingItem(); // ensure the list is built
     settingsListCalls[1].items.find((i) => i.id === "spawn")!.submenu!("", vi.fn());
-    return mockModules.mockManager.spawn.mock.calls[0][4] as unknown as Record<string, any>;
+    return mockModules.mockManager.spawn.mock.calls[0][4];
   }
 
   beforeEach(() => {
@@ -575,7 +576,7 @@ describe("showSpawnAgentMenu — per-model thinking (Derived/UserSet)", () => {
 
     const options = spawnOptions();
     expect(options.thinkingLevel).toBe("high");
-    expect(options.invocation.thinkingLevel).toBe("high");
+    expect(options.invocation?.thinkingLevel).toBe("high");
   });
 
   it("spawns with nothing when the user picked Inherit, so the runtime chain decides", async () => {

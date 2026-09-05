@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Subagents respect pi's per-model thinking level setting.** A `modelThinkingLevels` entry in pi's settings.json (keyed `provider/modelId`, project layer over global) now participates in subagent thinking resolution at the position above the `defaultThinking` setting: explicit spawn param > agent frontmatter `thinking` > pi's per-model level for the resolved model > `defaultThinking` > pi's own fallback (`defaultThinkingLevel` setting, then medium, clamped to the model's supported levels). Previously the per-model level was ignored everywhere: `defaultThinking` silently overrode it, and session creation never consulted it. The Model settings menu, the spawn wizard, and the Agent tool call display show the same spawn-effective chain. The wizard's thinking value is now a Derived/UserSet state: it shows the level the spawn will actually run with and re-derives when you switch the model, while any explicit pick (including Inherit) is kept across model switches and only clamped to the new model. `defaultThinking` keeps its purpose — overriding pi's global default — but no longer overrides an explicit per-model choice.
+- **`@earendil-works/pi-coding-agent` floor raised to `>=0.84.3`.** The per-model thinking setting and its `SettingsManager` accessors shipped in pi 0.84.3, so the per-model read calls the accessor directly instead of degrading through raw settings reads for older versions. Lockfile regenerated through npm.
+
 ## [1.13.1] - 2026-09-04
 
 ### Changed

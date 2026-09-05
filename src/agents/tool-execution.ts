@@ -17,6 +17,8 @@ import { validateWorktreePath } from "../spawn/worktree-validator.js";
 import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "../spawn/project-trust.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
+import { resolveThinkingLevel } from "../models/thinking-resolution.js";
+import { getPiModelThinkingLevel } from "../pi-settings.js";
 import { getPiInstance, getSessionCtx, getStore, getCoordinator, getManager } from "../shell.js";
 
 // --- Tool result helpers ---
@@ -187,11 +189,13 @@ export async function executeAgentTool(
   // Determine modelName for invocation (always capture for display)
   const modelName = model?.id;
 
-  // Resolve thinking: explicit param > agent config (frontmatter) > spawn options default > undefined (inherit)
+  // Resolve thinking: explicit param > agent config (frontmatter) > undefined.
+  // Per-model and defaultThinking are deliberately NOT resolved here — the
+  // spawn runner owns them (its trust-gated settings read keeps per-model
+  // above defaultThinking; folding them into this explicit param would shadow
+  // per-model). When the listener ran, it already injected the full chain.
   const thinkingLevel =
-    parseThinkingLevel(params.thinking as string | undefined) ??
-    getAgentConfig(resolvedType)?.thinkingLevel ??
-    getStore().agent.defaultThinking;
+    parseThinkingLevel(params.thinking as string | undefined) ?? getAgentConfig(resolvedType)?.thinkingLevel;
 
   const coordinator = getCoordinator()!;
   // Background spawns (explicit or forceBackground) never bind to the parent
@@ -313,8 +317,22 @@ export async function toolCallListener(event: ToolCallEvent, ctx: ExtensionConte
     }
   }
 
-  // Inject thinking if not explicitly passed: agent frontmatter > spawn options default
+  // Inject the spawn-effective thinking when the call carries none:
+  // frontmatter > pi per-model > defaultThinking. The injected value becomes
+  // the explicit param at execution, so it must mirror the runtime chain —
+  // an injection that diverged would change behavior, not just display. The
+  // per-model read is a pre-execution prediction over a fresh settings read
+  // at the spawn's target cwd, keyed by the resolved model; the session is
+  // the source of truth once it exists.
   if (input.thinking === undefined) {
-    input.thinking = agentConfig?.thinkingLevel ?? getStore().agent.defaultThinking;
+    const rawWorktree = input.worktree_path;
+    const targetCwd = typeof rawWorktree === "string" && rawWorktree.trim() !== "" ? rawWorktree : ctx.cwd;
+    const modelKey = effectiveModel || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "");
+    const parsed = parseModelKey(modelKey);
+    input.thinking = resolveThinkingLevel({
+      frontmatter: agentConfig?.thinkingLevel,
+      perModel: parsed ? getPiModelThinkingLevel(targetCwd, parsed.provider, parsed.modelId) : undefined,
+      defaultThinking: getStore().agent.defaultThinking,
+    });
   }
 }

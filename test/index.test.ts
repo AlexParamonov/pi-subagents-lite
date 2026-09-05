@@ -14,6 +14,12 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => "/home/test/.pi/agent",
 }));
 
+// The Agent tool_call listener reads pi's per-model thinking level when the
+// call carries no explicit thinking; keep the settings read out of this file.
+vi.mock("../src/pi-settings.js", () => ({
+  getPiModelThinkingLevel: vi.fn(() => undefined),
+}));
+
 vi.mock("@earendil-works/pi-tui", () => ({
   Box: class {},
   Container: class {
