@@ -14,7 +14,7 @@ import { SHORT_ID_LENGTH } from "../types.js";
 import type { AgentConfig } from "./types.js";
 import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
-import { computeSpawnTarget, type SpawnTarget } from "../spawn/spawn-target.js";
+import { computeSpawnTarget } from "../spawn/spawn-target.js";
 import { untrustedProjectWarning } from "../spawn/project-trust.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
