@@ -12,6 +12,8 @@ import type { ToolCall } from "@earendil-works/pi-ai";
 import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.js";
 import { parseThinkingLevel, findModelInRegistry } from "../utils.js";
 import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.js";
+import { computeSpawnTarget } from "../spawn/spawn-target.js";
+import { untrustedProjectWarning } from "../spawn/project-trust.js";
 
 /** Extracted parameters from a historical Agent tool call. */
 export interface AgentCallParams {
@@ -90,9 +92,31 @@ async function resolveAndSpawn(
     return { skipped: `${type}: ${description} (already running)` };
   }
 
+  // Same spawn-target computation as a live Agent tool call: path validation
+  // plus the project-trust decision, one shared definition. A historical
+  // target without a worktree_path is a trusted non-target (no validation,
+  // no gate). Invalid targets skip with the self-correctable error; untrusted
+  // ones still spawn with their project resources and agent types ignored.
+  const target = await computeSpawnTarget(ctx, call.worktree_path);
+  const notify = (msg: string) => {
+    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+  };
+  for (const msg of target.warnings) {
+    notify(msg);
+  }
+  if (!target.ok) {
+    return { skipped: `${type}: ${description} (${target.error})` };
+  }
+  if (!target.projectTrusted && target.resolvedPath) {
+    notify(untrustedProjectWarning(target.resolvedPath));
+  }
+
+  // The target's .pi/agents/ types load only when trusted, and only when the
+  // user has not disabled implicit extension loading — same gate as before,
+  // now keyed off the validated path instead of the raw argument.
   const targetAgentsDir =
-    call.worktree_path && getStore().agent.loadExtensionsImplicitly !== false
-      ? `${call.worktree_path}/.pi/agents`
+    target.projectTrusted && target.resolvedPath && getStore().agent.loadExtensionsImplicitly !== false
+      ? `${target.resolvedPath}/.pi/agents`
       : undefined;
   const resolution = await resolveTypeOrDiscover(type, targetAgentsDir);
   if (resolution.kind === "not-found" || resolution.kind === "ambiguous") {
@@ -119,7 +143,9 @@ async function resolveAndSpawn(
     maxTurns,
     thinkingLevel,
     graceTurns: getStore().agent.graceTurns,
-    worktreePath: call.worktree_path,
+    worktreePath: target.resolvedPath,
+    worktreeLabel: target.worktreeLabel,
+    projectTrusted: target.projectTrusted,
     invocation: { modelName: model?.id, thinkingLevel, maxTurns },
     runInBackground: true,
   });

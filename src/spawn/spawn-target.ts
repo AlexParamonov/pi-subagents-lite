@@ -26,7 +26,10 @@ export type SpawnTarget =
  * the warnings (execution notifies them; the tool-call listener and restart
  * consume the trust decision silently or through their own channels).
  */
-export async function computeSpawnTarget(ctx: ExtensionContext, rawWorktreePath: string | undefined): Promise<SpawnTarget> {
+export async function computeSpawnTarget(
+  ctx: ExtensionContext,
+  rawWorktreePath: string | undefined,
+): Promise<SpawnTarget> {
   // Empty/whitespace → omitted: nothing to validate, nothing to gate.
   if (!rawWorktreePath || rawWorktreePath.trim() === "") {
     return { ok: true, projectTrusted: true, warnings: [] };
