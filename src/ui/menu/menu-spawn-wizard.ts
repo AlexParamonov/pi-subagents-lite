@@ -262,7 +262,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     return resolveDisplayThinkingLevel(
       {
         frontmatter: agentConfig.thinkingLevel,
-        perModel: key ? modelThinkingLevels[key] : undefined,
+        perModel: modelThinkingLevels[key],
         defaultThinking: store.agent.defaultThinking,
       },
       piDefaultThinking,
