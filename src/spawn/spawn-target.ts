@@ -22,9 +22,11 @@ export type SpawnTarget =
 
 /**
  * Compute the spawn target for a `worktree_path` value: path validation plus
- * the project-trust decision, without user-facing notifications. Callers own
- * the warnings (execution notifies them; the tool-call listener and restart
- * consume the trust decision silently or through their own channels).
+ * the project-trust decision, silently — warnings are collected into the
+ * result, not notified. Callers own the consequences (execution throws or
+ * proceeds; the restart path reports skips) and surface the warnings through
+ * surfaceSpawnTargetWarnings; the tool-call listener consumes the trust
+ * decision without notifying.
  *
  * The raw value comes from unchecked tool arguments and replayed history, so
  * anything that is not a non-blank string counts as omitted — the convention
