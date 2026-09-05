@@ -14,8 +14,7 @@ import { SHORT_ID_LENGTH } from "../types.js";
 import type { AgentConfig } from "./types.js";
 import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
-import { computeSpawnTarget } from "../spawn/spawn-target.js";
-import { untrustedProjectWarning } from "../spawn/project-trust.js";
+import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.js";
 
 import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
@@ -62,7 +61,8 @@ async function predictSpawnThinking(
 
 /**
  * Validate worktree_path and gate cross-repo trust, surfacing warnings via
- * ctx.ui. Errors are LLM-facing and self-correctable.
+ * ctx.ui through the shared notify policy. Errors are LLM-facing and
+ * self-correctable.
  */
 async function resolveWorktree(
   ctx: ExtensionContext,
@@ -71,19 +71,16 @@ async function resolveWorktree(
   { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean } | { ok: false; error: string }
 > {
   const target = await computeSpawnTarget(ctx, rawWorktreePath);
-  const notify = (msg: string) => {
-    if (ctx.ui?.notify) ctx.ui.notify(msg, "warning");
-  };
-  for (const msg of target.warnings) {
-    notify(`[pi-subagents-lite] ${msg}`);
-  }
+  surfaceSpawnTargetWarnings(ctx.ui, target);
   if (!target.ok) {
     return { ok: false, error: target.error };
   }
-  if (!target.projectTrusted && target.resolvedPath) {
-    notify(`[pi-subagents-lite] ${untrustedProjectWarning(target.resolvedPath)}`);
-  }
-  return target;
+  return {
+    ok: true,
+    resolvedPath: target.resolvedPath,
+    worktreeLabel: target.worktreeLabel,
+    projectTrusted: target.projectTrusted,
+  };
 }
 
 /**

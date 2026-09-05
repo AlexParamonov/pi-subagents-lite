@@ -3,17 +3,17 @@
  *
  * Combines the two spawn-target primitives (worktree-validator,
  * project-trust) into one silent computation: path validation plus the
- * project-trust decision, without user-facing notifications. Shared by the
- * live Agent tool path (resolveWorktree wraps it and surfaces the warnings;
- * the tool-call listener calls it directly to gate its per-model prediction)
- * and the restart path (which surfaces the warnings through its own command
- * context) so both make exactly one trust decision.
+ * project-trust decision. computeSpawnTarget is that decision, defined once
+ * and consumed by the live Agent tool path, the tool-call listener, and the
+ * restart path. surfaceSpawnTargetWarnings is its user-facing half — the one
+ * notify policy (prefix, level, untrusted-project warning) shared by every
+ * consumer that surfaces warnings.
  */
 
 import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getSessionCtx, getPiInstance } from "../shell.js";
 import { validateWorktreePath } from "./worktree-validator.js";
-import { resolveSubagentTrust, createSubagentTrustDeps } from "./project-trust.js";
+import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "./project-trust.js";
 
 /** The spawn target a `worktree_path` resolves to, plus warnings to surface. */
 export type SpawnTarget =
@@ -66,5 +66,26 @@ export async function computeSpawnTarget(ctx: ExtensionContext, rawWorktreePath:
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `worktree_path validation failed: ${msg}`, warnings };
+  }
+}
+
+/**
+ * Surface a spawn target's warnings through a notify sink: validator warnings
+ * always, the untrusted-project warning only for a resolved untrusted target
+ * (an invalid one has no path to warn about). The shared notify policy —
+ * prefix and warning level included — so both the live Agent tool path and
+ * the restart path reach the user identically. A missing ui or notify sink
+ * stays silent, matching the previous per-caller guards.
+ */
+export function surfaceSpawnTargetWarnings(
+  ui: { notify?: (message: string, type?: "info" | "warning" | "error") => void } | undefined,
+  target: SpawnTarget,
+): void {
+  if (!ui?.notify) return;
+  for (const msg of target.warnings) {
+    ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+  }
+  if (target.ok && !target.projectTrusted && target.resolvedPath) {
+    ui.notify(`[pi-subagents-lite] ${untrustedProjectWarning(target.resolvedPath)}`, "warning");
   }
 }

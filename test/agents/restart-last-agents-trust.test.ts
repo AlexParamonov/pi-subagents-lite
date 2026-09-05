@@ -87,11 +87,12 @@ vi.mock("../../src/spawn/project-trust.js", () => ({
 
 // Pass-through spy: pins that restart resolves spawn targets through the
 // same shared computeSpawnTarget the live Agent tool path uses — one trust
-// decision, one definition (AC-7).
+// decision, one definition (AC-7). Every other export passes through, so the
+// restart path shares the live path's warning-surfacing policy too.
 vi.mock("../../src/spawn/spawn-target.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/spawn/spawn-target.js")>();
   mockComputeSpawnTarget.mockImplementation(actual.computeSpawnTarget);
-  return { computeSpawnTarget: mockComputeSpawnTarget };
+  return { ...actual, computeSpawnTarget: mockComputeSpawnTarget };
 });
 
 vi.mock("../../src/agents/agent-types.js", () => ({

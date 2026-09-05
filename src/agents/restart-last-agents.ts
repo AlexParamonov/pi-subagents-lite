@@ -12,8 +12,7 @@ import type { ToolCall } from "@earendil-works/pi-ai";
 import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.js";
 import { parseThinkingLevel, findModelInRegistry } from "../utils.js";
 import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.js";
-import { computeSpawnTarget } from "../spawn/spawn-target.js";
-import { untrustedProjectWarning } from "../spawn/project-trust.js";
+import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.js";
 
 /** Extracted parameters from a historical Agent tool call. */
 export interface AgentCallParams {
@@ -98,17 +97,9 @@ async function resolveAndSpawn(
   // no gate). Invalid targets skip with the self-correctable error; untrusted
   // ones still spawn with their project resources and agent types ignored.
   const target = await computeSpawnTarget(ctx, call.worktree_path);
-  const notify = (msg: string) => {
-    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
-  };
-  for (const msg of target.warnings) {
-    notify(msg);
-  }
+  surfaceSpawnTargetWarnings(ctx.ui, target);
   if (!target.ok) {
     return { skipped: `${type}: ${description} (${target.error})` };
-  }
-  if (!target.projectTrusted && target.resolvedPath) {
-    notify(untrustedProjectWarning(target.resolvedPath));
   }
 
   // The target's .pi/agents/ types load only when trusted, and only when the

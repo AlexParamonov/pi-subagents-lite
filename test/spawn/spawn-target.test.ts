@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { DefaultProjectTrust } from "@earendil-works/pi-coding-agent";
 import { fakeCtx, shellMock } from "../fixtures.js";
+import { defaultUi } from "../mock-utils.js";
 import type { SubagentTrustDeps } from "../../src/spawn/project-trust.js";
 import type { WorktreeValidationResult } from "../../src/spawn/worktree-validator.js";
 
@@ -49,7 +50,7 @@ vi.mock("../../src/spawn/project-trust.js", () => ({
 vi.mock("../../src/shell.js", () => shellMock({ sessionCtx: { cwd: "/session/cwd" }, pi: { exec: vi.fn() } }));
 
 // Import after mocks are in place
-import { computeSpawnTarget } from "../../src/spawn/spawn-target.js";
+import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../../src/spawn/spawn-target.js";
 
 /* ------------------------------------------------------------------ */
 /*  Shared setup                                                      */
@@ -187,5 +188,72 @@ describe("computeSpawnTarget — validation failures", () => {
     const target = await computeSpawnTarget(fakeCtx(), "/x");
 
     expect(target).toEqual({ ok: false, error: "worktree_path validation failed: boom", warnings: [] });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Shared warning surfacing                                          */
+/* ------------------------------------------------------------------ */
+
+describe("surfaceSpawnTargetWarnings", () => {
+  /** Fresh ui sink so each test asserts its own notify calls. */
+  function uiWithNotify() {
+    return { ...defaultUi, notify: vi.fn() };
+  }
+
+  it("notifies each collected warning with the shared prefix and warning level", () => {
+    const ui = uiWithNotify();
+
+    surfaceSpawnTargetWarnings(ui, { ok: true, projectTrusted: true, warnings: ["git rev-parse failed somewhere"] });
+
+    expect(ui.notify).toHaveBeenCalledTimes(1);
+    expect(ui.notify).toHaveBeenCalledWith("[pi-subagents-lite] git rev-parse failed somewhere", "warning");
+  });
+
+  it("notifies the untrusted-project warning for an untrusted resolved target", () => {
+    const ui = uiWithNotify();
+
+    surfaceSpawnTargetWarnings(ui, {
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeLabel: "repo-b-resolved",
+      projectTrusted: false,
+      warnings: [],
+    });
+
+    expect(ui.notify).toHaveBeenCalledTimes(1);
+    expect(ui.notify).toHaveBeenCalledWith("[pi-subagents-lite] untrusted: /repo-b-resolved", "warning");
+  });
+
+  it("notifies nothing for a trusted target without warnings", () => {
+    const ui = uiWithNotify();
+
+    surfaceSpawnTargetWarnings(ui, { ok: true, projectTrusted: true, warnings: [] });
+
+    expect(ui.notify).not.toHaveBeenCalled();
+  });
+
+  it("notifies an invalid target's collected warnings but never the untrusted warning", () => {
+    const ui = uiWithNotify();
+
+    surfaceSpawnTargetWarnings(ui, {
+      ok: false,
+      error: "worktree_path is not inside a git repository",
+      warnings: ["git rev-parse failed somewhere"],
+    });
+
+    expect(ui.notify).toHaveBeenCalledTimes(1);
+    expect(ui.notify).toHaveBeenCalledWith("[pi-subagents-lite] git rev-parse failed somewhere", "warning");
+  });
+
+  it("stays silent when no ui or no notify sink is available", () => {
+    const target: Parameters<typeof surfaceSpawnTargetWarnings>[1] = {
+      ok: true,
+      projectTrusted: true,
+      warnings: ["git rev-parse failed somewhere"],
+    };
+
+    expect(() => surfaceSpawnTargetWarnings(undefined, target)).not.toThrow();
+    expect(() => surfaceSpawnTargetWarnings({ notify: undefined }, target)).not.toThrow();
   });
 });
