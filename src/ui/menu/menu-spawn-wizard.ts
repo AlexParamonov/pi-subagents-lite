@@ -239,12 +239,21 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     thinkingState = { kind: "userSet", value: level };
   };
 
-  // One settings read per wizard: pi's per-model map + global default. A
-  // prediction of the spawn's effective level — the session is the source of
-  // truth once it exists.
-  const thinkingCwd = session?.cwd ?? ctx.cwd;
-  const modelThinkingLevels = getPiModelThinkingLevels(thinkingCwd);
-  const piDefaultThinking = getPiDefaultThinkingLevel(thinkingCwd);
+  // Pi settings snapshot for the thinking display, read at the spawn's target
+  // cwd. A prediction for display only — the session is the source of truth
+  // once it exists. Re-read when the selected worktree changes while Derived,
+  // so the displayed level keeps tracking the spawn target.
+  /** The wizard's default spawn target: the parent session's cwd. */
+  const parentThinkingCwd = session?.cwd ?? ctx.cwd;
+  let modelThinkingLevels = getPiModelThinkingLevels(parentThinkingCwd);
+  let piDefaultThinking = getPiDefaultThinkingLevel(parentThinkingCwd);
+
+  /** Re-read the pi settings snapshot for a new spawn target cwd. */
+  const refreshThinkingSnapshot = (cwd: string) => {
+    if (thinkingState.kind !== "derived") return;
+    modelThinkingLevels = getPiModelThinkingLevels(cwd);
+    piDefaultThinking = getPiDefaultThinkingLevel(cwd);
+  };
 
   /** The spawn-effective level for a model key string, clamped to the model. */
   const deriveThinking = (modelKeyStr: string): ThinkingLevel => {
@@ -265,6 +274,17 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
   /** The value this wizard currently holds: the user's choice, or the derived level. */
   const currentThinkingValue = (): ThinkingLevel | undefined =>
     thinkingState.kind === "userSet" ? thinkingState.value : deriveThinking(currentModelStr);
+
+  /**
+   * What the spawn passes as the explicit param. The derived value is a
+   * display prediction read at the parent cwd — passing it would shadow the
+   * spawn target's own per-model entry (worktree targets carry their own
+   * .pi/settings.json). frontmatter, per-model, and defaultThinking are
+   * exactly the runner's chain, so Derived passes nothing and the runner
+   * resolves them at the actual target cwd. Only a user pick is explicit.
+   */
+  const spawnThinkingLevel = (): ThinkingLevel | undefined =>
+    thinkingState.kind === "userSet" ? thinkingState.value : undefined;
 
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
   let currentMaxTokens: number | undefined = agentConfig.maxTokens;
@@ -289,7 +309,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
           const descItem = items.find((i) => i.id === "description");
           const promptItem = items.find((i) => i.id === "prompt");
 
-          const thinking = currentThinkingValue();
+          const thinking = spawnThinkingLevel();
           const maxTurns = currentMaxTurns;
           const maxTokens = currentMaxTokens;
           const graceTurns = Number(gtItem?.currentValue ?? DEFAULT_GRACE_TURNS);
@@ -421,10 +441,15 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
                     onSelect: (value) => {
                       if (value === "Inherits parent cwd") {
                         currentWorktreePath = undefined;
+                        refreshThinkingSnapshot(parentThinkingCwd);
                         done("Inherits parent cwd");
                       } else {
                         const wt = worktrees.find((w) => w.path === value);
                         currentWorktreePath = wt?.path;
+                        // Derived tracks the spawn target: re-read pi's
+                        // settings there so the displayed level (and the
+                        // prediction behind it) follows the new project.
+                        if (currentWorktreePath) refreshThinkingSnapshot(currentWorktreePath);
                         done(wt?.branch ?? "detached");
                       }
                     },

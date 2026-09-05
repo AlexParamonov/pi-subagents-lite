@@ -498,9 +498,10 @@ describe("showSpawnAgentMenu — per-model thinking (Derived/UserSet)", () => {
     settingsListCalls[1].onChange("thinkingLevel", level);
   }
 
-  function spawnOptions(): SpawnOptions {
+  async function spawnOptions(): Promise<SpawnOptions> {
     thinkingItem(); // ensure the list is built
     settingsListCalls[1].items.find((i) => i.id === "spawn")!.submenu!("", vi.fn());
+    await vi.waitFor(() => expect(mockModules.mockManager.spawn).toHaveBeenCalled());
     return mockModules.mockManager.spawn.mock.calls[0][4];
   }
 
@@ -569,14 +570,83 @@ describe("showSpawnAgentMenu — per-model thinking (Derived/UserSet)", () => {
     expect(thinkingItem().currentValue).toBe("inherit");
   });
 
-  it("spawns with the derived per-model level (the displayed value is what runs)", async () => {
+  it("Derived state spawns with nothing so the runner resolves the chain at the spawn's target", async () => {
     piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "anthropic/claude-sonnet-4-20250514": "high" });
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
 
-    const options = spawnOptions();
-    expect(options.thinkingLevel).toBe("high");
-    expect(options.invocation?.thinkingLevel).toBe("high");
+    // The row still shows the predicted level for the current model.
+    expect(thinkingItem().currentValue).toBe("high");
+
+    const options = await spawnOptions();
+    // The derived value is a display prediction read at the parent cwd.
+    // Passing it as the explicit param would shadow the spawn target's own
+    // per-model entry — frontmatter, per-model, and defaultThinking belong to
+    // the runner's chain, so Derived passes nothing.
+    expect(options.thinkingLevel).toBeUndefined();
+    expect(options.invocation?.thinkingLevel).toBeUndefined();
+  });
+
+  it("worktree switch re-reads pi settings at the worktree and re-derives (Derived state)", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    piSettingsMock.getPiModelThinkingLevels.mockImplementation((cwd: string): Record<string, ThinkingLevel> =>
+      cwd === "/test-feature" ? { "anthropic/claude-sonnet-4-20250514": "max" } : {},
+    );
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    expect(thinkingItem().currentValue).toBe("medium");
+
+    const wtItem = settingsListCalls[1].items.find((i) => i.id === "worktree")!;
+    wtItem.submenu!("Inherits parent cwd", vi.fn());
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
+    // The real SettingsList fires onChange when the submenu completes — the
+    // rebuild that refreshes the displayed value rides on it.
+    settingsListCalls[1].onChange("worktree", "feature");
+
+    expect(piSettingsMock.getPiModelThinkingLevels).toHaveBeenCalledWith("/test-feature");
+    expect(thinkingItem().currentValue).toBe("max");
+  });
+
+  it("returning to the parent cwd re-derives from the parent's settings (Derived state)", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    piSettingsMock.getPiModelThinkingLevels.mockImplementation((cwd: string): Record<string, ThinkingLevel> =>
+      cwd === "/test-feature" ? { "anthropic/claude-sonnet-4-20250514": "max" } : {},
+    );
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    const pickWorktree = (value: string) => {
+      const wtItem = settingsListCalls[1].items.find((i) => i.id === "worktree")!;
+      wtItem.submenu!("Inherits parent cwd", vi.fn());
+      selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect(value);
+      settingsListCalls[1].onChange("worktree", value);
+    };
+    pickWorktree("/test-feature");
+    expect(thinkingItem().currentValue).toBe("max");
+
+    pickWorktree("Inherits parent cwd");
+    expect(thinkingItem().currentValue).toBe("medium");
+  });
+
+  it("worktree switch keeps a user-chosen level (UserSet state)", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    piSettingsMock.getPiModelThinkingLevels.mockImplementation((cwd: string): Record<string, ThinkingLevel> =>
+      cwd === "/test-feature" ? { "anthropic/claude-sonnet-4-20250514": "max" } : {},
+    );
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    pickThinking("low");
+    expect(thinkingItem().currentValue).toBe("low");
+
+    const wtItem = settingsListCalls[1].items.find((i) => i.id === "worktree")!;
+    wtItem.submenu!("Inherits parent cwd", vi.fn());
+    selectDialogInstances[selectDialogInstances.length - 1].callbacks.onSelect("/test-feature");
+    settingsListCalls[1].onChange("worktree", "feature");
+
+    expect(thinkingItem().currentValue).toBe("low");
+    const options = await spawnOptions();
+    expect(options.thinkingLevel).toBe("low");
   });
 
   it("spawns with nothing when the user picked Inherit, so the runtime chain decides", async () => {
@@ -585,7 +655,7 @@ describe("showSpawnAgentMenu — per-model thinking (Derived/UserSet)", () => {
     await completeWizard(ctx);
 
     pickThinking("inherit");
-    const options = spawnOptions();
+    const options = await spawnOptions();
     expect(options.thinkingLevel).toBeUndefined();
   });
 });
@@ -955,18 +1025,20 @@ describe("showSpawnAgentMenu — spawn action", () => {
     const [, , type, prompt, options] = mockModules.mockManager.spawn.mock.calls[0];
     expect(type).toBe("general-purpose");
     expect(prompt).toBe("fix the bug");
+    // Derived state (no user pick): the wizard passes nothing — frontmatter,
+    // per-model, and defaultThinking are resolved by the spawn runner's chain.
+    expect(options.thinkingLevel).toBeUndefined();
     expect(options).toMatchObject({
       description: "fix the bug",
       model: { provider: "anthropic", id: "claude-sonnet-4-20250514" },
       modelKey: "anthropic/claude-sonnet-4-20250514",
       maxTurns: 25,
-      thinkingLevel: "medium",
       graceTurns: 6,
       isBackground: true,
       worktreePath: undefined,
       invocation: {
         modelName: "claude-sonnet-4-20250514",
-        thinkingLevel: "medium",
+        thinkingLevel: undefined,
         maxTurns: 25,
         runInBackground: true,
       },
