@@ -13,6 +13,7 @@ import type { ThinkingLevel } from "../../../src/types.js";
 
 const piSettingsMock = vi.hoisted(() => ({
   getPiDefaultThinkingLevel: vi.fn<(cwd: string, agentDir?: string) => ThinkingLevel | undefined>(() => undefined),
+  getPiModelThinkingLevels: vi.fn<(cwd: string, agentDir?: string) => Record<string, ThinkingLevel>>(() => ({})),
 }));
 
 let settingsListCalls: Array<{ items: SettingItem[] }> = [];

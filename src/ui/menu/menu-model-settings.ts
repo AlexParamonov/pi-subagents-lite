@@ -25,7 +25,7 @@ import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getSessionCtx, getStore } from "../../shell.js";
 import { buildModelGroups, hasExplicitPerTypeOverride, type AgentTypeModelConfig } from "../../models/model-groups.js";
 import { findModelInRegistry } from "../../utils.js";
-import { getPiDefaultThinkingLevel } from "../../pi-settings.js";
+import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
 import type { SessionModelOverrides } from "../../models/model-precedence.js";
 
 /**
@@ -150,6 +150,10 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       agentConfigs[type] = getAgentConfig(type);
     }
 
+    // One settings read per build feeds both thinking displays: the global
+    // default and the per-model map (the prediction of what a spawn would
+    // run with — the session is the source of truth once it exists).
+    const modelThinkingLevels = getPiModelThinkingLevels(ctx.cwd);
     const groups = buildModelGroups({
       types,
       agentConfigs,
@@ -158,6 +162,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       hasProjectModelKey: (key) => store.hasProjectModelKey(key),
       parentModelId,
       piDefaultThinking: getPiDefaultThinkingLevel(ctx.cwd),
+      piModelThinking: (modelKey) => modelThinkingLevels[modelKey],
       findModel: (modelId) => findModelInRegistry(modelId, registry, undefined),
     });
 

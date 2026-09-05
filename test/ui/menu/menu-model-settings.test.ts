@@ -18,6 +18,10 @@ import type { ThinkingLevel } from "../../../src/types.js";
 
 const piSettingsMock = vi.hoisted(() => ({
   getPiDefaultThinkingLevel: vi.fn<(cwd: string, agentDir?: string) => ThinkingLevel | undefined>(() => undefined),
+  getPiModelThinkingLevel: vi.fn<
+    (cwd: string, provider: string, modelId: string, agentDir?: string) => ThinkingLevel | undefined
+  >(() => undefined),
+  getPiModelThinkingLevels: vi.fn<(cwd: string, agentDir?: string) => Record<string, ThinkingLevel>>(() => ({})),
 }));
 
 let settingsListCalls: Array<{
@@ -132,6 +136,7 @@ const rowIndex = (id: string) => settingsListCalls[0].items.findIndex((i) => i.i
 afterEach(() => {
   resetConfig();
   piSettingsMock.getPiDefaultThinkingLevel.mockReturnValue(undefined);
+  piSettingsMock.getPiModelThinkingLevels.mockReturnValue({});
 });
 
 describe("showModelSettingsMenu — SettingsList migration", () => {
@@ -575,6 +580,51 @@ describe("showModelSettingsMenu — model groups", () => {
 
   it("shows pi's defaultThinkingLevel when no thinking source is set", async () => {
     piSettingsMock.getPiDefaultThinkingLevel.mockReturnValue("low");
+    mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+  });
+
+  it("shows the per-model level (clamped) when it is the effective source", async () => {
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "anthropic/claude-sonnet-4-20250514": "high" });
+    mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(row("type:plain")?.currentValue).toBe("high    [session]");
+  });
+
+  it("clamps the per-model level to the group model's supported levels", async () => {
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "openai/gpt-4o": "max" });
+    mockModules.mockSessionOverrides["worker"] = "openai/gpt-4o";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
+    expect(row("type:worker")?.currentValue).toBe("off     [session]");
+  });
+
+  it("frontmatter thinking beats the per-model level in the menu", async () => {
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "anthropic/claude-sonnet-4-20250514": "high" });
+    vi.mocked(getAgentConfig).mockImplementation((name: string) =>
+      name === "plain" ? { name, description: "", systemPrompt: "", thinkingLevel: "low" as const } : undefined,
+    );
+    mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+  });
+
+  it("per-model beats defaultThinking in the menu", async () => {
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "anthropic/claude-sonnet-4-20250514": "low" });
+    mockModules.mockConfig.agent.defaultThinking = "max";
+    mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+  });
+
+  it("falls through to the old chain when the resolved model has no per-model entry", async () => {
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "openai/gpt-4o": "high" });
+    mockModules.mockConfig.agent.defaultThinking = "low";
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);

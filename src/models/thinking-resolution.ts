@@ -18,6 +18,9 @@
 
 import type { ThinkingLevel } from "../types.js";
 
+/** pi's fallback when defaultThinkingLevel is unset (mirrors pi's DEFAULT_THINKING_LEVEL). */
+export const PI_FALLBACK_THINKING_LEVEL: ThinkingLevel = "medium";
+
 /** The inputs of the chain, in precedence order. Absent = source unset. */
 export interface ThinkingLevelSources {
   explicit?: ThinkingLevel;

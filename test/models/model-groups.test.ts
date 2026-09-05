@@ -381,3 +381,74 @@ describe("buildModelGroups — thinking display", () => {
     expect(result[0]?.rows[0].thinking).toBe("high");
   });
 });
+
+describe("buildModelGroups — per-model thinking display", () => {
+  it("shows the per-model level when it is the effective source", () => {
+    const result = groupsFor(
+      input({
+        config: { scout: "anthropic/claude-opus-4-1" },
+        piModelThinking: (key) => (key === "anthropic/claude-opus-4-1" ? "high" : undefined),
+      }),
+    );
+    expect(result[0]?.rows[0].thinking).toBe("high");
+  });
+
+  it("clamps the per-model level to the group model's supported levels", () => {
+    const result = groupsFor(
+      input({
+        config: { scout: "openai/gpt-4o" },
+        piModelThinking: () => "high",
+      }),
+    );
+    expect(result[0]?.rows[0].thinking).toBe("off");
+  });
+
+  it("frontmatter thinking beats the per-model level", () => {
+    const result = groupsFor(
+      input({
+        agentConfigs: { scout: { thinkingLevel: "low" } },
+        config: { scout: "anthropic/claude-opus-4-1" },
+        piModelThinking: () => "high",
+      }),
+    );
+    expect(result[0]?.rows[0].thinking).toBe("low");
+  });
+
+  it("per-model beats defaultThinking (default thinking only overrides pi's global default)", () => {
+    const result = groupsFor(
+      input({
+        config: { scout: "anthropic/claude-opus-4-1", defaultThinking: "max" },
+        piModelThinking: () => "low",
+      }),
+    );
+    expect(result[0]?.rows[0].thinking).toBe("low");
+  });
+
+  it("falls through when the resolved model has no per-model entry", () => {
+    const result = groupsFor(
+      input({
+        config: { scout: "anthropic/claude-opus-4-1", defaultThinking: "low" },
+        piModelThinking: () => undefined,
+      }),
+    );
+    expect(result[0]?.rows[0].thinking).toBe("low");
+  });
+
+  it("per-model falls through to pi's global default, then medium", () => {
+    const none = groupsFor(
+      input({
+        config: { scout: "anthropic/claude-opus-4-1" },
+        piModelThinking: () => undefined,
+      }),
+    );
+    expect(none[0]?.rows[0].thinking).toBe("medium");
+    const withPiDefault = groupsFor(
+      input({
+        config: { scout: "anthropic/claude-opus-4-1" },
+        piDefaultThinking: "xhigh",
+        piModelThinking: () => undefined,
+      }),
+    );
+    expect(withPiDefault[0]?.rows[0].thinking).toBe("xhigh");
+  });
+});
