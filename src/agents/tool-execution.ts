@@ -62,11 +62,12 @@ async function predictSpawnThinking(
 /**
  * Validate worktree_path and gate cross-repo trust, surfacing warnings via
  * ctx.ui through the shared notify policy. Errors are LLM-facing and
- * self-correctable.
+ * self-correctable. The raw value is unchecked — computeSpawnTarget owns the
+ * counts-as-omitted convention for non-blank strings.
  */
 async function resolveWorktree(
   ctx: ExtensionContext,
-  rawWorktreePath: string | undefined,
+  rawWorktreePath: unknown,
 ): Promise<
   { ok: true; resolvedPath?: string; worktreeLabel?: string; projectTrusted: boolean } | { ok: false; error: string }
 > {
@@ -152,9 +153,9 @@ export async function executeAgentTool(
   _onUpdate: ((update: any) => void) | undefined,
   ctx: ExtensionContext,
 ): Promise<any> {
-  // Validate worktree_path early — needed for on-demand agent discovery
-  const rawWorktreePath = params.worktree_path as string | undefined;
-  const resolved = await resolveWorktree(ctx, rawWorktreePath);
+  // Validate worktree_path early — needed for on-demand agent discovery.
+  // Raw and unchecked: computeSpawnTarget treats non-strings as omitted.
+  const resolved = await resolveWorktree(ctx, params.worktree_path);
   if (!resolved.ok) throw new Error(resolved.error);
   const validatedWorktreePath = resolved.resolvedPath;
   const worktreeLabel = resolved.worktreeLabel;
