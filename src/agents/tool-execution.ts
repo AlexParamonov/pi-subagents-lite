@@ -9,8 +9,9 @@ import { getStatusNote, formatStopReason } from "../status-note.js";
 
 import { getAgentDir, type ExtensionContext, type ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
-import type { AgentRecord } from "../types.js";
+import type { AgentRecord, ThinkingLevel } from "../types.js";
 import { SHORT_ID_LENGTH } from "../types.js";
+import type { AgentConfig } from "./types.js";
 import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.js";
 import { getSessionContextPercent } from "./usage.js";
 import { validateWorktreePath } from "../spawn/worktree-validator.js";
@@ -76,6 +77,38 @@ async function computeSpawnTarget(ctx: ExtensionContext, rawWorktreePath: string
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `worktree_path validation failed: ${msg}`, warnings };
   }
+}
+
+/**
+ * The thinking a spawn of this call would run with, predicted at call time:
+ * frontmatter > pi per-model > defaultThinking. Undefined when nothing is
+ * configured — the session is the source of truth once it exists. The
+ * per-model term obeys the same project-trust gate as the spawn's own
+ * settings read: computeSpawnTarget's validation plus trust decision, run
+ * silently (execution owns the user-facing warnings). Without the gate, an
+ * untrusted cross-repo target's settings file could set the spawn's thinking
+ * through the injected value, which wins as the explicit param.
+ */
+async function predictSpawnThinking(
+  ctx: ExtensionContext,
+  rawWorktree: unknown,
+  agentConfig: AgentConfig | undefined,
+  effectiveModel: string | undefined,
+): Promise<ThinkingLevel | undefined> {
+  // Non-string values count as omitted; computeSpawnTarget skips blank
+  // strings the same way.
+  const target = await computeSpawnTarget(ctx, typeof rawWorktree === "string" ? rawWorktree : undefined);
+  const modelKey = effectiveModel || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "");
+  const parsed = parseModelKey(modelKey);
+  const perModel =
+    target.ok && target.projectTrusted && parsed
+      ? getPiModelThinkingLevel(target.resolvedPath ?? ctx.cwd, parsed.provider, parsed.modelId)
+      : undefined;
+  return resolveThinkingLevel({
+    frontmatter: agentConfig?.thinkingLevel,
+    perModel,
+    defaultThinking: getStore().agent.defaultThinking,
+  });
 }
 
 /**
@@ -341,32 +374,11 @@ export async function toolCallListener(event: ToolCallEvent, ctx: ExtensionConte
     }
   }
 
-  // Inject the spawn-effective thinking when the call carries none:
-  // frontmatter > pi per-model > defaultThinking. The injected value becomes
-  // the explicit param at execution, so it must mirror the runtime chain —
-  // an injection that diverged would change behavior, not just display. The
-  // per-model term obeys the same project-trust gate as the spawn's own
-  // settings read: resolveWorktree-equivalent validation plus trust decision,
-  // run silently (execution owns the user-facing warnings). Without the gate,
-  // an untrusted cross-repo target's settings file could set the spawn's
-  // thinking through the injected value, which wins as the explicit param.
-  // The session is the source of truth once it exists.
+  // Inject the spawn-effective thinking when the call carries none. The
+  // injected value becomes the explicit param at execution, so it must mirror
+  // the runtime chain — an injection that diverged would change behavior, not
+  // just display.
   if (input.thinking === undefined) {
-    const rawWorktree = input.worktree_path;
-    const target = await computeSpawnTarget(
-      ctx,
-      typeof rawWorktree === "string" && rawWorktree.trim() !== "" ? rawWorktree : undefined,
-    );
-    const modelKey = effectiveModel || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "");
-    const parsed = parseModelKey(modelKey);
-    const perModel =
-      target.ok && target.projectTrusted && parsed
-        ? getPiModelThinkingLevel(target.resolvedPath ?? ctx.cwd, parsed.provider, parsed.modelId)
-        : undefined;
-    input.thinking = resolveThinkingLevel({
-      frontmatter: agentConfig?.thinkingLevel,
-      perModel,
-      defaultThinking: getStore().agent.defaultThinking,
-    });
+    input.thinking = await predictSpawnThinking(ctx, input.worktree_path, agentConfig, effectiveModel);
   }
 }
