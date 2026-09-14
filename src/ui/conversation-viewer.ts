@@ -110,6 +110,7 @@ export class ConversationViewer implements Component {
             case "thinking_end":
               this.streamingThinking = "";
               this.streamingThinkingMd?.setText("");
+              this.refreshStreamingMessage();
               break;
             case "thinking_delta":
               this.streamingThinking += me.delta;
@@ -119,6 +120,7 @@ export class ConversationViewer implements Component {
             case "text_end":
               this.streamingText = "";
               this.streamingTextMd?.setText("");
+              this.refreshStreamingMessage();
               break;
             case "text_delta":
               this.streamingText += me.delta;
@@ -128,6 +130,10 @@ export class ConversationViewer implements Component {
           if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
             this.scheduleRender();
           }
+        } else if (event?.type === "message_end") {
+          // Session-level end-of-message (pi swaps the final message object
+          // into the last slot at "done") — same refresh as the boundaries.
+          this.refreshStreamingMessage();
         }
       } catch (err) {
         // Swallow — a throw here would crash the host menu; events can arrive after closure, before dispose.
@@ -156,6 +162,71 @@ export class ConversationViewer implements Component {
       this.renderTimer = undefined;
       if (!this.closed) this.tui.requestRender();
     }, STREAM_RENDER_DEBOUNCE_MS);
+  }
+
+  /**
+   * Re-render the in-flight (last) message's cache entry from the session
+   * transcript.
+   *
+   * pi's agent loop replaces the last messages-array slot on every streaming
+   * delta, keeping the array reference and length constant — so the per-index
+   * cache (keyed on reference + count + width) never goes stale on its own
+   * while a message streams, and its entry stays frozen at whatever was on
+   * screen when it was first rendered. Meanwhile the streaming accumulators
+   * are cleared exactly at the block boundaries, so a completed block would
+   * vanish: no longer in an accumulator, and absent from the frozen cache
+   * entry that predates it.
+   *
+   * Called exactly on the events that clear an accumulator (`thinking_start`,
+   * `thinking_end`, `text_start`, `text_end`) plus the session's
+   * `message_end`. The rebuild happens synchronously, at the boundary itself:
+   * at that moment the finished block exists only in the transcript (the
+   * accumulator that duplicated it was just cleared, and for a `*_start` the
+   * new block has no content yet), so the rebuild can never duplicate the
+   * live suffix — deferring the rebuild to the debounced render could land
+   * after the next block's deltas arrived, and the cumulative partial would
+   * render its block twice. `toolcall_*` events mutate the partial without
+   * clearing an accumulator and are deliberately not refreshed here; the call
+   * line lands with the next boundary, and `message_end` always follows the
+   * last `toolcall_end`, so args are complete before the tool even runs.
+   */
+  private refreshStreamingMessage(): void {
+    const messages = this.session.messages;
+    if (!messages || messages.length === 0) return;
+    const index = messages.length - 1;
+    // Force the next render through the slow path so the streaming suffix is
+    // re-spliced behind the refreshed entry.
+    this.cachedContentLines = undefined;
+    const msg = messages[index];
+    if (this.lastInnerW > 0 && msg?.role === "assistant") {
+      // No toolResults: the in-flight message's calls have no results yet
+      // (they arrive as later messages) — render the calls as pending.
+      this.messageCache.set(index, this.renderMessage(msg, this.lastInnerW, new Map(), new Set()));
+    } else {
+      // Nothing to rebuild against (no render yet, or a non-assistant end
+      // event) — drop the entry and let the next full build handle it.
+      this.messageCache.delete(index);
+    }
+    this.scheduleRender();
+  }
+
+  /** Render one message's lines — shared by the full rebuild and the streaming refresh. */
+  private renderMessage(
+    msg: any,
+    width: number,
+    toolResults: Map<string, { content: unknown[]; isError: boolean; toolName?: string }>,
+    renderedToolResults: Set<string>,
+  ): string[] {
+    switch (msg.role) {
+      case "user":
+        return this.renderUserMessage(msg, width);
+      case "assistant":
+        return this.renderAssistantMessage(msg, width, toolResults, renderedToolResults);
+      case "toolResult":
+        return this.renderToolResult(msg, width, renderedToolResults);
+      default:
+        return [];
+    }
   }
 
   handleInput(data: string): void {
@@ -655,20 +726,7 @@ export class ConversationViewer implements Component {
       if (cached) {
         lines.push(...cached);
       } else {
-        let msgLines: string[];
-        switch (messages[i].role) {
-          case "user":
-            msgLines = this.renderUserMessage(messages[i], width);
-            break;
-          case "assistant":
-            msgLines = this.renderAssistantMessage(messages[i], width, toolResults, renderedToolResults);
-            break;
-          case "toolResult":
-            msgLines = this.renderToolResult(messages[i], width, renderedToolResults);
-            break;
-          default:
-            msgLines = [];
-        }
+        const msgLines = this.renderMessage(messages[i], width, toolResults, renderedToolResults);
         this.messageCache.set(i, msgLines);
         lines.push(...msgLines);
       }
