@@ -137,7 +137,6 @@ export function registerTools(pi: ExtensionAPI): void {
     label: "AgentStatus",
     parameters: Type.Object({}, { additionalProperties: false }),
     execute: executeAgentStatusTool,
-    constrainedSampling: CONSTRAINED_SAMPLING,
   };
   // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(agentStatusTool);

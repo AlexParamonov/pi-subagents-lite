@@ -394,23 +394,28 @@ describe("constrained sampling — default OFF", () => {
     expect(tool!.parameters.required).toEqual(["prompt"]);
   });
 
-  // StopAgent and AgentStatus: always have constrainedSampling
-  for (const toolName of ["StopAgent", "AgentStatus"]) {
-    it(`${toolName} has constrainedSampling (always)`, () => {
-      const tool = findTool(api, toolName);
-      expect(tool).toBeDefined();
-      expect(tool!.constrainedSampling).toEqual({
-        type: "json_schema",
-        strict: "prefer",
-      });
+  it("StopAgent has constrainedSampling (always)", () => {
+    const tool = findTool(api, "StopAgent");
+    expect(tool).toBeDefined();
+    expect(tool!.constrainedSampling).toEqual({
+      type: "json_schema",
+      strict: "prefer",
     });
+  });
 
+  for (const toolName of ["StopAgent", "AgentStatus"]) {
     it(`${toolName} schema has additionalProperties: false`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
       expect((tool!.parameters as SchemaJson).additionalProperties).toBe(false);
     });
   }
+
+  it("AgentStatus does not have constrainedSampling", () => {
+    const tool = findTool(api, "AgentStatus");
+    expect(tool).toBeDefined();
+    expect(tool!.constrainedSampling).toBeUndefined();
+  });
 });
 
 describe("constrained sampling — toggle ON", () => {
