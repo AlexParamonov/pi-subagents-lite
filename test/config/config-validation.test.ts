@@ -168,6 +168,21 @@ describe("validateRawLayer — non-model keys", () => {
     }
   });
 
+  it("drops a non-boolean exposeDescriptions with a boolean expected-shape warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const cleaned = validateRawLayer({ agent: { exposeDescriptions: "yes" } }, "/g.json");
+      expect(cleaned.agent).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+      const msg = warn.mock.calls[0][0] as string;
+      expect(msg).toContain("agent.exposeDescriptions");
+      expect(msg).toContain("string");
+      expect(msg).toContain("boolean");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("passes valid values of every kind without warnings", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -184,6 +199,7 @@ describe("validateRawLayer — non-model keys", () => {
           modelThinkingPlacement: "metadata",
           statusBarFormat: "compact",
           showCost: false,
+          exposeDescriptions: true,
         },
         concurrency: { default: 2, providers: { a: 1 }, models: { "a/b": 3 } },
       };

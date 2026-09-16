@@ -32,6 +32,7 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "loadExtensionsImplicitly",
   "disableDefaultAgents",
   "agentToolStrictMode",
+  "exposeDescriptions",
   "outputThinkingBufferSize",
   "finishedRetentionMinutes",
   "agentStatusLimit",

@@ -8,6 +8,9 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vites
 import { createMockExtensionAPI, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
 import type { CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
 import type { ResolveModelOptions } from "../src/models/model-precedence.js";
+import * as agentTypes from "../src/agents/agent-types.js";
+import { registerAgentTool } from "../src/registration.js";
+import { asExtensionAPI } from "./pi-boundaries.js";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   DynamicBorder: class {},
@@ -79,14 +82,24 @@ vi.mock("../src/models/model-precedence.js", () => ({
   resolveModel: vi.fn((opts: ResolveModelOptions) => opts?.parentModelId ?? ""),
 }));
 
-vi.mock("../src/agents/agent-types.js", () => ({
-  resolveType: vi.fn((name: string) => ({ kind: "resolved", key: name })),
-  getConfig: vi.fn(() => ({ displayName: "unknown" })),
-  getAgentConfig: vi.fn(() => ({})),
-  registerAgents: vi.fn(),
-  getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
-  getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
-}));
+vi.mock("../src/agents/agent-types.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/agents/agent-types.js")>("../src/agents/agent-types.js");
+  return {
+    resolveType: vi.fn((name: string) => ({ kind: "resolved", key: name })),
+    getConfig: vi.fn(() => ({ displayName: "unknown" })),
+    getAgentConfig: vi.fn(() => ({})),
+    registerAgents: vi.fn(),
+    getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
+    getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
+    // The real pure formatter: the schema test pins src's listing format, not a hand copy.
+    formatAgentTypeDescriptions: actual.formatAgentTypeDescriptions,
+    // Only read by registration when exposeDescriptions is on; overridden per-test.
+    getVisibleAgentInfos: vi.fn(() => [
+      { name: "general-purpose", description: "General-purpose agent for complex, multi-step tasks" },
+      { name: "Explore", description: "Fast codebase exploration agent (read-only)" },
+    ]),
+  };
+});
 
 vi.mock("../src/agents/agent-discovery.js", () => ({
   scanAgentFilesInDir: vi.fn().mockResolvedValue([]),
@@ -137,6 +150,7 @@ const { mutableStore, spawnGuard } = vi.hoisted(() => ({
       forceBackground: false,
       showCost: false,
       agentToolStrictMode: false,
+      exposeDescriptions: false,
       showCompletionCards: true,
     },
     modelFor: () => "anthropic/claude-sonnet-4-6",
@@ -208,6 +222,70 @@ describe("Agent tool schema — stealth", () => {
     expect(props.prompt.description).toBeUndefined();
     expect(props.worktree_path.description).toBeUndefined();
     expect(props.worktree_path.type).toBe("string");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Agent tool agent param — exposeDescriptions                       */
+/* ------------------------------------------------------------------ */
+
+describe("Agent tool agent param — exposeDescriptions", () => {
+  it("default OFF: agent param description is exactly the comma-joined visible type names", () => {
+    const tool = findTool(api, "Agent")!;
+    const props = tool.parameters.properties as Record<string, SchemaJson>;
+    expect(props.agent!.description).toBe("general-purpose,Explore");
+  });
+
+  /** Register into a fresh capture so the shared beforeAll api stays untouched. */
+  const reregister = (): MockExtensionAPI => {
+    const fresh = createMockExtensionAPI();
+    registerAgentTool(asExtensionAPI(fresh.api));
+    return fresh;
+  };
+
+  it("re-registration with exposeDescriptions on lists names with descriptions (next-session reload path)", () => {
+    mutableStore.agent.exposeDescriptions = true;
+    try {
+      // events.ts calls registerAgentTool(pi) on every session_start; drive
+      // the same seam and assert the re-registered tool's schema.
+      const retooled = reregister()
+        .tools.filter((t) => t.name === "Agent")
+        .at(-1)!;
+      const props = retooled.parameters.properties as Record<string, SchemaJson>;
+      expect(props.agent!.description).toBe(
+        "Available agent types:\n" +
+          "general-purpose: General-purpose agent for complex, multi-step tasks\n" +
+          "Explore: Fast codebase exploration agent (read-only)",
+      );
+      // Only the agent param changes: no other param gains a description and
+      // the tool-level description stays removed.
+      expect(props.prompt!.description).toBeUndefined();
+      expect(props.description!.description).toBeUndefined();
+      expect(props.run_in_background!.description).toBeUndefined();
+      expect(props.worktree_path!.description).toBeUndefined();
+      expect(retooled.description).toBeUndefined();
+    } finally {
+      mutableStore.agent.exposeDescriptions = false;
+    }
+  });
+
+  it("re-registration with exposeDescriptions on degrades whitespace-only descriptions to bare names", () => {
+    vi.mocked(agentTypes.getVisibleAgentInfos).mockReturnValueOnce([
+      { name: "general-purpose", description: "General-purpose agent for complex, multi-step tasks" },
+      { name: "no-desc", description: "   " },
+    ]);
+    mutableStore.agent.exposeDescriptions = true;
+    try {
+      const retooled = reregister()
+        .tools.filter((t) => t.name === "Agent")
+        .at(-1)!;
+      const props = retooled.parameters.properties as Record<string, SchemaJson>;
+      expect(props.agent!.description).toBe(
+        "Available agent types:\ngeneral-purpose: General-purpose agent for complex, multi-step tasks\nno-desc",
+      );
+    } finally {
+      mutableStore.agent.exposeDescriptions = false;
+    }
   });
 });
 

@@ -164,6 +164,39 @@ export function getAvailableTypes(): string[] {
   return [...agents.entries()].filter(([_, config]) => config.hidden !== true).map(([name]) => name);
 }
 
+/** One visible agent's registry name and description. */
+export interface VisibleAgentInfo {
+  name: string;
+  description: string;
+}
+
+/**
+ * Visible agents as name + description pairs, in registry order.
+ * Single pass over the registry so the pair comes from one entry
+ * (getAvailableTypes + per-name getAgentConfig would re-resolve each name);
+ * hidden agents are excluded, mirroring getAvailableTypes.
+ */
+export function getVisibleAgentInfos(): VisibleAgentInfo[] {
+  return [...agents.entries()]
+    .filter(([_, config]) => config.hidden !== true)
+    .map(([name, config]) => ({ name, description: config.description }));
+}
+
+/**
+ * Enabled-mode listing for the Agent tool's `agent` parameter: an
+ * "Available agent types:" header plus one `name: description` line per
+ * agent. Descriptions are trimmed; an empty/whitespace description degrades
+ * to the bare name (no dangling colon). Callers with no visible agents must
+ * not reach for this — registration keeps the no-description path instead.
+ */
+export function formatAgentTypeDescriptions(infos: VisibleAgentInfo[]): string {
+  const lines = infos.map(({ name, description }) => {
+    const trimmed = description.trim();
+    return trimmed ? `${name}: ${trimmed}` : name;
+  });
+  return ["Available agent types:", ...lines].join("\n");
+}
+
 /** Get all type names including hidden (for UI listing). */
 export function getAllTypes(): string[] {
   return [...agents.keys()];

@@ -104,6 +104,8 @@ export interface ResolvedAgentSettings {
   readonly disableDefaultAgents: boolean;
   /** Whether to use strict-mode schema for the Agent tool. Costs more tokens. */
   readonly agentToolStrictMode: boolean;
+  /** Whether the Agent tool's `agent` param description lists each visible agent's description. */
+  readonly exposeDescriptions: boolean;
   /** Whether to show toolUses count in widget stats line. */
   readonly showTools: boolean;
   /** Whether to show turn count in widget stats line. */
@@ -217,6 +219,7 @@ export class ConfigStore {
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
       disableDefaultAgents: a.disableDefaultAgents === true,
       agentToolStrictMode: a.agentToolStrictMode === true,
+      exposeDescriptions: a.exposeDescriptions === true,
       showTools: a.showTools === true,
       showTurns: a.showTurns !== false,
       showInput: a.showInput !== false,
@@ -401,6 +404,7 @@ export class ConfigStore {
         this.setAgentLayerEntry("loadExtensionsImplicitly", value, "global"),
       setDisableDefaultAgents: (value: boolean) => this.setAgentLayerEntry("disableDefaultAgents", value, "global"),
       setAgentToolStrictMode: (value: boolean) => this.setAgentLayerEntry("agentToolStrictMode", value, "global"),
+      setExposeDescriptions: (value: boolean) => this.setAgentLayerEntry("exposeDescriptions", value, "global"),
       setShowTools: (enabled: boolean) => this.setAgentVisibility("showTools", enabled),
       setShowTurns: (enabled: boolean) => this.setAgentVisibility("showTurns", enabled),
       setShowInput: (enabled: boolean) => this.setAgentVisibility("showInput", enabled),

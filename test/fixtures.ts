@@ -93,6 +93,7 @@ export function shellMock(fns: ShellMockFns = {}) {
           forceBackground: false,
           showCost: false,
           agentToolStrictMode: false,
+          exposeDescriptions: false,
         },
         modelFor: () => "anthropic/claude-sonnet-4-6",
       } satisfies MockShellStore),

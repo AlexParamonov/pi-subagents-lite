@@ -184,6 +184,14 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         "Uses constrained sampling for Agent tool. Costs slightly more tokens, requires compatible provider (OpenAI Codex, etc). Requires reload.",
     },
     {
+      id: "exposeDescriptions",
+      label: "Expose agent descriptions",
+      currentValue: store.agent.exposeDescriptions ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description:
+        "List each visible agent's description in the Agent tool schema for better routing. Costs extra tokens. Requires reload.",
+    },
+    {
       id: "agentStatusLimit",
       label: "Agent status limit",
       currentValue: String(canonicalAgentStatusLimit(store.agentConfigSnapshot().agentStatusLimit)),
@@ -226,6 +234,10 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       case "agentToolStrictMode":
         store.mutate.agent.setAgentToolStrictMode(newValue === "ON");
         ctx.ui.notify(`Agent tool strict mode ${newValue} (requires reload)`, "info");
+        break;
+      case "exposeDescriptions":
+        store.mutate.agent.setExposeDescriptions(newValue === "ON");
+        ctx.ui.notify(`Expose agent descriptions ${newValue} (requires reload)`, "info");
         break;
       case "showAgentColors":
         store.mutate.agent.setShowAgentColors(newValue === "ON");

@@ -177,7 +177,7 @@ describe("mergeLayers — project over global, per key", () => {
   it("drops project agent keys that are not model keys", () => {
     const merged = mergeLayers(
       { agent: { default: "g" } },
-      { agent: { default: "p", graceTurns: 9, widgetMaxLines: 3 } },
+      { agent: { default: "p", graceTurns: 9, widgetMaxLines: 3, exposeDescriptions: true } },
     );
 
     expect(merged.agent).toEqual({ default: "p" });

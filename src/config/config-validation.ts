@@ -79,6 +79,7 @@ const AGENT_KEY_SPECS: Record<string, KeySpec> = {
   loadExtensionsImplicitly: BOOL,
   disableDefaultAgents: BOOL,
   agentToolStrictMode: BOOL,
+  exposeDescriptions: BOOL,
   outputThinkingBufferSize: NUM,
   finishedRetentionMinutes: NUM,
   agentStatusLimit: NUM,

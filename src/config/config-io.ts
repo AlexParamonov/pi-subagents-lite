@@ -56,6 +56,7 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   includeContextFiles: true,
   disableDefaultAgents: false,
   agentToolStrictMode: false,
+  exposeDescriptions: false,
   showTools: false,
   showTurns: true,
   showInput: true,
