@@ -236,37 +236,38 @@ describe("Agent tool agent param — exposeDescriptions", () => {
     expect(props.agent!.description).toBe("general-purpose,Explore");
   });
 
-  /** Register into a fresh capture so the shared beforeAll api stays untouched. */
-  const reregister = (): MockExtensionAPI => {
-    const fresh = createMockExtensionAPI();
-    registerAgentTool(asExtensionAPI(fresh.api));
-    return fresh;
-  };
-
-  it("re-registration with exposeDescriptions on lists names with descriptions (next-session reload path)", () => {
+  /**
+   * events.ts calls registerAgentTool(pi) on every session_start; drive the
+   * same seam with exposeDescriptions on (restored after) and return the
+   * re-registered Agent tool. Registers into a fresh capture so the shared
+   * beforeAll api stays untouched.
+   */
+  const retoolWithDescriptions = () => {
     mutableStore.agent.exposeDescriptions = true;
     try {
-      // events.ts calls registerAgentTool(pi) on every session_start; drive
-      // the same seam and assert the re-registered tool's schema.
-      const retooled = reregister()
-        .tools.filter((t) => t.name === "Agent")
-        .at(-1)!;
-      const props = retooled.parameters.properties as Record<string, SchemaJson>;
-      expect(props.agent!.description).toBe(
-        "Available agent types:\n" +
-          "general-purpose: General-purpose agent for complex, multi-step tasks\n" +
-          "Explore: Fast codebase exploration agent (read-only)",
-      );
-      // Only the agent param changes: no other param gains a description and
-      // the tool-level description stays removed.
-      expect(props.prompt!.description).toBeUndefined();
-      expect(props.description!.description).toBeUndefined();
-      expect(props.run_in_background!.description).toBeUndefined();
-      expect(props.worktree_path!.description).toBeUndefined();
-      expect(retooled.description).toBeUndefined();
+      const fresh = createMockExtensionAPI();
+      registerAgentTool(asExtensionAPI(fresh.api));
+      return fresh.tools.filter((t) => t.name === "Agent").at(-1)!;
     } finally {
       mutableStore.agent.exposeDescriptions = false;
     }
+  };
+
+  it("re-registration with exposeDescriptions on lists names with descriptions (next-session reload path)", () => {
+    const retooled = retoolWithDescriptions();
+    const props = retooled.parameters.properties as Record<string, SchemaJson>;
+    expect(props.agent!.description).toBe(
+      "Available agent types:\n" +
+        "general-purpose: General-purpose agent for complex, multi-step tasks\n" +
+        "Explore: Fast codebase exploration agent (read-only)",
+    );
+    // Only the agent param changes: no other param gains a description and
+    // the tool-level description stays removed.
+    expect(props.prompt!.description).toBeUndefined();
+    expect(props.description!.description).toBeUndefined();
+    expect(props.run_in_background!.description).toBeUndefined();
+    expect(props.worktree_path!.description).toBeUndefined();
+    expect(retooled.description).toBeUndefined();
   });
 
   it("re-registration with exposeDescriptions on degrades whitespace-only descriptions to bare names", () => {
@@ -274,18 +275,10 @@ describe("Agent tool agent param — exposeDescriptions", () => {
       { name: "general-purpose", description: "General-purpose agent for complex, multi-step tasks" },
       { name: "no-desc", description: "   " },
     ]);
-    mutableStore.agent.exposeDescriptions = true;
-    try {
-      const retooled = reregister()
-        .tools.filter((t) => t.name === "Agent")
-        .at(-1)!;
-      const props = retooled.parameters.properties as Record<string, SchemaJson>;
-      expect(props.agent!.description).toBe(
-        "Available agent types:\ngeneral-purpose: General-purpose agent for complex, multi-step tasks\nno-desc",
-      );
-    } finally {
-      mutableStore.agent.exposeDescriptions = false;
-    }
+    const props = retoolWithDescriptions().parameters.properties as Record<string, SchemaJson>;
+    expect(props.agent!.description).toBe(
+      "Available agent types:\ngeneral-purpose: General-purpose agent for complex, multi-step tasks\nno-desc",
+    );
   });
 });
 
