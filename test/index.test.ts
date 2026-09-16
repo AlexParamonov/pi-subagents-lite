@@ -195,15 +195,15 @@ beforeAll(async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Agent tool schema — stealth                                       */
+/*  Agent tool schema — minimal (dot description)                     */
 /* ------------------------------------------------------------------ */
 
-describe("Agent tool schema — stealth", () => {
+describe("Agent tool schema — minimal", () => {
   const agentTool = () => findTool(api, "Agent");
 
-  it("has no description (stealth)", () => {
+  it("has a dot description (strict gateways require one)", () => {
     expect(agentTool()).toBeDefined();
-    expect(agentTool()!.description).toBeUndefined();
+    expect(agentTool()!.description).toBe(".");
   });
 
   it("has no promptSnippet", () => {
@@ -312,6 +312,12 @@ describe("tool registration", () => {
   it("registers Agent, StopAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
     expect(names).toEqual(["Agent", "StopAgent", "AgentStatus"]);
+  });
+
+  it("registers every tool with the dot description", () => {
+    for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
+      expect(findTool(api, toolName)!.description).toBe(".");
+    }
   });
 });
 

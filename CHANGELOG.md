@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.14.0] - 2026-09-16
 
+### Fixed
+
+- **`Agent`, `StopAgent`, and `AgentStatus` registered with `description: "."`**. Some gateways rejected description-less tools.
+
 ### Added
 
 - **Opt-in agent descriptions in the Agent tool schema.** A new `agent.exposeDescriptions` setting (default `false`) makes the `Agent` tool's `agent` parameter description list each visible agent's name together with its Markdown description (`Available agent types:` followed by one `name: description` line), so SDK/RPC/print-mode hosts get routing-relevant information at the decision point without any TUI interaction. Empty descriptions degrade to the bare agent name and hidden agents stay excluded. Default behavior (name-only, minimal tokens) is unchanged; the value is read when the tool registers, so toggling it takes effect on the next session. Toggle lives in Agent settings > Tools ("Expose agent descriptions").

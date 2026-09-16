@@ -1,5 +1,7 @@
 # Stealth tool registration
 
+> Superseded by [ADR 0009](0009-dot-tool-descriptions.md).
+
 The Agent tool is registered at extension init time with a minimal schema: `description: "."`,
 no `promptSnippet`, no `promptGuidelines`, parameters without `.description()`.
 The model parameter is removed from the schema entirely — injected via the `tool_call` event listener.
