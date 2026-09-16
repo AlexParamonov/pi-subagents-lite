@@ -182,15 +182,16 @@ beforeAll(async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Agent tool schema — stealth                                       */
+/*  Agent tool schema — minimal (one-line description)             */
 /* ------------------------------------------------------------------ */
 
-describe("Agent tool schema — stealth", () => {
+describe("Agent tool schema — minimal", () => {
   const agentTool = () => findTool(api, "Agent");
 
-  it("has no description (stealth)", () => {
+  it("has a one-line description (strict gateways require function.description)", () => {
     expect(agentTool()).toBeDefined();
-    expect(agentTool()!.description).toBeUndefined();
+    expect(typeof agentTool()!.description).toBe("string");
+    expect(agentTool()!.description!.length).toBeGreaterThan(0);
   });
 
   it("has no promptSnippet", () => {

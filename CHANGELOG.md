@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tools carry one-line descriptions for strict OpenAI-tools gateways.** `Agent`, `StopAgent`, and `AgentStatus` are now registered with a short `description` (the `ToolDefinition` contract always required it; `@ts-expect-error` suppressions removed). Strict gateways such as opencode-go reject description-less tools with `400: tools[N]: function.description is required`, which broke every request on models routed through them while the lenient Responses gateway kept working. The schema stays minimal otherwise: no `promptSnippet`, no `promptGuidelines`, no parameter descriptions.
+
 ### Changed
 
 - **AgentStatus no longer requests constrained sampling.** Its empty, closed parameter schema remains unchanged, while providers are free to handle the status call without strict JSON schema mode.

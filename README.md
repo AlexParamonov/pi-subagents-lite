@@ -5,7 +5,7 @@
 
 Sub-agents for [pi](https://pi.dev). Schema-first, minimal token overhead.
 
-Spawn custom agents in isolated session with own tools, extensions and model. Three tools, no descriptions, minimal token overhead. Names like `Agent`, `run_in_background`, and `worktree_path` are the schema.
+Spawn custom agents in isolated session with own tools, extensions and model. Three tools with one-line descriptions, otherwise minimal token overhead: no promptSnippet, no promptGuidelines, no parameter descriptions. Names like `Agent`, `run_in_background`, and `worktree_path` are the schema.
 
 Foreground and background agents with detailed model configuration, concurrency, custom agent types, steering and continuation, cross-repo worktree support, configurable system prompt modes, a live widget and conversation viewer with cost tracking, and a watchdog for stuck agents.
 

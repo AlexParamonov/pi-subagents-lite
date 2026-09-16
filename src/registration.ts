@@ -15,7 +15,7 @@ import { getStore } from "./shell.js";
 
 // Provider-side json_schema enforcement; "prefer" falls back gracefully on
 // providers without strict mode (e.g. local Ollama).
-const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
+const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" } as const;
 
 // --- Agent tool registration — dynamic enum for agent types ---
 
@@ -54,6 +54,11 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   const tool = {
     name: "Agent",
     label: "Agent",
+    // Gateway compat: strict OpenAI-tools gateways reject tools without a
+    // function.description (400: tools[N]: function.description is required).
+    // Keep it one line: prompt tokens matter.
+    description:
+      "Spawn a subagent to perform a task. Foreground agents return inline; background agents notify on completion.",
     parameters: params,
     execute: executeAgentTool,
     ...(useConstrained ? { constrainedSampling: CONSTRAINED_SAMPLING } : {}),
@@ -97,7 +102,6 @@ export function registerAgentTool(pi: ExtensionAPI): void {
       );
     },
   };
-  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(tool);
 }
 
@@ -109,6 +113,7 @@ export function registerTools(pi: ExtensionAPI): void {
   const stopAgentTool = {
     name: "StopAgent",
     label: "StopAgent",
+    description: "Stop a running or queued subagent by ID.",
     parameters: Type.Object(
       {
         agent_id: Type.String(),
@@ -129,16 +134,15 @@ export function registerTools(pi: ExtensionAPI): void {
       return new Text(`${icon} ${text}`, 0, 0);
     },
   };
-  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(stopAgentTool);
 
   const agentStatusTool = {
     name: "AgentStatus",
     label: "AgentStatus",
+    description: "List subagents with type, short ID, and status.",
     parameters: Type.Object({}, { additionalProperties: false }),
     execute: executeAgentStatusTool,
   };
-  // @ts-expect-error — description removed to save prompt tokens
   pi.registerTool(agentStatusTool);
 
   // Message renderer — subagent-result (background agent completion)
