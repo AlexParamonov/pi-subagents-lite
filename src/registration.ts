@@ -1,7 +1,7 @@
 import { Type, type TSchema } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { formatAgentTypeDescriptions, getAvailableTypes, getVisibleAgentInfos } from "./agents/agent-types.js";
+import { formatAgentTypeDescriptions, getVisibleAgentInfos } from "./agents/agent-types.js";
 import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
 import {
@@ -25,7 +25,8 @@ const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
  */
 export function registerAgentTool(pi: ExtensionAPI): void {
   const settings = getStore().agent;
-  const types = getAvailableTypes();
+  const visible = getVisibleAgentInfos();
+  const types = visible.map((info) => info.name);
   const useConstrained = settings.agentToolStrictMode;
 
   // Plain string (not anyOf) keeps the prompt concise; types listed in
@@ -33,11 +34,12 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   // agent's Markdown description joins the listing (read at registration
   // time — re-registered at session_start, so it applies to the next
   // session). No visible types → no description at all, in either mode.
-  const agentDescription =
-    settings.exposeDescriptions && types.length > 0
-      ? formatAgentTypeDescriptions(getVisibleAgentInfos())
-      : types.join(",");
-  const agentType = types.length > 0 ? Type.String({ description: agentDescription }) : Type.String();
+  const agentType =
+    types.length > 0
+      ? Type.String({
+          description: settings.exposeDescriptions ? formatAgentTypeDescriptions(visible) : types.join(","),
+        })
+      : Type.String();
 
   // Constrained sampling (strict mode) requires every property in `required`,
   // so optional fields become nullable unions instead of Type.Optional.
