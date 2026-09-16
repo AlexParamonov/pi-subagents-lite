@@ -89,7 +89,6 @@ vi.mock("../src/agents/agent-types.js", async () => {
     getConfig: vi.fn(() => ({ displayName: "unknown" })),
     getAgentConfig: vi.fn(() => ({})),
     registerAgents: vi.fn(),
-    getAvailableTypes: vi.fn(() => ["general-purpose", "Explore"]),
     getAllTypes: vi.fn(() => ["general-purpose", "Explore"]),
     // The real pure formatter: the schema test pins src's listing format, not a hand copy.
     formatAgentTypeDescriptions: actual.formatAgentTypeDescriptions,
