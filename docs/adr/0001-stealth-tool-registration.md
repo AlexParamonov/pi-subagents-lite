@@ -1,8 +1,8 @@
 # Stealth tool registration
 
-The Agent tool is registered at extension init time with a minimal schema: a
-one-line `description` (strict OpenAI-tools gateways such as opencode-go reject
-description-less tools with `400: tools[N]: function.description is required`),
+> Superseded by [ADR 0009](0009-dot-tool-descriptions.md).
+
+The Agent tool is registered at extension init time with a minimal schema: `description: "."`,
 no `promptSnippet`, no `promptGuidelines`, parameters without `.description()`.
 The model parameter is removed from the schema entirely — injected via the `tool_call` event listener.
 The LLM learns about agent types and tool usage from a user message sent by `/agents` — not from the tool schema.
@@ -23,7 +23,7 @@ run at call time with full context.
 
 ## Trade-off
 
-The minimal schema (one-line description, no parameter descriptions) means the LLM must infer
+The minimal schema (`description: "."`, no parameter descriptions) means the LLM must infer
 usage from the tool name and parameter names alone. In practice this works — models use the
 Agent and StopAgent tools without issues. The optional `/agents` briefing can supplement
 understanding when the LLM needs to discover available agent types, but is not required for

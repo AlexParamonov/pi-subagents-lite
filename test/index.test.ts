@@ -182,16 +182,15 @@ beforeAll(async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Agent tool schema — minimal (one-line description)             */
+/*  Agent tool schema — minimal (dot description)                     */
 /* ------------------------------------------------------------------ */
 
 describe("Agent tool schema — minimal", () => {
   const agentTool = () => findTool(api, "Agent");
 
-  it("has a one-line description (strict gateways require function.description)", () => {
+  it("has a dot description (strict gateways require one)", () => {
     expect(agentTool()).toBeDefined();
-    expect(typeof agentTool()!.description).toBe("string");
-    expect(agentTool()!.description!.length).toBeGreaterThan(0);
+    expect(agentTool()!.description).toBe(".");
   });
 
   it("has no promptSnippet", () => {
@@ -243,6 +242,12 @@ describe("tool registration", () => {
   it("registers Agent, StopAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
     expect(names).toEqual(["Agent", "StopAgent", "AgentStatus"]);
+  });
+
+  it("registers every tool with the dot description", () => {
+    for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
+      expect(findTool(api, toolName)!.description).toBe(".");
+    }
   });
 });
 

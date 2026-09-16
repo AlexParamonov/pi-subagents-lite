@@ -19,7 +19,7 @@ A user message sent via `/agents` that teaches the LLM about available agent typ
 _Avoid_: Agent documentation, tool description
 
 **Stealth tool**:
-A tool registered with a one-line description but no promptSnippet or promptGuidelines. Usage is taught exclusively through the agent briefing.
+A tool registered with a single-dot description but no promptSnippet or promptGuidelines. Usage is taught exclusively through the agent briefing.
 _Avoid_: Hidden tool, minimal tool
 
 ### Configuration

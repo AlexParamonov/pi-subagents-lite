@@ -54,11 +54,7 @@ export function registerAgentTool(pi: ExtensionAPI): void {
   const tool = {
     name: "Agent",
     label: "Agent",
-    // Gateway compat: strict OpenAI-tools gateways reject tools without a
-    // function.description (400: tools[N]: function.description is required).
-    // Keep it one line: prompt tokens matter.
-    description:
-      "Spawn a subagent to perform a task. Foreground agents return inline; background agents notify on completion.",
+    description: ".",
     parameters: params,
     execute: executeAgentTool,
     ...(useConstrained ? { constrainedSampling: CONSTRAINED_SAMPLING } : {}),
@@ -113,7 +109,7 @@ export function registerTools(pi: ExtensionAPI): void {
   const stopAgentTool = {
     name: "StopAgent",
     label: "StopAgent",
-    description: "Stop a running or queued subagent by ID.",
+    description: ".",
     parameters: Type.Object(
       {
         agent_id: Type.String(),
@@ -139,7 +135,7 @@ export function registerTools(pi: ExtensionAPI): void {
   const agentStatusTool = {
     name: "AgentStatus",
     label: "AgentStatus",
-    description: "List subagents with type, short ID, and status.",
+    description: ".",
     parameters: Type.Object({}, { additionalProperties: false }),
     execute: executeAgentStatusTool,
   };
