@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-16
+
 ### Changed
 
 - **AgentStatus no longer requests constrained sampling.** Its empty, closed parameter schema remains unchanged, while providers are free to handle the status call without strict JSON schema mode.
