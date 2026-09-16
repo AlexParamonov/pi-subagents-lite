@@ -1,7 +1,7 @@
 import { Type, type TSchema } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getAvailableTypes } from "./agents/agent-types.js";
+import { formatAgentTypeDescriptions, getVisibleAgentInfos } from "./agents/agent-types.js";
 import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
 import {
@@ -24,11 +24,22 @@ const CONSTRAINED_SAMPLING = { type: "json_schema", strict: "prefer" };
  * Call again from session_start after user/project agents load.
  */
 export function registerAgentTool(pi: ExtensionAPI): void {
-  const types = getAvailableTypes();
-  const useConstrained = getStore().agent.agentToolStrictMode;
+  const settings = getStore().agent;
+  const visible = getVisibleAgentInfos();
+  const types = visible.map((info) => info.name);
+  const useConstrained = settings.agentToolStrictMode;
 
-  // Plain string (not anyOf) keeps the prompt concise; types listed in description for discoverability.
-  const agentType = types.length > 0 ? Type.String({ description: types.join(",") }) : Type.String();
+  // Plain string (not anyOf) keeps the prompt concise; types listed in
+  // description for discoverability. With exposeDescriptions on, each visible
+  // agent's Markdown description joins the listing (read at registration
+  // time — re-registered at session_start, so it applies to the next
+  // session). No visible types → no description at all, in either mode.
+  const agentType =
+    types.length > 0
+      ? Type.String({
+          description: settings.exposeDescriptions ? formatAgentTypeDescriptions(visible) : types.join(","),
+        })
+      : Type.String();
 
   // Constrained sampling (strict mode) requires every property in `required`,
   // so optional fields become nullable unions instead of Type.Optional.

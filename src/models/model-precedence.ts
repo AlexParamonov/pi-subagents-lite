@@ -49,6 +49,8 @@ export interface SubagentsConfig {
     disableDefaultAgents?: boolean;
     /** When true, use strict-mode schema for the Agent tool. Costs more tokens due to nullable field encoding. */
     agentToolStrictMode?: boolean;
+    /** When true, the Agent tool's `agent` param description lists each visible agent's description. Default: false. */
+    exposeDescriptions?: boolean;
     /** Whether to show toolUses count in widget stats line. Default: false. */
     showTools?: boolean;
     /** Whether to show turn count in widget stats line. Default: true. */

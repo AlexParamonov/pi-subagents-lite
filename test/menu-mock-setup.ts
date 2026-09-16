@@ -288,6 +288,7 @@ vi.mock("../src/shell.js", async () => {
         widgetShowModel: a.widgetShowModel !== false,
         widgetShowThinking: a.widgetShowThinking !== false,
         widgetNavHint: a.widgetNavHint !== false,
+        exposeDescriptions: a.exposeDescriptions === true,
       };
     },
     get concurrency() {
@@ -459,6 +460,9 @@ vi.mock("../src/shell.js", async () => {
         },
         setAgentToolStrictMode(value: boolean) {
           mockModules.mockConfig.agent.agentToolStrictMode = value;
+        },
+        setExposeDescriptions(value: boolean) {
+          mockModules.mockConfig.agent.exposeDescriptions = value;
         },
         setShowTools(enabled: boolean) {
           mockModules.mockConfig.agent.showTools = enabled;
