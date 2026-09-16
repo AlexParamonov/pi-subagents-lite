@@ -159,11 +159,6 @@ export function getAgentConfig(name: string): AgentConfig | undefined {
   return resolution.kind === "resolved" ? agents.get(resolution.key) : undefined;
 }
 
-/** Get all visible type names (for spawning and tool descriptions). */
-export function getAvailableTypes(): string[] {
-  return [...agents.entries()].filter(([_, config]) => config.hidden !== true).map(([name]) => name);
-}
-
 /** One visible agent's registry name and description. */
 export interface VisibleAgentInfo {
   name: string;
@@ -173,13 +168,18 @@ export interface VisibleAgentInfo {
 /**
  * Visible agents as name + description pairs, in registry order.
  * Single pass over the registry so the pair comes from one entry
- * (getAvailableTypes + per-name getAgentConfig would re-resolve each name);
- * hidden agents are excluded, mirroring getAvailableTypes.
+ * (names + per-name getAgentConfig would re-resolve each name). This is the
+ * one definition of agent visibility; getAvailableTypes derives from it.
  */
 export function getVisibleAgentInfos(): VisibleAgentInfo[] {
   return [...agents.entries()]
     .filter(([_, config]) => config.hidden !== true)
     .map(([name, config]) => ({ name, description: config.description }));
+}
+
+/** Get all visible type names (for spawning and tool descriptions). */
+export function getAvailableTypes(): string[] {
+  return getVisibleAgentInfos().map((info) => info.name);
 }
 
 /**
