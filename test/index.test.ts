@@ -261,12 +261,12 @@ describe("Agent tool agent param — exposeDescriptions", () => {
         "Explore: Fast codebase exploration agent (read-only)",
     );
     // Only the agent param changes: no other param gains a description and
-    // the tool-level description stays removed.
+    // the tool-level description stays the dot (strict-gateway contract).
     expect(props.prompt!.description).toBeUndefined();
     expect(props.description!.description).toBeUndefined();
     expect(props.run_in_background!.description).toBeUndefined();
     expect(props.worktree_path!.description).toBeUndefined();
-    expect(retooled.description).toBeUndefined();
+    expect(retooled.description).toBe(".");
   });
 
   it("re-registration with exposeDescriptions on degrades whitespace-only descriptions to bare names", () => {
