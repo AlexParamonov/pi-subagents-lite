@@ -608,8 +608,46 @@ describe("showSpawnOptionsMenu — item order", () => {
     expect(ids).toContain("thinkingBuffer");
     expect(ids).toContain("agentToolStrictMode");
     expect(ids).toContain("disableDefaultAgents");
+    expect(ids).toContain("exposeDescriptions");
     // Has header separators
     const seps = ids.filter((id) => id === "__sep__");
     expect(seps.length).toBeGreaterThanOrEqual(4); // At least 2 sections with headers
+  });
+});
+
+describe("showSpawnOptionsMenu — expose agent descriptions", () => {
+  beforeEach(resetMenuState);
+
+  it("shows 'Expose agent descriptions · OFF' when disabled", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const row = settingsListCalls[0].items.find((i) => i.id === "exposeDescriptions")!;
+    expect(row.currentValue).toBe("OFF");
+    expect(row.values).toEqual(["ON", "OFF"]);
+  });
+
+  it("shows 'Expose agent descriptions · ON' when enabled", async () => {
+    mockModules.mockConfig.agent.exposeDescriptions = true;
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const row = settingsListCalls[0].items.find((i) => i.id === "exposeDescriptions")!;
+    expect(row.currentValue).toBe("ON");
+  });
+
+  it("describes the toggle with a reload note", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const row = settingsListCalls[0].items.find((i) => i.id === "exposeDescriptions")!;
+    expect(row.description).toContain("reload");
+  });
+
+  it("persists the toggle via the mutator and notifies", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    settingsListCalls[0].onChange("exposeDescriptions", "ON");
+    expect(mockModules.mockConfig.agent.exposeDescriptions).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("reload"), "info");
+    settingsListCalls[0].onChange("exposeDescriptions", "OFF");
+    expect(mockModules.mockConfig.agent.exposeDescriptions).toBe(false);
   });
 });

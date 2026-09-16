@@ -843,6 +843,46 @@ describe("ConfigStore agent properties", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  exposeDescriptions (Agent tool schema listing, non-model key)      */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore exposeDescriptions", () => {
+  it("defaults to false", () => {
+    const store = new ConfigStore(minimalIO());
+    expect(store.agent.exposeDescriptions).toBe(false);
+  });
+
+  it("resolves a configured true value from the global layer", () => {
+    const { io } = memIO({ global: { agent: { exposeDescriptions: true } } });
+    const store = new ConfigStore(io);
+    expect(store.agent.exposeDescriptions).toBe(true);
+  });
+
+  it("setExposeDescriptions persists to the global layer", () => {
+    const { io, saves, global } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setExposeDescriptions(true);
+    expect(store.agent.exposeDescriptions).toBe(true);
+    expect(global().agent!.exposeDescriptions).toBe(true);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    store.mutate.agent.setExposeDescriptions(false);
+    expect(global().agent!.exposeDescriptions).toBe(false);
+  });
+
+  it("survives clearAllModelOverrides (dedicated non-model key test)", () => {
+    const { io } = memIO({
+      global: { agent: { default: "anthropic/claude", exposeDescriptions: true, Explore: "m1" } },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agentConfigSnapshot().exposeDescriptions).toBe(true);
+    expect(store.agent.exposeDescriptions).toBe(true);
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Lifecycle                                                          */
 /* ------------------------------------------------------------------ */
 
