@@ -133,7 +133,7 @@ function asInput(component: Component): Input {
 
 afterEach(() => resetConfig());
 
-describe("showRunningAgentsMenu — SelectList migration", () => {
+describe("showRunningAgentsMenu", () => {
   beforeEach(() => {
     selectListCalls = [];
     vi.clearAllMocks();
@@ -179,98 +179,6 @@ describe("showRunningAgentsMenu — SelectList migration", () => {
     const ctx = createMockCtx();
     await showRunningAgentsMenu(ctx);
     expect(selectListCalls[0].items[0].label).toContain("general-purpose");
-  });
-
-  it("uses agentBulletPrefix for agent labels (plain type name, no agent color)", async () => {
-    mockModules.mockManager.listAgents.mockReturnValue([
-      makeRecord({ id: "agent-1", display: { type: "general-purpose", description: "Test" } }),
-    ]);
-    const ctx = createMockCtx();
-    await showRunningAgentsMenu(ctx);
-    // agentBulletPrefix returns "" in mock setup, but the label should still contain the type name
-    const label = selectListCalls[0].items[0].label as string;
-    expect(label).toContain("general-purpose");
-  });
-});
-
-describe("showRunningAgentsMenu — __sep__ navigation skip", () => {
-  // Mirrors the pi-tui SelectList handleInput wrap-around writes: up is
-  // cur === 0 ? len-1 : cur-1, down is cur === len-1 ? 0 : cur+1.
-  function pressUp(list: SelectListCapture) {
-    const len = list.items.length;
-    list.selectedIndex = list.selectedIndex === 0 ? len - 1 : list.selectedIndex - 1;
-  }
-  function pressDown(list: SelectListCapture) {
-    const len = list.items.length;
-    list.selectedIndex = list.selectedIndex === len - 1 ? 0 : list.selectedIndex + 1;
-  }
-
-  beforeEach(() => {
-    selectListCalls = [];
-    vi.clearAllMocks();
-    mockModules.mockManager.listAgents
-      .mockReset()
-      .mockReturnValue([
-        makeRecord({ id: "agent-1", lifecycle: { status: "running", startedAt: Date.now() - 20000 }, result: "" }),
-        makeRecord({ id: "agent-2", lifecycle: { status: "stopped", startedAt: Date.now() - 20000 }, result: "" }),
-        makeRecord({ id: "agent-3", lifecycle: { status: "completed", startedAt: Date.now() - 20000 } }),
-      ]);
-  });
-
-  // Open the menu and return the agent list, mirroring the real SelectList
-  // whose class field initializes selectedIndex to 0.
-  async function openMenu() {
-    const ctx = createMockCtx();
-    await showRunningAgentsMenu(ctx);
-    const list = selectListCalls[0];
-    list.selectedIndex = 0;
-    return list;
-  }
-
-  it("never lands on a __sep__ row while sweeping down the whole list", async () => {
-    const list = await openMenu();
-    const seps = new Set(list.items.map((i, idx) => (i.value === "__sep__" ? idx : -1)));
-    for (let step = 0; step < 3 * list.items.length; step++) {
-      pressDown(list);
-      expect(seps.has(list.selectedIndex)).toBe(false);
-    }
-  });
-
-  it("moving down from the last agent lands on the first bulk action row", async () => {
-    const list = await openMenu();
-    pressDown(list); // agent-1
-    pressDown(list); // agent-2
-    pressDown(list); // agent-3, then sep is skipped
-    expect(list.items[list.selectedIndex].value).toBe("__stop-all");
-  });
-
-  it("moving up from a bulk action row lands on the last agent", async () => {
-    const list = await openMenu();
-    list.selectedIndex = 4; // __stop-all
-    pressUp(list); // hits the sep, skips back to the last agent
-    expect(list.items[list.selectedIndex].value).toBe("agent-3");
-  });
-
-  it("wrap-around up from the first item lands on the last real item", async () => {
-    const list = await openMenu();
-    pressUp(list); // library writes len-1
-    expect(list.items[list.selectedIndex].value).toBe("__clear-all");
-  });
-
-  it("wrap-around down from the last item lands on the first agent", async () => {
-    const list = await openMenu();
-    list.selectedIndex = list.items.length - 1; // __clear-all
-    pressDown(list); // library writes 0
-    expect(list.items[list.selectedIndex].value).toBe("agent-1");
-  });
-
-  it("the skipped-to bulk row is still selectable and performs its action", async () => {
-    const list = await openMenu();
-    pressDown(list);
-    pressDown(list);
-    pressDown(list); // lands on __stop-all past the sep
-    await list.onSelect!(list.items[list.selectedIndex]);
-    expect(mockModules.mockManager.abort).toHaveBeenCalledWith("agent-1", "user");
   });
 });
 

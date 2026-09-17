@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Running agents navigation tests exercise real keyboard input instead of simulating private selection state. Duplicate label coverage is removed, with production behavior unchanged.
 - Agent continuation tests synchronize through prompt and completion signals instead of polling. Runner tests are split by behavior, with production behavior unchanged.
 - Prompt tests use Pi's real skill formatter instead of duplicated or canned output. Skill fixtures use isolated temporary repositories, without filesystem spies or checkout-dependent ancestor walks.
 

@@ -60,3 +60,7 @@
 ## test-maintenance file discovery
 
 Use the find and grep tools for repository file discovery and content searches. Shell pipelines are only for filtering command output, not a substitute for those tools.
+
+## menu navigation characterization
+
+Drive real keyboard input through the component returned by ui.custom before deleting private-state navigation tests. Identify the selected row by stable content, not its entire label, which includes status and elapsed time.
