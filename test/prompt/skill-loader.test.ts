@@ -2,13 +2,13 @@
  * skill-loader.test.ts — Tests for skill loading and prompt integration.
  *
  * Pi's loadSkills/loadSkillsFromDir are mocked to isolate from system skills.
- * node:fs is partially mocked so the git-root walk (existsSync/readdirSync) is observable.
+ * Filesystem and prompt formatting use their real implementations.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { preloadSkills, loadSkillMeta, loadAllSkills } from "../../src/prompt/skill-loader.js";
 import { buildAgentPrompt } from "../../src/prompt/prompts.js";
 import type { AgentConfig } from "../../src/agents/types.js";
@@ -16,40 +16,19 @@ import type { EnvInfo } from "../../src/types.js";
 import type { Skill, SourceInfo } from "@earendil-works/pi-coding-agent";
 import { createSkillDir, createFlatSkill } from "../fixtures.js";
 
-const { mockLoadSkills, mockLoadSkillsFromDir, mockFormatSkillsForPrompt, fsExistsSyncMock, fsReaddirSyncMock } =
-  vi.hoisted(() => ({
-    mockLoadSkills: vi.fn(),
-    mockLoadSkillsFromDir: vi.fn(),
-    mockFormatSkillsForPrompt: vi.fn(),
-    fsExistsSyncMock: vi.fn(),
-    fsReaddirSyncMock: vi.fn(),
-  }));
+const { mockLoadSkills, mockLoadSkillsFromDir } = vi.hoisted(() => ({
+  mockLoadSkills: vi.fn(),
+  mockLoadSkillsFromDir: vi.fn(),
+}));
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
   loadSkills: mockLoadSkills,
   loadSkillsFromDir: mockLoadSkillsFromDir,
-  formatSkillsForPrompt: mockFormatSkillsForPrompt,
-  getAgentDir: vi.fn(() => "/fake/.pi/agent"),
 }));
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  // Record git-root probes without changing behavior: delegate to the real fs.
-  return {
-    ...actual,
-    existsSync: fsExistsSyncMock.mockImplementation((p: string) => actual.existsSync(p)),
-    readdirSync: fsReaddirSyncMock.mockImplementation((p: string) => actual.readdirSync(p)),
-  };
-});
 
+let fixtureRoot: string;
 let tmpDir: string;
-
-/**
- * Scratch root for skill fixtures. Lives under node_modules/.tmp: the ancestor
- * walk from a fixture probes for .git and terminates at the repo's own .git.
- * node_modules keeps the fixtures out of the git tree and prettier's path set
- * (src/ and test/).
- */
-const SCRATCH_ROOT = join(fileURLToPath(new URL("../../node_modules/.tmp", import.meta.url)), "skill-test");
 
 /** Build a minimal Skill object for mocking. */
 function makeSkill(
@@ -69,21 +48,18 @@ function makeSkill(
 }
 
 beforeEach(() => {
-  tmpDir = join(SCRATCH_ROOT, `case-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(tmpDir, { recursive: true });
+  fixtureRoot = mkdtempSync(join(tmpdir(), "skill-test-"));
+  mkdirSync(join(fixtureRoot, ".git"));
+  tmpDir = join(fixtureRoot, "project");
+  mkdirSync(tmpDir);
 
   // Default: no skills from any source
   mockLoadSkills.mockReturnValue({ skills: [], diagnostics: [] });
   mockLoadSkillsFromDir.mockReturnValue({ skills: [], diagnostics: [] });
-  mockFormatSkillsForPrompt.mockReturnValue("");
 });
 
 afterEach(() => {
-  try {
-    rmSync(SCRATCH_ROOT, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  rmSync(fixtureRoot, { recursive: true, force: true });
   vi.clearAllMocks();
 });
 
@@ -178,7 +154,7 @@ describe("git root discovery", () => {
   function scratchLoadCalls(): string[] {
     return mockLoadSkillsFromDir.mock.calls
       .map(([args]) => (args as { dir: string }).dir)
-      .filter((dir) => dir.startsWith(SCRATCH_ROOT));
+      .filter((dir) => dir.startsWith(fixtureRoot));
   }
 
   it("stops the walk at a .git directory (normal checkout)", () => {
@@ -196,8 +172,7 @@ describe("git root discovery", () => {
   it("keeps walking past levels without .git until a root is found", () => {
     loadAllSkills(tmpDir);
     const calls = scratchLoadCalls();
-    expect(calls.length).toBeGreaterThan(1);
-    expect(calls[0]).toBe(join(tmpDir, ".agents", "skills"));
+    expect(calls).toEqual([join(tmpDir, ".agents", "skills"), join(fixtureRoot, ".agents", "skills")]);
   });
 });
 
@@ -398,9 +373,6 @@ describe("Prompt integration: whitelist excludes body", () => {
       skills: [makeSkill("proof-skill", "Skill with secret token", tddPath)],
       diagnostics: [],
     });
-    mockFormatSkillsForPrompt.mockReturnValue(
-      `<skill><name>proof-skill</name><description>Skill with secret token</description><location>${tddPath}</location></skill>`,
-    );
 
     const metas = loadSkillMeta(["proof-skill"], tmpDir);
     const prompt = buildAgentPrompt(baseConfig, tmpDir, env, { skillMetas: metas });
@@ -452,9 +424,6 @@ describe("Prompt integration: both together", () => {
       ],
       diagnostics: [],
     });
-    mockFormatSkillsForPrompt.mockReturnValue(
-      `<skill><name>proof-skill</name><description>Skill with secret token</description><location>${proofPath}</location></skill>`,
-    );
 
     const metas = loadSkillMeta(["proof-skill"], tmpDir);
     const blocks = preloadSkills(["other-skill"], tmpDir);

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Agent continuation tests synchronize through prompt and completion signals instead of polling. Runner tests are split by behavior, with production behavior unchanged.
+- Prompt tests use Pi's real skill formatter instead of duplicated or canned output. Skill fixtures use isolated temporary repositories, without filesystem spies or checkout-dependent ancestor walks.
 
 ## [1.14.0] - 2026-09-16
 

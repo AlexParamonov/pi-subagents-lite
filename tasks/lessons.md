@@ -56,3 +56,7 @@
 **What worked:** Root-cause investigation before issue creation produced a falsifiable repro (pi-exact per-delta partial mutation simulated against the viewer) that doubled as the builder's failing-first suite; synchronous transcript re-render of the in-flight entry at exactly the accumulator-clearing boundaries kept the transcript copy and the live accumulator copy disjoint, and the refactor pass confirmed the delete-and-defer variant would duplicate the in-flight block.
 **What failed:** The orchestrator's shell died mid-pipeline when the merge agent removed the worktree directory that was the orchestrator session's cwd (every Bash call then failed with `spawn /bin/bash ENOENT`); recovery required recreating the path via the Write tool before any command could run. Main's locally-modified CHANGELOG.md would also have blocked the merge — a narrow `git stash push <file>` before spawning the merge agent and `stash pop` after avoided it.
 **Next time:** Never let the orchestrator `cd` into the issue worktree — run all worktree commands with `git -C`/absolute paths so its cwd stays at the main checkout for the whole pipeline. Before spawning the merge agent, check `git status` in main for local modifications overlapping the branch's files and stash just those files, popping after MERGED.
+
+## test-maintenance file discovery
+
+Use the find and grep tools for repository file discovery and content searches. Shell pipelines are only for filtering command output, not a substitute for those tools.

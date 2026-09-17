@@ -2,40 +2,10 @@
  * prompts.test.ts — Tests for system prompt building with skills.
  */
 
-import { describe, it, expect, vi } from "vitest";
-import type { Skill } from "@earendil-works/pi-coding-agent";
+import { describe, it, expect } from "vitest";
 import { buildAgentPrompt } from "../../src/prompt/prompts.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 import type { EnvInfo } from "../../src/types.js";
-
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return {
-    ...actual,
-    // Return only <skill> elements — buildAgentPrompt extracts these with regex
-    // and adds its own intro text and <available_skills> wrapper.
-    formatSkillsForPrompt: vi.fn((skills: Skill[]) => {
-      return skills
-        .filter((s: Skill) => !s.disableModelInvocation)
-        .map(
-          (s: Skill) =>
-            `<skill><name>${escapeXml(s.name)}</name><description>${escapeXml(s.description)}</description><location>${escapeXml(s.filePath)}</location></skill>`,
-        )
-        .join("\n");
-    }),
-  };
-});
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
 
 const baseConfig: AgentConfig = {
   name: "test-agent",
