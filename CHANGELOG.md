@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Agent continuation tests synchronize through prompt and completion signals instead of polling. Runner tests are split by behavior, with production behavior unchanged.
+
 ## [1.14.0] - 2026-09-16
 
 ### Fixed

@@ -287,6 +287,23 @@ export function createMockSession(): MockSession {
   };
 }
 
+export function createPendingPromptSession() {
+  const session = createMockSession();
+  let resolvePrompt!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    resolvePrompt = resolve;
+  });
+  let startPrompt!: (text: string) => void;
+  const promptStarted = new Promise<string>((resolve) => {
+    startPrompt = resolve;
+  });
+  session.prompt.mockImplementation((text) => {
+    startPrompt(text);
+    return finished;
+  });
+  return { session, promptStarted, resolvePrompt };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Message factories                                                 */
 /* ------------------------------------------------------------------ */
