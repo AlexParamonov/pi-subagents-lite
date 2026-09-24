@@ -7,12 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-24
+
 ### Changed
 
 - **The conversation viewer no longer shows tool results.** Each tool call renders as a single status-colored line (tool name + args summary, pending → success/error background); result content never renders, inline under a call or as a standalone result block. Thinking, assistant text, steering, stop, and scrolling are unchanged, as is the parent chat's Agent tool display and the text the model receives.
-- Running agents navigation tests exercise real keyboard input instead of simulating private selection state. Duplicate label coverage is removed, with production behavior unchanged.
-- Agent continuation tests synchronize through prompt and completion signals instead of polling. Runner tests are split by behavior, with production behavior unchanged.
-- Prompt tests use Pi's real skill formatter instead of duplicated or canned output. Skill fixtures use isolated temporary repositories, without filesystem spies or checkout-dependent ancestor walks.
 
 ## [1.14.0] - 2026-09-16
 
