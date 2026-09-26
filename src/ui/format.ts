@@ -87,7 +87,8 @@ export function formatSessionTokens(
     annot.push(theme.fg("dim", `↻ ${compactions}`));
   }
   if (annot.length === 0) return tokenStr;
-  return `${tokenStr} ${annot.join(" ")}`;
+  const annotationStr = annot.join(" ");
+  return tokenStr ? `${tokenStr} ${annotationStr}` : annotationStr;
 }
 
 /** Format turn count with optional max limit. Shows max when >= 80% of limit. */
@@ -155,22 +156,12 @@ export function buildStatsParts(
   if (visible?.showTools !== false && args.toolUses > 0) parts.push(`${args.toolUses}⚒ `);
   if (visible?.showTurns !== false && args.turnCount != null)
     parts.push(formatTurns(args.turnCount, args.maxTurns, theme));
-  if (visible?.showInput !== false || visible?.showOutput !== false) {
-    const showIn = visible?.showInput !== false;
-    const showOut = visible?.showOutput !== false;
-    const inputTokens = showIn ? args.input : 0;
-    const outputTokens = showOut ? args.output : 0;
-    if (inputTokens > 0 || outputTokens > 0) {
-      parts.push(
-        formatSessionTokens(
-          inputTokens,
-          outputTokens,
-          visible?.showContext !== false ? args.contextPercent : null,
-          theme,
-          visible?.showContext !== false ? args.compactions : 0,
-        ),
-      );
-    }
+  const inputTokens = visible?.showInput !== false ? args.input : 0;
+  const outputTokens = visible?.showOutput !== false ? args.output : 0;
+  const contextPercent = visible?.showContext !== false ? args.contextPercent : null;
+  const compactions = visible?.showContext !== false ? args.compactions : 0;
+  if (inputTokens > 0 || outputTokens > 0 || contextPercent !== null || compactions > 0) {
+    parts.push(formatSessionTokens(inputTokens, outputTokens, contextPercent, theme, compactions));
   }
   if (visible?.showCost !== false && args.cost != null && args.cost > 0) parts.push(formatCost(args.cost));
   if (visible?.showTime !== false && args.durationMs != null) parts.push(formatMs(args.durationMs));

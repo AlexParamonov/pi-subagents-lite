@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Context percentage respects its own widget visibility setting.** It remains visible when input and output token counts are hidden.
+
 ## [1.15.0] - 2026-09-24
 
 ### Changed

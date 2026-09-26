@@ -111,6 +111,15 @@ describe("buildStatsParts — visible flag: showContext", () => {
     expect(parts.some((p) => p.includes("%"))).toBe(true);
     expect(parts.some((p) => p.includes("↻"))).toBe(true);
   });
+
+  it("shows context annotation when input and output tokens are hidden", () => {
+    const parts = buildStatsParts(allStats, mockTheme, {
+      showInput: false,
+      showOutput: false,
+      showContext: true,
+    });
+    expect(parts.find((part) => part.includes("%"))).toBe("50% ↻ 2");
+  });
 });
 
 describe("buildStatsParts — visible flag: showCost", () => {
