@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-09-30
+
 ### Fixed
 
 - **OpenAI Responses token injection preserves ChatGPT sign-in compatibility.** The subagent output-limit hook now overrides pi's existing `max_output_tokens` but doesn't restore the field when pi omitted it for Sign in with ChatGPT credentials.
