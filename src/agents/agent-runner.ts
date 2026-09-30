@@ -502,6 +502,14 @@ function createResourceLoader(
   };
 }
 
+function hasOpenAIResponsesOutputLimit(payload: unknown): boolean {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    Object.prototype.hasOwnProperty.call(payload, "max_output_tokens")
+  );
+}
+
 async function initSession(
   ctx: ExtensionContext,
   options: RunOptions,
@@ -565,7 +573,8 @@ async function initSession(
       // Post-build overwrite by design (as in the prior fix): pi's context
       // clamp and thinking-budget adjust already ran on the model default.
       const limit = resolveOutputLimit(m, maxTokens);
-      if (!limit) return applied;
+      // Pi omits this for ChatGPT sign-in, so preserve that auth-specific decision.
+      if (!limit || (m.api === "openai-responses" && !hasOpenAIResponsesOutputLimit(applied))) return applied;
       return applyOutputLimit(applied, limit);
     };
   }

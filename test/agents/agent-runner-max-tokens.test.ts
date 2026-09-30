@@ -150,33 +150,52 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
     expect(finalPayload.max_completion_tokens).toBeUndefined();
   });
 
-  it("injects max_output_tokens for openai-responses models (pi's responses field)", async () => {
-    // The manual-test failing case: opencode zen / console go models on the
-    // Responses API. pi's openai-responses algorithm sends
-    // max_output_tokens; the pre-fix hook injected max_tokens, which the
-    // provider rejects with 400 ("unknown parameter max_tokens").
+  it("overrides pi's existing max_output_tokens for OpenAI Responses", async () => {
+    // Pi builds this field for API-key requests; the agent cap replaces its default.
     mockModules.mockGetAgentConfig.mockReturnValue({
       ...defaultAgentConfig,
       maxTokens: 4096,
     });
 
     const model = makeMockModel({
-      id: "muse-spark",
-      name: "Muse Spark",
-      provider: "opencode",
+      id: "gpt-5.4",
+      name: "GPT-5.4",
+      provider: "openai",
       api: "openai-responses",
-      baseUrl: "https://opencode.ai/zen",
+      baseUrl: "https://api.openai.com/v1",
     });
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
 
     const finalPayload = await session.agent.onPayload!(
-      { model: "muse-spark", messages: [{ role: "user", content: "do something" }] },
+      { model: "gpt-5.4", input: [], stream: true, max_output_tokens: 16384 },
       model,
     );
 
     expect(finalPayload.max_output_tokens).toBe(4096);
     expect(finalPayload.max_tokens).toBeUndefined();
+  });
+
+  it("does not restore max_output_tokens omitted by pi for OpenAI ChatGPT sign-in", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      maxTokens: 4096,
+    });
+
+    const model = makeMockModel({
+      id: "gpt-5.4",
+      name: "GPT-5.4",
+      provider: "openai",
+      api: "openai-responses",
+      baseUrl: "https://api.openai.com/v1",
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
+
+    const oauthPayload = { model: "gpt-5.4", input: [], stream: true };
+    const finalPayload = await session.agent.onPayload!(oauthPayload, model);
+
+    expect(finalPayload).toEqual(oauthPayload);
   });
 
   it("clamps small maxTokens to pi's responses minimum for openai-responses", async () => {
@@ -191,7 +210,7 @@ describe("runAgent — maxTokens: front matter to provider payload", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model });
 
-    const finalPayload = await session.agent.onPayload!({ model: "m", messages: [] }, model);
+    const finalPayload = await session.agent.onPayload!({ model: "m", messages: [], max_output_tokens: 16384 }, model);
 
     expect(finalPayload.max_output_tokens).toBe(16);
   });

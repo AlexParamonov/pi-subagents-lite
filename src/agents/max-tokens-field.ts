@@ -7,7 +7,8 @@
  * OpenAI Responses family pi sends `max_output_tokens` clamped to a minimum
  * of 16 (the Responses API rejects values below it), and on openai-responses
  * only when `compat.supportsMaxOutputTokens` (default true — some gateways
- * reject the field; newer pi-ai releases, inert on older ones). Anthropic
+ * reject the field; newer pi-ai releases, inert on older ones). The runner
+ * also preserves pi's auth-based omission for ChatGPT sign-in. Anthropic
  * uses top-level `max_tokens`; bedrock nests the cap at
  * `commandInput.inferenceConfig.maxTokens`; both google APIs nest it at
  * `params.config.maxOutputTokens`; mistral uses top-level `maxTokens`;

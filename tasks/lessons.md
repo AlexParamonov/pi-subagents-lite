@@ -74,3 +74,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What worked:** A regression test hid both input and output tokens while asserting context percentage still rendered. Keeping the context annotation outside the token-count gate fixed the root cause without adding config.
 **What failed:** Existing default-path coverage didn't expose that the context setting depended on token visibility.
 **Next time:** Test independently-toggleable stats with neighboring visibility flags disabled; keep each visibility decision independent through the formatting gate.
+
+## Preserve provider payload omissions (OpenAI Responses) - 2026-09-30
+**What worked:** The request's existing `max_output_tokens` distinguishes a normal Responses request from one where pi intentionally omitted that field for ChatGPT sign-in. Replacing the existing value keeps agent caps effective without overriding auth compatibility.
+**What failed:** The subagent post-processing blindly injected a field that pi had deliberately left out, causing the ChatGPT sign-in request to fail validation.
+**Next time:** When post-processing provider payloads, preserve meaningful upstream omissions and override a field only when the provider builder emitted it.

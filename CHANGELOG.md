@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OpenAI Responses token injection preserves ChatGPT sign-in compatibility.** The subagent output-limit hook now overrides pi's existing `max_output_tokens` but doesn't restore the field when pi omitted it for Sign in with ChatGPT credentials.
 - **Context percentage respects its own widget visibility setting.** It remains visible when input and output token counts are hidden.
 
 ## [1.15.0] - 2026-09-24
