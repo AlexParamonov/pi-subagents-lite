@@ -154,6 +154,10 @@ vi.mock("../../src/agents/agent-types.js", async () => {
   };
 });
 
+vi.mock("../../src/agents/pi-builtins.js", () => ({
+  loadPiBuiltinExtensions: vi.fn(async () => []),
+}));
+
 vi.mock("../../src/prompt/prompts.js", () => ({
   buildAgentPrompt: mockModules.mockBuildAgentPrompt,
 }));
@@ -248,6 +252,8 @@ export interface MockSession {
   setActiveToolsByName: Mock<(tools: string[]) => void>;
   getActiveTools: Mock<() => string[] | undefined>;
   bindExtensions: Mock<() => void>;
+  dispose: Mock<() => void>;
+  extensionRunner: { emit: Mock<() => Promise<void>> };
   subscribe: Mock<(listener: (event: unknown) => void) => () => void>;
   prompt: Mock<(text: string) => Promise<void>>;
   steer: Mock<(text: string) => Promise<void>>;
@@ -271,6 +277,8 @@ export function createMockSession(): MockSession {
     }),
     getActiveTools: vi.fn(() => activeTools),
     bindExtensions: vi.fn(),
+    dispose: vi.fn(),
+    extensionRunner: { emit: vi.fn(async () => {}) },
     subscribe: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener);
       return () => {

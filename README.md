@@ -11,7 +11,7 @@ Foreground and background agents with detailed model configuration, concurrency,
 
 ## Install
 
-Requires Node.js >= 18 and pi >= 0.82.0.
+Requires Node.js >= 18 and pi >= 0.82.0. In-process subagents reuse the CLI built-in extension registry from Pi's npm distribution or a built source checkout; standalone compiled Pi binaries do not expose that registry.
 
 ```bash
 pi install npm:pi-subagents-lite
@@ -76,7 +76,7 @@ You are a security review specialist. Analyze code for vulnerabilities,
 focusing on injection flaws, auth bypasses, and insecure defaults.
 ```
 
-A minimal agent with just `name` and `description` gets everything, same as `general-purpose`. Set restrictions only when you want them.
+A minimal agent with just `name` and `description` uses Pi's normal tool defaults, same as `general-purpose`. Its `defaultTools` setting is interpreted by Pi, including `+name`/`-name` modifiers and project overrides. Standard built-in extensions are loaded from Pi's own registry, not a separate tool list. Set `tools` only when you want an agent-specific override.
 
 ### Frontmatter reference
 
@@ -86,7 +86,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `display_name` | string | `name` | Label in the UI. |
 | `color` | string | none | Agent color for icon tinting. Named colors: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`. Palette aliases: `amber`, `teal`, `indigo`, `gold`, `violet`, `rose`, `lime`, `gray`, `slate`, `navy`, etc. Also accepts `#RRGGBB` hex. |
 | `description` | string | `""` | One-sentence description. |
-| `tools` | `true` \| `string[]` \| `false` | `true` | Tool whitelist. Mutually exclusive with `exclude_tools`. |
+| `tools` | `true` \| `string[]` \| `false` | Pi defaults | Tool override; when omitted, use normal Pi defaults. Mutually exclusive with `exclude_tools`. |
 | `exclude_tools` | `string[]` | none | Tool blacklist. Mutually exclusive with `tools`. |
 | `extensions` | `true` \| `string[]` \| `false` | `true` | Which extensions load (hooks and commands). Does not control tool visibility. |
 | `exclude_extensions` | `string[]` | none | Extension blacklist. |
@@ -102,6 +102,8 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `include_system_prompt` | boolean | inherit global | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`. |
 
 Tool and extension lists accept built-in names (`read`, `bash`, `edit`, `write`, `grep`), extension tool names (`web_search`), and `ext/*` globs (`tavily/*`). `exclude_tools: [tavily/*]` hides the tools but the extension still loads. Use `exclude_extensions: [tavily]` to prevent loading.
+
+Explicit tool globs and `tools: true` seed the tools registered during setup. For tools discovered asynchronously after session start (for example MCP tools), use concrete tool names in explicit overrides. Agents without overrides use Pi's normal dynamic registration behavior.
 
 `loadSkillsImplicitly` and `loadExtensionsImplicitly` (config, default ON) decide what an agent gets when frontmatter omits `skills` or `extensions`. Turn them OFF to default new agents to nothing and opt in explicitly.
 

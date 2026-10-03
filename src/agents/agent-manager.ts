@@ -23,6 +23,7 @@ import { getAgentConfig } from "./agent-types.js";
 import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.js";
 import { errorMessage, toSingleLine } from "../utils.js";
 import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
+import { disposeAgentSession } from "./session-disposal.js";
 
 export const WATCHDOG_TICK_MS = 5_000;
 
@@ -84,6 +85,7 @@ export interface SpawnOptions extends SpawnConfig, RunCallbacks {
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
+  private pendingDisposals = new Set<Promise<void>>();
   private watchdog = new Watchdog();
   private watchdogInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
@@ -325,6 +327,10 @@ export class AgentManager {
         options.onTurnEnd?.(turnCount);
       }),
       onSessionCreated: (session) => {
+        if (!this.agents.has(id)) {
+          this.disposeSession(session);
+          return;
+        }
         record.execution.session = session;
         // Flush any steers that arrived before the session was ready
         if (record.execution.pendingSteers?.length) {
@@ -359,6 +365,7 @@ export class AgentManager {
   ) {
     runPromise
       .then(({ responseText, session, aborted, turnLimited, modelError }) => {
+        if (!this.agents.has(record.id)) this.disposeSession(session);
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
           // Precedence: an abort during a model error wins; a model error outranks a turn limit.
@@ -678,8 +685,17 @@ export class AgentManager {
     return true;
   }
 
+  private disposeSession(session: RunResult["session"]): void {
+    const pending = disposeAgentSession(session);
+    this.pendingDisposals.add(pending);
+    void pending.then(
+      () => this.pendingDisposals.delete(pending),
+      () => this.pendingDisposals.delete(pending),
+    );
+  }
+
   private removeRecord(id: string, record: AgentRecord): void {
-    record.execution.session?.dispose();
+    if (record.execution.session) this.disposeSession(record.execution.session);
     record.execution.session = undefined;
     this.detachParentBinding(record);
     // A stopped record's run can still be settling (stopAgent flips status
@@ -702,9 +718,10 @@ export class AgentManager {
     }
   }
 
-  dispose() {
+  async dispose(): Promise<void> {
     clearInterval(this.watchdogInterval);
     this.queue = [];
+    const settlements = [...this.agents.values()].map((record) => record.execution.promise);
     for (const record of this.agents.values()) {
       // Queued subagents never start: fail them honestly so the waiting tool
       // call resumes with an explicit error instead of hanging (US-9).
@@ -714,11 +731,14 @@ export class AgentManager {
         record.lifecycle.completedAt = Date.now();
         this.openGate(record.id, "");
       }
-      record.execution.session?.dispose();
+      record.execution.abortController?.abort();
+      if (record.execution.session) this.disposeSession(record.execution.session);
       this.detachParentBinding(record);
     }
     // Running records' gates open when their runs settle after this synchronous
     // pass — keep their resolvers so .finally can still resolve (no dangling gate).
     this.agents.clear();
+    await Promise.all(settlements);
+    await Promise.all(this.pendingDisposals);
   }
 }

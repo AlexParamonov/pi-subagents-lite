@@ -9,6 +9,7 @@
 import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
 import { DEFAULT_AGENTS } from "./default-agents.js";
 import type { AgentConfig } from "./types.js";
+import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
 
 /**
  * All pi built-in tool names for validation/warning suppression.
@@ -247,8 +248,8 @@ function resolveToolEntries(
  *   - `tools: true` → all active tools (minus excluded)
  *   - `tools: string[]` → allowlist (minus excluded, with ext/* expansion)
  *   - `tools: false` → no tools
- *   - `tools: undefined` + `excludeTools` → denylist (minus excluded, with ext/* expansion)
- *   - `tools: undefined` → all active tools (minus EXCLUDED_TOOL_NAMES if any are present)
+ *   - `tools: undefined` + `excludeTools` → Pi's active tools minus the denylist
+ *   - `tools: undefined` → Pi's active tools (minus excluded)
  *
  * `tools` and `excludeTools` are mutually exclusive. If both set, `tools` wins.
  *
@@ -331,14 +332,11 @@ export function resolveVisibleTools(opts: {
 }
 
 /**
- * Resolve the concrete tool names that may enter the session's tool registry.
+ * Resolve an explicit agent tool policy into concrete registry names.
  *
- * Pi's createAgentSession treats `tools` as an allowlist gate: any tool not
- * listed is filtered out of the registry AND the active set, so a whitelist of
- * built-in names alone silently drops every extension tool. This expands the
- * agent's tool config into concrete names (builtins + referenced extension
- * tools) so pi registers them. Final visibility is still owned by
- * resolveVisibleTools; this only seeds the registry gate.
+ * Pi's createAgentSession treats `tools` as an allowlist gate, affecting both
+ * registration and activation. Only use this for agent overrides, never for
+ * inherited defaultTools (see resolveSessionToolOptions).
  */
 export function resolveSessionAllowedTools(opts: {
   registeredTools: string[];
@@ -355,14 +353,42 @@ export function resolveSessionAllowedTools(opts: {
     return [...resolveToolEntries(opts.tools, opts.extToolMap)].filter((t) => !EXCLUDED_TOOL_NAMES.includes(t));
   }
 
-  // No whitelist (true | undefined): register everything available so
-  // resolveVisibleTools can select freely.
-  const extTools = opts.extToolMap ? [...opts.extToolMap.values()].flat() : [];
+  // tools: true adds loaded extension tools. Otherwise the agent's explicit
+  // registeredTools override is the gate (e.g. Explore's read-only tool set).
   const names = new Set(opts.registeredTools);
-  for (const t of extTools) {
-    if (!EXCLUDED_TOOL_NAMES.includes(t)) names.add(t);
+  if (opts.tools === true && opts.extToolMap) {
+    for (const tool of [...opts.extToolMap.values()].flat()) names.add(tool);
   }
-  return [...names];
+  return [...names].filter((tool) => !EXCLUDED_TOOL_NAMES.includes(tool));
+}
+
+/**
+ * Leave tool defaults to Pi unless the agent explicitly overrides them.
+ * defaultTools selects active tools; it must not become a registry allowlist,
+ * which would remove inactive/deferred tools used by dispatcher tools.
+ */
+export function resolveSessionToolOptions(opts: {
+  registeredTools?: string[];
+  tools?: true | string[] | false;
+  defaultTools?: string[];
+  extToolMap?: Map<string, string[]>;
+  excludeTools?: string[];
+}): Pick<CreateAgentSessionOptions, "tools" | "excludeTools"> {
+  // Native exclusions also cover inactive tools and later registrations;
+  // an explicit tools whitelist continues to win over excludeTools.
+  const excluded = Array.isArray(opts.tools) ? [] : [...resolveToolEntries(opts.excludeTools ?? [], opts.extToolMap)];
+  const excludeTools = [...new Set([...EXCLUDED_TOOL_NAMES, ...excluded])];
+  if (opts.tools === undefined && opts.registeredTools === undefined) {
+    return { excludeTools };
+  }
+  return {
+    tools: resolveSessionAllowedTools({
+      registeredTools: opts.registeredTools ?? resolveFallbackTools(opts.defaultTools),
+      tools: opts.tools,
+      extToolMap: opts.extToolMap,
+    }),
+    excludeTools,
+  };
 }
 
 /**

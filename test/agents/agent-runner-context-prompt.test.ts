@@ -345,7 +345,32 @@ describe("runAgent — defaultTools setting wiring", () => {
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
   });
 
-  it("threads the settings manager's defaultTools into getConfig and getToolNamesForType", async () => {
+  it("does not start extension resources if setup was already aborted", async () => {
+    const session = createMockSession();
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(runAgent(fakeCtx(), "test-agent", "task", { pi: fakePi, signal: controller.signal })).rejects.toThrow(
+      "Agent aborted during session setup",
+    );
+    expect(session.bindExtensions).not.toHaveBeenCalled();
+    expect(session.extensionRunner.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
+    expect(session.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shuts down extensions if setup is aborted while binding", async () => {
+    const session = createMockSession();
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+    const controller = new AbortController();
+    session.bindExtensions.mockImplementation(() => controller.abort());
+    await expect(runAgent(fakeCtx(), "test-agent", "task", { pi: fakePi, signal: controller.signal })).rejects.toThrow(
+      "Agent aborted during session setup",
+    );
+    expect(session.extensionRunner.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
+    expect(session.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves configured defaultTools to Pi instead of creating a tools override", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "grep"]);
     mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
@@ -356,14 +381,15 @@ describe("runAgent — defaultTools setting wiring", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // One read per spawn: both fallback consumers must receive the same value
-    // so the resolved config and the session gate cannot diverge.
+    // Prompt/debug config still sees defaults, but the SDK owns activation.
     expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, [
       "read",
       "bash",
       "grep",
     ]);
-    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", ["read", "bash", "grep"]);
+    const sessionOpts = mockModules.mockCreateAgentSession.mock.calls[0][0] as CreateAgentSessionOptions;
+    expect(sessionOpts).not.toHaveProperty("tools");
+    expect(mockModules.mockGetToolNamesForType).not.toHaveBeenCalled();
   });
 
   it("passes undefined defaultTools when the setting is unconfigured", async () => {
@@ -378,7 +404,8 @@ describe("runAgent — defaultTools setting wiring", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, undefined);
-    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", undefined);
+    const sessionOpts = mockModules.mockCreateAgentSession.mock.calls[0][0] as CreateAgentSessionOptions;
+    expect(sessionOpts).not.toHaveProperty("tools");
   });
 
   it("passes [] through when defaultTools is explicitly empty", async () => {
@@ -392,9 +419,10 @@ describe("runAgent — defaultTools setting wiring", () => {
 
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // An explicit [] is a configured zero-tool set, not "unconfigured".
+    // Pi, not a synthesized tools override, interprets the explicit [].
     expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, []);
-    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", []);
+    const sessionOpts = mockModules.mockCreateAgentSession.mock.calls[0][0] as CreateAgentSessionOptions;
+    expect(sessionOpts).not.toHaveProperty("tools");
   });
 });
 

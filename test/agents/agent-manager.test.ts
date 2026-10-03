@@ -730,6 +730,8 @@ describe("AgentManager", () => {
       manager.clear(id);
 
       expect(manager.getRecord(id)).toBeUndefined();
+      // Parent shutdown also waits for cleanup of previously cleared records.
+      await manager.dispose();
       expect(session.dispose).toHaveBeenCalled();
     });
 
