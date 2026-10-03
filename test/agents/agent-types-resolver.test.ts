@@ -637,15 +637,14 @@ describe("resolveSessionAllowedTools", () => {
     expect(result).toHaveLength(7);
   });
 
-  it("tools: undefined — behaves like tools: true", () => {
+  it("tools: undefined — an explicit registeredTools override does not enable every extension", () => {
+    const defaultTools = ["read", "bash", "codemode"];
     const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
+      registeredTools: defaultTools,
       tools: undefined,
-      extToolMap,
+      extToolMap: new Map([...extToolMap, ["codemode", ["codemode"]]]),
     });
-    expect(result).toEqual(
-      expect.arrayContaining(["read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search"]),
-    );
+    expect(result).toEqual(defaultTools);
   });
 
   it("excludes the Agent tool so it never enters the registry", () => {
