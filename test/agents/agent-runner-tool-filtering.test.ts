@@ -11,11 +11,12 @@ import {
   createMockSession,
   asLoadExtensionsResult,
 } from "./agent-runner-mocks.js";
-import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
+import type { CreateAgentSessionOptions, Extension } from "@earendil-works/pi-coding-agent";
 
 const fakePi = makeFakePi();
 
-import { runAgent } from "../../src/agents/agent-runner.js";
+import { buildExtOverride, runAgent } from "../../src/agents/agent-runner.js";
+import { loadPiBuiltinExtensions } from "../../src/agents/pi-builtins.js";
 
 describe("runAgent — tool filtering", () => {
   beforeEach(() => {
@@ -332,6 +333,36 @@ describe("runAgent — extension name-based filtering", () => {
     expect(result.extensions[0].path).toContain("tavily");
   });
 
+  it("filters synthetic built-in paths by extension name", () => {
+    const extensions = asLoadExtensionsResult({
+      extensions: [
+        { path: "builtin:arbitrary-builtin", tools: new Map() },
+        { path: "builtin:other-builtin", tools: new Map() },
+      ],
+    });
+    const whitelist = buildExtOverride(["arbitrary-builtin"])!;
+    expect(whitelist(extensions).extensions.map((extension: Extension) => extension.path)).toEqual([
+      "builtin:arbitrary-builtin",
+    ]);
+    const blacklist = buildExtOverride(true, ["arbitrary-builtin"])!;
+    expect(blacklist(extensions).extensions.map((extension: Extension) => extension.path)).toEqual([
+      "builtin:other-builtin",
+    ]);
+  });
+
+  it("loads Pi's own registry without maintaining a list of built-in names", async () => {
+    const factory = vi.fn();
+    const registry = [{ name: "arbitrary-builtin", factory }];
+    vi.mocked(loadPiBuiltinExtensions).mockResolvedValueOnce(registry);
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.getLoaderOpts().extensionFactories).toBe(registry);
+  });
+
   it("no extensionsOverride when extensions=true", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
@@ -361,6 +392,7 @@ describe("runAgent — extension name-based filtering", () => {
 
     const loaderCall = mockModules.getLoaderOpts();
     expect(loaderCall.noExtensions).toBe(true);
+    expect(loaderCall.extensionFactories).toEqual([]);
     expect(loaderCall.extensionsOverride).toBeUndefined();
   });
 });

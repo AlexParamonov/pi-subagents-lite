@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Subagents use Pi's normal tool defaults.** Agents without an explicit tool override now leave `defaultTools` activation to Pi rather than converting defaults into a registry allowlist. Child loaders reuse the installed Pi CLI's complete built-in extension registry, making built-in extension tools available without hardcoded tool names. Explicit agent tool restrictions remain separate from inherited defaults. Child teardown now emits extension shutdown before disposing, so built-in extension resources are released.
+
 ## [1.15.1] - 2026-09-30
 
 ### Fixed

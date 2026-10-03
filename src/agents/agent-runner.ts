@@ -18,15 +18,11 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import {
-  getAgentConfig,
-  getConfig,
-  getToolNamesForType,
-  resolveSessionAllowedTools,
-  resolveVisibleTools,
-} from "./agent-types.js";
+import { getAgentConfig, getConfig, resolveSessionToolOptions, resolveVisibleTools } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
 import { readDefaultTools } from "../pi-settings.js";
+import { loadPiBuiltinExtensions } from "./pi-builtins.js";
+import { disposeAgentSession } from "./session-disposal.js";
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import type { AgentUsage } from "./usage.js";
 import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
@@ -248,6 +244,8 @@ export function subscribeToSessionEvents(
 
 /** Extension name from its install path (git/npm/local/direct); independent of dist/lib/src internals. */
 function extractExtensionName(extPath: string): string {
+  if (extPath.startsWith("builtin:")) return extPath.slice("builtin:".length);
+  if (extPath.startsWith("<inline:") && extPath.endsWith(">")) return extPath.slice("<inline:".length, -1);
   const parts = extPath.split(path.sep);
 
   // 1. Git package: .../git/github.com/<user>/<pkg>/...
@@ -467,7 +465,7 @@ export function buildExtOverride(
   return undefined;
 }
 
-function createResourceLoader(
+async function createResourceLoader(
   config: ReturnType<typeof getConfig>,
   agentConfig: ReturnType<typeof getAgentConfig>,
   cwd: string,
@@ -482,6 +480,7 @@ function createResourceLoader(
     cwd,
     agentDir,
     settingsManager,
+    extensionFactories: extensions === false ? [] : await loadPiBuiltinExtensions(),
     noExtensions: extensions === false,
     noSkills,
     noPromptTemplates: true,
@@ -540,10 +539,12 @@ async function initSession(
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager,
     model,
-    tools: resolveSessionAllowedTools({
-      registeredTools: getToolNamesForType(type, defaultTools),
+    ...resolveSessionToolOptions({
+      registeredTools: agentConfig?.registeredTools,
       tools: agentConfig?.tools,
+      defaultTools,
       extToolMap,
+      excludeTools: agentConfig?.excludeTools,
     }),
     resourceLoader: loader,
   };
@@ -605,26 +606,33 @@ async function createAndConfigureSession(
     settingsManager,
     defaultTools,
   );
-  const baseName = agentConfig?.name ?? type;
-  session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
-  await session.bindExtensions({
-    onError: (err) =>
-      options.onToolActivity?.({
-        type: "end",
-        toolName: `extension-error:${err.extensionPath}`,
-      }),
-  });
+  try {
+    if (options.signal?.aborted) throw new Error("Agent aborted during session setup");
+    const baseName = agentConfig?.name ?? type;
+    session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
+    await session.bindExtensions({
+      onError: (err) =>
+        options.onToolActivity?.({
+          type: "end",
+          toolName: `extension-error:${err.extensionPath}`,
+        }),
+    });
 
-  const filteredTools = resolveVisibleTools({
-    activeTools: session.getActiveToolNames(),
-    tools: agentConfig?.tools,
-    excludeTools: agentConfig?.excludeTools,
-    extToolMap,
-    notify,
-  });
-  if (filteredTools) session.setActiveToolsByName(filteredTools);
-  options.onSessionCreated?.(session);
-  return session;
+    if (options.signal?.aborted) throw new Error("Agent aborted during session setup");
+    const filteredTools = resolveVisibleTools({
+      activeTools: session.getActiveToolNames(),
+      tools: agentConfig?.tools,
+      excludeTools: agentConfig?.excludeTools,
+      extToolMap,
+      notify,
+    });
+    if (filteredTools) session.setActiveToolsByName(filteredTools);
+    options.onSessionCreated?.(session);
+    return session;
+  } catch (error) {
+    await disposeAgentSession(session);
+    throw error;
+  }
 }
 function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxTurns" | "graceTurns" | "onTurnEnd">) {
   let turnCount = 0;
@@ -783,7 +791,7 @@ async function runAgentImpl(
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify, agentConfig);
 
   const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env, mode, promptExtras);
-  const { loader, reloadAndMap } = createResourceLoader(
+  const { loader, reloadAndMap } = await createResourceLoader(
     config,
     agentConfig,
     effectiveCwd,

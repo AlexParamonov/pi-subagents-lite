@@ -16,7 +16,7 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       name: "general-purpose",
       displayName: "Agent",
       description: "General-purpose agent for complex, multi-step tasks",
-      // registeredTools omitted — means "all available tools" (resolved at lookup time)
+      // registeredTools omitted — let Pi resolve the configured default tools
       // extensions and skills intentionally omitted — resolved by global default
       systemPrompt: "",
       isDefault: true,
