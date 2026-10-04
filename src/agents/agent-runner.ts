@@ -403,9 +403,11 @@ function buildPrompt(
 function buildExtToolMap(extensions: Array<{ path: string; tools: Map<string, unknown> }>) {
   const map = new Map<string, string[]>();
   for (const ext of extensions) {
-    const name = extractExtensionName(ext.path);
+    const name = extensionPackageName(ext.path) ?? extractExtensionName(ext.path);
     const tools = [...ext.tools.keys()];
-    if (tools.length > 0) map.set(name, tools);
+    if (tools.length > 0) {
+      map.set(name, [...new Set([...(map.get(name) ?? []), ...tools])]);
+    }
   }
   return map;
 }

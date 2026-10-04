@@ -215,10 +215,10 @@ function resolveToolEntries(
   for (const entry of entries) {
     const slashIdx = entry.indexOf("/");
     if (slashIdx !== -1) {
-      // ext/* or ext/tool syntax
+      // ext/*, ext/all, or ext/tool syntax
       const extName = entry.slice(0, slashIdx);
       const toolPart = entry.slice(slashIdx + 1);
-      if (toolPart === "*") {
+      if (toolPart === "*" || toolPart === "all") {
         const extTools = extToolMap?.get(extName);
         if (extTools && extTools.length > 0) {
           for (const t of extTools) resolved.add(t);

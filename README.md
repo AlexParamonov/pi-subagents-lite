@@ -101,7 +101,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `include_context_files` | boolean | inherit global | Include AGENTS.md files as `<project_context>` in the system prompt. `true` = load, `false` = none, unset = global "Include AGENTS.md" setting. |
 | `include_system_prompt` | boolean | inherit global | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`. |
 
-Tool and extension lists accept built-in names (`read`, `bash`, `edit`, `write`, `grep`), extension tool names (`web_search`), and `ext/*` globs (`tavily/*`). `exclude_tools: [tavily/*]` hides the tools but the extension still loads. Use `exclude_extensions: [tavily]` to prevent loading.
+`tools` and `exclude_tools` accept built-in names (`read`, `bash`, `edit`, `write`, `grep`) and extension tool names (`web_search`). Use `tavily/*` or `tavily/all` in either list to include or exclude all tools from that extension. Excluding tools doesn't prevent the extension from loading; use `exclude_extensions: [tavily]` to prevent loading.
 
 `loadSkillsImplicitly` and `loadExtensionsImplicitly` (config, default ON) decide what an agent gets when frontmatter omits `skills` or `extensions`. Turn them OFF to default new agents to nothing and opt in explicitly.
 

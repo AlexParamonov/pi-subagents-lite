@@ -79,3 +79,13 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What worked:** The request's existing `max_output_tokens` distinguishes a normal Responses request from one where pi intentionally omitted that field for ChatGPT sign-in. Replacing the existing value keeps agent caps effective without overriding auth compatibility.
 **What failed:** The subagent post-processing blindly injected a field that pi had deliberately left out, causing the ChatGPT sign-in request to fail validation.
 **Next time:** When post-processing provider payloads, preserve meaningful upstream omissions and override a field only when the provider builder emitted it.
+
+## extension tool aliases (shared resolver) - 2026-10-04
+**What worked:** Expanding `extension/all` in the shared tool-entry resolver kept session registration and final tool visibility consistent; one `runAgent` regression asserted both outcomes.
+**What failed:** `extension/all` was accepted as the literal tool name `all`, so extension tools were omitted from the registry allowlist.
+**Next time:** Keep aliases normalized at the shared resolver used by both registry gating and visibility, and test through the agent-runner boundary.
+
+## extension package aliases (manifest identity) - 2026-10-04
+**What worked:** Resolving an extension's declared package name from the manifest made aliases stable when the entry lives under a generic `src` directory; merging tools by that canonical name keeps multi-entry packages addressable as one extension.
+**What failed:** Falling back to the entry's parent directory mislabeled `src/index.ts` as extension `src`, so `pi-tool-ports/none` could not acknowledge it.
+**Next time:** Use a package name only when its manifest declares the exact extension entry, then use the path-derived name as fallback.

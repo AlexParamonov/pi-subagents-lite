@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Extension tool aliases accept `extension/all` as well as `extension/*`.** Both forms include or exclude all tools from the named extension.
+
+### Fixed
+
+- **Extension tool aliases use the owning package name.** Package extension entries under paths like `src/index.ts` now resolve to their declared package name instead of `src`.
+
 ## [1.15.1] - 2026-09-30
 
 ### Fixed

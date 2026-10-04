@@ -2,6 +2,9 @@
  * agent-runner-tool-filtering.test.ts — Tool filtering and extension tests for agent-runner.
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import {
   mockModules,
@@ -197,6 +200,33 @@ describe("runAgent — excludeTools (blacklist mode)", () => {
     expect(activeTools).not.toContain("web_extract");
     expect(activeTools).not.toContain("web_crawl");
     expect(activeTools).not.toContain("Agent");
+  });
+
+  it("excludeTools: [tavily/all] — excludes all extension tools and retains unrelated tools", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "web_search", "web_extract", "web_crawl"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({
+      session,
+      extensionsResult: {},
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      excludeTools: ["tavily/all"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+          ["web_crawl", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
+
+    expect(session.getActiveTools()).toEqual(["read", "bash", "edit"]);
   });
 
   it("excludeTools with mixed syntax — ext/* and bare names", async () => {
@@ -560,6 +590,116 @@ describe("tools field — extension tool names and ext/all syntax", () => {
     expect(activeTools).toContain("web_extract");
     expect(activeTools).toContain("web_crawl");
     expect(activeTools).not.toContain("bash");
+  });
+
+  it("ext/all expands to every extension tool and seeds the session allowlist", async () => {
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "web_search", "web_extract"]);
+    let sessionOpts: CreateAgentSessionOptions | undefined;
+    mockModules.mockCreateAgentSession.mockImplementation((opts: CreateAgentSessionOptions) => {
+      sessionOpts = opts;
+      return Promise.resolve({ session, extensionsResult: {} });
+    });
+    mockModules.mockGetAgentConfig.mockReturnValue({
+      ...defaultAgentConfig,
+      extensions: ["tavily"],
+      tools: ["read", "tavily/all"],
+    });
+    mockModules.mockGetConfig.mockReturnValue({
+      ...defaultConfig,
+      extensions: ["tavily"],
+      tools: ["read", "tavily/all"],
+    });
+    mockModules.setLoaderExtensions([
+      {
+        path: "/home/test/.pi/agent/extensions/tavily/index.ts",
+        tools: new Map([
+          ["web_search", {}],
+          ["web_extract", {}],
+        ]),
+      },
+    ]);
+
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(sessionOpts!.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract"]));
+    expect(sessionOpts!.tools).not.toContain("all");
+    expect(session.getActiveTools()).toEqual(expect.arrayContaining(["read", "web_search", "web_extract"]));
+    expect(session.getActiveTools()).not.toContain("bash");
+  });
+
+  it("uses a package name for tool aliases when an extension entry is under src", async () => {
+    const packageDir = mkdtempSync(join(tmpdir(), "agent-tool-map-"));
+    const extensionPath = join(packageDir, "src", "index.ts");
+    mkdirSync(dirname(extensionPath), { recursive: true });
+    writeFileSync(
+      join(packageDir, "package.json"),
+      JSON.stringify({ name: "pi-tool-ports", pi: { extensions: ["./src/index.ts"] } }),
+    );
+    writeFileSync(extensionPath, "export default () => {};\n");
+
+    try {
+      const session = createMockSession();
+      session.getActiveToolNames.mockReturnValue(["read", "edit"]);
+      mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+      mockModules.mockGetAgentConfig.mockReturnValue({
+        ...defaultAgentConfig,
+        extensions: ["pi-tool-ports"],
+        tools: ["read", "pi-tool-ports/none"],
+      });
+      mockModules.mockGetConfig.mockReturnValue({
+        ...defaultConfig,
+        extensions: ["pi-tool-ports"],
+        tools: ["read", "pi-tool-ports/none"],
+      });
+      mockModules.setLoaderExtensions([{ path: extensionPath, tools: new Map([["edit", {}]]) }]);
+
+      await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
+
+      expect(session.getActiveTools()).toEqual(["read"]);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
+  });
+
+  it("expands a package wildcard across its declared extension entries", async () => {
+    const packageDir = mkdtempSync(join(tmpdir(), "agent-tool-map-"));
+    const firstEntry = join(packageDir, "src", "index.ts");
+    const secondEntry = join(packageDir, "src", "write.ts");
+    mkdirSync(dirname(firstEntry), { recursive: true });
+    writeFileSync(
+      join(packageDir, "package.json"),
+      JSON.stringify({ name: "pi-tool-ports", pi: { extensions: ["./src/index.ts", "./src/write.ts"] } }),
+    );
+    writeFileSync(firstEntry, "export default () => {};\n");
+    writeFileSync(secondEntry, "export default () => {};\n");
+
+    try {
+      const session = createMockSession();
+      session.getActiveToolNames.mockReturnValue(["read", "edit", "write"]);
+      mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+      mockModules.mockGetAgentConfig.mockReturnValue({
+        ...defaultAgentConfig,
+        extensions: ["pi-tool-ports"],
+        tools: ["read", "pi-tool-ports/*"],
+      });
+      mockModules.mockGetConfig.mockReturnValue({
+        ...defaultConfig,
+        extensions: ["pi-tool-ports"],
+        tools: ["read", "pi-tool-ports/*"],
+      });
+      mockModules.setLoaderExtensions([
+        { path: firstEntry, tools: new Map([["edit", {}]]) },
+        { path: secondEntry, tools: new Map([["write", {}]]) },
+      ]);
+
+      await runAgent(fakeCtx({ ui: undefined }), "test-agent", "do something", { pi: fakePi });
+
+      expect(session.getActiveTools()).toEqual(["read", "edit", "write"]);
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
   });
 
   it("seeds createAgentSession tools allowlist with expanded extension tools", async () => {

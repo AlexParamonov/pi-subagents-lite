@@ -15,7 +15,7 @@ export interface AgentConfig {
   /**
    * Controls which tool schemas the LLM sees. Can reference built-in tools
    * and extension tools. true = all, string[] = listed, false = none.
-   * Supports ext/* syntax to include all tools from an extension.
+   * Supports ext/* and ext/all syntax to include all tools from an extension.
    * Mutually exclusive with excludeTools.
    */
   tools?: true | string[] | false;
