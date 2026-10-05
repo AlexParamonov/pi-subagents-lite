@@ -101,11 +101,21 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `include_context_files` | boolean | inherit global | Include AGENTS.md files as `<project_context>` in the system prompt. `true` = load, `false` = none, unset = global "Include AGENTS.md" setting. |
 | `include_system_prompt` | boolean | inherit global | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`. |
 
-When frontmatter omits `tools` and the agent type carries no explicit registered-tools set, `loadToolsImplicitly` (config, default ON) decides: ON delegates tool setup to pi, so pi's `defaultTools` setting (including `+name`/`-name` modifiers and project-over-global merge) applies exactly as in a normal session, pi's built-in extensions (codemode, tool-search, mcp) are available for selection, and tools left inactive stay registered for dispatcher tools to call by name. OFF starts such agents with no tools. Explicit frontmatter always wins over both modes. `tools` and `exclude_tools` accept built-in names (`read`, `bash`, `edit`, `write`, `grep`) and extension tool names (`web_search`). Use `tavily/*` or `tavily/all` in either list to include or exclude all tools from that extension. Excluding tools doesn't prevent the extension from loading; use `exclude_extensions: [tavily]` to prevent loading.
+When frontmatter omits `tools` and the agent type carries no explicit registered-tools set, `loadToolsImplicitly` (config, default ON) decides: ON delegates tool setup to pi, so your `defaultTools` setting applies exactly as in a normal session, and tools left inactive stay registered for dispatcher tools to call by name. OFF starts such agents with no tools. Explicit frontmatter always wins.
+
+`tools` and `exclude_tools` accept built-in names (`read`, `bash`, `edit`, `write`, `grep`) and extension tool names (`web_search`). Use `tavily/*` or `tavily/all` in either list to include or exclude all tools from that extension. Excluding tools doesn't prevent the extension from loading; use `exclude_extensions: [tavily]` to prevent loading.
 
 `loadSkillsImplicitly`, `loadExtensionsImplicitly`, and `loadToolsImplicitly` (config, default ON) decide what an agent gets when frontmatter omits `skills`, `extensions`, or the tool fields. Turn one OFF to default new agents to nothing on that axis and opt in explicitly.
 
-Built-in extensions: child sessions load pi's built-in codemode, tool-search, and mcp extensions (llama.cpp excluded), so `defaultTools: ["+codemode"]`, settings-level `-builtin:codemode`, and frontmatter `extensions: ["codemode"]` / `exclude_extensions: ["codemode"]` all address built-ins by bare name, exactly as in a normal session. A user extension registering the same tool, command, or flag replaces the built-in (pi's replaceable semantics).
+Built-in extensions: child sessions load pi's built-in codemode, tool-search, and mcp extensions (llama.cpp excluded), addressed by bare name (`codemode`) from `defaultTools`, settings `extensions`, and frontmatter, exactly as in a normal session. A user extension registering the same tool, command, or flag replaces the built-in.
+
+Codemode in Subagents needs two things: the codemode extension loaded, and the codemode tool activated. With default settings one line does both, in `.pi/settings.json`:
+
+```json
+{ "defaultTools": ["+codemode"] }
+```
+
+Every agent whose frontmatter omits `tools` then starts with codemode active, exactly like your main session. Agents with an explicit `tools` list ignore `defaultTools`: add `codemode` to that list to activate it. If `loadExtensionsImplicitly` is off, agents also need `extensions: codemode` in frontmatter to load the extension.
 
 ## Agent options
 
