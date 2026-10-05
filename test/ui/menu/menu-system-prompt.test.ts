@@ -99,6 +99,7 @@ describe("showSystemPromptMenu", () => {
     expect(ids).toContain("includeContextFiles");
     expect(ids).toContain("loadSkillsImplicitly");
     expect(ids).toContain("loadExtensionsImplicitly");
+    expect(ids).toContain("loadToolsImplicitly");
     expect(ids).not.toContain("agentToolStrictMode");
   });
 
