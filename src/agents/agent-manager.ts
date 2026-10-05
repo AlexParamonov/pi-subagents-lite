@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { continueAgentSession, runAgent, type RunResult } from "./agent-runner.js";
 import { disposeChildSession } from "./session-teardown.js";
 import { AgentOutputLog } from "./output-file.js";
@@ -422,11 +422,7 @@ export class AgentManager {
 
         // The record was removed while this run was in flight (cleared or
         // stopped mid-setup): nobody else will dispose the session it created.
-        if (!this.agents.has(record.id) && record.execution.session) {
-          const session = record.execution.session;
-          record.execution.session = undefined;
-          this.teardownSession(session);
-        }
+        if (!this.agents.has(record.id)) this.releaseSession(record);
 
         this.tallyCompletion(record);
         this.drainQueue();
@@ -699,10 +695,7 @@ export class AgentManager {
   }
 
   private removeRecord(id: string, record: AgentRecord): void {
-    if (record.execution.session) {
-      this.teardownSession(record.execution.session);
-      record.execution.session = undefined;
-    }
+    this.releaseSession(record);
     this.detachParentBinding(record);
     // A stopped record's run can still be settling (stopAgent flips status
     // synchronously; the gate opens in .finally) — resolve so the coordinator's
@@ -712,11 +705,15 @@ export class AgentManager {
   }
 
   /**
-   * Fire the shared child-session teardown (abort, session_shutdown, dispose).
-   * Fire-and-forget with tracking: dispose() drains every pending teardown
-   * before returning, so no session outlives the manager.
+   * Release the record's session through the shared teardown (abort,
+   * session_shutdown, dispose) and drop the reference. Tracked
+   * fire-and-forget: dispose() drains every pending teardown before
+   * returning, so no session outlives the manager.
    */
-  private teardownSession(session: AgentSession): void {
+  private releaseSession(record: AgentRecord): void {
+    const session = record.execution.session;
+    if (!session) return;
+    record.execution.session = undefined;
     const done = disposeChildSession(session);
     this.pendingDisposals.add(done);
     void done.then(() => {
@@ -756,10 +753,7 @@ export class AgentManager {
         record.lifecycle.completedAt = Date.now();
         this.openGate(record.id, "");
       }
-      if (record.execution.session) {
-        this.teardownSession(record.execution.session);
-        record.execution.session = undefined;
-      }
+      this.releaseSession(record);
       this.detachParentBinding(record);
     }
     // Running records' gates open when their runs settle after this synchronous
