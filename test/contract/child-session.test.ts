@@ -18,7 +18,6 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 
 // The only mock: the composition-root shell, whose real ConfigStore reads the
 // developer's real config file. Everything below drives real code.
@@ -61,16 +60,8 @@ import {
 import { createChildSession } from "../../src/agents/agent-runner.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { disposeChildSession } from "../../src/agents/session-teardown.js";
+import { importPiBuiltInExtensions } from "../agents/pi-builtin-registry.js";
 import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
-
-/** pi's private built-in registry — test-only import (the drift test pins coverage). */
-async function piBuiltInFactories(): Promise<unknown[]> {
-  const registryPath = fileURLToPath(
-    new URL("../../node_modules/@earendil-works/pi-coding-agent/dist/extensions/index.js", import.meta.url),
-  );
-  const registry: { builtInExtensions: unknown[] } = await import(registryPath);
-  return registry.builtInExtensions;
-}
 
 interface Workspace {
   project: string;
@@ -195,7 +186,7 @@ async function spawnReference(workspace: Workspace): Promise<AgentSession> {
     cwd: workspace.project,
     agentDir,
     settingsManager,
-    extensionFactories: (await piBuiltInFactories()) as never,
+    extensionFactories: (await importPiBuiltInExtensions()) as never,
   });
   await loader.reload();
   const { session } = await createAgentSession({
