@@ -10,10 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Extension tool aliases accept `extension/all` as well as `extension/*`.** Both forms include or exclude all tools from the named extension.
+- **New config setting `loadToolsImplicitly` (default ON, `/agents` > System Prompt).** When an agent's frontmatter omits the tool fields, ON delegates tool setup to pi: pi's `defaultTools` setting (including `+name`/`-name` modifiers, replacement lists, and project-over-global merge) applies exactly as in a normal pi session, and tools left inactive stay registered so dispatcher tools like codemode can call them by name. OFF starts such agents with no tools. Explicit frontmatter `tools`/`exclude_tools` always wins over both modes.
+
+### Changed
+
+- **Child sessions load pi's built-in extensions.** codemode, tool-search, and mcp are available to Subagents via the sanctioned SDK creators wrapped with pi's own names and `builtin`/`replaceable` flags (llama.cpp excluded), so `defaultTools: ["+codemode"]`, settings-level `-builtin:codemode`, and frontmatter `extensions: ["codemode"]` / `exclude_extensions: ["codemode"]` address built-ins by bare name exactly as in a normal session. Requires pi >= 0.99.0.
+- **Deletion of the hardcoded default active tool set.** pi owns tool fallbacks: a silent agent config no longer snapshots `defaultTools` into a registry allowlist (which dropped tools dispatchers need and couldn't name late-registered tools).
 
 ### Fixed
 
 - **Extension tool aliases use the owning package name.** Package extension entries under paths like `src/index.ts` now resolve to their declared package name instead of `src`.
+- **No more child-session leaks.** Every child session now terminates through one idempotent disposal (abort, `session_shutdown` to release built-in extension resources, dispose — pi's `dispose()` emits no shutdown event): clear, parent dispose, a run settling after its record was cleared or stopped mid-setup, and aborts during setup all funnel there exactly once, and the manager's `dispose()` awaits in-flight runs and pending disposals before returning.
 
 ## [1.15.1] - 2026-09-30
 
