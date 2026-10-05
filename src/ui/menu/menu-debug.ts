@@ -27,8 +27,8 @@ import { handleRestartLastAgents } from "../../agents/restart-last-agents.js";
 const PI_DEFAULT_ACTIVE_TOOLS = ["read", "bash", "edit", "write"];
 
 /** Render a tool set; the zero-tool state is explicit, not a glitch. */
-function formatTools(tools: string[] | undefined): string {
-  return tools && tools.length > 0 ? tools.join(", ") : "(none)";
+function formatTools(tools: string[]): string {
+  return tools.length > 0 ? tools.join(", ") : "(none)";
 }
 
 /**
@@ -40,10 +40,11 @@ function formatTools(tools: string[] | undefined): string {
  */
 function displayToolsFor(cwd: string, config: AgentConfig): string {
   if (config.registeredTools) return formatTools(config.registeredTools);
-  if (!getStore().agent.loadToolsImplicitly) return formatTools(undefined);
+  if (!getStore().agent.loadToolsImplicitly) return "(none)";
   const defaultTools = SettingsManager.create(cwd, getAgentDir()).getDefaultTools();
   return formatTools(defaultTools ?? PI_DEFAULT_ACTIVE_TOOLS);
 }
+
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   const types = getAllTypes();
   if (types.length === 0) {
