@@ -519,16 +519,20 @@ function hasOpenAIResponsesOutputLimit(payload: unknown): boolean {
   );
 }
 
-async function initSession(
-  ctx: ExtensionContext,
-  options: RunOptions,
-  agentConfig: ReturnType<typeof getAgentConfig>,
-  type: SubagentType,
-  cwd: string,
-  loader: DefaultResourceLoader,
-  extToolMap: Map<string, string[]>,
-  settingsManager: SettingsManager,
-): Promise<AgentSession> {
+/** Everything child-session setup needs for one spawn; assembled once by createChildSession. */
+interface SessionSetup {
+  ctx: ExtensionContext;
+  options: RunOptions;
+  agentConfig: ReturnType<typeof getAgentConfig>;
+  type: SubagentType;
+  cwd: string;
+  loader: DefaultResourceLoader;
+  extToolMap: Map<string, string[]>;
+  settingsManager: SettingsManager;
+}
+
+async function initSession(setup: SessionSetup): Promise<AgentSession> {
+  const { ctx, options, agentConfig, cwd, loader, extToolMap, settingsManager } = setup;
   const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
   // Per-model comes from the same trust-gated instance the session is created
   // with, so the project-trust gate applies to the read identically. When
@@ -593,18 +597,9 @@ async function initSession(
   return session;
 }
 
-async function createAndConfigureSession(
-  ctx: ExtensionContext,
-  options: RunOptions,
-  agentConfig: ReturnType<typeof getAgentConfig>,
-  type: SubagentType,
-  cwd: string,
-  loader: DefaultResourceLoader,
-  extToolMap: Map<string, string[]>,
-  settingsManager: SettingsManager,
-  notify: (msg: string) => void,
-): Promise<AgentSession> {
-  const session = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap, settingsManager);
+async function createAndConfigureSession(setup: SessionSetup, notify: (msg: string) => void): Promise<AgentSession> {
+  const session = await initSession(setup);
+  const { agentConfig, options, type, extToolMap } = setup;
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   try {
@@ -633,6 +628,7 @@ async function createAndConfigureSession(
   options.onSessionCreated?.(session);
   return session;
 }
+
 function wireTurnTracking(session: AgentSession, options: Pick<RunOptions, "maxTurns" | "graceTurns" | "onTurnEnd">) {
   let turnCount = 0;
   const maxTurns = normalizeMaxTurns(options.maxTurns);
@@ -840,14 +836,7 @@ export async function createChildSession(
     const { extToolMap } = await reloadAndMap();
     throwIfAborted("before session creation");
     const session = await createAndConfigureSession(
-      ctx,
-      options,
-      agentConfig,
-      type,
-      effectiveCwd,
-      loader,
-      extToolMap,
-      settingsManager,
+      { ctx, options, agentConfig, type, cwd: effectiveCwd, loader, extToolMap, settingsManager },
       bufferNotify,
     );
     if (options.signal?.aborted) {
