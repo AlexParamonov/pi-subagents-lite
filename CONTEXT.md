@@ -48,6 +48,14 @@ _Avoid_: Effective model, assigned model
 Per-spawn reasoning effort (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Resolved as the explicit spawn param > frontmatter `thinking` > pi's per-model level for the **Resolved model** (pi's `modelThinkingLevels` setting, keyed `provider/modelId`, project over global) > `defaultThinking` (project over global) > pi's own fallback (pi's `defaultThinkingLevel` setting, else `medium`), then clamped to the model's supported levels (non-reasoning models support only `off`).
 _Avoid_: Reasoning effort, thinking mode
 
+**Implicit tool loading**:
+What an Agent type gets when its frontmatter omits both `tools` and `registeredTools`: ON (default) passes no tool override and pi applies its `defaultTools` resolution natively; OFF passes `noTools: "all"` so the Subagent starts with none. Explicit frontmatter values always pass through unchanged. Third member of the implicit-loading family (skills, extensions, tools).
+_Avoid_: Default tools inheritance, tool fallback
+
+**Built-in extension**:
+An extension bundled with the pi CLI itself (codemode, tool-search, mcp; llama.cpp excluded) that a Subagent session loads via pi's public SDK creators wrapped with pi's own names and `builtin`/`replaceable` flags, so settings-level extension selection applies inside the child loader unchanged. Selectable and deselectable by bare name in Agent type frontmatter `extensions`.
+_Avoid_: Core extension, internal extension, bundled tool
+
 ### Worktrees
 
 **Worktree**:
@@ -85,6 +93,9 @@ _Avoid_: Timeout killer, stuck-agent detector
 ## Relationships
 
 - An **Agent type** has an optional **Model override**
+- An **Agent type** with frontmatter tools omitted resolves its tool set via **Implicit tool loading**
+- An **Agent type**'s frontmatter `extensions` list selects and deselects **Built-in extensions** by bare name
+- A **Subagent** session loads **Built-in extensions** unless its **Agent type** resolves `extensions` to false
 - A **Project config** overrides the **Global config** per key, for model and concurrency settings only
 - A **Subagent** is spawned from one **Agent type**
 - A **Subagent** may run in a **Worktree** of the parent's repo or in a directory inside any other git repo on disk
