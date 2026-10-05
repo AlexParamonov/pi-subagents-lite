@@ -255,6 +255,8 @@ export interface MockSession {
   setActiveToolsByName: Mock<(tools: string[]) => void>;
   getActiveTools: Mock<() => string[] | undefined>;
   bindExtensions: Mock<() => void>;
+  extensionRunner: { emit: Mock<(event: unknown) => Promise<unknown>> };
+  dispose: Mock<() => void>;
   subscribe: Mock<(listener: (event: unknown) => void) => () => void>;
   prompt: Mock<(text: string) => Promise<void>>;
   steer: Mock<(text: string) => Promise<void>>;
@@ -278,6 +280,8 @@ export function createMockSession(): MockSession {
     }),
     getActiveTools: vi.fn(() => activeTools),
     bindExtensions: vi.fn(),
+    extensionRunner: { emit: vi.fn(async () => undefined) },
+    dispose: vi.fn(),
     subscribe: vi.fn((listener: (event: unknown) => void) => {
       listeners.push(listener);
       return () => {

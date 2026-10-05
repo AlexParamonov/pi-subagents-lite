@@ -35,6 +35,7 @@ import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } fr
 import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { BUILTIN_EXTENSION_FACTORIES } from "./builtin-extensions.js";
+import { disposeChildSession } from "./session-teardown.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 import { patchRetryClassifier } from "./stream-retry.js";
 import { applyOutputLimit, resolveOutputLimit } from "./max-tokens-field.js";
@@ -620,22 +621,29 @@ async function createAndConfigureSession(
   );
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
-  await session.bindExtensions({
-    onError: (err) =>
-      options.onToolActivity?.({
-        type: "end",
-        toolName: `extension-error:${err.extensionPath}`,
-      }),
-  });
+  try {
+    await session.bindExtensions({
+      onError: (err) =>
+        options.onToolActivity?.({
+          type: "end",
+          toolName: `extension-error:${err.extensionPath}`,
+        }),
+    });
 
-  const filteredTools = resolveVisibleTools({
-    activeTools: session.getActiveToolNames(),
-    tools: agentConfig?.tools,
-    excludeTools: agentConfig?.excludeTools,
-    extToolMap,
-    notify,
-  });
-  if (filteredTools) session.setActiveToolsByName(filteredTools);
+    const filteredTools = resolveVisibleTools({
+      activeTools: session.getActiveToolNames(),
+      tools: agentConfig?.tools,
+      excludeTools: agentConfig?.excludeTools,
+      extToolMap,
+      notify,
+    });
+    if (filteredTools) session.setActiveToolsByName(filteredTools);
+  } catch (err) {
+    // Setup failed with a live session: terminate it through the shared
+    // teardown so built-in extension resources never outlive the failure.
+    await disposeChildSession(session);
+    throw err;
+  }
   options.onSessionCreated?.(session);
   return session;
 }
@@ -788,6 +796,13 @@ async function runAgentImpl(
 
   const env = await detectEnv(options.pi, effectiveCwd);
 
+  // The parent interrupt can land mid-setup; every await below re-checks so a
+  // stopped spawn either skips session creation or tears the session down.
+  const throwIfAborted = (stage: string): void => {
+    if (options.signal?.aborted) throw new Error(`agent "${type}": aborted during setup (${stage})`);
+  };
+  throwIfAborted("before resource load");
+
   const { mode, extras: promptExtras } = resolveSystemPromptSources(ctx, effectiveCwd, bufferNotify, agentConfig);
 
   const systemPrompt = buildPrompt(type, agentConfig, config, effectiveCwd, env, mode, promptExtras);
@@ -800,6 +815,7 @@ async function runAgentImpl(
     bufferNotify,
   );
   const { extToolMap } = await reloadAndMap();
+  throwIfAborted("before session creation");
   const session = await createAndConfigureSession(
     ctx,
     options,
@@ -811,6 +827,10 @@ async function runAgentImpl(
     settingsManager,
     bufferNotify,
   );
+  if (options.signal?.aborted) {
+    await disposeChildSession(session);
+    throwIfAborted("after session creation");
+  }
   const result = await runSessionPrompt(session, prompt, {
     ...options,
     maxTurns: options.maxTurns ?? agentConfig?.maxTurns,

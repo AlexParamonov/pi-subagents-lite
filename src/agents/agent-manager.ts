@@ -5,8 +5,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { continueAgentSession, runAgent, type RunResult } from "./agent-runner.js";
+import { disposeChildSession } from "./session-teardown.js";
 import { AgentOutputLog } from "./output-file.js";
 import { Watchdog } from "./watchdog.js";
 import { getStore } from "../shell.js";
@@ -97,6 +98,12 @@ export class AgentManager {
 
   /** Parent-interrupt bindings by record, removed at every terminal transition. */
   private parentBindings = new WeakMap<AgentRecord, { signal: AbortSignal; handler: () => void }>();
+
+  /** In-flight child-session teardowns, tracked so dispose() can await them. */
+  private pendingDisposals = new Set<Promise<void>>();
+
+  /** Attached-but-unsettled run promises, tracked so dispose() can await them. */
+  private inFlightRuns = new Set<Promise<string>>();
 
   /** Session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   private totalAgentCost = 0;
@@ -357,7 +364,10 @@ export class AgentManager {
     runPromise: Promise<RunResult>,
     concurrencySlot?: ConcurrencySlot,
   ) {
-    runPromise
+    // Track the chain's terminal promise, not runPromise: dispose() must resume
+    // only after the .finally body ran (its vanished-record teardown lands in
+    // pendingDisposals), and derived-promise reactions resolve in that order.
+    const settled = runPromise
       .then(({ responseText, session, aborted, turnLimited, modelError }) => {
         // Don't overwrite status if externally stopped via abort()
         if (record.lifecycle.status !== "stopped") {
@@ -391,6 +401,7 @@ export class AgentManager {
         return "";
       })
       .finally(() => {
+        this.inFlightRuns.delete(settled);
         // Count this settlement before notifying, so the completion callback
         // can tell a continuation settlement (>= 2) from the first one.
         record.execution.settlementCount++;
@@ -409,6 +420,14 @@ export class AgentManager {
 
         if (concurrencySlot) concurrencySlot.running--;
 
+        // The record was removed while this run was in flight (cleared or
+        // stopped mid-setup): nobody else will dispose the session it created.
+        if (!this.agents.has(record.id) && record.execution.session) {
+          const session = record.execution.session;
+          record.execution.session = undefined;
+          this.teardownSession(session);
+        }
+
         this.tallyCompletion(record);
         this.drainQueue();
         // Detach before opening the gate so an abort racing settlement cannot
@@ -420,6 +439,7 @@ export class AgentManager {
         // the slot and prompt the session again.
         record.execution.settled = true;
       });
+    this.inFlightRuns.add(settled);
   }
 
   private createCompletionGate(id: string): Promise<string> {
@@ -679,14 +699,29 @@ export class AgentManager {
   }
 
   private removeRecord(id: string, record: AgentRecord): void {
-    record.execution.session?.dispose();
-    record.execution.session = undefined;
+    if (record.execution.session) {
+      this.teardownSession(record.execution.session);
+      record.execution.session = undefined;
+    }
     this.detachParentBinding(record);
     // A stopped record's run can still be settling (stopAgent flips status
     // synchronously; the gate opens in .finally) — resolve so the coordinator's
     // await never dangles, then drop the resolver. A later .finally resolve no-ops.
     this.openGate(id, "");
     this.agents.delete(id);
+  }
+
+  /**
+   * Fire the shared child-session teardown (abort, session_shutdown, dispose).
+   * Fire-and-forget with tracking: dispose() drains every pending teardown
+   * before returning, so no session outlives the manager.
+   */
+  private teardownSession(session: AgentSession): void {
+    const done = disposeChildSession(session);
+    this.pendingDisposals.add(done);
+    void done.then(() => {
+      this.pendingDisposals.delete(done);
+    });
   }
 
   /** Stop agents violating tool/idle timeouts. Thresholds are read live so menu changes apply to running agents. */
@@ -702,7 +737,14 @@ export class AgentManager {
     }
   }
 
-  dispose() {
+  /**
+   * Terminate every child session and stop accepting work. The synchronous
+   * pass fails queued agents, tears down the sessions it can see, and detaches
+   * bindings; the awaits cover the rest: runs still in flight settle (their
+   * vanished-record sessions are torn down and tracked), then every pending
+   * teardown drains, so no session outlives this call.
+   */
+  async dispose(): Promise<void> {
     clearInterval(this.watchdogInterval);
     this.queue = [];
     for (const record of this.agents.values()) {
@@ -714,11 +756,21 @@ export class AgentManager {
         record.lifecycle.completedAt = Date.now();
         this.openGate(record.id, "");
       }
-      record.execution.session?.dispose();
+      if (record.execution.session) {
+        this.teardownSession(record.execution.session);
+        record.execution.session = undefined;
+      }
       this.detachParentBinding(record);
     }
     // Running records' gates open when their runs settle after this synchronous
     // pass — keep their resolvers so .finally can still resolve (no dangling gate).
     this.agents.clear();
+    // Runs still settling may create or re-attach sessions after the sweep
+    // above; their vanished-record teardowns land in pendingDisposals during
+    // this await (reaction order: .then → .catch → .finally → this).
+    await Promise.allSettled([...this.inFlightRuns]);
+    while (this.pendingDisposals.size > 0) {
+      await Promise.allSettled([...this.pendingDisposals]);
+    }
   }
 }
