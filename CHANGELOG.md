@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-10-05
+
 ### Added
 
 - **Extension tool aliases accept `extension/all` as well as `extension/*`.** Both forms include or exclude all tools from the named extension.
