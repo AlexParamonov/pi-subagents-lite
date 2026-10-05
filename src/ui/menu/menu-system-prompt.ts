@@ -64,6 +64,14 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         values: ["ON", "OFF"],
         description: "Give new agents all extensions when frontmatter omits the field.",
       },
+      {
+        id: "loadToolsImplicitly",
+        label: "Load tools implicitly",
+        currentValue: store.agent.loadToolsImplicitly ? "ON" : "OFF",
+        values: ["ON", "OFF"],
+        description:
+          "ON: pi applies its defaultTools setting to new agents. OFF: new agents start with no tools when frontmatter omits tool fields.",
+      },
     );
 
     return items;
@@ -105,6 +113,10 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
       case "loadExtensionsImplicitly":
         store.mutate.agent.setLoadExtensionsImplicitly(newValue === "ON");
         ctx.ui.notify(`Load extensions implicitly set to ${newValue}`, "info");
+        break;
+      case "loadToolsImplicitly":
+        store.mutate.agent.setLoadToolsImplicitly(newValue === "ON");
+        ctx.ui.notify(`Load tools implicitly set to ${newValue}`, "info");
         break;
     }
   };

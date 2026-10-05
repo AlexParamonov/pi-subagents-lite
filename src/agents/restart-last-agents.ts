@@ -56,7 +56,7 @@ export function findLastAgentCallsFromEntries(entries: SessionEntry[]): AgentCal
         (block as ToolCall).type === "toolCall" &&
         (block as ToolCall).name === "Agent"
       ) {
-        agentCalls.push((block as ToolCall).arguments as AgentCallParams);
+        agentCalls.push((block as ToolCall).arguments as unknown as AgentCallParams);
       }
     }
 

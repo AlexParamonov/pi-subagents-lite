@@ -728,6 +728,7 @@ describe("AgentManager", () => {
       const session = record.execution.session!;
 
       manager.clear(id);
+      await manager.dispose();
 
       expect(manager.getRecord(id)).toBeUndefined();
       expect(session.dispose).toHaveBeenCalled();

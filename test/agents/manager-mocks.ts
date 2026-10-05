@@ -112,6 +112,7 @@ export interface MockAgentSession {
   subscribe: Mock<(listener: AgentSessionEventListener) => () => void>;
   messages: AgentSession["messages"];
   dispose: Mock<() => void>;
+  extensionRunner: { emit: Mock<(event: unknown) => Promise<unknown>> };
   isStreaming: boolean;
   steer: Mock<(text: string, images?: ImageContent[]) => Promise<void>>;
   abort: Mock<() => Promise<void>>;
@@ -128,6 +129,7 @@ export function mockAgentSession(options: MockAgentSessionOptions = {}): MockAge
     subscribe: vi.fn<(listener: AgentSessionEventListener) => () => void>(),
     messages: [],
     dispose: vi.fn<() => void>(),
+    extensionRunner: { emit: vi.fn<(event: unknown) => Promise<unknown>>(async () => undefined) },
     isStreaming: options.isStreaming ?? false,
     steer: vi.fn<(text: string, images?: ImageContent[]) => Promise<void>>(async () => {}),
     abort: vi.fn(async () => {}),

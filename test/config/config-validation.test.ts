@@ -200,6 +200,7 @@ describe("validateRawLayer — non-model keys", () => {
           statusBarFormat: "compact",
           showCost: false,
           exposeDescriptions: true,
+          loadToolsImplicitly: false,
         },
         concurrency: { default: 2, providers: { a: 1 }, models: { "a/b": 3 } },
       };

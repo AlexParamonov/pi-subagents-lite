@@ -27,7 +27,6 @@ const SPAWN_MODEL = makeMockModel({ provider: "anthropic", id: "claude-opus-4-1"
 /** Install a trust-gated SettingsManager mock whose per-model read returns `perModel`. */
 function mockSettingsManager(perModel: ThinkingLevel | undefined): MockSettingsManager {
   const sm: MockSettingsManager = {
-    getDefaultTools: () => undefined,
     getModelThinkingLevel: vi.fn(() => perModel),
   };
   mockModules.mockSettingsManagerCreate.mockReturnValue(sm);

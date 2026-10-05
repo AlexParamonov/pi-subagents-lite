@@ -45,6 +45,8 @@ export interface SubagentsConfig {
     loadSkillsImplicitly?: boolean;
     /** Global default for extensions loading when agent doesn't explicitly set extensions. true (default) or false. */
     loadExtensionsImplicitly?: boolean;
+    /** Global default for tools: ON delegates tool setup to pi (defaultTools applies); OFF starts new agents with no tools when frontmatter omits tool fields. Default true. */
+    loadToolsImplicitly?: boolean;
     /** When true, skip built-in default agents (general-purpose, Explore) at registration. */
     disableDefaultAgents?: boolean;
     /** When true, use strict-mode schema for the Agent tool. Costs more tokens due to nullable field encoding. */

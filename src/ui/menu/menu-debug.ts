@@ -16,12 +16,15 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
-import { getAgentConfig, getAvailableTypes, getAllTypes, getToolNamesForType } from "../../agents/agent-types.js";
-import { readDefaultTools } from "../../pi-settings.js";
+import { getAgentConfig, getAvailableTypes, getAllTypes } from "../../agents/agent-types.js";
+import type { AgentConfig } from "../../agents/types.js";
 import { buildSelectListTheme } from "./helpers.js";
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getPiInstance } from "../../shell.js";
+import { getPiInstance, getStore } from "../../shell.js";
 import { handleRestartLastAgents } from "../../agents/restart-last-agents.js";
+
+/** pi's DEFAULT_TOOL_NAMES fallback when defaultTools is unconfigured (unexported; pinned by the contract suite). */
+const PI_DEFAULT_ACTIVE_TOOLS = ["read", "bash", "edit", "write"];
 
 /** Render a tool set; the zero-tool state is explicit, not a glitch. */
 function formatTools(tools: string[]): string {
@@ -29,13 +32,19 @@ function formatTools(tools: string[]): string {
 }
 
 /**
- * pi's defaultTools setting for the menu's cwd, via the same version-tolerant
- * accessor the spawn path uses. One SettingsManager per action, with default
- * trust (matching the spawn default when projectTrusted is unset).
+ * The tool set an agent starts with: explicit frontmatter registeredTools,
+ * else the delegated child's active set — pi's resolved defaultTools for the
+ * menu's cwd, or pi's own fallback when defaultTools is unconfigured. Implicit
+ * OFF starts tool-less. One SettingsManager per action, with default trust
+ * (matching the spawn default when projectTrusted is unset).
  */
-function readMenuDefaultTools(cwd: string): string[] | undefined {
-  return readDefaultTools(SettingsManager.create(cwd, getAgentDir()));
+function displayToolsFor(cwd: string, config: AgentConfig): string {
+  if (config.registeredTools) return formatTools(config.registeredTools);
+  if (!getStore().agent.loadToolsImplicitly) return "(none)";
+  const defaultTools = SettingsManager.create(cwd, getAgentDir()).getDefaultTools();
+  return formatTools(defaultTools ?? PI_DEFAULT_ACTIVE_TOOLS);
 }
+
 async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   const types = getAllTypes();
   if (types.length === 0) {
@@ -44,13 +53,12 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
   }
 
   const lines: string[] = ["Available agent types:\n"];
-  const defaultTools = readMenuDefaultTools(ctx.cwd);
   for (const name of types) {
     const cfg = getAgentConfig(name);
     if (!cfg) continue;
     const hidden = cfg.hidden === true ? " [HIDDEN]" : "";
     const model = cfg.model ? `  Model: ${cfg.model}` : "";
-    const tools = `  Tools: ${formatTools(getToolNamesForType(name, defaultTools))}`;
+    const tools = `  Tools: ${displayToolsFor(ctx.cwd, cfg)}`;
     const source = cfg.source ? `  Source: ${cfg.source}` : "";
     lines.push(`  ${name}${hidden}`);
     lines.push(`    ${cfg.description}`);
@@ -66,7 +74,6 @@ async function showAgentTypes(ctx: ExtensionCommandContext): Promise<void> {
 async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> {
   const types = getAvailableTypes();
   const agents = types.map((t) => ({ name: t, config: getAgentConfig(t) }));
-  const defaultTools = readMenuDefaultTools(ctx.cwd);
   const lines: string[] = [
     "# Agent Types and Capabilities\n",
     "The following agent types are available. Use the `agent` parameter to select one.\n",
@@ -78,8 +85,8 @@ async function handleAgentBriefing(ctx: ExtensionCommandContext): Promise<void> 
     lines.push(config.description);
     lines.push("");
 
-    // Always present: the effective set, whether explicit or resolved.
-    lines.push(`**Tools:** ${formatTools(getToolNamesForType(name, defaultTools))}`);
+    // Always present: the effective set, whether explicit or delegated to pi.
+    lines.push(`**Tools:** ${displayToolsFor(ctx.cwd, config)}`);
     if (config.model) {
       lines.push(`**Default model:** ${config.model}`);
     }

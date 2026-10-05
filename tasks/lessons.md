@@ -89,3 +89,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What worked:** Resolving an extension's declared package name from the manifest made aliases stable when the entry lives under a generic `src` directory; merging tools by that canonical name keeps multi-entry packages addressable as one extension.
 **What failed:** Falling back to the entry's parent directory mislabeled `src/index.ts` as extension `src`, so `pi-tool-ports/none` could not acknowledge it.
 **Next time:** Use a package name only when its manifest declares the exact extension entry, then use the path-derived name as fallback.
+
+## child-tool-delegation (contract seams) - 2026-10-05
+**What worked:** Extracting `createChildSession` (prompt-free setup) from `runAgentImpl` gave the contract suite a real production seam; wiring the reference session with pi's own private `builtInExtensions` made child/reference equality meaningful instead of trivially true; redirecting `PI_CODING_AGENT_DIR` per temp workspace let real settings layers resolve per case.
+**What failed:** pi's `bindExtensions` requires its bindings object (crashes reading `uiContext` when called bare); `vi.fn(impl)` generic widening was needed for the SettingsManager mock; `Promise.allSettled(runPromise)` resumes before the chain's `.finally` — track the terminal derived promise when dispose must observe settlement side effects.
+**Next time:** For dependency-behavior contracts, reproduce in plain node first (the env-var agent-dir redirect and the bindExtensions arity were both 30-second node checks); when an async lifecycle must "wait for side effects", await the last promise in the chain, never an earlier link.

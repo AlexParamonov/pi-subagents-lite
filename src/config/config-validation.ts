@@ -77,6 +77,7 @@ const AGENT_KEY_SPECS: Record<string, KeySpec> = {
   defaultMaxTurns: NUM,
   loadSkillsImplicitly: BOOL,
   loadExtensionsImplicitly: BOOL,
+  loadToolsImplicitly: BOOL,
   disableDefaultAgents: BOOL,
   agentToolStrictMode: BOOL,
   exposeDescriptions: BOOL,

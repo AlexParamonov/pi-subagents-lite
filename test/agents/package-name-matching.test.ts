@@ -273,6 +273,42 @@ describe("malformed package.json", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Built-in extensions — bare-name matching                           */
+/* ------------------------------------------------------------------ */
+
+describe("built-in extension matching by bare name", () => {
+  const builtinPath = "builtin:codemode";
+
+  it("whitelist matches a built-in by its bare name", () => {
+    const override = buildExtOverride(["codemode"], undefined, undefined);
+    const result = override!({
+      extensions: [
+        { path: builtinPath, tools: new Map([["codemode", {}]]) },
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).toBe(builtinPath);
+  });
+
+  it("excludeExtensions removes a built-in by its bare name", () => {
+    const override = buildExtOverride(true, ["codemode"], undefined);
+    const result = override!({
+      extensions: [
+        { path: builtinPath, tools: new Map([["codemode", {}]]) },
+        { path: "/home/test/.pi/agent/extensions/tavily/index.ts", tools: new Map([["web_search", {}]]) },
+      ],
+      errors: [],
+      runtime: {},
+    });
+    expect(result.extensions).toHaveLength(1);
+    expect(result.extensions[0].path).not.toBe(builtinPath);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  buildExtOverride — return value for non-filtering configs          */
 /* ------------------------------------------------------------------ */
 
