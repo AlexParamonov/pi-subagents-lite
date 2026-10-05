@@ -69,7 +69,8 @@ export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promis
         label: "Load tools implicitly",
         currentValue: store.agent.loadToolsImplicitly ? "ON" : "OFF",
         values: ["ON", "OFF"],
-        description: "ON: pi applies its defaultTools setting to new agents. OFF: new agents start with no tools when frontmatter omits tool fields.",
+        description:
+          "ON: pi applies its defaultTools setting to new agents. OFF: new agents start with no tools when frontmatter omits tool fields.",
       },
     );
 

@@ -18,12 +18,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import {
-  getAgentConfig,
-  getConfig,
-  resolveSessionToolOptions,
-  resolveVisibleTools,
-} from "./agent-types.js";
+import { getAgentConfig, getConfig, resolveSessionToolOptions, resolveVisibleTools } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import type { AgentUsage } from "./usage.js";
@@ -609,16 +604,7 @@ async function createAndConfigureSession(
   settingsManager: SettingsManager,
   notify: (msg: string) => void,
 ): Promise<AgentSession> {
-  const session = await initSession(
-    ctx,
-    options,
-    agentConfig,
-    type,
-    cwd,
-    loader,
-    extToolMap,
-    settingsManager,
-  );
+  const session = await initSession(ctx, options, agentConfig, type, cwd, loader, extToolMap, settingsManager);
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   try {
@@ -766,6 +752,39 @@ async function runAgentImpl(
   prompt: string,
   options: RunOptions,
 ): Promise<RunResult> {
+  const { session, warnings, agentConfig } = await createChildSession(ctx, type, options);
+  const result = await runSessionPrompt(session, prompt, {
+    ...options,
+    maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
+  });
+
+  // Flush buffered warnings now that tool_result is in the session tree.
+  flushWarnings(ctx, warnings);
+
+  return result;
+}
+
+/** Surface buffered setup warnings without splitting tool_use from tool_result. */
+function flushWarnings(ctx: ExtensionContext, warnings: string[]): void {
+  for (const msg of warnings) {
+    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
+    else console.warn(`[pi-subagents-lite] ${msg}`);
+  }
+}
+
+/**
+ * The full child-session setup, prompt-free: settings, tool resolution, the
+ * resource loader with pi's built-in factories, session creation, extension
+ * binding, and tool visibility. The contract suite drives this directly
+ * against the real SDK; runAgentImpl adds only the prompt and warning flush.
+ * Returns the buffered warnings (flush after the run's tool_result lands)
+ * and the agent config (for maxTurns).
+ */
+export async function createChildSession(
+  ctx: ExtensionContext,
+  type: SubagentType,
+  options: RunOptions,
+): Promise<{ session: AgentSession; warnings: string[]; agentConfig: ReturnType<typeof getAgentConfig> }> {
   const store = getStore();
   const effectiveCwd = options.cwd ?? ctx.cwd;
 
@@ -831,16 +850,5 @@ async function runAgentImpl(
     await disposeChildSession(session);
     throwIfAborted("after session creation");
   }
-  const result = await runSessionPrompt(session, prompt, {
-    ...options,
-    maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
-  });
-
-  // Flush buffered warnings now that tool_result is in the session tree.
-  for (const msg of warnings) {
-    if (ctx.ui?.notify) ctx.ui.notify(`[pi-subagents-lite] ${msg}`, "warning");
-    else console.warn(`[pi-subagents-lite] ${msg}`);
-  }
-
-  return result;
+  return { session, warnings, agentConfig };
 }

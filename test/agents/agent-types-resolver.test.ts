@@ -512,7 +512,9 @@ describe("resolveSessionToolOptions", () => {
       extToolMap,
       loadToolsImplicitly: true,
     });
-    expect(result.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl", "exa_search"]));
+    expect(result.tools).toEqual(
+      expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl", "exa_search"]),
+    );
     expect(result.tools).toHaveLength(5);
     // Builtins not in the whitelist must NOT leak into the registry gate.
     expect(result.tools).not.toContain("bash");
