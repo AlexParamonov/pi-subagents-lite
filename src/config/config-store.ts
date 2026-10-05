@@ -100,6 +100,8 @@ export interface ResolvedAgentSettings {
   readonly loadSkillsImplicitly: boolean;
   /** Global default for extensions loading: true (load all) or false (none). */
   readonly loadExtensionsImplicitly: boolean;
+  /** Global default for tools: true delegates tool setup to pi, false starts tool-less when frontmatter omits tool fields. */
+  readonly loadToolsImplicitly: boolean;
   /** Whether to skip built-in default agents at registration. */
   readonly disableDefaultAgents: boolean;
   /** Whether to use strict-mode schema for the Agent tool. Costs more tokens. */
@@ -217,6 +219,7 @@ export class ConfigStore {
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+      loadToolsImplicitly: a.loadToolsImplicitly !== false,
       disableDefaultAgents: a.disableDefaultAgents === true,
       agentToolStrictMode: a.agentToolStrictMode === true,
       exposeDescriptions: a.exposeDescriptions === true,
@@ -402,6 +405,7 @@ export class ConfigStore {
       setLoadSkillsImplicitly: (value: boolean) => this.setAgentLayerEntry("loadSkillsImplicitly", value, "global"),
       setLoadExtensionsImplicitly: (value: boolean) =>
         this.setAgentLayerEntry("loadExtensionsImplicitly", value, "global"),
+      setLoadToolsImplicitly: (value: boolean) => this.setAgentLayerEntry("loadToolsImplicitly", value, "global"),
       setDisableDefaultAgents: (value: boolean) => this.setAgentLayerEntry("disableDefaultAgents", value, "global"),
       setAgentToolStrictMode: (value: boolean) => this.setAgentLayerEntry("agentToolStrictMode", value, "global"),
       setExposeDescriptions: (value: boolean) => this.setAgentLayerEntry("exposeDescriptions", value, "global"),

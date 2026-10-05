@@ -15,18 +15,9 @@ import type { AgentConfig } from "./types.js";
  *
  * This set contains ALL built-in tools (including grep, find, ls)
  * and is used ONLY for name recognition in agent configs.
- * For the default active set, see DEFAULT_ACTIVE_TOOL_NAMES.
+ * It is not a gate: the session tool options own what registers.
  */
 export const BUILTIN_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];
-
-/**
- * Pi's default active session tools, mirroring pi sdk.ts exactly.
- *
- * This is the registered-tools fallback for agent types without explicit
- * tool config. grep/find/ls are NOT included: they activate only when an
- * agent config whitelists them.
- */
-export const DEFAULT_ACTIVE_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write"];
 
 const agents = new Map<string, AgentConfig>();
 
@@ -331,71 +322,62 @@ export function resolveVisibleTools(opts: {
 }
 
 /**
- * Resolve the concrete tool names that may enter the session's tool registry.
- *
- * Pi's createAgentSession treats `tools` as an allowlist gate: any tool not
- * listed is filtered out of the registry AND the active set, so a whitelist of
- * built-in names alone silently drops every extension tool. This expands the
- * agent's tool config into concrete names (builtins + referenced extension
- * tools) so pi registers them. Final visibility is still owned by
- * resolveVisibleTools; this only seeds the registry gate.
+ * The tool-related createAgentSession options resolved for a child session.
+ * An empty object means "no override": pi reads its defaultTools setting from
+ * the session's own SettingsManager (activation selection, registry stays
+ * complete so dispatchers can reach inactive tools).
  */
-export function resolveSessionAllowedTools(opts: {
-  registeredTools: string[];
+export interface SessionToolOptions {
+  /** Registry allowlist: only these tool names register. */
+  tools?: string[];
+  /** "all" starts the child with no tools (implicit loading OFF). */
+  noTools?: "all";
+}
+
+/**
+ * Resolve the session tool gate for an agent type.
+ *
+ * Explicit frontmatter always wins (invariant 1):
+ *   - tools: false → empty registry
+ *   - tools: string[] → the whitelist expansion (builtins + ext tools)
+ *   - registeredTools → the listed set unioned with loaded extension tools
+ *   - tools: true → pi's standard selection (the explicit "standard set")
+ * When the frontmatter omits tool fields entirely, the implicit mode decides:
+ * ON delegates to pi (no override), OFF passes noTools: "all". The Agent tool
+ * never enters the registry in any path (no-sub-subagent policy).
+ */
+export function resolveSessionToolOptions(opts: {
+  registeredTools?: string[];
   tools?: true | string[] | false;
   extToolMap?: Map<string, string[]>;
-}): string[] {
-  if (opts.tools === false) return [];
+  loadToolsImplicitly: boolean;
+}): SessionToolOptions {
+  const notAgent = (t: string) => !EXCLUDED_TOOL_NAMES.includes(t);
 
-  // tools is a whitelist: the gate is exactly its expansion. Builtins and
-  // extension tools are gated alike (a builtin not listed is NOT registered),
-  // and raw wildcard entries ("tavily/*") never leak as bogus allowedToolNames.
-  // registeredTools is not a base here.
+  if (opts.tools === false) return { tools: [] };
+
   if (Array.isArray(opts.tools)) {
-    return [...resolveToolEntries(opts.tools, opts.extToolMap)].filter((t) => !EXCLUDED_TOOL_NAMES.includes(t));
+    return { tools: [...resolveToolEntries(opts.tools, opts.extToolMap)].filter(notAgent) };
   }
 
-  // No whitelist (true | undefined): register everything available so
-  // resolveVisibleTools can select freely.
-  const extTools = opts.extToolMap ? [...opts.extToolMap.values()].flat() : [];
-  const names = new Set(opts.registeredTools);
-  for (const t of extTools) {
-    if (!EXCLUDED_TOOL_NAMES.includes(t)) names.add(t);
+  if (opts.registeredTools) {
+    const names = new Set(opts.registeredTools);
+    for (const t of opts.extToolMap ? [...opts.extToolMap.values()].flat() : []) {
+      if (notAgent(t)) names.add(t);
+    }
+    return { tools: [...names] };
   }
-  return [...names];
-}
 
-/**
- * The built-in tool set when an agent config is silent: the defaultTools
- * setting when configured (including []), else the hardcoded default
- * active set. Shared by getConfig and getToolNamesForType so both
- * fallbacks resolve identically.
- */
-function resolveFallbackTools(defaultTools?: string[]): string[] {
-  return defaultTools ?? [...DEFAULT_ACTIVE_TOOL_NAMES];
-}
+  if (opts.tools === true) return {};
 
-/**
- * Registered-tool list for a type: the config's registeredTools, or the
- * defaultTools setting when the config has none, or the default active
- * set when the setting is unconfigured. Type resolution is
- * case-insensitive.
- *
- * @param defaultTools pi's defaultTools setting (a copy of the setting,
- *   [] when explicitly empty, undefined when unconfigured). Passed in by
- *   the runner so getConfig and this gate share one fallback source.
- */
-export function getToolNamesForType(type: string, defaultTools?: string[]): string[] {
-  const config = getAgentConfig(type);
-  // ?? keeps an explicitly-empty registeredTools as a zero-tool set: only
-  // unset registeredTools falls back to the defaultTools setting.
-  return config?.registeredTools ?? resolveFallbackTools(defaultTools);
+  return opts.loadToolsImplicitly ? {} : { noTools: "all" };
 }
 
 export interface ResolvedAgentConfig {
   displayName: string;
   description: string;
-  registeredTools: string[];
+  /** Explicit frontmatter registeredTools, absent when the frontmatter is silent. */
+  registeredTools?: string[];
   /** Controls tool schema visibility. true = all, string[] = listed, false = none. */
   tools?: true | string[] | false;
   extensions: true | string[] | false;
@@ -431,27 +413,25 @@ export function getConfig(
   type: string,
   loadSkillsImplicitly: boolean = true,
   loadExtensionsImplicitly: boolean = true,
-  defaultTools?: string[],
 ): ResolvedAgentConfig {
   const config = findActiveConfig(type);
   if (config) {
-    const { skills, extensions, ...rest } = config;
+    const { skills, extensions, registeredTools, ...rest } = config;
     const defaults = applyGlobalDefaults(skills, extensions, loadSkillsImplicitly, loadExtensionsImplicitly);
     return {
       displayName: rest.displayName ?? rest.name,
       description: rest.description,
-      registeredTools: rest.registeredTools ?? resolveFallbackTools(defaultTools),
+      registeredTools,
       tools: rest.tools,
       ...defaults,
     };
   }
 
-  // Absolute fallback — no config found at all
+  // Absolute fallback — no config found at all. Tool setup delegates to pi.
   const defaults = applyGlobalDefaults(undefined, undefined, loadSkillsImplicitly, loadExtensionsImplicitly);
   return {
     displayName: "Agent",
     description: "General-purpose agent for complex, multi-step tasks",
-    registeredTools: resolveFallbackTools(defaultTools),
     ...defaults,
   };
 }

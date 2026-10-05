@@ -11,9 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Import the module under test
 import {
   resolveVisibleTools,
-  resolveSessionAllowedTools,
+  resolveSessionToolOptions,
   getConfig,
-  getToolNamesForType,
   registerAgents,
 } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
@@ -476,205 +475,157 @@ describe("getConfig — global implicit defaults", () => {
     expect(result.extensions).toBe(true);
   });
 
-  it("registeredTools defaults to the default active tool set when not explicitly set", () => {
-    const result = getConfig("implicit-agent");
-    expect(result.registeredTools).toEqual(["read", "bash", "edit", "write"]);
-  });
-
-  it("registeredTools uses explicit value when set", () => {
+  it("registeredTools passes the explicit value through when set", () => {
     const result = getConfig("explicit-tools");
     expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
   });
-  it("registeredTools uses the defaultTools setting when the config is silent", () => {
-    const result = getConfig("implicit-agent", true, true, ["read", "bash", "grep"]);
-    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
+
+  it("registeredTools stays absent when the config is silent — pi owns the fallback", () => {
+    const result = getConfig("implicit-agent");
+    expect(result.registeredTools).toBeUndefined();
   });
 
-  it("registeredTools is empty when defaultTools is explicitly []", () => {
-    const result = getConfig("implicit-agent", true, true, []);
-    expect(result.registeredTools).toEqual([]);
-  });
-
-  it("registeredTools prefers the agent's explicit value over the setting", () => {
-    const result = getConfig("explicit-tools", true, true, ["read", "bash"]);
-    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
-  });
-
-  it("unknown agent type falls back to the defaultTools setting", () => {
-    const result = getConfig("nonexistent", true, true, ["read", "bash", "grep"]);
-    expect(result.registeredTools).toEqual(["read", "bash", "grep"]);
+  it("unknown agent type leaves registeredTools absent — no hardcoded fallback", () => {
+    const result = getConfig("nonexistent");
+    expect(result.registeredTools).toBeUndefined();
   });
 });
 
 /* ------------------------------------------------------------------ */
-/*  getToolNamesForType                                              */
+/*  resolveSessionToolOptions                                         */
 /* ------------------------------------------------------------------ */
 
-describe("getToolNamesForType", () => {
-  beforeEach(() => {
-    const agents = new Map<string, AgentConfig>();
-    agents.set("test-agent", {
-      name: "test-agent",
-      description: "Test agent",
-      systemPrompt: "test",
-    });
-    agents.set("explicit-tools", {
-      name: "explicit-tools",
-      description: "Agent with explicit tools",
-      registeredTools: ["read", "bash"],
-      systemPrompt: "test",
-    });
-    agents.set("empty-tools", {
-      name: "empty-tools",
-      description: "Agent with explicit empty tools",
-      registeredTools: [],
-      systemPrompt: "test",
-    });
-    registerAgents(agents);
-  });
-
-  it("returns the default active tool set for agent with no explicit registeredTools", () => {
-    const result = getToolNamesForType("test-agent");
-    expect(result).toEqual(["read", "bash", "edit", "write"]);
-  });
-
-  it("returns explicit registeredTools when set", () => {
-    const result = getToolNamesForType("explicit-tools");
-    expect(result).toEqual(["read", "bash"]);
-  });
-
-  it("returns the default active tool set for unknown agent type", () => {
-    const result = getToolNamesForType("nonexistent");
-    expect(result).toEqual(["read", "bash", "edit", "write"]);
-  });
-  it("uses the defaultTools setting for agent with no explicit registeredTools", () => {
-    const result = getToolNamesForType("test-agent", ["read", "bash", "grep"]);
-    expect(result).toEqual(["read", "bash", "grep"]);
-  });
-
-  it("returns zero tools when defaultTools is explicitly []", () => {
-    const result = getToolNamesForType("test-agent", []);
-    expect(result).toEqual([]);
-  });
-
-  it("prefers explicit registeredTools over the setting", () => {
-    const result = getToolNamesForType("explicit-tools", ["read", "bash", "grep"]);
-    expect(result).toEqual(["read", "bash"]);
-  });
-
-  it("returns zero tools when registeredTools is explicitly [] — no fallback to the default set", () => {
-    const result = getToolNamesForType("empty-tools");
-    expect(result).toEqual([]);
-  });
-
-  it("prefers explicit [] over the defaultTools setting", () => {
-    const result = getToolNamesForType("empty-tools", ["read", "bash", "grep"]);
-    expect(result).toEqual([]);
-  });
-
-  it("uses the defaultTools setting for unknown agent type", () => {
-    const result = getToolNamesForType("nonexistent", ["read", "bash", "grep"]);
-    expect(result).toEqual(["read", "bash", "grep"]);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/*  resolveSessionAllowedTools                                         */
-/* ------------------------------------------------------------------ */
-
-describe("resolveSessionAllowedTools", () => {
-  const builtins = ["read", "bash", "edit"];
+describe("resolveSessionToolOptions", () => {
   const extToolMap = new Map<string, string[]>([
     ["tavily", ["web_search", "web_extract", "web_crawl"]],
     ["exa", ["exa_search"]],
   ]);
 
-  it("tools: false — no tools allowed", () => {
-    expect(resolveSessionAllowedTools({ registeredTools: builtins, tools: false, extToolMap })).toEqual([]);
+  it("tools: false — empty registry gate in both implicit modes", () => {
+    expect(resolveSessionToolOptions({ tools: false, loadToolsImplicitly: true })).toEqual({ tools: [] });
+    expect(resolveSessionToolOptions({ tools: false, loadToolsImplicitly: false })).toEqual({ tools: [] });
   });
 
   it("tools: string[] — only whitelisted builtins and extension tools register (no leak)", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
+    const result = resolveSessionToolOptions({
       tools: ["read", "tavily/*", "exa_search"],
       extToolMap,
+      loadToolsImplicitly: true,
     });
-    expect(result).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl", "exa_search"]));
-    expect(result).toHaveLength(5);
+    expect(result.tools).toEqual(expect.arrayContaining(["read", "web_search", "web_extract", "web_crawl", "exa_search"]));
+    expect(result.tools).toHaveLength(5);
     // Builtins not in the whitelist must NOT leak into the registry gate.
-    expect(result).not.toContain("bash");
-    expect(result).not.toContain("edit");
+    expect(result.tools).not.toContain("bash");
+    expect(result.tools).not.toContain("edit");
+    expect(result.noTools).toBeUndefined();
   });
 
   it("tools: string[] with ext/tool entry — expands to the bare tool name", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
+    const result = resolveSessionToolOptions({
       tools: ["read", "tavily/web_search"],
       extToolMap,
+      loadToolsImplicitly: true,
     });
-    expect(result).toContain("web_search");
-    expect(result).not.toContain("web_extract");
+    expect(result.tools).toContain("web_search");
+    expect(result.tools).not.toContain("web_extract");
   });
 
   it("tools: string[] with ext/* for an unloaded extension — resolves to nothing (silent)", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
+    const result = resolveSessionToolOptions({
       tools: ["read", "ghost/*"],
       extToolMap,
+      loadToolsImplicitly: true,
     });
-    expect(result).toEqual(["read"]);
-  });
-
-  it("tools: true — builtins plus every loaded extension tool", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
-      tools: true,
-      extToolMap,
-    });
-    expect(result).toEqual(
-      expect.arrayContaining(["read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search"]),
-    );
-    expect(result).toHaveLength(7);
-  });
-
-  it("tools: undefined — behaves like tools: true", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
-      tools: undefined,
-      extToolMap,
-    });
-    expect(result).toEqual(
-      expect.arrayContaining(["read", "bash", "edit", "web_search", "web_extract", "web_crawl", "exa_search"]),
-    );
+    expect(result.tools).toEqual(["read"]);
   });
 
   it("excludes the Agent tool so it never enters the registry", () => {
     const withAgent = new Map(extToolMap);
     withAgent.set("subagents", ["Agent"]);
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
+    const result = resolveSessionToolOptions({
       tools: true,
       extToolMap: withAgent,
+      loadToolsImplicitly: true,
     });
-    expect(result).not.toContain("Agent");
+    expect(result).toEqual({});
   });
 
   it("tools: string[] with no extToolMap — bare whitelisted builtins only", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: builtins,
+    const result = resolveSessionToolOptions({
       tools: ["read", "tavily/*"],
+      loadToolsImplicitly: true,
     });
     // No extToolMap means "tavily/*" can't expand; only the bare "read" registers.
-    expect(result).toEqual(["read"]);
+    expect(result.tools).toEqual(["read"]);
   });
+
   it("raw wildcard literals never reach pi as bogus allowedToolNames", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: ["read", "tavily/*"],
+    const result = resolveSessionToolOptions({
       tools: ["read", "tavily/*"],
       extToolMap,
+      loadToolsImplicitly: true,
     });
-    expect(result).not.toContain("tavily/*");
-    expect(result).toContain("web_search");
+    expect(result.tools).not.toContain("tavily/*");
+    expect(result.tools).toContain("web_search");
+  });
+
+  it("explicit registeredTools becomes the session gate (union with loaded extension tools)", () => {
+    const result = resolveSessionToolOptions({
+      registeredTools: ["read", "bash", "grep"],
+      extToolMap,
+      loadToolsImplicitly: true,
+    });
+    expect(result.tools).toEqual(expect.arrayContaining(["read", "bash", "grep", "web_search", "exa_search"]));
+    expect(result.noTools).toBeUndefined();
+  });
+
+  it("explicit registeredTools gates the same with implicit loading OFF", () => {
+    const result = resolveSessionToolOptions({
+      registeredTools: ["read", "bash"],
+      loadToolsImplicitly: false,
+    });
+    expect(result.tools).toEqual(["read", "bash"]);
+  });
+
+  it("explicit registeredTools excludes the Agent tool", () => {
+    const withAgent = new Map([["subagents", ["Agent"]]]);
+    const result = resolveSessionToolOptions({
+      registeredTools: ["read"],
+      extToolMap: withAgent,
+      loadToolsImplicitly: true,
+    });
+    expect(result.tools).toEqual(["read"]);
+  });
+
+  it("explicit registeredTools [] is a zero-tool gate, not a fallback trigger", () => {
+    expect(resolveSessionToolOptions({ registeredTools: [], loadToolsImplicitly: true })).toEqual({ tools: [] });
+    expect(resolveSessionToolOptions({ registeredTools: [], loadToolsImplicitly: false })).toEqual({ tools: [] });
+  });
+
+  it("no frontmatter tool fields + implicit ON — no override, pi applies defaultTools", () => {
+    expect(resolveSessionToolOptions({ loadToolsImplicitly: true })).toEqual({});
+    expect(resolveSessionToolOptions({ tools: undefined, extToolMap, loadToolsImplicitly: true })).toEqual({});
+  });
+
+  it("no frontmatter tool fields + implicit OFF — noTools: all", () => {
+    expect(resolveSessionToolOptions({ loadToolsImplicitly: false })).toEqual({ noTools: "all" });
+    expect(resolveSessionToolOptions({ tools: undefined, extToolMap, loadToolsImplicitly: false })).toEqual({
+      noTools: "all",
+    });
+  });
+
+  it("tools: true is explicit — pi's standard selection applies in both implicit modes", () => {
+    expect(resolveSessionToolOptions({ tools: true, loadToolsImplicitly: true })).toEqual({});
+    expect(resolveSessionToolOptions({ tools: true, loadToolsImplicitly: false })).toEqual({});
+  });
+
+  it("mutually exclusive: tools wins over registeredTools", () => {
+    const result = resolveSessionToolOptions({
+      registeredTools: ["read", "bash", "grep"],
+      tools: ["edit"],
+      loadToolsImplicitly: true,
+    });
+    expect(result.tools).toEqual(["edit"]);
   });
 });
 
@@ -766,13 +717,13 @@ describe("ext/none — warning suppression", () => {
     expect(result).toContain("web_crawl");
   });
 
-  it("ext/none with resolveSessionAllowedTools does not leak 'none'", () => {
-    const result = resolveSessionAllowedTools({
-      registeredTools: ["read", "bash"],
+  it("ext/none with the session gate does not leak 'none'", () => {
+    const result = resolveSessionToolOptions({
       tools: ["read", "tavily/none"],
       extToolMap,
+      loadToolsImplicitly: true,
     });
-    expect(result).toContain("read");
-    expect(result).not.toContain("none");
+    expect(result.tools).toContain("read");
+    expect(result.tools).not.toContain("none");
   });
 });

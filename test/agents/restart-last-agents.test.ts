@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { CompactionEntry, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
-import type { ToolCall } from "@earendil-works/pi-ai";
+import type { JsonObject, ToolCall } from "@earendil-works/pi-ai";
 import { findLastAgentCallsFromEntries } from "../../src/agents/restart-last-agents.js";
 
 /** Build a minimal SessionMessageEntry with typed content blocks. */
@@ -29,7 +29,7 @@ function messageEntry(
   } as SessionMessageEntry;
 }
 
-function agentToolCall(args: Record<string, unknown>): ToolCall {
+function agentToolCall(args: JsonObject): ToolCall {
   return {
     type: "toolCall",
     id: `tc-${Math.random().toString(36).slice(2, 8)}`,

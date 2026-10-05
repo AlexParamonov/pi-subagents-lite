@@ -21,12 +21,10 @@ import {
 import {
   getAgentConfig,
   getConfig,
-  getToolNamesForType,
-  resolveSessionAllowedTools,
+  resolveSessionToolOptions,
   resolveVisibleTools,
 } from "./agent-types.js";
 import { extractText } from "../prompt/context.js";
-import { readDefaultTools } from "../pi-settings.js";
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import type { AgentUsage } from "./usage.js";
 import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
@@ -521,7 +519,6 @@ async function initSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
   settingsManager: SettingsManager,
-  defaultTools: string[] | undefined,
 ): Promise<AgentSession> {
   const model = options.model ?? findModelInRegistry(agentConfig?.model, ctx.modelRegistry, ctx.model);
   // Per-model comes from the same trust-gated instance the session is created
@@ -542,10 +539,13 @@ async function initSession(
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager,
     model,
-    tools: resolveSessionAllowedTools({
-      registeredTools: getToolNamesForType(type, defaultTools),
+    // Explicit frontmatter gates the registry; a silent config delegates to pi
+    // (defaultTools activation, complete registry) or starts tool-less.
+    ...resolveSessionToolOptions({
+      registeredTools: agentConfig?.registeredTools,
       tools: agentConfig?.tools,
       extToolMap,
+      loadToolsImplicitly: getStore().agent.loadToolsImplicitly,
     }),
     resourceLoader: loader,
   };
@@ -593,7 +593,6 @@ async function createAndConfigureSession(
   loader: DefaultResourceLoader,
   extToolMap: Map<string, string[]>,
   settingsManager: SettingsManager,
-  defaultTools: string[] | undefined,
   notify: (msg: string) => void,
 ): Promise<AgentSession> {
   const session = await initSession(
@@ -605,7 +604,6 @@ async function createAndConfigureSession(
     loader,
     extToolMap,
     settingsManager,
-    defaultTools,
   );
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
@@ -752,18 +750,13 @@ async function runAgentImpl(
 
   // One SettingsManager for the whole spawn: its trust state gates both the
   // resource loader (project extensions/skills/prompts/themes/system prompt
-  // files) and the session context (ctx.isProjectTrusted). Created before
-  // getConfig so its defaultTools setting can feed the resolved config and
-  // the session tool gate from the same instance.
+  // files) and the session context (ctx.isProjectTrusted). pi reads
+  // defaultTools and the extension selection from this same instance.
   const settingsManager = SettingsManager.create(effectiveCwd, getAgentDir(), {
     projectTrusted: options.projectTrusted !== false,
   });
 
-  // Read once per spawn: getConfig and getToolNamesForType share this value,
-  // so their fallbacks cannot diverge. undefined = setting unconfigured.
-  const defaultTools = readDefaultTools(settingsManager);
-
-  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly, defaultTools);
+  const config = getConfig(type, store.agent.loadSkillsImplicitly, store.agent.loadExtensionsImplicitly);
   const agentConfig = getAgentConfig(type);
 
   // Buffer warnings during setup to avoid inserting custom_message entries
@@ -803,7 +796,6 @@ async function runAgentImpl(
     loader,
     extToolMap,
     settingsManager,
-    defaultTools,
     bufferNotify,
   );
   const result = await runSessionPrompt(session, prompt, {

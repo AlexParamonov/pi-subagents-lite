@@ -336,65 +336,66 @@ describe("runAgent — project trust threading", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  runAgent — defaultTools setting wiring                            */
+/*  runAgent — session tool gate (delegation to pi)                    */
 /* ------------------------------------------------------------------ */
 
-describe("runAgent — defaultTools setting wiring", () => {
+describe("runAgent — session tool gate", () => {
+  let sessionOpts: CreateAgentSessionOptions | undefined;
+
   beforeEach(() => {
     resetMocks();
     fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
-  });
-
-  it("threads the settings manager's defaultTools into getConfig and getToolNamesForType", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit", "grep"]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockSettingsManagerCreate.mockReturnValue({
-      getDefaultTools: () => ["read", "bash", "grep"],
-      getModelThinkingLevel: () => undefined,
-    });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    // One read per spawn: both fallback consumers must receive the same value
-    // so the resolved config and the session gate cannot diverge.
-    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, [
-      "read",
-      "bash",
-      "grep",
-    ]);
-    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", ["read", "bash", "grep"]);
-  });
-
-  it("passes undefined defaultTools when the setting is unconfigured", async () => {
     const session = createMockSession();
     session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockSettingsManagerCreate.mockReturnValue({
-      getDefaultTools: () => undefined,
-      getModelThinkingLevel: () => undefined,
+    mockModules.mockCreateAgentSession.mockImplementation((opts: CreateAgentSessionOptions) => {
+      sessionOpts = opts;
+      return Promise.resolve({ session, extensionsResult: {} });
     });
-
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, undefined);
-    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", undefined);
   });
 
-  it("passes [] through when defaultTools is explicitly empty", async () => {
-    const session = createMockSession();
-    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
-    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
-    mockModules.mockSettingsManagerCreate.mockReturnValue({
-      getDefaultTools: () => [],
-      getModelThinkingLevel: () => undefined,
-    });
-
+  it("silent frontmatter + implicit ON passes no tool override — pi applies defaultTools", async () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
-    // An explicit [] is a configured zero-tool set, not "unconfigured".
-    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined, []);
-    expect(mockModules.mockGetToolNamesForType).toHaveBeenCalledWith("test-agent", []);
+    expect(sessionOpts).not.toHaveProperty("tools");
+    expect(sessionOpts).not.toHaveProperty("noTools");
+  });
+
+  it("silent frontmatter + implicit OFF passes noTools: all", async () => {
+    mockModules.mockLoadToolsImplicitly = false;
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(sessionOpts!.noTools).toBe("all");
+    expect(sessionOpts).not.toHaveProperty("tools");
+  });
+
+  it("explicit frontmatter registeredTools gates the session registry", async () => {
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, registeredTools: ["read", "bash"] });
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(sessionOpts!.tools).toEqual(["read", "bash"]);
+    expect(sessionOpts).not.toHaveProperty("noTools");
+  });
+
+  it("explicit frontmatter registeredTools gates even with implicit loading OFF", async () => {
+    mockModules.mockLoadToolsImplicitly = false;
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, registeredTools: ["read"] });
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(sessionOpts!.tools).toEqual(["read"]);
+  });
+
+  it("explicit frontmatter tools: false yields an empty registry", async () => {
+    mockModules.mockGetConfig.mockReturnValue({ ...defaultConfig, tools: false });
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, tools: false });
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(sessionOpts!.tools).toEqual([]);
+  });
+
+  it("getConfig no longer receives a defaultTools fallback argument", async () => {
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined);
   });
 });
 
