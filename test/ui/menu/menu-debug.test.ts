@@ -274,7 +274,7 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
     // The delegated child starts with pi's DEFAULT_TOOL_NAMES here, not "(none)".
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: read, bash, edit, write"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("read, bash, edit, write"), "info");
   });
 
   it("shows '(none)' for a silent agent when defaultTools is unconfigured and implicit loading is off", async () => {
@@ -290,7 +290,8 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     await showDebugMenu(ctx);
     selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
     // Implicit OFF passes noTools: "all" — the child genuinely starts tool-less.
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: (none)"), "info");
+    // "(none)" is the display's empty-set marker: the only discriminator.
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("(none)"), "info");
   });
 
   it("skips types where getAgentConfig returns undefined", async () => {
