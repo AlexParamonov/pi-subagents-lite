@@ -192,6 +192,9 @@ vi.mock("../../src/shell.js", () => ({
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: mockModules.mockCreateAgentSession,
+  createCodemodeExtension: vi.fn(() => vi.fn()),
+  createMcpExtension: vi.fn(() => vi.fn()),
+  createToolSearchExtension: vi.fn(() => vi.fn()),
   DefaultResourceLoader: mockModules.mockDefaultResourceLoader,
   SessionManager: { inMemory: vi.fn() },
   SettingsManager: { create: mockModules.mockSettingsManagerCreate },

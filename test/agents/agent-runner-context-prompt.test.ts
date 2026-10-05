@@ -11,6 +11,7 @@ import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent"
 const fakePi = makeFakePi();
 
 import { runAgent, resolveEffectiveSystemPromptMode } from "../../src/agents/agent-runner.js";
+import { BUILTIN_EXTENSION_FACTORIES } from "../../src/agents/builtin-extensions.js";
 
 describe("runAgent — context file gating", () => {
   beforeEach(() => {
@@ -396,6 +397,26 @@ describe("runAgent — session tool gate", () => {
     await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
 
     expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  runAgent — built-in extension factories for the child loader       */
+/* ------------------------------------------------------------------ */
+
+describe("runAgent — built-in extension factories", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+  });
+
+  it("passes the built-in factories to every child loader", async () => {
+    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
+
+    expect(mockModules.getLoaderOpts().extensionFactories).toBe(BUILTIN_EXTENSION_FACTORIES);
   });
 });
 

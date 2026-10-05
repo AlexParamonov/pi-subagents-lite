@@ -34,6 +34,7 @@ import { preloadSkills, loadSkillMeta } from "../prompt/skill-loader.js";
 import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
 import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
+import { BUILTIN_EXTENSION_FACTORIES } from "./builtin-extensions.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 import { patchRetryClassifier } from "./stream-retry.js";
 import { applyOutputLimit, resolveOutputLimit } from "./max-tokens-field.js";
@@ -244,8 +245,16 @@ export function subscribeToSessionEvents(
   });
 }
 
+/** Path prefix pi gives its built-in extensions (not exported by pi's SDK). */
+const BUILTIN_PATH_PREFIX = "builtin:";
+
 /** Extension name from its install path (git/npm/local/direct); independent of dist/lib/src internals. */
 function extractExtensionName(extPath: string): string {
+  // Pi built-ins are synthetic paths (builtin:<name>): they name themselves.
+  if (extPath.startsWith(BUILTIN_PATH_PREFIX)) {
+    return extPath.slice(BUILTIN_PATH_PREFIX.length);
+  }
+
   const parts = extPath.split(path.sep);
 
   // 1. Git package: .../git/github.com/<user>/<pkg>/...
@@ -482,6 +491,10 @@ function createResourceLoader(
     cwd,
     agentDir,
     settingsManager,
+    // Pi's built-ins (codemode, tool-search, mcp) for child sessions. Passed
+    // unconditionally: the loader applies settings selection, replaceability,
+    // and its own gating (noExtensions skips them entirely).
+    extensionFactories: BUILTIN_EXTENSION_FACTORIES,
     noExtensions: extensions === false,
     noSkills,
     noPromptTemplates: true,
