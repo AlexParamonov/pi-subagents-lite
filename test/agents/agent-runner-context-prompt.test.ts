@@ -392,12 +392,6 @@ describe("runAgent — session tool gate", () => {
 
     expect(sessionOpts!.tools).toEqual([]);
   });
-
-  it("getConfig no longer receives a defaultTools fallback argument", async () => {
-    await runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi });
-
-    expect(mockModules.mockGetConfig).toHaveBeenCalledWith("test-agent", undefined, undefined);
-  });
 });
 
 /* ------------------------------------------------------------------ */

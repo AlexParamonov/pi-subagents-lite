@@ -73,8 +73,12 @@ interface Workspace {
   probeCount(): number;
 }
 
+/** Every workspace root made so far; all removed in afterAll (PI_CODING_AGENT_DIR is reassigned per workspace). */
+const workspaceRoots: string[] = [];
+
 function makeWorkspace(name: string): Workspace {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `subagents-contract-${name}-`));
+  workspaceRoots.push(root);
   const agentDir = path.join(root, "agent");
   const project = path.join(root, "project");
   fs.mkdirSync(agentDir, { recursive: true });
@@ -216,11 +220,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  const agentDir = process.env.PI_CODING_AGENT_DIR;
-  if (agentDir) {
-    fs.rmSync(agentDir, { recursive: true, force: true });
-    delete process.env.PI_CODING_AGENT_DIR;
-  }
+  delete process.env.PI_CODING_AGENT_DIR;
+  for (const root of workspaceRoots) fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe("contract: child session matches a normal pi session", () => {

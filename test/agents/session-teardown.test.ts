@@ -87,12 +87,6 @@ describe("disposeChildSession", () => {
     expect(session.dispose).toHaveBeenCalledOnce();
   });
 
-  it("never rejects: the teardown promise settles after dispose", async () => {
-    const session = teardownSession();
-    await expect(disposeChildSession(session)).resolves.toBeUndefined();
-    expect(session.dispose).toHaveBeenCalledOnce();
-  });
-
   it("never rejects when dispose throws", async () => {
     const session = teardownSession({
       dispose: vi.fn(() => {

@@ -62,7 +62,7 @@ describe("AgentManager session disposal", () => {
     });
   }
 
-  it("clear() terminates the session through the shared teardown, in order", async () => {
+  it("clear() then dispose(): teardown in order, the session disposed exactly once", async () => {
     manager = new AgentManager(onComplete);
     mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
     const id = spawnForeground("task");
@@ -111,19 +111,6 @@ describe("AgentManager session disposal", () => {
     await disposing;
 
     expect(lateSession.dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it("never disposes a session twice across clear and parent dispose", async () => {
-    manager = new AgentManager(onComplete);
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult());
-    const id = spawnForeground("task");
-    await manager.getRecord(id)!.execution.promise;
-    const session = mockOf(manager.getRecord(id)!.execution.session!);
-
-    manager.clear(id);
-    await manager.dispose();
-
-    expect(session.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("dispose() drains session teardowns before returning", async () => {
