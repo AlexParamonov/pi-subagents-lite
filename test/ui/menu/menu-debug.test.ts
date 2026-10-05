@@ -262,6 +262,37 @@ describe("showDebugMenu — agent types action (SelectList)", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: (none)"), "info");
   });
 
+  it("shows pi's fallback set when defaultTools is unconfigured and tool loading is implicit", async () => {
+    vi.mocked(getAllTypes).mockReturnValue(["silent-agent"]);
+    vi.mocked(getAgentConfig).mockImplementation(() => ({
+      name: "silent-agent",
+      description: "Agent with silent frontmatter",
+      systemPrompt: "",
+    }));
+    codingAgentMock.SettingsManager.create.mockReturnValue({ getDefaultTools: () => undefined });
+    const ctx = createMockCtx();
+    await showDebugMenu(ctx);
+    selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
+    // The delegated child starts with pi's DEFAULT_TOOL_NAMES here, not "(none)".
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: read, bash, edit, write"), "info");
+  });
+
+  it("shows '(none)' for a silent agent when defaultTools is unconfigured and implicit loading is off", async () => {
+    mockModules.mockConfig.agent.loadToolsImplicitly = false;
+    vi.mocked(getAllTypes).mockReturnValue(["silent-agent"]);
+    vi.mocked(getAgentConfig).mockImplementation(() => ({
+      name: "silent-agent",
+      description: "Agent with silent frontmatter",
+      systemPrompt: "",
+    }));
+    codingAgentMock.SettingsManager.create.mockReturnValue({ getDefaultTools: () => undefined });
+    const ctx = createMockCtx();
+    await showDebugMenu(ctx);
+    selectListCalls[0].onSelect!({ value: "agent-types", label: "Agent types" });
+    // Implicit OFF passes noTools: "all" — the child genuinely starts tool-less.
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tools: (none)"), "info");
+  });
+
   it("skips types where getAgentConfig returns undefined", async () => {
     vi.mocked(getAllTypes).mockReturnValue(["known", "unknown"]);
     vi.mocked(getAgentConfig).mockImplementation((name: string) => {

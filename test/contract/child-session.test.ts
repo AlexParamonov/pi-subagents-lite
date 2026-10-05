@@ -37,10 +37,17 @@ const contractStore = vi.hoisted(() => ({
   },
 }));
 
+const spawnBracket = vi.hoisted(() => ({ depth: 0, maxDepth: 0 }));
+
 vi.mock("../../src/shell.js", () => ({
   getStore: () => contractStore,
-  enterSubagentSpawn: () => {},
-  exitSubagentSpawn: () => {},
+  enterSubagentSpawn: () => {
+    spawnBracket.depth++;
+    spawnBracket.maxDepth = Math.max(spawnBracket.maxDepth, spawnBracket.depth);
+  },
+  exitSubagentSpawn: () => {
+    spawnBracket.depth--;
+  },
 }));
 
 import {
@@ -226,6 +233,18 @@ afterAll(() => {
 });
 
 describe("contract: child session matches a normal pi session", () => {
+  it("createChildSession brackets itself for extension loading, entering and exiting once", async () => {
+    spawnBracket.depth = 0;
+    spawnBracket.maxDepth = 0;
+    const workspace = makeWorkspace("bracket");
+    const child = await spawnChild(workspace);
+
+    expect(spawnBracket.maxDepth).toBe(1);
+    expect(spawnBracket.depth).toBe(0);
+
+    await disposeChildSession(child);
+  });
+
   it("with unconfigured defaultTools, registries and active sets are equal", async () => {
     const workspace = makeWorkspace("unconfigured");
     const child = await spawnChild(workspace);
@@ -406,9 +425,12 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
 
     expect(registryOf(session)).toContain("codemode");
     expect(registryOf(session)).not.toContain("probe_deferred");
+    // The whitelist excludes the probe extension, so it never loads: the count
+    // stays 0 across teardown (teardown-with-loaded-probe is pinned by the
+    // +codemode and exclude_extensions cases above).
+    expect(workspace.probeCount()).toBe(0);
 
     await disposeChildSession(session);
-    // The selected built-in's session_start ran; teardown releases its resource.
     expect(workspace.probeCount()).toBe(0);
   });
 

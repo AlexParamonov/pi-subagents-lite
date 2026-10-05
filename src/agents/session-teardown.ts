@@ -15,8 +15,8 @@ export function disposeChildSession(session: AgentSession): Promise<void> {
   const existing = inFlight.get(session);
   if (existing) return existing;
   const teardown = (async () => {
-    // abort() and emit() fire from listeners/handlers; either may reject while
-    // the parent is going down. Disposal must proceed regardless.
+    // Each step may throw while the parent is going down, and the manager
+    // tracks this promise fire-and-forget: no step may reject.
     try {
       await session.abort();
     } catch {
@@ -27,7 +27,11 @@ export function disposeChildSession(session: AgentSession): Promise<void> {
     } catch {
       /* a failing extension handler must not skip dispose */
     }
-    session.dispose();
+    try {
+      session.dispose();
+    } catch {
+      /* a throwing dispose must not reject the teardown */
+    }
   })();
   inFlight.set(session, teardown);
   return teardown;

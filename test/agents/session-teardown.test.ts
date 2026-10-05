@@ -92,4 +92,15 @@ describe("disposeChildSession", () => {
     await expect(disposeChildSession(session)).resolves.toBeUndefined();
     expect(session.dispose).toHaveBeenCalledOnce();
   });
+
+  it("never rejects when dispose throws", async () => {
+    const session = teardownSession({
+      dispose: vi.fn(() => {
+        throw new Error("dispose failed");
+      }),
+    });
+
+    await expect(disposeChildSession(session)).resolves.toBeUndefined();
+    expect(session.dispose).toHaveBeenCalledOnce();
+  });
 });

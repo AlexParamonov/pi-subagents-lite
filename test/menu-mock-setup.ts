@@ -273,6 +273,7 @@ vi.mock("../src/shell.js", async () => {
         defaultMaxTurns: a.defaultMaxTurns,
         loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
         loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
+        loadToolsImplicitly: a.loadToolsImplicitly !== false,
         showTools: a.showTools === true,
         showTurns: a.showTurns !== false,
         showInput: a.showInput !== false,
