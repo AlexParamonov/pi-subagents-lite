@@ -85,6 +85,8 @@ const hoisted = vi.hoisted(() => {
     // for object-literal properties, losing the `| undefined` (verified in isolation
     // under 7.0.2); the assertion keeps the union so tests can toggle model off.
     model: parentModel as { provider: string; id: string } | undefined,
+    // The parent session's live thinking level: tests that follow it set this.
+    thinkingLevel: "medium" as ThinkingLevel,
     cwd: "/test",
   };
 

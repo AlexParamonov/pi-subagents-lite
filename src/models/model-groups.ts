@@ -19,7 +19,7 @@
  *
  * Exports:
  *   - buildModelGroups: types + config snapshot → model groups with
- *     clamped thinking levels and provenance tags
+ *     clamped thinking levels, their winning sources, and provenance tags
  *   - hasExplicitPerTypeOverride: the anti-spam listing rule (shared with
  *     the menu's "Override another type..." list)
  */
@@ -27,7 +27,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.js";
 import { resolveModelSource } from "./model-precedence.js";
-import { resolveDisplayThinkingLevel } from "./thinking-resolution.js";
+import { resolveDisplayedThinking, type ThinkingSource } from "./thinking-resolution.js";
 import type { ThinkingChoice, ThinkingLevel } from "../types.js";
 
 /** Frontmatter fields the group builder reads per type. */
@@ -58,6 +58,8 @@ export interface ModelGroupsInput {
   piModelThinking?: (modelKey: string) => ThinkingLevel | undefined;
   /** Registry lookup for clamping; undefined model = no clamp. */
   findModel: (modelId: string) => Model<any> | undefined;
+  /** The parent session's current level, for a source holding `parent`. */
+  parentLevel?: ThinkingLevel;
 }
 
 /** One Agent type listed under a model group. */
@@ -65,6 +67,8 @@ export interface ModelGroupRow {
   type: string;
   /** Effective thinking level, clamped to the group model's supported levels. */
   thinking: ThinkingLevel;
+  /** The source that produced it, in the words the menu prints. */
+  source: ThinkingSource;
   /** Provenance tag of the winning layer: "[session]" (session per-type or session default), "[project]"; "" when the global per-type layer won without a session default. */
   tag: string;
 }
@@ -110,11 +114,8 @@ export function buildModelGroups(input: ModelGroupsInput): ModelGroups {
           : "";
 
     const rows = byModel.get(resolved) ?? [];
-    rows.push({
-      type,
-      thinking: displayThinking(cfg, resolved, input),
-      tag,
-    });
+    const displayed = displayThinking(cfg, resolved, input);
+    rows.push({ type, thinking: displayed.level, source: displayed.source, tag });
     byModel.set(resolved, rows);
   }
 
@@ -138,20 +139,21 @@ export function hasExplicitPerTypeOverride(
 }
 
 /**
- * The thinking level a spawn under `modelId` would actually run with, as the
- * menu displays it: frontmatter thinking > pi per-model > defaultThinking >
- * pi's defaultThinkingLevel > medium, clamped to the model's supported levels.
+ * The thinking level a spawn under `modelId` would actually run with, and the
+ * source that decided it: frontmatter > pi per-model > defaultThinking > pi's
+ * defaultThinkingLevel > medium, clamped to the model's supported levels.
  */
 function displayThinking(
   cfg: AgentTypeModelConfig | undefined,
   modelId: string,
   input: ModelGroupsInput,
-): ThinkingLevel {
-  return resolveDisplayThinkingLevel(
+): { level: ThinkingLevel; source: ThinkingSource } {
+  return resolveDisplayedThinking(
     {
       frontmatter: cfg?.thinkingLevel,
       perModel: input.piModelThinking?.(modelId),
       defaultThinking: input.config.defaultThinking,
+      parentLevel: input.parentLevel,
     },
     input.piDefaultThinking,
     input.findModel(modelId),

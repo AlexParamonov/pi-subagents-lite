@@ -408,14 +408,23 @@ describe("showSpawnOptionsMenu — default max turns", () => {
   });
 });
 
-describe("showSpawnOptionsMenu — default thinking level", () => {
+describe("showSpawnOptionsMenu — Subagent default thinking", () => {
   beforeEach(resetMenuState);
 
-  it("shows 'Default thinking level · inherit' when no default is set", async () => {
+  it("is labelled distinctly from pi's own defaultThinkingLevel setting", async () => {
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
     const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
-    expect(dt.currentValue).toBe("inherit");
+    expect(dt.label).toBe("Subagent default thinking");
+    // The row's own description names the agent file as the source above it.
+    expect(dt.description).toContain("agent file");
+  });
+
+  it("shows 'pi default' when no default is set", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
+    expect(dt.currentValue).toBe("pi default");
   });
 
   it("shows configured thinking level", async () => {
@@ -453,7 +462,8 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
       "high",
       "xhigh",
       "max",
-      "inherit",
+      "parent",
+      "pi default",
     ]);
     levelList.onSelect!({ value: "medium", label: "medium" });
 
@@ -480,7 +490,26 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     expect(mockDone).toHaveBeenCalledWith("high");
   });
 
-  it("selecting 'inherit' clears the level at the picked target", async () => {
+  it("shows `parent` when the level is set to follow the parent session", async () => {
+    mockModules.mockConfig.agent.defaultThinking = "parent";
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
+    expect(dt.currentValue).toBe("parent");
+  });
+
+  it("sets `parent` at the picked layer", async () => {
+    const ctx = createMockCtx();
+    await showSpawnOptionsMenu(ctx);
+    const dt = settingsListCalls[0].items.find((i) => i.id === "defaultThinking")!;
+    dt.submenu!("", vi.fn());
+    settingsListCalls[settingsListCalls.length - 1].list.activate("global");
+    selectListInstances[selectListInstances.length - 1].onSelect!({ value: "parent", label: "parent" });
+
+    expect(mockModules.mockConfig.agent.defaultThinking).toBe("parent");
+  });
+
+  it("selecting 'pi default' removes the key at the picked layer", async () => {
     mockModules.mockConfig.agent.defaultThinking = "high";
     const ctx = createMockCtx();
     await showSpawnOptionsMenu(ctx);
@@ -492,10 +521,10 @@ describe("showSpawnOptionsMenu — default thinking level", () => {
     targetList.activate("global");
 
     const levelList = selectListInstances[selectListInstances.length - 1];
-    levelList.onSelect!({ value: "inherit", label: "inherit" });
+    levelList.onSelect!({ value: "pi default", label: "pi default" });
 
     expect(mockModules.mockConfig.agent.defaultThinking).toBeUndefined();
-    expect(mockDone).toHaveBeenCalledWith("inherit");
+    expect(mockDone).toHaveBeenCalledWith("pi default");
   });
 });
 

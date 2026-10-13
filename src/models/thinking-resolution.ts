@@ -61,19 +61,6 @@ export function resolveThinkingLevel(sources: ThinkingLevelSources): ThinkingLev
   return winner.value === "parent" ? sources.parentLevel : winner.value;
 }
 
-/**
- * The spawn-effective thinking level as a display surface shows it: the chain,
- * then pi's global defaultThinkingLevel, then medium, clamped to the model.
- */
-export function resolveDisplayThinkingLevel(
-  sources: ThinkingLevelSources,
-  piDefaultThinking: ThinkingLevel | undefined,
-  model: Model<any> | undefined,
-): ThinkingLevel {
-  const base = resolveThinkingLevel(sources) ?? piDefaultThinking ?? PI_FALLBACK_THINKING_LEVEL;
-  return model ? clampThinkingLevel(model, base) : base;
-}
-
 /** A chain position carrying a written value. */
 interface WrittenSource<P extends string> {
   position: P;

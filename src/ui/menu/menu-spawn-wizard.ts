@@ -16,7 +16,13 @@ import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
 import { agentBulletPrefix } from "../format.js";
-import { resolveDisplayThinkingLevel } from "../../models/thinking-resolution.js";
+import {
+  formatDisplayedThinking,
+  PARENT_THINKING_CHOICE,
+  PI_DEFAULT_CHOICE,
+  resolveDisplayedThinking,
+  type DisplayedThinking,
+} from "../../models/thinking-resolution.js";
 import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
 import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
 import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
@@ -112,14 +118,16 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
 
 /**
  * Build a submenu for selecting the thinking level based on the current model.
- * Non-reasoning models only show 'off'; reasoning models show supported levels plus 'inherit'.
+ * Non-reasoning models only show 'off'; reasoning models show supported levels
+ * plus 'parent' (when the parent session has a level) and 'pi default'.
  */
 function createThinkingLevelSubmenu(
   registry: Parameters<typeof findModelInRegistry>[1],
   currentModelStr: string,
   fallbackModel: Parameters<typeof findModelInRegistry>[2],
   theme: Theme,
-  onThinkingChange: (level: ThinkingLevel | undefined) => void,
+  parentAvailable: boolean,
+  onThinkingChoice: (choice: string) => void,
 ): (_currentValue: string, done: (v?: string) => void) => any {
   return (_currentValue, done) => {
     const model = findModelInRegistry(currentModelStr, registry, fallbackModel);
@@ -138,12 +146,15 @@ function createThinkingLevelSubmenu(
     }));
 
     if (isReasoning) {
-      items.push({ value: "inherit", label: "Inherit" });
+      if (parentAvailable) {
+        items.push({ value: PARENT_THINKING_CHOICE, label: PARENT_THINKING_CHOICE });
+      }
+      items.push({ value: PI_DEFAULT_CHOICE, label: PI_DEFAULT_CHOICE });
     }
 
     const list = new SelectList(items, 10, buildSelectListTheme(theme));
     list.onSelect = (item) => {
-      onThinkingChange(item.value === "inherit" ? undefined : (item.value as ThinkingLevel));
+      onThinkingChoice(item.value);
       done(item.value);
     };
     list.onCancel = () => done();
@@ -226,23 +237,28 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
   let currentModelStr = effectiveModelStr || "";
 
-  // Wizard thinking state. "Derived" (initial) always shows the level the
-  // spawn would actually run with for the current model — frontmatter >
-  // per-model > defaultThinking > pi's global default > medium — so a model
-  // switch re-derives for the new model. Any user selection, including
-  // Inherit, moves to "userSet": the chosen value is kept across model
-  // switches and only clamped to the new model's supported levels. Inherit
-  // (undefined) means "pass nothing to the session" — pi's fallback decides.
-  type WizardThinking = { kind: "derived" } | { kind: "userSet"; value: ThinkingLevel | undefined };
-  let thinkingState: WizardThinking = { kind: "derived" };
-  const setThinkingChoice = (level: ThinkingLevel | undefined) => {
-    thinkingState = { kind: "userSet", value: level };
+  // Thinking has three states (issue: thinking-inherit-parent):
+  //   default   - "pi default" in the picker: the spawn sends no explicit value
+  //               and the runner resolves the chain at the spawn's target cwd;
+  //               the row shows the prediction with its winning source.
+  //   picked    - a level chosen here: kept across model switches, clamped to
+  //               the new model, shown without a source annotation.
+  //   following - `parent`: the parent session's live level, re-read and
+  //               re-clamped on every rebuild, annotated "(parent)".
+  type WizardThinking = { kind: "default" } | { kind: "picked"; level: ThinkingLevel } | { kind: "following" };
+  let thinkingState: WizardThinking = { kind: "default" };
+
+  /** Record the user's pick from the thinking submenu. */
+  const setThinkingChoice = (choice: string) => {
+    if (choice === PI_DEFAULT_CHOICE) thinkingState = { kind: "default" };
+    else if (choice === PARENT_THINKING_CHOICE) thinkingState = { kind: "following" };
+    else thinkingState = { kind: "picked", level: choice as ThinkingLevel };
   };
 
   // Pi settings snapshot for the thinking display, read at the spawn's target
   // cwd. A prediction for display only — the session is the source of truth
-  // once it exists. Re-read when the selected worktree changes while Derived,
-  // so the displayed level keeps tracking the spawn target.
+  // once it exists. Re-read when the selected worktree changes while on
+  // `default`, so the displayed level keeps tracking the spawn target.
   /** The wizard's default spawn target: the parent session's cwd. */
   const parentThinkingCwd = session?.cwd ?? ctx.cwd;
   let modelThinkingLevels = getPiModelThinkingLevels(parentThinkingCwd);
@@ -250,40 +266,56 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
   /** Re-read the pi settings snapshot for a new spawn target cwd. */
   const refreshThinkingSnapshot = (cwd: string) => {
-    if (thinkingState.kind !== "derived") return;
+    if (thinkingState.kind !== "default") return;
     modelThinkingLevels = getPiModelThinkingLevels(cwd);
     piDefaultThinking = getPiDefaultThinkingLevel(cwd);
   };
 
-  /** The spawn-effective level for a model key string, clamped to the model. */
-  const deriveThinking = (modelKeyStr: string): ThinkingLevel => {
+  const thinkingRegistry = () => session?.modelRegistry ?? ctx.modelRegistry;
+
+  /** The parent session's live level, clamped to the wizard's current model. */
+  const followedThinking = (): ThinkingLevel | undefined => {
+    const level = session?.thinkingLevel;
+    if (!level) return undefined;
+    const model = findModelInRegistry(currentModelStr, thinkingRegistry(), session?.model);
+    return model ? clampThinkingLevel(model, level) : level;
+  };
+
+  /** The chain prediction for a model key string, clamped to the model. */
+  const derivedThinking = (modelKeyStr: string): DisplayedThinking => {
     const key = modelKeyStr || parentModelId;
-    const registry = session?.modelRegistry ?? ctx.modelRegistry;
-    return resolveDisplayThinkingLevel(
+    return resolveDisplayedThinking(
       {
         frontmatter: agentConfig.thinkingLevel,
         perModel: modelThinkingLevels[key],
         defaultThinking: store.agent.defaultThinking,
+        parentLevel: session?.thinkingLevel,
       },
       piDefaultThinking,
-      findModelInRegistry(modelKeyStr, registry, session?.model),
+      findModelInRegistry(modelKeyStr, thinkingRegistry(), session?.model),
     );
   };
 
-  /** The value this wizard currently holds: the user's choice, or the derived level. */
-  const currentThinkingValue = (): ThinkingLevel | undefined =>
-    thinkingState.kind === "userSet" ? thinkingState.value : deriveThinking(currentModelStr);
+  /** What the thinking row shows. */
+  const thinkingDisplay = (): string => {
+    if (thinkingState.kind === "picked") return thinkingState.level;
+    const followed = thinkingState.kind === "following" ? followedThinking() : undefined;
+    if (followed) return formatDisplayedThinking({ level: followed, source: "parent" });
+    return formatDisplayedThinking(derivedThinking(currentModelStr));
+  };
 
   /**
-   * What the spawn passes as the explicit param. The derived value is a
-   * display prediction read at the parent cwd — passing it would shadow the
-   * spawn target's own per-model entry (worktree targets carry their own
-   * .pi/settings.json). frontmatter, per-model, and defaultThinking are
-   * exactly the runner's chain, so Derived passes nothing and the runner
-   * resolves them at the actual target cwd. Only a user pick is explicit.
+   * What the spawn passes as the explicit param. On `default` the derived value
+   * is only a display prediction read at the parent cwd — passing it would
+   * shadow the spawn target's own per-model entry (worktree targets carry their
+   * own .pi/settings.json), so nothing is sent and the runner resolves
+   * frontmatter, per-model and defaultThinking at the actual target cwd.
    */
-  const spawnThinkingLevel = (): ThinkingLevel | undefined =>
-    thinkingState.kind === "userSet" ? thinkingState.value : undefined;
+  const spawnThinkingLevel = (): ThinkingLevel | undefined => {
+    if (thinkingState.kind === "picked") return thinkingState.level;
+    if (thinkingState.kind === "following") return followedThinking();
+    return undefined;
+  };
 
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
   let currentMaxTokens: number | undefined = agentConfig.maxTokens;
@@ -396,14 +428,15 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
           onSet: (_target, model) => {
             currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
 
-            // UserSet: keep the user's choice, clamped to the new model's
-            // supported levels. Derived: nothing here — the displayed value
+            // Picked: keep the user's choice, clamped to the new model's
+            // supported levels. Default: nothing here — the displayed value
             // re-derives from the new model (per-model + pi default included).
-            if (thinkingState.kind === "userSet" && thinkingState.value != null && currentModelStr) {
+            // Following re-reads and re-clamps the parent's level on rebuild.
+            if (thinkingState.kind === "picked" && currentModelStr) {
               const registry = session?.modelRegistry ?? ctx.modelRegistry;
               const resolved = findModelInRegistry(currentModelStr, registry, session?.model);
               if (resolved) {
-                thinkingState = { kind: "userSet", value: clampThinkingLevel(resolved, thinkingState.value) };
+                thinkingState = { kind: "picked", level: clampThinkingLevel(resolved, thinkingState.level) };
               }
             }
             // Rebuild items so the displayed thinking level reflects the new model
@@ -463,16 +496,15 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
       {
         id: "thinkingLevel",
         label: "Thinking level",
-        currentValue: currentThinkingValue() ?? "inherit",
+        currentValue: thinkingDisplay(),
         description: "Set the reasoning effort level",
         submenu: createThinkingLevelSubmenu(
           session?.modelRegistry ?? ctx.modelRegistry,
           currentModelStr,
           session?.model,
           theme,
-          (level) => {
-            setThinkingChoice(level);
-          },
+          !!session?.thinkingLevel,
+          setThinkingChoice,
         ),
       },
       {
@@ -546,7 +578,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     const onChange = (id: string, newValue: string) => {
       switch (id) {
         case "thinkingLevel":
-          setThinkingChoice(newValue === "inherit" ? undefined : (newValue as ThinkingLevel));
+          setThinkingChoice(newValue);
           break;
         case "background":
           currentBackground = newValue === "ON";
