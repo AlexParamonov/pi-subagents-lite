@@ -28,8 +28,12 @@ const SESSION_NAME = "test-agent#11111111";
  * (`timeline`, interleaved with the run's own markers) or the exact payloads
  * (`published`). A fake because this file mocks the SDK module, so the real bus
  * factory is unavailable; the contract suite covers the real one.
+ *
+ * `marksMicrotasks` queues a marker from inside each emit. A caller that emits
+ * and then continues synchronously records the marker after that step; a caller
+ * that awaits in between records it before, whatever it awaits on.
  */
-function busRecorder(): {
+function busRecorder(options: { marksMicrotasks?: boolean } = {}): {
   bus: EventBus;
   timeline: string[];
   published: Array<{ channel: string; data: unknown }>;
@@ -40,6 +44,7 @@ function busRecorder(): {
     emit: (channel, data) => {
       timeline.push(channel);
       published.push({ channel, data });
+      if (options.marksMicrotasks) queueMicrotask(() => timeline.push("microtask"));
     },
     on: () => () => {},
   };
@@ -79,6 +84,23 @@ describe("Subagent lifecycle announcements", () => {
     await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(bus) });
 
     expect(timeline).toEqual(["subagents:child:session-created", "bind", "subagents:child:bound"]);
+  });
+
+  it("announces the child created on the bind's own call stack, with no await in between", async () => {
+    const { bus, timeline } = busRecorder({ marksMicrotasks: true });
+    session.bindExtensions.mockImplementation(async () => {
+      timeline.push("bind");
+    });
+
+    await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(bus) });
+
+    expect(timeline).toEqual([
+      "subagents:child:session-created",
+      "bind",
+      "microtask",
+      "subagents:child:bound",
+      "microtask",
+    ]);
   });
 
   it("announces the child's own session id next to the parent's", async () => {

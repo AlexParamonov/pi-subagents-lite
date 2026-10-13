@@ -532,8 +532,8 @@ describe("contract: child session announced on the parent's event bus", () => {
     // The child's session_start is the proof the announcement reached the bus
     // before the child's own extensions ran. What this timeline cannot see is
     // the call-stack property: an await between the emit and the bind lands the
-    // created entry in the same place, so that invariant lives in
-    // createAndConfigureSession, not here.
+    // created entry in the same place. That invariant is pinned at the runner's
+    // spawn seam, where both the emit and the bind are code under test.
     const announcedWhileLive = [
       { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
       { event: "child:session_start" },
