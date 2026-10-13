@@ -26,6 +26,11 @@ interface TeardownSession {
 const CHILD_ID = "child-session-id";
 const PARENT_ID = "parent-session-id";
 
+/** The convention's channels, spelled as the subscriber sees them. */
+const CREATED = "subagents:child:session-created";
+const BOUND = "subagents:child:bound";
+const DISPOSED = "subagents:child:disposed";
+
 function teardownSession(overrides: Partial<TeardownSession> = {}): TeardownSession & AgentSession {
   return {
     sessionId: CHILD_ID,
@@ -37,18 +42,18 @@ function teardownSession(overrides: Partial<TeardownSession> = {}): TeardownSess
 }
 
 /**
- * A real pi bus recording disposal announcements, plus the seed that makes the
- * session under teardown an announced child (the announcement the spawn path makes).
+ * Subscribes a real pi bus to every lifecycle channel, appending the channel it
+ * hears to `timeline` as it fires. Passing `session` first makes the spawn-path
+ * announcement that marks the session under teardown as announced (unrecorded,
+ * it happens before the listener exists), so a recorded `created` would mean the
+ * teardown re-announced it.
  */
-function lifecycleBus(session: AgentSession, onDisposed: () => void = () => {}) {
+function watchLifecycle(timeline: string[], session?: AgentSession): void {
   const events = createEventBus();
-  const published: string[] = [];
-  events.on("subagents:child:disposed", (data) => {
-    published.push(`disposed:${JSON.stringify(data)}`);
-    onDisposed();
-  });
-  announceChildSessionCreated(session, events, PARENT_ID);
-  return { published };
+  if (session) announceChildSessionCreated(session, events, PARENT_ID);
+  for (const channel of [CREATED, BOUND, DISPOSED]) {
+    events.on(channel, () => timeline.push(channel));
+  }
 }
 
 describe("disposeChildSession", () => {
@@ -65,10 +70,10 @@ describe("disposeChildSession", () => {
     session.dispose.mockImplementation(() => {
       order.push("dispose");
     });
-    lifecycleBus(session, () => order.push("disposed"));
+    watchLifecycle(order, session);
     await disposeChildSession(session);
 
-    expect(order).toEqual(["abort", "emit", "dispose", "disposed"]);
+    expect(order).toEqual(["abort", "emit", "dispose", DISPOSED]);
     expect(session.extensionRunner.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
   });
 
@@ -78,34 +83,33 @@ describe("disposeChildSession", () => {
         throw new Error("dispose failed");
       }),
     });
-    const { published } = lifecycleBus(session);
+    const timeline: string[] = [];
+    watchLifecycle(timeline, session);
 
     await disposeChildSession(session);
 
-    expect(published).toEqual([`disposed:${JSON.stringify({ sessionId: CHILD_ID })}`]);
+    expect(timeline).toEqual([DISPOSED]);
   });
 
   it("announces the child disposed exactly once when termination triggers overlap", async () => {
     const session = teardownSession();
-    const { published } = lifecycleBus(session);
+    const timeline: string[] = [];
+    watchLifecycle(timeline, session);
 
     await Promise.all([disposeChildSession(session), disposeChildSession(session)]);
     await disposeChildSession(session);
 
-    expect(published).toEqual([`disposed:${JSON.stringify({ sessionId: CHILD_ID })}`]);
+    expect(timeline).toEqual([DISPOSED]);
   });
 
   it("announces nothing for a child session that was never announced", async () => {
     const session = teardownSession();
-    const events = createEventBus();
-    const published: string[] = [];
-    for (const channel of ["subagents:child:session-created", "subagents:child:bound", "subagents:child:disposed"]) {
-      events.on(channel, (data) => published.push(`${channel}:${JSON.stringify(data)}`));
-    }
+    const timeline: string[] = [];
+    watchLifecycle(timeline);
 
     await expect(disposeChildSession(session)).resolves.toBeUndefined();
 
-    expect(published).toEqual([]);
+    expect(timeline).toEqual([]);
   });
 
   it("is idempotent: a second call disposes exactly once and returns the first teardown", async () => {
