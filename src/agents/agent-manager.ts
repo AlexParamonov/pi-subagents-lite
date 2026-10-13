@@ -729,9 +729,12 @@ export class AgentManager {
     record.execution.session = undefined;
     const done = disposeChildSession(session);
     this.pendingDisposals.add(done);
-    void done.then(() => {
+    // Both outcomes must remove the entry: dispose() waits on this set in a
+    // loop, so an entry that only settles on fulfilment would never leave.
+    const forget = (): void => {
       this.pendingDisposals.delete(done);
-    });
+    };
+    void done.then(forget, forget);
   }
 
   /** Stop agents violating tool/idle timeouts. Thresholds are read live so menu changes apply to running agents. */
