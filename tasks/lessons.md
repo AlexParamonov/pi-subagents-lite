@@ -140,3 +140,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** A recorder helper that also seeds the announcement it records must subscribe after seeding: subscribing first made the seed's own `created` emit land in the timeline, and three teardown tests failed on arrays whose printed diff looked identical to the expectation.
 **Next time:** When one helper both seeds an event and records the channel it lands on, seed first, subscribe after, and state in the helper that the seed is unrecorded. Keep `JSON.stringify`-encoded expectations only where the encoding is itself the contract.
 
+## announce-child-sessions (refactor: two fakes for one boundary) - 2026-10-13
+**What worked:** Sharing the guarded `pi.events` behaviour through one fixture that takes the bus as a parameter (`guardedEvents(bus)`): the always-refused handle and the live-then-stale handle now come from one implementation, and the file that carried its own facade fake kept only the helper that announces and records.
+**What failed:** The obvious merge — put the facade in `test/fixtures.ts` and build it on `createEventBus()` — breaks every test file that mocks the SDK module: those mock factories list only the exports the code under test reads, so a shared fixture importing the bus factory at runtime gets `undefined` there. The two fakes looked duplicated but differed by a real constraint, not by accident.
+**Next time:** Before merging two similar fakes, check what each consumer's module environment allows: a shared fixture may depend only on what its most heavily mocked consumer provides. Pass such a dependency in rather than constructing it inside the fixture.
+
