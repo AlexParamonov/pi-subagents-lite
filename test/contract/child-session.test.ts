@@ -519,17 +519,20 @@ describe("contract: child session announced on the parent's event bus", () => {
     // the call-stack property: an await between the emit and the bind lands the
     // created entry in the same place, so that invariant lives in
     // createAndConfigureSession, not here.
-    expect(entries()).toEqual([
+    const announcedWhileLive = [
       { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
       { event: "child:session_start" },
       { event: BOUND, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
-    ]);
+    ];
+    expect(entries()).toEqual(announcedWhileLive);
 
     await disposeChildSession(child);
     await disposeChildSession(child);
 
-    // After the child's own shutdown handlers, and exactly once.
-    expect(entries().slice(3)).toEqual([
+    // Teardown appends the child's own shutdown handlers and then one disposed
+    // entry; the second teardown appends nothing.
+    expect(entries()).toEqual([
+      ...announcedWhileLive,
       { event: "child:session_shutdown" },
       { event: DISPOSED, data: { sessionId: child.sessionId } },
     ]);
