@@ -86,6 +86,14 @@ _Avoid_: Parent abort signal, interrupt listener, parent signal binding
 An agent that is no longer in progress, in one of the terminal statuses: completed, turn_limited, aborted, stopped, error. The AgentStatus tool always lists in-progress (running, queued) agents and shows settled agents most-recently-settled first, capped at the configured `agentStatusLimit` (0 = auto: 2 × default concurrency).
 _Avoid_: Done agent, finished agent, terminal agent
 
+**Agent id**:
+The 17-character key of an agent record. All tool and widget text shows the first 8 characters; tool input accepts that shown form when it matches exactly one retained agent, and an ambiguous prefix resolves to nothing. The ambiguity error is the only place a full id is printed (ADR-0010).
+_Avoid_: Short id (as a second kind of id), agent key
+
+**MessageAgent**:
+The main session agent's tool for sending input to a **Subagent** it already spawned: a running agent receives it at its next turn boundary, a **Settled** agent with a live session restarts. Same seam as the **ConversationViewer overlay**'s steer/continue. Runs parent-ward; the opposite direction is a **Nudge**.
+_Avoid_: SteerAgent, agent messaging tool, follow-up
+
 **Watchdog**:
 Time-based stuck-agent detection that stops a running agent when a single tool call exceeds the tool timeout, or when the agent produces no activity (tool events or streamed response text) for longer than the idle timeout. Both thresholds are configurable in minutes; a watchdog stop is recorded with a reason distinct from a user stop.
 _Avoid_: Timeout killer, stuck-agent detector
@@ -113,6 +121,11 @@ _Avoid_: Timeout killer, stuck-agent detector
 - The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
 - An **Agent type** has one **Resolved model**; its **Thinking level** is clamped to that model's supported levels
 - The Model settings menu lists only Agent types with an explicit per-type **Model override** at the session, project, or global layer; frontmatter-only and inheriting types are never listed
+- A running **Subagent** takes a **MessageAgent** message even before its session exists (buffered for the session's start); a **Subagent** that is not running takes one only through a live session
+- A **MessageAgent** message lands after the current turn's tool calls finish, never mid-tool-call, and is dropped if the run settles before that boundary
+- **MessageAgent** continues any **Settled** **Subagent** with a live session, including one a human stopped: the model can restart a deliberately stopped agent
+- Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
+- A **Nudge** carries a **Subagent** result parent-ward; **MessageAgent** carries input the other way
 
 ### Navigation
 
