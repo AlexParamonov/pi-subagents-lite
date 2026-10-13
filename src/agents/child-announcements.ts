@@ -35,6 +35,8 @@ interface ChildAnnouncement {
   events: EventBus;
   sessionId: string;
   parentSessionId: string;
+  /** Diagnostic only, never a payload field: pi's session name, e.g. `Explore#a1b2c3d4`. */
+  name?: string;
 }
 
 /** Per-spawn carrier: the bus a child was announced on outlives the spawn call. */
@@ -43,12 +45,19 @@ const announced = new WeakMap<AgentSession, ChildAnnouncement>();
 /** The payload of every channel, as the convention defines it. */
 type ChildPayload = { sessionId: string; parentSessionId?: string };
 
-function publish(events: EventBus, channel: string, payload: ChildPayload): void {
+/** The pi session id is not something the user holds, so lead with the Subagent's name. */
+function subjectOf(announcement: ChildAnnouncement): string {
+  return announcement.name
+    ? `${announcement.name} (session ${announcement.sessionId})`
+    : `session ${announcement.sessionId}`;
+}
+
+function publish(announcement: ChildAnnouncement, channel: string, payload: ChildPayload): void {
   try {
-    events.emit(channel, payload);
+    announcement.events.emit(channel, payload);
   } catch (err) {
     console.warn(
-      `[pi-subagents-lite] Dropped Subagent announcement ${channel} for session ${payload.sessionId}: ` +
+      `[pi-subagents-lite] Dropped Subagent announcement ${channel} for ${subjectOf(announcement)}: ` +
         `Subagent-aware extensions will not recognise this Subagent (${err})`,
     );
   }
@@ -60,15 +69,23 @@ export function announceChildSessionCreated(
   parentSessionId: string,
 ): void {
   if (!events) return;
-  const sessionId = session.sessionId;
-  announced.set(session, { events, sessionId, parentSessionId });
-  publish(events, CHILD_SESSION_CREATED, { sessionId, parentSessionId });
+  const announcement: ChildAnnouncement = {
+    events,
+    sessionId: session.sessionId,
+    parentSessionId,
+    name: session.sessionName,
+  };
+  announced.set(session, announcement);
+  publish(announcement, CHILD_SESSION_CREATED, {
+    sessionId: announcement.sessionId,
+    parentSessionId,
+  });
 }
 
 export function announceChildSessionBound(session: AgentSession): void {
   const announcement = announced.get(session);
   if (!announcement) return;
-  publish(announcement.events, CHILD_SESSION_BOUND, {
+  publish(announcement, CHILD_SESSION_BOUND, {
     sessionId: announcement.sessionId,
     parentSessionId: announcement.parentSessionId,
   });
@@ -78,5 +95,5 @@ export function announceChildSessionDisposed(session: AgentSession): void {
   const announcement = announced.get(session);
   if (!announcement) return;
   announced.delete(session);
-  publish(announcement.events, CHILD_SESSION_DISPOSED, { sessionId: announcement.sessionId });
+  publish(announcement, CHILD_SESSION_DISPOSED, { sessionId: announcement.sessionId });
 }

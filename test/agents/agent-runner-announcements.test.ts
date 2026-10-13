@@ -19,6 +19,9 @@ import { runAgent } from "../../src/agents/agent-runner.js";
 const CHILD_ID = "child-session-id";
 /** The parent id fakeCtx()'s session manager reports. */
 const PARENT_ID = "session-1";
+/** A manager-assigned id: the spawn names the child session `<type>#<short id>`. */
+const AGENT_ID = "11111111-2222-4000-8000-000000000001";
+const SESSION_NAME = "test-agent#11111111";
 
 /**
  * Bus fake recording what lite published, so a test can read the ordering
@@ -134,12 +137,17 @@ describe("an announcement that cannot be published never breaks the run", () => 
   it("binds and returns the session as usual, and names the Subagent in a warning", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const result = await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(refusingEvents()) });
+      const result = await runAgent(fakeCtx(), "test-agent", "task", {
+        pi: piWithBus(refusingEvents()),
+        agentId: AGENT_ID,
+      });
 
       expect(result.session).toBe(session);
       expect(session.bindExtensions).toHaveBeenCalledOnce();
       expect(session.dispose).not.toHaveBeenCalled();
-      expect(warn.mock.calls.map((call) => call.join(" ")).join("\n")).toContain(CHILD_ID);
+      const lines = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(lines).toContain(SESSION_NAME);
+      expect(lines).toContain(CHILD_ID);
     } finally {
       warn.mockRestore();
     }

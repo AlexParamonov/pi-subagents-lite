@@ -142,6 +142,22 @@ describe("when the bus refuses the emit (pi's stale extension ctx)", () => {
     ]);
     for (const line of lines) expect(line).toContain(CHILD_ID);
   });
+
+  it("names the Subagent by its session name, the handle the user holds", () => {
+    const events = refusingEvents();
+    const session = asAgentSession({ sessionId: CHILD_ID, sessionName: "Explore#a1b2c3d4" });
+
+    announceChildSessionCreated(session, events, PARENT_ID);
+    announceChildSessionBound(session);
+    announceChildSessionDisposed(session);
+
+    const lines = warn.mock.calls.map((call) => call.join(" "));
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).toContain("Explore#a1b2c3d4");
+      expect(line).toContain(CHILD_ID);
+    }
+  });
 });
 
 describe("while the bus accepts the announcements", () => {
