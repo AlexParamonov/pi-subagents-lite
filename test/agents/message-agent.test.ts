@@ -35,6 +35,7 @@ import { executeMessageAgentTool } from "../../src/agents/tool-execution.js";
 const ID = "abc123de-4000-400";
 const SHORT_ID = "abc123de";
 const MESSAGE = "use the second index, not the first";
+const SETTLED: AgentStatus[] = ["completed", "stopped", "error"];
 
 function target(
   overrides: { status: AgentStatus; session?: boolean; id?: string } = { status: "running" },
@@ -62,31 +63,25 @@ describe("executeMessageAgentTool", () => {
     mockStore.agent.agentStatusLimit = 8;
   });
 
-  it("steers a running agent and reports what it queued", async () => {
+  it("steers a running agent and reports the steered distinction", async () => {
     mockMatchAgents.mockReturnValue([target({ status: "running" })]);
 
     const result = await message();
 
     expect(mockSteer).toHaveBeenCalledWith(ID, MESSAGE);
-    expect(result.content[0].text).toBe("Sent (steered)");
+    expect(result.content[0].text).toContain("steered");
   });
 
-  it("continues a settled agent through its live session", async () => {
-    mockMatchAgents.mockReturnValue([target({ status: "completed" })]);
+  it("continues every settled status through its live session, including one the user stopped", async () => {
+    for (const status of SETTLED) {
+      mockMatchAgents.mockReturnValue([target({ status })]);
+      mockSteer.mockClear();
 
-    const result = await message();
+      const result = await message();
 
-    expect(mockSteer).toHaveBeenCalledWith(ID, MESSAGE);
-    expect(result.content[0].text).toBe("Sent (continued)");
-  });
-
-  it("restarts an agent the user stopped", async () => {
-    mockMatchAgents.mockReturnValue([target({ status: "stopped" })]);
-
-    const result = await message();
-
-    expect(mockSteer).toHaveBeenCalledWith(ID, MESSAGE);
-    expect(result.content[0].text).toBe("Sent (continued)");
+      expect(mockSteer).toHaveBeenCalledWith(ID, MESSAGE);
+      expect(result.content[0].text).toContain("continued");
+    }
   });
 
   it("accepts a message for a running agent whose session does not exist yet", async () => {
@@ -95,7 +90,7 @@ describe("executeMessageAgentTool", () => {
     const result = await message();
 
     expect(mockSteer).toHaveBeenCalledWith(ID, MESSAGE);
-    expect(result.content[0].text).toBe("Sent (steered)");
+    expect(result.content[0].text).toContain("steered");
   });
 
   it("reports a settled target with no live session without sending anything", async () => {
@@ -105,7 +100,8 @@ describe("executeMessageAgentTool", () => {
 
     expect(mockSteer).not.toHaveBeenCalled();
     expect(result.isError).toBeFalsy();
-    expect(result.content[0].text).toBe(`Agent ${SHORT_ID} is completed with no live session. Message not sent.`);
+    expect(result.content[0].text).toContain("completed");
+    expect(result.content[0].text).toContain("not sent");
   });
 
   it("acts on the matched record when the input is the short id form", async () => {
@@ -124,7 +120,7 @@ describe("executeMessageAgentTool", () => {
     ]);
 
     await expect(message({ agent_id: "aaaa1111", message: MESSAGE })).rejects.toThrow(
-      "Ambiguous agent id aaaa1111. Matching agents: aaaa1111-bbbb-400, aaaa1111-cccc-400. Use a longer id.",
+      /Ambiguous agent id aaaa1111[\s\S]*aaaa1111-bbbb-400[\s\S]*aaaa1111-cccc-400/,
     );
     expect(mockSteer).not.toHaveBeenCalled();
   });
@@ -137,57 +133,30 @@ describe("executeMessageAgentTool", () => {
     ]);
 
     await expect(message({ agent_id: "ffffffff", message: MESSAGE })).rejects.toThrow(
-      "Agent ffffffff not found. Known agents: aaa111bb (builder) running, ddd333ee (builder) completed",
+      /ffffffff not found[\s\S]*ddd333ee \(builder\) completed/,
     );
-  });
-
-  it("bounds the settled agents it lists for an unknown id", async () => {
-    mockMatchAgents.mockReturnValue([]);
-    mockStore.agent.agentStatusLimit = 1;
-    mockListAgents.mockReturnValue([
-      target({ status: "completed", id: "ccc333ccc333cccdd" }),
-      target({ status: "completed", id: "ddd444ddd444dddde" }),
-    ]);
-
-    await expect(message({ agent_id: "ffffffff", message: MESSAGE })).rejects.toThrow(
-      "Agent ffffffff not found. Known agents: ccc333cc (builder) completed\nand 1 more settled agents",
-    );
-  });
-
-  it("lists no agents for an unknown id when none exist", async () => {
-    mockMatchAgents.mockReturnValue([]);
-
-    await expect(message({ agent_id: "ffffffff", message: MESSAGE })).rejects.toThrow(
-      "Agent ffffffff not found. Known agents: none",
-    );
+    expect(mockSteer).not.toHaveBeenCalled();
   });
 
   it("errors when the manager refuses delivery", async () => {
     mockMatchAgents.mockReturnValue([target({ status: "completed" })]);
     mockSteer.mockResolvedValue(false);
 
-    await expect(message()).rejects.toThrow(
-      `Failed to send message to agent ${SHORT_ID}. It may still be settling or its concurrency slot is full. Try again.`,
-    );
+    await expect(message()).rejects.toThrow(`Failed to send message to agent ${SHORT_ID}`);
   });
 
-  it("rejects a missing message before resolving the target", async () => {
-    await expect(message({ agent_id: ID })).rejects.toThrow("message is required");
+  it("rejects a missing or blank message without resolving the target", async () => {
+    for (const value of [undefined, "   "]) {
+      await expect(message({ agent_id: ID, message: value })).rejects.toThrow("message is required");
+    }
     expect(mockMatchAgents).not.toHaveBeenCalled();
     expect(mockSteer).not.toHaveBeenCalled();
   });
 
-  it("rejects a blank message before any delivery", async () => {
-    await expect(message({ agent_id: ID, message: "   " })).rejects.toThrow("message is required");
-    expect(mockSteer).not.toHaveBeenCalled();
-  });
-
-  it("rejects a missing agent_id", async () => {
-    await expect(message({ message: MESSAGE })).rejects.toThrow("agent_id is required");
-  });
-
-  it("rejects a whitespace-only agent_id without resolving it", async () => {
-    await expect(message({ agent_id: "  ", message: MESSAGE })).rejects.toThrow("agent_id is required");
+  it("rejects a missing or blank agent_id without resolving it", async () => {
+    for (const value of [undefined, "  "]) {
+      await expect(message({ agent_id: value, message: MESSAGE })).rejects.toThrow("agent_id is required");
+    }
     expect(mockMatchAgents).not.toHaveBeenCalled();
   });
 

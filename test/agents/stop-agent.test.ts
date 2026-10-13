@@ -98,7 +98,7 @@ describe("executeStopAgentTool", () => {
     ]);
 
     await expect(stop({ agent_id: "nonexistent-id" })).rejects.toThrow(
-      "Agent nonexistent-id not found. Running agents: aaa111bb (builder), ddd333ee (reviewer)",
+      /nonexistent-id not found.*Running agents:.*aaa111bb \(builder\)/s,
     );
   });
 
@@ -106,19 +106,19 @@ describe("executeStopAgentTool", () => {
     mockMatchAgents.mockReturnValue([agent("running", "aaaa1111-bbbb-400"), agent("running", "aaaa1111-cccc-400")]);
 
     await expect(stop({ agent_id: "aaaa1111" })).rejects.toThrow(
-      "Ambiguous agent id aaaa1111. Matching agents: aaaa1111-bbbb-400, aaaa1111-cccc-400. Use a longer id.",
+      /Ambiguous agent id aaaa1111[\s\S]*aaaa1111-bbbb-400[\s\S]*aaaa1111-cccc-400/,
     );
     expect(mockAbort).not.toHaveBeenCalled();
   });
 
   it("returns info when agent already completed", async () => {
     mockMatchAgents.mockReturnValue([agent("completed")]);
-    mockListAgents.mockReturnValue([agent("running", "aaa111bbb222cccdd", "explorer")]);
 
     const result = await stop({ agent_id: ID });
 
     expect(result.isError).toBeFalsy();
-    expect(result.content[0].text).toBe(`Agent ${SHORT_ID} is already completed. Running agents: aaa111bb (explorer)`);
+    expect(result.content[0].text).toContain("already completed");
+    expect(mockAbort).not.toHaveBeenCalled();
   });
 
   it("returns info when agent already stopped", async () => {

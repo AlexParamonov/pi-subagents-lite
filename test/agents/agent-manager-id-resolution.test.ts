@@ -36,24 +36,22 @@ describe("AgentManager id resolution", () => {
     return id.slice(0, SHORT_ID_LENGTH);
   }
 
+  function matchedIds(id: string): string[] {
+    return manager.matchAgents(id).map((record) => record.id);
+  }
+
   it("returns the record for an exact id", () => {
     const id = spawn("first");
 
-    expect(manager.matchAgents(id)).toEqual([manager.getRecord(id)!]);
-  });
-
-  it("resolves the short id form shown in tool output to its record", () => {
-    const id = spawn("first");
-
-    expect(manager.matchAgents(shortId(id))).toEqual([manager.getRecord(id)!]);
+    expect(matchedIds(id)).toEqual([id]);
   });
 
   it("resolves a short id to that record alone while others are retained", () => {
     const first = spawn("first");
     const second = spawn("second");
-
-    expect(manager.matchAgents(shortId(second))).toEqual([manager.getRecord(second)!]);
     expect(shortId(first)).not.toBe(shortId(second));
+
+    expect(matchedIds(shortId(second))).toEqual([second]);
   });
 
   it("returns every candidate for an ambiguous prefix and resolves none of them", () => {
@@ -62,26 +60,16 @@ describe("AgentManager id resolution", () => {
     const shared = first.slice(0, SHORT_ID_LENGTH - 1);
     expect(shared).toBe(second.slice(0, SHORT_ID_LENGTH - 1));
 
-    expect(manager.matchAgents(shared)).toEqual([manager.getRecord(first)!, manager.getRecord(second)!]);
+    expect(matchedIds(shared)).toEqual([first, second]);
   });
 
-  it("returns nothing for an id no record matches", () => {
-    spawn("first");
-
-    expect(manager.matchAgents("ffffffff")).toEqual([]);
-  });
-
-  it("rejects a blank id instead of matching every retained record", () => {
+  it("returns no match for a blank id or an id no record carries", () => {
     spawn("first");
     spawn("second");
 
-    expect(manager.matchAgents("")).toEqual([]);
-  });
-
-  it("rejects a whitespace-only id instead of matching every retained record", () => {
-    spawn("first");
-
-    expect(manager.matchAgents("   ")).toEqual([]);
+    for (const id of ["", "   ", "ffffffff"]) {
+      expect(manager.matchAgents(id)).toEqual([]);
+    }
   });
 
   it("keeps getRecord exact-match so internal callers never act on a prefix", () => {

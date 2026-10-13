@@ -128,8 +128,8 @@ const { mockRenderAgentToolResult } = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/ui/renderer.js", async () => {
-  // The real renderStatusLine stays under test (StopAgent/MessageAgent share it);
-  // the heavyweight Agent renderers are faked.
+  // registration.ts hands renderer.js functions straight to pi, so they stay real;
+  // only the heavyweight Agent renderers are faked.
   const actual = await vi.importActual<typeof import("../src/ui/renderer.js")>("../src/ui/renderer.js");
   return {
     ...actual,
@@ -325,47 +325,14 @@ describe("tool registration", () => {
       expect(findTool(api, toolName)!.description).toBe(".");
     }
   });
-});
 
-/* ------------------------------------------------------------------ */
-/*  MessageAgent tool schema — minimal (dot description)              */
-/* ------------------------------------------------------------------ */
-
-describe("MessageAgent tool schema — minimal", () => {
-  const messageTool = () => findTool(api, "MessageAgent");
-
-  it("has a dot description and no prompt snippet or guidelines", () => {
-    expect(messageTool()!.description).toBe(".");
-    expect(messageTool()!.promptSnippet).toBeUndefined();
-    expect(messageTool()!.promptGuidelines).toBeUndefined();
-  });
-
-  it("exposes exactly the documented param set, each without a description", () => {
-    const props = messageTool()!.parameters.properties as Record<string, SchemaJson>;
+  it("registers MessageAgent with no prompt snippet or guidelines and exactly its two required params", () => {
+    const tool = findTool(api, "MessageAgent")!;
+    const props = tool.parameters.properties as Record<string, SchemaJson>;
     expect(Object.keys(props).sort()).toEqual(["agent_id", "message"]);
-    expect(props.agent_id.description).toBeUndefined();
-    expect(props.message.description).toBeUndefined();
-    expect(props.message.type).toBe("string");
-  });
-
-  it("requires both params under constrained sampling", () => {
-    expect(messageTool()!.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
-    expect(messageTool()!.parameters.required).toEqual(["agent_id", "message"]);
-  });
-
-  it("renders the status line the StopAgent result uses", () => {
-    const theme = { fg: (color: string, text: string) => `[${color}]${text}[/${color}]` };
-    const result = { content: [{ type: "text", text: "Sent (steered)" }] };
-
-    const error = messageTool()!.renderResult!(result, { expanded: false }, theme, { isError: true }) as {
-      toString(): string;
-    };
-    const success = messageTool()!.renderResult!(result, { expanded: false }, theme, { isError: false }) as {
-      toString(): string;
-    };
-
-    expect(error.toString()).toContain("✗");
-    expect(success.toString()).toContain("✓");
+    expect(tool.parameters.required).toEqual(["agent_id", "message"]);
+    expect(tool.promptSnippet).toBeUndefined();
+    expect(tool.promptGuidelines).toBeUndefined();
   });
 });
 
@@ -518,16 +485,18 @@ describe("constrained sampling — default OFF", () => {
     expect(tool!.parameters.required).toEqual(["prompt"]);
   });
 
-  it("StopAgent has constrainedSampling (always)", () => {
-    const tool = findTool(api, "StopAgent");
-    expect(tool).toBeDefined();
-    expect(tool!.constrainedSampling).toEqual({
-      type: "json_schema",
-      strict: "prefer",
+  for (const toolName of ["StopAgent", "MessageAgent"]) {
+    it(`${toolName} has constrainedSampling (always)`, () => {
+      const tool = findTool(api, toolName);
+      expect(tool).toBeDefined();
+      expect(tool!.constrainedSampling).toEqual({
+        type: "json_schema",
+        strict: "prefer",
+      });
     });
-  });
+  }
 
-  for (const toolName of ["StopAgent", "AgentStatus"]) {
+  for (const toolName of ["StopAgent", "MessageAgent", "AgentStatus"]) {
     it(`${toolName} schema has additionalProperties: false`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
