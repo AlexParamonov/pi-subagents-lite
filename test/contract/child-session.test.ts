@@ -219,15 +219,21 @@ async function spawnChild(workspace: Workspace): Promise<AgentSession> {
   return session;
 }
 
-/** A normal pi session, wired the way the CLI wires one (pi's own built-ins). */
-async function spawnReference(workspace: Workspace): Promise<AgentSession> {
+/**
+ * pi's inline extension factories, spelled through the loader's own options:
+ * pi does not export that type from the package entry.
+ */
+type InlineExtensions = NonNullable<ConstructorParameters<typeof DefaultResourceLoader>[0]["extensionFactories"]>;
+
+/** A real pi session in this workspace, loaded with these extension factories. */
+async function openPiSession(workspace: Workspace, extensionFactories: InlineExtensions): Promise<AgentSession> {
   const agentDir = getAgentDir();
   const settingsManager = SettingsManager.create(workspace.project, agentDir, { projectTrusted: true });
   const loader = new DefaultResourceLoader({
     cwd: workspace.project,
     agentDir,
     settingsManager,
-    extensionFactories: (await importPiBuiltInExtensions()) as never,
+    extensionFactories,
   });
   await loader.reload();
   const { session } = await createAgentSession({
@@ -238,6 +244,12 @@ async function spawnReference(workspace: Workspace): Promise<AgentSession> {
     resourceLoader: loader,
   });
   await session.bindExtensions({});
+  return session;
+}
+
+/** A normal pi session, wired the way the CLI wires one (pi's own built-ins). */
+async function spawnReference(workspace: Workspace): Promise<AgentSession> {
+  const session = await openPiSession(workspace, await importPiBuiltInExtensions<InlineExtensions[number]>());
   if (workspace.hasProbe) {
     await until(() => session.getAllTools().some((tool) => tool.name === "probe_late"), "probe_late registration");
   }
@@ -546,28 +558,12 @@ describe("contract: child session announced on the parent's event bus", () => {
    */
   it("pi's own events handle refuses an emit once the session that loaded it is disposed", async () => {
     const workspace = makeWorkspace("events-facade");
-    const agentDir = getAgentDir();
     let captured: ExtensionAPI | undefined;
-    const settingsManager = SettingsManager.create(workspace.project, agentDir, { projectTrusted: true });
-    const loader = new DefaultResourceLoader({
-      cwd: workspace.project,
-      agentDir,
-      settingsManager,
-      extensionFactories: [
-        (pi: ExtensionAPI) => {
-          captured = pi;
-        },
-      ],
-    });
-    await loader.reload();
-    const { session } = await createAgentSession({
-      cwd: workspace.project,
-      agentDir,
-      sessionManager: SessionManager.inMemory(workspace.project),
-      settingsManager,
-      resourceLoader: loader,
-    });
-    await session.bindExtensions({});
+    const session = await openPiSession(workspace, [
+      (pi: ExtensionAPI) => {
+        captured = pi;
+      },
+    ]);
     const events = captured!.events;
 
     expect(() => events.emit(CREATED, { sessionId: "probe" })).not.toThrow();
