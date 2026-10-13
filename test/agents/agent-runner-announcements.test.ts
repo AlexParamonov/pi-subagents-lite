@@ -20,15 +20,27 @@ const CHILD_ID = "child-session-id";
 /** The parent id fakeCtx()'s session manager reports. */
 const PARENT_ID = "session-1";
 
-/** A bus fake that appends to the shared timeline; the SDK module is mocked here. */
-function timelineBus(timeline: string[], onPublished?: (channel: string, data: unknown) => void): EventBus {
-  return {
+/**
+ * Bus fake recording what lite published, so a test can read the ordering
+ * (`timeline`, interleaved with the run's own markers) or the exact payloads
+ * (`published`). A fake because this file mocks the SDK module, so the real bus
+ * factory is unavailable; the contract suite covers the real one.
+ */
+function busRecorder(): {
+  bus: EventBus;
+  timeline: string[];
+  published: Array<{ channel: string; data: unknown }>;
+} {
+  const timeline: string[] = [];
+  const published: Array<{ channel: string; data: unknown }> = [];
+  const bus: EventBus = {
     emit: (channel, data) => {
       timeline.push(channel);
-      onPublished?.(channel, data);
+      published.push({ channel, data });
     },
     on: () => () => {},
   };
+  return { bus, timeline, published };
 }
 
 function piWithBus(bus: EventBus) {
@@ -56,22 +68,20 @@ beforeEach(() => {
 
 describe("Subagent lifecycle announcements", () => {
   it("announces the child created before binding and bound after it", async () => {
-    const timeline: string[] = [];
+    const { bus, timeline } = busRecorder();
     session.bindExtensions.mockImplementation(async () => {
       timeline.push("bind");
     });
 
-    await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(timelineBus(timeline)) });
+    await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(bus) });
 
     expect(timeline).toEqual(["subagents:child:session-created", "bind", "subagents:child:bound"]);
   });
 
   it("announces the child's own session id next to the parent's", async () => {
-    const published: Array<{ channel: string; data: unknown }> = [];
+    const { bus, published } = busRecorder();
 
-    await runAgent(fakeCtx(), "test-agent", "task", {
-      pi: piWithBus(timelineBus([], (c, d) => published.push({ channel: c, data: d }))),
-    });
+    await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(bus) });
 
     expect(published).toEqual([
       { channel: "subagents:child:session-created", data: { sessionId: CHILD_ID, parentSessionId: PARENT_ID } },
@@ -80,20 +90,17 @@ describe("Subagent lifecycle announcements", () => {
   });
 
   it("never announces a child whose binding failed, and disposes it exactly once", async () => {
-    const timeline: string[] = [];
+    const { bus, timeline } = busRecorder();
     session.bindExtensions.mockRejectedValue(new Error("bind failed"));
 
-    await expect(runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(timelineBus(timeline)) })).rejects.toThrow(
-      "bind failed",
-    );
+    await expect(runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(bus) })).rejects.toThrow("bind failed");
 
     expect(timeline).toEqual(["subagents:child:session-created", "subagents:child:disposed"]);
     expect(session.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("never hands the parent's event bus to the child's resource loader", async () => {
-    const timeline: string[] = [];
-    const bus = timelineBus(timeline);
+    const { bus, timeline } = busRecorder();
 
     await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(bus) });
 
@@ -106,7 +113,7 @@ describe("Subagent lifecycle announcements", () => {
 
   it("announces a spawn aborted after session creation as bound then disposed", async () => {
     const controller = new AbortController();
-    const timeline: string[] = [];
+    const { bus, timeline } = busRecorder();
     mockModules.mockCreateAgentSession.mockImplementation(async () => {
       controller.abort();
       return { session, extensionsResult: {} };
@@ -114,7 +121,7 @@ describe("Subagent lifecycle announcements", () => {
 
     await expect(
       runAgent(fakeCtx(), "test-agent", "task", {
-        pi: piWithBus(timelineBus(timeline)),
+        pi: piWithBus(bus),
         signal: controller.signal,
       }),
     ).rejects.toThrow(/aborted during setup/);
@@ -138,7 +145,7 @@ describe("an announcement that cannot be published never breaks the run", () => 
       throw new Error("parent session is gone");
     };
 
-    await expect(runAgent(ctx, "test-agent", "task", { pi: piWithBus(timelineBus([])) })).rejects.toThrow(
+    await expect(runAgent(ctx, "test-agent", "task", { pi: piWithBus(busRecorder().bus) })).rejects.toThrow(
       "parent session is gone",
     );
 
