@@ -115,3 +115,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** Round 1 kept the indirection because the mock revert and the pin deletion were treated as separable changes; reverting one without the other failed the file at import time.
 **Next time:** When mocked code is kept real only to keep a presentation assertion alive, delete the assertion and list the read exports in the fake. Supersedes the `vi.importActual` advice in the entry above: reach for that only when the shared function's own behavior is the contract.
 
+## add-agent-messaging (queue-flush coverage) - 2026-10-13
+**What worked:** Asserting the exact list of messages that left the queue at the seam where it drains (the `session.steer` call arguments in arrival order) covers a pre-session steer end to end: delivery, ordering, and no second delivery after the flush.
+**What failed:** The criterion "a message sent before the session exists is delivered when that session starts" was treated as met by asserting `pendingSteers` holds the message; deleting the flush loop left the suite green while the message was silently dropped.
+**Next time:** For any queue-then-flush path, assert what the drain handed to its target, never that the queue held the item. Prove the assertion bites by deleting the flush and reading the red before shipping the green.
+
