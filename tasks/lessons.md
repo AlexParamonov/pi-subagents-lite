@@ -110,3 +110,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** A review item to revert a partial-mock rewrite assumed the indirection existed only for the test being deleted; it had since become the only thing keeping pre-existing renderer tests collectable, so the revert failed the whole file at import time.
 **Next time:** Before removing test-side machinery justified by one test, delete that test first and run the file - other tests may have moved onto it. Merge duplicated per-tool assertions into the existing shared loop instead of deleting the guarantee.
 
+## add-agent-messaging (mocked module vs presentation pin) - 2026-10-13
+**What worked:** Deleting the mark-and-colour assertions on the shared status-line renderer let `test/index.test.ts` return to a plain `vi.mock` factory: the factory only has to carry the exports the module under test reads while registering, so one `renderStatusLine: vi.fn()` entry replaced the `vi.importActual` indirection. The surviving guarantee is which registered tools declare a `renderResult`.
+**What failed:** Round 1 kept the indirection because the mock revert and the pin deletion were treated as separable changes; reverting one without the other failed the file at import time.
+**Next time:** When mocked code is kept real only to keep a presentation assertion alive, delete the assertion and list the read exports in the fake. Supersedes the `vi.importActual` advice in the entry above: reach for that only when the shared function's own behavior is the contract.
+
