@@ -453,13 +453,19 @@ describe("showSpawnAgentMenu — thinking level row", () => {
     expect(list.items[0].description).toContain("not supported");
   });
 
-  it("hides the parent entry when the parent session has no thinking level", async () => {
+  it("offers `parent` with no parent level, where following falls back to the chain", async () => {
     mockModules.mockSessionCtx.thinkingLevel = undefined as unknown as ThinkingLevel;
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
+
     row().submenu!("medium", vi.fn());
-    const list = selectListInstances[selectListInstances.length - 1];
-    expect(list.items.map((i) => i.value)).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "pi default"]);
+    expect(selectListInstances[selectListInstances.length - 1].items.map((i) => i.value)).toContain("parent");
+
+    pickThinking("parent");
+    // Nothing to follow: the row shows what the chain decides and the spawn sends
+    // no explicit level, so `parent` never reaches the child session.
+    expect(row().currentValue).toBe("medium (frontmatter)");
+    expect(await spawnOptions()).toMatchObject({ thinkingLevel: undefined });
   });
 
   it("re-derives on a model change while on pi default, clamped to the new model", async () => {

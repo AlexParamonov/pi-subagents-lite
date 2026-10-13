@@ -119,14 +119,13 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
 /**
  * Build a submenu for selecting the thinking level based on the current model.
  * Non-reasoning models only show 'off'; reasoning models show supported levels
- * plus 'parent' (when the parent session has a level) and 'pi default'.
+ * plus 'parent' and 'pi default'.
  */
 function createThinkingLevelSubmenu(
   registry: Parameters<typeof findModelInRegistry>[1],
   currentModelStr: string,
   fallbackModel: Parameters<typeof findModelInRegistry>[2],
   theme: Theme,
-  parentAvailable: boolean,
   onThinkingChoice: (choice: string) => void,
 ): (_currentValue: string, done: (v?: string) => void) => any {
   return (_currentValue, done) => {
@@ -146,10 +145,10 @@ function createThinkingLevelSubmenu(
     }));
 
     if (isReasoning) {
-      if (parentAvailable) {
-        items.push({ value: PARENT_THINKING_CHOICE, label: PARENT_THINKING_CHOICE });
-      }
-      items.push({ value: PI_DEFAULT_CHOICE, label: PI_DEFAULT_CHOICE });
+      items.push(
+        { value: PARENT_THINKING_CHOICE, label: PARENT_THINKING_CHOICE },
+        { value: PI_DEFAULT_CHOICE, label: PI_DEFAULT_CHOICE },
+      );
     }
 
     const list = new SelectList(items, 10, buildSelectListTheme(theme));
@@ -498,7 +497,6 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
           currentModelStr,
           session?.model,
           theme,
-          !!session?.thinkingLevel,
           setThinkingChoice,
         ),
       },
