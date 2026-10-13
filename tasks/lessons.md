@@ -99,3 +99,19 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What worked:** Wrapping every step of a fire-and-forget tracked promise made the never-rejects contract hold (abort, emit, and dispose can each throw while the parent is going down); deduplicating per session via WeakMap made "exactly once" hold across interleaved triggers; `createChildSession` bracketing itself with the spawn-depth flag (try/finally) enforced the no-live-binding invariant by construction instead of by call-site discipline.
 **What failed:** Review found an unguarded `dispose()` step, an exported seam relying on the caller's bracket, and a debug menu showing "(none)" for children that actually start with pi's fallback tools — none caught by the builder's own tests.
 **Next time:** For "terminate exactly once" lifecycles, funnel every trigger through one deduped path whose steps each survive throwing; when a seam depends on a depth flag, put the bracket inside the seam; when display code mirrors engine fallbacks, pin the mirror against the engine's real values.
+
+## add-agent-messaging (shared id resolution) - 2026-10-13
+**What worked:** Putting prefix resolution on the manager as a lookup returning every match kept one rule for both agent tools and left `getRecord()` exact-match for internal callers; the tool layer turned zero/one/many matches into distinct reports, and a blank input was rejected as a missing id before resolution because the empty string is a prefix of every id.
+**What failed:** Every test that faked the old exact-lookup port had to be re-pointed in the same pass, and fixtures with ids shorter than the real stored length hid the short-vs-full distinction the feature is about.
+**Next time:** When a lookup rule moves to a shared port, re-audit fixtures for unrealistically short ids and for partial ids that used to miss; when registration starts referencing real code from a module a test mocks wholesale, switch that mock to `vi.importActual` plus overrides so the shared function stays under test.
+
+## add-agent-messaging (test-quality review) - 2026-10-13
+**What worked:** Reducing report assertions to the distinguishing fragment (`steered`/`continued`, `not sent` vs `Failed to`) and merging same-branch guards cut 9 tests and 76 test lines while nine `src/` mutations (label swap, dropped guard, dropped trim, removed ambiguity branch, full-id echo, no steer) were still all caught.
+**What failed:** A review item to revert a partial-mock rewrite assumed the indirection existed only for the test being deleted; it had since become the only thing keeping pre-existing renderer tests collectable, so the revert failed the whole file at import time.
+**Next time:** Before removing test-side machinery justified by one test, delete that test first and run the file - other tests may have moved onto it. Merge duplicated per-tool assertions into the existing shared loop instead of deleting the guarantee.
+
+## add-agent-messaging (mocked module vs presentation pin) - 2026-10-13
+**What worked:** Deleting the mark-and-colour assertions on the shared status-line renderer let `test/index.test.ts` return to a plain `vi.mock` factory: the factory only has to carry the exports the module under test reads while registering, so one `renderStatusLine: vi.fn()` entry replaced the `vi.importActual` indirection. The surviving guarantee is which registered tools declare a `renderResult`.
+**What failed:** Round 1 kept the indirection because the mock revert and the pin deletion were treated as separable changes; reverting one without the other failed the file at import time.
+**Next time:** When mocked code is kept real only to keep a presentation assertion alive, delete the assertion and list the read exports in the fake. Supersedes the `vi.importActual` advice in the entry above: reach for that only when the shared function's own behavior is the contract.
+

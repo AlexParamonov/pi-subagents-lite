@@ -127,9 +127,11 @@ const { mockRenderAgentToolResult } = vi.hoisted(() => ({
   mockRenderAgentToolResult: vi.fn(),
 }));
 
+// registration.ts reads these exports while registering, so the fake carries every one of them.
 vi.mock("../src/ui/renderer.js", () => ({
   renderAgentToolCall: vi.fn(() => "mocked-call"),
   renderAgentToolResult: mockRenderAgentToolResult,
+  renderStatusLine: vi.fn(),
   renderSubagentResult: vi.fn(
     () =>
       new (class {
@@ -309,15 +311,29 @@ describe("message renderer registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tool registration", () => {
-  it("registers Agent, StopAgent, and AgentStatus tools", () => {
+  it("registers Agent, StopAgent, MessageAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
-    expect(names).toEqual(["Agent", "StopAgent", "AgentStatus"]);
+    expect(names).toEqual(["Agent", "StopAgent", "MessageAgent", "AgentStatus"]);
   });
 
   it("registers every tool with the dot description", () => {
-    for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
+    for (const toolName of ["Agent", "StopAgent", "MessageAgent", "AgentStatus"]) {
       expect(findTool(api, toolName)!.description).toBe(".");
     }
+  });
+
+  it("registers a result renderer on the tools that report one status line", () => {
+    const withRenderResult = api.tools.filter((t) => t.renderResult).map((t) => t.name);
+    expect(withRenderResult).toEqual(["Agent", "StopAgent", "MessageAgent"]);
+  });
+
+  it("registers MessageAgent with no prompt snippet or guidelines and exactly its two required params", () => {
+    const tool = findTool(api, "MessageAgent")!;
+    const props = tool.parameters.properties as Record<string, SchemaJson>;
+    expect(Object.keys(props).sort()).toEqual(["agent_id", "message"]);
+    expect(tool.parameters.required).toEqual(["agent_id", "message"]);
+    expect(tool.promptSnippet).toBeUndefined();
+    expect(tool.promptGuidelines).toBeUndefined();
   });
 });
 
@@ -470,16 +486,18 @@ describe("constrained sampling — default OFF", () => {
     expect(tool!.parameters.required).toEqual(["prompt"]);
   });
 
-  it("StopAgent has constrainedSampling (always)", () => {
-    const tool = findTool(api, "StopAgent");
-    expect(tool).toBeDefined();
-    expect(tool!.constrainedSampling).toEqual({
-      type: "json_schema",
-      strict: "prefer",
+  for (const toolName of ["StopAgent", "MessageAgent"]) {
+    it(`${toolName} has constrainedSampling (always)`, () => {
+      const tool = findTool(api, toolName);
+      expect(tool).toBeDefined();
+      expect(tool!.constrainedSampling).toEqual({
+        type: "json_schema",
+        strict: "prefer",
+      });
     });
-  });
+  }
 
-  for (const toolName of ["StopAgent", "AgentStatus"]) {
+  for (const toolName of ["StopAgent", "MessageAgent", "AgentStatus"]) {
     it(`${toolName} schema has additionalProperties: false`, () => {
       const tool = findTool(api, toolName);
       expect(tool).toBeDefined();
@@ -605,47 +623,5 @@ describe("Agent renderResult — context.isError override", () => {
     expect(mockRenderAgentToolResult).toHaveBeenCalledTimes(1);
     const passedResult = mockRenderAgentToolResult.mock.calls[0][0];
     expect(passedResult.isError).toBe(false);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/*  StopAgent renderResult — uses context.isError                      */
-/* ------------------------------------------------------------------ */
-
-describe("StopAgent renderResult — context.isError", () => {
-  const theme = {
-    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
-  };
-
-  it("shows error icon when context.isError is true", () => {
-    const tool = findTool(api, "StopAgent");
-    expect(tool?.renderResult).toBeDefined();
-
-    const result = { content: [{ type: "text", text: "agent not found" }] };
-    const context = { isError: true };
-
-    const rendered = tool!.renderResult!(result, { expanded: false }, theme, context) as { toString(): string };
-    expect(rendered.toString()).toContain("error");
-    expect(rendered.toString()).toContain("✗");
-  });
-
-  it("shows success icon when context.isError is false", () => {
-    const tool = findTool(api, "StopAgent");
-
-    const result = { content: [{ type: "text", text: "agent stopped" }] };
-    const context = { isError: false };
-
-    const rendered = tool!.renderResult!(result, { expanded: false }, theme, context) as { toString(): string };
-    expect(rendered.toString()).toContain("success");
-    expect(rendered.toString()).toContain("✓");
-  });
-
-  it("defaults isError to false when context is missing", () => {
-    const tool = findTool(api, "StopAgent");
-
-    const result = { content: [{ type: "text", text: "agent stopped" }] };
-
-    const rendered = tool!.renderResult!(result, { expanded: false }, theme) as { toString(): string };
-    expect(rendered.toString()).toContain("success");
   });
 });

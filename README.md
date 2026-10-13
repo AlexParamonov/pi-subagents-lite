@@ -41,13 +41,16 @@ The `/agents` menu covers running agents (view, steer, continue settled agents, 
 
 - `Agent` spawns a sub-agent (see [Agent options](#agent-options) for parameters).
 - `StopAgent` stops a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
+- `MessageAgent` gives an existing agent more input by ID: a running one picks it up at its next turn boundary, a settled one continues on it with its own context.
 - `AgentStatus` lists all agents with type, short ID, and status.
+
+Both ID forms work as input: the short ID shown in listings resolves when it identifies exactly one agent, and a prefix that matches several is refused rather than guessed.
 
 Foreground agents dont lock the session and can be stopped by parent's interrupt. Background agents are fully autonomous.
 
 ### Steering and continuation
 
-Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, or `Steer` in the `/agents` menu. Settled agents (completed, errored, stopped, turn-limited) can be continued manually from the conversation viewer.
+Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, `Steer` in the `/agents` menu, or `MessageAgent` from the session agent. Settled agents (completed, errored, stopped, turn-limited) can be continued from the conversation viewer, the `/agents` menu, or `MessageAgent`, as long as their session is still live.
 
 ## Built-in agents
 

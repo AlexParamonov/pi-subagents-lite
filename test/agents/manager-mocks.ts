@@ -13,12 +13,22 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentRecord } from "../../src/types.js";
 
 let uuidCounter = 0;
+
+/**
+ * A deterministic uuid-shaped id. AgentManager slices it to the real stored
+ * length (17 chars), so the counter stays inside the 8-character short-id
+ * window that ids are addressed by.
+ */
+function fakeUuid(n: number): string {
+  return `${n.toString(16).padStart(8, "0")}-4000-4000-8000-000000000000`;
+}
+
 const hoisted = vi.hoisted(() => ({
   mockRunAgent: vi.fn(),
   mockContinueAgentSession: vi.fn(),
   mockRandomUUID: vi.fn(() => {
     uuidCounter++;
-    return `agent-${String(uuidCounter).padStart(8, "0")}`;
+    return fakeUuid(uuidCounter);
   }),
   resetUuidCounter: () => {
     uuidCounter = 0;

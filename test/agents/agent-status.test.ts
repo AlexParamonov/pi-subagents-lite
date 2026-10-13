@@ -56,7 +56,7 @@ describe("AgentStatus tool execute behavior", () => {
 
   it("formats each agent as {shortId} ({type}) {status}", async () => {
     mockListAgents.mockReturnValue([
-      { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running" } },
+      { id: "abc123def456ghijk", display: { type: "builder" }, lifecycle: { status: "running" } },
     ]);
 
     const result = await executeAgentStatusTool("call_2", {}, undefined, undefined, asExtensionContext({}));
@@ -72,7 +72,7 @@ describe("AgentStatus tool execute behavior", () => {
   it("separates multiple agents with commas", async () => {
     mockListAgents.mockReturnValue([
       { id: "aaa111bbb222ccc", display: { type: "builder" }, lifecycle: { status: "running" } },
-      { id: "ddd333eee444fff", display: { type: "reviewer" }, lifecycle: { status: "completed" } },
+      { id: "ddd333eee444fffdd", display: { type: "reviewer" }, lifecycle: { status: "completed" } },
     ]);
 
     const result = await executeAgentStatusTool("call_3", {}, undefined, undefined, asExtensionContext({}));
@@ -225,9 +225,9 @@ describe("AgentStatus limit-bounded output", () => {
 
   it("keeps the exact legacy output when nothing is hidden", async () => {
     mockListAgents.mockReturnValue([
-      { id: "abc123def456ghi", display: { type: "builder" }, lifecycle: { status: "running", startedAt: 1 } },
+      { id: "abc123def456ghijk", display: { type: "builder" }, lifecycle: { status: "running", startedAt: 1 } },
       {
-        id: "ddd333eee444fff",
+        id: "ddd333eee444fffdd",
         display: { type: "reviewer" },
         lifecycle: { status: "completed", startedAt: 2, completedAt: 3 },
       },
