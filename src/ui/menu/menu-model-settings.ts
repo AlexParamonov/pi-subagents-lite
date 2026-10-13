@@ -31,12 +31,6 @@ import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-se
 import type { SessionModelOverrides } from "../../models/model-precedence.js";
 
 /**
- * The thinking display pads to this width so every row's tag starts at the same
- * column; it is the longest level-plus-source label the chain can print.
- */
-const THINKING_COLUMN_WIDTH = formatDisplayedThinking({ level: "minimal", source: "subagent default" }).length;
-
-/**
  * Display value for the "Global default model" row. Tag precedence:
  * session > project; the global layer is the default source and is never
  * tagged, so an untagged value means the global layer won. A null default
@@ -179,7 +173,9 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
         items.push({
           id: `type:${row.type}`,
           label: `${agentBulletPrefix(row.type)}${row.type}`,
-          currentValue: `${thinkingLabel.padEnd(THINKING_COLUMN_WIDTH)} ${row.tag}`,
+          // SettingsList truncates the value with no ellipsis, so the row carries no
+          // reserved padding: an empty tag contributes no space.
+          currentValue: [thinkingLabel, row.tag].filter(Boolean).join(" "),
           description: `Model for the ${row.type} agent type. Select to set or clear its override.`,
           // Every listed row carries an explicit per-type override, so Clear is always offered.
           submenu: modelSubmenuFor(row.type, group.modelId, true, levelsFor(row.type)),
