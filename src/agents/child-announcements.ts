@@ -16,11 +16,12 @@
  *   whole process.
  *
  * Fire-and-forget: nothing is awaited, a missing bus makes every announcement a
- * no-op, and a refused emit is dropped here instead of into a spawn or a
- * teardown. The emit is not a bare call: pi gives extensions `pi.events`, a
- * guarded facade that throws once the session which loaded the extension has
- * been disposed, reloaded or replaced, so a child settling after that point
- * would otherwise fail the teardown it is announced from.
+ * no-op, and a refused emit is dropped here with one warning instead of being
+ * thrown into a spawn or a teardown. The emit is not a bare call: pi gives
+ * extensions `pi.events`, a guarded facade that throws once the session which
+ * loaded the extension has been disposed, reloaded or replaced, so a child
+ * settling after that point would otherwise fail the teardown it is announced
+ * from.
  */
 
 import type { AgentSession, EventBus } from "@earendil-works/pi-coding-agent";
@@ -45,8 +46,11 @@ type ChildPayload = { sessionId: string; parentSessionId?: string };
 function publish(events: EventBus, channel: string, payload: ChildPayload): void {
   try {
     events.emit(channel, payload);
-  } catch {
-    /* a stale extension ctx must not fail a spawn or a teardown: advisory event */
+  } catch (err) {
+    console.warn(
+      `[pi-subagents-lite] Dropped Subagent announcement ${channel} for session ${payload.sessionId}: ` +
+        `Subagent-aware extensions will not recognise this Subagent (${err})`,
+    );
   }
 }
 

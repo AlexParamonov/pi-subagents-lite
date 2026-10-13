@@ -54,7 +54,7 @@ Steer a running agent mid-task to redirect it: `Enter` in the conversation viewe
 
 ### Permission gates and other Subagent-aware extensions
 
-Lite announces every Subagent session on pi's extension event bus: when the session is created (immediately before its extensions bind), when binding succeeds, and when it is disposed. A gate installed alongside — for example `@gotgenes/pi-permission-system` — recognises the Subagent from those announcements, so an `ask` decision inside a Subagent is escalated to the parent session instead of failing closed inside the child. With no such extension installed the announcements reach nobody and runs are unchanged; on a pi version without the event bus they are skipped entirely.
+Lite announces every Subagent session on pi's extension event bus: when the session is created (immediately before its extensions bind), when binding succeeds, and when it is disposed. A gate installed alongside — for example `@gotgenes/pi-permission-system` — recognises the Subagent from those announcements, so an `ask` decision inside a Subagent is escalated to the parent session instead of failing closed inside the child. With no such extension installed the announcements reach nobody and runs are unchanged; on a pi version without the event bus they are skipped entirely. If pi refuses an announcement, which happens when the parent session is replaced, reloaded or disposed while the Subagent is still running, lite names that Subagent in a warning and carries on: an announcement never fails a spawn or a teardown.
 
 ## Built-in agents
 

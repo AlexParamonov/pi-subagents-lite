@@ -131,12 +131,18 @@ describe("Subagent lifecycle announcements", () => {
 });
 
 describe("an announcement that cannot be published never breaks the run", () => {
-  it("binds and returns the session as usual", async () => {
-    const result = await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(refusingEvents()) });
+  it("binds and returns the session as usual, and names the Subagent in a warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(refusingEvents()) });
 
-    expect(result.session).toBe(session);
-    expect(session.bindExtensions).toHaveBeenCalledOnce();
-    expect(session.dispose).not.toHaveBeenCalled();
+      expect(result.session).toBe(session);
+      expect(session.bindExtensions).toHaveBeenCalledOnce();
+      expect(session.dispose).not.toHaveBeenCalled();
+      expect(warn.mock.calls.map((call) => call.join(" ")).join("\n")).toContain(CHILD_ID);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("tears the session down when the parent session id cannot be read", async () => {

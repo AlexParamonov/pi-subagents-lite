@@ -3,11 +3,11 @@
  *
  * Lite publishes the subagent-integration convention's channels on the parent's
  * event bus; an external gate subscribes to them by name. These tests pin the
- * channel literals, the payload objects, the missing-bus no-op, the swallowed
- * emit rejection and exactly-once disposal.
+ * channel literals, the payload objects, the missing-bus no-op, the dropped
+ * emit rejection and its diagnostic, and exactly-once disposal.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { refusingEvents } from "../fixtures.js";
 import {
@@ -31,6 +31,13 @@ function recordingBus() {
     },
   };
 }
+
+let warn: Mock<Console["warn"]>;
+
+beforeEach(() => {
+  warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+afterEach(() => warn.mockRestore());
 
 describe("announceChildSessionCreated", () => {
   it("publishes the convention's created channel with the child and parent session ids", () => {
@@ -102,6 +109,8 @@ describe("without an event bus", () => {
       announceChildSessionBound(session);
       announceChildSessionDisposed(session);
     }).not.toThrow();
+
+    expect(warn.mock.calls).toEqual([]);
   });
 });
 
@@ -115,5 +124,35 @@ describe("when the bus refuses the emit (pi's stale extension ctx)", () => {
       announceChildSessionBound(session);
       announceChildSessionDisposed(session);
     }).not.toThrow();
+  });
+
+  it("warns once per dropped announcement, naming the Subagent and that channel", () => {
+    const events = refusingEvents();
+    const session = asAgentSession({ sessionId: CHILD_ID });
+
+    announceChildSessionCreated(session, events, PARENT_ID);
+    announceChildSessionBound(session);
+    announceChildSessionDisposed(session);
+
+    const lines = warn.mock.calls.map((call) => call.join(" "));
+    expect(lines).toEqual([
+      expect.stringContaining("subagents:child:session-created"),
+      expect.stringContaining("subagents:child:bound"),
+      expect.stringContaining("subagents:child:disposed"),
+    ]);
+    for (const line of lines) expect(line).toContain(CHILD_ID);
+  });
+});
+
+describe("while the bus accepts the announcements", () => {
+  it("publishes no diagnostic", () => {
+    const { bus } = recordingBus();
+    const session = asAgentSession({ sessionId: CHILD_ID });
+
+    announceChildSessionCreated(session, bus, PARENT_ID);
+    announceChildSessionBound(session);
+    announceChildSessionDisposed(session);
+
+    expect(warn.mock.calls).toEqual([]);
   });
 });
