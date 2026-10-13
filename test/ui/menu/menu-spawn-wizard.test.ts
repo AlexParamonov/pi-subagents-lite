@@ -643,6 +643,39 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
     pickWorktree("Inherits parent cwd");
     expect(row().currentValue).toBe("medium (pi default)");
   });
+
+  it("picking `pi default` after a worktree change derives from the new target's settings", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    piSettingsMock.getPiModelThinkingLevels.mockImplementation((cwd: string): Record<string, ThinkingLevel> =>
+      cwd === "/test-feature" ? { "anthropic/claude-sonnet-4-20250514": "max" } : {},
+    );
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    pickThinking("low");
+    pickWorktree("/test-feature");
+    pickThinking("pi default");
+
+    // The spawn sends nothing, so the row must show what the worktree resolves.
+    expect(row().currentValue).toBe("max (pi per-model)");
+    expect(await spawnOptions()).toMatchObject({ thinkingLevel: undefined });
+  });
+
+  it("picking `pi default` after returning to the parent cwd derives from the parent's settings", async () => {
+    setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
+    piSettingsMock.getPiModelThinkingLevels.mockImplementation((cwd: string): Record<string, ThinkingLevel> =>
+      cwd === "/test-feature" ? { "anthropic/claude-sonnet-4-20250514": "max" } : {},
+    );
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    pickWorktree("/test-feature");
+    pickThinking("low");
+    pickWorktree("Inherits parent cwd");
+    pickThinking("pi default");
+
+    expect(row().currentValue).toBe("medium (pi default)");
+  });
 });
 
 describe("showSpawnAgentMenu — max turns submenu", () => {

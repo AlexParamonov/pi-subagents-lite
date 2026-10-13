@@ -251,8 +251,8 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
   // Pi settings snapshot for the thinking display, read at the spawn's target
   // cwd. A prediction for display only — the session is the source of truth
-  // once it exists. Re-read when the selected worktree changes while on
-  // `default`, so the displayed level keeps tracking the spawn target.
+  // once it exists. Re-read on every target change, so the `default` state's
+  // prediction always describes the cwd the spawn would resolve in.
   /** The wizard's default spawn target: the parent session's cwd. */
   const parentThinkingCwd = session?.cwd ?? ctx.cwd;
   let modelThinkingLevels = getPiModelThinkingLevels(parentThinkingCwd);
@@ -260,7 +260,6 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
   /** Re-read the pi settings snapshot for a new spawn target cwd. */
   const refreshThinkingSnapshot = (cwd: string) => {
-    if (thinkingState.kind !== "default") return;
     modelThinkingLevels = getPiModelThinkingLevels(cwd);
     piDefaultThinking = getPiDefaultThinkingLevel(cwd);
   };
@@ -465,19 +464,13 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
                   pickerItems,
                   {
                     onSelect: (value) => {
-                      if (value === "Inherits parent cwd") {
-                        currentWorktreePath = undefined;
-                        refreshThinkingSnapshot(parentThinkingCwd);
-                        done("Inherits parent cwd");
-                      } else {
-                        const wt = worktrees.find((w) => w.path === value);
-                        currentWorktreePath = wt?.path;
-                        // Derived tracks the spawn target: re-read pi's
-                        // settings there so the displayed level (and the
-                        // prediction behind it) follows the new project.
-                        if (currentWorktreePath) refreshThinkingSnapshot(currentWorktreePath);
-                        done(wt?.branch ?? "detached");
-                      }
+                      const wt = value === "Inherits parent cwd" ? undefined : worktrees.find((w) => w.path === value);
+                      currentWorktreePath = wt?.path;
+                      // Derived tracks the spawn target: re-read pi's settings
+                      // there so the prediction shown on `pi default` follows
+                      // the project the runner will resolve in.
+                      refreshThinkingSnapshot(currentWorktreePath ?? parentThinkingCwd);
+                      done(wt ? (wt.branch ?? "detached") : "Inherits parent cwd");
                     },
                     onCancel: () => done(),
                   },
