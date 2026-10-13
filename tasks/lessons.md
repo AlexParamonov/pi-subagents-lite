@@ -105,3 +105,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** Every test that faked the old exact-lookup port had to be re-pointed in the same pass, and fixtures with ids shorter than the real stored length hid the short-vs-full distinction the feature is about.
 **Next time:** When a lookup rule moves to a shared port, re-audit fixtures for unrealistically short ids and for partial ids that used to miss; when registration starts referencing real code from a module a test mocks wholesale, switch that mock to `vi.importActual` plus overrides so the shared function stays under test.
 
+## add-agent-messaging (test-quality review) - 2026-10-13
+**What worked:** Reducing report assertions to the distinguishing fragment (`steered`/`continued`, `not sent` vs `Failed to`) and merging same-branch guards cut 9 tests and 76 test lines while nine `src/` mutations (label swap, dropped guard, dropped trim, removed ambiguity branch, full-id echo, no steer) were still all caught.
+**What failed:** A review item to revert a partial-mock rewrite assumed the indirection existed only for the test being deleted; it had since become the only thing keeping pre-existing renderer tests collectable, so the revert failed the whole file at import time.
+**Next time:** Before removing test-side machinery justified by one test, delete that test first and run the file - other tests may have moved onto it. Merge duplicated per-tool assertions into the existing shared loop instead of deleting the guarantee.
+
