@@ -120,3 +120,13 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** The criterion "a message sent before the session exists is delivered when that session starts" was treated as met by asserting `pendingSteers` holds the message; deleting the flush loop left the suite green while the message was silently dropped.
 **Next time:** For any queue-then-flush path, assert what the drain handed to its target, never that the queue held the item. Prove the assertion bites by deleting the flush and reading the red before shipping the green.
 
+## announce-child-sessions (ordering contracts) - 2026-10-13
+**What worked:** To pin "the broadcast must land before the code under test proceeds", give the test's bus subscriber and a fixture extension loaded by the code under test one shared file to append to synchronously, then assert the whole timeline (`created`, child `session_start`, `bound`, child `session_shutdown`, `disposed`). One file gives real wall-clock order across the dependency boundary, and a payload assertion in the same timeline pins the wire format with it.
+**What failed:** An ordering test that records both sides in test-process memory cannot observe the side that happens inside the dependency, and an inserted `await` between emit and call is not behaviourally distinguishable at any seam, so a test claiming to catch it would be a source pin.
+**Next time:** Pin the behavioural contract the ordering protects (state visible to the callee's own setup), not the literal call-stack property, and say so in the test so nobody reads it as stronger than it is.
+
+## announce-child-sessions (new dependency member read by src) - 2026-10-13
+**What worked:** Reading new members of dependency objects (`session.sessionId`, `ctx.sessionManager.getSessionId()`, `pi.events`) was followed immediately by a full-suite run, which named every minimal fake that had to grow the member (contract-suite ctx, runner and manager session factories) in one pass.
+**What failed:** The first pass assumed existing fixtures modelled required members; the contract suite drives real code with hand-built two-field fakes, so that assumption was wrong for all of them.
+**Next time:** Treat "which fakes lack this member" as a full-suite question, not a grep question, and give session fixtures an explicit `sessionId` so payload assertions stay independent of fixture defaults.
+

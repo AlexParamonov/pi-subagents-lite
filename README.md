@@ -52,6 +52,10 @@ Foreground agents dont lock the session and can be stopped by parent's interrupt
 
 Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, `Steer` in the `/agents` menu, or `MessageAgent` from the session agent. Settled agents (completed, errored, stopped, turn-limited) can be continued from the conversation viewer, the `/agents` menu, or `MessageAgent`, as long as their session is still live.
 
+### Permission gates and other Subagent-aware extensions
+
+Lite announces every Subagent session on pi's extension event bus: when the session is created (immediately before its extensions bind), when binding succeeds, and when it is disposed. A gate installed alongside — for example `@gotgenes/pi-permission-system` — recognises the Subagent from those announcements, so an `ask` decision inside a Subagent is escalated to the parent session instead of failing closed inside the child. With no such extension installed the announcements reach nobody and runs are unchanged; on a pi version without the event bus they are skipped entirely.
+
 ## Built-in agents
 
 - `general-purpose` does general task execution using the configured session tools.
