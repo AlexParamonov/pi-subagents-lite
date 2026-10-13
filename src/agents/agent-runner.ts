@@ -31,6 +31,7 @@ import type { SubagentType, SystemPromptMode } from "./types.js";
 import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
 import { BUILTIN_EXTENSION_FACTORIES } from "./builtin-extensions.js";
 import { disposeChildSession } from "./session-teardown.js";
+import { announceChildSessionBound, announceChildSessionCreated } from "./child-announcements.js";
 import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
 import { patchRetryClassifier } from "./stream-retry.js";
 import { applyOutputLimit, resolveOutputLimit } from "./max-tokens-field.js";
@@ -599,10 +600,11 @@ async function initSession(setup: SessionSetup): Promise<AgentSession> {
 
 async function createAndConfigureSession(setup: SessionSetup, notify: (msg: string) => void): Promise<AgentSession> {
   const session = await initSession(setup);
-  const { agentConfig, options, type, extToolMap } = setup;
+  const { agentConfig, ctx, options, type, extToolMap } = setup;
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
   try {
+    announceChildSessionCreated(session, options.pi.events, ctx.sessionManager.getSessionId());
     await session.bindExtensions({
       onError: (err) =>
         options.onToolActivity?.({
@@ -625,6 +627,7 @@ async function createAndConfigureSession(setup: SessionSetup, notify: (msg: stri
     await disposeChildSession(session);
     throw err;
   }
+  announceChildSessionBound(session);
   options.onSessionCreated?.(session);
   return session;
 }

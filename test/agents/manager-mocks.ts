@@ -119,6 +119,7 @@ export interface FakeSessionModel {
 
 /** Shape of the fake session objects mockRunResult resolves with. */
 export interface MockAgentSession {
+  sessionId: string;
   subscribe: Mock<(listener: AgentSessionEventListener) => () => void>;
   messages: AgentSession["messages"];
   dispose: Mock<() => void>;
@@ -132,10 +133,12 @@ export interface MockAgentSession {
 export interface MockAgentSessionOptions {
   isStreaming?: boolean;
   model?: FakeSessionModel;
+  sessionId?: string;
 }
 
 export function mockAgentSession(options: MockAgentSessionOptions = {}): MockAgentSession {
   return {
+    sessionId: options.sessionId ?? `child-${uuidCounter}`,
     subscribe: vi.fn<(listener: AgentSessionEventListener) => () => void>(),
     messages: [],
     dispose: vi.fn<() => void>(),

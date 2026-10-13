@@ -250,7 +250,10 @@ export function resetMocks() {
 
 /** The fake AgentSession surface these tests drive. */
 export interface MockSession {
-  setSessionName: Mock<() => void>;
+  sessionId: string;
+  /** pi's getter: the name the last setSessionName stored. */
+  sessionName: string | undefined;
+  setSessionName: Mock<(name: string) => void>;
   getActiveToolNames: Mock<() => string[] | undefined>;
   setActiveToolsByName: Mock<(tools: string[]) => void>;
   getActiveTools: Mock<() => string[] | undefined>;
@@ -272,8 +275,15 @@ export interface MockSession {
 export function createMockSession(): MockSession {
   const listeners: Array<(event: unknown) => void> = [];
   let activeTools: string[] | undefined;
+  let sessionName: string | undefined;
   return {
-    setSessionName: vi.fn(),
+    sessionId: "child-session-id",
+    get sessionName() {
+      return sessionName;
+    },
+    setSessionName: vi.fn((name: string) => {
+      sessionName = name;
+    }),
     getActiveToolNames: vi.fn(),
     setActiveToolsByName: vi.fn((tools: string[]) => {
       activeTools = tools;

@@ -718,10 +718,9 @@ export class AgentManager {
   }
 
   /**
-   * Release the record's session through the shared teardown (abort,
-   * session_shutdown, dispose) and drop the reference. Tracked
-   * fire-and-forget: dispose() drains every pending teardown before
-   * returning, so no session outlives the manager.
+   * Release the record's session through the shared teardown and drop the
+   * reference. Tracked fire-and-forget: dispose() drains every pending teardown
+   * before returning, so no session outlives the manager.
    */
   private releaseSession(record: AgentRecord): void {
     const session = record.execution.session;
@@ -729,9 +728,12 @@ export class AgentManager {
     record.execution.session = undefined;
     const done = disposeChildSession(session);
     this.pendingDisposals.add(done);
-    void done.then(() => {
+    // Both outcomes must remove the entry: dispose() waits on this set in a
+    // loop, so an entry that only settles on fulfilment would never leave.
+    const forget = (): void => {
       this.pendingDisposals.delete(done);
-    });
+    };
+    void done.then(forget, forget);
   }
 
   /** Stop agents violating tool/idle timeouts. Thresholds are read live so menu changes apply to running agents. */
