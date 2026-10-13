@@ -1,13 +1,15 @@
 /**
  * agent-manager-disposal.test.ts — Lifecycle hardening: every child session
- * terminates through the shared teardown (abort, session_shutdown, dispose)
- * exactly once, whatever the trigger: clear, parent dispose, or a run that
- * settles after its record vanished (cleared mid-setup / stopped mid-setup).
+ * terminates through the shared teardown (abort, session_shutdown, dispose,
+ * disposed announcement) exactly once, whatever the trigger: clear, parent
+ * dispose, or a run that settles after its record vanished (cleared mid-setup /
+ * stopped mid-setup).
  *
  * Shared mocks: manager-mocks.ts.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { createEventBus, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import {
   mockModules,
@@ -17,7 +19,18 @@ import {
   type OnAgentComplete,
 } from "./manager-mocks.js";
 import { AgentManager } from "../../src/agents/agent-manager.js";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { announceChildSessionCreated } from "../../src/agents/child-announcements.js";
+
+const CHILD_ID = "child-session-id";
+
+/** Records the disposal announcements for a child the spawn path has announced. */
+function disposedAnnouncements(session: AgentSession): unknown[] {
+  const events = createEventBus();
+  const disposed: unknown[] = [];
+  events.on("subagents:child:disposed", (data) => disposed.push(data));
+  announceChildSessionCreated(session, events, "parent-session-1");
+  return disposed;
+}
 
 describe("AgentManager session disposal", () => {
   let manager: AgentManager;
@@ -61,6 +74,33 @@ describe("AgentManager session disposal", () => {
       ...options,
     });
   }
+
+  it("announces the released Subagent disposed exactly once, across clear and parent dispose", async () => {
+    manager = new AgentManager(onComplete);
+    const child = mockAgentSession({ sessionId: CHILD_ID });
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: child }));
+    const id = spawnForeground("task");
+    await manager.getRecord(id)!.execution.promise;
+    const disposed = disposedAnnouncements(manager.getRecord(id)!.execution.session!);
+
+    manager.clear(id);
+    await manager.dispose();
+
+    expect(disposed).toEqual([{ sessionId: CHILD_ID }]);
+  });
+
+  it("announces a settled Subagent disposed when parent dispose is the only trigger", async () => {
+    manager = new AgentManager(onComplete);
+    const child = mockAgentSession({ sessionId: CHILD_ID });
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: child }));
+    const id = spawnForeground("task");
+    await manager.getRecord(id)!.execution.promise;
+    const disposed = disposedAnnouncements(manager.getRecord(id)!.execution.session!);
+
+    await manager.dispose();
+
+    expect(disposed).toEqual([{ sessionId: CHILD_ID }]);
+  });
 
   it("clear() then dispose(): teardown in order, the session disposed exactly once", async () => {
     manager = new AgentManager(onComplete);
