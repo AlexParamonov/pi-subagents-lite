@@ -646,6 +646,19 @@ export class AgentManager {
     return this.agents.get(id);
   }
 
+  /**
+   * Records addressed by a tool-supplied id: the exact key when present, else
+   * every retained record whose id starts with it (ADR-0010). A blank prefix is
+   * a prefix of every id, so it matches nothing. getRecord() stays exact-match
+   * for internal callers, which already hold real keys.
+   */
+  matchAgents(id: string): AgentRecord[] {
+    if (!id.trim()) return [];
+    const exact = this.agents.get(id);
+    if (exact) return [exact];
+    return [...this.agents.values()].filter((record) => record.id.startsWith(id));
+  }
+
   listAgents(): AgentRecord[] {
     return [...this.agents.values()].sort((a, b) => b.lifecycle.startedAt - a.lifecycle.startedAt);
   }

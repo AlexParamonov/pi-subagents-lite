@@ -251,6 +251,11 @@ export async function executeAgentTool(
 
 // --- Running agents list helper (used by executeStopAgentTool) ---
 
+/** The id form tool output prints and the model quotes back (ADR-0010). */
+function shortId(record: AgentRecord): string {
+  return record.id.slice(0, SHORT_ID_LENGTH);
+}
+
 /**
  * Build a compact list of running (or queued) agents.
  * Format: "short_id (type), short_id (type)" — one line, easy for LLM to parse.
@@ -262,7 +267,28 @@ function formatRunningAgents(): string {
 
   if (agents.length === 0) return "none";
 
-  return agents.map((a) => `${a.id.slice(0, SHORT_ID_LENGTH)} (${a.display.type})`).join(", ");
+  return agents.map((a) => `${shortId(a)} (${a.display.type})`).join(", ");
+}
+
+/**
+ * Resolve tool input to exactly one retained record: exact id, else an unambiguous
+ * prefix (ADR-0010). A blank id is a missing id, so resolution never sees a prefix
+ * that matches every record; ambiguity names every candidate by full id, the only
+ * place full ids are printed. `notFoundDetail` names the agents the calling tool can
+ * act on, because stop and message have opposite preconditions.
+ */
+function resolveAgent(agentId: unknown, notFoundDetail: () => string): AgentRecord {
+  const id = (agentId as string | undefined)?.trim() ?? "";
+  if (!id) throw new Error("agent_id is required");
+
+  const matches = getManager()!.matchAgents(id);
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new Error(
+      `Ambiguous agent id ${id}. Matching agents: ${matches.map((m) => m.id).join(", ")}. Use a longer id.`,
+    );
+  }
+  throw new Error(`Agent ${id} not found. ${notFoundDetail()}`);
 }
 
 // --- StopAgent execute handler ---
@@ -274,29 +300,20 @@ export async function executeStopAgentTool(
   _onUpdate: ((update: any) => void) | undefined,
   _ctx: ExtensionContext,
 ): Promise<any> {
-  const agentId = params.agent_id as string | undefined;
-
-  if (!agentId) {
-    throw new Error("agent_id is required");
-  }
-
-  const record = getManager()!.getRecord(agentId);
-
-  if (!record) {
-    throw new Error(`Agent ${agentId} not found. Running agents: ${formatRunningAgents()}`);
-  }
+  const manager = getManager()!;
+  const record = resolveAgent(params.agent_id, () => `Running agents: ${formatRunningAgents()}`);
 
   if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
     return successResult(
-      `Agent ${agentId} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
+      `Agent ${shortId(record)} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
     );
   }
 
-  if (getManager()!.abort(agentId, "agent")) {
-    return successResult(`Stopped agent ${agentId.slice(0, SHORT_ID_LENGTH)}`);
+  if (manager.abort(record.id, "agent")) {
+    return successResult(`Stopped agent ${shortId(record)}`);
   }
 
-  throw new Error(`Failed to stop agent ${agentId}`);
+  throw new Error(`Failed to stop agent ${shortId(record)}`);
 }
 
 // --- Tool_call listener — inject model into Agent tool calls ---
