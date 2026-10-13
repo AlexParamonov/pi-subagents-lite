@@ -22,13 +22,15 @@ import { AgentManager } from "../../src/agents/agent-manager.js";
 import { announceChildSessionCreated } from "../../src/agents/child-announcements.js";
 
 const CHILD_ID = "child-session-id";
+/** The parent session id a spawn announcement carries. */
+const PARENT_ID = "parent-session-1";
 
 /** Records the disposal announcements for a child the spawn path has announced. */
 function disposedAnnouncements(session: AgentSession): unknown[] {
   const events = createEventBus();
   const disposed: unknown[] = [];
   events.on("subagents:child:disposed", (data) => disposed.push(data));
-  announceChildSessionCreated(session, events, "parent-session-1");
+  announceChildSessionCreated(session, events, PARENT_ID);
   return disposed;
 }
 
@@ -96,13 +98,22 @@ describe("AgentManager session disposal", () => {
     });
   }
 
-  it("announces the released Subagent disposed exactly once, across clear and parent dispose", async () => {
+  /**
+   * Opens the manager (as every test here does), spawns a foreground agent and
+   * waits for its run to settle, returning the live child session the record
+   * still holds: the one the release under test must tear down.
+   */
+  async function spawnSettledChild(): Promise<{ id: string; session: AgentSession }> {
     manager = new AgentManager(onComplete);
-    const child = mockAgentSession({ sessionId: CHILD_ID });
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: child }));
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: mockAgentSession({ sessionId: CHILD_ID }) }));
     const id = spawnForeground("task");
     await manager.getRecord(id)!.execution.promise;
-    const disposed = disposedAnnouncements(manager.getRecord(id)!.execution.session!);
+    return { id, session: manager.getRecord(id)!.execution.session! };
+  }
+
+  it("announces the released Subagent disposed exactly once, across clear and parent dispose", async () => {
+    const { id, session } = await spawnSettledChild();
+    const disposed = disposedAnnouncements(session);
 
     manager.clear(id);
     await manager.dispose();
@@ -111,12 +122,8 @@ describe("AgentManager session disposal", () => {
   });
 
   it("announces a settled Subagent disposed when parent dispose is the only trigger", async () => {
-    manager = new AgentManager(onComplete);
-    const child = mockAgentSession({ sessionId: CHILD_ID });
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: child }));
-    const id = spawnForeground("task");
-    await manager.getRecord(id)!.execution.promise;
-    const disposed = disposedAnnouncements(manager.getRecord(id)!.execution.session!);
+    const { session } = await spawnSettledChild();
+    const disposed = disposedAnnouncements(session);
 
     await manager.dispose();
 
@@ -124,20 +131,16 @@ describe("AgentManager session disposal", () => {
   });
 
   it("drains a Subagent whose announcements are refused by a stale parent handle", async () => {
-    manager = new AgentManager(onComplete);
-    const child = mockAgentSession({ sessionId: CHILD_ID });
-    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: child }));
-    const id = spawnForeground("task");
-    await manager.getRecord(id)!.execution.promise;
+    const { id, session } = await spawnSettledChild();
     const parent = parentEvents();
-    announceChildSessionCreated(manager.getRecord(id)!.execution.session!, parent.events, "parent-session-1");
+    announceChildSessionCreated(session, parent.events, PARENT_ID);
     // The parent session is replaced, reloaded or disposed while this child runs.
     parent.invalidate();
 
     manager.clear(id);
     await manager.dispose();
 
-    expect(child.dispose).toHaveBeenCalledTimes(1);
+    expect(mockOf(session).dispose).toHaveBeenCalledTimes(1);
   });
 
   it("clear() then dispose(): teardown in order, the session disposed exactly once", async () => {
