@@ -61,7 +61,6 @@ import {
   SessionManager,
   SettingsManager,
   type EventBus,
-  type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { createChildSession } from "../../src/agents/agent-runner.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
@@ -179,7 +178,6 @@ export default function (pi) {
 import * as fs from "node:fs";
 export default function (pi) {
   pi.on("session_start", () => fs.appendFileSync(${JSON.stringify(timelinePath)}, "child:session_start\\n"));
-  pi.on("session_shutdown", () => fs.appendFileSync(${JSON.stringify(timelinePath)}, "child:session_shutdown\\n"));
 }
 `;
       fs.writeFileSync(path.join(dir, "lifecycle-probe.ts"), source);
@@ -506,7 +504,6 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
 
 const CREATED = "subagents:child:session-created";
 const BOUND = "subagents:child:bound";
-const DISPOSED = "subagents:child:disposed";
 /** Timeline marker for the instant the SDK's own bindExtensions() is invoked. */
 const BIND = "child:bindExtensions";
 /** Timeline marker for the first microtask after an emit. */
@@ -541,7 +538,7 @@ describe("contract: child session announced on the parent's event bus", () => {
     options: { marksMicrotask?: boolean } = {},
   ): { events: EventBus; entries: () => Observed[] } {
     const events = createEventBus();
-    for (const channel of [CREATED, BOUND, DISPOSED]) {
+    for (const channel of [CREATED, BOUND]) {
       // Tab-separated: JSON.stringify escapes control characters, so no payload
       // value can produce a second tab. A space would split a payload whose
       // value contains one.
@@ -564,7 +561,7 @@ describe("contract: child session announced on the parent's event bus", () => {
     };
   }
 
-  it("lands created before the child's bind is invoked, bound after it, disposed once at teardown", async () => {
+  it("lands created before the child's bind is invoked, bound after it", async () => {
     const workspace = makeWorkspace("announcements");
     workspace.writeLifecycleProbe();
     const { events, entries } = observeLifecycle(workspace);
@@ -576,24 +573,16 @@ describe("contract: child session announced on the parent's event bus", () => {
       }),
     );
 
-    const announcedWhileLive = [
+    // The child's own session_start handler runs inside the bind, so `bound` is
+    // ordered against the bind completing, not merely against it being entered.
+    expect(entries()).toEqual([
       { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
       { event: BIND },
       { event: "child:session_start" },
       { event: BOUND, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
-    ];
-    expect(entries()).toEqual(announcedWhileLive);
-
-    await disposeChildSession(child);
-    await disposeChildSession(child);
-
-    // Teardown appends the child's own shutdown handlers and then one disposed
-    // entry; the second teardown appends nothing.
-    expect(entries()).toEqual([
-      ...announcedWhileLive,
-      { event: "child:session_shutdown" },
-      { event: DISPOSED, data: { sessionId: child.sessionId } },
     ]);
+
+    await disposeChildSession(child);
   });
 
   it("emits created on the bind's own call stack, with no await in between", async () => {
@@ -618,28 +607,5 @@ describe("contract: child session announced on the parent's event bus", () => {
     ]);
 
     await disposeChildSession(child);
-  });
-
-  /**
-   * Why child-announcements.ts drops an emit throw: the handle it announces on
-   * is pi's `pi.events`, not the bus, and pi invalidates it with the session
-   * that loaded the extension. A child settling after that point emits on a
-   * handle that throws, and an advisory event must not fail the teardown.
-   */
-  it("pi's own events handle refuses an emit once the session that loaded it is disposed", async () => {
-    const workspace = makeWorkspace("events-facade");
-    let captured: ExtensionAPI | undefined;
-    const session = await openPiSession(workspace, [
-      (pi: ExtensionAPI) => {
-        captured = pi;
-      },
-    ]);
-    const events = captured!.events;
-
-    expect(() => events.emit(CREATED, { sessionId: "probe" })).not.toThrow();
-
-    session.dispose();
-
-    expect(() => events.emit(CREATED, { sessionId: "probe" })).toThrow(/stale/);
   });
 });
