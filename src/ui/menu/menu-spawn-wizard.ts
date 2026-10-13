@@ -237,14 +237,9 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
   let currentModelStr = effectiveModelStr || "";
 
-  // Thinking has three states (issue: thinking-inherit-parent):
-  //   default   - "pi default" in the picker: the spawn sends no explicit value
-  //               and the runner resolves the chain at the spawn's target cwd;
-  //               the row shows the prediction with its winning source.
-  //   picked    - a level chosen here: kept across model switches, clamped to
-  //               the new model, shown without a source annotation.
-  //   following - `parent`: the parent session's live level, re-read and
-  //               re-clamped on every rebuild, annotated "(parent)".
+  // Thinking states, each named by the picker entry that sets it. `default`
+  // sends no explicit value so the chain decides at the spawn's target cwd; the
+  // other two pin one, `following` re-read from the parent session per rebuild.
   type WizardThinking = { kind: "default" } | { kind: "picked"; level: ThinkingLevel } | { kind: "following" };
   let thinkingState: WizardThinking = { kind: "default" };
 
