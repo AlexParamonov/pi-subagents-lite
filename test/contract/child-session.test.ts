@@ -3,11 +3,13 @@
  * overrides behaves like a normal pi session in the same workspace.
  *
  * Drives the real SDK through the production createChildSession seam with only
- * the shell store stubbed. The reference session is wired the way the pi CLI
- * builds one (pi's own private builtInExtensions registry), so child/reference
- * equality is meaningful, not trivial. The fixture extension pins registry
- * completeness (a deferred tool and a session_start-registered tool) and
- * teardown (its live-resource count returns to zero).
+ * the shell store stubbed; the announcement tests wrap
+ * AgentSession.prototype.bindExtensions to mark the instant the SDK's bind is
+ * invoked, then delegate to it unchanged and restore it. The reference session
+ * is wired the way the pi CLI builds one (pi's own private builtInExtensions
+ * registry), so child/reference equality is meaningful, not trivial. The fixture
+ * extension pins registry completeness (a deferred tool and a session_start-
+ * registered tool) and teardown (its live-resource count returns to zero).
  *
  * Matrix: unconfigured, +name, -name, replacement, project-over-global,
  * settings-level built-in disable, implicit OFF, explicit frontmatter
@@ -51,13 +53,13 @@ vi.mock("../../src/shell.js", () => ({
 }));
 
 import {
+  AgentSession,
   createAgentSession,
   createEventBus,
   DefaultResourceLoader,
   getAgentDir,
   SessionManager,
   SettingsManager,
-  type AgentSession,
   type EventBus,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
@@ -67,6 +69,12 @@ import { disposeChildSession } from "../../src/agents/session-teardown.js";
 import { importPiBuiltInExtensions } from "../agents/pi-builtin-registry.js";
 import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
 import { defaultSessionManager } from "../mock-utils.js";
+
+/** One observed timeline entry, plus its payload when the line carries one. */
+interface Observed {
+  event: string;
+  data?: unknown;
+}
 
 interface Workspace {
   project: string;
@@ -185,6 +193,11 @@ export default function (pi) {
     },
   };
   return workspace;
+}
+
+/** Appends one marker line; the write is synchronous, so the timeline order is total. */
+function appendMarker(workspace: Workspace, marker: string): void {
+  fs.appendFileSync(workspace.timelinePath, `${marker}\n`);
 }
 
 /** The spawning-session ctx: the child path reads the parent session id off its session manager. */
@@ -494,23 +507,55 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
 const CREATED = "subagents:child:session-created";
 const BOUND = "subagents:child:bound";
 const DISPOSED = "subagents:child:disposed";
+/** Timeline marker for the instant the SDK's own bindExtensions() is invoked. */
+const BIND = "child:bindExtensions";
+/** Timeline marker for the first microtask after an emit. */
+const MICROTASK = "microtask";
 /** The parent session id parentCtx()'s session manager reports. */
 const PARENT_ID = "session-1";
 
 describe("contract: child session announced on the parent's event bus", () => {
+  /**
+   * Runs a child spawn with the instant the SDK's own `bindExtensions()` is
+   * invoked recorded on the timeline. The real bind still runs untouched, the
+   * wrapper only appends a marker, so the subscriber's entries are ordered
+   * against the bind call itself and not only against what the bind later emits.
+   */
+  async function withRecordedBind<T>(workspace: Workspace, spawn: () => Promise<T>): Promise<T> {
+    const real = AgentSession.prototype.bindExtensions;
+    const recording = function (this: AgentSession, ...args: Parameters<typeof real>) {
+      appendMarker(workspace, BIND);
+      return real.apply(this, args);
+    };
+    AgentSession.prototype.bindExtensions = recording;
+    try {
+      return await spawn();
+    } finally {
+      AgentSession.prototype.bindExtensions = real;
+    }
+  }
+
   /** One timeline for both sides: the bus subscriber and the child's own extension. */
-  function observeLifecycle(workspace: Workspace) {
+  function observeLifecycle(
+    workspace: Workspace,
+    options: { marksMicrotask?: boolean } = {},
+  ): { events: EventBus; entries: () => Observed[] } {
     const events = createEventBus();
     for (const channel of [CREATED, BOUND, DISPOSED]) {
       // Tab-separated: JSON.stringify escapes control characters, so no payload
       // value can produce a second tab. A space would split a payload whose
       // value contains one.
-      events.on(channel, (data) => fs.appendFileSync(workspace.timelinePath, `${channel}\t${JSON.stringify(data)}\n`));
+      events.on(channel, (data) => {
+        fs.appendFileSync(workspace.timelinePath, `${channel}\t${JSON.stringify(data)}\n`);
+        if (options.marksMicrotask && channel === CREATED) {
+          queueMicrotask(() => appendMarker(workspace, MICROTASK));
+        }
+      });
     }
     return {
       events,
       /** Order comes from one file both writers append to synchronously. */
-      entries(): Array<{ event: string; data?: unknown }> {
+      entries(): Observed[] {
         return workspace.timeline().map((line) => {
           const [event, payload] = line.split("\t");
           return payload ? { event, data: JSON.parse(payload) } : { event };
@@ -519,23 +564,21 @@ describe("contract: child session announced on the parent's event bus", () => {
     };
   }
 
-  it("lands created before the child's extensions run, bound after them, disposed once at teardown", async () => {
+  it("lands created before the child's bind is invoked, bound after it, disposed once at teardown", async () => {
     const workspace = makeWorkspace("announcements");
     workspace.writeLifecycleProbe();
     const { events, entries } = observeLifecycle(workspace);
 
-    const { session: child } = await createChildSession(parentCtx(workspace.project), "general-purpose", {
-      pi: stubPi(events),
-      cwd: workspace.project,
-    });
+    const { session: child } = await withRecordedBind(workspace, () =>
+      createChildSession(parentCtx(workspace.project), "general-purpose", {
+        pi: stubPi(events),
+        cwd: workspace.project,
+      }),
+    );
 
-    // The child's session_start is the proof the announcement reached the bus
-    // before the child's own extensions ran. What this timeline cannot see is
-    // the call-stack property: an await between the emit and the bind lands the
-    // created entry in the same place. That invariant is pinned at the runner's
-    // spawn seam, where both the emit and the bind are code under test.
     const announcedWhileLive = [
       { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
+      { event: BIND },
       { event: "child:session_start" },
       { event: BOUND, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
     ];
@@ -551,6 +594,30 @@ describe("contract: child session announced on the parent's event bus", () => {
       { event: "child:session_shutdown" },
       { event: DISPOSED, data: { sessionId: child.sessionId } },
     ]);
+  });
+
+  it("emits created on the bind's own call stack, with no await in between", async () => {
+    const workspace = makeWorkspace("announcements-call-stack");
+    const { events, entries } = observeLifecycle(workspace, { marksMicrotask: true });
+
+    const { session: child } = await withRecordedBind(workspace, () =>
+      createChildSession(parentCtx(workspace.project), "general-purpose", {
+        pi: stubPi(events),
+        cwd: workspace.project,
+      }),
+    );
+
+    // The microtask queued inside the created emit gets the queue ahead of every
+    // continuation the bind awaits, so it lands before the bind returns. An await
+    // between the emit and the bind would run it before the BIND entry instead.
+    expect(entries()).toEqual([
+      { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
+      { event: BIND },
+      { event: MICROTASK },
+      { event: BOUND, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
+    ]);
+
+    await disposeChildSession(child);
   });
 
   /**
