@@ -302,6 +302,17 @@ body
     expect(result.thinking).toBeUndefined();
   });
 
+  it("accepts thinking: parent as the follow-the-parent value", () => {
+    const content = `---
+name: agent
+thinking: parent
+---
+body
+`;
+    const result = parseAgentFile(content, "user");
+    expect(result.thinking).toBe("parent");
+  });
+
   it("parses CRLF", () => {
     const result = parseAgentFile("---\r\nname: x\r\n---\r\nbody", "user");
     expect(result.name).toBe("x");

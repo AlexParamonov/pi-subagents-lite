@@ -40,8 +40,12 @@ function sessionOpts(): Record<string, unknown> {
   return call![0] as unknown as Record<string, unknown>;
 }
 
-async function runWithSpawnModel(thinkingLevel?: ThinkingLevel) {
-  return runAgent(fakeCtx(), "test-agent", "do something", { pi: fakePi, model: SPAWN_MODEL, thinkingLevel });
+async function runWithSpawnModel(thinkingLevel?: ThinkingLevel, parentLevel?: ThinkingLevel) {
+  return runAgent(fakeCtx({ thinkingLevel: parentLevel }), "test-agent", "do something", {
+    pi: fakePi,
+    model: SPAWN_MODEL,
+    thinkingLevel,
+  });
 }
 
 describe("runAgent — runtime thinking resolution", () => {
@@ -112,5 +116,61 @@ describe("runAgent — runtime thinking resolution", () => {
     await runWithSpawnModel();
 
     expect(sessionOpts().thinkingLevel).toBeUndefined();
+  });
+});
+
+describe("runAgent — the `parent` value", () => {
+  beforeEach(() => {
+    resetMocks();
+    fakePi.exec.mockResolvedValue({ code: 0, stdout: "true" });
+    const session = createMockSession();
+    session.getActiveToolNames.mockReturnValue(["read", "bash", "edit"]);
+    mockModules.mockCreateAgentSession.mockResolvedValue({ session, extensionsResult: {} });
+  });
+
+  it("runs at the parent level when frontmatter holds `parent`, beating the per-model level", async () => {
+    mockSettingsManager("high");
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, thinkingLevel: "parent" });
+
+    await runWithSpawnModel(undefined, "minimal");
+
+    expect(sessionOpts().thinkingLevel).toBe("minimal");
+  });
+
+  it("runs at the parent level when defaultThinking holds `parent`", async () => {
+    mockSettingsManager(undefined);
+    mockModules.mockDefaultThinking = "parent";
+
+    await runWithSpawnModel(undefined, "low");
+
+    expect(sessionOpts().thinkingLevel).toBe("low");
+  });
+
+  it("keeps a concrete higher source above a lower `parent`", async () => {
+    mockSettingsManager(undefined);
+    mockModules.mockDefaultThinking = "parent";
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, thinkingLevel: "low" });
+
+    await runWithSpawnModel(undefined, "minimal");
+
+    expect(sessionOpts().thinkingLevel).toBe("low");
+  });
+
+  it("treats a `parent` source as unwritten when the parent has no level, never passing `parent`", async () => {
+    mockSettingsManager("high");
+    mockModules.mockGetAgentConfig.mockReturnValue({ ...defaultAgentConfig, thinkingLevel: "parent" });
+
+    await runWithSpawnModel();
+
+    expect(sessionOpts().thinkingLevel).toBe("high");
+  });
+
+  it("passes nothing when `parent` is the only source and the parent has no level", async () => {
+    mockSettingsManager(undefined);
+    mockModules.mockDefaultThinking = "parent";
+
+    await runWithSpawnModel();
+
+    expect(sessionOpts()).not.toHaveProperty("thinkingLevel");
   });
 });

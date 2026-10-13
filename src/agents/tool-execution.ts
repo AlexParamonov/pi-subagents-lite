@@ -16,7 +16,7 @@ import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution
 import { getSessionContextPercent } from "./usage.js";
 import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.js";
 
-import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils.js";
+import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../utils.js";
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import { getPiModelThinkingLevel } from "../pi-settings.js";
 import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.js";
@@ -57,6 +57,7 @@ async function predictSpawnThinking(
     frontmatter: agentConfig?.thinkingLevel,
     perModel,
     defaultThinking: getStore().agent.defaultThinking,
+    parentLevel: ctx.thinkingLevel,
   });
 }
 
@@ -199,8 +200,13 @@ export async function executeAgentTool(
   // spawn runner owns them (its trust-gated settings read keeps per-model
   // above defaultThinking; folding them into this explicit param would shadow
   // per-model). When the listener ran, it already injected the full chain.
-  const thinkingLevel =
-    parseThinkingLevel(params.thinking as string | undefined) ?? getAgentConfig(resolvedType)?.thinkingLevel;
+  // A `parent` value resolves here because the explicit param and the stored
+  // invocation must never carry it; the parent's level needs no trust gate.
+  const thinkingLevel = resolveThinkingLevel({
+    explicit: parseThinkingChoice(params.thinking as string | undefined),
+    frontmatter: getAgentConfig(resolvedType)?.thinkingLevel,
+    parentLevel: ctx.thinkingLevel,
+  });
 
   const coordinator = getCoordinator()!;
   // Background spawns (explicit or forceBackground) never bind to the parent

@@ -28,12 +28,12 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.js";
 import { resolveModelSource } from "./model-precedence.js";
 import { resolveDisplayThinkingLevel } from "./thinking-resolution.js";
-import type { ThinkingLevel } from "../types.js";
+import type { ThinkingChoice, ThinkingLevel } from "../types.js";
 
 /** Frontmatter fields the group builder reads per type. */
 export interface AgentTypeModelConfig {
   model?: string;
-  thinkingLevel?: ThinkingLevel;
+  thinkingLevel?: ThinkingChoice;
 }
 
 export interface ModelGroupsInput {

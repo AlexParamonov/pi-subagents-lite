@@ -183,6 +183,32 @@ describe("validateRawLayer — non-model keys", () => {
     }
   });
 
+  it("accepts `parent` as a defaultThinking value (a value, not a new chain position)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(validateRawLayer({ agent: { defaultThinking: "parent" } }, "/g.json")).toEqual({
+        agent: { defaultThinking: "parent" },
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("drops an unknown defaultThinking value with the thinking expected-shape warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(validateRawLayer({ agent: { defaultThinking: "inherit" } }, "/g.json").agent).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+      const msg = warn.mock.calls[0][0] as string;
+      expect(msg).toContain("agent.defaultThinking");
+      expect(msg).toContain('"off" | "minimal"');
+      expect(msg).toContain('"parent"');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("passes valid values of every kind without warnings", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

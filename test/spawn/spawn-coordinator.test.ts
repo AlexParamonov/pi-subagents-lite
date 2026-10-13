@@ -23,7 +23,7 @@ vi.mock("../../src/spawn/worktree-validator.js", () => ({
 vi.mock("../../src/utils.js", () => ({
   parseModelKey: vi.fn(() => null),
   findModelInRegistry: vi.fn(() => undefined),
-  parseThinkingLevel: vi.fn(() => undefined),
+  parseThinkingChoice: vi.fn(() => undefined),
 }));
 
 // Hoist mock pi so shell mock can return it

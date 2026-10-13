@@ -94,7 +94,7 @@ const hoisted = vi.hoisted(() => ({
   },
   mockEnterSubagentSpawn: vi.fn(),
   mockExitSubagentSpawn: vi.fn(),
-  mockDefaultThinking: undefined as import("../../src/types.js").ThinkingLevel | undefined,
+  mockDefaultThinking: undefined as import("../../src/types.js").ThinkingChoice | undefined,
 }));
 
 /** Mutable mock state accessible from test files. */
@@ -137,7 +137,7 @@ export const mockModules = {
   get mockDefaultThinking() {
     return hoisted.mockDefaultThinking;
   },
-  set mockDefaultThinking(v: import("../../src/types.js").ThinkingLevel | undefined) {
+  set mockDefaultThinking(v: import("../../src/types.js").ThinkingChoice | undefined) {
     hoisted.mockDefaultThinking = v;
   },
 };
