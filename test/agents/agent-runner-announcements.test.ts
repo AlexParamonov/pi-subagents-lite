@@ -175,19 +175,6 @@ describe("an announcement that cannot be published never breaks the run", () => 
     }
   });
 
-  it("tears the session down when the parent session id cannot be read", async () => {
-    const ctx = fakeCtx();
-    ctx.sessionManager.getSessionId = () => {
-      throw new Error("parent session is gone");
-    };
-
-    await expect(runAgent(ctx, "test-agent", "task", { pi: piWithBus(busRecorder().bus) })).rejects.toThrow(
-      "parent session is gone",
-    );
-
-    expect(session.dispose).toHaveBeenCalledTimes(1);
-  });
-
   it("reports the bind failure, not the refused announcement", async () => {
     session.bindExtensions.mockRejectedValue(new Error("bind failed"));
 
@@ -195,6 +182,25 @@ describe("an announcement that cannot be published never breaks the run", () => 
       "bind failed",
     );
 
+    expect(session.dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a created announcement that would carry no parent session id is not published at all", () => {
+  /**
+   * The parent id read may fail the spawn: a `created` without it leaves a gate
+   * unable to escalate, which is the fail-closed `ask` this feature removes.
+   */
+  it("fails the spawn, publishes nothing and still tears the session down", async () => {
+    const ctx = fakeCtx();
+    ctx.sessionManager.getSessionId = () => {
+      throw new Error("parent session is gone");
+    };
+    const { bus, published } = busRecorder();
+
+    await expect(runAgent(ctx, "test-agent", "task", { pi: piWithBus(bus) })).rejects.toThrow("parent session is gone");
+
+    expect(published).toEqual([]);
     expect(session.dispose).toHaveBeenCalledTimes(1);
   });
 });
