@@ -502,14 +502,17 @@ describe("contract: child session announced on the parent's event bus", () => {
   function observeLifecycle(workspace: Workspace) {
     const events = createEventBus();
     for (const channel of [CREATED, BOUND, DISPOSED]) {
-      events.on(channel, (data) => fs.appendFileSync(workspace.timelinePath, `${channel} ${JSON.stringify(data)}\n`));
+      // Tab-separated: JSON.stringify escapes control characters, so no payload
+      // value can produce a second tab. A space would split a payload whose
+      // value contains one.
+      events.on(channel, (data) => fs.appendFileSync(workspace.timelinePath, `${channel}\t${JSON.stringify(data)}\n`));
     }
     return {
       events,
       /** Order comes from one file both writers append to synchronously. */
       entries(): Array<{ event: string; data?: unknown }> {
         return workspace.timeline().map((line) => {
-          const [event, payload] = line.split(" ");
+          const [event, payload] = line.split("\t");
           return payload ? { event, data: JSON.parse(payload) } : { event };
         });
       },
