@@ -718,10 +718,9 @@ export class AgentManager {
   }
 
   /**
-   * Release the record's session through the shared teardown (abort,
-   * session_shutdown, dispose) and drop the reference. Tracked
-   * fire-and-forget: dispose() drains every pending teardown before
-   * returning, so no session outlives the manager.
+   * Release the record's session through the shared teardown and drop the
+   * reference. Tracked fire-and-forget: dispose() drains every pending teardown
+   * before returning, so no session outlives the manager.
    */
   private releaseSession(record: AgentRecord): void {
     const session = record.execution.session;
