@@ -4,10 +4,12 @@
  * pi's AgentSession.dispose() emits no session_shutdown, so built-in
  * extension resources loaded per spawn would survive it. Every termination
  * trigger (settle, stop, clear, parent dispose, setup abort) funnels here:
- * abort, emit session_shutdown, dispose — deduplicated per session.
+ * abort, emit session_shutdown, dispose, announce disposed — deduplicated per
+ * session.
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { announceChildSessionDisposed } from "./child-announcements.js";
 
 const inFlight = new WeakMap<AgentSession, Promise<void>>();
 
@@ -32,6 +34,7 @@ export function disposeChildSession(session: AgentSession): Promise<void> {
     } catch {
       /* a throwing dispose must not reject the teardown */
     }
+    announceChildSessionDisposed(session);
   })();
   inFlight.set(session, teardown);
   return teardown;

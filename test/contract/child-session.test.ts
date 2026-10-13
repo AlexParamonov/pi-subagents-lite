@@ -11,7 +11,8 @@
  *
  * Matrix: unconfigured, +name, -name, replacement, project-over-global,
  * settings-level built-in disable, implicit OFF, explicit frontmatter
- * tools/extensions.
+ * tools/extensions, and the child-lifecycle announcements a Subagent-aware
+ * extension receives on the parent's bus.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
@@ -51,26 +52,32 @@ vi.mock("../../src/shell.js", () => ({
 
 import {
   createAgentSession,
+  createEventBus,
   DefaultResourceLoader,
   getAgentDir,
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type EventBus,
 } from "@earendil-works/pi-coding-agent";
 import { createChildSession } from "../../src/agents/agent-runner.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { disposeChildSession } from "../../src/agents/session-teardown.js";
 import { importPiBuiltInExtensions } from "../agents/pi-builtin-registry.js";
 import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
+import { defaultSessionManager } from "../mock-utils.js";
 
 interface Workspace {
   project: string;
   statePath: string;
+  timelinePath: string;
   hasProbe: boolean;
   writeGlobalSettings(settings: Record<string, unknown>): void;
   writeProjectSettings(settings: Record<string, unknown>): void;
   writeProbeExtension(): void;
+  writeLifecycleProbe(): void;
   probeCount(): number;
+  timeline(): string[];
 }
 
 /** Every workspace root made so far; all removed in afterAll (PI_CODING_AGENT_DIR is reassigned per workspace). */
@@ -88,9 +95,11 @@ function makeWorkspace(name: string): Workspace {
   // this file run sequentially, so the last workspace wins.
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const statePath = path.join(root, "probe-state.json");
+  const timelinePath = path.join(root, "timeline.log");
   const workspace: Workspace = {
     project,
     statePath,
+    timelinePath,
     hasProbe: false,
     writeGlobalSettings(settings) {
       fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify(settings));
@@ -153,12 +162,40 @@ export default function (pi) {
         return 0;
       }
     },
+    /** Appends a marker from inside the child's own extensions, at bind time. */
+    writeLifecycleProbe() {
+      const dir = path.join(project, ".pi", "extensions");
+      fs.mkdirSync(dir, { recursive: true });
+      const source = `
+import * as fs from "node:fs";
+export default function (pi) {
+  pi.on("session_start", () => fs.appendFileSync(${JSON.stringify(timelinePath)}, "child:session_start\\n"));
+  pi.on("session_shutdown", () => fs.appendFileSync(${JSON.stringify(timelinePath)}, "child:session_shutdown\\n"));
+}
+`;
+      fs.writeFileSync(path.join(dir, "lifecycle-probe.ts"), source);
+    },
+    timeline() {
+      try {
+        return fs.readFileSync(timelinePath, "utf-8").split("\n").filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
   };
   return workspace;
 }
 
-function stubPi() {
-  return asExtensionAPI({ exec: async () => ({ code: 1, stdout: "", stderr: "" }) });
+/** The spawning-session ctx: the child path reads the parent session id off its session manager. */
+function parentCtx(project: string) {
+  return asExtensionContext({ cwd: project, hasUI: false, sessionManager: defaultSessionManager() });
+}
+
+function stubPi(events?: EventBus) {
+  return asExtensionAPI({
+    exec: async () => ({ code: 1, stdout: "", stderr: "" }),
+    ...(events ? { events } : {}),
+  });
 }
 
 async function until(condition: () => boolean, what: string): Promise<void> {
@@ -171,11 +208,10 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 
 /** The production child path: our wrapped built-in factories. */
 async function spawnChild(workspace: Workspace): Promise<AgentSession> {
-  const { session } = await createChildSession(
-    asExtensionContext({ cwd: workspace.project, hasUI: false }),
-    "general-purpose",
-    { pi: stubPi(), cwd: workspace.project },
-  );
+  const { session } = await createChildSession(parentCtx(workspace.project), "general-purpose", {
+    pi: stubPi(),
+    cwd: workspace.project,
+  });
   if (workspace.hasProbe) {
     await until(() => session.getAllTools().some((tool) => tool.name === "probe_late"), "probe_late registration");
   }
@@ -358,14 +394,10 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
     );
     const workspace = makeWorkspace("explicit-tools");
     workspace.writeGlobalSettings({ defaultTools: ["+codemode"] });
-    const { session } = await createChildSession(
-      asExtensionContext({ cwd: workspace.project, hasUI: false }),
-      "contract-explicit",
-      {
-        pi: stubPi(),
-        cwd: workspace.project,
-      },
-    );
+    const { session } = await createChildSession(parentCtx(workspace.project), "contract-explicit", {
+      pi: stubPi(),
+      cwd: workspace.project,
+    });
 
     expect(registryOf(session)).toEqual(["bash", "read"]);
     expect(activeOf(session)).toEqual(["bash", "read"]);
@@ -380,14 +412,10 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
     const workspace = makeWorkspace("extensions-false");
     workspace.writeGlobalSettings({ defaultTools: ["+codemode"] });
     workspace.writeProbeExtension();
-    const { session } = await createChildSession(
-      asExtensionContext({ cwd: workspace.project, hasUI: false }),
-      "contract-no-ext",
-      {
-        pi: stubPi(),
-        cwd: workspace.project,
-      },
-    );
+    const { session } = await createChildSession(parentCtx(workspace.project), "contract-no-ext", {
+      pi: stubPi(),
+      cwd: workspace.project,
+    });
 
     expect(registryOf(session)).not.toContain("codemode");
     // The probe extension is a project extension: extensions: false skips it too.
@@ -409,11 +437,10 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
     const workspace = makeWorkspace("only-codemode");
     workspace.writeGlobalSettings({ defaultTools: ["+codemode"] });
     workspace.writeProbeExtension();
-    const { session } = await createChildSession(
-      asExtensionContext({ cwd: workspace.project, hasUI: false }),
-      "contract-only-codemode",
-      { pi: stubPi(), cwd: workspace.project },
-    );
+    const { session } = await createChildSession(parentCtx(workspace.project), "contract-only-codemode", {
+      pi: stubPi(),
+      cwd: workspace.project,
+    });
 
     expect(registryOf(session)).toContain("codemode");
     expect(registryOf(session)).not.toContain("probe_deferred");
@@ -438,16 +465,69 @@ describe("contract: implicit OFF and explicit frontmatter", () => {
     const workspace = makeWorkspace("exclude-codemode");
     workspace.writeGlobalSettings({ defaultTools: ["+codemode"] });
     workspace.writeProbeExtension();
-    const { session } = await createChildSession(
-      asExtensionContext({ cwd: workspace.project, hasUI: false }),
-      "contract-no-codemode",
-      { pi: stubPi(), cwd: workspace.project },
-    );
+    const { session } = await createChildSession(parentCtx(workspace.project), "contract-no-codemode", {
+      pi: stubPi(),
+      cwd: workspace.project,
+    });
 
     expect(registryOf(session)).not.toContain("codemode");
     expect(registryOf(session)).toContain("probe_deferred");
 
     await disposeChildSession(session);
     expect(workspace.probeCount()).toBe(0);
+  });
+});
+
+const CREATED = "subagents:child:session-created";
+const BOUND = "subagents:child:bound";
+const DISPOSED = "subagents:child:disposed";
+/** The parent session id parentCtx()'s session manager reports. */
+const PARENT_ID = "session-1";
+
+describe("contract: child session announced on the parent's event bus", () => {
+  /** One timeline for both sides: the bus subscriber and the child's own extension. */
+  function observeLifecycle(workspace: Workspace) {
+    const events = createEventBus();
+    for (const channel of [CREATED, BOUND, DISPOSED]) {
+      events.on(channel, (data) => fs.appendFileSync(workspace.timelinePath, `${channel} ${JSON.stringify(data)}\n`));
+    }
+    return {
+      events,
+      /** Order comes from one file both writers append to synchronously. */
+      entries(): Array<{ event: string; data?: unknown }> {
+        return workspace.timeline().map((line) => {
+          const [event, payload] = line.split(" ");
+          return payload ? { event, data: JSON.parse(payload) } : { event };
+        });
+      },
+    };
+  }
+
+  it("lands created before the child's extensions run, bound after them, disposed once at teardown", async () => {
+    const workspace = makeWorkspace("announcements");
+    workspace.writeLifecycleProbe();
+    const { events, entries } = observeLifecycle(workspace);
+
+    const { session: child } = await createChildSession(parentCtx(workspace.project), "general-purpose", {
+      pi: stubPi(events),
+      cwd: workspace.project,
+    });
+
+    // The child's session_start is the proof the announcement reached the bus
+    // before binding proceeded; a detached await would land it after.
+    expect(entries()).toEqual([
+      { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
+      { event: "child:session_start" },
+      { event: BOUND, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
+    ]);
+
+    await disposeChildSession(child);
+    await disposeChildSession(child);
+
+    // After the child's own shutdown handlers, and exactly once.
+    expect(entries().slice(3)).toEqual([
+      { event: "child:session_shutdown" },
+      { event: DISPOSED, data: { sessionId: child.sessionId } },
+    ]);
   });
 });
