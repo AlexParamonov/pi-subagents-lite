@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **New `MessageAgent` tool sends input to an existing agent.** A running agent takes the message at its next turn boundary (an in-flight tool call is not interrupted); a settled agent with a live session — including one the user stopped — continues on it with its existing context. No second agent record is created.
+- **Agent IDs are accepted in the short form the tools print.** `StopAgent` and `MessageAgent` resolve the 8-character ID from `AgentStatus`, spawn results and completion notifications when it identifies exactly one agent. A prefix that matches several agents acts on none and names every candidate by full ID.
+
 ## [1.16.0] - 2026-10-05
 
 ### Added

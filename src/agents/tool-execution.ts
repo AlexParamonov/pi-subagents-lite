@@ -20,6 +20,7 @@ import { parseModelKey, findModelInRegistry, parseThinkingLevel } from "../utils
 import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 import { getPiModelThinkingLevel } from "../pi-settings.js";
 import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.js";
+import { formatAgentStatusList } from "./agent-status.js";
 
 // --- Tool result helpers ---
 
@@ -249,7 +250,7 @@ export async function executeAgentTool(
   return successResult(formatResultContent(record), details);
 }
 
-// --- Running agents list helper (used by executeStopAgentTool) ---
+// --- Agent id resolution and failure lists, shared by the agent tools ---
 
 /** The id form tool output prints and the model quotes back (ADR-0010). */
 function shortId(record: AgentRecord): string {
@@ -314,6 +315,52 @@ export async function executeStopAgentTool(
   }
 
   throw new Error(`Failed to stop agent ${shortId(record)}`);
+}
+
+// --- MessageAgent execute handler ---
+
+/** Bounded list of every retained agent, settled ones included: a message needs a
+ * live session, not a run, so the addressable set is wider than StopAgent's.
+ */
+function formatKnownAgents(): string {
+  const agents = getManager()!.listAgents();
+  if (agents.length === 0) return "none";
+  return formatAgentStatusList(agents, getStore().agent.agentStatusLimit);
+}
+
+/**
+ * Give an existing agent more input through the manager's steer/continue seam: a
+ * running target takes the message at its next turn boundary, a settled target with
+ * a live session restarts on it. No agent is created and no queue is owned here. The
+ * report names what was queued, never a promise that it was read before the run ended.
+ */
+export async function executeMessageAgentTool(
+  _toolCallId: string,
+  params: Record<string, unknown>,
+  _signal: AbortSignal | undefined,
+  _onUpdate: ((update: any) => void) | undefined,
+  _ctx: ExtensionContext,
+): Promise<any> {
+  const text = (params.message as string | undefined)?.trim() ?? "";
+  if (!text) throw new Error("message is required");
+
+  const record = resolveAgent(params.agent_id, () => `Known agents: ${formatKnownAgents()}`);
+  const wasRunning = record.lifecycle.status === "running";
+
+  if (!wasRunning && !record.execution.session) {
+    return successResult(
+      `Agent ${shortId(record)} is ${record.lifecycle.status} with no live session. Message not sent.`,
+    );
+  }
+
+  if (!(await getManager()!.steer(record.id, text))) {
+    throw new Error(
+      `Failed to send message to agent ${shortId(record)}. ` +
+        `It may still be settling or its concurrency slot is full. Try again.`,
+    );
+  }
+
+  return successResult(wasRunning ? "Sent (steered)" : "Sent (continued)");
 }
 
 // --- Tool_call listener — inject model into Agent tool calls ---

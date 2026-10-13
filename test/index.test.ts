@@ -127,19 +127,25 @@ const { mockRenderAgentToolResult } = vi.hoisted(() => ({
   mockRenderAgentToolResult: vi.fn(),
 }));
 
-vi.mock("../src/ui/renderer.js", () => ({
-  renderAgentToolCall: vi.fn(() => "mocked-call"),
-  renderAgentToolResult: mockRenderAgentToolResult,
-  renderSubagentResult: vi.fn(
-    () =>
-      new (class {
-        children: unknown[] = [];
-        addChild(c: unknown) {
-          this.children.push(c);
-        }
-      })(),
-  ),
-}));
+vi.mock("../src/ui/renderer.js", async () => {
+  // The real renderStatusLine stays under test (StopAgent/MessageAgent share it);
+  // the heavyweight Agent renderers are faked.
+  const actual = await vi.importActual<typeof import("../src/ui/renderer.js")>("../src/ui/renderer.js");
+  return {
+    ...actual,
+    renderAgentToolCall: vi.fn(() => "mocked-call"),
+    renderAgentToolResult: mockRenderAgentToolResult,
+    renderSubagentResult: vi.fn(
+      () =>
+        new (class {
+          children: unknown[] = [];
+          addChild(c: unknown) {
+            this.children.push(c);
+          }
+        })(),
+    ),
+  };
+});
 
 // Mutable state shared between the shell mock and tests.
 const { mutableStore, spawnGuard } = vi.hoisted(() => ({
@@ -309,15 +315,57 @@ describe("message renderer registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tool registration", () => {
-  it("registers Agent, StopAgent, and AgentStatus tools", () => {
+  it("registers Agent, StopAgent, MessageAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
-    expect(names).toEqual(["Agent", "StopAgent", "AgentStatus"]);
+    expect(names).toEqual(["Agent", "StopAgent", "MessageAgent", "AgentStatus"]);
   });
 
   it("registers every tool with the dot description", () => {
-    for (const toolName of ["Agent", "StopAgent", "AgentStatus"]) {
+    for (const toolName of ["Agent", "StopAgent", "MessageAgent", "AgentStatus"]) {
       expect(findTool(api, toolName)!.description).toBe(".");
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  MessageAgent tool schema — minimal (dot description)              */
+/* ------------------------------------------------------------------ */
+
+describe("MessageAgent tool schema — minimal", () => {
+  const messageTool = () => findTool(api, "MessageAgent");
+
+  it("has a dot description and no prompt snippet or guidelines", () => {
+    expect(messageTool()!.description).toBe(".");
+    expect(messageTool()!.promptSnippet).toBeUndefined();
+    expect(messageTool()!.promptGuidelines).toBeUndefined();
+  });
+
+  it("exposes exactly the documented param set, each without a description", () => {
+    const props = messageTool()!.parameters.properties as Record<string, SchemaJson>;
+    expect(Object.keys(props).sort()).toEqual(["agent_id", "message"]);
+    expect(props.agent_id.description).toBeUndefined();
+    expect(props.message.description).toBeUndefined();
+    expect(props.message.type).toBe("string");
+  });
+
+  it("requires both params under constrained sampling", () => {
+    expect(messageTool()!.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+    expect(messageTool()!.parameters.required).toEqual(["agent_id", "message"]);
+  });
+
+  it("renders the status line the StopAgent result uses", () => {
+    const theme = { fg: (color: string, text: string) => `[${color}]${text}[/${color}]` };
+    const result = { content: [{ type: "text", text: "Sent (steered)" }] };
+
+    const error = messageTool()!.renderResult!(result, { expanded: false }, theme, { isError: true }) as {
+      toString(): string;
+    };
+    const success = messageTool()!.renderResult!(result, { expanded: false }, theme, { isError: false }) as {
+      toString(): string;
+    };
+
+    expect(error.toString()).toContain("✗");
+    expect(success.toString()).toContain("✓");
   });
 });
 

@@ -34,10 +34,10 @@ function bySettledDesc(a: AgentRecord, b: AgentRecord): number {
 
 /**
  * List text for non-empty agents: every in-progress agent in manager order, then
- * at most `limit` settled agents most-recently-settled first, with a summary
- * line when settled agents are hidden.
+ * at most `limit` settled agents most-recently-settled first, with a summary line
+ * when settled agents are hidden. Shared with MessageAgent's not-found report.
  */
-function formatAgentStatusList(agents: AgentRecord[], limit: number): string {
+export function formatAgentStatusList(agents: AgentRecord[], limit: number): string {
   const active: AgentRecord[] = [];
   const settled: AgentRecord[] = [];
   for (const record of agents) {

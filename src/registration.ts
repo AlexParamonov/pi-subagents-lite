@@ -1,12 +1,12 @@
 import { Type, type TSchema } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { formatAgentTypeDescriptions, getVisibleAgentInfos } from "./agents/agent-types.js";
-import { executeAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
+import { executeAgentTool, executeMessageAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
 import { executeAgentStatusTool } from "./agents/agent-status.js";
 import {
   renderAgentToolCall,
   renderAgentToolResult,
+  renderStatusLine,
   renderSubagentResult,
   registerAgentInvalidation,
 } from "./ui/renderer.js";
@@ -121,27 +121,23 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "StopAgent",
     label: "StopAgent",
     description: ".",
-    parameters: Type.Object(
-      {
-        agent_id: Type.String(),
-      },
-      { additionalProperties: false },
-    ),
+    parameters: Type.Object({ agent_id: Type.String() }, { additionalProperties: false }),
     execute: executeStopAgentTool,
     constrainedSampling: CONSTRAINED_SAMPLING,
-    renderResult: (
-      result: { content: Array<{ type: string; text?: string }> },
-      _options: { expanded?: boolean },
-      theme: any,
-      context: { isError?: boolean },
-    ) => {
-      const isError = context?.isError ?? false;
-      const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
-      const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-      return new Text(`${icon} ${text}`, 0, 0);
-    },
+    renderResult: renderStatusLine,
   };
   pi.registerTool(stopAgentTool);
+
+  const messageAgentTool = {
+    name: "MessageAgent",
+    label: "MessageAgent",
+    description: ".",
+    parameters: Type.Object({ agent_id: Type.String(), message: Type.String() }, { additionalProperties: false }),
+    execute: executeMessageAgentTool,
+    constrainedSampling: CONSTRAINED_SAMPLING,
+    renderResult: renderStatusLine,
+  };
+  pi.registerTool(messageAgentTool);
 
   const agentStatusTool = {
     name: "AgentStatus",

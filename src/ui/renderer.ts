@@ -195,6 +195,22 @@ export function renderAgentToolResult(
   return new Text(desc ? `  ${theme.fg("text", desc)}` : "", 0, 0);
 }
 
+/**
+ * Result row for the agent tools that report one status line (StopAgent, MessageAgent):
+ * pi's result text with the success/error mark. The mark comes from pi's render context,
+ * not the result, because a thrown error reaches here as a failed call.
+ */
+export function renderStatusLine(
+  result: { content: Array<{ type: string; text?: string }> },
+  _options: { expanded?: boolean },
+  theme: Theme,
+  context?: { isError?: boolean },
+): Text {
+  const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
+  const icon = context?.isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+  return new Text(`${icon} ${text}`, 0, 0);
+}
+
 // --- Message renderer — subagent-result ---
 
 /** Render a subagent-result message injected after background agent completion. */
