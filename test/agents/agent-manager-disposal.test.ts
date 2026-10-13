@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { createEventBus, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { createEventBus, type AgentSession, type EventBus } from "@earendil-works/pi-coding-agent";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import {
   mockModules,
@@ -30,6 +30,27 @@ function disposedAnnouncements(session: AgentSession): unknown[] {
   events.on("subagents:child:disposed", (data) => disposed.push(data));
   announceChildSessionCreated(session, events, "parent-session-1");
   return disposed;
+}
+
+/**
+ * pi's `pi.events` facade: it serves the bus until the session that loaded the
+ * extension is gone, then every emit throws. `invalidate()` is that point.
+ */
+function parentEvents(): { events: EventBus; invalidate(): void } {
+  const bus = createEventBus();
+  let stale = false;
+  return {
+    events: {
+      emit: (channel, data) => {
+        if (stale) throw new Error("This extension ctx is stale after session replacement or reload.");
+        bus.emit(channel, data);
+      },
+      on: (channel, handler) => bus.on(channel, handler),
+    },
+    invalidate: () => {
+      stale = true;
+    },
+  };
 }
 
 describe("AgentManager session disposal", () => {
@@ -100,6 +121,23 @@ describe("AgentManager session disposal", () => {
     await manager.dispose();
 
     expect(disposed).toEqual([{ sessionId: CHILD_ID }]);
+  });
+
+  it("drains a Subagent whose announcements are refused by a stale parent handle", async () => {
+    manager = new AgentManager(onComplete);
+    const child = mockAgentSession({ sessionId: CHILD_ID });
+    mockModules.mockRunAgent.mockResolvedValue(mockRunResult({ session: child }));
+    const id = spawnForeground("task");
+    await manager.getRecord(id)!.execution.promise;
+    const parent = parentEvents();
+    announceChildSessionCreated(manager.getRecord(id)!.execution.session!, parent.events, "parent-session-1");
+    // The parent session is replaced, reloaded or disposed while this child runs.
+    parent.invalidate();
+
+    manager.clear(id);
+    await manager.dispose();
+
+    expect(child.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("clear() then dispose(): teardown in order, the session disposed exactly once", async () => {

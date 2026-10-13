@@ -603,8 +603,8 @@ async function createAndConfigureSession(setup: SessionSetup, notify: (msg: stri
   const { agentConfig, ctx, options, type, extToolMap } = setup;
   const baseName = agentConfig?.name ?? type;
   session.setSessionName(options.agentId ? `${baseName}#${options.agentId.slice(0, SHORT_ID_LENGTH)}` : baseName);
-  announceChildSessionCreated(session, options.pi.events, ctx.sessionManager.getSessionId());
   try {
+    announceChildSessionCreated(session, options.pi.events, ctx.sessionManager.getSessionId());
     await session.bindExtensions({
       onError: (err) =>
         options.onToolActivity?.({

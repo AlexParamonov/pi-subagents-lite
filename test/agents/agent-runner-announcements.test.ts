@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
-import { fakeCtx } from "../fixtures.js";
+import { fakeCtx, refusingEvents } from "../fixtures.js";
 import { asExtensionAPI } from "../pi-boundaries.js";
 import { mockModules, resetMocks, createMockSession, type MockSession } from "./agent-runner-mocks.js";
 import { runAgent } from "../../src/agents/agent-runner.js";
@@ -120,6 +120,39 @@ describe("Subagent lifecycle announcements", () => {
     ).rejects.toThrow(/aborted during setup/);
 
     expect(timeline).toEqual(["subagents:child:session-created", "subagents:child:bound", "subagents:child:disposed"]);
+  });
+});
+
+describe("an announcement that cannot be published never breaks the run", () => {
+  it("binds and returns the session as usual", async () => {
+    const result = await runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(refusingEvents()) });
+
+    expect(result.session).toBe(session);
+    expect(session.bindExtensions).toHaveBeenCalledOnce();
+    expect(session.dispose).not.toHaveBeenCalled();
+  });
+
+  it("tears the session down when the parent session id cannot be read", async () => {
+    const ctx = fakeCtx();
+    ctx.sessionManager.getSessionId = () => {
+      throw new Error("parent session is gone");
+    };
+
+    await expect(runAgent(ctx, "test-agent", "task", { pi: piWithBus(timelineBus([])) })).rejects.toThrow(
+      "parent session is gone",
+    );
+
+    expect(session.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the bind failure, not the refused announcement", async () => {
+    session.bindExtensions.mockRejectedValue(new Error("bind failed"));
+
+    await expect(runAgent(fakeCtx(), "test-agent", "task", { pi: piWithBus(refusingEvents()) })).rejects.toThrow(
+      "bind failed",
+    );
+
+    expect(session.dispose).toHaveBeenCalledTimes(1);
   });
 });
 

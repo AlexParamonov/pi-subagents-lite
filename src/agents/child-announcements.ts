@@ -15,8 +15,12 @@
  *   continuations. A child left registered leaks the subscriber's entry for the
  *   whole process.
  *
- * Fire-and-forget: nothing is awaited, listener failures stay inside pi's bus,
- * and a missing bus makes every announcement a no-op.
+ * Fire-and-forget: nothing is awaited, a missing bus makes every announcement a
+ * no-op, and a refused emit is dropped here instead of into a spawn or a
+ * teardown. The emit is not a bare call: pi gives extensions `pi.events`, a
+ * guarded facade that throws once the session which loaded the extension has
+ * been disposed, reloaded or replaced, so a child settling after that point
+ * would otherwise fail the teardown it is announced from.
  */
 
 import type { AgentSession, EventBus } from "@earendil-works/pi-coding-agent";
@@ -35,6 +39,17 @@ interface ChildAnnouncement {
 /** Per-spawn carrier: the bus a child was announced on outlives the spawn call. */
 const announced = new WeakMap<AgentSession, ChildAnnouncement>();
 
+/** The payload of every channel, as the convention defines it. */
+type ChildPayload = { sessionId: string; parentSessionId?: string };
+
+function publish(events: EventBus, channel: string, payload: ChildPayload): void {
+  try {
+    events.emit(channel, payload);
+  } catch {
+    /* a stale extension ctx must not fail a spawn or a teardown: advisory event */
+  }
+}
+
 export function announceChildSessionCreated(
   session: AgentSession,
   events: EventBus | undefined,
@@ -43,13 +58,13 @@ export function announceChildSessionCreated(
   if (!events) return;
   const sessionId = session.sessionId;
   announced.set(session, { events, sessionId, parentSessionId });
-  events.emit(CHILD_SESSION_CREATED, { sessionId, parentSessionId });
+  publish(events, CHILD_SESSION_CREATED, { sessionId, parentSessionId });
 }
 
 export function announceChildSessionBound(session: AgentSession): void {
   const announcement = announced.get(session);
   if (!announcement) return;
-  announcement.events.emit(CHILD_SESSION_BOUND, {
+  publish(announcement.events, CHILD_SESSION_BOUND, {
     sessionId: announcement.sessionId,
     parentSessionId: announcement.parentSessionId,
   });
@@ -59,5 +74,5 @@ export function announceChildSessionDisposed(session: AgentSession): void {
   const announcement = announced.get(session);
   if (!announcement) return;
   announced.delete(session);
-  announcement.events.emit(CHILD_SESSION_DISPOSED, { sessionId: announcement.sessionId });
+  publish(announcement.events, CHILD_SESSION_DISPOSED, { sessionId: announcement.sessionId });
 }

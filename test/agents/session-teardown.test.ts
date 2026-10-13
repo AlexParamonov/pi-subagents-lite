@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { createEventBus, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { refusingEvents } from "../fixtures.js";
 import { disposeChildSession } from "../../src/agents/session-teardown.js";
 import { announceChildSessionCreated } from "../../src/agents/child-announcements.js";
 
@@ -156,5 +157,12 @@ describe("disposeChildSession", () => {
 
     await expect(disposeChildSession(session)).resolves.toBeUndefined();
     expect(session.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("never rejects when the disposal announcement is refused by a stale extension ctx", async () => {
+    const session = teardownSession();
+    announceChildSessionCreated(session, refusingEvents(), PARENT_ID);
+
+    await expect(disposeChildSession(session)).resolves.toBeUndefined();
   });
 });

@@ -130,3 +130,8 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** The first pass assumed existing fixtures modelled required members; the contract suite drives real code with hand-built two-field fakes, so that assumption was wrong for all of them.
 **Next time:** Treat "which fakes lack this member" as a full-suite question, not a grep question, and give session fixtures an explicit `sessionId` so payload assertions stay independent of fixture defaults.
 
+## announce-child-sessions (a dependency member that can throw) - 2026-10-13
+**What worked:** Pinning why a `catch` exists with a dependency-contract test: build a real session, capture the extension's own `pi`, dispose the session, assert `pi.events.emit` throws. The catch then carries evidence, so nobody deletes it as dead code.
+**What failed:** The premise "the bus catches listener failures, so emit cannot throw" was applied to `pi.events`, which is typed `EventBus` but is a guarded facade: its emit throws once the session that loaded the extension is disposed, reloaded or replaced. Every test handed the code `createEventBus()`, so the guard was invisible and the throwing call became the one step of the child teardown outside a `try`: the fire-and-forget promise `AgentManager.dispose()` drains in a loop.
+**Next time:** Read the implementation behind the dependency member you call, not its declared type: a facade can wrap the object the type names and add throwing guards. Model the boundary fake on that implementation, and when a fire-and-forget promise feeds a loop that waits on it, remove the entry on both settle outcomes: a fulfilment-only removal turns one rejection into a hang that also starves the test timeout.
+

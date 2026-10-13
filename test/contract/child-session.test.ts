@@ -59,6 +59,7 @@ import {
   SettingsManager,
   type AgentSession,
   type EventBus,
+  type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { createChildSession } from "../../src/agents/agent-runner.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
@@ -514,7 +515,10 @@ describe("contract: child session announced on the parent's event bus", () => {
     });
 
     // The child's session_start is the proof the announcement reached the bus
-    // before binding proceeded; a detached await would land it after.
+    // before the child's own extensions ran. What this timeline cannot see is
+    // the call-stack property: an await between the emit and the bind lands the
+    // created entry in the same place, so that invariant lives in
+    // createAndConfigureSession, not here.
     expect(entries()).toEqual([
       { event: CREATED, data: { sessionId: child.sessionId, parentSessionId: PARENT_ID } },
       { event: "child:session_start" },
@@ -529,5 +533,44 @@ describe("contract: child session announced on the parent's event bus", () => {
       { event: "child:session_shutdown" },
       { event: DISPOSED, data: { sessionId: child.sessionId } },
     ]);
+  });
+
+  /**
+   * Why child-announcements.ts drops an emit throw: the handle it announces on
+   * is pi's `pi.events`, not the bus, and pi invalidates it with the session
+   * that loaded the extension. A child settling after that point emits on a
+   * handle that throws, and an advisory event must not fail the teardown.
+   */
+  it("pi's own events handle refuses an emit once the session that loaded it is disposed", async () => {
+    const workspace = makeWorkspace("events-facade");
+    const agentDir = getAgentDir();
+    let captured: ExtensionAPI | undefined;
+    const settingsManager = SettingsManager.create(workspace.project, agentDir, { projectTrusted: true });
+    const loader = new DefaultResourceLoader({
+      cwd: workspace.project,
+      agentDir,
+      settingsManager,
+      extensionFactories: [
+        (pi: ExtensionAPI) => {
+          captured = pi;
+        },
+      ],
+    });
+    await loader.reload();
+    const { session } = await createAgentSession({
+      cwd: workspace.project,
+      agentDir,
+      sessionManager: SessionManager.inMemory(workspace.project),
+      settingsManager,
+      resourceLoader: loader,
+    });
+    await session.bindExtensions({});
+    const events = captured!.events;
+
+    expect(() => events.emit(CREATED, { sessionId: "probe" })).not.toThrow();
+
+    session.dispose();
+
+    expect(() => events.emit(CREATED, { sessionId: "probe" })).toThrow(/stale/);
   });
 });

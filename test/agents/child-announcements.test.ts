@@ -3,12 +3,13 @@
  *
  * Lite publishes the subagent-integration convention's channels on the parent's
  * event bus; an external gate subscribes to them by name. These tests pin the
- * channel literals, the payload objects, the missing-bus no-op and exactly-once
- * disposal.
+ * channel literals, the payload objects, the missing-bus no-op, the swallowed
+ * emit rejection and exactly-once disposal.
  */
 
 import { describe, it, expect } from "vitest";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
+import { refusingEvents } from "../fixtures.js";
 import {
   announceChildSessionBound,
   announceChildSessionCreated,
@@ -98,6 +99,19 @@ describe("without an event bus", () => {
 
     expect(() => {
       announceChildSessionCreated(session, undefined, PARENT_ID);
+      announceChildSessionBound(session);
+      announceChildSessionDisposed(session);
+    }).not.toThrow();
+  });
+});
+
+describe("when the bus refuses the emit (pi's stale extension ctx)", () => {
+  it("no announcement throws into the caller", () => {
+    const events = refusingEvents();
+    const session = asAgentSession({ sessionId: CHILD_ID });
+
+    expect(() => {
+      announceChildSessionCreated(session, events, PARENT_ID);
       announceChildSessionBound(session);
       announceChildSessionDisposed(session);
     }).not.toThrow();

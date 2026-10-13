@@ -7,6 +7,7 @@
 
 import { vi, type Mock } from "vitest";
 import type {
+  EventBus,
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
@@ -558,6 +559,20 @@ export function fakeCtx(options: FakeCtxOptions = {}): ExtensionContext {
  */
 export function fakePi() {
   return asExtensionAPI({ exec: vi.fn() });
+}
+
+/**
+ * pi's `pi.events` is a guarded facade over the bus, not the bus: its emit
+ * throws once the session that loaded the extension has been disposed,
+ * reloaded or replaced. A handle past that point refuses every announcement.
+ */
+export function refusingEvents(): EventBus {
+  return {
+    emit: () => {
+      throw new Error("This extension ctx is stale after session replacement or reload.");
+    },
+    on: () => () => {},
+  };
 }
 
 /**
