@@ -9,8 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { createEventBus, type AgentSession, type EventBus } from "@earendil-works/pi-coding-agent";
-import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
+import { createEventBus, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { fakeCtx, fakePi, guardedEvents, makeResolvablePromise } from "../fixtures.js";
 import {
   mockModules,
   mockAgentSession,
@@ -25,34 +25,18 @@ const CHILD_ID = "child-session-id";
 /** The parent session id a spawn announcement carries. */
 const PARENT_ID = "parent-session-1";
 
-/** Records the disposal announcements for a child the spawn path has announced. */
-function disposedAnnouncements(session: AgentSession): unknown[] {
-  const events = createEventBus();
-  const disposed: unknown[] = [];
-  events.on("subagents:child:disposed", (data) => disposed.push(data));
-  announceChildSessionCreated(session, events, PARENT_ID);
-  return disposed;
-}
-
 /**
- * pi's `pi.events` facade: it serves the bus until the session that loaded the
- * extension is gone, then every emit throws. `invalidate()` is that point.
+ * Announces the child on a live `pi.events` facade over a fresh parent bus and
+ * returns what that bus hears on the disposal channel. `invalidate()` makes the
+ * handle stale, as replacing, reloading or disposing the parent session does.
  */
-function parentEvents(): { events: EventBus; invalidate(): void } {
+function parentHandle(session: AgentSession): { disposed: unknown[]; invalidate(): void } {
   const bus = createEventBus();
-  let stale = false;
-  return {
-    events: {
-      emit: (channel, data) => {
-        if (stale) throw new Error("This extension ctx is stale after session replacement or reload.");
-        bus.emit(channel, data);
-      },
-      on: (channel, handler) => bus.on(channel, handler),
-    },
-    invalidate: () => {
-      stale = true;
-    },
-  };
+  const disposed: unknown[] = [];
+  bus.on("subagents:child:disposed", (data) => disposed.push(data));
+  const parent = guardedEvents(bus);
+  announceChildSessionCreated(session, parent.events, PARENT_ID);
+  return { disposed, invalidate: () => parent.invalidate() };
 }
 
 describe("AgentManager session disposal", () => {
@@ -113,27 +97,26 @@ describe("AgentManager session disposal", () => {
 
   it("announces the released Subagent disposed exactly once, across clear and parent dispose", async () => {
     const { id, session } = await spawnSettledChild();
-    const disposed = disposedAnnouncements(session);
+    const parent = parentHandle(session);
 
     manager.clear(id);
     await manager.dispose();
 
-    expect(disposed).toEqual([{ sessionId: CHILD_ID }]);
+    expect(parent.disposed).toEqual([{ sessionId: CHILD_ID }]);
   });
 
   it("announces a settled Subagent disposed when parent dispose is the only trigger", async () => {
     const { session } = await spawnSettledChild();
-    const disposed = disposedAnnouncements(session);
+    const parent = parentHandle(session);
 
     await manager.dispose();
 
-    expect(disposed).toEqual([{ sessionId: CHILD_ID }]);
+    expect(parent.disposed).toEqual([{ sessionId: CHILD_ID }]);
   });
 
   it("drains a Subagent whose announcements are refused by a stale parent handle", async () => {
     const { id, session } = await spawnSettledChild();
-    const parent = parentEvents();
-    announceChildSessionCreated(session, parent.events, PARENT_ID);
+    const parent = parentHandle(session);
     // The parent session is replaced, reloaded or disposed while this child runs.
     parent.invalidate();
 

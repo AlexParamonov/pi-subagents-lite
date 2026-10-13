@@ -561,18 +561,37 @@ export function fakePi() {
   return asExtensionAPI({ exec: vi.fn() });
 }
 
+/** A bus with no subscribers, for a handle whose traffic no test observes. */
+const silentBus: EventBus = { emit: () => {}, on: () => () => {} };
+
 /**
- * pi's `pi.events` is a guarded facade over the bus, not the bus: its emit
- * throws once the session that loaded the extension has been disposed,
- * reloaded or replaced. A handle past that point refuses every announcement.
+ * pi's `pi.events` is a guarded facade over the resource loader's bus, not the
+ * bus: every emit throws once the session that loaded the extension has been
+ * disposed, reloaded or replaced. `invalidate()` is that point. Hand-rolled
+ * rather than built on `createEventBus()`: this module is also imported by test
+ * files that mock the SDK module, where that factory does not exist.
  */
-export function refusingEvents(): EventBus {
+export function guardedEvents(bus: EventBus): { events: EventBus; invalidate(): void } {
+  let stale = false;
   return {
-    emit: () => {
-      throw new Error("This extension ctx is stale after session replacement or reload.");
+    events: {
+      emit: (channel, data) => {
+        if (stale) throw new Error("This extension ctx is stale after session replacement or reload.");
+        bus.emit(channel, data);
+      },
+      on: (channel, handler) => bus.on(channel, handler),
     },
-    on: () => () => {},
+    invalidate: () => {
+      stale = true;
+    },
   };
+}
+
+/** A handle past that point: it refuses every announcement it is asked to publish. */
+export function refusingEvents(): EventBus {
+  const facade = guardedEvents(silentBus);
+  facade.invalidate();
+  return facade.events;
 }
 
 /**
