@@ -97,8 +97,8 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
 
       submenu: persistedTargetSubmenu(theme, (target, pickDone) => {
         const choiceItems = [...VALID_THINKING_LEVELS, ...THINKING_CHOICE_TAIL].map((v) => ({
-          value: v as string,
-          label: v as string,
+          value: v,
+          label: v,
         }));
         const list = new SelectList(choiceItems, 10, buildSelectListTheme(theme));
         list.onSelect = (item) => {

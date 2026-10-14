@@ -92,7 +92,7 @@ export interface DisplayedThinking {
 }
 
 /** Sources the pre-spawn surfaces show: the chain without the explicit spawn param. */
-export type DisplayThinkingSources = Omit<ThinkingLevelSources, "explicit">;
+type DisplayThinkingSources = Omit<ThinkingLevelSources, "explicit">;
 
 /**
  * The displayed thinking level with its winning source: the chain, then pi's
