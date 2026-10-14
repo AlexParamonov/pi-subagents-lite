@@ -457,7 +457,7 @@ describe("showSpawnAgentMenu — thinking level row", () => {
   });
 
   it("offers `parent` with no parent level, where following falls back to the chain", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = undefined as unknown as ThinkingLevel;
+    // The command context carries no level, so there is nothing to follow.
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
     await completeWizard(ctx);
 
@@ -573,17 +573,31 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
   });
 
   it("following the parent shows its level annotated with parent", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = "minimal";
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.thinkingLevel = "minimal";
     await completeWizard(ctx);
 
     pickThinking("parent");
     expect(row().currentValue).toBe("minimal (parent)");
   });
 
-  it("following the parent spawns its level, never the `parent` value", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = "minimal";
+  it("follows the level of the context the wizard runs in, not the stored session context", async () => {
+    // The shell's stored session context is set at session_start; the run
+    // resolves `parent` against the context pi hands the handler. Annotated
+    // rows must follow the one the run uses or they explain the wrong level.
+    mockModules.mockSessionCtx.thinkingLevel = "high" as ThinkingLevel;
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.thinkingLevel = "minimal";
+    await completeWizard(ctx);
+
+    pickThinking("parent");
+    expect(row().currentValue).toBe("minimal (parent)");
+    expect(await spawnOptions()).toMatchObject({ thinkingLevel: "minimal" });
+  });
+
+  it("following the parent spawns its level, never the `parent` value", async () => {
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.thinkingLevel = "minimal";
     await completeWizard(ctx);
 
     pickThinking("parent");
@@ -593,16 +607,16 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
   });
 
   it("following the parent re-reads and re-clamps its level on a model change", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = "minimal";
     mockClampThinkingLevel = (_m: Model<Api>, level: ModelThinkingLevel) => (level === "minimal" ? "medium" : level);
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.thinkingLevel = "minimal";
     await completeWizard(ctx);
 
     pickThinking("parent");
     expect(row().currentValue).toBe("medium (parent)");
 
     // The parent session moves while the wizard is open; following tracks it.
-    mockModules.mockSessionCtx.thinkingLevel = "high";
+    ctx.thinkingLevel = "high";
     switchModel("openai/gpt-4o");
     expect(row().currentValue).toBe("high (parent)");
   });
@@ -640,10 +654,10 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
   });
 
   it("following the parent on a non-reasoning model clamps to off in the row and the spawn", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = "minimal";
     // pi clamps a non-reasoning model's levels to its only supported one.
     mockClampThinkingLevel = (_m: Model<Api>, level: ModelThinkingLevel) => (level === "off" ? level : "off");
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.thinkingLevel = "minimal";
     await completeWizard(ctx);
 
     switchModel("openai/gpt-4o");
@@ -654,9 +668,9 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
   });
 
   it("picking `pi default` after following the parent returns to the chain", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = "minimal";
     piSettingsMock.getPiDefaultThinkingLevel.mockReturnValue("low");
     const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    ctx.thinkingLevel = "minimal";
     await completeWizard(ctx);
 
     pickThinking("parent");

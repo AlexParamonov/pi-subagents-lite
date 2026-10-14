@@ -87,7 +87,8 @@ const hoisted = vi.hoisted(() => {
     // under 7.0.2); the assertions keep the unions so tests can toggle model off
     // and install another thinking level.
     model: parentModel as { provider: string; id: string } | undefined,
-    // The parent session's live thinking level: tests that follow it set this.
+    // The level on the context stored at session_start (the one a spawn runs
+    // against); annotated menus read the command context's own level.
     thinkingLevel: parentThinkingLevel as ThinkingLevel,
     cwd: "/test",
   };

@@ -575,12 +575,27 @@ describe("showModelSettingsMenu — model groups", () => {
   });
 
   it("annotates an agent file holding `parent` as parent, not frontmatter", async () => {
-    mockModules.mockSessionCtx.thinkingLevel = "minimal";
     vi.mocked(getAgentConfig).mockImplementation((name: string) =>
       name === "plain" ? { name, description: "", systemPrompt: "", thinkingLevel: "parent" } : undefined,
     );
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
+    ctx.thinkingLevel = "minimal";
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(row("type:plain")?.currentValue).toBe("minimal (parent) [session]");
+  });
+
+  it("takes the parent level from the context the menu runs in, not the stored session context", async () => {
+    // The shell's stored session context is set at session_start; the Agent tool
+    // resolves `parent` against the context pi hands it. The row must explain the
+    // level the run uses, so it reads the same context the runtime does.
+    mockModules.mockSessionCtx.thinkingLevel = "high" as ThinkingLevel;
+    vi.mocked(getAgentConfig).mockImplementation((name: string) =>
+      name === "plain" ? { name, description: "", systemPrompt: "", thinkingLevel: "parent" } : undefined,
+    );
+    mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    ctx.thinkingLevel = "minimal";
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
     expect(row("type:plain")?.currentValue).toBe("minimal (parent) [session]");
   });

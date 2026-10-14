@@ -279,9 +279,13 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     return model ? modelThinkingLevels[`${model.provider}/${model.id}`] : undefined;
   };
 
-  /** The parent session's live level, clamped to the model a spawn would use. */
+  /**
+   * The parent session's live level, clamped to the model a spawn would use.
+   * Read from the extension context, the source every runtime resolution of
+   * `parent` uses; a stored session context can lag behind it.
+   */
   const followedThinking = (): ThinkingLevel | undefined => {
-    const level = session?.thinkingLevel;
+    const level = ctx.thinkingLevel;
     if (!level) return undefined;
     return clampThinkingToModel(currentModel(), level);
   };
@@ -293,7 +297,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
         frontmatter: agentConfig.thinkingLevel,
         perModel: perModelThinking(),
         defaultThinking: store.agent.defaultThinking,
-        parentLevel: session?.thinkingLevel,
+        parentLevel: ctx.thinkingLevel,
       },
       piDefaultThinking,
       currentModel(),
