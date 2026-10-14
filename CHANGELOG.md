@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-10-14
+
 ### Added
 
 - **`parent` is a selectable Thinking level value.** Any source that sets a Thinking level — an agent file's `thinking`, `Subagent default thinking` at the global or project layer, and the spawn wizard — accepts `parent`, which runs the Subagent at the parent session's current level. It occupies the position that holds it, so a file's `parent` beats pi's per-model level and still loses to a level picked in the spawn wizard; with no parent level to read, that source counts as unset and the next one decides. It is resolved before the Subagent session is created, so no widget, viewer or transcript can show `parent` as a level. Nothing changes for a configuration that does not select it. See [ADR 0011](docs/adr/0011-parent-is-a-thinking-value.md).
