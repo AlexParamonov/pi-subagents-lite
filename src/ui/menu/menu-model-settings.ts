@@ -130,8 +130,8 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     // Model groups: one group per Resolved model with a listed row (an
     // explicit per-type override, including one pointing at the effective
     // default), alphabetical by model id. Rows show the type name, the
-    // spawn-effective (clamped) thinking level, and the winning layer's
-    // provenance tag.
+    // spawn-effective thinking level with its winning thinking source in
+    // brackets, and the winning model layer's provenance tag.
     const session = getSessionCtx();
     const parentModel = session?.model ?? ctx.model;
     const parentModelId = parentModel ? `${parentModel.provider}/${parentModel.id}` : "(inherits parent)";
