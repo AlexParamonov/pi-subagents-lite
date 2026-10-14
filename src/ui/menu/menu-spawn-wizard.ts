@@ -21,6 +21,7 @@ import {
   PARENT_THINKING_CHOICE,
   PI_DEFAULT_CHOICE,
   resolveDisplayedThinking,
+  THINKING_CHOICE_TAIL,
   type DisplayedThinking,
 } from "../../models/thinking-resolution.js";
 import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
@@ -145,10 +146,7 @@ function createThinkingLevelSubmenu(
     }));
 
     if (isReasoning) {
-      items.push(
-        { value: PARENT_THINKING_CHOICE, label: PARENT_THINKING_CHOICE },
-        { value: PI_DEFAULT_CHOICE, label: PI_DEFAULT_CHOICE },
-      );
+      items.push(...THINKING_CHOICE_TAIL.map((choice) => ({ value: choice, label: choice })));
     }
 
     const list = new SelectList(items, 10, buildSelectListTheme(theme));

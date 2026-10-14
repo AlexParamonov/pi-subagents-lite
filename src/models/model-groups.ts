@@ -27,7 +27,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import type { SubagentsConfig, SessionModelOverrides } from "./model-precedence.js";
 import { resolveModelSource } from "./model-precedence.js";
-import { resolveDisplayedThinking, type ThinkingSource } from "./thinking-resolution.js";
+import { resolveDisplayedThinking, type DisplayedThinking, type ThinkingSource } from "./thinking-resolution.js";
 import type { ThinkingChoice, ThinkingLevel } from "../types.js";
 
 /** Frontmatter fields the group builder reads per type. */
@@ -147,7 +147,7 @@ function displayThinking(
   cfg: AgentTypeModelConfig | undefined,
   modelId: string,
   input: ModelGroupsInput,
-): { level: ThinkingLevel; source: ThinkingSource } {
+): DisplayedThinking {
   return resolveDisplayedThinking(
     {
       frontmatter: cfg?.thinkingLevel,
