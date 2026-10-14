@@ -5,16 +5,10 @@
  * clampThinkingLevel is a pure helper). The spawn runtime and every display
  * surface call this so the chain cannot drift between them.
  *
- * Precedence (highest to lowest):
- *   1. explicit spawn param (Agent tool `thinking` / wizard selection)
- *   2. agent frontmatter `thinking`
- *   3. pi per-model modelThinkingLevels for the resolved model
- *   4. subagents-lite defaultThinking setting
- *   5. undefined → caller passes nothing; pi's own fallback applies
- *      (defaultThinkingLevel setting, else medium, clamped)
- *
- * Per-model sits above defaultThinking by design: defaultThinking exists to
- * override pi's global default, not a per-model choice.
+ * Precedence is the CONFIGURED_SOURCES table below: the explicit spawn param
+ * sits above it, pi's own fallback below it. Per-model sits above
+ * defaultThinking by design: defaultThinking exists to override pi's global
+ * default, not a per-model choice.
  *
  * Any configurable position may hold `parent`, which resolves to the parent
  * session's current level: a value on that position, not a position of its own.
@@ -68,17 +62,6 @@ function resolveValue(
   return value;
 }
 
-/** The first defined source in precedence order; undefined when all are unset. */
-export function resolveThinkingLevel(sources: ThinkingLevelSources): ThinkingLevel | undefined {
-  const { parentLevel } = sources;
-  return (
-    resolveValue(sources.explicit, parentLevel) ??
-    resolveValue(sources.frontmatter, parentLevel) ??
-    resolveValue(sources.perModel, parentLevel) ??
-    resolveValue(sources.defaultThinking, parentLevel)
-  );
-}
-
 /**
  * The source that decided a displayed level, in the words the menus print.
  * `parent` names any position holding `parent`.
@@ -94,6 +77,30 @@ export interface DisplayedThinking {
 /** Sources the pre-spawn surfaces show: the chain without the explicit spawn param. */
 type DisplayThinkingSources = Omit<ThinkingLevelSources, "explicit">;
 
+/** The configured positions, in precedence order, each with the word it prints when it wins. */
+const CONFIGURED_SOURCES = [
+  ["frontmatter", "frontmatter"],
+  ["perModel", "pi per-model"],
+  ["defaultThinking", "subagent default"],
+] as const satisfies ReadonlyArray<readonly [keyof DisplayThinkingSources, ThinkingSource]>;
+
+/** The first configured source holding a level, with the word that explains it. */
+function decideConfiguredSource(sources: ThinkingLevelSources): DisplayedThinking | undefined {
+  for (const [key, word] of CONFIGURED_SOURCES) {
+    const value = sources[key];
+    const level = resolveValue(value, sources.parentLevel);
+    if (level === undefined) continue;
+    // Following the parent answers "why this level" better than naming the file.
+    return { level, source: value === PARENT_THINKING_CHOICE ? "parent" : word };
+  }
+  return undefined;
+}
+
+/** The first source holding a level in precedence order; undefined when all are unset. */
+export function resolveThinkingLevel(sources: ThinkingLevelSources): ThinkingLevel | undefined {
+  return resolveValue(sources.explicit, sources.parentLevel) ?? decideConfiguredSource(sources)?.level;
+}
+
 /**
  * The displayed thinking level with its winning source: the chain, then pi's
  * global defaultThinkingLevel, then medium, clamped to the model's supported
@@ -104,22 +111,11 @@ export function resolveDisplayedThinking(
   piDefaultThinking: ThinkingLevel | undefined,
   model: Model<any> | undefined,
 ): DisplayedThinking {
-  const { parentLevel } = sources;
-  // resolveThinkingLevel's chain minus `explicit`, which these surfaces never
-  // hold; each position carries the word it prints when it wins.
-  const candidates = [
-    { value: sources.frontmatter, word: "frontmatter" },
-    { value: sources.perModel, word: "pi per-model" },
-    { value: sources.defaultThinking, word: "subagent default" },
-  ] as const;
-  for (const { value, word } of candidates) {
-    const level = resolveValue(value, parentLevel);
-    if (level === undefined) continue;
-    // The question a user asks is why this level; when a source holds `parent`
-    // the answer is that it follows the parent session, not which file said so.
-    return toDisplayed(model, level, value === PARENT_THINKING_CHOICE ? "parent" : word);
-  }
-  return toDisplayed(model, piDefaultThinking ?? PI_FALLBACK_THINKING_LEVEL, "pi default");
+  const decided = decideConfiguredSource(sources) ?? {
+    level: piDefaultThinking ?? PI_FALLBACK_THINKING_LEVEL,
+    source: "pi default" as const,
+  };
+  return toDisplayed(model, decided.level, decided.source);
 }
 
 /**
