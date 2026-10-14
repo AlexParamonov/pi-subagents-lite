@@ -622,6 +622,20 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
     expect(await spawnOptions()).toMatchObject({ thinkingLevel: undefined });
   });
 
+  it("following the parent on a non-reasoning model clamps to off in the row and the spawn", async () => {
+    mockModules.mockSessionCtx.thinkingLevel = "minimal";
+    // pi clamps a non-reasoning model's levels to its only supported one.
+    mockClampThinkingLevel = (_m: Model<Api>, level: ModelThinkingLevel) => (level === "off" ? level : "off");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    switchModel("openai/gpt-4o");
+    pickThinking("parent");
+
+    expect(row().currentValue).toBe("off (parent)");
+    expect(await spawnOptions()).toMatchObject({ thinkingLevel: "off" });
+  });
+
   it("picking `pi default` after following the parent returns to the chain", async () => {
     mockModules.mockSessionCtx.thinkingLevel = "minimal";
     piSettingsMock.getPiDefaultThinkingLevel.mockReturnValue("low");
