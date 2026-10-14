@@ -10,7 +10,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
@@ -119,19 +119,18 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
 // --- Spawn agent wizard ---
 
 /**
- * Build a submenu for selecting the thinking level based on the current model.
- * Non-reasoning models only show 'off'; reasoning models show supported levels
- * plus 'parent' and 'pi default'.
+ * Build the thinking-level submenu for the model a spawn would use, resolved
+ * through `resolveModel` when the picker opens: its supported levels, then
+ * `parent` and `pi default`. A non-reasoning model offers only `off`, because
+ * every level clamps to `off` there anyway.
  */
 function createThinkingLevelSubmenu(
-  registry: Parameters<typeof findModelInRegistry>[1],
-  currentModelStr: string,
-  fallbackModel: Parameters<typeof findModelInRegistry>[2],
+  resolveModel: () => Model<any> | undefined,
   theme: Theme,
   onThinkingChoice: (choice: string) => void,
 ): (_currentValue: string, done: (v?: string) => void) => any {
   return (_currentValue, done) => {
-    const model = findModelInRegistry(currentModelStr, registry, fallbackModel);
+    const model = resolveModel();
     if (!model) {
       done();
       return {} as any;
@@ -482,13 +481,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
         label: "Thinking level",
         currentValue: thinkingDisplay(),
         description: "Set the reasoning effort level",
-        submenu: createThinkingLevelSubmenu(
-          session?.modelRegistry ?? ctx.modelRegistry,
-          currentModelStr,
-          session?.model,
-          theme,
-          setThinkingChoice,
-        ),
+        submenu: createThinkingLevelSubmenu(currentModel, theme, setThinkingChoice),
       },
       {
         id: "maxTokens",
