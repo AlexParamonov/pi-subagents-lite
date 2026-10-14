@@ -121,8 +121,9 @@ async function isInGitRepo(cwd: string): Promise<boolean> {
 /**
  * Build the thinking-level submenu for the model a spawn would use, resolved
  * through `resolveModel` when the picker opens: its supported levels, then
- * `parent` and `pi default`. A non-reasoning model offers only `off`, because
- * every level clamps to `off` there anyway.
+ * `parent` and `pi default`. A non-reasoning model lists only `off` as a level,
+ * since every level clamps to `off` there; the tail stays offered whatever the
+ * model supports, so any earlier pick can be reversed.
  */
 function createThinkingLevelSubmenu(
   resolveModel: () => Model<any> | undefined,
@@ -145,9 +146,7 @@ function createThinkingLevelSubmenu(
       description: !isReasoning ? "(not supported by this model)" : undefined,
     }));
 
-    if (isReasoning) {
-      items.push(...THINKING_CHOICE_TAIL.map((choice) => ({ value: choice, label: choice })));
-    }
+    items.push(...THINKING_CHOICE_TAIL.map((choice) => ({ value: choice, label: choice })));
 
     const list = new SelectList(items, 10, buildSelectListTheme(theme));
     list.onSelect = (item) => {
