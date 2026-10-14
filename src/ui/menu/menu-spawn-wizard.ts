@@ -247,12 +247,12 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     else thinkingState = { kind: "picked", level: choice as ThinkingLevel };
   };
 
+  /** The wizard's default spawn target: the parent session's cwd. */
+  const parentThinkingCwd = session?.cwd ?? ctx.cwd;
   // Pi settings snapshot for the thinking display, read at the spawn's target
   // cwd. A prediction for display only — the session is the source of truth
   // once it exists. Re-read on every target change, so the `default` state's
   // prediction always describes the cwd the spawn would resolve in.
-  /** The wizard's default spawn target: the parent session's cwd. */
-  const parentThinkingCwd = session?.cwd ?? ctx.cwd;
   let modelThinkingLevels = getPiModelThinkingLevels(parentThinkingCwd);
   let piDefaultThinking = getPiDefaultThinkingLevel(parentThinkingCwd);
 
@@ -262,37 +262,37 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     piDefaultThinking = getPiDefaultThinkingLevel(cwd);
   };
 
-  const thinkingRegistry = () => session?.modelRegistry ?? ctx.modelRegistry;
+  /** The model a spawn would use: the wizard's pick, or the parent's when unset. */
+  const currentModel = () =>
+    findModelInRegistry(currentModelStr, session?.modelRegistry ?? ctx.modelRegistry, session?.model);
 
-  /** The parent session's live level, clamped to the wizard's current model. */
+  /** The parent session's live level, clamped to the model a spawn would use. */
   const followedThinking = (): ThinkingLevel | undefined => {
     const level = session?.thinkingLevel;
     if (!level) return undefined;
-    const model = findModelInRegistry(currentModelStr, thinkingRegistry(), session?.model);
+    const model = currentModel();
     return model ? clampThinkingLevel(model, level) : level;
   };
 
-  /** The chain prediction for a model key string, clamped to the model. */
-  const derivedThinking = (modelKeyStr: string): DisplayedThinking => {
-    const key = modelKeyStr || parentModelId;
-    return resolveDisplayedThinking(
+  /** The chain prediction for the model a spawn would use, clamped to it. */
+  const derivedThinking = (): DisplayedThinking =>
+    resolveDisplayedThinking(
       {
         frontmatter: agentConfig.thinkingLevel,
-        perModel: modelThinkingLevels[key],
+        perModel: modelThinkingLevels[currentModelStr || parentModelId],
         defaultThinking: store.agent.defaultThinking,
         parentLevel: session?.thinkingLevel,
       },
       piDefaultThinking,
-      findModelInRegistry(modelKeyStr, thinkingRegistry(), session?.model),
+      currentModel(),
     );
-  };
 
   /** What the thinking row shows. */
   const thinkingDisplay = (): string => {
     if (thinkingState.kind === "picked") return thinkingState.level;
     const followed = thinkingState.kind === "following" ? followedThinking() : undefined;
     if (followed) return formatDisplayedThinking({ level: followed, source: "parent" });
-    return formatDisplayedThinking(derivedThinking(currentModelStr));
+    return formatDisplayedThinking(derivedThinking());
   };
 
   /**
@@ -424,8 +424,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
             // re-derives from the new model (per-model + pi default included).
             // Following re-reads and re-clamps the parent's level on rebuild.
             if (thinkingState.kind === "picked" && currentModelStr) {
-              const registry = session?.modelRegistry ?? ctx.modelRegistry;
-              const resolved = findModelInRegistry(currentModelStr, registry, session?.model);
+              const resolved = currentModel();
               if (resolved) {
                 thinkingState = { kind: "picked", level: clampThinkingLevel(resolved, thinkingState.level) };
               }
