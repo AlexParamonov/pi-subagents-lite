@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The setting row is now `Subagent default thinking`.** Its config key stays `defaultThinking`, so existing files keep working; only the label changes, to stop colliding with pi's own `defaultThinkingLevel` setting, which resolves at a different position. The row shows `pi default` when nothing is configured, and its list ends `parent`, `pi default` where `pi default` removes the key at the chosen layer, the same way inheritance is cleared for every other model-family value. Its description states that an agent file's `thinking` still overrides it.
 
+### Fixed
+
+- **A Thinking level picked in the spawn wizard is clamped to the model the Subagent gets.** Choosing `(inherits parent)` in the Model row is a model change, but it was the one change that skipped the clamp: the row kept showing the level picked for the previous model and the spawn sent it, while the run clamped to the new model, so the wizard reported an effort the Subagent never ran at. The level the user picked is now kept as picked and clamped to whichever model the spawn would use, so switching back to a model that supports it shows it again.
+- **The spawn wizard reads pi's per-model Thinking level for the model the Subagent runs on.** Choosing `(inherits parent)` sends no model, and the runner still resolves the agent file's model before the parent's; the wizard used the parent's model for its level list, its clamp and pi's per-model entry, so a type that pins a different model saw the wrong level and could be offered levels that model cannot run.
+
 ## [1.16.0] - 2026-10-05
 
 ### Added
