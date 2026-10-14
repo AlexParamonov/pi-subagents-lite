@@ -540,6 +540,20 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
     expect(row().currentValue).toBe("high");
   });
 
+  it("a picked level is clamped when the model returns to the parent", async () => {
+    // Clamp to a distinct value so the row and the spawn prove the model change
+    // re-clamped the pick rather than keeping what was picked.
+    mockClampThinkingLevel = (_m: Model<Api>, level: ModelThinkingLevel) => (level === "xhigh" ? "high" : level);
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    pickThinking("xhigh");
+    switchModel("(inherits parent)");
+
+    expect(row().currentValue).toBe("high");
+    expect(await spawnOptions()).toMatchObject({ thinkingLevel: "high" });
+  });
+
   it("a picked level survives a worktree change", async () => {
     setupExecMock({ inGitRepo: true, worktrees: [{ path: "/test-feature", branch: "feature" }] });
     piSettingsMock.getPiModelThinkingLevels.mockImplementation((cwd: string): Record<string, ThinkingLevel> =>

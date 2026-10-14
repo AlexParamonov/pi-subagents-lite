@@ -285,29 +285,30 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
       currentModel(),
     );
 
-  /** What the thinking row shows. */
-  const thinkingDisplay = (): string => {
-    if (thinkingState.kind === "picked") return thinkingState.level;
-    if (thinkingState.kind === "following") {
-      const level = followedThinking();
-      // With no parent level to follow there is nothing to pin, so the row
-      // reports what the chain decides, which is what the spawn then runs.
-      if (level) return formatDisplayedThinking({ level, source: "parent" });
-    }
-    return formatDisplayedThinking(derivedThinking());
-  };
-
   /**
-   * What the spawn passes as the explicit param. On `default` the derived value
-   * is only a display prediction read at the parent cwd — passing it would
-   * shadow the spawn target's own per-model entry (worktree targets carry their
-   * own .pi/settings.json), so nothing is sent and the runner resolves
+   * The level the spawn sends as its explicit param, clamped to the model a
+   * spawn would use. Read per rebuild, so a model change re-clamps without the
+   * state storing a model-specific level. On `default` nothing is sent: the
+   * derived value is only a display prediction read at the parent cwd, and
+   * passing it would shadow the spawn target's own per-model entry (worktree
+   * targets carry their own .pi/settings.json), so the runner resolves
    * frontmatter, per-model and defaultThinking at the actual target cwd.
    */
   const spawnThinkingLevel = (): ThinkingLevel | undefined => {
-    if (thinkingState.kind === "picked") return thinkingState.level;
+    if (thinkingState.kind === "picked") return clampThinkingToModel(currentModel(), thinkingState.level);
     if (thinkingState.kind === "following") return followedThinking();
     return undefined;
+  };
+
+  /** What the thinking row shows: the level the spawn sends, annotated unless the user picked it. */
+  const thinkingDisplay = (): string => {
+    const level = spawnThinkingLevel();
+    if (level) {
+      return thinkingState.kind === "picked" ? level : formatDisplayedThinking({ level, source: "parent" });
+    }
+    // `default`, and `following` with no parent level to pin: the row reports
+    // what the chain decides, which is what the spawn then runs.
+    return formatDisplayedThinking(derivedThinking());
   };
 
   let currentMaxTurns: number | undefined = agentConfig.maxTurns ?? store.agent.defaultMaxTurns;
@@ -420,18 +421,8 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
           theme,
           onSet: (_target, model) => {
             currentModelStr = model === "(inherits parent)" || model === null ? "" : model;
-
-            // Picked: keep the user's choice, clamped to the new model's
-            // supported levels. Default: nothing here — the displayed value
-            // re-derives from the new model (per-model + pi default included).
-            // Following re-reads and re-clamps the parent's level on rebuild.
-            if (thinkingState.kind === "picked" && currentModelStr) {
-              thinkingState = {
-                kind: "picked",
-                level: clampThinkingToModel(currentModel(), thinkingState.level),
-              };
-            }
-            // Rebuild items so the displayed thinking level reflects the new model
+            // Every thinking state resolves its level through currentModel(), so
+            // the rebuilt row and the spawn value already reflect the new model.
             rebuild?.(buildItems());
           },
         }),
