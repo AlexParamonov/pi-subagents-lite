@@ -54,49 +54,34 @@ export interface ThinkingLevelSources {
   parentLevel?: ThinkingLevel;
 }
 
+/**
+ * What one written value resolves to. `parent` resolves to the parent's level,
+ * so with no parent level available it reads as unwritten and the chain walks
+ * on to the next source.
+ */
+function resolveValue(
+  value: ThinkingChoice | undefined,
+  parentLevel: ThinkingLevel | undefined,
+): ThinkingLevel | undefined {
+  if (value === undefined) return undefined;
+  if (value === PARENT_THINKING_CHOICE) return parentLevel;
+  return value;
+}
+
 /** The first defined source in precedence order; undefined when all are unset. */
 export function resolveThinkingLevel(sources: ThinkingLevelSources): ThinkingLevel | undefined {
-  const winner = firstWrittenSource(sources, CHAIN_POSITIONS);
-  if (!winner) return undefined;
-  return winner.value === "parent" ? sources.parentLevel : winner.value;
-}
-
-/** A chain position carrying a written value. */
-interface WrittenSource<P extends string> {
-  position: P;
-  value: ThinkingChoice;
-}
-
-/** The positions the pre-spawn surfaces read; they hold no explicit spawn param to name. */
-const DISPLAY_POSITIONS = ["frontmatter", "perModel", "defaultThinking"] as const;
-
-/** The full chain, highest first. */
-const CHAIN_POSITIONS = ["explicit", ...DISPLAY_POSITIONS] as const;
-
-type ChainPosition = (typeof CHAIN_POSITIONS)[number];
-
-/**
- * The winning chain position: the first written source in `positions`.
- * A source holding `parent` with no parent level available reads as unwritten,
- * so resolution continues to the next source.
- */
-function firstWrittenSource<P extends ChainPosition>(
-  sources: ThinkingLevelSources,
-  positions: readonly P[],
-): WrittenSource<P> | undefined {
-  for (const position of positions) {
-    const value = sources[position];
-    if (value === undefined) continue;
-    if (value === "parent" && sources.parentLevel === undefined) continue;
-    return { position, value };
-  }
-  return undefined;
+  const { parentLevel } = sources;
+  return (
+    resolveValue(sources.explicit, parentLevel) ??
+    resolveValue(sources.frontmatter, parentLevel) ??
+    resolveValue(sources.perModel, parentLevel) ??
+    resolveValue(sources.defaultThinking, parentLevel)
+  );
 }
 
 /**
- * The chain position that decided a displayed level, in the words the menus
- * print. `parent` names any position holding `parent`: the question a user asks
- * is why this level, and the answer is that it follows the parent session.
+ * The source that decided a displayed level, in the words the menus print.
+ * `parent` names any position holding `parent`.
  */
 export type ThinkingSource = "frontmatter" | "pi per-model" | "subagent default" | "parent" | "pi default";
 
@@ -109,12 +94,6 @@ export interface DisplayedThinking {
 /** Sources the pre-spawn surfaces show: the chain without the explicit spawn param. */
 export type DisplayThinkingSources = Omit<ThinkingLevelSources, "explicit">;
 
-const SOURCE_WORDS: Record<(typeof DISPLAY_POSITIONS)[number], ThinkingSource> = {
-  frontmatter: "frontmatter",
-  perModel: "pi per-model",
-  defaultThinking: "subagent default",
-};
-
 /**
  * The displayed thinking level with its winning source: the chain, then pi's
  * global defaultThinkingLevel, then medium, clamped to the model's supported
@@ -125,16 +104,27 @@ export function resolveDisplayedThinking(
   piDefaultThinking: ThinkingLevel | undefined,
   model: Model<any> | undefined,
 ): DisplayedThinking {
-  const winner = firstWrittenSource(sources, DISPLAY_POSITIONS);
-  if (winner) {
-    const base = winner.value === "parent" ? sources.parentLevel! : winner.value;
-    return {
-      level: model ? clampThinkingLevel(model, base) : base,
-      source: winner.value === "parent" ? "parent" : SOURCE_WORDS[winner.position],
-    };
+  const { parentLevel } = sources;
+  // resolveThinkingLevel's chain minus `explicit`, which these surfaces never
+  // hold; each position carries the word it prints when it wins.
+  const candidates = [
+    { value: sources.frontmatter, word: "frontmatter" },
+    { value: sources.perModel, word: "pi per-model" },
+    { value: sources.defaultThinking, word: "subagent default" },
+  ] as const;
+  for (const { value, word } of candidates) {
+    const level = resolveValue(value, parentLevel);
+    if (level === undefined) continue;
+    // The question a user asks is why this level; when a source holds `parent`
+    // the answer is that it follows the parent session, not which file said so.
+    return toDisplayed(model, level, value === PARENT_THINKING_CHOICE ? "parent" : word);
   }
-  const base = piDefaultThinking ?? PI_FALLBACK_THINKING_LEVEL;
-  return { level: model ? clampThinkingLevel(model, base) : base, source: "pi default" };
+  return toDisplayed(model, piDefaultThinking ?? PI_FALLBACK_THINKING_LEVEL, "pi default");
+}
+
+/** A level as displayed, clamped to the model (unclamped when it's not in the registry). */
+function toDisplayed(model: Model<any> | undefined, level: ThinkingLevel, source: ThinkingSource): DisplayedThinking {
+  return { level: model ? clampThinkingLevel(model, level) : level, source };
 }
 
 /** The row label for a displayed level: `high (frontmatter)`. */
