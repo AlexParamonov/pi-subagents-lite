@@ -279,6 +279,29 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
     expect(event.input.thinking).toBe("high");
   });
 
+  it("a global per-model entry still beats a `parent` defaultThinking on an untrusted target", async () => {
+    // The documented order is unchanged by the target's trust: per-model sits
+    // above defaultThinking, so blanking the per-model term let `parent` win a
+    // position it does not hold.
+    perModelState.global = "high";
+    perModelState.project = "max";
+    storeState.defaultThinking = "parent";
+    storeState.modelFor = "anthropic/claude-opus-4-1";
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeRoot: "/repo-b-resolved",
+      label: "repo-b-resolved",
+      sameRepo: false,
+    });
+    mockResolveSubagentTrust.mockReturnValue(false);
+    const event = makeEvent({ worktree_path: "/repo-b" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project", thinkingLevel: "minimal" }));
+
+    expect(event.input.thinking).toBe("high");
+  });
+
   it("does not let an untrusted target's project layer set the level (project-trust gate)", async () => {
     perModelState.project = "max";
     storeState.modelFor = "anthropic/claude-opus-4-1";
