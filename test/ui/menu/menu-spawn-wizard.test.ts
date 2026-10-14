@@ -431,7 +431,7 @@ describe("showSpawnAgentMenu — thinking level row", () => {
     ]);
   });
 
-  it("offers only 'off' for a non-reasoning model", async () => {
+  it("offers only 'off' as a level for a non-reasoning model, then parent and pi default", async () => {
     vi.mocked(getAgentConfig).mockImplementation((name: string) =>
       name === "general-purpose"
         ? {
@@ -449,7 +449,7 @@ describe("showSpawnAgentMenu — thinking level row", () => {
     await completeWizard(ctx);
     row().submenu!("off", vi.fn());
     const list = selectListInstances[selectListInstances.length - 1];
-    expect(list.items.map((i) => i.value)).toEqual(["off"]);
+    expect(list.items.map((i) => i.value)).toEqual(["off", "parent", "pi default"]);
     expect(list.items[0].description).toContain("not supported");
   });
 
@@ -599,6 +599,26 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
     pickThinking("pi default");
 
     expect(row().currentValue).toBe("high (pi per-model)");
+    expect(await spawnOptions()).toMatchObject({ thinkingLevel: undefined });
+  });
+
+  it("a picked level can be released after switching to a non-reasoning model", async () => {
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "anthropic/claude-sonnet-4-20250514": "high" });
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    pickThinking("low");
+    switchModel("openai/gpt-4o");
+
+    row().submenu!("off", vi.fn());
+    expect(selectListInstances[selectListInstances.length - 1].items.map((i) => i.value)).toEqual([
+      "off",
+      "parent",
+      "pi default",
+    ]);
+
+    pickThinking("pi default");
+    expect(row().currentValue).toBe("medium (pi default)");
     expect(await spawnOptions()).toMatchObject({ thinkingLevel: undefined });
   });
 
