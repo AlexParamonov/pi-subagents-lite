@@ -261,9 +261,23 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     piDefaultThinking = getPiDefaultThinkingLevel(cwd);
   };
 
-  /** The model a spawn would use: the wizard's pick, or the parent's when unset. */
+  /**
+   * The model a spawn would use: the wizard's pick, or, when it sends no model,
+   * the chain `agent-runner.initSession` walks for an omitted one — the agent
+   * file's model first, then the parent session's.
+   */
   const currentModel = () =>
-    findModelInRegistry(currentModelStr, session?.modelRegistry ?? ctx.modelRegistry, session?.model);
+    findModelInRegistry(
+      currentModelStr || agentConfig.model,
+      session?.modelRegistry ?? ctx.modelRegistry,
+      session?.model,
+    );
+
+  /** pi's per-model entry for the model a spawn would use. */
+  const perModelThinking = (): ThinkingLevel | undefined => {
+    const model = currentModel();
+    return model ? modelThinkingLevels[`${model.provider}/${model.id}`] : undefined;
+  };
 
   /** The parent session's live level, clamped to the model a spawn would use. */
   const followedThinking = (): ThinkingLevel | undefined => {
@@ -277,7 +291,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
     resolveDisplayedThinking(
       {
         frontmatter: agentConfig.thinkingLevel,
-        perModel: modelThinkingLevels[currentModelStr || parentModelId],
+        perModel: perModelThinking(),
         defaultThinking: store.agent.defaultThinking,
         parentLevel: session?.thinkingLevel,
       },

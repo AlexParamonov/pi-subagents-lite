@@ -317,13 +317,13 @@ describe("showSpawnAgentMenu — description", () => {
 });
 
 /** Agent config with no frontmatter thinking, so derivation starts at per-model. */
-function typeWithoutThinking() {
+function typeWithoutThinking(model = "anthropic/claude-sonnet-4-20250514") {
   vi.mocked(getAgentConfig).mockImplementation((name: string) =>
     name === "general-purpose"
       ? {
           name: "general-purpose",
           description: "",
-          model: "anthropic/claude-sonnet-4-20250514",
+          model,
           extensions: true,
           skills: true,
           systemPrompt: "",
@@ -661,6 +661,38 @@ describe("showSpawnAgentMenu — thinking states (Default / Picked / Following)"
 
     expect(row().currentValue).toBe("low (pi default)");
     expect(await spawnOptions()).toMatchObject({ thinkingLevel: undefined });
+  });
+
+  it("reads pi's per-model entry for the agent's own model when the model returns to the parent", async () => {
+    // Sending no model does not drop the agent file's model: the runner resolves
+    // it, so pi's per-model entry is read for that model, not for the parent's.
+    piSettingsMock.getPiModelThinkingLevels.mockReturnValue({ "anthropic/claude-sonnet-4-20250514": "high" });
+    typeWithoutThinking();
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+    expect(row().currentValue).toBe("high (pi per-model)");
+
+    switchModel("(inherits parent)");
+    expect(row().currentValue).toBe("high (pi per-model)");
+  });
+
+  it("offers the agent's own model levels when the model returns to the parent", async () => {
+    // The parent runs a reasoning model; the agent file pins a non-reasoning one.
+    mockModules.mockSessionCtx.model = mockModules.mockSessionCtx.modelRegistry.find(
+      "anthropic",
+      "claude-sonnet-4-20250514",
+    );
+    typeWithoutThinking("openai/gpt-4o");
+    const ctx = createMockWizardCtx(["general-purpose", "fix the bug", undefined]);
+    await completeWizard(ctx);
+
+    switchModel("(inherits parent)");
+    row().submenu!("off", vi.fn());
+    expect(selectListInstances[selectListInstances.length - 1].items.map((i) => i.value)).toEqual([
+      "off",
+      "parent",
+      "pi default",
+    ]);
   });
 
   it("Default re-reads pi settings when the spawn target worktree changes", async () => {
