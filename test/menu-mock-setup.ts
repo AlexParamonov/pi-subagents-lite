@@ -20,7 +20,7 @@ import type { SessionModelOverrides, SubagentsConfig } from "../src/models/model
 import type { SpawnIntent } from "../src/spawn/spawn-coordinator.js";
 import type { SelectOption } from "../src/ui/searchable-select.js";
 import type { Theme } from "../src/ui/types.js";
-import type { ThinkingLevel } from "../src/types.js";
+import type { ThinkingChoice, ThinkingLevel } from "../src/types.js";
 
 // Create the mutable mock state via vi.hoisted so the vi.mock factories
 // (which vitest hoists above the rest of the module) can reference it.
@@ -434,7 +434,7 @@ vi.mock("../src/shell.js", async () => {
         setIncludeContextFiles(enabled: boolean) {
           mockModules.mockConfig.agent.includeContextFiles = enabled;
         },
-        setDefaultThinking(level: ThinkingLevel | undefined, target: string = "global") {
+        setDefaultThinking(level: ThinkingChoice | undefined, target: "global" | "project" = "global") {
           const agent = target === "project" ? mockModules.mockProjectConfig.agent : mockModules.mockConfig.agent;
           if (level === undefined) delete agent.defaultThinking;
           else agent.defaultThinking = level;

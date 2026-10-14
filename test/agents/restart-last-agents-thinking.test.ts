@@ -12,7 +12,7 @@ import type { ExtensionCommandContext, SessionMessageEntry } from "@earendil-wor
 import type { JsonObject, ToolCall } from "@earendil-works/pi-ai";
 import { fakeCtx, shellMock } from "../fixtures.js";
 import { asCommandContext } from "../pi-boundaries.js";
-import type { AgentRecord, ThinkingLevel } from "../../src/types.js";
+import type { AgentRecord, ThinkingChoice, ThinkingLevel } from "../../src/types.js";
 import type { SpawnIntent, SpawnResult } from "../../src/spawn/spawn-coordinator.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 import type { TypeResolution } from "../../src/agents/agent-types.js";
@@ -28,7 +28,7 @@ const { mockCoordinatorSpawn, mockGetAgentConfig, storeState } = vi.hoisted(() =
     systemPrompt: "test prompt",
     maxTurns: 25,
   })),
-  storeState: { defaultThinking: undefined as ThinkingLevel | undefined },
+  storeState: { defaultThinking: undefined as ThinkingChoice | undefined },
 }));
 
 function fakeRecord(): AgentRecord {
@@ -135,5 +135,14 @@ describe("restart — thinking resolution", () => {
     await handleRestartLastAgents(historyWithCall({ prompt: "Do it", thinking: "high" }, "minimal"));
 
     expect(lastSpawnIntent().thinkingLevel).toBe("high");
+  });
+
+  it("defers a config `parent` to the spawn runner instead of freezing the parent level", async () => {
+    storeState.defaultThinking = "parent";
+
+    await handleRestartLastAgents(historyWithCall({ prompt: "Do it" }, "minimal"));
+
+    expect(lastSpawnIntent().thinkingLevel).toBeUndefined();
+    expect(lastSpawnIntent().invocation?.thinkingLevel).toBeUndefined();
   });
 });
