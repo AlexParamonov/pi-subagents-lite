@@ -159,7 +159,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       piDefaultThinking: getPiDefaultThinkingLevel(ctx.cwd),
       piModelThinking: (modelKey) => modelThinkingLevels[modelKey],
       findModel: (modelId) => findModelInRegistry(modelId, registry, undefined),
-      parentLevel: session?.thinkingLevel ?? ctx.thinkingLevel,
+      parentLevel: ctx.thinkingLevel,
     });
 
     for (const group of groups) {

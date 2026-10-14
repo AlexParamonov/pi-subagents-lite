@@ -56,6 +56,7 @@ const hoisted = vi.hoisted(() => {
     provider: "test",
     id: "parent-model",
   };
+  const parentThinkingLevel: ThinkingLevel = "medium";
   /** The model subset the fake registry resolves; src reads provider/id (+reasoning). */
   interface FakeModel {
     provider: string;
@@ -83,10 +84,12 @@ const hoisted = vi.hoisted(() => {
     },
     // TS 7 (native tsc) infers the control-flow-narrowed type of the annotated const
     // for object-literal properties, losing the `| undefined` (verified in isolation
-    // under 7.0.2); the assertion keeps the union so tests can toggle model off.
+    // under 7.0.2); the assertions keep the unions so tests can toggle model off
+    // and install another thinking level.
     model: parentModel as { provider: string; id: string } | undefined,
-    // The parent session's live thinking level: tests that follow it set this.
-    thinkingLevel: "medium" as ThinkingLevel,
+    // The level on the context stored at session_start (the one a spawn runs
+    // against); annotated menus read the command context's own level.
+    thinkingLevel: parentThinkingLevel as ThinkingLevel,
     cwd: "/test",
   };
 
@@ -111,6 +114,8 @@ const hoisted = vi.hoisted(() => {
     mockSessionShowCost,
     mockManager,
     mockSessionCtx,
+    parentModel,
+    parentThinkingLevel,
     mockPiExec,
     mockPiInstance,
   };
@@ -149,6 +154,11 @@ export function resetConfig(): void {
   mockModules.mockProjectTargetOffered = false;
   mockModules.mockStoreOverride = null;
   mockModules.mockSessionShowCost = undefined;
+  // The parent session's model and live level are mutated by tests that switch
+  // models or follow the parent; both return to the default here so a later
+  // test cannot read a model or level an earlier test installed.
+  mockModules.mockSessionCtx.model = hoisted.parentModel;
+  mockModules.mockSessionCtx.thinkingLevel = hoisted.parentThinkingLevel;
   mockModules.mockManager.setConcurrency.mockReset();
   mockModules.mockManager.listAgents.mockReset();
   mockModules.mockManager.getRecord.mockReset();

@@ -37,24 +37,24 @@ describe("getPiDefaultThinkingLevel", () => {
 
   it("returns undefined when no settings file sets defaultThinkingLevel", () => {
     writeGlobal({ theme: "dark" });
-    expect(getPiDefaultThinkingLevel(cwd, agentDir)).toBeUndefined();
+    expect(getPiDefaultThinkingLevel(cwd, { agentDir })).toBeUndefined();
   });
 
   it("returns the global defaultThinkingLevel", () => {
     writeGlobal({ defaultThinkingLevel: "high" });
-    expect(getPiDefaultThinkingLevel(cwd, agentDir)).toBe("high");
+    expect(getPiDefaultThinkingLevel(cwd, { agentDir })).toBe("high");
   });
 
   it("returns the project defaultThinkingLevel over the global one", () => {
     writeGlobal({ defaultThinkingLevel: "high" });
     writeProject({ defaultThinkingLevel: "low" });
-    expect(getPiDefaultThinkingLevel(cwd, agentDir)).toBe("low");
+    expect(getPiDefaultThinkingLevel(cwd, { agentDir })).toBe("low");
   });
 
   it("returns the global level when the project file has no thinking key", () => {
     writeGlobal({ defaultThinkingLevel: "high" });
     writeProject({ theme: "light" });
-    expect(getPiDefaultThinkingLevel(cwd, agentDir)).toBe("high");
+    expect(getPiDefaultThinkingLevel(cwd, { agentDir })).toBe("high");
   });
 });
 
@@ -85,13 +85,13 @@ describe("per-model thinking reads against pi's real SettingsManager", () => {
 
   it("reads a global modelThinkingLevels entry keyed by provider/modelId", () => {
     writeGlobal({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "high" } });
-    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", agentDir)).toBe("high");
+    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", { agentDir })).toBe("high");
   });
 
   it("returns undefined for a model absent from the map", () => {
     writeGlobal({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "high" } });
-    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-sonnet-4", agentDir)).toBeUndefined();
-    expect(getPiModelThinkingLevel(cwd, "openai", "claude-opus-4-1", agentDir)).toBeUndefined();
+    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-sonnet-4", { agentDir })).toBeUndefined();
+    expect(getPiModelThinkingLevel(cwd, "openai", "claude-opus-4-1", { agentDir })).toBeUndefined();
   });
 
   it("merges the project map over the global map per key", () => {
@@ -100,31 +100,41 @@ describe("per-model thinking reads against pi's real SettingsManager", () => {
     });
     writeProject({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "max" } });
     // Project layer wins for the key it sets...
-    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", agentDir)).toBe("max");
+    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", { agentDir })).toBe("max");
     // ...and the global level survives for the key it doesn't.
-    expect(getPiModelThinkingLevel(cwd, "openai", "gpt-4o", agentDir)).toBe("low");
+    expect(getPiModelThinkingLevel(cwd, "openai", "gpt-4o", { agentDir })).toBe("low");
   });
 
   it("returns undefined when the map is empty or the key is unset everywhere", () => {
     writeGlobal({ modelThinkingLevels: {} });
-    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", agentDir)).toBeUndefined();
+    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", { agentDir })).toBeUndefined();
     writeGlobal({ theme: "dark" });
-    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", agentDir)).toBeUndefined();
+    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", { agentDir })).toBeUndefined();
+  });
+
+  it("drops the project layer and keeps the global entry when the project is untrusted", () => {
+    writeGlobal({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "high" } });
+    writeProject({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "max" } });
+    // The untrusted project's file is never read; the user's own global entry
+    // still applies, exactly as on the settings instance the child session gets.
+    expect(getPiModelThinkingLevel(cwd, "anthropic", "claude-opus-4-1", { agentDir, projectTrusted: false })).toBe(
+      "high",
+    );
   });
 
   it("returns a copy of the whole map via getPiModelThinkingLevels", () => {
     writeGlobal({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "high" } });
-    const levels = getPiModelThinkingLevels(cwd, agentDir);
+    const levels = getPiModelThinkingLevels(cwd, { agentDir });
     expect(levels).toEqual({ "anthropic/claude-opus-4-1": "high" });
     // A copy: mutating the return must not corrupt later reads.
     levels["anthropic/claude-opus-4-1"] = "off";
-    expect(getPiModelThinkingLevels(cwd, agentDir)["anthropic/claude-opus-4-1"]).toBe("high");
+    expect(getPiModelThinkingLevels(cwd, { agentDir })["anthropic/claude-opus-4-1"]).toBe("high");
   });
 
   it("merges the whole map project over global", () => {
     writeGlobal({ modelThinkingLevels: { "openai/gpt-4o": "low" } });
     writeProject({ modelThinkingLevels: { "anthropic/claude-opus-4-1": "max" } });
-    expect(getPiModelThinkingLevels(cwd, agentDir)).toEqual({
+    expect(getPiModelThinkingLevels(cwd, { agentDir })).toEqual({
       "anthropic/claude-opus-4-1": "max",
       "openai/gpt-4o": "low",
     });

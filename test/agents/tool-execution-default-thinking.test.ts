@@ -5,10 +5,10 @@
  * Two seams are covered:
  *   - toolCallListener: injects the spawn-effective thinking into the Agent
  *     tool call input as frontmatter > pi per-model > defaultThinking, never
- *     overwriting an explicit param. The per-model term obeys the same
- *     project-trust gate as the spawn's own settings read: an untrusted
- *     cross-repo worktree target's settings file must not reach the spawn
- *     through the injected value.
+ *     overwriting an explicit param. The per-model term carries the spawn
+ *     target's trust decision into the settings read: an untrusted cross-repo
+ *     worktree target's own settings file must not reach the spawn through the
+ *     injected value, while the user's global layer still applies.
  *   - executeAgentTool: resolves explicit param > frontmatter and defers
  *     per-model / defaultThinking to the spawn runner (whose chain keeps
  *     per-model above defaultThinking)
@@ -54,7 +54,10 @@ const {
     defaultMaxTurns: undefined as number | undefined,
     modelFor: undefined as string | undefined,
   },
-  perModelState: { value: undefined as ThinkingLevel | undefined },
+  perModelState: {
+    global: undefined as ThinkingLevel | undefined,
+    project: undefined as ThinkingLevel | undefined,
+  },
 }));
 /** Baseline agent config; tests override the fields under test. */
 function defaultAgentConfig(): AgentConfig {
@@ -109,10 +112,12 @@ vi.mock("../../src/utils.js", () => ({
 }));
 
 // The per-model read is the injection's pi-settings seam; the target cwd and
-// provider/modelId key are pinned by the listener tests below.
+// provider/modelId key are pinned by the listener tests below. The fake is
+// faithful to pi's scope rule: an untrusted project's layer is dropped, the
+// user's global layer stays.
 vi.mock("../../src/pi-settings.js", () => ({
-  getPiModelThinkingLevel: vi.fn(
-    (_cwd: string, _provider: string, _modelId: string, _agentDir?: string) => perModelState.value,
+  getPiModelThinkingLevel: vi.fn((_cwd: string, _provider: string, _modelId: string, scope?: PiSettingsScope) =>
+    scope?.projectTrusted === false ? perModelState.global : (perModelState.project ?? perModelState.global),
   ),
 }));
 
@@ -165,7 +170,7 @@ vi.mock("../../src/agents/usage.js", () => ({
 
 // Import after mocks are in place
 import { executeAgentTool, toolCallListener } from "../../src/agents/tool-execution.js";
-import { getPiModelThinkingLevel } from "../../src/pi-settings.js";
+import { getPiModelThinkingLevel, type PiSettingsScope } from "../../src/pi-settings.js";
 
 /* ------------------------------------------------------------------ */
 /*  Shared setup                                                      */
@@ -179,7 +184,8 @@ beforeEach(() => {
   storeState.defaultThinking = undefined;
   storeState.defaultMaxTurns = undefined;
   storeState.modelFor = undefined;
-  perModelState.value = undefined;
+  perModelState.global = undefined;
+  perModelState.project = undefined;
   mockGetAgentConfig.mockReturnValue(defaultAgentConfig());
 });
 
@@ -207,7 +213,7 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
   });
 
   it("injects the per-model level, which beats defaultThinking", async () => {
-    perModelState.value = "high";
+    perModelState.global = "high";
     storeState.defaultThinking = "max";
     const event = makeEvent();
 
@@ -221,11 +227,13 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
 
     await toolCallListener(event, fakeCtx());
 
-    expect(vi.mocked(getPiModelThinkingLevel)).toHaveBeenCalledWith("/home/test/project", "test", "model");
+    expect(vi.mocked(getPiModelThinkingLevel)).toHaveBeenCalledWith("/home/test/project", "test", "model", {
+      projectTrusted: true,
+    });
   });
 
   it("reads the per-model level at the resolved target path and model when the target is trusted", async () => {
-    perModelState.value = "low";
+    perModelState.project = "low";
     storeState.modelFor = "anthropic/claude-opus-4-1";
     mockValidateWorktreePath.mockResolvedValue({
       ok: true,
@@ -239,12 +247,63 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
     await toolCallListener(event, fakeCtx({ cwd: "/home/test/project" }));
 
     // Keyed by the validated path (what the spawn will use), not the raw argument.
-    expect(vi.mocked(getPiModelThinkingLevel)).toHaveBeenCalledWith("/repo-b-resolved", "anthropic", "claude-opus-4-1");
+    expect(vi.mocked(getPiModelThinkingLevel)).toHaveBeenCalledWith(
+      "/repo-b-resolved",
+      "anthropic",
+      "claude-opus-4-1",
+      {
+        projectTrusted: true,
+      },
+    );
     expect(event.input.thinking).toBe("low");
   });
 
-  it("does not read an untrusted cross-repo target's per-model level (project-trust gate)", async () => {
-    perModelState.value = "max";
+  it("keeps the global per-model entry when the target project is untrusted", async () => {
+    perModelState.global = "high";
+    perModelState.project = "max";
+    storeState.modelFor = "anthropic/claude-opus-4-1";
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeRoot: "/repo-b-resolved",
+      label: "repo-b-resolved",
+      sameRepo: false,
+    });
+    mockResolveSubagentTrust.mockReturnValue(false);
+    const event = makeEvent({ worktree_path: "/repo-b" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project" }));
+
+    // pi ignores only the untrusted project's layer on the child's settings
+    // instance, so the user's own global entry still decides.
+    expect(event.input.thinking).toBe("high");
+  });
+
+  it("a global per-model entry still beats a `parent` defaultThinking on an untrusted target", async () => {
+    // The documented order is unchanged by the target's trust: per-model sits
+    // above defaultThinking, so blanking the per-model term let `parent` win a
+    // position it does not hold.
+    perModelState.global = "high";
+    perModelState.project = "max";
+    storeState.defaultThinking = "parent";
+    storeState.modelFor = "anthropic/claude-opus-4-1";
+    mockValidateWorktreePath.mockResolvedValue({
+      ok: true,
+      resolvedPath: "/repo-b-resolved",
+      worktreeRoot: "/repo-b-resolved",
+      label: "repo-b-resolved",
+      sameRepo: false,
+    });
+    mockResolveSubagentTrust.mockReturnValue(false);
+    const event = makeEvent({ worktree_path: "/repo-b" });
+
+    await toolCallListener(event, fakeCtx({ cwd: "/home/test/project", thinkingLevel: "minimal" }));
+
+    expect(event.input.thinking).toBe("high");
+  });
+
+  it("does not let an untrusted target's project layer set the level (project-trust gate)", async () => {
+    perModelState.project = "max";
     storeState.modelFor = "anthropic/claude-opus-4-1";
     mockValidateWorktreePath.mockResolvedValue({
       ok: true,
@@ -260,7 +319,6 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
 
     // The untrusted project's settings file must not set the spawn's thinking
     // through the injected value (it would win as the explicit param).
-    expect(vi.mocked(getPiModelThinkingLevel)).not.toHaveBeenCalled();
     expect(event.input.thinking).toBeUndefined();
   });
 
@@ -294,7 +352,7 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
   });
 
   it("prefers agent frontmatter thinking over the per-model level", async () => {
-    perModelState.value = "high";
+    perModelState.global = "high";
     mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "low" }));
     const event = makeEvent();
 
@@ -305,7 +363,7 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
 
   it("keeps an explicit thinking param unchanged", async () => {
     storeState.defaultThinking = "max";
-    perModelState.value = "high";
+    perModelState.global = "high";
     const event = makeEvent({ thinking: "medium" });
 
     await toolCallListener(event, fakeCtx());
@@ -324,7 +382,7 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
   });
 
   it("injects the parent session's level when frontmatter holds `parent`, beating per-model", async () => {
-    perModelState.value = "high";
+    perModelState.global = "high";
     mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "parent" }));
     const event = makeEvent();
 
