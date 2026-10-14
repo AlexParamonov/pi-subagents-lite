@@ -54,7 +54,7 @@ Steer a running agent mid-task to redirect it: `Enter` in the conversation viewe
 
 ### Permission gates and other Subagent-aware extensions
 
-Lite announces every Subagent session on pi's extension event bus: when the session is created (immediately before its extensions bind), when binding succeeds, and when it is disposed. A gate installed alongside — for example `@gotgenes/pi-permission-system` — recognises the Subagent from those announcements, so an `ask` decision inside a Subagent is escalated to the parent session instead of failing closed inside the child. With no such extension installed the announcements reach nobody and runs are unchanged; on a pi version without the event bus they are skipped entirely. If pi refuses an announcement, which happens when the parent session is replaced, reloaded or disposed while the Subagent is still running, lite names that Subagent in a warning and carries on: an announcement never fails a spawn or a teardown.
+Lite announces each Subagent session on pi's extension event bus when it is created, when its extensions bind, and when it is disposed. A gate installed alongside lite, for example `@gotgenes/pi-permission-system`, uses those announcements to escalate an `ask` decision made inside a Subagent to the parent session instead of failing closed inside the child. With no such extension installed nothing is observable, on a pi without the event bus the announcements are skipped, and if pi refuses one, which happens when the parent session is replaced, reloaded or disposed while the Subagent is still running, lite warns and names that Subagent. An announcement never fails a spawn or a teardown.
 
 ## Built-in agents
 
@@ -167,9 +167,9 @@ Precedence, highest first:
 
 Then clamped to the resolved model's supported levels; non-reasoning models support only `off`.
 
-Any source can hold `parent`, which follows the parent session's current level: `thinking: parent` in an agent file makes that type follow you, and `Subagent default thinking` set to `parent` makes every Subagent without a higher source do the same. The level is resolved before the Subagent starts, so the run always reports a real level. With no parent level to read, that source counts as unset and the next one decides.
+Any source can hold `parent` to follow the parent session's current level: `thinking: parent` for one agent type, `Subagent default thinking` for every Subagent with no higher source. Resolution happens before the Subagent starts, so a run always reports a real level, and a `parent` with no parent to read counts as unset.
 
-The two pre-spawn surfaces — `/agents` > Model settings and the spawn wizard — print the source that decided in brackets: `high (frontmatter)`, `medium (pi default)`, `minimal (parent)`. `pi default` means nothing is configured here and pi's own setting decides; in the spawn wizard, choosing `pi default` sends no level at all so the chain above decides again.
+Model settings and the spawn wizard print the deciding source in brackets: `high (frontmatter)`, `medium (pi default)`, `minimal (parent)`. `pi default` means nothing is configured here, so pi's own setting decides; in the spawn wizard that choice sends no level at all.
 
 ## Concurrency
 
