@@ -45,8 +45,8 @@ The model an Agent type runs on: session per-type > session default > config per
 _Avoid_: Effective model, assigned model
 
 **Thinking level**:
-Per-spawn reasoning effort (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Resolved as the explicit spawn param > frontmatter `thinking` > pi's per-model level for the **Resolved model** (pi's `modelThinkingLevels` setting, keyed `provider/modelId`, project over global) > `defaultThinking` (project over global) > pi's own fallback (pi's `defaultThinkingLevel` setting, else `medium`), then clamped to the model's supported levels (non-reasoning models support only `off`).
-_Avoid_: Reasoning effort, thinking mode
+Per-spawn reasoning effort (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`), or `parent` to follow the parent session's current level. Any configurable position may hold `parent`; whichever one does decides. Resolved as the explicit spawn param > frontmatter `thinking` > pi's per-model level for the **Resolved model** (pi's `modelThinkingLevels` setting, keyed `provider/modelId`, project over global) > `defaultThinking` (project over global) > pi's own fallback (pi's `defaultThinkingLevel` setting, else `medium`), then clamped to the model's supported levels (non-reasoning models support only `off`). The pre-spawn menus print the winning source: `frontmatter`, `pi per-model`, `subagent default`, `parent`, `pi default`.
+_Avoid_: Reasoning effort, thinking mode, inherit
 
 **Implicit tool loading**:
 What an Agent type gets when its frontmatter omits both `tools` and `registeredTools`: ON (default) passes no tool override and pi applies its `defaultTools` resolution natively; OFF passes `noTools: "all"` so the Subagent starts with none. Explicit frontmatter values always pass through unchanged. Third member of the implicit-loading family (skills, extensions, tools).
@@ -120,6 +120,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - A **Worktree label** is derived from a **Worktree path** for compact display
 - The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
 - An **Agent type** has one **Resolved model**; its **Thinking level** is clamped to that model's supported levels
+- A **Thinking level** of `parent` is a value on an existing chain position, not a position of its own, and is resolved before the **Subagent** session exists so no surface can show it as a level
 - The Model settings menu lists only Agent types with an explicit per-type **Model override** at the session, project, or global layer; frontmatter-only and inheriting types are never listed
 - A running **Subagent** takes a **MessageAgent** message even before its session exists (buffered for the session's start); a **Subagent** that is not running takes one only through a live session
 - A **MessageAgent** message lands after the current turn's tool calls finish, never mid-tool-call, and is dropped if the run settles before that boundary

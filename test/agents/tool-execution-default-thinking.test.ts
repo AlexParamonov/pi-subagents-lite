@@ -102,8 +102,10 @@ vi.mock("../../src/utils.js", () => ({
     return idx <= 0 ? null : { provider: value.slice(0, idx), modelId: value.slice(idx + 1) };
   }),
   findModelInRegistry: vi.fn(() => undefined),
-  // Faithful to the real parser: valid levels pass through, everything else is undefined.
-  parseThinkingLevel: vi.fn((raw?: string) => (raw !== undefined && VALID_THINKING.includes(raw) ? raw : undefined)),
+  // Faithful to the real parser: valid levels and `parent` pass, everything else is undefined.
+  parseThinkingChoice: vi.fn((raw?: string) =>
+    raw !== undefined && (VALID_THINKING.includes(raw) || raw === "parent") ? raw : undefined,
+  ),
 }));
 
 // The per-model read is the injection's pi-settings seam; the target cwd and
@@ -313,7 +315,35 @@ describe("toolCallListener — thinking injection (frontmatter > per-model > def
     expect(vi.mocked(getPiModelThinkingLevel)).not.toHaveBeenCalled();
   });
 
-  it("leaves thinking undefined when nothing is configured (inherit parent)", async () => {
+  it("leaves thinking undefined when nothing is configured", async () => {
+    const event = makeEvent();
+
+    await toolCallListener(event, fakeCtx());
+
+    expect(event.input.thinking).toBeUndefined();
+  });
+
+  it("injects the parent session's level when frontmatter holds `parent`, beating per-model", async () => {
+    perModelState.value = "high";
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "parent" }));
+    const event = makeEvent();
+
+    await toolCallListener(event, fakeCtx({ thinkingLevel: "minimal" }));
+
+    expect(event.input.thinking).toBe("minimal");
+  });
+
+  it("injects the parent session's level when defaultThinking holds `parent`", async () => {
+    storeState.defaultThinking = "parent";
+    const event = makeEvent();
+
+    await toolCallListener(event, fakeCtx({ thinkingLevel: "low" }));
+
+    expect(event.input.thinking).toBe("low");
+  });
+
+  it("injects nothing when the only `parent` source has no parent level to follow", async () => {
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "parent" }));
     const event = makeEvent();
 
     await toolCallListener(event, fakeCtx());
@@ -384,6 +414,40 @@ describe("executeAgentTool — explicit/frontmatter resolution, per-model + defa
     await executeAgentTool("tc-4", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
 
     expect(spawnThinkingLevel()).toBeUndefined();
+  });
+
+  it("spawns at the parent session's level when frontmatter holds `parent`", async () => {
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "parent" }));
+
+    await executeAgentTool(
+      "tc-5",
+      { agent: "general-purpose", prompt: "do it" },
+      undefined,
+      undefined,
+      fakeCtx({ thinkingLevel: "minimal" }),
+    );
+
+    expect(spawnThinkingLevel()).toBe("minimal");
+  });
+
+  it("never spawns with the `parent` value itself when no parent level is available", async () => {
+    mockGetAgentConfig.mockReturnValue(makeAgentConfig({ thinkingLevel: "parent" }));
+
+    await executeAgentTool("tc-6", { agent: "general-purpose", prompt: "do it" }, undefined, undefined, ctx);
+
+    expect(spawnThinkingLevel()).toBeUndefined();
+  });
+
+  it("resolves a `parent` value in a replayed thinking param against this session's parent level", async () => {
+    await executeAgentTool(
+      "tc-7",
+      { agent: "general-purpose", prompt: "do it", thinking: "parent" },
+      undefined,
+      undefined,
+      fakeCtx({ thinkingLevel: "low" }),
+    );
+
+    expect(spawnThinkingLevel()).toBe("low");
   });
 });
 

@@ -5,9 +5,10 @@
  * Model overrides use target-level submenus (session/global/project, plus
  * nested per-level clear) per ADR-0008. Agent types are grouped by their
  * Resolved model (one group per listed model, alphabetical); each row
- * shows the type name, the spawn-effective (clamped) thinking level, and
- * provenance tag ([session] for a session-layer win — per-type override or
- * session default; [project]; untagged for a global-layer win).
+ * shows the type name, the spawn-effective thinking level with its winning
+ * source in brackets, and the model-layer provenance tag ([session] for a
+ * session-layer win, per-type override or session default; [project];
+ * untagged for a global-layer win).
  *
  *   - showModelSettingsMenu: model settings with global default and model
  *     groups for types carrying an explicit per-type override
@@ -24,16 +25,10 @@ import { createClearAllSubmenu, type AvailableLevels, type TargetChoice } from "
 import { SettingsListWrapper } from "./wrappers/settings-list.js";
 import { getSessionCtx, getStore } from "../../shell.js";
 import { buildModelGroups, hasExplicitPerTypeOverride, type AgentTypeModelConfig } from "../../models/model-groups.js";
+import { formatDisplayedThinking } from "../../models/thinking-resolution.js";
 import { findModelInRegistry } from "../../utils.js";
 import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
 import type { SessionModelOverrides } from "../../models/model-precedence.js";
-
-/**
- * Thinking levels pad to this width so every row's tag starts at the same
- * column. "minimal" (7 chars) is the longest level label in the ThinkingLevel
- * union.
- */
-const THINKING_COLUMN_WIDTH = 7;
 
 /**
  * Display value for the "Global default model" row. Tag precedence:
@@ -135,8 +130,8 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
     // Model groups: one group per Resolved model with a listed row (an
     // explicit per-type override, including one pointing at the effective
     // default), alphabetical by model id. Rows show the type name, the
-    // spawn-effective (clamped) thinking level, and the winning layer's
-    // provenance tag.
+    // spawn-effective thinking level with its winning thinking source in
+    // brackets, and the winning model layer's provenance tag.
     const session = getSessionCtx();
     const parentModel = session?.model ?? ctx.model;
     const parentModelId = parentModel ? `${parentModel.provider}/${parentModel.id}` : "(inherits parent)";
@@ -164,6 +159,7 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       piDefaultThinking: getPiDefaultThinkingLevel(ctx.cwd),
       piModelThinking: (modelKey) => modelThinkingLevels[modelKey],
       findModel: (modelId) => findModelInRegistry(modelId, registry, undefined),
+      parentLevel: session?.thinkingLevel ?? ctx.thinkingLevel,
     });
 
     for (const group of groups) {
@@ -173,10 +169,13 @@ export async function showModelSettingsMenu(ctx: ExtensionCommandContext, modelO
       // Section title: bare model id in bold accent, matching the menu title
       items.push(headerItem(theme, group.modelId));
       for (const row of group.rows) {
+        const thinkingLabel = formatDisplayedThinking({ level: row.thinking, source: row.source });
         items.push({
           id: `type:${row.type}`,
           label: `${agentBulletPrefix(row.type)}${row.type}`,
-          currentValue: `${row.thinking.padEnd(THINKING_COLUMN_WIDTH)} ${row.tag}`,
+          // SettingsList truncates the value with no ellipsis, so the row carries no
+          // reserved padding: an empty tag contributes no space.
+          currentValue: [thinkingLabel, row.tag].filter(Boolean).join(" "),
           description: `Model for the ${row.type} agent type. Select to set or clear its override.`,
           // Every listed row carries an explicit per-type override, so Clear is always offered.
           submenu: modelSubmenuFor(row.type, group.modelId, true, levelsFor(row.type)),

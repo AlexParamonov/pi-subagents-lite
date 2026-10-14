@@ -545,6 +545,7 @@ async function initSession(setup: SessionSetup): Promise<AgentSession> {
     frontmatter: agentConfig?.thinkingLevel,
     perModel: perModelLevel,
     defaultThinking: getStore().agent.defaultThinking,
+    parentLevel: ctx.thinkingLevel,
   });
   const agentDir = getAgentDir();
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {

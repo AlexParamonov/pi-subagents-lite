@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`parent` is a selectable Thinking level value.** Any source that sets a Thinking level — an agent file's `thinking`, `Subagent default thinking` at the global or project layer, and the spawn wizard — accepts `parent`, which runs the Subagent at the parent session's current level. It occupies the position that holds it, so a file's `parent` beats pi's per-model level and still loses to a level picked in the spawn wizard; with no parent level to read, that source counts as unset and the next one decides. It is resolved before the Subagent session is created, so no widget, viewer or transcript can show `parent` as a level. Nothing changes for a configuration that does not select it. See [ADR 0011](docs/adr/0011-parent-is-a-thinking-value.md).
+- **Pre-spawn menus print the source that decided the Thinking level.** Model settings and the spawn wizard show `high (frontmatter)`, `medium (pi default)` or `minimal (parent)` instead of a bare level, so an unexpected effort can be traced before spawning. Read-only surfaces (widget, conversation viewer, stats) keep a bare level: the running session stores only its final number. A level chosen in the spawn wizard is shown alone.
 - **Subagents are announced to Subagent-aware extensions.** Every Subagent session is broadcast on pi's extension event bus when it is created (immediately before its extensions bind), when binding succeeds, and when the session is disposed, following the published subagent-integration convention. A permission gate running next to lite now recognises the Subagent, so an `ask` decision inside one reaches the parent session as a prompt instead of failing inside the child. Without such an extension nothing is observable, and no announcement can fail a spawn or a teardown; if pi refuses one, lite warns and names the Subagent that will go unrecognised.
 - **New `MessageAgent` tool sends input to an existing agent.** A running agent takes the message at its next turn boundary (an in-flight tool call is not interrupted); a settled agent with a live session — including one the user stopped — continues on it with its existing context. No second agent record is created.
 - **Agent IDs are accepted in the short form the tools print.** `StopAgent` and `MessageAgent` resolve the 8-character ID from `AgentStatus`, spawn results and completion notifications when it identifies exactly one agent. A prefix that matches several agents acts on none and names every candidate by full ID.
+
+### Changed
+
+- **The setting row is now `Subagent default thinking`.** Its config key stays `defaultThinking`, so existing files keep working; only the label changes, to stop colliding with pi's own `defaultThinkingLevel` setting, which resolves at a different position. The row shows `pi default` when nothing is configured, and its list ends `parent`, `pi default` where `pi default` removes the key at the chosen layer, the same way inheritance is cleared for every other model-family value. Its description states that an agent file's `thinking` still overrides it.
 
 ## [1.16.0] - 2026-10-05
 

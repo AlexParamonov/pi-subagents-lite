@@ -10,9 +10,10 @@ import type { ExtensionCommandContext, SessionEntry } from "@earendil-works/pi-c
 import type { UICtx } from "../ui/agent-widget.js";
 import type { ToolCall } from "@earendil-works/pi-ai";
 import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.js";
-import { parseThinkingLevel, findModelInRegistry } from "../utils.js";
+import { parseThinkingChoice, findModelInRegistry } from "../utils.js";
 import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.js";
 import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.js";
+import { resolveThinkingLevel } from "../models/thinking-resolution.js";
 
 /** Extracted parameters from a historical Agent tool call. */
 export interface AgentCallParams {
@@ -127,8 +128,14 @@ async function resolveAndSpawn(
   const model = effectiveModelStr ? findModelInRegistry(effectiveModelStr, ctx.modelRegistry, ctx.model) : undefined;
   const modelKey = model ? `${model.provider}/${model.id}` : undefined;
   // Explicit > frontmatter only: per-model and defaultThinking are owned by
-  // the spawn runner, whose chain keeps per-model above defaultThinking.
-  const thinkingLevel = parseThinkingLevel(call.thinking) ?? agentConfig?.thinkingLevel;
+  // the spawn runner, whose chain keeps per-model above defaultThinking. A
+  // `parent` value resolves against this session's own level, so a replay
+  // follows the session replaying it rather than a frozen historical level.
+  const thinkingLevel = resolveThinkingLevel({
+    explicit: parseThinkingChoice(call.thinking),
+    frontmatter: agentConfig?.thinkingLevel,
+    parentLevel: ctx.thinkingLevel,
+  });
 
   await coordinator!.spawn(pi!, ctx, {
     type: resolvedType,

@@ -5,7 +5,9 @@
  * ACs covered: no groups when all types at default, frontmatter-only types
  * never listed, shadowed config per-type override under a session default,
  * session override shadowing frontmatter, clamped thinking, unknown model id,
- * alphabetical groups, anti-spam exclusion, provenance tags.
+ * alphabetical groups, anti-spam exclusion, provenance tags, and the thinking
+ * level's winning source (`frontmatter` / `pi per-model` / `subagent default` /
+ * `parent` / `pi default`).
  */
 
 import { describe, it, expect } from "vitest";
@@ -93,7 +95,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "openai/gpt-4o",
-        rows: [{ type: "worker", thinking: "off", tag: "" }],
+        rows: [{ type: "worker", thinking: "off", source: "pi default", tag: "" }],
       },
     ]);
   });
@@ -104,7 +106,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "test/parent-model",
-        rows: [{ type: "scout", thinking: "medium", tag: "" }],
+        rows: [{ type: "scout", thinking: "medium", source: "pi default", tag: "" }],
       },
     ]);
   });
@@ -116,7 +118,7 @@ describe("buildModelGroups — grouping", () => {
         hasProjectModelKey: (key) => key === "worker",
       }),
     );
-    expect(result[0]?.rows[0]).toEqual({ type: "worker", thinking: "off", tag: "[project]" });
+    expect(result[0]?.rows[0]).toEqual({ type: "worker", thinking: "off", source: "pi default", tag: "[project]" });
   });
 
   it("groups a session per-type override over the frontmatter model with [session]", () => {
@@ -129,7 +131,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "openai/gpt-4o",
-        rows: [{ type: "scout", thinking: "off", tag: "[session]" }],
+        rows: [{ type: "scout", thinking: "off", source: "pi default", tag: "[session]" }],
       },
     ]);
   });
@@ -144,7 +146,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "openai/gpt-4o",
-        rows: [{ type: "scout", thinking: "off", tag: "" }],
+        rows: [{ type: "scout", thinking: "off", source: "pi default", tag: "" }],
       },
     ]);
   });
@@ -163,11 +165,11 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "openai/gpt-4o",
-        rows: [{ type: "worker", thinking: "off", tag: "[session]" }],
+        rows: [{ type: "worker", thinking: "off", source: "pi default", tag: "[session]" }],
       },
       {
         modelId: "s/scout",
-        rows: [{ type: "scout", thinking: "medium", tag: "[session]" }],
+        rows: [{ type: "scout", thinking: "medium", source: "pi default", tag: "[session]" }],
       },
     ]);
   });
@@ -185,7 +187,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "anthropic/claude-opus-4-1",
-        rows: [{ type: "worker", thinking: "medium", tag: "[session]" }],
+        rows: [{ type: "worker", thinking: "medium", source: "pi default", tag: "[session]" }],
       },
     ]);
   });
@@ -201,7 +203,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "openai/gpt-4o",
-        rows: [{ type: "worker", thinking: "off", tag: "[session]" }],
+        rows: [{ type: "worker", thinking: "off", source: "pi default", tag: "[session]" }],
       },
     ]);
   });
@@ -217,7 +219,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "anthropic/claude-opus-4-1",
-        rows: [{ type: "worker", thinking: "medium", tag: "[session]" }],
+        rows: [{ type: "worker", thinking: "medium", source: "pi default", tag: "[session]" }],
       },
     ]);
   });
@@ -234,7 +236,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "anthropic/claude-opus-4-1",
-        rows: [{ type: "worker", thinking: "medium", tag: "[session]" }],
+        rows: [{ type: "worker", thinking: "medium", source: "pi default", tag: "[session]" }],
       },
     ]);
   });
@@ -244,7 +246,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "openai/gpt-4o",
-        rows: [{ type: "worker", thinking: "off", tag: "" }],
+        rows: [{ type: "worker", thinking: "off", source: "pi default", tag: "" }],
       },
     ]);
   });
@@ -256,7 +258,7 @@ describe("buildModelGroups — grouping", () => {
         hasProjectModelKey: (key) => key === "worker",
       }),
     );
-    expect(result[0]?.rows[0]).toEqual({ type: "worker", thinking: "off", tag: "[project]" });
+    expect(result[0]?.rows[0]).toEqual({ type: "worker", thinking: "off", source: "pi default", tag: "[project]" });
   });
 
   it("lists a session per-type override equal to the session default with [session]", () => {
@@ -266,7 +268,7 @@ describe("buildModelGroups — grouping", () => {
         sessionOverrides: { default: "openai/gpt-4o", worker: "openai/gpt-4o" },
       }),
     );
-    expect(result[0]?.rows[0]).toEqual({ type: "worker", thinking: "off", tag: "[session]" });
+    expect(result[0]?.rows[0]).toEqual({ type: "worker", thinking: "off", source: "pi default", tag: "[session]" });
   });
 
   it("renders a group for the config default model only when a per-type override points at it", () => {
@@ -302,7 +304,7 @@ describe("buildModelGroups — grouping", () => {
     expect(result).toEqual([
       {
         modelId: "custom/unknown-1",
-        rows: [{ type: "scout", thinking: "high", tag: "" }],
+        rows: [{ type: "scout", thinking: "high", source: "frontmatter", tag: "" }],
       },
     ]);
   });
@@ -379,6 +381,66 @@ describe("buildModelGroups — thinking display", () => {
       }),
     );
     expect(result[0]?.rows[0].thinking).toBe("high");
+  });
+});
+
+describe("buildModelGroups — thinking source annotation", () => {
+  const SCOUT = { config: { scout: "anthropic/claude-opus-4-1" } };
+  const rowSource = (overrides: InputOverrides) => {
+    const row = groupsFor(input(overrides))[0]?.rows[0];
+    return { thinking: row?.thinking, source: row?.source };
+  };
+
+  it("names frontmatter for a frontmatter level", () => {
+    expect(rowSource({ ...SCOUT, agentConfigs: { scout: { thinkingLevel: "high" } } })).toEqual({
+      thinking: "high",
+      source: "frontmatter",
+    });
+  });
+
+  it("names pi per-model for pi's per-model level", () => {
+    expect(rowSource({ ...SCOUT, piModelThinking: () => "high" })).toEqual({
+      thinking: "high",
+      source: "pi per-model",
+    });
+  });
+
+  it("names subagent default for this extension's defaultThinking", () => {
+    expect(rowSource({ config: { scout: "anthropic/claude-opus-4-1", defaultThinking: "low" } })).toEqual({
+      thinking: "low",
+      source: "subagent default",
+    });
+  });
+
+  it("names parent when the agent file holds `parent`, not frontmatter", () => {
+    expect(
+      rowSource({ ...SCOUT, agentConfigs: { scout: { thinkingLevel: "parent" } }, parentLevel: "minimal" }),
+    ).toEqual({ thinking: "minimal", source: "parent" });
+  });
+
+  it("names parent when defaultThinking holds `parent`", () => {
+    expect(
+      rowSource({ config: { scout: "anthropic/claude-opus-4-1", defaultThinking: "parent" }, parentLevel: "low" }),
+    ).toEqual({ thinking: "low", source: "parent" });
+  });
+
+  it("clamps a followed parent level to the group model", () => {
+    expect(
+      rowSource({
+        agentConfigs: { scout: { thinkingLevel: "parent" } },
+        config: { scout: "openai/gpt-4o" },
+        parentLevel: "high",
+      }),
+    ).toEqual({ thinking: "off", source: "parent" });
+  });
+
+  it("names the next source when the only `parent` has no parent level to follow", () => {
+    expect(
+      rowSource({
+        agentConfigs: { scout: { thinkingLevel: "parent" } },
+        config: { scout: "anthropic/claude-opus-4-1", defaultThinking: "low" },
+      }),
+    ).toEqual({ thinking: "low", source: "subagent default" });
   });
 });
 

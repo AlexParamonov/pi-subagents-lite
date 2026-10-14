@@ -6,6 +6,13 @@ import type { SubagentType, AgentInvocation } from "./agents/types.js";
 
 export type ThinkingLevel = ModelThinkingLevel;
 
+/**
+ * A configured thinking choice: a concrete level, or `parent` — the parent
+ * session's current level. `parent` never survives resolution, so it never
+ * reaches a child session, a run option, or a stored invocation record.
+ */
+export type ThinkingChoice = ThinkingLevel | "parent";
+
 export interface ToolActivity {
   type: "start" | "end";
   toolName: string;

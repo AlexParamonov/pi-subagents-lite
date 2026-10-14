@@ -100,7 +100,7 @@ A minimal agent with just `name` and `description` gets everything, same as `gen
 | `skills` | `true` \| `string[]` \| `false` | `true` | Skill whitelist (metadata-only in system prompt). |
 | `preload_skills` | `string[]` \| `false` | `false` | Dump full SKILL.md content into the system prompt. Expensive. |
 | `model` | string | inherit parent | `"provider/model-id"`. See [Model resolution](#model-resolution). |
-| `thinking` | string | inherit parent | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |
+| `thinking` | string | see [Thinking level resolution](#thinking-level-resolution) | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `parent` to follow the parent session. |
 | `max_turns` | number | unlimited | Soft turn limit, then grace turns before hard abort. |
 | `max_tokens` | number | unlimited | Max output tokens per LLM response. |
 | `hidden` | boolean | `false` | Hide from the enum. Still callable by name. |
@@ -155,6 +155,22 @@ Precedence, highest first:
 5. Agent frontmatter `model`
 6. Parent model
 
+## Thinking level resolution
+
+Precedence, highest first:
+
+1. Spawn choice (`/agents` spawn wizard)
+2. Agent frontmatter `thinking`
+3. pi's per-model level for the resolved model (`modelThinkingLevels`)
+4. `Subagent default thinking` (`defaultThinking`, project over global)
+5. pi's own default (`defaultThinkingLevel`, else `medium`)
+
+Then clamped to the resolved model's supported levels; non-reasoning models support only `off`.
+
+Any source can hold `parent`, which follows the parent session's current level: `thinking: parent` in an agent file makes that type follow you, and `Subagent default thinking` set to `parent` makes every Subagent without a higher source do the same. The level is resolved before the Subagent starts, so the run always reports a real level. With no parent level to read, that source counts as unset and the next one decides.
+
+The two pre-spawn surfaces — `/agents` > Model settings and the spawn wizard — print the source that decided in brackets: `high (frontmatter)`, `medium (pi default)`, `minimal (parent)`. `pi default` means nothing is configured here and pi's own setting decides; in the spawn wizard, choosing `pi default` sends no level at all so the chain above decides again.
+
 ## Concurrency
 
 `concurrency` caps parallel agents. A per-model limit overrides a per-provider limit, which overrides the `default` per-model limit. Excess spawns queue until a slot frees.
@@ -163,7 +179,7 @@ Precedence, highest first:
 
 Global settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly. 
 
-`/agents` covers model settings per-type overrides, concurrency, widget, spawn defaults (thinking, max turns, force-background), system prompt mode, watchdog timeouts.
+`/agents` covers model settings per-type overrides, concurrency, widget, spawn defaults (Subagent default thinking, max turns, force-background), system prompt mode, watchdog timeouts.
 
 ```
 Settings

@@ -10,6 +10,7 @@
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
 import type { RawConfig } from "./config-io.js";
+import { PARENT_THINKING_CHOICE } from "../models/thinking-resolution.js";
 
 /** One known key's runtime rule plus its human-readable expected shape. */
 interface KeySpec {
@@ -33,8 +34,11 @@ const THINKING: KeySpec = {
     Type.Literal("high"),
     Type.Literal("xhigh"),
     Type.Literal("max"),
+    Type.Literal(PARENT_THINKING_CHOICE),
   ]),
-  expected: '"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"',
+  expected:
+    '"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | ' +
+    `"${PARENT_THINKING_CHOICE}" (follow the parent session)`,
 };
 const MODEL_DISPLAY: KeySpec = {
   schema: Type.Union([Type.Literal("id"), Type.Literal("name")]),

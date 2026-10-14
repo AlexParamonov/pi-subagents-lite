@@ -261,7 +261,7 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     const item = settingsListCalls[0].items.find((i) => i.id === "type:Explore")!;
-    expect(item.currentValue).toBe("off     [session]");
+    expect(item.currentValue).toBe("off (pi default) [session]");
   });
   it("tags a project-sourced per-type value with [project]", async () => {
     mockModules.mockProjectConfig.agent["Explore"] = "openai/gpt-4o";
@@ -269,7 +269,7 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     const items = settingsListCalls[0].items;
     const item = items.find((i) => i.id === "type:Explore")!;
-    expect(item.currentValue).toBe("off     [project]");
+    expect(item.currentValue).toBe("off (pi default) [project]");
     // The model id moved to the group header above the row.
     const headerIdx = groupHeaderIndex("openai/gpt-4o");
     expect(headerIdx).toBeGreaterThanOrEqual(0);
@@ -286,7 +286,7 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     const item = settingsListCalls[0].items.find((i) => i.id === "type:Explore")!;
     expect(item).toBeDefined();
-    expect(item.currentValue).toBe("medium  [session]");
+    expect(item.currentValue).toBe("medium (pi default) [session]");
     // frontmatter-only general-purpose stays hidden even though its model
     // (claude-sonnet) differs from the session default.
     const ids = settingsListCalls[0].items.map((i) => i.id);
@@ -300,7 +300,7 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     const items = settingsListCalls[0].items;
     const item = items.find((i) => i.id === "type:Explore")!;
     expect(item).toBeDefined();
-    expect(item.currentValue).toBe("medium  [session]");
+    expect(item.currentValue).toBe("medium (pi default) [session]");
     // The row sits under the session default's group, not the override's.
     const headerIdx = groupHeaderIndex("s/default");
     expect(headerIdx).toBeGreaterThanOrEqual(0);
@@ -317,7 +317,7 @@ describe("showModelSettingsMenu — per-type overrides", () => {
     // Explore resolves to its session per-type override (gpt-4o, known →
     // thinking clamped to off), not the session default.
     expect(groupHeaderIndex("openai/gpt-4o")).toBeLessThan(items.indexOf(exploreRow));
-    expect(exploreRow?.currentValue).toBe("off     [session]");
+    expect(exploreRow?.currentValue).toBe("off (pi default) [session]");
   });
 
   it("shows 'Override another type...' when non-overridden types exist", async () => {
@@ -484,9 +484,9 @@ describe("showModelSettingsMenu — model groups", () => {
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     // scout: frontmatter thinking high, reasoning model → unclamped.
     expect(row("type:scout")?.label).toBe("scout");
-    expect(row("type:scout")?.currentValue).toBe("high    ");
+    expect(row("type:scout")?.currentValue).toBe("high (frontmatter)");
     // worker: no thinking set → medium, clamped to off by the non-reasoning model.
-    expect(row("type:worker")?.currentValue).toBe("off     ");
+    expect(row("type:worker")?.currentValue).toBe("off (pi default)");
     // plain resolves to the parent (effective default) → not listed.
     expect(row("type:plain")).toBeUndefined();
   });
@@ -538,13 +538,13 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockConfig.agent["worker"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    expect(row("type:worker")?.currentValue).toBe("off     [project]");
+    expect(row("type:worker")?.currentValue).toBe("off (pi default) [project]");
 
     // global-only override → untagged (the global layer is the default source).
     delete mockModules.mockProjectConfig.agent["worker"];
     mockModules.mockConfig.agent["worker"] = "openai/gpt-4o";
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    expect(settingsListCalls[1].items.find((i) => i.id === "type:worker")?.currentValue).toBe("off     ");
+    expect(settingsListCalls[1].items.find((i) => i.id === "type:worker")?.currentValue).toBe("off (pi default)");
   });
 
   it("lists a per-type override equal to the default under the default's group with the winning tag", async () => {
@@ -556,7 +556,7 @@ describe("showModelSettingsMenu — model groups", () => {
     // never listed regardless of their resolved model.
     expect(groupHeaders().map((h) => h.label)).toEqual(["openai/gpt-4o"]);
     // plain: explicit global override equal to the default → listed, untagged.
-    expect(row("type:plain")?.currentValue).toBe("off     ");
+    expect(row("type:plain")?.currentValue).toBe("off (pi default)");
     // worker: frontmatter gpt-4o equals the default, no override → stays hidden.
     expect(row("type:worker")).toBeUndefined();
     // scout: frontmatter opus differs from the default, no override → stays hidden.
@@ -567,7 +567,19 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["scout"] = "openai/gpt-4o";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    expect(row("type:scout")?.currentValue).toBe("off     [session]");
+    // scout's frontmatter thinking (high) clamps to off on the non-reasoning model.
+    expect(row("type:scout")?.currentValue).toBe("off (frontmatter) [session]");
+  });
+
+  it("annotates an agent file holding `parent` as parent, not frontmatter", async () => {
+    mockModules.mockSessionCtx.thinkingLevel = "minimal";
+    vi.mocked(getAgentConfig).mockImplementation((name: string) =>
+      name === "plain" ? { name, description: "", systemPrompt: "", thinkingLevel: "parent" } : undefined,
+    );
+    mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
+    const ctx = createMockCtx();
+    await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
+    expect(row("type:plain")?.currentValue).toBe("minimal (parent) [session]");
   });
 
   it("shows the effective defaultThinking when frontmatter thinking is unset", async () => {
@@ -575,7 +587,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+    expect(row("type:plain")?.currentValue).toBe("low (subagent default) [session]");
   });
 
   it("shows pi's defaultThinkingLevel when no thinking source is set", async () => {
@@ -583,7 +595,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+    expect(row("type:plain")?.currentValue).toBe("low (pi default) [session]");
   });
 
   it("shows the per-model level (clamped) when it is the effective source", async () => {
@@ -591,7 +603,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(row("type:plain")?.currentValue).toBe("high    [session]");
+    expect(row("type:plain")?.currentValue).toBe("high (pi per-model) [session]");
   });
 
   it("clamps the per-model level to the group model's supported levels", async () => {
@@ -599,7 +611,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["worker"] = "openai/gpt-4o";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    expect(row("type:worker")?.currentValue).toBe("off     [session]");
+    expect(row("type:worker")?.currentValue).toBe("off (pi per-model) [session]");
   });
 
   it("frontmatter thinking beats the per-model level in the menu", async () => {
@@ -610,7 +622,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+    expect(row("type:plain")?.currentValue).toBe("low (frontmatter) [session]");
   });
 
   it("per-model beats defaultThinking in the menu", async () => {
@@ -619,7 +631,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+    expect(row("type:plain")?.currentValue).toBe("low (pi per-model) [session]");
   });
 
   it("falls through to the old chain when the resolved model has no per-model entry", async () => {
@@ -628,7 +640,7 @@ describe("showModelSettingsMenu — model groups", () => {
     mockModules.mockSessionOverrides["plain"] = "anthropic/claude-sonnet-4-20250514";
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514"]);
-    expect(row("type:plain")?.currentValue).toBe("low     [session]");
+    expect(row("type:plain")?.currentValue).toBe("low (subagent default) [session]");
   });
 
   it("never displays a configured → effective arrow", async () => {
@@ -664,7 +676,7 @@ describe("showModelSettingsMenu — model groups", () => {
     const ctx = createMockCtx();
     await showModelSettingsMenu(ctx, []);
     expect(groupHeaders().map((h) => h.label)).toContain("custom/unknown-1");
-    expect(row("type:scout")?.currentValue).toBe("high    ");
+    expect(row("type:scout")?.currentValue).toBe("high (frontmatter)");
   });
 
   it("keeps frontmatter types overridable via 'Override another type...'", async () => {
@@ -697,11 +709,11 @@ describe("showModelSettingsMenu — model groups", () => {
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
     const reopened = settingsListCalls[0].items;
     const scoutRow = reopened.find((i) => i.id === "type:scout")!;
-    expect(scoutRow.currentValue).toBe("off     [session]");
+    expect(scoutRow.currentValue).toBe("off (frontmatter) [session]");
     expect(reopened.filter(isGroupHeader).map((i) => i.label)).toEqual(["openai/gpt-4o"]);
   });
 
-  it("starts every row tag at the same value column and renders group headers as styled bare ids", async () => {
+  it("prints each row as `level (source)` with its tag and renders group headers as styled bare ids", async () => {
     mockModules.mockConfig.agent["scout"] = "anthropic/claude-sonnet-4-20250514"; // high
     mockModules.mockConfig.agent["worker"] = "openai/gpt-4o"; // off
     mockModules.mockConfig.agent["plain"] = "anthropic/claude-sonnet-4-20250514"; // medium
@@ -719,11 +731,14 @@ describe("showModelSettingsMenu — model groups", () => {
       },
     });
     await showModelSettingsMenu(ctx, ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o"]);
-    // Rows: thinking padded to a fixed width + one space; the tag follows at
-    // the fixed column when present, and untagged (global-won) rows end there.
+    // Rows: `level (source)` then one space and the model-layer tag; no reserved
+    // padding, so the tag stays inside the width SettingsList truncates values at.
     const rows = items().filter((i) => i.id?.startsWith("type:"));
-    expect(rows.map((r) => r.currentValue)).toEqual(["high    [session]", "medium  ", "off     "]);
-    expect(rows.map((r) => r.currentValue.indexOf("["))).toEqual([8, -1, -1]);
+    expect(rows.map((r) => r.currentValue)).toEqual([
+      "high (frontmatter) [session]",
+      "medium (pi default)",
+      "off (pi default)",
+    ]);
     // Group headers: marker-identified, bare id in bold accent, no dashes,
     // still SEPARATOR_ID rows so separator-skip keeps the cursor off them.
     const headers = items().filter(isGroupHeader);

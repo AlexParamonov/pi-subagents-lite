@@ -22,7 +22,7 @@ import type { AgentWidget } from "../ui/agent-widget.js";
 import type { AgentManager } from "../agents/agent-manager.js";
 import { CONFIG_AGENT_NON_MODEL_KEYS, type ModelThinkingPlacement } from "./types.js";
 import type { SystemPromptMode } from "../agents/types.js";
-import type { ThinkingLevel } from "../types.js";
+import type { ThinkingChoice } from "../types.js";
 import {
   VALID_SYSTEM_PROMPT_MODES,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
@@ -93,7 +93,7 @@ export interface ResolvedAgentSettings {
   /** Whether to include AGENTS.md context files in the subagent system prompt. */
   readonly includeContextFiles: boolean;
   /** Default thinking level for spawned agents. Undefined = inherit from agent config. */
-  readonly defaultThinking: ThinkingLevel | undefined;
+  readonly defaultThinking: ThinkingChoice | undefined;
   /** Default max turns for spawned agents. Undefined = unlimited. */
   readonly defaultMaxTurns: number | undefined;
   /** Global default for skills loading: true (load all) or false (none). */
@@ -215,7 +215,7 @@ export class ConfigStore {
         ? (a.systemPromptMode as SystemPromptMode)
         : "replace",
       includeContextFiles: a.includeContextFiles ?? true,
-      defaultThinking: a.defaultThinking as ThinkingLevel | undefined,
+      defaultThinking: a.defaultThinking as ThinkingChoice | undefined,
       defaultMaxTurns: a.defaultMaxTurns,
       loadSkillsImplicitly: a.loadSkillsImplicitly !== false,
       loadExtensionsImplicitly: a.loadExtensionsImplicitly !== false,
@@ -384,7 +384,7 @@ export class ConfigStore {
       setOutputTranscript: (enabled: boolean) => this.setAgentLayerEntry("outputTranscript", enabled, "global"),
       setSystemPromptMode: (mode: SystemPromptMode) => this.setAgentLayerEntry("systemPromptMode", mode, "global"),
       setIncludeContextFiles: (enabled: boolean) => this.setAgentLayerEntry("includeContextFiles", enabled, "global"),
-      setDefaultThinking: (level: ThinkingLevel | undefined, target: "global" | "project" = "global"): void => {
+      setDefaultThinking: (level: ThinkingChoice | undefined, target: "global" | "project" = "global"): void => {
         this.setAgentLayerEntry("defaultThinking", level, target);
       },
       setDefaultMaxTurns: (n: number | undefined, target: "global" | "project" = "global"): void => {
