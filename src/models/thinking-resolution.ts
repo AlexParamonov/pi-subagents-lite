@@ -130,7 +130,7 @@ export function clampThinkingToModel(model: Model<any> | undefined, level: Think
   return model ? clampThinkingLevel(model, level) : level;
 }
 
-/** A level as displayed, clamped to the model (unclamped when it's not in the registry). */
+/** Builds the displayed pair from a winning level and its source word. */
 function toDisplayed(model: Model<any> | undefined, level: ThinkingLevel, source: ThinkingSource): DisplayedThinking {
   return { level: clampThinkingToModel(model, level), source };
 }
