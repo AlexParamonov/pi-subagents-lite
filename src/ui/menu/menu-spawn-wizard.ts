@@ -289,8 +289,12 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
   /** What the thinking row shows. */
   const thinkingDisplay = (): string => {
     if (thinkingState.kind === "picked") return thinkingState.level;
-    const followed = thinkingState.kind === "following" ? followedThinking() : undefined;
-    if (followed) return formatDisplayedThinking({ level: followed, source: "parent" });
+    if (thinkingState.kind === "following") {
+      const level = followedThinking();
+      // With no parent level to follow there is nothing to pin, so the row
+      // reports what the chain decides, which is what the spawn then runs.
+      if (level) return formatDisplayedThinking({ level, source: "parent" });
+    }
     return formatDisplayedThinking(derivedThinking());
   };
 
