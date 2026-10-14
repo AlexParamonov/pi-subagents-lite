@@ -10,10 +10,13 @@ import type { SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import type { SettingsListWrapperOptions } from "../../../src/ui/menu/wrappers/settings-list.js";
 import type { ThinkingLevel } from "../../../src/types.js";
+import type { PiSettingsScope } from "../../../src/pi-settings.js";
 
 const piSettingsMock = vi.hoisted(() => ({
-  getPiDefaultThinkingLevel: vi.fn<(cwd: string, agentDir?: string) => ThinkingLevel | undefined>(() => undefined),
-  getPiModelThinkingLevels: vi.fn<(cwd: string, agentDir?: string) => Record<string, ThinkingLevel>>(() => ({})),
+  getPiDefaultThinkingLevel: vi.fn<(cwd: string, scope?: PiSettingsScope) => ThinkingLevel | undefined>(
+    () => undefined,
+  ),
+  getPiModelThinkingLevels: vi.fn<(cwd: string, scope?: PiSettingsScope) => Record<string, ThinkingLevel>>(() => ({})),
 }));
 
 let settingsListCalls: Array<{ items: SettingItem[] }> = [];

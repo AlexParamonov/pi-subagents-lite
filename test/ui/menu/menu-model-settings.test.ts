@@ -15,13 +15,16 @@ import { SEPARATOR_ID } from "../../../src/ui/menu/helpers.js";
 import type { SettingsListWrapperOptions } from "../../../src/ui/menu/wrappers/settings-list.js";
 import type { Component, SelectItem, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { ThinkingLevel } from "../../../src/types.js";
+import type { PiSettingsScope } from "../../../src/pi-settings.js";
 
 const piSettingsMock = vi.hoisted(() => ({
-  getPiDefaultThinkingLevel: vi.fn<(cwd: string, agentDir?: string) => ThinkingLevel | undefined>(() => undefined),
+  getPiDefaultThinkingLevel: vi.fn<(cwd: string, scope?: PiSettingsScope) => ThinkingLevel | undefined>(
+    () => undefined,
+  ),
   getPiModelThinkingLevel: vi.fn<
-    (cwd: string, provider: string, modelId: string, agentDir?: string) => ThinkingLevel | undefined
+    (cwd: string, provider: string, modelId: string, scope?: PiSettingsScope) => ThinkingLevel | undefined
   >(() => undefined),
-  getPiModelThinkingLevels: vi.fn<(cwd: string, agentDir?: string) => Record<string, ThinkingLevel>>(() => ({})),
+  getPiModelThinkingLevels: vi.fn<(cwd: string, scope?: PiSettingsScope) => Record<string, ThinkingLevel>>(() => ({})),
 }));
 
 let settingsListCalls: Array<{

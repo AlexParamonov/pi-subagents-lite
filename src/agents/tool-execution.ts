@@ -32,11 +32,13 @@ function successResult(text: string, details?: Record<string, unknown>) {
  * The thinking a spawn of this call would run with, predicted at call time:
  * frontmatter > pi per-model > defaultThinking. Undefined when nothing is
  * configured — the session is the source of truth once it exists. The
- * per-model term obeys the same project-trust gate as the spawn's own
- * settings read: computeSpawnTarget's validation plus trust decision, run
- * silently (execution owns the user-facing warnings). Without the gate, an
- * untrusted cross-repo target's settings file could set the spawn's thinking
- * through the injected value, which wins as the explicit param.
+ * per-model term carries the spawn target's trust decision into the settings
+ * read: computeSpawnTarget's validation plus trust decision, run silently
+ * (execution owns the user-facing warnings). An untrusted target's own project
+ * layer is then ignored, so its settings file cannot set the spawn's thinking
+ * through the injected value (which wins as the explicit param), while the
+ * user's global layer still applies — the scope the child's session is created
+ * with.
  */
 async function predictSpawnThinking(
   ctx: ExtensionContext,
@@ -50,8 +52,10 @@ async function predictSpawnThinking(
   const modelKey = effectiveModel || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "");
   const parsed = parseModelKey(modelKey);
   const perModel =
-    target.ok && target.projectTrusted && parsed
-      ? getPiModelThinkingLevel(target.resolvedPath ?? ctx.cwd, parsed.provider, parsed.modelId)
+    target.ok && parsed
+      ? getPiModelThinkingLevel(target.resolvedPath ?? ctx.cwd, parsed.provider, parsed.modelId, {
+          projectTrusted: target.projectTrusted,
+        })
       : undefined;
   return resolveThinkingLevel({
     frontmatter: agentConfig?.thinkingLevel,

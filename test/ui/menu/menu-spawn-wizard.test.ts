@@ -14,12 +14,15 @@ import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import { clampThinkingLevel, type Api, type Model, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { Component, SelectItem, SettingItem, SettingsListTheme, SelectListTheme } from "@earendil-works/pi-tui";
 import type { ThinkingLevel } from "../../../src/types.js";
+import type { PiSettingsScope } from "../../../src/pi-settings.js";
 import type { SpawnOptions } from "../../../src/agents/agent-manager.js";
 
 // Mock pi's settings reads (per-model map + global default)
 const piSettingsMock = vi.hoisted(() => ({
-  getPiDefaultThinkingLevel: vi.fn<(cwd: string, agentDir?: string) => ThinkingLevel | undefined>(() => undefined),
-  getPiModelThinkingLevels: vi.fn<(cwd: string, agentDir?: string) => Record<string, ThinkingLevel>>(() => ({})),
+  getPiDefaultThinkingLevel: vi.fn<(cwd: string, scope?: PiSettingsScope) => ThinkingLevel | undefined>(
+    () => undefined,
+  ),
+  getPiModelThinkingLevels: vi.fn<(cwd: string, scope?: PiSettingsScope) => Record<string, ThinkingLevel>>(() => ({})),
 }));
 
 vi.mock("../../../src/pi-settings.js", () => piSettingsMock);
