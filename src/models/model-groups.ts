@@ -67,7 +67,7 @@ export interface ModelGroupRow {
   type: string;
   /** Effective thinking level, clamped to the group model's supported levels. */
   thinking: ThinkingLevel;
-  /** The source that produced it, in the words the menu prints. */
+  /** Which thinking source won, in the words the menu prints; `tag` carries the model layer. */
   source: ThinkingSource;
   /** Provenance tag of the winning layer: "[session]" (session per-type or session default), "[project]"; "" when the global per-type layer won without a session default. */
   tag: string;
@@ -87,7 +87,7 @@ export function buildModelGroups(input: ModelGroupsInput): ModelGroups {
   const byModel = new Map<string, ModelGroupRow[]>();
   for (const type of types) {
     const cfg = agentConfigs[type];
-    const { model: resolved, source } = resolveModelSource({
+    const { model: resolved, source: modelSource } = resolveModelSource({
       subagentType: type,
       agentConfig: cfg,
       config: { agent: config },
@@ -107,7 +107,7 @@ export function buildModelGroups(input: ModelGroupsInput): ModelGroups {
     // resolves at a per-type position, at the session default above it, or —
     // for an empty-string key — at the next chain layer.
     const tag =
-      source === "session-per-type" || source === "session-default"
+      modelSource === "session-per-type" || modelSource === "session-default"
         ? "[session]"
         : hasProjectModelKey(type)
           ? "[project]"
