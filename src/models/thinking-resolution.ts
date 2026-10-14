@@ -26,7 +26,7 @@ import { clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingChoice, ThinkingLevel } from "../types.js";
 
 /** pi's fallback when defaultThinkingLevel is unset (mirrors pi's DEFAULT_THINKING_LEVEL). */
-export const PI_FALLBACK_THINKING_LEVEL: ThinkingLevel = "medium";
+const PI_FALLBACK_THINKING_LEVEL: ThinkingLevel = "medium";
 
 /** The value that makes a source follow the parent session's current Thinking level. */
 export const PARENT_THINKING_CHOICE = "parent" satisfies ThinkingChoice;
