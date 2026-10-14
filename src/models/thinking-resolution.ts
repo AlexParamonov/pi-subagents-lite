@@ -122,9 +122,17 @@ export function resolveDisplayedThinking(
   return toDisplayed(model, piDefaultThinking ?? PI_FALLBACK_THINKING_LEVEL, "pi default");
 }
 
+/**
+ * `level` as `model` would run it: clamped to the model's supported levels,
+ * unclamped when the model is not in the registry (nothing to clamp against).
+ */
+export function clampThinkingToModel(model: Model<any> | undefined, level: ThinkingLevel): ThinkingLevel {
+  return model ? clampThinkingLevel(model, level) : level;
+}
+
 /** A level as displayed, clamped to the model (unclamped when it's not in the registry). */
 function toDisplayed(model: Model<any> | undefined, level: ThinkingLevel, source: ThinkingSource): DisplayedThinking {
-  return { level: model ? clampThinkingLevel(model, level) : level, source };
+  return { level: clampThinkingToModel(model, level), source };
 }
 
 /** The row label for a displayed level: `high (frontmatter)`. */

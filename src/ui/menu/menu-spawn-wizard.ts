@@ -10,13 +10,14 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
-import { getSupportedThinkingLevels, clampThinkingLevel } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "../../types.js";
 import type { Theme } from "../types.js";
 import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
 import { findModelInRegistry } from "../../utils.js";
 import { agentBulletPrefix } from "../format.js";
 import {
+  clampThinkingToModel,
   formatDisplayedThinking,
   PARENT_THINKING_CHOICE,
   PI_DEFAULT_CHOICE,
@@ -270,8 +271,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
   const followedThinking = (): ThinkingLevel | undefined => {
     const level = session?.thinkingLevel;
     if (!level) return undefined;
-    const model = currentModel();
-    return model ? clampThinkingLevel(model, level) : level;
+    return clampThinkingToModel(currentModel(), level);
   };
 
   /** The chain prediction for the model a spawn would use, clamped to it. */
@@ -424,10 +424,10 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
             // re-derives from the new model (per-model + pi default included).
             // Following re-reads and re-clamps the parent's level on rebuild.
             if (thinkingState.kind === "picked" && currentModelStr) {
-              const resolved = currentModel();
-              if (resolved) {
-                thinkingState = { kind: "picked", level: clampThinkingLevel(resolved, thinkingState.level) };
-              }
+              thinkingState = {
+                kind: "picked",
+                level: clampThinkingToModel(currentModel(), thinkingState.level),
+              };
             }
             // Rebuild items so the displayed thinking level reflects the new model
             rebuild?.(buildItems());
