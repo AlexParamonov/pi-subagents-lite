@@ -7,8 +7,8 @@
  * Resolved model (one group per listed model, alphabetical); each row
  * shows the type name, the spawn-effective thinking level with its winning
  * source in brackets, and the model-layer provenance tag ([session] for a
- * session-layer win — per-type override or
- * session default; [project]; untagged for a global-layer win).
+ * session-layer win, per-type override or session default; [project];
+ * untagged for a global-layer win).
  *
  *   - showModelSettingsMenu: model settings with global default and model
  *     groups for types carrying an explicit per-type override
