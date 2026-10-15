@@ -28,12 +28,20 @@ export function addUsage(into: LifetimeUsage, delta: LifetimeUsage): void {
   into.cost += delta.cost;
 }
 
+/** Minimal shape we read from upstream context usage. */
+interface ContextUsageLike {
+  percent: number | null;
+}
+
 /** Minimal shape we read from upstream `getSessionStats()`. */
-type SessionStatsLike = {
+interface SessionStatsLike {
   tokens: { input: number; output: number; cacheWrite: number };
-  contextUsage?: { percent: number | null };
-};
-export type SessionLike = { getSessionStats(): SessionStatsLike };
+  contextUsage?: ContextUsageLike;
+}
+export interface SessionLike {
+  getSessionStats(): SessionStatsLike;
+  getContextUsage?(): ContextUsageLike | undefined;
+}
 
 /** Format a token count compactly: "12.3k", "1.2M", or raw number. When compact is true, thousands round to whole numbers. */
 export function formatTokens(count: number, compact = false): string {
@@ -54,6 +62,7 @@ export function formatCost(cost: number): string {
 export function getSessionContextPercent(session: SessionLike | undefined): number | null {
   if (!session) return null;
   try {
+    if (session.getContextUsage) return session.getContextUsage()?.percent ?? null;
     return session.getSessionStats().contextUsage?.percent ?? null;
   } catch {
     return null;

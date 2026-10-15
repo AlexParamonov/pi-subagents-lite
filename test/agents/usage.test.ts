@@ -2,8 +2,16 @@
  * usage.test.ts — Tests for usage tracking utilities.
  */
 
-import { describe, it, expect } from "vitest";
-import { type LifetimeUsage, addUsage, getLifetimeTotal, formatTokens, formatCost } from "../../src/agents/usage.js";
+import { describe, it, expect, vi } from "vitest";
+import {
+  type LifetimeUsage,
+  type SessionLike,
+  addUsage,
+  getLifetimeTotal,
+  getSessionContextPercent,
+  formatTokens,
+  formatCost,
+} from "../../src/agents/usage.js";
 
 /* ------------------------------------------------------------------ */
 /*  addUsage — cost accumulation                                       */
@@ -49,6 +57,98 @@ describe("getLifetimeTotal", () => {
   it("returns 0 when input and output are 0", () => {
     const u: LifetimeUsage = { input: 0, output: 0, cacheWrite: 99, cost: 99 };
     expect(getLifetimeTotal(u)).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  getSessionContextPercent — direct context usage with legacy fallback */
+/* ------------------------------------------------------------------ */
+
+describe("getSessionContextPercent", () => {
+  const legacyStats: ReturnType<SessionLike["getSessionStats"]> = {
+    tokens: { input: 100, output: 50, cacheWrite: 10 },
+    contextUsage: { percent: 75 },
+  };
+
+  it("prefers the direct getter without computing session stats", () => {
+    const getSessionStats = vi.fn<SessionLike["getSessionStats"]>(() => legacyStats);
+    const getContextUsage = vi.fn<NonNullable<SessionLike["getContextUsage"]>>(() => ({ percent: 25 }));
+
+    expect(getSessionContextPercent({ getSessionStats, getContextUsage })).toBe(25);
+    expect(getContextUsage).toHaveBeenCalledOnce();
+    expect(getSessionStats).not.toHaveBeenCalled();
+  });
+
+  it("preserves the direct getter's session binding and reads fresh values", () => {
+    const session = {
+      percent: 0,
+      getSessionStats: vi.fn<SessionLike["getSessionStats"]>(() => legacyStats),
+      getContextUsage() {
+        return { percent: this.percent };
+      },
+    };
+
+    expect(getSessionContextPercent(session)).toBe(0);
+    session.percent = 50;
+    expect(getSessionContextPercent(session)).toBe(50);
+    expect(session.getSessionStats).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, { percent: null }])(
+    "returns null for unavailable direct usage (%j) without falling back",
+    (usage) => {
+      const getSessionStats = vi.fn<SessionLike["getSessionStats"]>(() => legacyStats);
+      const getContextUsage = vi.fn<NonNullable<SessionLike["getContextUsage"]>>(() => usage);
+
+      expect(getSessionContextPercent({ getSessionStats, getContextUsage })).toBeNull();
+      expect(getContextUsage).toHaveBeenCalledOnce();
+      expect(getSessionStats).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns null when the direct getter throws without falling back", () => {
+    const getSessionStats = vi.fn<SessionLike["getSessionStats"]>(() => legacyStats);
+    const getContextUsage = vi.fn<NonNullable<SessionLike["getContextUsage"]>>(() => {
+      throw new Error("Context usage unavailable");
+    });
+
+    expect(getSessionContextPercent({ getSessionStats, getContextUsage })).toBeNull();
+    expect(getSessionStats).not.toHaveBeenCalled();
+  });
+
+  it("falls back to legacy stats with the session binding intact", () => {
+    const session = {
+      percent: 0,
+      getSessionStats() {
+        return { ...legacyStats, contextUsage: { percent: this.percent } };
+      },
+    };
+
+    expect(getSessionContextPercent(session)).toBe(0);
+    session.percent = 40;
+    expect(getSessionContextPercent(session)).toBe(40);
+  });
+
+  it.each([undefined, { percent: null }])("returns null for unavailable legacy usage (%j)", (contextUsage) => {
+    const session: SessionLike = {
+      getSessionStats: () => ({ ...legacyStats, contextUsage }),
+    };
+
+    expect(getSessionContextPercent(session)).toBeNull();
+  });
+
+  it("returns null for an undefined session", () => {
+    expect(getSessionContextPercent(undefined)).toBeNull();
+  });
+
+  it("returns null when legacy stats throw", () => {
+    const session: SessionLike = {
+      getSessionStats() {
+        throw new Error("Session stats unavailable");
+      },
+    };
+
+    expect(getSessionContextPercent(session)).toBeNull();
   });
 });
 
