@@ -40,6 +40,9 @@ const STATUS_KEY = "subagents";
 
 const WIDGET_REFRESH_INTERVAL = 80;
 
+/** Context statistics need not be recomputed for every spinner frame. */
+const CONTEXT_SAMPLE_MAX_AGE_MS = 500;
+
 /** Navigation freeze window: roster order is deferred while the user is actively navigating. */
 const NAV_FREEZE_MS = 2000;
 
@@ -67,6 +70,18 @@ interface TUI {
 interface RenderBlock {
   header: string;
   metadataLines: string[];
+}
+
+/** Select the visible window before formatting blocks or querying live statistics. */
+interface LazyRenderBlock {
+  height: number;
+  render(): RenderBlock;
+}
+
+interface ContextSample {
+  key: readonly unknown[];
+  sampledAt: number;
+  percent: number | null;
 }
 
 // ---- Re-exports from format.ts (backward compatibility) ----
@@ -104,6 +119,10 @@ export class AgentWidget {
   private theme: Theme | undefined;
   /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
+  /** Snapshot of the last rows actually handed to the TUI, not the caller-owned array. */
+  private lastWidgetLines: string[] | undefined;
+  private hasAnimatedRows = false;
+  private contextSamples = new WeakMap<AgentRecord, ContextSample>();
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -477,6 +496,8 @@ export class AgentWidget {
       this.tui = undefined;
       this.theme = undefined;
       this.lastStatusText = undefined;
+      this.lastWidgetLines = undefined;
+      this.contextSamples = new WeakMap();
     }
   }
 
@@ -575,6 +596,59 @@ export class AgentWidget {
     return tag ? ` ${theme.fg("dim", tag)}` : "";
   }
 
+  private sampleContextPercent(agent: AgentRecord): number | null {
+    if (this.statsVisibility.showContext === false) {
+      this.contextSamples.delete(agent);
+      return null;
+    }
+    const session = agent.execution.session;
+    if (!session) return agent.stats.contextPercent ?? null;
+
+    try {
+      const manager = session.sessionManager;
+      // Legacy/custom sessions without a cheap branch stamp remain uncached.
+      if (!manager?.getLeafId || !manager.getLeafEntry || !manager.getSessionId) {
+        return getSessionContextPercent(session);
+      }
+      const selectedModel = session.model;
+      const limitsModel = session.routedModel?.model ?? selectedModel;
+      const key = [
+        session,
+        session.getContextUsage,
+        session.getSessionStats,
+        manager,
+        manager.getSessionId(),
+        manager.getLeafId(),
+        manager.getLeafEntry(),
+        selectedModel,
+        selectedModel?.contextWindow,
+        limitsModel,
+        limitsModel?.contextWindow,
+        agent.stats.compactionCount,
+      ];
+      const now = Date.now();
+      const previous = this.contextSamples.get(agent);
+      if (
+        previous &&
+        now >= previous.sampledAt &&
+        now - previous.sampledAt < CONTEXT_SAMPLE_MAX_AGE_MS &&
+        key.length === previous.key.length &&
+        key.every((value, i) => Object.is(value, previous.key[i]))
+      ) {
+        return previous.percent;
+      }
+      const percent = getSessionContextPercent(session);
+      // Leaf/model changes refresh immediately. The age limit also refreshes
+      // unversioned in-place changes; this is bounded sampling, not a promise
+      // that the SDK's mutable records have a complete revision key.
+      this.contextSamples.set(agent, { key, sampledAt: now, percent });
+      return percent;
+    } catch {
+      this.contextSamples.delete(agent);
+      return getSessionContextPercent(session);
+    }
+  }
+
   private buildStatsLine(agent: AgentRecord, theme: Theme): string {
     const parts = buildStatsParts(
       {
@@ -583,9 +657,7 @@ export class AgentWidget {
         maxTurns: agent.stats.maxTurns,
         input: agent.stats.lifetimeUsage.input,
         output: agent.stats.lifetimeUsage.output,
-        contextPercent: agent.execution.session
-          ? getSessionContextPercent(agent.execution.session)
-          : (agent.stats.contextPercent ?? null),
+        contextPercent: this.sampleContextPercent(agent),
         compactions: agent.stats.compactionCount,
         cost: agent.stats.lifetimeUsage.cost,
         durationMs: Date.now() - agent.lifecycle.startedAt,
@@ -702,7 +774,7 @@ export class AgentWidget {
   private renderNavigationMode(
     roster: AgentRecord[],
     highlightIndex: number,
-    blockById: Map<string, RenderBlock>,
+    blockById: Map<string, LazyRenderBlock>,
     theme: Theme,
     truncate: (line: string) => string,
   ): string[] {
@@ -717,7 +789,7 @@ export class AgentWidget {
     // looked up by id because the frozen order can differ from the live
     // category order the blocks were built in. The roster comes from the
     // same snapshot as the blocks, so every id resolves.
-    const visibleBlocks = roster.slice(start, end + 1).map((a) => blockById.get(a.id)!);
+    const visibleBlocks = roster.slice(start, end + 1).map((a) => blockById.get(a.id)!.render());
     const visIndex = highlightIndex - start;
     const lines = this.renderBlocks(visibleBlocks, visIndex);
 
@@ -729,25 +801,28 @@ export class AgentWidget {
   }
 
   private renderNonNavigationMode(
-    blocks: RenderBlock[],
+    blocks: LazyRenderBlock[],
     totalAgents: number,
     theme: Theme,
     truncate: (line: string) => string,
     maxBody: number,
   ): string[] {
-    const totalBody = blocks.reduce((sum, b) => sum + 1 + b.metadataLines.length, 0);
+    const totalBody = blocks.reduce((sum, b) => sum + b.height, 0);
 
     if (totalBody <= maxBody) {
-      return this.renderBlocks(blocks, -1);
+      return this.renderBlocks(
+        blocks.map((block) => block.render()),
+        -1,
+      );
     }
 
     // Collapse from bottom: reserve 1 line for overflow indicator
     let budget = maxBody - 1;
     const visible: RenderBlock[] = [];
     for (const block of blocks) {
-      const height = 1 + block.metadataLines.length;
+      const height = block.height;
       if (budget >= height) {
-        visible.push(block);
+        visible.push(block.render());
         budget -= height;
       } else {
         break;
@@ -766,6 +841,7 @@ export class AgentWidget {
 
   private renderWidget(tui: TUI, theme: Theme): string[] {
     const { running, queued, finished } = this.categorizeAgents();
+    this.hasAnimatedRows = false;
 
     const hasActive = running.length > 0 || queued.length > 0;
     const hasFinished = finished.length > 0;
@@ -779,21 +855,28 @@ export class AgentWidget {
     const headingIcon = hasActive ? "◈" : "◇";
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
 
-    // Build blocks — separate arrays so overflow logic can apply priority: running > queued > finished.
-    const finishedBlocks = this.buildFinishedBlocks(finished, theme, w);
-    const runningBlocks = this.buildRunningBlocks(running, theme, w, frame);
+    // Measure block heights now, but defer formatting until the visible window is selected.
+    const finishedBlocks: LazyRenderBlock[] = finished.map((a) => ({
+      height: this.getBlockHeight(a),
+      render: () => this.buildFinishedBlocks([a], theme, w)[0],
+    }));
+    const runningBlocks: LazyRenderBlock[] = running.map((a) => ({
+      height: this.getBlockHeight(a),
+      render: () => {
+        this.hasAnimatedRows = true;
+        return this.buildRunningBlocks([a], theme, w, frame)[0];
+      },
+    }));
 
     // Queued: individual rows during nav, aggregated block otherwise.
-    let queuedBlocks: RenderBlock[];
-    if (this.navActive) {
-      queuedBlocks = this.buildQueuedIndividualBlocks(queued, theme, w);
-    } else {
-      const aggregated = this.buildQueuedBlock(queued, theme, w);
-      queuedBlocks = aggregated ? [aggregated] : [];
-    }
+    const queuedBlocks: LazyRenderBlock[] = this.navActive
+      ? queued.map((a) => ({ height: 1, render: () => this.buildQueuedIndividualBlocks([a], theme, w)[0] }))
+      : queued.length > 0
+        ? [{ height: 1, render: () => this.buildQueuedBlock(queued, theme, w)! }]
+        : [];
 
     // All blocks in display order: finished → running → queued.
-    const blocks: RenderBlock[] = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
+    const blocks = [...finishedBlocks, ...runningBlocks, ...queuedBlocks];
 
     // Resolve nav state first (every render tick): the roster — possibly in
     // frozen order — and the identity-based highlight. Eviction adoption
@@ -819,7 +902,7 @@ export class AgentWidget {
     if (this.navActive && navRoster) {
       // Blocks in roster order: the frozen order can differ from the live
       // category order the blocks were built in.
-      const blockById = new Map<string, RenderBlock>();
+      const blockById = new Map<string, LazyRenderBlock>();
       for (let i = 0; i < finished.length; i++) blockById.set(finished[i].id, finishedBlocks[i]);
       for (let i = 0; i < running.length; i++) blockById.set(running[i].id, runningBlocks[i]);
       for (let i = 0; i < queued.length; i++) blockById.set(queued[i].id, queuedBlocks[i]);
@@ -891,6 +974,7 @@ export class AgentWidget {
       this.uiCtx?.setWidget(WIDGET_KEY, undefined);
       this.widgetRegistered = false;
       this.tui = undefined;
+      this.lastWidgetLines = undefined;
     }
   }
 
@@ -902,8 +986,8 @@ export class AgentWidget {
     }
     // Note: timer is NOT cleared here. It keeps running so the widget
     // can re-register when agents appear again (e.g., after a steer
-    // message triggers a new turn). The timer's update() call early-returns
-    // when there are no agents, so there's no cost to keeping it alive.
+    // message triggers a new turn). Keep the lifecycle poll: not every record
+    // mutation currently has an update notification, but it need not redraw.
   }
 
   private buildStatusBarText(activeCount: number, doneCount: number, totalCost: number): string {
@@ -994,8 +1078,11 @@ export class AgentWidget {
           return {
             render: (_width?: number) => {
               try {
-                return this.tui && this.theme ? this.renderWidget(this.tui, this.theme) : [];
+                const lines = this.tui && this.theme ? this.renderWidget(this.tui, this.theme) : [];
+                this.lastWidgetLines = [...lines];
+                return lines;
               } catch (err) {
+                this.lastWidgetLines = [];
                 getSessionCtx()?.ui?.notify(`[subagents] Widget render error: ${err}`, "warning");
                 return [];
               }
@@ -1005,6 +1092,7 @@ export class AgentWidget {
               this.widgetRegistered = false;
               this.tui = undefined;
               this.theme = undefined;
+              this.lastWidgetLines = undefined;
             },
           };
         },
@@ -1012,6 +1100,14 @@ export class AgentWidget {
       );
       this.widgetRegistered = true;
     } else {
+      // Finished and queued rows have no animation. Compare their actual output
+      // so in-place mutations, settings, navigation re-ranking and expiry still
+      // update without asking the entire TUI to repaint every 80 ms.
+      const previous = this.lastWidgetLines;
+      if ((running.length === 0 || !this.hasAnimatedRows) && this.tui && this.theme && previous) {
+        const lines = this.renderWidget(this.tui, this.theme);
+        if (lines.length === previous.length && lines.every((line, i) => line === previous[i])) return;
+      }
       this.tui?.requestRender?.();
     }
   }
@@ -1030,5 +1126,7 @@ export class AgentWidget {
     this.tui = undefined;
     this.theme = undefined;
     this.lastStatusText = undefined;
+    this.lastWidgetLines = undefined;
+    this.contextSamples = new WeakMap();
   }
 }
