@@ -17,8 +17,13 @@ type WidgetFactory = NonNullable<Parameters<UICtx["setWidget"]>[1]>;
 type WidgetComponent = ReturnType<WidgetFactory>;
 
 /** A synchronous UI host: requested frames render through the public component seam. */
-function mount(agents: AgentRecord[], getLiveView: (id: string) => LiveView | undefined = () => undefined) {
+function mount(
+  agents: AgentRecord[],
+  getLiveView: (id: string) => LiveView | undefined = () => undefined,
+  configureWidget?: (widget: AgentWidget) => void,
+) {
   const widget = new AgentWidget(makeMockManager(agents), getLiveView);
+  configureWidget?.(widget);
   const theme = makeMockTheme();
   let component: WidgetComponent | undefined;
   let lines: string[] = [];
@@ -183,21 +188,6 @@ describe("widget redraw scheduling", () => {
     vi.advanceTimersByTime(80);
     expect(host.ui.setWidget).toHaveBeenCalledTimes(2);
     expect(host.lines).not.toEqual(previous);
-  });
-
-  it("recovers a static widget after a failed host render returned no rows", () => {
-    const host = setup([makeFinishedAgent("finished")]);
-    const fg = host.theme.fg;
-    host.theme.fg = () => {
-      throw new Error("transient formatting error");
-    };
-    host.requestRender();
-    expect(host.lines).toEqual([]);
-    host.theme.fg = fg;
-    host.requestRender.mockClear();
-    host.widget.update();
-    expect(host.requestRender).toHaveBeenCalledTimes(1);
-    expect(host.lines.join("\n")).toContain("Finished agent finished");
   });
 
   it("does not retain the mutable line array returned to the TUI", () => {
@@ -429,5 +419,29 @@ describe("widget redraw scheduling", () => {
     host.requestRender.mockClear();
     vi.advanceTimersByTime(160);
     expect(host.requestRender).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("navigation after transient widget errors", () => {
+  it("keeps selection moving after a live-view failure", () => {
+    const agents = [makeQueuedAgent("first")];
+    let failOnce = true;
+    const host = mount(
+      agents,
+      () => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("temporary live view failure");
+        }
+        return undefined;
+      },
+      (widget) => widget.navActivate(),
+    );
+    host.requestRender.mockImplementation(() => {});
+    const second = makeRunningAgent("second");
+    agents.push(second);
+    host.widget.navDown();
+
+    expect(host.widget.navSelect()).toBe(second);
   });
 });

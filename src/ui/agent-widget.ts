@@ -1105,8 +1105,12 @@ export class AgentWidget {
       // update without asking the entire TUI to repaint every 80 ms.
       const previous = this.lastWidgetLines;
       if ((running.length === 0 || !this.hasAnimatedRows) && this.tui && this.theme && previous) {
-        const lines = this.renderWidget(this.tui, this.theme);
-        if (lines.length === previous.length && lines.every((line, i) => line === previous[i])) return;
+        try {
+          const lines = this.renderWidget(this.tui, this.theme);
+          if (lines.length === previous.length && lines.every((line, i) => line === previous[i])) return;
+        } catch {
+          // Preflight is only an optimization; the component render boundary reports failures.
+        }
       }
       this.tui?.requestRender?.();
     }
