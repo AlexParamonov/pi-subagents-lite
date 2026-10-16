@@ -2,7 +2,7 @@
  * agent-types-discovery.test.ts — Tests for worktree-local agent type discovery.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.js";
 import {
   registerAgents,
@@ -11,7 +11,6 @@ import {
   resolveType,
   getAgentConfig,
 } from "../../src/agents/agent-types.js";
-import { DEFAULT_AGENTS } from "../../src/agents/default-agents.js";
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */
@@ -56,7 +55,7 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("worktree-local type is NOT found without worktreeDir", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+    const { dir: _worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
       [{ name: "feature-reviewer.md", content: makeAgentMd({ name: "feature-reviewer" }) }],
       "worktree-agents",
     );
@@ -192,7 +191,7 @@ describe("discoverNewAgents — worktree-local agent types", () => {
 
   it("returns 0 when worktreeDir is empty string (treated as omitted)", async () => {
     const { dir: projectDir, cleanup: cleanupProject } = tempDirWithFiles([], "project-agents");
-    const { dir: worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
+    const { dir: _worktreeDir, cleanup: cleanupWt } = tempDirWithFiles(
       [{ name: "wt-agent.md", content: makeAgentMd({ name: "wt-agent" }) }],
       "worktree-agents",
     );

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated the development environment and tooling to Vite+: Node is pinned via `.node-version`, while dependency installation, Vitest, Oxfmt, Oxlint, and type checks run through `vp`. Oxlint now enforces the test-only no-explicit-`any` policy, replacing its Bash scanner. npm 11.9.0 is the pinned package-manager backend. The extension remains source-only, with no generated build output.
+
 ## [1.17.1] - 2026-10-16
 
 ### Fixed

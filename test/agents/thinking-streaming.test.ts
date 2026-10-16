@@ -2,7 +2,7 @@
  * thinking-streaming.test.ts — Tests for streaming thinking blocks to output file.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
 import { readFileSync } from "node:fs";
 import { createMockSession, tempDirFixture } from "../fixtures.js";
 import { asAgentSession } from "../pi-boundaries.js";

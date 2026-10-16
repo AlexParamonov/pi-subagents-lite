@@ -5,7 +5,7 @@
  * stay exact-match.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite-plus/test";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import { mockModules, type OnAgentComplete } from "./manager-mocks.js";
 import { AgentManager } from "../../src/agents/agent-manager.js";

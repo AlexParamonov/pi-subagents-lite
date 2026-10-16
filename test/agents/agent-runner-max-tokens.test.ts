@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import { withCompatField } from "../pi-boundaries.js";
 import { mockModules, defaultAgentConfig, resetMocks, createMockSession, makeMockModel } from "./agent-runner-mocks.js";

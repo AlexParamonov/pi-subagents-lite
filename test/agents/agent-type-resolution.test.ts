@@ -9,7 +9,7 @@
  *   - hidden agents participate in resolution like any registered type
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 
 import { registerAgents, resolveType, getAgentConfig, getAvailableTypes } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";

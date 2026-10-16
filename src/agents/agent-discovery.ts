@@ -224,7 +224,7 @@ function parseNumber(frontmatter: Record<string, unknown>, key: string): number 
 }
 
 function compactDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined)) as Partial<T>;
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 // --- parseAgentFile ---

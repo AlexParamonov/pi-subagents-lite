@@ -5,7 +5,7 @@
  * and a minimal ctx. Every assertion exercises the actual handler code.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { KeyId } from "@earendil-works/pi-tui";
 import type { AgentConfig } from "../src/agents/types.js";
@@ -26,7 +26,7 @@ const mockIsKeyRelease = vi.fn<(data: string) => boolean>(() => false);
 vi.mock("@earendil-works/pi-tui", () => ({
   matchesKey: (data: string, keyId: KeyId) => mockMatchesKey(data, keyId),
   isKeyRelease: (data: string) => mockIsKeyRelease(data),
-  truncateToWidth: (text: string, width: number) => text,
+  truncateToWidth: (text: string, _width: number) => text,
   Editor: class Editor {},
   Container: class Container {},
   Markdown: class Markdown {},

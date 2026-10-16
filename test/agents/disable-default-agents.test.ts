@@ -2,17 +2,15 @@
  * disable-default-agents.test.ts — Tests for the disableDefaultAgents setting.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import {
   registerAgents,
   getAvailableTypes,
-  resolveType,
   getAgentConfig,
   setAgentScanDirs,
   discoverNewAgents,
   getConfig,
 } from "../../src/agents/agent-types.js";
-import { DEFAULT_AGENTS } from "../../src/agents/default-agents.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 import { makeAgentMd, tempDirWithFiles } from "../fixtures.js";
 

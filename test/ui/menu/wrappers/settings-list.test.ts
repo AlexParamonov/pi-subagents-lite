@@ -5,7 +5,7 @@
  * contract the wrapper must uphold now that the Back button is gone.
  */
 
-import { describe, it, expect, vi, type Mock } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vite-plus/test";
 import { SelectList, type Component, type SelectItem, type SettingItem } from "@earendil-works/pi-tui";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { SettingsListWrapper } from "../../../../src/ui/menu/wrappers/settings-list.js";

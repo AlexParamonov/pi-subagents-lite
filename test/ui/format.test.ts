@@ -9,7 +9,7 @@
  * hidden) from the type registry, falling back to name / "Agent".
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vite-plus/test";
 import {
   buildStatsParts,
   getDisplayName,

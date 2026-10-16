@@ -8,7 +8,7 @@
  * Shared mocks: agent-runner-mocks.ts (must be the first import).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import { fakeCtx } from "../fixtures.js";
 import { asExtensionAPI } from "../pi-boundaries.js";

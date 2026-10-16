@@ -10,7 +10,7 @@
  *   - defaultModelRegistry: default ModelRegistry mock (declare class, needs cast)
  */
 
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 
 /**

@@ -3,7 +3,7 @@
  * instead of process.env.HOME, so it works on Windows.
  */
 
-import { describe, it, expect, vi, afterAll } from "vitest";
+import { describe, it, expect, vi, afterAll } from "vite-plus/test";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

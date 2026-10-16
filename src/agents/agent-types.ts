@@ -112,7 +112,9 @@ export async function discoverNewAgents(
  * participate like any registered type (they can still be called by name).
  */
 export type TypeResolution =
-  { kind: "resolved"; key: string } | { kind: "ambiguous"; candidates: string[] } | { kind: "not-found" };
+  | { kind: "resolved"; key: string }
+  | { kind: "ambiguous"; candidates: string[] }
+  | { kind: "not-found" };
 
 /** Resolve a type name: the exact registered name wins, then a single case-insensitive match; otherwise ambiguous or not-found. */
 export function resolveType(name: string): TypeResolution {
@@ -164,7 +166,7 @@ export interface VisibleAgentInfo {
  */
 export function getVisibleAgentInfos(): VisibleAgentInfo[] {
   return [...agents.entries()]
-    .filter(([_, config]) => config.hidden !== true)
+    .filter(([, config]) => config.hidden !== true)
     .map(([name, config]) => ({ name, description: config.description }));
 }
 

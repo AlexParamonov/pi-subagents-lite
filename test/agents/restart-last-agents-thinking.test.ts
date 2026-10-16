@@ -7,7 +7,7 @@
  * `parent` value itself never reaches the spawn intent or invocation record.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { ExtensionCommandContext, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
 import type { JsonObject, ToolCall } from "@earendil-works/pi-ai";
 import { fakeCtx, shellMock } from "../fixtures.js";

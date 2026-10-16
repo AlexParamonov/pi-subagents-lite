@@ -3,7 +3,7 @@
  * file read path: bad values warn once per key, drop from the effective
  * config, keep valid keys, and leave file bytes unchanged.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vite-plus/test";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -507,7 +507,7 @@ export class AgentWidget {
         try {
           this.update();
         } catch (err) {
-          getSessionCtx()?.ui?.notify(`[subagents] Widget timer error: ${err}`, "warning");
+          getSessionCtx()?.ui?.notify(`[subagents] Widget timer error: ${String(err)}`, "warning");
         }
       }, WIDGET_REFRESH_INTERVAL);
     }
@@ -562,7 +562,7 @@ export class AgentWidget {
     }
   }
 
-  private renderFinishedLine(a: AgentRecord, theme: Theme, w: number): string {
+  private renderFinishedLine(a: AgentRecord, theme: Theme, _w: number): string {
     const name = getDisplayName(a.display.type);
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme, a.display.type || undefined);
 
@@ -1083,7 +1083,7 @@ export class AgentWidget {
                 return lines;
               } catch (err) {
                 this.lastWidgetLines = [];
-                getSessionCtx()?.ui?.notify(`[subagents] Widget render error: ${err}`, "warning");
+                getSessionCtx()?.ui?.notify(`[subagents] Widget render error: ${String(err)}`, "warning");
                 return [];
               }
             },

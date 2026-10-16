@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Component } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";

@@ -2,7 +2,7 @@
  * spawn-coordinator.test.ts — Tests for SpawnCoordinator.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord, AgentStatus } from "../../src/types.js";
 import type { AgentManager, SpawnOptions } from "../../src/agents/agent-manager.js";
@@ -82,7 +82,7 @@ function makeMockManager(opts: { pendingGate?: boolean } = {}): AgentManager & M
     getRecord: vi.fn((id: string) => records.get(id)),
     getSpawnCalls: () => spawnCalls,
     getGateResolver: (id: string) => gateResolvers.get(id),
-    dispose: () => {
+    dispose: async () => {
       records.clear();
     },
   });
@@ -110,7 +110,7 @@ interface MockManager {
   getRecord: (id: string) => AgentRecord | undefined;
   getSpawnCalls: () => SpawnCall[];
   getGateResolver: (id: string) => ((value: string) => void) | undefined;
-  dispose: () => void;
+  dispose: () => Promise<void>;
 }
 
 /** Assert the mock manager against the real AgentManager at a call boundary. */
@@ -738,7 +738,7 @@ describe("SpawnCoordinator", () => {
       expect(coordinator.liveView(result.agentId)).toBeDefined();
 
       // Teardown disposes both peers; the live view dies with its record.
-      manager.dispose();
+      void manager.dispose().catch(() => {});
       coordinator.dispose();
 
       expect(coordinator.liveView(result.agentId)).toBeUndefined();

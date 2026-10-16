@@ -45,3 +45,4 @@ result-*.md
 review-*.md
 
 tags
+.vitest/

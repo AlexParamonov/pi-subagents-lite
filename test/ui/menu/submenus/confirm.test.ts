@@ -2,7 +2,7 @@
  * Tests for createConfirmSubmenu — yes/no dialog for destructive actions.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import type { Theme } from "../../../../src/ui/types.js";
 

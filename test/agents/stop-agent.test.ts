@@ -2,7 +2,7 @@
  * stop-agent.test.ts — Tests for executeStopAgentTool.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { makeAgentRecord, shellMock } from "../fixtures.js";
 import { asExtensionContext } from "../pi-boundaries.js";
 import type { AgentRecord, AgentStatus } from "../../src/types.js";

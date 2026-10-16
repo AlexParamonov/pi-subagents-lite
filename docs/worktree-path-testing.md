@@ -33,8 +33,8 @@ tmux kill-session -t pi-test
 
 The TUI is what the user sees. The widget's full-vs-compact-mode behaviour,
 the briefing text that lands in the parent, and the live redraw during a
-parallel spawn are not testable through vitest alone — vitest covers the
-renderer's input contract, not the visible output. tmux covers the visible
+parallel spawn are not testable through unit tests alone — Vite+'s test runner
+covers the renderer's input contract, not the visible output. tmux covers the visible
 output without requiring a human at a keyboard.
 
 ## Caveats
@@ -61,18 +61,18 @@ output without requiring a human at a keyboard.
   that loads this project's extension (via `-e` or by symlinking into pi's
   extension path) and unset unused API keys. Verify once, then reuse.
 - **Windows label normalization is not testable on this host.** Cover it
-  with vitest using `path.win32` inputs to the label function; the renderer
+  with `vp test` using `path.win32` inputs to the label function; the renderer
   is cross-platform already.
 
 ## Test plan split
 
-### Vitest (no TUI, fast, deterministic)
+### Unit tests (`vp test`, no TUI, fast, deterministic)
 
 Covers the validator's rejection reasons, label computation, briefing string content, deletion-mid-run (via stubbed manager), worktree-local agent discovery, and the spawn menu's worktree picker (git-command integration mocked at the executor boundary). Maps 1:1 to the acceptance criteria in slices 1-1, 1-2, 1-3, and 1-4.
 
 ### tmux (real pi session, wave-level manual verification)
 
-> **Slice-level testing is vitest-only.** This section is the wave-level manual verification checklist. The menu-driven tests for US-3, US-5, and US-6 require slice 1-4 (spawn menu worktree picker) to have shipped.
+> **Slice-level testing is unit-test-only.** This section is the wave-level manual verification checklist. The menu-driven tests for US-3, US-5, and US-6 require slice 1-4 (spawn menu worktree picker) to have shipped.
 
 The fixture is the project itself. No synthetic `/tmp/test-repo` needed.
 
@@ -137,7 +137,7 @@ deployments go through `pi install` and pi's normal extension loader.
    valid frontmatter. Prompt the LLM: "Use the `feature-reviewer`
    agent on this worktree." Assert the spawn succeeds.
 8. **Validation rejections, deletion-mid-run, cross-platform label.**
-   Covered by vitest (see the Vitest section above). No tmux step
+   Covered by unit tests (see the test section above). No tmux step
    needed.
 
 ## What this plan does not do

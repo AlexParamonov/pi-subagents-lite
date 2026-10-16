@@ -1,7 +1,7 @@
 /**
  * agent-manager-watchdog.test.ts — Watchdog stop decisions wired through AgentManager.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite-plus/test";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import { mockModules, mockStoreState, mockRunResult, type OnAgentComplete } from "./manager-mocks.js";
 import { AgentManager, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
@@ -20,7 +20,7 @@ describe("AgentManager", () => {
   });
 
   afterEach(() => {
-    manager?.dispose();
+    void manager?.dispose().catch(() => {});
   });
 
   describe("watchdog", () => {
@@ -83,7 +83,7 @@ describe("AgentManager", () => {
         await vi.advanceTimersByTimeAsync(WATCHDOG_TICK_MS);
 
         expect(manager.getRecord(id)?.lifecycle.status).toBe("stopped");
-        manager.dispose();
+        void manager.dispose().catch(() => {});
       } finally {
         vi.useRealTimers();
       }

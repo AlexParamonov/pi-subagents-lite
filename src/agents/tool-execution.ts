@@ -12,7 +12,7 @@ import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-
 import type { AgentRecord, ThinkingLevel } from "../types.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
 import type { AgentConfig } from "./types.ts";
-import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.ts";
+import { getAgentConfig, resolveTypeOrDiscover } from "./agent-types.ts";
 import { getSessionContextPercent } from "./usage.ts";
 import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.ts";
 

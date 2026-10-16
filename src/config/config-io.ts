@@ -195,7 +195,7 @@ export function loadConfig(): SubagentsConfig {
  * wins, providers/models combine. Pure — no I/O.
  */
 export function mergeLayers(global: RawConfig, project: RawConfig | null): RawConfig {
-  const agent = { ...(global.agent ?? {}) };
+  const agent = { ...global.agent };
   if (project?.agent) {
     for (const [key, value] of Object.entries(project.agent)) {
       if (isProjectAllowedAgentKey(key)) agent[key] = value;
@@ -231,9 +231,9 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
   // JSON, so the casts are honest at this boundary.
   const concurrency = {
     ...DEFAULT_CONCURRENCY,
-    ...(raw.concurrency ?? {}),
+    ...raw.concurrency,
   } as SubagentsConfig["concurrency"];
-  const agent = { ...DEFAULT_AGENT, ...(raw.agent ?? {}) } as SubagentsConfig["agent"];
+  const agent = { ...DEFAULT_AGENT, ...raw.agent } as SubagentsConfig["agent"];
   // Legacy pre-ADR-0006 key: normalize without error, touching no other keys (US-15).
   delete agent.finishedEvictTurns;
   return {
@@ -263,7 +263,7 @@ function readProjectRaw(projectPath: string): ProjectRead {
   try {
     parsed = JSON.parse(fs.readFileSync(projectPath, "utf-8"));
   } catch (err) {
-    console.warn(`[subagents] Ignoring malformed project config ${projectPath}: ${err}`);
+    console.warn(`[subagents] Ignoring malformed project config ${projectPath}: ${String(err)}`);
     return "malformed";
   }
   if (!isPlainObject(parsed)) {
@@ -304,6 +304,6 @@ function writeJsonAtomic(filePath: string, config: unknown): void {
     fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), "utf-8");
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
-    console.error(`[subagents] Failed to save config: ${err}`);
+    console.error(`[subagents] Failed to save config: ${String(err)}`);
   }
 }

@@ -777,9 +777,9 @@ export class AgentManager {
     // Runs still settling may create or re-attach sessions after the sweep
     // above; their vanished-record teardowns land in pendingDisposals during
     // this await (reaction order: .then → .catch → .finally → this).
-    await Promise.allSettled([...this.inFlightRuns]);
+    await Promise.allSettled(this.inFlightRuns);
     while (this.pendingDisposals.size > 0) {
-      await Promise.allSettled([...this.pendingDisposals]);
+      await Promise.allSettled(this.pendingDisposals);
     }
   }
 }

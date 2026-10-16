@@ -4,7 +4,7 @@
  * The Watchdog is pure and clock-injectable: feed it tool activity / text
  * deltas, advance the fake clock, and assert the stop decisions it returns.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { Watchdog } from "../../src/agents/watchdog.js";
 
 const MIN = 60_000;

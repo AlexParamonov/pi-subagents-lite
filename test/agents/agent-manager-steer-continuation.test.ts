@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite-plus/test";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import {
   mockModules,
@@ -25,7 +25,7 @@ describe("AgentManager", () => {
   });
 
   afterEach(() => {
-    manager?.dispose();
+    void manager?.dispose().catch(() => {});
   });
 
   function nextCompletion(): Promise<void> {
@@ -512,7 +512,7 @@ describe("AgentManager", () => {
     manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
     const firstRun = makeResolvablePromise();
     mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
-    const id1 = spawnForeground("first");
+    const _id1 = spawnForeground("first");
     const id2 = spawnForeground("second");
     const record2 = manager.getRecord(id2)!;
     expect(record2.lifecycle.status).toBe("queued");
@@ -566,7 +566,7 @@ describe("AgentManager", () => {
     manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
     const firstRun = makeResolvablePromise();
     mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
-    const id1 = spawnForeground("first");
+    const _id1 = spawnForeground("first");
     const id2 = spawnForeground("second");
     const record2 = manager.getRecord(id2)!;
     expect(record2.lifecycle.status).toBe("queued");

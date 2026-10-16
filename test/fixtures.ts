@@ -5,7 +5,7 @@
  *   - shellMock: ../src/shell.js stubs (parameterized by hoisted fns)
  */
 
-import { vi, type Mock } from "vitest";
+import { vi, type Mock } from "vite-plus/test";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -463,7 +463,18 @@ export function makeAgentMd(overrides: Record<string, unknown> = {}): string {
     if (val === undefined) {
       delete fm[key];
     } else {
-      fm[key] = String(val);
+      switch (typeof val) {
+        case "string":
+        case "number":
+        case "boolean":
+        case "bigint":
+        case "symbol":
+        case "function":
+          fm[key] = String(val);
+          break;
+        default:
+          fm[key] = JSON.stringify(val) ?? "null";
+      }
     }
   }
   for (const key of skipFields) {

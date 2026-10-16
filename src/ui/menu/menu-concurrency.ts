@@ -13,7 +13,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
+import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import {
   SEPARATOR_ID,
   buildSettingsListTheme,

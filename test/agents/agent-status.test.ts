@@ -5,7 +5,7 @@
  * Schema tests live in index.test.ts (which doesn't mock index.js).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { asExtensionContext } from "../pi-boundaries.js";
 import { shellMock } from "../fixtures.js";
 

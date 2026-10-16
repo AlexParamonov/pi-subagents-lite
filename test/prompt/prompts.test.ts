@@ -2,7 +2,7 @@
  * prompts.test.ts — Tests for system prompt building with skills.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { buildAgentPrompt } from "../../src/prompt/prompts.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 import type { EnvInfo } from "../../src/types.js";

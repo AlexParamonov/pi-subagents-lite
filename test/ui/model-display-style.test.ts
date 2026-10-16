@@ -1,7 +1,7 @@
 /**
  * model-display-style.test.ts — Tests for model display style config.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { ConfigStore, type ConfigIO } from "../../src/config/config-store.js";
 import type { RawConfig } from "../../src/config/config-io.js";
 import type { AgentWidget } from "../../src/ui/agent-widget.js";

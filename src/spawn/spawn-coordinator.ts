@@ -219,7 +219,7 @@ export class SpawnCoordinator {
           triggerTurn: true,
         },
       );
-    } catch (error) {
+    } catch {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.
       const spawnCtx = record.execution.spawnCtx;

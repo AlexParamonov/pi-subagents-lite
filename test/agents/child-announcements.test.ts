@@ -8,7 +8,7 @@
  * tasks/lessons.md.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { createEventBus, type EventBus } from "@earendil-works/pi-coding-agent";
 import {
   announceChildSessionBound,

@@ -12,7 +12,7 @@
  * identically to the read.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import { mockModules, defaultAgentConfig, resetMocks, createMockSession, makeMockModel } from "./agent-runner-mocks.js";
 import type { MockSettingsManager } from "./agent-runner-mocks.js";

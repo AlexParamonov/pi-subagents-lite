@@ -3,7 +3,7 @@
  * removed `finishedEvictTurns` key loads and normalizes without error, with
  * the legacy key stripped and no other keys touched (ADR-0006).
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vite-plus/test";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

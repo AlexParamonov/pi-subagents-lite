@@ -167,7 +167,8 @@ export function registerTools(pi: ExtensionAPI): void {
       // ctx.scopedModels added in pi 0.83.0 — session-scoped model list from --models / enabledModels.
       // Empty array means no scoping (all models usable). Undefined on pi < 0.83.
       const scoped = (ctx as any).scopedModels as
-        ReadonlyArray<{ model: { provider: string; id: string } }> | undefined;
+        | ReadonlyArray<{ model: { provider: string; id: string } }>
+        | undefined;
       const modelOptions = scoped?.length
         ? scoped.map((s) => `${s.model.provider}/${s.model.id}`)
         : ctx.modelRegistry.getAvailable().map((m) => `${m.provider}/${m.id}`);

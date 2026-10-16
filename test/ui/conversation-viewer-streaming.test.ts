@@ -24,7 +24,7 @@
  * complete, and content only ever accumulates.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { TUI } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";

@@ -92,7 +92,10 @@ async function getGitCommonDir(
 /** Resolve a git path and normalize it for reliable cross-platform comparison. */
 function normalizeGitPath(gitPath: string, cwd: string): string {
   const isWindowsStyle =
-    /^[A-Za-z]:[\\/]/.test(gitPath) || /^[A-Za-z]:[\\/]/.test(cwd) || /^\\\\/.test(gitPath) || /^\\\\/.test(cwd);
+    /^[A-Za-z]:[\\/]/.test(gitPath) ||
+    /^[A-Za-z]:[\\/]/.test(cwd) ||
+    gitPath.startsWith("\\\\") ||
+    cwd.startsWith("\\\\");
   const pathApi = isWindowsStyle ? path.win32 : path;
   const absolutePath = pathApi.isAbsolute(gitPath) ? gitPath : pathApi.resolve(cwd, gitPath);
   const normalizedPath = pathApi.normalize(absolutePath).replace(/\\/g, "/");

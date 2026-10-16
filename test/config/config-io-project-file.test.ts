@@ -4,7 +4,7 @@
  * file; absent keys inherit. Unknown keys are ignored with a warning, a
  * malformed file is never written, and per-layer saves touch only their layer.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vite-plus/test";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -17,7 +17,7 @@
  * internal call order.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { fakeCtx } from "../fixtures.js";
 import type { ExtensionAPI, ExtensionContext, CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
 import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
@@ -90,7 +90,7 @@ vi.mock("../../src/spawn/project-trust.js", () => ({
 
 vi.mock("../../src/agents/agent-types.js", () => ({
   resolveType: vi.fn((type: string) => ({ kind: "resolved", key: type })),
-  resolveTypeOrDiscover: vi.fn(async (type: string, worktreeDir?: string) => {
+  resolveTypeOrDiscover: vi.fn(async (type: string, _worktreeDir?: string) => {
     const resolution = { kind: "resolved" as const, key: type };
     return resolution;
   }),

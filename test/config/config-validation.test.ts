@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import { validateRawLayer } from "../../src/config/config-validation.js";
 import { parseModelKey, findModelInRegistry } from "../../src/utils.js";
 import { buildModelOptions, extractConfiguredModels } from "../../src/ui/menu/helpers.js";

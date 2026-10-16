@@ -7,8 +7,7 @@
  * per ADR-0008) before their value submenu.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import fs from "node:fs";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { Component, SelectItem, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";

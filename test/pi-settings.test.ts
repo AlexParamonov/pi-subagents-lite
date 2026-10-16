@@ -4,7 +4,7 @@
  * (~/.pi/agent/settings.json) with real JSON parsing and ENOENT handling.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

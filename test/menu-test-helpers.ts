@@ -10,7 +10,7 @@
  *   - selectByName: helper to select menu items by short name
  */
 
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 import type { ExtensionCommandContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { defaultUi, defaultSessionManager, defaultModel, defaultModelRegistry } from "./mock-utils.js";
 

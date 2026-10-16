@@ -6,7 +6,7 @@
  * the persisted value and syncs the widget.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { ConfigStore } from "../../src/config/config-store.js";
 import { memIO, widgetStub, managerStub, statsVisibilityPayloads } from "./config-store-helpers.js";
 

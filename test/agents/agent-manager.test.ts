@@ -4,9 +4,8 @@
  * agent-manager-watchdog.test.ts. Shared mocks: manager-mocks.ts.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite-plus/test";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
-import { asAgentSession } from "../pi-boundaries.js";
 import {
   mockModules,
   mockStoreState,
@@ -15,7 +14,7 @@ import {
   type FakeSessionModel,
   type OnAgentComplete,
 } from "./manager-mocks.js";
-import { AgentManager, WATCHDOG_TICK_MS } from "../../src/agents/agent-manager.js";
+import { AgentManager } from "../../src/agents/agent-manager.js";
 
 describe("AgentManager", () => {
   let manager: AgentManager;
@@ -31,7 +30,7 @@ describe("AgentManager", () => {
   });
 
   afterEach(() => {
-    manager?.dispose();
+    void manager?.dispose().catch(() => {});
   });
 
   /**
@@ -431,7 +430,7 @@ describe("AgentManager", () => {
       const firstRun = makeResolvablePromise();
       mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
 
-      const id1 = spawnForeground("first");
+      const _id1 = spawnForeground("first");
       const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "bg task", {
         description: "bg task",
         modelKey: "test/model",
@@ -580,7 +579,7 @@ describe("AgentManager", () => {
       const controller = new AbortController();
       spawnForeground("task", { signal: controller.signal });
 
-      manager.dispose();
+      void manager.dispose().catch(() => {});
       const abortSpy = vi.spyOn(manager, "abort");
       controller.abort();
       expect(abortSpy).not.toHaveBeenCalled();
@@ -689,12 +688,12 @@ describe("AgentManager", () => {
       const firstRun = makeResolvablePromise();
       mockModules.mockRunAgent.mockReturnValue(firstRun.promise);
 
-      const id1 = spawnForeground("first");
+      const _id1 = spawnForeground("first");
       const id2 = spawnForeground("second");
       const record2 = manager.getRecord(id2)!;
       expect(record2.lifecycle.status).toBe("queued");
 
-      manager.dispose();
+      void manager.dispose().catch(() => {});
       expect(record2.lifecycle.status).toBe("error");
       expect(record2.error).toBe("Agent manager disposed before the queued agent could start.");
       expect(record2.lifecycle.completedAt).toBeDefined();
@@ -711,7 +710,7 @@ describe("AgentManager", () => {
       const id = spawnForeground("task");
       const record = manager.getRecord(id)!;
 
-      manager.dispose();
+      void manager.dispose().catch(() => {});
       deferred.resolve(mockRunResult());
       await record.execution.promise; // must not dangle
     });

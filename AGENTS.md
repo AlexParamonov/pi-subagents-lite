@@ -1,13 +1,15 @@
 # Dev
 
-**Package manager:** npm (`npm install`, `npm install <pkg>`, `npm install -D <pkg>`)
-**Typecheck:** `npm run typecheck`
-**Tests:** `npm run test` (vitest)
-**Format:** `npm run format` (prettier) / `npm run format:check`
+**Dependencies:** Vite+ (`vp install`, `vp install <pkg>`), with npm `11.9.0` pinned as its package-manager backend.
+**Development Node:** Vite+ uses `.node-version` (`24`); its supported range is `^22.18.0 || ^24.11.0 || >=26.0.0`. The package runtime requirement remains documented in README.
+**Toolchain:** Install the [global Vite+ CLI](https://viteplus.dev/guide/global-cli), then use `vp` commands; the project-local toolchain is pinned to `vite-plus@1.3.0`.
+**Checks:** `vp check` (Oxlint, Oxfmt, and TypeScript type checks)
+**Tests:** `vp test run` (Vitest through Vite+)
+**Format:** `vp fmt` / `vp fmt --check` (Oxfmt)
 
-**Before committing:** run typecheck, tests, and format:check.
+**Before committing:** run `vp check` and `vp test run`.
 
-**Fixing test type errors:** replace `any` with real src/pi types (`vi.fn<RealSignature>()`, typed fixture factories, `Partial<T>` overrides). Use `interface` for object shapes, `type` for the rest. `expect.any(...)` is a vitest matcher, not an escape hatch. Boundary casts for pi-tui private members go in `test/pi-boundaries.ts`. Substitution ladder: real type > `unknown` + narrowing > documented `any` (last resort, reproduced failure required).
+**Fixing test type errors:** replace `any` with real src/pi types (`vi.fn<RealSignature>()`, typed fixture factories, `Partial<T>` overrides). Use `interface` for object shapes, `type` for the rest. `expect.any(...)` is a Vitest matcher, not an escape hatch. Boundary casts for pi-tui private members go in `test/pi-boundaries.ts`. Substitution ladder: real type > `unknown` + narrowing > documented `any` (last resort, reproduced failure required).
 
 **Docs:** update CHANGELOG.md (Unreleased section).
 

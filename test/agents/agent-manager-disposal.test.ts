@@ -7,7 +7,7 @@
  * Shared mocks: manager-mocks.ts.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite-plus/test";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import {
   mockModules,
@@ -46,7 +46,7 @@ describe("AgentManager session disposal", () => {
   });
 
   afterEach(() => {
-    manager?.dispose();
+    void manager?.dispose().catch(() => {});
   });
 
   /** One cast per file: the real session type down to the mock's vi.fn surface. */
@@ -103,7 +103,7 @@ describe("AgentManager session disposal", () => {
     manager = new AgentManager(onComplete);
     const deferred = makeResolvablePromise();
     mockModules.mockRunAgent.mockReturnValue(deferred.promise);
-    const id = spawnForeground("task");
+    const _id = spawnForeground("task");
     const lateSession = mockAgentSession();
 
     const disposing = manager.dispose();

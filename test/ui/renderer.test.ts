@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { Component } from "@earendil-works/pi-tui";
 import type { Theme } from "../../src/ui/types.js";
 

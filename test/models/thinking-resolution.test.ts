@@ -11,7 +11,7 @@
  * display-only tail is resolveDisplayedThinking, pinned below.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {

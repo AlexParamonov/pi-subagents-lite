@@ -20,7 +20,6 @@ import type { Theme } from "../types.ts";
 import {
   DEFAULT_GRACE_TURNS,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
-  CUSTOM_PROMPT_PATH,
   canonicalAgentStatusLimit,
 } from "../../config/config-io.ts";
 import { VALID_THINKING_LEVELS } from "../../utils.ts";

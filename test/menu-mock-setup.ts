@@ -11,7 +11,7 @@
  * stale state into later tests.
  */
 
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "../src/agents/agent-manager.js";
 import type { SystemPromptMode } from "../src/agents/types.js";
@@ -310,14 +310,14 @@ vi.mock("../src/shell.js", async () => {
       return {
         default: sessionConc.default ?? projectConc.default ?? globalConc.default ?? DEFAULT_CONCURRENCY.default,
         providers: {
-          ...(globalConc.providers ?? {}),
-          ...(projectConc.providers ?? {}),
-          ...(sessionConc.providers ?? {}),
+          ...globalConc.providers,
+          ...projectConc.providers,
+          ...sessionConc.providers,
         },
         models: {
-          ...(globalConc.models ?? {}),
-          ...(projectConc.models ?? {}),
-          ...(sessionConc.models ?? {}),
+          ...globalConc.models,
+          ...projectConc.models,
+          ...sessionConc.models,
         },
       };
     },

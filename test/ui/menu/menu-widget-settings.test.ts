@@ -5,12 +5,10 @@
  * Behavior items (Finished agent retention, Ctrl+o shortcut) folded into Display.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { Component, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
-import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
-import { asCommandContext } from "../../pi-boundaries.js";
+import { createMockCtx } from "../../menu-test-helpers.js";
 import { getAgentConfig } from "../../../src/agents/agent-types.js";
 import type { SettingsListWrapperOptions } from "../../../src/ui/menu/wrappers/settings-list.js";
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import { mockModules, resetMocks, createMockSession } from "./agent-runner-mocks.js";
 import { runAgent } from "../../src/agents/agent-runner.js";

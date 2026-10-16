@@ -6,7 +6,7 @@
  * emits session_shutdown, then disposes — idempotent per session.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { disposeChildSession } from "../../src/agents/session-teardown.js";
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { getStatusNote, formatStopReason, formatWatchdogSummary } from "../src/status-note.js";
 import type { AgentLifecycle } from "../src/types.js";
 

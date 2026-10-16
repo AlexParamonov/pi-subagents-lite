@@ -9,7 +9,7 @@
  * Shared mocks: agent-runner-mocks.ts (must be the first import).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import { mockModules, resetMocks, createMockSession, type MockSession } from "./agent-runner-mocks.js";
 import { runAgent } from "../../src/agents/agent-runner.js";

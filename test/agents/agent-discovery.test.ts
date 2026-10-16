@@ -2,7 +2,7 @@
  * agent-discovery.test.ts — Tests for agent file parsing, merging, and config.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { parseAgentFile, scanAgentFilesInDir, mergeAgents, parseExtensions } from "../../src/agents/agent-discovery.js";
 import type { AgentConfigFromMd } from "../../src/agents/agent-discovery.js";
 import type { AgentConfig } from "../../src/agents/types.js";

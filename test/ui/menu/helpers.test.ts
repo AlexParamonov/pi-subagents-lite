@@ -2,7 +2,7 @@
  * helpers.test.ts — Tests for ui/menu/helpers.ts.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import {
   installSeparatorSkip,
   validateNumeric,

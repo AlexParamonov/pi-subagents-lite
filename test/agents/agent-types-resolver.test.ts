@@ -6,7 +6,7 @@
  * no-sub-subagent exclude policy.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // Import the module under test
 import {

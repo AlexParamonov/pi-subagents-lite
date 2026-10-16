@@ -251,8 +251,8 @@ export class ConfigStore {
     const session = this.sessionConcurrencyLayer;
     return {
       default: session.default ?? base.default,
-      providers: { ...(base.providers ?? {}), ...(session.providers ?? {}) },
-      models: { ...(base.models ?? {}), ...(session.models ?? {}) },
+      providers: { ...base.providers, ...session.providers },
+      models: { ...base.models, ...session.models },
     };
   }
 
@@ -290,11 +290,11 @@ export class ConfigStore {
   }
 
   get projectConcurrency(): RawConcurrency {
-    return { ...(this.projectRaw?.concurrency ?? {}) };
+    return { ...this.projectRaw?.concurrency };
   }
 
   get globalConcurrency(): RawConcurrency {
-    return { ...(this.globalRaw.concurrency ?? {}) };
+    return { ...this.globalRaw.concurrency };
   }
 
   get sessionConcurrency(): RawConcurrency {
@@ -486,12 +486,12 @@ export class ConfigStore {
       },
       setProvider: (key: string, n: number, target: ConfigTarget = "global"): void => {
         this.applyConcurrencyWrite(target, (layer) => {
-          layer.providers = { ...(layer.providers ?? {}), [key]: n };
+          layer.providers = { ...layer.providers, [key]: n };
         });
       },
       setModel: (key: string, n: number, target: ConfigTarget = "global"): void => {
         this.applyConcurrencyWrite(target, (layer) => {
-          layer.models = { ...(layer.models ?? {}), [key]: n };
+          layer.models = { ...layer.models, [key]: n };
         });
       },
       removeProvider: (key: string, target: ConfigTarget | "all" = "global"): void => {

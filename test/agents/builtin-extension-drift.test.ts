@@ -8,7 +8,7 @@
  * sanctions no creator for it).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { BUILTIN_EXTENSION_FACTORIES } from "../../src/agents/builtin-extensions.js";
 import { importPiBuiltInExtensions } from "./pi-builtin-registry.js";
 

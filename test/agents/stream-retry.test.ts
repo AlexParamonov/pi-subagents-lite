@@ -8,7 +8,7 @@
  *   - is a no-op when _isRetryableError is absent
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import { patchRetryClassifier } from "../../src/agents/stream-retry.js";
 
 // --- Helpers ---

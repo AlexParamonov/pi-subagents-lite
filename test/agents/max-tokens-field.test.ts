@@ -8,7 +8,7 @@
  * max_completion_tokens. No model IDs: resolution depends only on
  * provider, baseUrl, and compat.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   applyOutputLimit,

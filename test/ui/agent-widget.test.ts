@@ -2,15 +2,13 @@
  * agent-widget.test.ts — Tests for widget rendering.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
 import {
   makeMockManager,
-  makeMockTheme,
-  makeMockTUI,
   renderWidgetLines,
   makeRunningAgent,
   makeFinishedAgent,
@@ -34,6 +32,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 
 // ANSI-aware mocks for truncateToWidth and visibleWidth
 // These mocks properly handle ANSI escape codes like the real implementation
+// oxlint-disable-next-line no-control-regex -- ANSI color escapes contain a control character.
 const ANSI_REGEX = /\x1b\[[0-9;]*m/g;
 
 function stripAnsi(text: string): string {

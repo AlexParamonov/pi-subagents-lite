@@ -9,7 +9,7 @@
  * resolved from the validated path.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { DefaultProjectTrust } from "@earendil-works/pi-coding-agent";
 import { fakeCtx, shellMock } from "../fixtures.js";
 import { defaultUi } from "../mock-utils.js";

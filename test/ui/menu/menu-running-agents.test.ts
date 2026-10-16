@@ -6,7 +6,7 @@
  * Selecting an agent opens an actions submenu (also SelectList).
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
 import { asAgentSession, selectListView } from "../../pi-boundaries.js";
@@ -367,7 +367,7 @@ describe("showTextViewer — component behavior", () => {
     vi.clearAllMocks();
   });
 
-  async function getComponent(record: AgentRecord, kind: "result" | "error", text: string) {
+  async function getComponent(record: AgentRecord, kind: "result" | "error", _text: string) {
     let factory: ComponentFactory | null = null;
     const ctx = createMockCtx([], [], [], {
       ui: {

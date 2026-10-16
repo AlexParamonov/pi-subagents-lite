@@ -2,7 +2,7 @@
  * context.test.ts — Tests for conversation context helpers.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { extractText } from "../../src/prompt/context.js";
 
 /* ------------------------------------------------------------------ */

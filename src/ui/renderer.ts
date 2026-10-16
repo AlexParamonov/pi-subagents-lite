@@ -166,7 +166,7 @@ export function renderAgentToolResult(
   theme: Theme,
   showCost: boolean,
   modelDisplayStyle: "id" | "name" = "id",
-  context?: { state?: Record<string, unknown>; executionStarted?: boolean },
+  _context?: { state?: Record<string, unknown>; executionStarted?: boolean },
 ): Text {
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
@@ -237,11 +237,12 @@ export function renderSubagentResult(
 
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
-    let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", (d.description as string) || "")}`;
-    if (d.outputFile as string) {
+    const description = typeof d.description === "string" ? d.description : "";
+    let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`;
+    if (typeof d.outputFile === "string" && d.outputFile) {
       headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
     }
-    if (d.worktreePath as string) {
+    if (typeof d.worktreePath === "string" && d.worktreePath) {
       headerLine += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
     }
     inner.addChild(new Text(headerLine, 0, 0));
@@ -283,12 +284,12 @@ function buildFallbackResultLine(
   if (d?.type) {
     line += ` ${agentNameLabel(d, theme, modelDisplayStyle)}`;
   }
-  const desc = (d?.description as string) || "";
+  const desc = typeof d?.description === "string" ? d.description : "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
-  if (d?.outputFile) {
+  if (typeof d?.outputFile === "string" && d.outputFile) {
     line += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
   }
-  if (d?.worktreePath) {
+  if (typeof d?.worktreePath === "string" && d.worktreePath) {
     line += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
   }
   return line;

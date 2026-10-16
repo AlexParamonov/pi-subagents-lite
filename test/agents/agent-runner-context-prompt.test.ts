@@ -2,7 +2,7 @@
  * agent-runner-context-prompt.test.ts — Context files, system prompt modes,
  * project trust, defaultTools, and custom mode tests for agent-runner.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import fs from "node:fs";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import { mockModules, defaultConfig, defaultAgentConfig, resetMocks, createMockSession } from "./agent-runner-mocks.js";

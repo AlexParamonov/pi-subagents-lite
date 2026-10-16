@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { fakePi as makeFakePi } from "../fixtures.js";
 import { asAgentSession } from "../pi-boundaries.js";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {

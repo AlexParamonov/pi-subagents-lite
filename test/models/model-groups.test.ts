@@ -10,7 +10,7 @@
  * `parent` / `pi default`).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { buildModelGroups, type ModelGroupsInput } from "../../src/models/model-groups.js";

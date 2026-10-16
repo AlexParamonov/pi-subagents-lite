@@ -7,7 +7,7 @@
  * src module loads. Tests drive the mutable mockModules / mockStoreState
  * objects and the mockAgentSession / mockRunResult factories.
  */
-import { vi, type Mock } from "vitest";
+import { vi, type Mock } from "vite-plus/test";
 import type { AgentSession, AgentSessionEventListener } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentRecord } from "../../src/types.js";

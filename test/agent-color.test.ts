@@ -2,7 +2,7 @@
  * agent-color.test.ts — Tests for agent color resolution and ANSI output.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { resolveAgentColor, hexToAnsi, agentColorAnsi } from "../src/agent-color.js";
 import { registerAgents } from "../src/agents/agent-types.js";
 import type { AgentConfig } from "../src/agents/types.js";

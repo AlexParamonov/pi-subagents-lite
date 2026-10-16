@@ -1,7 +1,7 @@
 /**
  * agent-manager-concurrency.test.ts — Concurrency limiting for AgentManager.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite-plus/test";
 import { fakeCtx, fakePi, makeResolvablePromise } from "../fixtures.js";
 import { mockModules, mockRunResult, type OnAgentComplete } from "./manager-mocks.js";
 import { AgentManager } from "../../src/agents/agent-manager.js";
@@ -21,7 +21,7 @@ describe("AgentManager", () => {
   });
 
   afterEach(() => {
-    manager?.dispose();
+    void manager?.dispose().catch(() => {});
   });
 
   describe("concurrency", () => {

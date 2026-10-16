@@ -2,9 +2,7 @@
  * conversation-viewer.test.ts — Tests for ConversationViewer.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { MarkdownTheme, TUI } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
@@ -52,15 +50,13 @@ vi.mock("@earendil-works/pi-tui", () => ({
       _padX: number,
       _padY: number,
       _theme: MarkdownTheme,
-      overrides?: { color?: (t: string) => string; italic?: boolean },
+      overrides?: { color?: (t: string) => string },
     ) {
       this._text = text;
       this._color = overrides?.color ?? ((t: string) => t);
-      this._italic = overrides?.italic ?? false;
     }
     _text: string;
     _color: (t: string) => string;
-    _italic: boolean;
     setText(text: string) {
       this._text = text;
     }
@@ -69,13 +65,14 @@ vi.mock("@earendil-works/pi-tui", () => ({
       const result: string[] = [];
       for (const line of lines) {
         let wrapped = line.length > width ? line.slice(0, width) : line;
-        if (this._italic) wrapped = wrapped;
         result.push(this._color(wrapped));
       }
       return result;
     }
   },
   truncateToWidth: vi.fn((s: string, w: number) => {
+    // ANSI color sequences intentionally match ESC.
+    // oxlint-disable-next-line no-control-regex
     const plain = s.replace(/\x1b\[[0-9;]*m/g, "");
     return plain.length > w ? plain.slice(0, w - 3) + "..." : s;
   }),

@@ -5,7 +5,7 @@
  * with computed displayName. Use in vi.mock() factory bodies.
  */
 
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 
 /**
  * Returns a getAgentConfig mock function.

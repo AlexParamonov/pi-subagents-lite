@@ -2,7 +2,7 @@
  * agent-widget-scroll.test.ts — Tests for scroll-viewport navigation.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
@@ -13,7 +13,6 @@ import {
   makeRunningAgent,
   makeFinishedAgent,
   makeQueuedAgent,
-  makeActivity,
 } from "./widget-helpers.js";
 
 /* ------------------------------------------------------------------ */
@@ -31,7 +30,7 @@ vi.mock("../../src/agents/agent-types.js", () => ({
 }));
 
 vi.mock("@earendil-works/pi-tui", () => ({
-  truncateToWidth: (text: string, width: number) => text,
+  truncateToWidth: (text: string, _width: number) => text,
   visibleWidth: (text: string) => text.length,
 }));
 

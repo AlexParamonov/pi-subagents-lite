@@ -12,7 +12,7 @@
  * Returns first non-null, non-undefined, non-empty-string value.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { resolveModel } from "../../src/models/model-precedence.js";
 import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 

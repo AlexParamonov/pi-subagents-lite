@@ -17,7 +17,7 @@
  * extension receives on the parent's bus.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vite-plus/test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

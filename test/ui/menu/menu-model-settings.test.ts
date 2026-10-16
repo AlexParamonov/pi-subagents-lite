@@ -5,7 +5,7 @@
  * submenus (session/global/project, nested per-level clear) per ADR-0008.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { mockModules, resetConfig, selectDialogInstances } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
 import { ConfigStore } from "../../../src/config/config-store.js";

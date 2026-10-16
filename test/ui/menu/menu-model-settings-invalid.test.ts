@@ -3,7 +3,7 @@
  * Model Settings menu: with an object-shaped default present the menu still
  * opens (backstop), and with a validated store it shows the fallback.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx } from "../../menu-test-helpers.js";
 import type { SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";

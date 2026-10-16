@@ -5,7 +5,7 @@
  *   (modelName • thinkingLevel) with independent visibility toggles.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import type { Theme } from "../../src/ui/types.js";
 import { buildModelThinkingTag } from "../../src/ui/format.js";
 import { agentNameLabel } from "../../src/ui/renderer.js";

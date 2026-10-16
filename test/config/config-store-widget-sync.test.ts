@@ -6,7 +6,7 @@
  * preserves these non-model settings.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { ConfigStore } from "../../src/config/config-store.js";
 import { memIO, minimalIO, widgetStub, statsVisibilityPayloads } from "./config-store-helpers.js";
 

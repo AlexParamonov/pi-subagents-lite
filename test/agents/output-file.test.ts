@@ -5,7 +5,7 @@
  * functions (createOutputFilePath, writeInitialEntry, streamToOutputFile).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createMockSession, tempDirFixture } from "../fixtures.js";
 import { asAgentSession } from "../pi-boundaries.js";

@@ -3,7 +3,7 @@
  * with a nested per-level clear picker (ADR-0008).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { Component, SettingItem, SettingsListTheme } from "@earendil-works/pi-tui";
 import type { SelectOption } from "../../../../src/ui/searchable-select.js";
 import type { Theme } from "../../../../src/ui/types.js";

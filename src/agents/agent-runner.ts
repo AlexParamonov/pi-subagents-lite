@@ -348,7 +348,7 @@ function resolveSystemPromptSources(
     try {
       extras.parentSystemPrompt = ctx.getSystemPrompt();
     } catch (err) {
-      notify(`Failed to get parent system prompt: ${err}. Falling back to replace mode.`);
+      notify(`Failed to get parent system prompt: ${String(err)}. Falling back to replace mode.`);
     }
   }
 

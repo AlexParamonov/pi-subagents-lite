@@ -4,7 +4,7 @@
  * MUST be imported as the FIRST import in each agent-runner test file:
  * it registers the vi.mock() calls before any src module loads.
  */
-import { vi, type Mock } from "vitest";
+import { vi, type Mock } from "vite-plus/test";
 import { DefaultResourceLoader, type AgentSession, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import type { Api, AssistantMessage, Model, UserMessage } from "@earendil-works/pi-ai";
 

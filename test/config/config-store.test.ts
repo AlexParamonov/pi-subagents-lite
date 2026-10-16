@@ -10,10 +10,9 @@
  * config-store-widget-sync.test.ts.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vite-plus/test";
 import { ConfigStore } from "../../src/config/config-store.js";
 import type { ConfigIO } from "../../src/config/config-store.js";
-import type { RawConfig } from "../../src/config/config-io.js";
 import { memIO, minimalIO, widgetStub, managerStub, statsVisibilityPayloads } from "./config-store-helpers.js";
 
 /* ------------------------------------------------------------------ */

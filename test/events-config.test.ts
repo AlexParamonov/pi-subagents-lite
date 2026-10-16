@@ -5,7 +5,7 @@
  * behind ctx.isProjectTrusted().
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { join } from "node:path";
 import { asExtensionContext } from "./pi-boundaries.js";
 
@@ -105,7 +105,7 @@ vi.mock("../src/shell.js", () => ({
 vi.mock("@earendil-works/pi-tui", () => ({
   matchesKey: vi.fn(() => false),
   isKeyRelease: vi.fn(() => false),
-  truncateToWidth: (text: string, width: number) => text,
+  truncateToWidth: (text: string, _width: number) => text,
   Editor: class Editor {},
   Container: class Container {},
   Markdown: class Markdown {},

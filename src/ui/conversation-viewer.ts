@@ -142,7 +142,7 @@ export class ConversationViewer implements Component {
           // into the last slot at "done") — same refresh as the boundaries.
           this.refreshStreamingMessage();
         }
-      } catch (err) {
+      } catch {
         // Swallow — a throw here would crash the host menu; events can arrive after closure, before dispose.
       }
     });
@@ -692,7 +692,6 @@ export class ConversationViewer implements Component {
 
   private buildStreamingLines(width: number): string[] {
     const lines: string[] = [];
-    const th = this.theme;
 
     // Streaming thinking text — rendered before text, matching assistant message order
     if (this.streamingThinking.trim()) {

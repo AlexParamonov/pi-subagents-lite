@@ -58,7 +58,7 @@ function publish(announcement: ChildAnnouncement, channel: string, payload: Chil
   } catch (err) {
     console.warn(
       `[pi-subagents-lite] Dropped Subagent announcement ${channel} for ${subjectOf(announcement)}: ` +
-        `Subagent-aware extensions will not recognise this Subagent (${err})`,
+        `Subagent-aware extensions will not recognise this Subagent (${String(err)})`,
     );
   }
 }

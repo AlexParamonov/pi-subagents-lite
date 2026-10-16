@@ -2,8 +2,8 @@
  * worktree-validator.test.ts — Tests for worktree path validation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, symlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { mkdirSync, symlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {

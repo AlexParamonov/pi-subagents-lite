@@ -225,3 +225,15 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## widget redraw polling (preflight error boundary) - 2026-10-16
 **What failed:** Redraw suppression rendered the widget synchronously from `update()`, outside the component callback's existing catch. A transient rendering dependency failure could escape a navigation input event, even though normal TUI renders reported it safely.
 **Next time:** Treat a render used only for comparison as best-effort. On failure, fall through to the normal component render path so optimization work cannot bypass the established error boundary.
+
+## Vite+ migration (split test configuration) - 2026-10-16
+**What failed:** `vp migrate` rewrote test imports and created `vite.config.ts`, but left the old `vitest.config.mts` in place. Vite+ recommends one config; keeping both makes it easy for test and check commands to read different settings.
+**Next time:** After running the migrator, explicitly merge the test block into `vite.config.ts` and remove the standalone Vitest config, then validate both `vp check` and `vp test`.
+
+## Promise-returning lifecycle mocks - 2026-10-16
+**What failed:** A manager test double implemented `dispose()` synchronously even though the real API returns a promise. Attaching rejection handling exposed the mismatch as `undefined.catch`.
+**Next time:** Keep lifecycle test doubles promise-shaped and type their methods against the real API; do not hide contract mismatches with optional chaining.
+
+## Vite+ lint policies (AST rules over custom scanners) - 2026-10-16
+**What failed:** `test:any-gate` duplicated explicit-any linting in Bash and kept obsolete allowlists after the fixture helpers were typed.
+**Next time:** Enforce syntactic policies with a scoped Oxlint rule; keep exceptions local and documented, and remove bespoke scanners.

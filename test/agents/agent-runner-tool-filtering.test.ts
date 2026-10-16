@@ -1,7 +1,7 @@
 /**
  * agent-runner-tool-filtering.test.ts — Tool filtering and extension tests for agent-runner.
  */
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

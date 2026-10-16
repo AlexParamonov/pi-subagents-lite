@@ -2,7 +2,7 @@
  * agent-runner-session-events.test.ts — Session-event wiring for agent-runner:
  * retry-classifier patching and subscribeToSessionEvents forwarding.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { fakeCtx, fakePi as makeFakePi } from "../fixtures.js";
 import { asAgentSession } from "../pi-boundaries.js";
 import { mockModules, resetMocks, createMockSession } from "./agent-runner-mocks.js";

@@ -106,7 +106,8 @@ export type StopInitiator = "user" | "agent" | "watchdog";
 
 /** Structured reason for a watchdog stop: which check fired, and the offending tool for tool kills. */
 export type WatchdogStopDetail =
-  { kind: "tool"; toolName: string; elapsedMs: number } | { kind: "idle"; elapsedMs: number };
+  | { kind: "tool"; toolName: string; elapsedMs: number }
+  | { kind: "idle"; elapsedMs: number };
 
 /**
  * Lifecycle state: when the agent started, completed, and its current status.

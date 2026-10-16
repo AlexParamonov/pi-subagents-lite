@@ -6,7 +6,7 @@
  * is tested via menu-debug integration tests.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import type { CompactionEntry, SessionMessageEntry } from "@earendil-works/pi-coding-agent";
 import type { JsonObject, ToolCall } from "@earendil-works/pi-ai";
 import { findLastAgentCallsFromEntries } from "../../src/agents/restart-last-agents.js";

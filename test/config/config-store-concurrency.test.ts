@@ -5,7 +5,7 @@
  * never created by a clear.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { ConfigStore } from "../../src/config/config-store.js";
 import { memIO } from "./config-store-helpers.js";
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { agentConfigMock } from "../agent-types-mock.js";
 import { AgentWidget, type UICtx } from "../../src/ui/agent-widget.js";
 import type { AgentRecord, LiveView } from "../../src/types.js";

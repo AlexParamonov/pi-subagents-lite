@@ -115,7 +115,12 @@ export interface ResolveModelOptions {
 
 /** Which chain position won resolution (see resolveModelSource). */
 export type ModelSource =
-  "session-per-type" | "session-default" | "config-per-type" | "config-default" | "frontmatter" | "parent";
+  | "session-per-type"
+  | "session-default"
+  | "config-per-type"
+  | "config-default"
+  | "frontmatter"
+  | "parent";
 
 /**
  * Resolve the model for a subagent invocation and report which chain

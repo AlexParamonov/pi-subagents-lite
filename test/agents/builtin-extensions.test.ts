@@ -6,7 +6,7 @@
  * registry is pinned separately by the drift test.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { BUILTIN_EXTENSION_FACTORIES } from "../../src/agents/builtin-extensions.js";
 
 describe("BUILTIN_EXTENSION_FACTORIES", () => {

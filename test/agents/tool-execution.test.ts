@@ -7,7 +7,7 @@
  * (tool result content) not internal call order.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { fakeCtx, makeResolvablePromise } from "../fixtures.js";
 import { asExtensionContext } from "../pi-boundaries.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -100,10 +100,6 @@ vi.mock("../../src/shell.js", () => ({
   getCoordinator: () => ({
     spawn: vi.fn(async (pi: ExtensionAPI, ctx: ExtensionContext, intent: SpawnIntent) => {
       // Delegate to the mocked manager.spawn
-      const manager = {
-        spawn: mockSpawn,
-        getRecord: mockGetRecord,
-      };
       const id = mockSpawn(pi, ctx, intent.type, intent.prompt, {
         description: intent.description,
         model: intent.model,

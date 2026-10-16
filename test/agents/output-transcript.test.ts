@@ -2,12 +2,11 @@
  * output-transcript.test.ts — Tests for outputTranscript setting.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { AgentManager } from "../../src/agents/agent-manager.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { AgentOutputLog } from "../../src/agents/output-file.js";
-import { getStore } from "../../src/shell.js";
 import { getAgentConfig } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
 
@@ -68,7 +67,7 @@ describe("outputTranscript setting", () => {
   });
 
   afterEach(() => {
-    manager?.dispose();
+    void manager?.dispose().catch(() => {});
     vi.clearAllMocks();
   });
 
