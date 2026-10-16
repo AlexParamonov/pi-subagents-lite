@@ -7,8 +7,8 @@
 
 import { lstatSync, readFileSync } from "node:fs";
 import type { Model } from "@earendil-works/pi-ai";
-import type { ThinkingChoice, ThinkingLevel } from "./types.js";
-import { PARENT_THINKING_CHOICE } from "./models/thinking-resolution.js";
+import type { ThinkingChoice, ThinkingLevel } from "./types.ts";
+import { PARENT_THINKING_CHOICE } from "./models/thinking-resolution.ts";
 
 /** True if the name has characters outside the whitelist (alphanumeric, hyphen, underscore, dot — no leading dot). */
 export function isUnsafeName(name: string): boolean {

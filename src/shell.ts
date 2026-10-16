@@ -7,10 +7,10 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentManager } from "./agents/agent-manager.js";
-import type { AgentWidget } from "./ui/agent-widget.js";
-import type { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
-import { ConfigStore } from "./config/config-store.js";
+import type { AgentManager } from "./agents/agent-manager.ts";
+import type { AgentWidget } from "./ui/agent-widget.ts";
+import type { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
+import { ConfigStore } from "./config/config-store.ts";
 
 // --- Shell type ---
 

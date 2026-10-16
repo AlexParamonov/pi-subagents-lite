@@ -9,7 +9,7 @@
  * Pure and clock-injectable: no timers, no I/O, no config access — the
  * thresholds and the running-status predicate are passed in per check.
  */
-import type { ToolActivity, WatchdogStopDetail } from "../types.js";
+import type { ToolActivity, WatchdogStopDetail } from "../types.ts";
 
 /** Start info for one in-flight tool call, keyed by SDK toolCallId. */
 interface WatchdogToolCall {

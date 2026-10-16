@@ -16,13 +16,13 @@
  * at session_start. `dispose()` drops deps at session_shutdown.
  */
 
-import type { SubagentsConfig, SessionModelOverrides } from "../models/model-precedence.js";
-import { resolveModel } from "../models/model-precedence.js";
-import type { AgentWidget } from "../ui/agent-widget.js";
-import type { AgentManager } from "../agents/agent-manager.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS, type ModelThinkingPlacement } from "./types.js";
-import type { SystemPromptMode } from "../agents/types.js";
-import type { ThinkingChoice } from "../types.js";
+import type { SubagentsConfig, SessionModelOverrides } from "../models/model-precedence.ts";
+import { resolveModel } from "../models/model-precedence.ts";
+import type { AgentWidget } from "../ui/agent-widget.ts";
+import type { AgentManager } from "../agents/agent-manager.ts";
+import { CONFIG_AGENT_NON_MODEL_KEYS, type ModelThinkingPlacement } from "./types.ts";
+import type { SystemPromptMode } from "../agents/types.ts";
+import type { ThinkingChoice } from "../types.ts";
 import {
   VALID_SYSTEM_PROMPT_MODES,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
@@ -38,9 +38,9 @@ import {
   type ProjectLayerStatus,
   type RawConfig,
   type RawConcurrency,
-} from "./config-io.js";
+} from "./config-io.ts";
 
-export type { ConfigIO, ConfigTarget, ProjectLayerStatus, RawConfig, RawConcurrency } from "./config-io.js";
+export type { ConfigIO, ConfigTarget, ProjectLayerStatus, RawConfig, RawConcurrency } from "./config-io.ts";
 
 export const fileConfigIO: ConfigIO = createConfigIO();
 

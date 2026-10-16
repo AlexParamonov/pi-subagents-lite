@@ -11,14 +11,14 @@
  * via getStore() and disable agent-specific coloring globally.
  */
 
-import { getAgentConfig } from "../agents/agent-types.js";
-import { agentColorAnsi } from "../agent-color.js";
-import { getStore } from "../shell.js";
-import type { SubagentType, AgentInvocation } from "../agents/types.js";
-import type { AgentRecord, AgentStatus } from "../types.js";
-import type { Theme } from "./types.js";
-import { formatTokens, formatCost } from "../agents/usage.js";
-import type { ModelThinkingPlacement } from "../config/types.js";
+import { getAgentConfig } from "../agents/agent-types.ts";
+import { agentColorAnsi } from "../agent-color.ts";
+import { getStore } from "../shell.ts";
+import type { SubagentType, AgentInvocation } from "../agents/types.ts";
+import type { AgentRecord, AgentStatus } from "../types.ts";
+import type { Theme } from "./types.ts";
+import { formatTokens, formatCost } from "../agents/usage.ts";
+import type { ModelThinkingPlacement } from "../config/types.ts";
 
 // ---- Agent color toggle ----
 

@@ -11,21 +11,21 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem, type Component } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, headerItem } from "./helpers.js";
-import { createTargetSelectSubmenu } from "./submenus/target-select.js";
-import { createNumericSubmenu } from "./submenus/numeric-input.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import type { ThinkingChoice } from "../../types.js";
-import type { Theme } from "../types.js";
+import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, headerItem } from "./helpers.ts";
+import { createTargetSelectSubmenu } from "./submenus/target-select.ts";
+import { createNumericSubmenu } from "./submenus/numeric-input.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import type { ThinkingChoice } from "../../types.ts";
+import type { Theme } from "../types.ts";
 import {
   DEFAULT_GRACE_TURNS,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
   CUSTOM_PROMPT_PATH,
   canonicalAgentStatusLimit,
-} from "../../config/config-io.js";
-import { VALID_THINKING_LEVELS } from "../../utils.js";
-import { PI_DEFAULT_CHOICE, THINKING_CHOICE_TAIL } from "../../models/thinking-resolution.js";
-import { getStore } from "../../shell.js";
+} from "../../config/config-io.ts";
+import { VALID_THINKING_LEVELS } from "../../utils.ts";
+import { PI_DEFAULT_CHOICE, THINKING_CHOICE_TAIL } from "../../models/thinking-resolution.ts";
+import { getStore } from "../../shell.ts";
 
 export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();

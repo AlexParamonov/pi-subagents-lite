@@ -11,11 +11,11 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { buildSettingsListTheme } from "./helpers.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import type { SystemPromptMode } from "../../agents/types.js";
-import { getStore } from "../../shell.js";
-import { CUSTOM_PROMPT_PATH } from "../../config/config-io.js";
+import { buildSettingsListTheme } from "./helpers.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import type { SystemPromptMode } from "../../agents/types.ts";
+import { getStore } from "../../shell.ts";
+import { CUSTOM_PROMPT_PATH } from "../../config/config-io.ts";
 
 export async function showSystemPromptMenu(ctx: ExtensionCommandContext): Promise<void> {
   const store = getStore();

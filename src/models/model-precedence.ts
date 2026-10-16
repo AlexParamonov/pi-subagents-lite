@@ -12,9 +12,9 @@
  *   6. parentModelId                   (inherit from parent)
  */
 
-import type { ThinkingChoice } from "../types.js";
-import type { SystemPromptMode } from "../agents/types.js";
-import type { ModelThinkingPlacement } from "../config/types.js";
+import type { ThinkingChoice } from "../types.ts";
+import type { SystemPromptMode } from "../agents/types.ts";
+import type { ModelThinkingPlacement } from "../config/types.ts";
 
 /** Shape of the subagents-lite.json config file. */
 export interface SubagentsConfig {

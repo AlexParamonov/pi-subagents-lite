@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Extension startup avoids Jiti resolution overhead.** Relative imports in the source now use explicit `.ts` specifiers, avoiding repeated failed `.js` path probes.
+
 - **Unchanged subagent rows no longer request a full TUI redraw every 80 ms.** Finished and queued rows repaint only when their visible output changes; visible running spinners keep their cadence. Lifecycle polling still observes continuations, record clears, navigation re-ranking, and retention expiry.
 - **Widget context statistics are sampled between spinner frames, not recomputed for every render.** Branch, session, model, and compaction changes refresh the sample immediately, with a 500 ms maximum cache age for unversioned changes. Hidden rows and disabled context display do not query context, and context readers prefer the dedicated SDK getter over all-session statistics.
 - **Transient widget render errors no longer escape navigation updates.** The redraw comparison is best-effort; failures fall through to the guarded component render path.

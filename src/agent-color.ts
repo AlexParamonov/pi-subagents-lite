@@ -5,7 +5,7 @@
  * raw ANSI foreground escape codes for icon tinting.
  */
 
-import { getAgentConfig } from "./agents/agent-types.js";
+import { getAgentConfig } from "./agents/agent-types.ts";
 
 // ---- Named color map ----
 

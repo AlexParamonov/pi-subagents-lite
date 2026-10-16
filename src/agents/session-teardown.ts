@@ -9,7 +9,7 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { announceChildSessionDisposed } from "./child-announcements.js";
+import { announceChildSessionDisposed } from "./child-announcements.ts";
 
 const inFlight = new WeakMap<AgentSession, Promise<void>>();
 

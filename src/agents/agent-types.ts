@@ -6,9 +6,9 @@
  * Hidden agents are kept registered but excluded from spawning.
  */
 
-import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.js";
-import { DEFAULT_AGENTS } from "./default-agents.js";
-import type { AgentConfig } from "./types.js";
+import { scanAgentFilesInDir, mergeAgents } from "./agent-discovery.ts";
+import { DEFAULT_AGENTS } from "./default-agents.ts";
+import type { AgentConfig } from "./types.ts";
 
 /**
  * All pi built-in tool names for validation/warning suppression.

@@ -10,9 +10,9 @@
  */
 
 import { SettingsList, type Component, type SettingItem } from "@earendil-works/pi-tui";
-import type { Theme } from "../../types.js";
-import { buildSettingsListTheme } from "../helpers.js";
-import { createConfirmSubmenu } from "./confirm.js";
+import type { Theme } from "../../types.ts";
+import { buildSettingsListTheme } from "../helpers.ts";
+import { createConfirmSubmenu } from "./confirm.ts";
 
 /** The layer a set/clear applies to; "all" clears every layer. */
 export type TargetChoice = "session" | "global" | "project" | "all";

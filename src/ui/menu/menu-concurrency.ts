@@ -20,8 +20,8 @@ import {
   buildModelOptions,
   createSearchableSelect,
   extractConfiguredModels,
-} from "./helpers.js";
-import { createNumericSubmenu } from "./submenus/numeric-input.js";
+} from "./helpers.ts";
+import { createNumericSubmenu } from "./submenus/numeric-input.ts";
 import {
   buildLevelItems,
   createClearPickerSubmenu,
@@ -31,12 +31,12 @@ import {
   type AvailableLevels,
   type SetTarget,
   type TargetChoice,
-} from "./submenus/target-select.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getStore } from "../../shell.js";
-import type { RawConcurrency } from "../../config/config-store.js";
-import type { SelectOption } from "../searchable-select.js";
-import type { Theme } from "../types.js";
+} from "./submenus/target-select.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import { getStore } from "../../shell.ts";
+import type { RawConcurrency } from "../../config/config-store.ts";
+import type { SelectOption } from "../searchable-select.ts";
+import type { Theme } from "../types.ts";
 
 export async function showConcurrencySettingsMenu(ctx: ExtensionCommandContext, modelOptions: string[]): Promise<void> {
   const buildItems = (store: ReturnType<typeof getStore>, theme: Theme, modelOptions: string[]): SettingItem[] => {

@@ -5,7 +5,7 @@
  */
 
 import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
-import type { Theme } from "./types.js";
+import type { Theme } from "./types.ts";
 import {
   buildStatsParts,
   formatMs,
@@ -13,8 +13,8 @@ import {
   buildModelThinkingTag,
   resolveModelLabel,
   statusIcon,
-} from "./format.js";
-import { getManager } from "../shell.js";
+} from "./format.ts";
+import { getManager } from "../shell.ts";
 
 // --- Stats rendering helpers ---
 

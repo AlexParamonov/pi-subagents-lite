@@ -1,10 +1,10 @@
-import { getPiInstance, getSessionCtx, getWidget } from "../shell.js";
-import { SHORT_ID_LENGTH } from "../types.js";
+import { getPiInstance, getSessionCtx, getWidget } from "../shell.ts";
+import { SHORT_ID_LENGTH } from "../types.ts";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord, LiveView, SpawnConfig, ToolActivity } from "../types.js";
-import type { AgentManager, SpawnOptions } from "../agents/agent-manager.js";
-import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.js";
+import type { AgentRecord, LiveView, SpawnConfig, ToolActivity } from "../types.ts";
+import type { AgentManager, SpawnOptions } from "../agents/agent-manager.ts";
+import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.ts";
 
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.

@@ -1,8 +1,8 @@
 import type { Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentOutputLog } from "./agents/output-file.js";
-import type { LifetimeUsage, AgentUsage } from "./agents/usage.js";
-import type { SubagentType, AgentInvocation } from "./agents/types.js";
+import type { AgentOutputLog } from "./agents/output-file.ts";
+import type { LifetimeUsage, AgentUsage } from "./agents/usage.ts";
+import type { SubagentType, AgentInvocation } from "./agents/types.ts";
 
 export type ThinkingLevel = ModelThinkingLevel;
 

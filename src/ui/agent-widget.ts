@@ -3,13 +3,13 @@
  */
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { getSessionCtx } from "../shell.js";
-import type { AgentManager } from "../agents/agent-manager.js";
-import { formatWatchdogSummary } from "../status-note.js";
-import type { AgentRecord, AgentLifecycle } from "../types.js";
-import type { Theme } from "./types.js";
-import type { ModelThinkingPlacement } from "../config/types.js";
-import { formatCost, getSessionContextPercent } from "../agents/usage.js";
+import { getSessionCtx } from "../shell.ts";
+import type { AgentManager } from "../agents/agent-manager.ts";
+import { formatWatchdogSummary } from "../status-note.ts";
+import type { AgentRecord, AgentLifecycle } from "../types.ts";
+import type { Theme } from "./types.ts";
+import type { ModelThinkingPlacement } from "../config/types.ts";
+import { formatCost, getSessionContextPercent } from "../agents/usage.ts";
 import {
   applyAgentColor,
   buildStatsParts,
@@ -20,12 +20,12 @@ import {
   buildMetadataLineParts,
   statusIcon,
   type StatsVisibility,
-} from "./format.js";
-import { agentColorAnsi } from "../agent-color.js";
-import type { LiveView } from "../types.js";
+} from "./format.ts";
+import { agentColorAnsi } from "../agent-color.ts";
+import type { LiveView } from "../types.ts";
 
 // Backward-compat re-export for consumers importing Theme from this module.
-export type { Theme } from "./types.js";
+export type { Theme } from "./types.ts";
 
 // ---- Constants ----
 
@@ -85,8 +85,8 @@ interface ContextSample {
 }
 
 // ---- Re-exports from format.ts (backward compatibility) ----
-export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.js";
-export type { LiveView as AgentActivity } from "../types.js";
+export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.ts";
+export type { LiveView as AgentActivity } from "../types.ts";
 
 // ---- Widget-internal helpers ----
 

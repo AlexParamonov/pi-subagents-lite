@@ -6,8 +6,8 @@
  */
 
 import { SelectList, type Component } from "@earendil-works/pi-tui";
-import type { Theme } from "../../types.js";
-import { buildSelectListTheme } from "../helpers.js";
+import type { Theme } from "../../types.ts";
+import { buildSelectListTheme } from "../helpers.ts";
 
 export interface ConfirmSubmenuOptions {
   message: string;

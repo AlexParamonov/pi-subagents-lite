@@ -24,13 +24,13 @@ import {
   type Component,
   type SelectItem,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../../types.js";
-import { SHORT_ID_LENGTH } from "../../types.js";
-import { ConversationViewer } from "../conversation-viewer.js";
-import { getDisplayName, agentBulletPrefix, formatMs } from "../format.js";
-import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.js";
-import { getManager, getStore } from "../../shell.js";
-import type { Theme } from "../types.js";
+import type { AgentRecord } from "../../types.ts";
+import { SHORT_ID_LENGTH } from "../../types.ts";
+import { ConversationViewer } from "../conversation-viewer.ts";
+import { getDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
+import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
+import { getManager, getStore } from "../../shell.ts";
+import type { Theme } from "../types.ts";
 
 /** Running or queued — the only non-terminal statuses (ADR-0006: active work is never cleared). */
 function isActive(record: AgentRecord): boolean {

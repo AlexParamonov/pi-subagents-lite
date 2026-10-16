@@ -14,7 +14,7 @@
 
 import * as path from "node:path";
 import { existsSync, statSync, realpathSync } from "node:fs";
-import { GIT_EXEC_TIMEOUT_MS } from "../utils.js";
+import { GIT_EXEC_TIMEOUT_MS } from "../utils.ts";
 /** Specific error messages returned to the LLM for self-correction. */
 export const WORKTREE_VALIDATION_ERRORS = {
   PATH_DOES_NOT_EXIST: "worktree_path does not exist: the specified path was not found on disk",

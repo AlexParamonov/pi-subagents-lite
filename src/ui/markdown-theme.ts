@@ -6,7 +6,7 @@
  */
 
 import type { MarkdownTheme } from "@earendil-works/pi-tui";
-import type { Theme } from "./types.js";
+import type { Theme } from "./types.ts";
 
 export function makeMarkdownTheme(th: Theme): MarkdownTheme {
   return {

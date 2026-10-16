@@ -16,19 +16,19 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { getAgentConfig, getAllTypes } from "../../agents/agent-types.js";
-import type { Theme } from "../types.js";
-import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect, headerItem } from "./helpers.js";
-import { agentBulletPrefix } from "../format.js";
-import { createModelSelectSubmenu } from "./submenus/model-select.js";
-import { createClearAllSubmenu, type AvailableLevels, type TargetChoice } from "./submenus/target-select.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getSessionCtx, getStore } from "../../shell.js";
-import { buildModelGroups, hasExplicitPerTypeOverride, type AgentTypeModelConfig } from "../../models/model-groups.js";
-import { formatDisplayedThinking } from "../../models/thinking-resolution.js";
-import { findModelInRegistry } from "../../utils.js";
-import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
-import type { SessionModelOverrides } from "../../models/model-precedence.js";
+import { getAgentConfig, getAllTypes } from "../../agents/agent-types.ts";
+import type { Theme } from "../types.ts";
+import { SEPARATOR_ID, buildSettingsListTheme, createSearchableSelect, headerItem } from "./helpers.ts";
+import { agentBulletPrefix } from "../format.ts";
+import { createModelSelectSubmenu } from "./submenus/model-select.ts";
+import { createClearAllSubmenu, type AvailableLevels, type TargetChoice } from "./submenus/target-select.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import { getSessionCtx, getStore } from "../../shell.ts";
+import { buildModelGroups, hasExplicitPerTypeOverride, type AgentTypeModelConfig } from "../../models/model-groups.ts";
+import { formatDisplayedThinking } from "../../models/thinking-resolution.ts";
+import { findModelInRegistry } from "../../utils.ts";
+import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.ts";
+import type { SessionModelOverrides } from "../../models/model-precedence.ts";
 
 /**
  * Display value for the "Global default model" row. Tag precedence:

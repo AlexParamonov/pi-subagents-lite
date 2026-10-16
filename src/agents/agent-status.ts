@@ -10,9 +10,9 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord } from "../types.js";
-import { SHORT_ID_LENGTH } from "../types.js";
-import { getManager, getStore } from "../shell.js";
+import type { AgentRecord } from "../types.ts";
+import { SHORT_ID_LENGTH } from "../types.ts";
+import { getManager, getStore } from "../shell.ts";
 
 function formatAgent(record: AgentRecord): string {
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);

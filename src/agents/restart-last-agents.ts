@@ -7,13 +7,13 @@
  */
 
 import type { ExtensionCommandContext, SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { UICtx } from "../ui/agent-widget.js";
+import type { UICtx } from "../ui/agent-widget.ts";
 import type { ToolCall } from "@earendil-works/pi-ai";
-import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.js";
-import { parseThinkingChoice, findModelInRegistry } from "../utils.js";
-import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.js";
-import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.js";
-import { resolveThinkingLevel } from "../models/thinking-resolution.js";
+import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.ts";
+import { parseThinkingChoice, findModelInRegistry } from "../utils.ts";
+import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.ts";
+import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.ts";
+import { resolveThinkingLevel } from "../models/thinking-resolution.ts";
 
 /** Extracted parameters from a historical Agent tool call. */
 export interface AgentCallParams {

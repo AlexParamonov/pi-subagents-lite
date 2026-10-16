@@ -6,7 +6,7 @@
  * Adapted for pi-subagents-lite type shapes.
  */
 
-import { getHideThinkingBlock } from "../pi-settings.js";
+import { getHideThinkingBlock } from "../pi-settings.ts";
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
@@ -19,11 +19,11 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../types.js";
-import { getSessionContextPercent } from "../agents/usage.js";
-import { extractText } from "../prompt/context.js";
-import type { Theme } from "./types.js";
-import { makeMarkdownTheme } from "./markdown-theme.js";
+import type { AgentRecord } from "../types.ts";
+import { getSessionContextPercent } from "../agents/usage.ts";
+import { extractText } from "../prompt/context.ts";
+import type { Theme } from "./types.ts";
+import { makeMarkdownTheme } from "./markdown-theme.ts";
 import {
   buildInvocationTags,
   buildStatsParts,
@@ -31,9 +31,9 @@ import {
   getDisplayName,
   resolveAgentModelLabel,
   statusIcon,
-} from "./format.js";
-import { summarizeToolArgs } from "../utils.js";
-import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
+} from "./format.ts";
+import { summarizeToolArgs } from "../utils.ts";
+import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;

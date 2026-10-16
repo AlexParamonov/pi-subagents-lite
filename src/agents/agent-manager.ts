@@ -6,11 +6,11 @@
 
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { continueAgentSession, runAgent, type RunResult } from "./agent-runner.js";
-import { disposeChildSession } from "./session-teardown.js";
-import { AgentOutputLog } from "./output-file.js";
-import { Watchdog } from "./watchdog.js";
-import { getStore } from "../shell.js";
+import { continueAgentSession, runAgent, type RunResult } from "./agent-runner.ts";
+import { disposeChildSession } from "./session-teardown.ts";
+import { AgentOutputLog } from "./output-file.ts";
+import { Watchdog } from "./watchdog.ts";
+import { getStore } from "../shell.ts";
 import {
   type AgentRecord,
   type AgentStatus,
@@ -18,12 +18,12 @@ import {
   type StopInitiator,
   type WatchdogStopDetail,
   type SpawnConfig,
-} from "../types.js";
-import type { SubagentType } from "./types.js";
-import { getAgentConfig } from "./agent-types.js";
-import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.js";
-import { errorMessage, toSingleLine } from "../utils.js";
-import { DEFAULT_GRACE_TURNS } from "../config/config-io.js";
+} from "../types.ts";
+import type { SubagentType } from "./types.ts";
+import { getAgentConfig } from "./agent-types.ts";
+import { addUsage, getLifetimeTotal, getSessionContextPercent } from "./usage.ts";
+import { errorMessage, toSingleLine } from "../utils.ts";
+import { DEFAULT_GRACE_TURNS } from "../config/config-io.ts";
 
 export const WATCHDOG_TICK_MS = 5_000;
 

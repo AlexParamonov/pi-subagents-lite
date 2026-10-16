@@ -10,17 +10,17 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import type { Theme } from "../../types.js";
-import { SearchableSelectDialog } from "../../../ui/searchable-select.js";
-import { buildModelOptions, extractConfiguredModels } from "../helpers.js";
-import { getStore } from "../../../shell.js";
+import type { Theme } from "../../types.ts";
+import { SearchableSelectDialog } from "../../../ui/searchable-select.ts";
+import { buildModelOptions, extractConfiguredModels } from "../helpers.ts";
+import { getStore } from "../../../shell.ts";
 import {
   buildLevelItems,
   createClearPickerSubmenu,
   createLevelPickerSubmenu,
   type AvailableLevels,
   type TargetChoice,
-} from "./target-select.js";
+} from "./target-select.ts";
 
 export interface ModelSelectSubmenuOptions {
   modelOptions: string[];

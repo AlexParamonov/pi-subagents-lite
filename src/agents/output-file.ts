@@ -9,8 +9,8 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { formatTokens } from "./usage.js";
-import { summarizeToolArgs } from "../utils.js";
+import { formatTokens } from "./usage.ts";
+import { summarizeToolArgs } from "../utils.ts";
 
 /** Punctuation treated as a flush boundary when streaming thinking deltas. */
 const SENTENCE_BOUNDARY_CHARS = ".!?,\n";

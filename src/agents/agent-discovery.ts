@@ -12,9 +12,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentConfig } from "./types.js";
-import type { ThinkingChoice } from "../types.js";
-import { parseThinkingChoice } from "../utils.js";
+import type { AgentConfig } from "./types.ts";
+import type { ThinkingChoice } from "../types.ts";
+import { parseThinkingChoice } from "../utils.ts";
 
 // --- Types ---
 

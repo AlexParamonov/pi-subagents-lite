@@ -11,9 +11,9 @@
  */
 
 import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getSessionCtx, getPiInstance } from "../shell.js";
-import { validateWorktreePath } from "./worktree-validator.js";
-import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "./project-trust.js";
+import { getSessionCtx, getPiInstance } from "../shell.ts";
+import { validateWorktreePath } from "./worktree-validator.ts";
+import { resolveSubagentTrust, createSubagentTrustDeps, untrustedProjectWarning } from "./project-trust.ts";
 
 /** The spawn target a `worktree_path` resolves to, plus warnings to surface. */
 export type SpawnTarget =

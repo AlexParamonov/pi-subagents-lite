@@ -18,18 +18,18 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
-import { buildSelectListTheme } from "./helpers.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { showModelSettingsMenu } from "./menu-model-settings.js";
-import { showConcurrencySettingsMenu } from "./menu-concurrency.js";
-import { showWidgetSettingsMenu } from "./menu-widget-settings.js";
-import { showRunningAgentsMenu } from "./menu-running-agents.js";
-import { showDebugMenu } from "./menu-debug.js";
-import { showSpawnOptionsMenu } from "./menu-agent-settings.js";
-import { showSystemPromptMenu } from "./menu-system-prompt.js";
+import { buildSelectListTheme } from "./helpers.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import { showModelSettingsMenu } from "./menu-model-settings.ts";
+import { showConcurrencySettingsMenu } from "./menu-concurrency.ts";
+import { showWidgetSettingsMenu } from "./menu-widget-settings.ts";
+import { showRunningAgentsMenu } from "./menu-running-agents.ts";
+import { showDebugMenu } from "./menu-debug.ts";
+import { showSpawnOptionsMenu } from "./menu-agent-settings.ts";
+import { showSystemPromptMenu } from "./menu-system-prompt.ts";
 
 // Spawn wizard — co-located in this folder.
-import { showSpawnAgentMenu } from "./menu-spawn-wizard.js";
+import { showSpawnAgentMenu } from "./menu-spawn-wizard.ts";
 export { showSpawnAgentMenu };
 
 /**

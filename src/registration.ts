@@ -1,17 +1,17 @@
 import { Type, type TSchema } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatAgentTypeDescriptions, getVisibleAgentInfos } from "./agents/agent-types.js";
-import { executeAgentTool, executeMessageAgentTool, executeStopAgentTool } from "./agents/tool-execution.js";
-import { executeAgentStatusTool } from "./agents/agent-status.js";
+import { formatAgentTypeDescriptions, getVisibleAgentInfos } from "./agents/agent-types.ts";
+import { executeAgentTool, executeMessageAgentTool, executeStopAgentTool } from "./agents/tool-execution.ts";
+import { executeAgentStatusTool } from "./agents/agent-status.ts";
 import {
   renderAgentToolCall,
   renderAgentToolResult,
   renderStatusLine,
   renderSubagentResult,
   registerAgentInvalidation,
-} from "./ui/renderer.js";
-import { showAgentsMainMenu } from "./ui/menu/menus.js";
-import { getStore } from "./shell.js";
+} from "./ui/renderer.ts";
+import { showAgentsMainMenu } from "./ui/menu/menus.ts";
+import { getStore } from "./shell.ts";
 
 // Provider-side json_schema enforcement; "prefer" falls back gracefully on
 // providers without strict mode (e.g. local Ollama).

@@ -10,12 +10,12 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
-import { SEPARATOR_ID, buildSettingsListTheme, headerItem } from "./helpers.js";
-import type { Theme } from "../types.js";
-import { createNumericSubmenu } from "./submenus/numeric-input.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getStore } from "../../shell.js";
-import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.js";
+import { SEPARATOR_ID, buildSettingsListTheme, headerItem } from "./helpers.ts";
+import type { Theme } from "../types.ts";
+import { createNumericSubmenu } from "./submenus/numeric-input.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import { getStore } from "../../shell.ts";
+import { MIN_FINISHED_RETENTION_MINUTES } from "../../config/config-io.ts";
 
 /** One stat visibility toggle: menu label, description, and store get/set accessors. */
 type StatToggleConfig = { label: string; description: string; get: () => boolean; set: (v: boolean) => void };

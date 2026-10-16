@@ -18,23 +18,23 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getConfig, resolveSessionToolOptions, resolveVisibleTools } from "./agent-types.js";
-import { extractText } from "../prompt/context.js";
-import { resolveThinkingLevel } from "../models/thinking-resolution.js";
-import type { AgentUsage } from "./usage.js";
-import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.js";
-import { DEFAULT_AGENTS } from "./default-agents.js";
-import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.js";
-import { preloadSkills, loadSkillMeta } from "../prompt/skill-loader.js";
-import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.js";
-import type { SubagentType, SystemPromptMode } from "./types.js";
-import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.js";
-import { BUILTIN_EXTENSION_FACTORIES } from "./builtin-extensions.js";
-import { disposeChildSession } from "./session-teardown.js";
-import { announceChildSessionBound, announceChildSessionCreated } from "./child-announcements.js";
-import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.js";
-import { patchRetryClassifier } from "./stream-retry.js";
-import { applyOutputLimit, resolveOutputLimit } from "./max-tokens-field.js";
+import { getAgentConfig, getConfig, resolveSessionToolOptions, resolveVisibleTools } from "./agent-types.ts";
+import { extractText } from "../prompt/context.ts";
+import { resolveThinkingLevel } from "../models/thinking-resolution.ts";
+import type { AgentUsage } from "./usage.ts";
+import { findModelInRegistry, GIT_EXEC_TIMEOUT_MS } from "../utils.ts";
+import { DEFAULT_AGENTS } from "./default-agents.ts";
+import { buildAgentPrompt, type PromptExtras } from "../prompt/prompts.ts";
+import { preloadSkills, loadSkillMeta } from "../prompt/skill-loader.ts";
+import { type EnvInfo, type RunCallbacks, type RunTunables, SHORT_ID_LENGTH } from "../types.ts";
+import type { SubagentType, SystemPromptMode } from "./types.ts";
+import { getStore, enterSubagentSpawn, exitSubagentSpawn } from "../shell.ts";
+import { BUILTIN_EXTENSION_FACTORIES } from "./builtin-extensions.ts";
+import { disposeChildSession } from "./session-teardown.ts";
+import { announceChildSessionBound, announceChildSessionCreated } from "./child-announcements.ts";
+import { DEFAULT_GRACE_TURNS, CUSTOM_PROMPT_PATH } from "../config/config-io.ts";
+import { patchRetryClassifier } from "./stream-retry.ts";
+import { applyOutputLimit, resolveOutputLimit } from "./max-tokens-field.ts";
 
 // Cache: extension path → unscoped package name (lowercased), or undefined if not found
 const packageNameCache = new Map<string, string | undefined>();

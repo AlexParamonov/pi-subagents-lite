@@ -16,12 +16,12 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
-import { getAgentConfig, getAvailableTypes, getAllTypes } from "../../agents/agent-types.js";
-import type { AgentConfig } from "../../agents/types.js";
-import { buildSelectListTheme } from "./helpers.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getPiInstance, getStore } from "../../shell.js";
-import { handleRestartLastAgents } from "../../agents/restart-last-agents.js";
+import { getAgentConfig, getAvailableTypes, getAllTypes } from "../../agents/agent-types.ts";
+import type { AgentConfig } from "../../agents/types.ts";
+import { buildSelectListTheme } from "./helpers.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import { getPiInstance, getStore } from "../../shell.ts";
+import { handleRestartLastAgents } from "../../agents/restart-last-agents.ts";
 
 /** pi's DEFAULT_TOOL_NAMES fallback when defaultTools is unconfigured (unexported; pinned by the contract suite). */
 const PI_DEFAULT_ACTIVE_TOOLS = ["read", "bash", "edit", "write"];

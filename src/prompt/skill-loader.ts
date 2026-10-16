@@ -21,7 +21,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadSkills, loadSkillsFromDir, type Skill } from "@earendil-works/pi-coding-agent";
-import { isUnsafeName } from "../utils.js";
+import { isUnsafeName } from "../utils.ts";
 
 export interface PreloadedSkill {
   name: string;

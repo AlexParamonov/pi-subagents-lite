@@ -11,11 +11,11 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SettingsList, SelectList, type SettingItem } from "@earendil-works/pi-tui";
 import { getSupportedThinkingLevels, type Model } from "@earendil-works/pi-ai";
-import type { ThinkingLevel } from "../../types.js";
-import type { Theme } from "../types.js";
-import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.js";
-import { findModelInRegistry } from "../../utils.js";
-import { agentBulletPrefix } from "../format.js";
+import type { ThinkingLevel } from "../../types.ts";
+import type { Theme } from "../types.ts";
+import { getAgentConfig, getAvailableTypes, discoverNewAgents } from "../../agents/agent-types.ts";
+import { findModelInRegistry } from "../../utils.ts";
+import { agentBulletPrefix } from "../format.ts";
 import {
   clampThinkingToModel,
   formatDisplayedThinking,
@@ -24,14 +24,14 @@ import {
   resolveDisplayedThinking,
   THINKING_CHOICE_TAIL,
   type DisplayedThinking,
-} from "../../models/thinking-resolution.js";
-import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.js";
-import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.js";
-import { DEFAULT_GRACE_TURNS } from "../../config/config-io.js";
-import { createModelSelectSubmenu } from "./submenus/model-select.js";
-import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.js";
-import { SettingsListWrapper } from "./wrappers/settings-list.js";
-import { getPiInstance, getSessionCtx, getWidget, getStore, getCoordinator } from "../../shell.js";
+} from "../../models/thinking-resolution.ts";
+import { getPiDefaultThinkingLevel, getPiModelThinkingLevels } from "../../pi-settings.ts";
+import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, createSearchableSelect } from "./helpers.ts";
+import { DEFAULT_GRACE_TURNS } from "../../config/config-io.ts";
+import { createModelSelectSubmenu } from "./submenus/model-select.ts";
+import { createNumericSubmenu, createInputSubmenu } from "./submenus/numeric-input.ts";
+import { SettingsListWrapper } from "./wrappers/settings-list.ts";
+import { getPiInstance, getSessionCtx, getWidget, getStore, getCoordinator } from "../../shell.ts";
 
 // --- Worktree picker helpers ---
 
@@ -381,7 +381,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
             const widget = getWidget();
             if (widget) {
-              widget.setUICtx(ctx.ui as unknown as import("../agent-widget.js").UICtx);
+              widget.setUICtx(ctx.ui as unknown as import("../agent-widget.ts").UICtx);
               widget.ensureTimer();
             }
 

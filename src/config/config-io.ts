@@ -15,9 +15,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import type { SubagentsConfig } from "../models/model-precedence.js";
-import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.js";
-import { isPlainObject, validateRawLayer } from "./config-validation.js";
+import type { SubagentsConfig } from "../models/model-precedence.ts";
+import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.ts";
+import { isPlainObject, validateRawLayer } from "./config-validation.ts";
 
 /** File name of the config in both the global agent dir and a project's .pi dir. */
 const CONFIG_FILE_NAME = "subagents-lite.json";

@@ -7,7 +7,7 @@
 
 import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, Text } from "@earendil-works/pi-tui";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import type { Theme } from "./types.js";
+import type { Theme } from "./types.ts";
 
 // --- Types ---
 

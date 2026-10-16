@@ -1,17 +1,17 @@
-import type { AgentRecord } from "./types.js";
+import type { AgentRecord } from "./types.ts";
 
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
-import { registerAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.js";
-import { AgentManager } from "./agents/agent-manager.js";
-import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
-import { ConversationViewer } from "./ui/conversation-viewer.js";
-import { SpawnCoordinator } from "./spawn/spawn-coordinator.js";
-import { toolCallListener } from "./agents/tool-execution.js";
-import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.js";
-import { registerAgentTool } from "./registration.js";
+import { registerAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.ts";
+import { AgentManager } from "./agents/agent-manager.ts";
+import { AgentWidget, type UICtx } from "./ui/agent-widget.ts";
+import { ConversationViewer } from "./ui/conversation-viewer.ts";
+import { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
+import { toolCallListener } from "./agents/tool-execution.ts";
+import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.ts";
+import { registerAgentTool } from "./registration.ts";
 import {
   getManager,
   getWidget,
@@ -21,7 +21,7 @@ import {
   setManager,
   setWidget,
   setCoordinator,
-} from "./shell.js";
+} from "./shell.ts";
 
 // --- Config loader — session_start handler logic ---
 

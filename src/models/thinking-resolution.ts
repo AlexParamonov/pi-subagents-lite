@@ -17,7 +17,7 @@
  */
 
 import { clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
-import type { ThinkingChoice, ThinkingLevel } from "../types.js";
+import type { ThinkingChoice, ThinkingLevel } from "../types.ts";
 
 /** pi's fallback when defaultThinkingLevel is unset (mirrors pi's DEFAULT_THINKING_LEVEL). */
 const PI_FALLBACK_THINKING_LEVEL: ThinkingLevel = "medium";

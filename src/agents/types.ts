@@ -1,4 +1,4 @@
-import type { ThinkingChoice, ThinkingLevel } from "../types.js";
+import type { ThinkingChoice, ThinkingLevel } from "../types.ts";
 
 export type SubagentType = string;
 

@@ -9,8 +9,8 @@
  */
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
-import type { RawConfig } from "./config-io.js";
-import { PARENT_THINKING_CHOICE } from "../models/thinking-resolution.js";
+import type { RawConfig } from "./config-io.ts";
+import { PARENT_THINKING_CHOICE } from "../models/thinking-resolution.ts";
 
 /** One known key's runtime rule plus its human-readable expected shape. */
 interface KeySpec {

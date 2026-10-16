@@ -5,7 +5,7 @@
 
 import * as fs from "node:fs";
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "./types.js";
+import type { ThinkingLevel } from "./types.ts";
 import * as os from "node:os";
 import * as path from "node:path";
 

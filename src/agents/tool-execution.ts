@@ -1,4 +1,4 @@
-import { getStatusNote, formatStopReason } from "../status-note.js";
+import { getStatusNote, formatStopReason } from "../status-note.ts";
 /**
  * tool-execution.ts — Agent tool execution handlers.
  *
@@ -9,18 +9,18 @@ import { getStatusNote, formatStopReason } from "../status-note.js";
 
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
-import type { AgentRecord, ThinkingLevel } from "../types.js";
-import { SHORT_ID_LENGTH } from "../types.js";
-import type { AgentConfig } from "./types.js";
-import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.js";
-import { getSessionContextPercent } from "./usage.js";
-import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.js";
+import type { AgentRecord, ThinkingLevel } from "../types.ts";
+import { SHORT_ID_LENGTH } from "../types.ts";
+import type { AgentConfig } from "./types.ts";
+import { resolveType, getAgentConfig, resolveTypeOrDiscover, type TypeResolution } from "./agent-types.ts";
+import { getSessionContextPercent } from "./usage.ts";
+import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.ts";
 
-import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../utils.js";
-import { resolveThinkingLevel } from "../models/thinking-resolution.js";
-import { getPiModelThinkingLevel } from "../pi-settings.js";
-import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.js";
-import { formatAgentStatusList } from "./agent-status.js";
+import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../utils.ts";
+import { resolveThinkingLevel } from "../models/thinking-resolution.ts";
+import { getPiModelThinkingLevel } from "../pi-settings.ts";
+import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.ts";
+import { formatAgentStatusList } from "./agent-status.ts";
 
 // --- Tool result helpers ---
 

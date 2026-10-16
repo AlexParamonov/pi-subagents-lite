@@ -1,5 +1,5 @@
-import { formatMs } from "./ui/format.js";
-import type { AgentLifecycle, AgentStatus, StopInitiator, WatchdogStopDetail } from "./types.js";
+import { formatMs } from "./ui/format.ts";
+import type { AgentLifecycle, AgentStatus, StopInitiator, WatchdogStopDetail } from "./types.ts";
 
 const STATUS_NOTES: Partial<Record<AgentStatus, string>> = {
   aborted: "hit the turn limit before completion; output may be incomplete",

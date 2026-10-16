@@ -14,7 +14,7 @@
  */
 
 import { type Component, isFocusable } from "@earendil-works/pi-tui";
-import { installSeparatorSkip } from "../helpers.js";
+import { installSeparatorSkip } from "../helpers.ts";
 
 export interface SettingsListWrapperTheme {
   bold: (text: string) => string;
