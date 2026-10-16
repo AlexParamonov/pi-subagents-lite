@@ -5,13 +5,13 @@
 
 Sub-agents for [pi](https://pi.dev). Schema-first, minimal token overhead.
 
-Spawn custom agents in isolated session with own tools, extensions and model. Three tools with one-dot descriptions — the least strict OpenAI-tools gateways accept. Names like `Agent`, `run_in_background`, and `worktree_path` are the schema.
+Spawn custom agents in isolated sessions with their own tools, extensions, and model. Four tools (`Agent`, `StopAgent`, `MessageAgent`, and `AgentStatus`) use one-dot descriptions to minimize schema overhead. The tool names and parameter names, such as `run_in_background` and `worktree_path`, are part of the schema.
 
 Foreground and background agents with detailed model configuration, concurrency, custom agent types, steering and continuation, cross-repo worktree support, configurable system prompt modes, a live widget and conversation viewer with cost tracking, and a watchdog for stuck agents.
 
 ## Install
 
-Requires Node.js >= 18 and pi >= 0.82.0.
+Requires Node.js >= 22.19.0 and pi >= 0.99.0.
 
 ```bash
 pi install npm:pi-subagents-lite
@@ -35,22 +35,20 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
 
 The widget shows running and recently finished agents above the editor. `↓`/`↑` highlights an agent, `Enter` opens the conversation viewer, `Esc` closes navigation. The viewer streams the live transcript — thinking blocks, tool calls, and compaction summaries. Tool results are not shown: each call appears as a single status-colored line (pending → success/error).
 
-The `/agents` menu covers running agents (view, steer, continue settled agents, stop, clear), manual spawns without an LLM round-trip, model settings, concurrency, and widget layout.
+The `/agents` menu covers active and settled agents (view, steer or continue, stop, clear), manual spawns without an LLM round-trip, model and concurrency settings, agent behavior, system prompts, widget settings, and diagnostics.
 
 ### Agent tools
 
 - `Agent` spawns a sub-agent (see [Agent options](#agent-options) for parameters).
 - `StopAgent` stops a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
-- `MessageAgent` gives an existing agent more input by ID: a running one picks it up at its next turn boundary, a settled one continues on it with its own context.
-- `AgentStatus` lists all agents with type, short ID, and status.
+- `MessageAgent` gives an existing agent more input by ID: a running one picks it up at its next turn boundary; a settled one continues with its own context if its session is live and a model concurrency slot is available.
+- `AgentStatus` lists every running and queued agent, plus a configurable number of recently settled agents (default: twice the default concurrency). It tells the LLM not to poll for updates.
 
-Both ID forms work as input: the short ID shown in listings resolves when it identifies exactly one agent, and a prefix that matches several is refused rather than guessed.
-
-Foreground agents dont lock the session and can be stopped by parent's interrupt. Background agents are fully autonomous.
+Foreground agents keep the `Agent` tool call open until they finish and are stopped by the parent's interrupt. Background agents return immediately and do not inherit that interrupt, but can still be steered or stopped through the UI or tools.
 
 ### Steering and continuation
 
-Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, `Steer` in the `/agents` menu, or `MessageAgent` from the session agent. Settled agents (completed, errored, stopped, turn-limited) can be continued from the conversation viewer, the `/agents` menu, or `MessageAgent`, as long as their session is still live.
+Steer a running agent mid-task to redirect it: `Enter` in the conversation viewer, `Steer` in the `/agents` menu, or `MessageAgent` from the session agent. Settled agents (completed, turn-limited, aborted, stopped, or errored) can be continued from the conversation viewer, the `/agents` menu, or `MessageAgent`.
 
 ### Permission gates and other Subagent-aware extensions
 
@@ -58,14 +56,16 @@ Lite announces each Subagent session on pi's extension event bus when it is crea
 
 ## Built-in agents
 
-- `general-purpose` does general task execution using the configured session tools.
-- `Explore` does read-only codebase exploration.
+These built-in agents provide a starting point, create custom agent files to define specialized setups.
 
-Built-ins can be overridden by custom agents or disabled from `/agents`. Disabling takes effect immediately for future `Agent` calls. Running and queued agents continue with the policy captured at spawn.
+- `general-purpose` does general task execution using the configured session tools.
+- `Explore` is intended for read-only codebase exploration. Its prompt prohibits file changes, but it includes `bash` and is not sandboxed, so read-only behavior is not enforced. It loads extensions by default unless `loadExtensionsImplicitly` is off or its frontmatter filters them.
+
+Built-ins can be overridden by custom agents or disabled from `/agents` > Settings > Agent behavior.
 
 ## Custom agents
 
-Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, the body is its system prompt. The name auto-populates the `agent` parameter's enum, so nothing needs registering. On name clash, project > shared > user > built-in. Type names resolve case-insensitively.
+Drop a `.md` file into `.pi/agents/` (project), `.agents/agents/` (shared), or `~/.pi/agent/agents/` (global). Frontmatter configures the agent, and the body is its system prompt. On name clash the config priority is: project > shared > global > built-in. Type names resolve by exact match first, then by a unique case-insensitive match; ambiguous case variants require the exact name.
 
 ```markdown
 ---
@@ -83,36 +83,36 @@ You are a security review specialist. Analyze code for vulnerabilities,
 focusing on injection flaws, auth bypasses, and insecure defaults.
 ```
 
-A minimal agent with just `name` and `description` gets everything, same as `general-purpose`. Set restrictions only when you want them.
+A minimal agent with just `name` and `description` gets the same default tools, extensions, and skills as `general-purpose`. Its name appears in the `Agent` tool's `agent` parameter description. Set restrictions only when you want them.
 
 ### Frontmatter reference
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `name` | string | — | Agent type name. Must be unique; a file without it is skipped. |
-| `display_name` | string | `name` | Label in the UI. |
-| `color` | string | none | Agent color for icon tinting. Named colors: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`. Palette aliases: `amber`, `teal`, `indigo`, `gold`, `violet`, `rose`, `lime`, `gray`, `slate`, `navy`, etc. Also accepts `#RRGGBB` hex. |
-| `description` | string | `""` | One-sentence description. |
-| `tools` | `true` \| `string[]` \| `false` | `true` | Tool whitelist. Mutually exclusive with `exclude_tools`. |
-| `exclude_tools` | `string[]` | none | Tool blacklist. Mutually exclusive with `tools`. |
-| `extensions` | `true` \| `string[]` \| `false` | `true` | Which extensions load (hooks and commands). Does not control tool visibility. |
-| `exclude_extensions` | `string[]` | none | Extension blacklist. |
-| `skills` | `true` \| `string[]` \| `false` | `true` | Skill whitelist (metadata-only in system prompt). |
-| `preload_skills` | `string[]` \| `false` | `false` | Dump full SKILL.md content into the system prompt. Expensive. |
-| `model` | string | inherit parent | `"provider/model-id"`. See [Model resolution](#model-resolution). |
-| `thinking` | string | see [Thinking level resolution](#thinking-level-resolution) | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `parent` to follow the parent session. |
-| `max_turns` | number | unlimited | Soft turn limit, then grace turns before hard abort. |
-| `max_tokens` | number | unlimited | Max output tokens per LLM response. |
-| `hidden` | boolean | `false` | Hide from the enum. Still callable by name. |
-| `output_transcript` | boolean | inherit global | Write streaming transcript to `/tmp/pi-agent-outputs/<agentId>.log` (frontmatter overrides). |
-| `include_context_files` | boolean | inherit global | Include AGENTS.md files as `<project_context>` in the system prompt. `true` = load, `false` = none, unset = global "Include AGENTS.md" setting. |
-| `include_system_prompt` | boolean | inherit global | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`. |
+| Field                   | Type                            | Default                                                     | Description                                                                                                                                                                                                                                               |
+| ----------------------- | ------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                  | string                          | —                                                           | Agent type name. Must be unique; a file without it is skipped.                                                                                                                                                                                            |
+| `display_name`          | string                          | `name`                                                      | Label in the UI.                                                                                                                                                                                                                                          |
+| `color`                 | string                          | none                                                        | Agent color for icon tinting. Named colors: `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`. Palette aliases: `amber`, `teal`, `indigo`, `gold`, `violet`, `rose`, `lime`, `gray`, `slate`, `navy`, etc. Also accepts `#RRGGBB` hex. |
+| `description`           | string                          | `""`                                                        | One-sentence description.                                                                                                                                                                                                                                 |
+| `tools`                 | list or comma-separated string  | pi's `defaultTools`; none if implicit tools are off         | Tool allowlist, an empty list gives the agent no tools. Mutually exclusive with `exclude_tools`.                                                                                                                                                          |
+| `exclude_tools`         | list or comma-separated string  | none                                                        | Tool blacklist. Mutually exclusive with `tools`.                                                                                                                                                                                                          |
+| `extensions`            | `true` \| `string[]` \| `false` | `true`                                                      | Which extensions load, including their tools, hooks, and commands. The `tools` field separately controls tool access.                                                                                                                                     |
+| `exclude_extensions`    | `string[]`                      | none                                                        | Extension blacklist.                                                                                                                                                                                                                                      |
+| `skills`                | `true` \| `string[]` \| `false` | `true`                                                      | Skill whitelist (metadata-only in system prompt).                                                                                                                                                                                                         |
+| `preload_skills`        | `string[]` \| `false`           | `false`                                                     | Dump full SKILL.md content into the system prompt. Expensive.                                                                                                                                                                                             |
+| `model`                 | string                          | inherit parent                                              | `"provider/model-id"`. See [Model resolution](#model-resolution).                                                                                                                                                                                         |
+| `thinking`              | string                          | see [Thinking level resolution](#thinking-level-resolution) | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `parent` to follow the parent session.                                                                                                                                                      |
+| `max_turns`             | number                          | unlimited                                                   | Soft turn limit, then grace turns before hard abort.                                                                                                                                                                                                      |
+| `max_tokens`            | number                          | unlimited                                                   | Max output tokens per LLM response.                                                                                                                                                                                                                       |
+| `hidden`                | boolean                         | `false`                                                     | Hide from the `Agent` tool's agent-type list. Still callable by name.                                                                                                                                                                                     |
+| `output_transcript`     | boolean                         | inherit global                                              | Write streaming transcript to `/tmp/pi-agent-outputs/<agentId>.log` (frontmatter overrides).                                                                                                                                                              |
+| `include_context_files` | boolean                         | inherit global                                              | Include AGENTS.md files as `<project_context>` in the system prompt. `true` = load, `false` = none, unset = global "Include AGENTS.md" setting.                                                                                                           |
+| `include_system_prompt` | boolean                         | inherit global                                              | Include the parent's system prompt for this agent. `true` = inherit parent, `false` = replace mode, unset = global mode. When the global mode is `custom`, the custom prompt wins over `true`.                                                            |
 
 When frontmatter omits `tools` and the agent type carries no explicit registered-tools set, `loadToolsImplicitly` (config, default ON) decides: ON delegates tool setup to pi, so your `defaultTools` setting applies exactly as in a normal session, and tools left inactive stay registered for dispatcher tools to call by name. OFF starts such agents with no tools. Explicit frontmatter always wins.
 
-`tools` and `exclude_tools` accept built-in names (`read`, `bash`, `edit`, `write`, `grep`) and extension tool names (`web_search`). Use `tavily/*` or `tavily/all` in either list to include or exclude all tools from that extension. Excluding tools doesn't prevent the extension from loading; use `exclude_extensions: [tavily]` to prevent loading.
+`tools` and `exclude_tools` accept built-in names (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) and extension tool names (`codemode`, `web_search`). Use `tavily/*` or `tavily/all` in either list to include or exclude all tools from that extension. Excluding tools doesn't prevent the extension from loading; use `exclude_extensions: [tavily]` to prevent loading.
 
-`loadSkillsImplicitly`, `loadExtensionsImplicitly`, and `loadToolsImplicitly` (config, default ON) decide what an agent gets when frontmatter omits `skills`, `extensions`, or the tool fields. Turn one OFF to default new agents to nothing on that axis and opt in explicitly.
+`loadSkillsImplicitly`, `loadExtensionsImplicitly`, and `loadToolsImplicitly` (config, default ON) decide what an agent gets when frontmatter omits `skills`, `extensions`, or the tool fields. With implicit tools ON, pi's `defaultTools` setting applies; OFF starts agents with no tools. These toggles are independent: turn implicit extensions OFF separately to stop loading extensions, then opt in explicitly where needed.
 
 Built-in extensions: child sessions load pi's built-in codemode, tool-search, and mcp extensions (llama.cpp excluded), addressed by bare name (`codemode`) from `defaultTools`, settings `extensions`, and frontmatter, exactly as in a normal session. A user extension registering the same tool, command, or flag replaces the built-in.
 
@@ -129,10 +129,10 @@ Every agent whose frontmatter omits `tools` then starts with codemode active, ex
 `Agent` accepts:
 
 - `prompt` (required) is the task text.
-- `description` is a short label for the widget; defaults to the first line of the prompt.
+- `description` is a short label for the widget, it defaults to the prompt's first line.
 - `agent` is the agent type; defaults to `general-purpose`.
 - `run_in_background` makes the agent return immediately and notify the parent when complete.
-- `worktree_path` is any git repository on disk: a worktree of the parent's repo, its main checkout, or a different repo entirely. See [Worktree paths and trust](#worktree-paths-and-trust).
+- `worktree_path` is a directory inside any git repository on disk. Relative paths resolve against the parent's working directory. See [Worktree paths and trust](#worktree-paths-and-trust).
 
 `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM. Set them once and forget.
 
@@ -140,7 +140,7 @@ Subagents cannot spawn further subagents.
 
 ### Worktree paths and trust
 
-`worktree_path` accepts a path inside any git repository on disk: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. The subagent runs with that directory as its working directory. A path outside any git repo is rejected.
+`worktree_path` accepts a path inside any git repository on disk: a linked worktree of the parent's repo, its main checkout, or a different repo entirely. Relative paths resolve against the parent's working directory. The subagent runs with that directory as its working directory.
 
 Cross-repo targets are gated by pi's existing trust framework. The target's saved trust decision (nearest ancestor wins) applies, and an undecided target falls back to the global `defaultProjectTrust` setting. Anything other than "always" means untrusted. An untrusted target still spawns, but its project resources (`.pi/` settings, extensions, skills, prompts, themes, system prompt files, `.agents/skills`) are ignored, its `.pi/agents` types are not discovered, the extension's project config (`.pi/subagents-lite.json`) is not loaded, and pi surfaces a warning. Same-repo paths are never gated. The `/agents` spawn wizard still lists same-repo worktrees only.
 
@@ -167,7 +167,7 @@ Precedence, highest first:
 
 Then clamped to the resolved model's supported levels; non-reasoning models support only `off`.
 
-Any source can hold `parent` to follow the parent session's current level: `thinking: parent` for one agent type, `Subagent default thinking` for every Subagent with no higher source. Resolution happens before the Subagent starts, so a run always reports a real level, and a `parent` with no parent to read counts as unset.
+Agent frontmatter `thinking`, or `Subagent default thinking` can be set to `parent` to follow the parent session's current level. Resolution happens before the Subagent starts, so a run always reports a real level, and a `parent` with no parent to read counts as unset.
 
 Model settings and the spawn wizard print the deciding source in brackets: `high (frontmatter)`, `medium (pi default)`, `minimal (parent)`. `pi default` means nothing is configured here, so pi's own setting decides; in the spawn wizard that choice sends no level at all.
 
@@ -177,21 +177,21 @@ Model settings and the spawn wizard print the deciding source in brackets: `high
 
 ## Settings
 
-Global settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly. 
+Global settings live in `~/.pi/agent/subagents-lite.json`, managed via `/agents` or edited directly.
 
-`/agents` covers model settings per-type overrides, concurrency, widget, spawn defaults (Subagent default thinking, max turns, force-background), system prompt mode, watchdog timeouts.
+`/agents` settings cover model overrides, concurrency, agent behavior (turn limits, background delivery, watchdogs, transcripts, and tool-schema options), system prompt mode, and widget layout and display.
 
 ```
 Settings
 
-→ Model                           Set global default and per-type model overrides
-  Concurrency                     Set per-model slot limits
-  Agent                           Agent limit, colors, output, thinking
-  System prompt                   Prompt mode, AGENTS.md, skills, extensions
-  Widget                          Configure widget display options
+→ Model overrides                Set global default and per-type model overrides
+  Concurrency limits              Set default, per-provider, and per-model limits
+  Agent behavior                  Configure limits, delivery, watchdog, and tools
+  System prompt                   Configure prompt mode, context, skills, and extensions
+  Widget                          Configure layout, display, and stats
 ```
 
-Widget is higly customizable as the rest of the extension
+Use `/agents` > Settings > Widget to configure layout, model/thinking labels, and displayed stats.
 
 ### Project-level config
 
@@ -218,7 +218,7 @@ The watchdog notifies the main session on a kill so it can act accordingly.
 
 ### Output transcripts
 
-Output transcripts are disabled by default. Enable them globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, the transcript streams to `/tmp/pi-agent-outputs/<agentId>.log` (append-only, `tail -f` friendly) and the widget shows the `tail -f` line. Logs and completed results survive on disk even if a session reload (`/reload`, extension reload) kills running agents.
+Output transcripts are disabled by default. Enable them globally via the `outputTranscript` config option or per-agent via the `output_transcript` frontmatter field. When enabled, the transcript streams to `/tmp/pi-agent-outputs/<agentId>.log` (append-only, `tail -f` friendly) and the widget shows a `tail -f` command for the file. The files persist across session reloads (`/reload`, extension reload), even though reload stops running agents.
 
 ## License
 
