@@ -441,7 +441,7 @@ describe("subagent spawn guard", () => {
       await loadExtension(api.api);
 
       // No tools, no event handlers: the subagent must not clobber the parent shell
-      // (setPiInstance/setSessionCtx happen via the factory + session_start handler).
+      // (setPiInstance/setSessionCtx both happen in the session_start handler).
       expect(api.tools).toHaveLength(0);
       expect(api.listeners).toHaveLength(0);
     } finally {

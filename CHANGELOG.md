@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Background subagent completion notifications retain the parent session's bound API when the SDK reloads the extension factory with an uninitialized runtime. The next `session_start` takes ownership before asynchronous setup.
+
 ### Changed
 
 - Migrated the development environment and tooling to Vite+: Node is pinned via `.node-version`, while dependency installation, Vitest, Oxfmt, Oxlint, and type checks run through `vp`. Oxlint now enforces the test-only no-explicit-`any` policy, replacing its Bash scanner. npm 11.9.0 is the pinned package-manager backend. The extension remains source-only, with no generated build output.

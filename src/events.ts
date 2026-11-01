@@ -17,6 +17,7 @@ import {
   getWidget,
   getCoordinator,
   getStore,
+  setPiInstance,
   setSessionCtx,
   setManager,
   setWidget,
@@ -211,6 +212,8 @@ export function setupEventListeners(pi: ExtensionAPI): void {
   let unregisterTerminalInput: (() => void) | undefined;
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
+    // Factory reloads may receive an unbound API; publish only after runtime binding.
+    setPiInstance(pi);
     setSessionCtx(ctx);
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
