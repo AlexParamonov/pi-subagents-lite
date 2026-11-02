@@ -9,6 +9,8 @@ import { getStatusNote, formatStopReason } from "../status-note.ts";
 
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
+import type { AgentManager } from "./agent-manager.ts";
+import type { SubagentAgentManager } from "./subagent-context.ts";
 import type { AgentRecord, ThinkingLevel } from "../types.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
 import type { AgentConfig } from "./types.ts";
@@ -213,9 +215,9 @@ export async function executeAgentTool(
   });
 
   const coordinator = getCoordinator()!;
-  // Background spawns (explicit or forceBackground) never bind to the parent
-  // run's interrupt signal — only foreground spawns can be interrupted.
-  const isBackground = runInBackground || getStore().agent.forceBackground;
+  // An active MessageAgent in the child loadout also promotes this spawn once
+  // the child session has bound its final tool set.
+  const startsInBackground = runInBackground || getStore().agent.forceBackground;
 
   const result = await coordinator.spawn(getPiInstance(), ctx, {
     type: resolvedType,
@@ -229,12 +231,13 @@ export async function executeAgentTool(
     worktreePath: validatedWorktreePath,
     worktreeLabel,
     projectTrusted,
-    invocation: { modelName, thinkingLevel, maxTurns },
-    runInBackground: isBackground,
-    signal: isBackground ? undefined : signal,
+    invocation: { modelName, thinkingLevel, maxTurns, runInBackground: startsInBackground },
+    runInBackground: startsInBackground,
+    signal: startsInBackground ? undefined : signal,
   });
 
   const { agentId, record } = result;
+  const isBackground = result.isBackground;
 
   // Store toolCallId in record for call renderer to find agent
   if (_toolCallId) {
@@ -242,7 +245,8 @@ export async function executeAgentTool(
   }
 
   if (isBackground) {
-    const suffix = `Success! You delegated to an agent. A notification will arrive when done - USER: do not poll, don't check status and don't duplicate the delegated work!\n\nAgent ID: ${agentId}`;
+    const reason = !startsInBackground ? " MessageAgent is active, so it was started in the background." : "";
+    const suffix = `Success! You delegated to an agent.${reason} A notification will arrive when done - USER: do not poll, don't check status and don't duplicate the delegated work!\n\nAgent ID: ${agentId}`;
     const label = record.lifecycle.status === "queued" ? "Agent queued" : "Agent running";
     const details = buildAgentDetails(record);
     details.agentId = agentId;
@@ -288,11 +292,17 @@ function formatRunningAgents(): string {
  * place full ids are printed. `notFoundDetail` names the agents the calling tool can
  * act on, because stop and message have opposite preconditions.
  */
-function resolveAgent(agentId: unknown, notFoundDetail: () => string): AgentRecord {
+function resolveAgent(
+  agentId: unknown,
+  notFoundDetail: () => string,
+  managerOverride?: Pick<AgentManager, "matchAgents">,
+): AgentRecord {
   const id = (agentId as string | undefined)?.trim() ?? "";
   if (!id) throw new Error("agent_id is required");
 
-  const matches = getManager()!.matchAgents(id);
+  const manager = managerOverride ?? getManager();
+  if (!manager) throw new Error("Agent manager is unavailable");
+  const matches = manager.matchAgents(id);
   if (matches.length === 1) return matches[0];
   if (matches.length > 1) {
     throw new Error(
@@ -332,10 +342,10 @@ export async function executeStopAgentTool(
 /** Bounded list of every retained agent, settled ones included: a message needs a
  * live session, not a run, so the addressable set is wider than StopAgent's.
  */
-function formatKnownAgents(): string {
-  const agents = getManager()!.listAgents();
+function formatKnownAgents(manager: Pick<AgentManager, "listAgents">, limit: number): string {
+  const agents = manager.listAgents();
   if (agents.length === 0) return "none";
-  return formatAgentStatusList(agents, getStore().agent.agentStatusLimit);
+  return formatAgentStatusList(agents, limit);
 }
 
 /**
@@ -350,11 +360,16 @@ export async function executeMessageAgentTool(
   _signal: AbortSignal | undefined,
   _onUpdate: ((update: any) => void) | undefined,
   _ctx: ExtensionContext,
+  managerOverride?: SubagentAgentManager,
+  agentStatusLimit?: number,
 ): Promise<any> {
   const text = (params.message as string | undefined)?.trim() ?? "";
   if (!text) throw new Error("message is required");
 
-  const record = resolveAgent(params.agent_id, () => `Known agents: ${formatKnownAgents()}`);
+  const manager = managerOverride ?? getManager();
+  if (!manager) throw new Error("Agent manager is unavailable");
+  const limit = agentStatusLimit ?? getStore().agent.agentStatusLimit;
+  const record = resolveAgent(params.agent_id, () => `Known agents: ${formatKnownAgents(manager, limit)}`, manager);
   const wasRunning = record.lifecycle.status === "running";
 
   if (!wasRunning && !record.execution.session) {
@@ -363,7 +378,7 @@ export async function executeMessageAgentTool(
     );
   }
 
-  if (!(await getManager()!.steer(record.id, text))) {
+  if (!(await manager.steer(record.id, text))) {
     throw new Error(
       `Failed to send message to agent ${shortId(record)}. ` +
         `It may still be settling or its concurrency slot is full. Try again.`,

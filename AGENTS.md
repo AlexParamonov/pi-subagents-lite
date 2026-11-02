@@ -40,7 +40,7 @@ Pi source code in ../pi
 ## pi-ai API & Subagent Lifecycle
 
 - `deliverAs: "steer"` only queues while parent runs — if idle, pi drops it silently. Check `ctx.isIdle()`.
-- `createAgentSession` re-executes EVERY extension factory. Bracket `runAgent` with a nesting-depth flag.
+- Pi may re-import extension modules with module caching disabled across cwd changes. Pass child-only parent capabilities through a `Symbol.for`-shared `AsyncLocalStorage` context, not a module-local spawn flag.
 - `AgentSession.dispose()` does NOT emit `session_shutdown`; subagent `bindExtensions` DOES fire parent's `session_start`.
 - A one-shot gate (consumed set) hides re-occurring events: continuations re-settle.
 

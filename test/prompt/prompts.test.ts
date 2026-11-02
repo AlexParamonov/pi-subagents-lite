@@ -210,6 +210,14 @@ describe("buildAgentPrompt — system prompt modes", () => {
   });
 });
 
+describe("buildAgentPrompt — cache prefix", () => {
+  it("keeps the prompt prefix shared across agent identities for prompt caching", () => {
+    const first = buildAgentPrompt(baseConfig, "/test/cwd", env);
+    const second = buildAgentPrompt({ ...baseConfig, name: "other-agent" }, "/test/cwd", env);
+    expect(first.split("<active_agent")[0]).toBe(second.split("<active_agent")[0]);
+  });
+});
+
 describe("buildAgentPrompt — context files (AGENTS.md)", () => {
   it("includes project_context block when contextFiles provided", () => {
     const result = buildAgentPrompt(baseConfig, "/test/cwd", env, {

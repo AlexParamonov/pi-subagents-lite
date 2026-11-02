@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord, AgentStatus } from "../../src/types.js";
 import type { AgentManager, SpawnOptions } from "../../src/agents/agent-manager.js";
-import { asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
+import { asAgentSession, asExtensionAPI, asExtensionContext } from "../pi-boundaries.js";
 
 // --- Mock modules ---
 
@@ -48,6 +48,8 @@ vi.mock("../../src/shell.js", () => ({
   getWidget: () => null,
 }));
 
+import { SpawnCoordinator } from "../../src/spawn/spawn-coordinator.js";
+
 function makeMockManager(opts: { pendingGate?: boolean } = {}): AgentManager & MockManager {
   const records = new Map<string, AgentRecord>();
   // Capture forwarded spawn arguments (named fields, not positional indices) so
@@ -80,6 +82,7 @@ function makeMockManager(opts: { pendingGate?: boolean } = {}): AgentManager & M
       return id;
     }),
     getRecord: vi.fn((id: string) => records.get(id)),
+    detachParentInterrupt: vi.fn(),
     getSpawnCalls: () => spawnCalls,
     getGateResolver: (id: string) => gateResolvers.get(id),
     dispose: async () => {
@@ -108,6 +111,7 @@ interface SpawnCall {
 interface MockManager {
   spawn: (pi: ExtensionAPI, ctx: ExtensionContext, type: string, prompt: string, options: SpawnOptions) => string;
   getRecord: (id: string) => AgentRecord | undefined;
+  detachParentInterrupt: (id: string) => void;
   getSpawnCalls: () => SpawnCall[];
   getGateResolver: (id: string) => ((value: string) => void) | undefined;
   dispose: () => Promise<void>;
@@ -122,22 +126,35 @@ function makeMockCtx() {
   return asExtensionContext({ cwd: "/test", model: undefined, modelRegistry: {} });
 }
 
+function childSession(activeTools: string[]) {
+  let onAgentEvent: ((event: AgentSessionEvent) => void) | undefined;
+  const session = asAgentSession({
+    getActiveToolNames: () => activeTools,
+    subscribe: (handler: (event: AgentSessionEvent) => void) => {
+      onAgentEvent = handler;
+      return () => {
+        onAgentEvent = undefined;
+      };
+    },
+  });
+  return {
+    session,
+    startAgent: () => onAgentEvent?.({ type: "agent_start" }),
+  };
+}
+
 // --- Tests ---
 
 describe("SpawnCoordinator", () => {
-  // Dynamically import after mocks are set up
-  let SpawnCoordinator: typeof import("../../src/spawn/spawn-coordinator.js").SpawnCoordinator;
   let manager: ReturnType<typeof makeMockManager>;
   let ctx: ExtensionContext;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.useFakeTimers();
     manager = makeMockManager();
     ctx = makeMockCtx();
-    mockPi.sendMessage.mockReset(); // full reset — no impl or calls leak between tests
+    mockPi.sendMessage.mockReset();
     mockGetPiInstance.mockReturnValue(mockPiApi);
-    const mod = await import("../../src/spawn/spawn-coordinator.js");
-    SpawnCoordinator = mod.SpawnCoordinator;
   });
 
   it("spawns a background agent and returns result", async () => {
@@ -151,6 +168,7 @@ describe("SpawnCoordinator", () => {
     });
 
     expect(result.agentId).toBeTruthy();
+    expect(result.isBackground).toBe(true);
     // Args forwarded to the spawn manager are the coordinator's observable output.
     expect(manager.spawn).toHaveBeenCalledTimes(1);
     const spawn = manager.getSpawnCalls()[0];
@@ -171,7 +189,54 @@ describe("SpawnCoordinator", () => {
 
     expect(result.agentId).toBeTruthy();
     expect(result.record).toBeTruthy();
+    expect(result.isBackground).toBe(false);
     expect(manager.getSpawnCalls()[0].options.isBackground).toBe(false);
+  });
+
+  it.each([
+    { initiallyActive: true, finallyActive: false, background: false },
+    { initiallyActive: false, finallyActive: true, background: true },
+  ])(
+    "uses the child tool loadout finalized before its first request",
+    async ({ initiallyActive, finallyActive, background }) => {
+      manager = makeMockManager({ pendingGate: true });
+      const coordinator = new SpawnCoordinator(manager);
+      const spawnPromise = coordinator.spawn(mockPiApi, ctx, {
+        type: "builder",
+        prompt: "ask parent if blocked",
+        description: "Can message parent",
+        graceTurns: 6,
+        runInBackground: false,
+      });
+      const spawn = manager.getSpawnCalls()[0];
+      const activeTools = ["read", ...(initiallyActive ? ["MessageAgent"] : [])];
+      const child = childSession(activeTools);
+      spawn.options.onSessionCreated?.(child.session);
+
+      activeTools.splice(0, activeTools.length, "read", ...(finallyActive ? ["MessageAgent"] : []));
+      child.startAgent();
+      queueMicrotask(() => manager.getGateResolver(spawn.id)?.("finished"));
+
+      expect((await spawnPromise).isBackground).toBe(background);
+    },
+  );
+
+  it("returns a child as background when it requests promotion", async () => {
+    manager = makeMockManager({ pendingGate: true });
+    const coordinator = new SpawnCoordinator(manager);
+    const spawnPromise = coordinator.spawn(mockPiApi, ctx, {
+      type: "builder",
+      prompt: "ask parent if blocked",
+      description: "Can message parent later",
+      graceTurns: 6,
+      runInBackground: false,
+    });
+    const spawn = manager.getSpawnCalls()[0];
+    spawn.options.onSessionCreated?.(childSession(["read"]).session);
+    spawn.options.onBackgroundPromotion?.();
+    queueMicrotask(() => manager.getGateResolver(spawn.id)?.("finished"));
+
+    expect((await spawnPromise).isBackground).toBe(true);
   });
 
   it("creates a live view on spawn", async () => {

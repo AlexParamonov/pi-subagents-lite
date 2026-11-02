@@ -368,6 +368,25 @@ describe("AgentManager", () => {
   }
 
   describe("parent interrupt binding", () => {
+    it("stops forwarding the parent interrupt after an agent is promoted to background", async () => {
+      manager = new AgentManager(onComplete);
+      const deferred = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValue(deferred.promise);
+      const controller = new AbortController();
+      const id = spawnForeground("task", { signal: controller.signal });
+      const internalSignal = mockModules.mockRunAgent.mock.calls[0]![3].signal!;
+
+      manager.detachParentInterrupt(id);
+      controller.abort();
+
+      expect(manager.getRecord(id)!.lifecycle.status).toBe("running");
+      expect(internalSignal.aborted).toBe(false);
+
+      manager.abort(id, "agent");
+      deferred.resolve(mockRunResult({ aborted: true }));
+      await manager.getRecord(id)!.execution.promise;
+    });
+
     it("stops a running foreground subagent with stoppedBy user and preserves partial output", async () => {
       manager = new AgentManager(onComplete);
       const deferred = makeResolvablePromise();

@@ -1,10 +1,13 @@
 /**
- * renderer.ts — Rendering helpers for the Agent tool and subagent-result messages.
+ * renderer.ts — Rendering helpers for the Agent tool and subagent messages.
  *
  * Extracted from index.ts to separate display concerns from extension wiring.
  */
 
-import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
+import type { SubagentMessageDetails } from "../agents/parent-message.ts";
 import type { Theme } from "./types.ts";
 import {
   buildStatsParts,
@@ -209,6 +212,55 @@ export function renderStatusLine(
   const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
   const icon = context?.isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
   return new Text(`${icon} ${text}`, 0, 0);
+}
+
+/** Render parent-directed input using the originating agent's task heading. */
+export function renderSubagentMessage(
+  message: { content?: string | (TextContent | ImageContent)[]; details?: SubagentMessageDetails },
+  theme: Theme,
+  modelDisplayStyle: "id" | "name" = "id",
+  showCost = false,
+): Container {
+  const text =
+    typeof message.content === "string"
+      ? message.content
+      : (message.content ?? [])
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("\n");
+  const sender = message.details?.sender;
+  const header = sender ? `[Subagent "${sender}" message]\n\n` : "";
+  const type = message.details?.type ?? "";
+  const description = message.details?.description ?? sender ?? "";
+  const name = getDisplayName(type, type || "Agent");
+  const label = `Message from ${name || "Agent"}`;
+
+  const title = `${statusIcon("running", theme, type)} ${theme.fg("accent", theme.bold(label))}`;
+  const tag = modelTag(
+    {
+      modelName: message.details?.modelName,
+      modelId: message.details?.modelId,
+      thinkingLevel: message.details?.thinkingLevel,
+    },
+    theme,
+    modelDisplayStyle,
+  );
+  const body = header && text.startsWith(header) ? text.slice(header.length) : text;
+  const stats = message.details?.turnCount != null ? buildStatsLine(message.details, theme, showCost) : "";
+  const metadata = [tag && theme.fg("dim", tag), stats].filter(Boolean).join("·");
+  const heading = [title, metadata && `  ${metadata}`, description && `  ${theme.fg("text", description)}`]
+    .filter(Boolean)
+    .join("\n");
+
+  const container = new Container();
+  container.addChild(new Text(heading, 0, 0));
+  container.addChild(new Spacer(1));
+  container.addChild(
+    new Markdown(body, 0, 0, getMarkdownTheme(), {
+      color: (text) => theme.fg("customMessageText", text),
+    }),
+  );
+  return container;
 }
 
 // --- Message renderer — subagent-result ---

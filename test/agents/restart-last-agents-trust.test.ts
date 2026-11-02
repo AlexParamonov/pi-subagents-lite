@@ -37,6 +37,7 @@ const {
   mockCoordinatorSpawn: vi.fn<(pi: unknown, ctx: unknown, intent: SpawnIntent) => Promise<SpawnResult>>(async () => ({
     agentId: "agent-id-1",
     record: fakeRecord(),
+    isBackground: true,
   })),
   mockValidateWorktreePath: vi.fn(),
   mockResolveSubagentTrust: vi.fn(() => true),

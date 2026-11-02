@@ -387,7 +387,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
 
             const coordinator = getCoordinator()!;
             try {
-              await coordinator.spawn(getPiInstance(), session!, {
+              const result = await coordinator.spawn(getPiInstance(), session!, {
                 type: selectedType,
                 prompt: spawnPrompt,
                 description,
@@ -408,9 +408,10 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
                 runInBackground: background,
               });
 
-              if (!background) {
-                getWidget()?.update();
+              if (result.isBackground && !background) {
+                ctx.ui.notify("MessageAgent is active, so this agent was started in the background.", "info");
               }
+              getWidget()?.update();
             } catch (err) {
               ctx.ui.notify(`Spawn failed: ${err instanceof Error ? err.message : String(err)}`, "error");
             }
@@ -449,7 +450,7 @@ export async function showSpawnAgentMenu(ctx: ExtensionCommandContext, modelOpti
         id: "background",
         label: "Background",
         currentValue: currentBackground ? "ON" : "OFF",
-        description: "Run the agent in the background",
+        description: "Run in background; children with MessageAgent active are always backgrounded.",
         values: ["ON", "OFF"],
       },
       ...(inGitRepo

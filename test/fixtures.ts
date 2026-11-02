@@ -92,8 +92,6 @@ export interface ShellMockFns {
   store?: MockShellStore;
   coordinator?: Partial<SpawnCoordinator>;
   widget?: AgentWidget;
-  /** Spawn guard state for isInsideSubagentSpawn/enter/exit. */
-  spawnGuard?: { depth: number };
 }
 
 /** Mutable mock state; setters update what the getters return. */
@@ -104,7 +102,6 @@ interface ShellMockState {
   store: MockShellStore;
   coordinator: Partial<SpawnCoordinator> | null;
   widget: AgentWidget | null | undefined;
-  spawnGuard: { depth: number };
 }
 
 /**
@@ -145,7 +142,6 @@ export function shellMock(fns: ShellMockFns = {}) {
       } satisfies MockShellStore),
     coordinator: fns.coordinator ?? { spawn: vi.fn() },
     widget: fns.widget ?? undefined,
-    spawnGuard: fns.spawnGuard ?? { depth: 0 },
   };
 
   return {
@@ -169,13 +165,6 @@ export function shellMock(fns: ShellMockFns = {}) {
     },
     setCoordinator: (c: Partial<SpawnCoordinator> | null) => {
       state.coordinator = c;
-    },
-    isInsideSubagentSpawn: () => state.spawnGuard.depth > 0,
-    enterSubagentSpawn: () => {
-      state.spawnGuard.depth++;
-    },
-    exitSubagentSpawn: () => {
-      state.spawnGuard.depth--;
     },
   };
 }

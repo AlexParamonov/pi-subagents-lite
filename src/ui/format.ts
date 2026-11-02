@@ -169,9 +169,9 @@ export function buildStatsParts(
 }
 
 /** Get display name for any agent type (built-in or custom). */
-export function getDisplayName(type: SubagentType): string {
+export function getDisplayName(type: SubagentType, fallback = "Agent"): string {
   const config = getAgentConfig(type);
-  return config?.displayName ?? config?.name ?? "Agent";
+  return config?.displayName ?? config?.name ?? fallback;
 }
 
 /** Colored bullet prefix for agent names in pickers/menus.

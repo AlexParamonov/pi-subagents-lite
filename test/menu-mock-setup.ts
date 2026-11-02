@@ -679,7 +679,7 @@ vi.mock("../src/shell.js", async () => {
         if (!intent.runInBackground && record?.execution?.promise) {
           await record.execution.promise;
         }
-        return { agentId: id, record };
+        return { agentId: id, record, isBackground: intent.runInBackground };
       }),
       isBackground: vi.fn(() => false),
       scheduleNudge: vi.fn(),

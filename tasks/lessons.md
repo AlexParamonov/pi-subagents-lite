@@ -237,3 +237,11 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## Vite+ lint policies (AST rules over custom scanners) - 2026-10-16
 **What failed:** `test:any-gate` duplicated explicit-any linting in Bash and kept obsolete allowlists after the fixture helpers were typed.
 **Next time:** Enforce syntactic policies with a scoped Oxlint rule; keep exceptions local and documented, and remove bespoke scanners.
+
+## Pi prompt-section ordering and cache stability - 2026-10-30
+**What failed:** Treating `appendSystemPrompt` as a true suffix; Pi places its addendum before project context, skills, and cwd, so a conditional change there alters the prompt before those later sections.
+**Next time:** Inspect Pi's section builder before choosing an insertion point. Put guidance tied to a tool's availability in that active tool's description/schema; use a trailing custom section only for genuinely system-level guidance, and keep it stable across turns.
+
+## Pi extension message acknowledgement - 2026-10-30
+**What failed:** Returning “sent” after calling `pi.sendMessage`, whose extension API is fire-and-forget and reports asynchronous persistence failures separately from the caller.
+**Next time:** Say “submitted” or best-effort unless the API provides an awaitable delivery acknowledgement. Don't add retries or polling without a delivery contract.

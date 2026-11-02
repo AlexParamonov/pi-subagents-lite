@@ -26,8 +26,8 @@ export interface SpawnIntent extends SpawnConfig {
   prompt: string;
   runInBackground: boolean;
   /**
-   * Parent run's interrupt signal, forwarded to the manager for foreground
-   * spawns only. Background and menu-wizard spawns never carry one.
+   * Parent run's interrupt signal. The coordinator detaches it if the child
+   * later promotes itself to background through MessageAgent.
    */
   signal?: AbortSignal;
   /** Narrowed to required — all callers resolve this before spawn. */
@@ -37,6 +37,7 @@ export interface SpawnIntent extends SpawnConfig {
 export interface SpawnResult {
   agentId: string;
   record: AgentRecord;
+  isBackground: boolean;
 }
 
 // --- Constants ---
@@ -61,8 +62,8 @@ export class SpawnCoordinator {
   constructor(private manager: AgentManager) {}
 
   /**
-   * Spawn + wire tracking + (foreground) await.
-   * Single entry point for LLM tool executor and menu wizard.
+   * Spawn + wire tracking; await completion unless background was requested
+   * or the child's active tools enable parent communication.
    */
   async spawn(pi: ExtensionAPI, ctx: ExtensionContext, intent: SpawnIntent): Promise<SpawnResult> {
     // Create live view BEFORE spawn so callbacks can close over it
@@ -75,15 +76,64 @@ export class SpawnCoordinator {
     // SpawnConfig fields pass through unchanged; only the intent-only fields
     // (type/prompt/runInBackground/signal) are forwarded explicitly.
     const { type, prompt, runInBackground, signal, ...config } = intent;
+    let agentId: string | undefined;
+    let isBackground = runInBackground;
+    let promotionPending = false;
+    let unsubscribeAgentStart: (() => void) | undefined;
+    let resolveBackgroundReady!: () => void;
+    const backgroundReady = new Promise<void>((resolve) => {
+      resolveBackgroundReady = resolve;
+    });
+    const markBackground = (id: string) => {
+      this.backgroundAgentIds.add(id);
+      this.manager.detachParentInterrupt(id);
+      const record = this.manager.getRecord(id);
+      if (record) {
+        record.display.invocation = { ...record.display.invocation, runInBackground: true };
+      }
+    };
+    const clearAgentStartSubscription = () => {
+      unsubscribeAgentStart?.();
+      unsubscribeAgentStart = undefined;
+    };
+    const promoteToBackground = () => {
+      if (isBackground) return;
+      if (!agentId) {
+        promotionPending = true;
+        return;
+      }
+      const record = this.manager.getRecord(agentId);
+      if (!record || record.lifecycle.status !== "running") return;
+      isBackground = true;
+      clearAgentStartSubscription();
+      markBackground(agentId);
+      resolveBackgroundReady();
+    };
     const spawnOptions: SpawnOptions = {
       ...config,
       isBackground: runInBackground,
       signal,
       ...liveViewCallbacks,
+      onBackgroundPromotion: promoteToBackground,
+      onSessionCreated: (session) => {
+        if (runInBackground) return;
+        unsubscribeAgentStart = session.subscribe((event) => {
+          if (event.type === "agent_start" && session.getActiveToolNames().includes("MessageAgent")) {
+            promoteToBackground();
+          }
+        });
+      },
     };
 
-    const agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
+    agentId = this.manager.spawn(pi, ctx, type, prompt, spawnOptions);
     const record = this.manager.getRecord(agentId)!;
+    if (record.execution.promise) {
+      void record.execution.promise.then(clearAgentStartSubscription, clearAgentStartSubscription);
+    }
+    if (promotionPending) {
+      promotionPending = false;
+      promoteToBackground();
+    }
     // Spawn-time state rides on the record so it survives settlement: the
     // live view is re-fed by continuations, and the ctx keeps the UI-notify
     // fallback reachable for any later nudge (continuations included).
@@ -97,13 +147,13 @@ export class SpawnCoordinator {
       widget.ensureTimer();
     }
 
-    if (intent.runInBackground) {
-      this.backgroundAgentIds.add(agentId);
-    } else {
-      await record.execution.promise;
+    if (runInBackground) {
+      markBackground(agentId);
+    } else if (!isBackground) {
+      await Promise.race([record.execution.promise, backgroundReady]);
     }
 
-    return { agentId, record };
+    return { agentId, record, isBackground };
   }
 
   /** Read the live view for an agent. Widget calls this. */

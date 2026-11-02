@@ -92,8 +92,6 @@ const hoisted = vi.hoisted(() => ({
   clearLoaderExtensions: () => {
     _loaderGetExtensionsResult.extensions = [];
   },
-  mockEnterSubagentSpawn: vi.fn(),
-  mockExitSubagentSpawn: vi.fn(),
   mockDefaultThinking: undefined as import("../../src/types.js").ThinkingChoice | undefined,
 }));
 
@@ -132,8 +130,6 @@ export const mockModules = {
   clearLoaderOpts: hoisted.clearLoaderOpts,
   setLoaderExtensions: hoisted.setLoaderExtensions,
   clearLoaderExtensions: hoisted.clearLoaderExtensions,
-  mockEnterSubagentSpawn: hoisted.mockEnterSubagentSpawn,
-  mockExitSubagentSpawn: hoisted.mockExitSubagentSpawn,
   get mockDefaultThinking() {
     return hoisted.mockDefaultThinking;
   },
@@ -186,8 +182,7 @@ vi.mock("../../src/shell.js", () => ({
       },
     },
   }),
-  enterSubagentSpawn: mockModules.mockEnterSubagentSpawn,
-  exitSubagentSpawn: mockModules.mockExitSubagentSpawn,
+  getManager: () => null,
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({

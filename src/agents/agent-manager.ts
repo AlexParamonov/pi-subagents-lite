@@ -79,7 +79,8 @@ interface SpawnArgs {
 
 export interface SpawnOptions extends SpawnConfig, RunCallbacks {
   isBackground?: boolean;
-  /** Parent abort signal — when aborted, the subagent is also stopped. */
+  onBackgroundPromotion?: () => void;
+  /** Parent abort signal; detached if the child promotes to background. */
   signal?: AbortSignal;
 }
 
@@ -327,6 +328,7 @@ export class AgentManager {
       graceTurns: options.graceTurns,
       projectTrusted: options.projectTrusted,
       signal: record.execution.abortController!.signal,
+      onBackgroundPromotion: options.onBackgroundPromotion,
       ...this.runTrackingCallbacks(record, options, (turnCount) => {
         record.stats.turnCount = turnCount;
         options.onTurnEnd?.(turnCount);
@@ -644,6 +646,12 @@ export class AgentManager {
 
   getRecord(id: string): AgentRecord | undefined {
     return this.agents.get(id);
+  }
+
+  /** Stop forwarding the spawning tool's interrupt after a foreground agent is promoted. */
+  detachParentInterrupt(id: string): void {
+    const record = this.agents.get(id);
+    if (record) this.detachParentBinding(record);
   }
 
   /**
