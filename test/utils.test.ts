@@ -229,6 +229,11 @@ describe("findModelInRegistry", () => {
 });
 
 describe("summarizeToolArgs", () => {
+  it("keeps a long single default string arg whole when full is requested", () => {
+    const val = "y".repeat(500);
+    expect(summarizeToolArgs("custom", { note: val }, { full: true })).toBe(`(${JSON.stringify(val)})`);
+  });
+
   it("returns empty string for no or empty args", () => {
     expect(summarizeToolArgs("read", undefined)).toBe("");
     expect(summarizeToolArgs("read", {})).toBe("");
@@ -253,6 +258,15 @@ describe("summarizeToolArgs", () => {
   it("truncates long bash commands to 350 chars plus ellipsis", () => {
     const command = "echo " + "x".repeat(400);
     expect(summarizeToolArgs("bash", { command })).toBe('("echo ' + "x".repeat(345) + '…")');
+  });
+
+  it("keeps a long bash command whole when full is requested", () => {
+    const command = "echo " + "x".repeat(400);
+    expect(summarizeToolArgs("bash", { command }, { full: true })).toBe(`(${JSON.stringify(command)})`);
+  });
+
+  it("still strips heredocs when full is requested", () => {
+    expect(summarizeToolArgs("bash", { command: "cat <<EOF\nline\nEOF" }, { full: true })).toBe('("cat")');
   });
 
   it("summarizes grep and rg as pattern and path", () => {
