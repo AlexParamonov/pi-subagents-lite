@@ -15,6 +15,8 @@ import {
   Markdown,
   matchesKey,
   type TUI,
+  type TuiMouseEvent,
+  type TuiMouseEventResult,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
@@ -285,11 +287,9 @@ export class ConversationViewer implements Component {
     const maxScroll = this.scrollMax();
 
     if (this.keys.scrollUp(data)) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-      this.autoScroll = this.scrollOffset >= maxScroll;
+      this.scrollBy(-1);
     } else if (this.keys.scrollDown(data)) {
-      this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
-      this.autoScroll = this.scrollOffset >= maxScroll;
+      this.scrollBy(1);
     } else if (this.keys.pageUp(data)) {
       this.scrollOffset = Math.max(0, this.scrollOffset - viewportHeight);
       this.autoScroll = false;
@@ -303,6 +303,24 @@ export class ConversationViewer implements Component {
       this.scrollOffset = maxScroll;
       this.autoScroll = true;
     }
+  }
+
+  /**
+   * Mouse wheel scrolls the conversation. Without this handler pi's
+   * alternate-screen renderer treats the event as unhandled and scrolls the
+   * chat behind the overlay instead.
+   */
+  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+    if (this.closed || event.type !== "wheel" || !event.wheelDelta) return undefined;
+    this.scrollBy(event.wheelDelta);
+    return { handled: true };
+  }
+
+  /** Scroll by `delta` lines (negative = up), clamped; re-engages auto-scroll when at the bottom. */
+  private scrollBy(delta: number): void {
+    const maxScroll = this.scrollMax();
+    this.scrollOffset = Math.min(maxScroll, Math.max(0, this.scrollOffset + delta));
+    this.autoScroll = this.scrollOffset >= maxScroll;
   }
 
   render(width: number): string[] {
