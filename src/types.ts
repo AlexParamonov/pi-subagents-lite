@@ -18,11 +18,17 @@ export interface ToolActivity {
   toolName: string;
   /** SDK tool call id; absent on synthetic events (e.g. extension-error end). */
   toolCallId?: string;
+  /** Id of the session running the tool. Set on `bash` start events so the widget can probe its process tree. */
+  sessionId?: string;
 }
 
 /** Widget live-view state: per-agent transient display data, fed by tool/stream callbacks. */
 export interface LiveView {
-  activeTools: Map<string, string>; // keyed by toolName_timestamp
+  activeTools: Map<string, string>; // keyed by toolName_toolCallId (toolName_timestamp without a call id)
+  /** Programs currently running under the agent's `bash` calls (see process-probe.ts); unset when unknown. */
+  bashPrograms?: string[];
+  /** Start time (ms epoch) of each active tool call, keyed like `activeTools`. Unset entries are unknown. */
+  toolStartedAt?: Map<string, number>;
   responseText: string;
 }
 

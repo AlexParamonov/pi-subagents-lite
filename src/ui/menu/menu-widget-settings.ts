@@ -170,6 +170,14 @@ function buildItems(
       description: "Show the thinking level next to each agent in the widget.",
     },
     {
+      id: "showBashPrograms",
+      label: "Show bash programs",
+      currentValue: store.agent.widgetShowBashPrograms ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description:
+        "Name the programs a running bash call started (running: sleep ×10, cat) instead of running command…. Linux only; samples /proc while bash runs. Applies to the next bash call.",
+    },
+    {
       id: "modelDisplayStyle",
       label: "Model display",
       currentValue: store.agent.modelDisplayStyle === "name" ? "Name" : "ID",
@@ -231,6 +239,10 @@ function buildOnChange(
       case "showThinking":
         store.mutate.widget.setShowThinking(newValue === "ON");
         ctx.ui.notify(`Show thinking ${newValue}`, "info");
+        break;
+      case "showBashPrograms":
+        store.mutate.widget.setShowBashPrograms(newValue === "ON");
+        ctx.ui.notify(`Show bash programs ${newValue}`, "info");
         break;
       case "navHint":
         store.mutate.widget.setNavHint(newValue === "ON");

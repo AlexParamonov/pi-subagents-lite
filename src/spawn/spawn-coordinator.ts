@@ -1,7 +1,10 @@
-import { getPiInstance, getSessionCtx, getWidget } from "../shell.ts";
+import { getPiInstance, getSessionCtx, getStore, getWidget } from "../shell.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
 
+import { createProcessProbe } from "../agents/process-probe.ts";
+
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ProcessProbe } from "../agents/process-probe.ts";
 import type { AgentRecord, LiveView, SpawnConfig, ToolActivity } from "../types.ts";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.ts";
 import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.ts";
@@ -45,6 +48,9 @@ export interface SpawnResult {
 /** Batch delay for nudges — only emit one update per batch window (ms). */
 const NUDGE_DELAY_MS = 200;
 
+/** How often a running `bash` call's process tree is sampled for the widget (ms). */
+export const BASH_PROBE_INTERVAL_MS = 1000;
+
 // --- SpawnCoordinator ---
 
 export class SpawnCoordinator {
@@ -59,7 +65,14 @@ export class SpawnCoordinator {
   /** Set during dispose to prevent nudge emission after session replacement. */
   private disposed = false;
 
-  constructor(private manager: AgentManager) {}
+  /** Stop functions of the active bash-process pollers, so dispose() can end them. */
+  private bashPollers = new Set<() => void>();
+
+  constructor(
+    private manager: AgentManager,
+    /** Where the widget learns what a `bash` call is running; null where the platform has no probe. */
+    private processProbe: ProcessProbe | null = createProcessProbe() ?? null,
+  ) {}
 
   /**
    * Spawn + wire tracking; await completion unless background was requested
@@ -69,6 +82,7 @@ export class SpawnCoordinator {
     // Create live view BEFORE spawn so callbacks can close over it
     const liveView: LiveView = {
       activeTools: new Map(),
+      toolStartedAt: new Map(),
       responseText: "",
     };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
@@ -207,6 +221,7 @@ export class SpawnCoordinator {
     }
     this.pendingNudges.clear();
     this.backgroundAgentIds.clear();
+    for (const stop of this.bashPollers) stop();
     this.disposed = true;
   }
 
@@ -214,17 +229,64 @@ export class SpawnCoordinator {
 
   /** Create callbacks that bridge manager events to a specific live view. */
   private createLiveViewCallbacks(view: LiveView): Pick<SpawnOptions, "onToolActivity" | "onTextDelta"> {
+    const hasActiveBash = () => [...view.activeTools.values()].includes("bash");
+    let stopPolling: (() => void) | undefined;
+
+    // Sample the process tree while a bash call is active; the widget's own
+    // refresh timer repaints, so this only keeps view.bashPrograms current.
+    const startPolling = (sessionId: string) => {
+      const probe = this.processProbe;
+      if (!probe || stopPolling || !getStore().agent.widgetShowBashPrograms) return;
+      let stopped = false;
+      let inFlight = false;
+      const stop = () => {
+        stopped = true;
+        clearInterval(timer);
+        view.bashPrograms = undefined;
+        this.bashPollers.delete(stop);
+        stopPolling = undefined;
+      };
+      const timer = setInterval(() => {
+        if (!hasActiveBash()) return stop();
+        if (inFlight) return;
+        inFlight = true;
+        probe
+          .runningPrograms(sessionId)
+          .then((programs) => {
+            if (!stopped) view.bashPrograms = programs.length > 0 ? programs : undefined;
+          })
+          .catch(() => {
+            if (!stopped) view.bashPrograms = undefined;
+          })
+          .finally(() => {
+            inFlight = false;
+          });
+      }, BASH_PROBE_INTERVAL_MS);
+      timer.unref?.();
+      this.bashPollers.add(stop);
+      stopPolling = stop;
+    };
+
     return {
       onToolActivity: (activity: ToolActivity) => {
         if (activity.type === "start") {
-          view.activeTools.set(`${activity.toolName}_${Date.now()}`, activity.toolName);
+          // Parallel tool calls can start within the same millisecond, so the call id keeps their keys distinct.
+          const key = `${activity.toolName}_${activity.toolCallId ?? Date.now()}`;
+          view.activeTools.set(key, activity.toolName);
+          view.toolStartedAt?.set(key, Date.now());
+          if (activity.toolName === "bash" && activity.sessionId) startPolling(activity.sessionId);
         } else {
-          for (const [key, name] of view.activeTools) {
-            if (name === activity.toolName) {
-              view.activeTools.delete(key);
-              break;
-            }
+          // Prefer the call's own entry; otherwise the oldest entry of that tool.
+          const entries = [...view.activeTools].filter(([, name]) => name === activity.toolName);
+          const own = activity.toolCallId
+            ? entries.find(([key]) => key.endsWith(`_${activity.toolCallId}`))
+            : undefined;
+          const match = own ?? entries[0];
+          if (match) {
+            view.activeTools.delete(match[0]);
+            view.toolStartedAt?.delete(match[0]);
           }
+          if (activity.toolName === "bash" && !hasActiveBash()) stopPolling?.();
         }
       },
       onTextDelta: (_delta: string, fullText: string) => {

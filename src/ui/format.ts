@@ -215,7 +215,42 @@ const TOOL_DISPLAY: Record<string, string> = {
   find: "searching",
 };
 
-export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+/** Most programs listed for a running bash call; the rest collapse into "+N". */
+export const MAX_LISTED_PROGRAMS = 4;
+
+/**
+ * "sleep ×10, make, tsc +2" — one process per entry in, distinct names out (in first-seen order)
+ * with a ×count when more than one runs; the first MAX_LISTED_PROGRAMS names, then how many more names.
+ */
+export function formatPrograms(programs: readonly string[]): string {
+  const counts = new Map<string, number>();
+  for (const name of programs) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const entries = [...counts].map(([name, count]) => (count > 1 ? `${name} ×${count}` : name));
+  const shown = entries.slice(0, MAX_LISTED_PROGRAMS).join(", ");
+  const hidden = entries.length - MAX_LISTED_PROGRAMS;
+  return hidden > 0 ? `${shown} +${hidden}` : shown;
+}
+
+/** How long the oldest running `bash` call has been going, or undefined when none runs or its start is unknown. */
+export function bashElapsedMs(
+  activeTools: ReadonlyMap<string, string>,
+  startedAt: ReadonlyMap<string, number> | undefined,
+  now: number,
+): number | undefined {
+  let oldest: number | undefined;
+  for (const [key, toolName] of activeTools) {
+    const started = toolName === "bash" ? startedAt?.get(key) : undefined;
+    if (started !== undefined && (oldest === undefined || started < oldest)) oldest = started;
+  }
+  return oldest === undefined ? undefined : Math.max(0, now - oldest);
+}
+
+export function describeActivity(
+  activeTools: Map<string, string>,
+  responseText?: string,
+  bashPrograms?: readonly string[],
+  bashElapsed?: number,
+): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {
@@ -223,9 +258,18 @@ export function describeActivity(activeTools: Map<string, string>, responseText?
       groups.set(action, (groups.get(action) ?? 0) + 1);
     }
 
+    // Elapsed time of the oldest running bash call; hidden below a second so it doesn't flicker in.
+    const elapsed = bashElapsed !== undefined && bashElapsed >= 1000 ? ` (${formatMs(bashElapsed)})` : "";
     const parts: string[] = [];
     for (const [action, count] of groups) {
-      if (count > 1) {
+      if (action === TOOL_DISPLAY.bash && bashPrograms && bashPrograms.length > 0) {
+        // The programs already say what is running; a count adds nothing.
+        parts.push(`running: ${formatPrograms(bashPrograms)}${elapsed}`);
+      } else if (count > 1 && action === TOOL_DISPLAY.bash) {
+        parts.push(`running ${count} commands${elapsed}`);
+      } else if (action === TOOL_DISPLAY.bash) {
+        parts.push(`${action}${elapsed}`);
+      } else if (count > 1) {
         parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
       } else {
         parts.push(action);

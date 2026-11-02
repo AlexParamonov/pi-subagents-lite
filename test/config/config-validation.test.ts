@@ -112,6 +112,9 @@ describe("validateRawLayer — compact viewer preferences", () => {
 
       expect(validateRawLayer({ agent: { compactToolCalls: "yes" } }, "/g.json").agent ?? {}).toEqual({});
       expect(warn.mock.calls[2][0]).toContain("expected boolean");
+
+      expect(validateRawLayer({ agent: { widgetShowBashPrograms: "yes" } }, "/g.json").agent ?? {}).toEqual({});
+      expect(warn.mock.calls[3][0]).toContain("expected boolean");
     } finally {
       warn.mockRestore();
     }

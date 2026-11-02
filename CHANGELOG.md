@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The widget's activity line can show which programs a running `bash` call has started, behind the new `widgetShowBashPrograms` setting (`/agents` → Settings → Widget → Display → Show bash programs; global config, off by default, applies to the next `bash` call) (`running: sleep ×10, cat (12s)…`: repeats counted, first four names then `+N`, plus how long the oldest running call has gone once it passes a second) instead of just `running command…` (with the setting off it stays `running command…` and nothing is sampled). Linux only: it finds the call's shell through `/proc` by its `PI_SESSION_ID` and walks through subshells and wrappers like `timeout`/`env` to the program on each branch; other platforms keep `running command…`.
 - The compact conversation viewer collapses a `codemode` call to its nested tool rows instead of an escaped `code=...` argument, and shows the script itself when expanded. Those rows use the same form as the top-level rows (`read package.json:1-12`, `$ rm -f file`), consecutive eligible calls group into the same summary row the viewer uses elsewhere, counting the calls that failed or were cancelled, excluded calls stay individually visible with Pi-style status icons, expanding reveals why a nested call failed, and the trace updates live while the script runs.
+
+### Fixed
+
+- Parallel tool calls starting in the same millisecond no longer overwrite each other in the widget's active-tool list.
 
 ## [1.19.0] - 2026-11-15
 

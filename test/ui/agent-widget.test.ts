@@ -390,6 +390,31 @@ describe("getLiveView callback", () => {
     expect(metadataLine).not.toContain("thinking…");
   });
 
+  it("shows how long the oldest bash call has been running", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(100_000);
+      const manager = makeMockManager([]);
+      const views = new Map<string, LiveView>([
+        [
+          "a1",
+          {
+            activeTools: new Map([["bash_c1", "bash"]]),
+            toolStartedAt: new Map([["bash_c1", 88_000]]),
+            bashPrograms: ["sleep"],
+            responseText: "",
+          },
+        ],
+      ]);
+      const widget = new AgentWidget(manager, (id: string) => views.get(id));
+      manager.listAgents = () => [makeRunningAgent("a1")];
+
+      expect(renderWidgetLines(widget)[2]).toContain("running: sleep (12s)");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns undefined for unknown agent", () => {
     const manager = makeMockManager([]);
     const liveViews = new Map<string, LiveView>();

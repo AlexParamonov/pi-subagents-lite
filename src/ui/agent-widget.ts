@@ -14,6 +14,7 @@ import {
   applyAgentColor,
   buildStatsParts,
   getDisplayName,
+  bashElapsedMs,
   describeActivity,
   buildModelThinkingTag,
   resolveAgentModelThinking,
@@ -713,7 +714,14 @@ export class AgentWidget {
       const name = getDisplayName(a.display.type);
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
-      const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
+      const activity = bg
+        ? describeActivity(
+            bg.activeTools,
+            bg.responseText,
+            bg.bashPrograms,
+            bashElapsedMs(bg.activeTools, bg.toolStartedAt, Date.now()),
+          )
+        : "thinking…";
       const coloredFrame = this.coloredFrame(frame, a.display.type || undefined, theme);
 
       if (this.isCompact()) {

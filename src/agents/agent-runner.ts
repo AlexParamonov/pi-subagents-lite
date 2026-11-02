@@ -226,7 +226,12 @@ export function subscribeToSessionEvents(
   }
   return session.subscribe((event: AgentSessionEvent) => {
     if (event.type === "tool_execution_start") {
-      options.onToolActivity?.({ type: "start", toolName: event.toolName, toolCallId: event.toolCallId });
+      options.onToolActivity?.({
+        type: "start",
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        ...(event.toolName === "bash" && { sessionId: session.sessionManager.getSessionId() }),
+      });
     }
     if (event.type === "tool_execution_end") {
       options.onToolActivity?.({ type: "end", toolName: event.toolName, toolCallId: event.toolCallId });

@@ -233,11 +233,29 @@ describe("subscribeToSessionEvents — event forwarding", () => {
     const listeners = session._getListeners();
     expect(listeners).toHaveLength(1);
 
-    listeners[0]({ type: "tool_execution_start", toolCallId: "call_1", toolName: "bash", args: {} });
-    expect(onToolActivity).toHaveBeenCalledWith({ type: "start", toolName: "bash", toolCallId: "call_1" });
+    listeners[0]({ type: "tool_execution_start", toolCallId: "call_1", toolName: "read", args: {} });
+    expect(onToolActivity).toHaveBeenCalledWith({ type: "start", toolName: "read", toolCallId: "call_1" });
 
     listeners[0]({ type: "tool_execution_end", toolCallId: "call_1", toolName: "bash", result: {}, isError: false });
     expect(onToolActivity).toHaveBeenCalledWith({ type: "end", toolName: "bash", toolCallId: "call_1" });
+
+    unsub();
+  });
+
+  it("tags bash start events with the session id so the widget can probe its process tree", () => {
+    const onToolActivity = vi.fn();
+    const session = { ...createMockSession(), sessionManager: { getSessionId: () => "child-session" } };
+
+    const unsub = subscribeToSessionEvents(asAgentSession(session), { onToolActivity });
+    const listeners = session._getListeners();
+
+    listeners[0]({ type: "tool_execution_start", toolCallId: "call_1", toolName: "bash", args: {} });
+    expect(onToolActivity).toHaveBeenCalledWith({
+      type: "start",
+      toolName: "bash",
+      toolCallId: "call_1",
+      sessionId: "child-session",
+    });
 
     unsub();
   });
