@@ -2,7 +2,7 @@
  * conversation-viewer.test.ts — Tests for ConversationViewer.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { MarkdownTheme, TUI, TuiMouseEvent } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
@@ -140,6 +140,7 @@ interface TestContentBlock {
   thinking?: string;
   id?: string;
   name?: string;
+  arguments?: Record<string, unknown>;
 }
 interface TestMessage {
   role: string;
@@ -147,6 +148,7 @@ interface TestMessage {
   toolName?: string;
   toolCallId?: string;
   isError?: boolean;
+  durationMs?: number;
 }
 
 function makeMockSession(messages: TestMessage[] = []) {
@@ -231,6 +233,14 @@ function expectedCallBlock(bg: string, label: string): string[] {
   const fill = `${bg}${" ".repeat(innerW)}${BG_OFF}`;
   const title = `${bg} ${label} ${" ".repeat(innerW - ` ${label} `.length)}${BG_OFF}`;
   return [fill, title, fill];
+}
+
+/** A call block with result rows under the title, all inside one status background. */
+function expectedResultBlock(bg: string, label: string, resultRows: string[]): string[] {
+  const innerW = 76;
+  const [fill, title] = expectedCallBlock(bg, label);
+  const row = (text: string) => `${bg} ${text}${" ".repeat(innerW - 2 - text.length)} ${BG_OFF}`;
+  return [fill, title, ...resultRows.map(row), fill];
 }
 
 // --- Tests ---
@@ -762,7 +772,7 @@ describe("ConversationViewer", () => {
       expect(viewer.render(80).join("\n")).not.toContain("file contents here");
     });
 
-    it("renders a settled tool call as one status-colored line with no result content", () => {
+    it("renders a settled tool call as a status-colored block with its result text under the title", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
         {
@@ -777,13 +787,10 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
 
-      // Exact call block shape — the same 3 rows a pending call renders, so no
-      // result rows follow.
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool"));
-      expect(viewer.render(80).join("\n")).not.toContain("SECRET-RESULT-TEXT");
+      expect(contentRows(viewer)).toEqual(expectedResultBlock(BG_ON.toolSuccessBg, "uniqtool", ["SECRET-RESULT-TEXT"]));
     });
 
-    it("renders an errored tool call with the error background and no result content", () => {
+    it("renders an errored tool call with the error background and its result text", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
         {
@@ -798,30 +805,7 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
 
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolErrorBg, "uniqtool"));
-      expect(viewer.render(80).join("\n")).not.toContain("boom trace");
-    });
-
-    it("hides arbitrarily large result content (no truncation preview)", () => {
-      const longContent = "x".repeat(600); // far past any truncation threshold
-      const session = makeMockSession([
-        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash" }] },
-        {
-          role: "toolResult",
-          toolCallId: "t1",
-          toolName: "bash",
-          isError: false,
-          content: [{ type: "text", text: longContent }],
-        },
-      ]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
-
-      const text = viewer.render(80).join("\n");
-      expect(text).toContain("bash");
-      expect(text).not.toContain("xxxxx");
-      expect(text).not.toContain("more lines");
+      expect(contentRows(viewer)).toEqual(expectedResultBlock(BG_ON.toolErrorBg, "uniqtool", ["boom trace"]));
     });
 
     it("renders thinking blocks in assistant messages", () => {
@@ -901,6 +885,538 @@ describe("ConversationViewer", () => {
     });
   });
 
+  describe("tool call timing", () => {
+    function subscribeCapture(): { emit: (event: unknown) => void } {
+      const capture = { emit: (_event: unknown) => {} };
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+        capture.emit = cb;
+        return () => {};
+      });
+      return capture;
+    }
+    const callMessage: TestMessage = { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] };
+    function resultMessage(durationMs?: number, isError = false): TestMessage & { durationMs?: number } {
+      return { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError, content: [], durationMs };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("appends the recorded duration to a settled call line", () => {
+      const session = makeMockSession([callMessage, resultMessage(1500)]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool  Took 1.5s"));
+    });
+
+    it("moves the duration to a footer line under the result when expanded, like pi", () => {
+      const settled = { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, durationMs: 2100 };
+      const session = makeMockSession([callMessage, { ...settled, content: [{ type: "text", text: "out" }] }]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(
+        makeTui(),
+        session,
+        record,
+        bgMarkingTheme,
+        vi.fn(),
+        undefined,
+        undefined,
+        undefined,
+        { isExpanded: () => true },
+      );
+
+      expect(contentRows(viewer)).toEqual(
+        expectedResultBlock(BG_ON.toolSuccessBg, "uniqtool", ["out", "", "Took 2.1s"]),
+      );
+    });
+
+    it("keeps the duration on an errored call line", () => {
+      const session = makeMockSession([callMessage, resultMessage(65_000, true)]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolErrorBg, "uniqtool  Took 1m 5s"));
+    });
+
+    it("shows no timing for a settled call whose result has no duration", () => {
+      const session = makeMockSession([callMessage, resultMessage()]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool"));
+    });
+
+    it("counts up a running call each second, then settles on the reported duration", () => {
+      const capture = subscribeCapture();
+      const session = makeMockSession([callMessage]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool"));
+
+      capture.emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "uniqtool" });
+      vi.advanceTimersByTime(100);
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 0.1s"));
+
+      vi.advanceTimersByTime(1900);
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 2.0s"));
+
+      // The tool ends before its result message lands: Took shows at once and the clock stops.
+      capture.emit({ type: "tool_execution_end", toolCallId: "t1", toolName: "uniqtool", durationMs: 2042 });
+      vi.runOnlyPendingTimers();
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Took 2.0s"));
+      expect(vi.getTimerCount()).toBe(0);
+
+      // The persisted result's duration then takes over.
+      session.messages.push(resultMessage(2042));
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool  Took 2.0s"));
+    });
+
+    it("counts a call already running at open from the owner's start time", () => {
+      subscribeCapture();
+      const session = makeMockSession([callMessage]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const getToolStartedAt = vi.fn((id: string) => (id === "t1" ? Date.now() - 3000 : undefined));
+      const viewer = new ConversationViewer(
+        makeTui(),
+        session,
+        record,
+        bgMarkingTheme,
+        vi.fn(),
+        undefined,
+        undefined,
+        undefined,
+        { getToolStartedAt },
+      );
+
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 3.0s"));
+      vi.advanceTimersByTime(2000);
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 5.0s"));
+    });
+
+    it("does not seed calls that already have a result", () => {
+      subscribeCapture();
+      const session = makeMockSession([callMessage, resultMessage(800)]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const getToolStartedAt = vi.fn(() => Date.now() - 3000);
+      const viewer = new ConversationViewer(
+        makeTui(),
+        session,
+        record,
+        bgMarkingTheme,
+        vi.fn(),
+        undefined,
+        undefined,
+        undefined,
+        { getToolStartedAt },
+      );
+
+      expect(getToolStartedAt).not.toHaveBeenCalled();
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool  Took 0.8s"));
+    });
+
+    it("shows no timing for a running call whose start was not observed", () => {
+      subscribeCapture();
+      const session = makeMockSession([callMessage]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+
+      vi.advanceTimersByTime(5000);
+      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool"));
+    });
+
+    it("stops the redraw timer on dispose", () => {
+      const capture = subscribeCapture();
+      const session = makeMockSession([callMessage]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+
+      capture.emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "uniqtool" });
+      vi.runOnlyPendingTimers(); // flush the debounced render, keep the 1s interval
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      viewer.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe("tool result output", () => {
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `line${i + 1}`);
+    function sessionWith(toolName: string, resultLines: string[]) {
+      return makeMockSession([
+        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: toolName }] },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName,
+          isError: false,
+          content: [{ type: "text", text: resultLines.join("\n") }],
+        },
+      ]);
+    }
+    function open(session: ReturnType<typeof makeMockSession>, flag: { expanded: boolean }, extra = {}) {
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      return new ConversationViewer(
+        makeTui(),
+        session,
+        record,
+        bgMarkingTheme,
+        vi.fn(),
+        undefined,
+        undefined,
+        undefined,
+        {
+          isExpanded: () => flag.expanded,
+          ...extra,
+        },
+      );
+    }
+    const bg = BG_ON.toolSuccessBg;
+
+    it("collapsed: shows the first 3 lines and a hint with the remaining count", () => {
+      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: false });
+
+      expect(contentRows(viewer)).toEqual(
+        expectedResultBlock(bg, "uniqtool", ["line1", "line2", "line3", "... (7 more lines, ctrl+o to expand)"]),
+      );
+    });
+
+    it("collapsed bash: shows the last 3 lines under an 'earlier lines' hint", () => {
+      const viewer = open(sessionWith("bash", lines(10)), { expanded: false });
+
+      expect(contentRows(viewer)).toEqual(
+        expectedResultBlock(bg, "bash", ["... (7 earlier lines, ctrl+o to expand)", "line8", "line9", "line10"]),
+      );
+    });
+
+    it("collapsed: a result of 3 lines or fewer shows in full with no hint", () => {
+      const viewer = open(sessionWith("uniqtool", lines(3)), { expanded: false });
+
+      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", ["line1", "line2", "line3"]));
+    });
+
+    it("expanded: shows every line with no hint", () => {
+      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: true });
+
+      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", lines(10)));
+    });
+
+    describe("long tool-call label", () => {
+      const command = "echo " + "x".repeat(400);
+      const session = () =>
+        makeMockSession([
+          { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command } }] },
+        ]);
+      const rendered = (viewer: ConversationViewer) =>
+        contentRows(viewer)
+          .join("")
+          .replace(/\x1b\[[0-9;]*m/g, "");
+
+      it("collapsed: cuts the command at 350 characters with an ellipsis", () => {
+        const text = rendered(open(session(), { expanded: false }));
+
+        expect(text).toContain("…");
+        expect(text).not.toContain("x".repeat(346));
+      });
+
+      it("expanded: shows the whole command, wrapped, without an ellipsis", () => {
+        const text = rendered(open(session(), { expanded: true }));
+
+        expect(text).not.toContain("…");
+        // Wrapping splits the command across rows; stripping row padding recovers it whole.
+        expect(text.replace(/\s+/g, "")).toContain(`bash(${JSON.stringify(command)})`.replace(/\s+/g, ""));
+      });
+    });
+
+    it("counts wrapped rows, not source lines, and ignores non-text blocks", () => {
+      const session = makeMockSession([
+        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "uniqtool",
+          isError: false,
+          content: [{ type: "text", text: "x".repeat(150) }, { type: "image" }],
+        },
+      ]);
+      const viewer = open(session, { expanded: true });
+
+      // 150 chars wrap at 74 columns -> 3 rows (74 + 74 + 2)
+      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", ["x".repeat(74), "x".repeat(74), "xx"]));
+    });
+
+    it("colors the key in the hint like pi's keyHint: muted text around a dim key", () => {
+      const sgr: Record<string, string> = { toolOutput: "33", muted: "35", dim: "36" };
+      const tagTheme: Theme = {
+        ...noopTheme,
+        fg: (color, text) => `\x1b[${sgr[color] ?? "0"}m${text}\x1b[39m`,
+      };
+      const session = sessionWith("uniqtool", lines(10));
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, tagTheme, vi.fn());
+
+      const hint = contentRows(viewer).find((row) => row.includes("to expand"));
+
+      expect(hint).toContain(
+        "\x1b[35m... (7 more lines,\x1b[39m \x1b[36mctrl+o\x1b[39m\x1b[35m to expand\x1b[39m\x1b[35m)\x1b[39m",
+      );
+    });
+
+    describe("bash timeout", () => {
+      function bashLabel(timeout: unknown): string {
+        const session = makeMockSession([
+          {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls", timeout } }],
+          },
+          { role: "toolResult", toolCallId: "t1", toolName: "bash", isError: false, content: [] },
+        ]);
+        return contentRows(open(session, { expanded: false }))[1]
+          .replace(/\x1b\[[0-9;]*m/g, "")
+          .trim();
+      }
+
+      it("shows pi's muted (timeout Ns) suffix after the command", () => {
+        expect(bashLabel(300)).toBe('bash("ls") (timeout 300s)');
+      });
+
+      it("separates the suffix from the timing with a single space", () => {
+        const session = makeMockSession([
+          {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls", timeout: 300 } }],
+          },
+          {
+            role: "toolResult",
+            toolCallId: "t1",
+            toolName: "bash",
+            isError: false,
+            content: [],
+            durationMs: 2100,
+          },
+        ]);
+        const title = contentRows(open(session, { expanded: false }))[1]
+          .replace(/\x1b\[[0-9;]*m/g, "")
+          .trim();
+        expect(title).toBe('bash("ls") (timeout 300s) Took 2.1s');
+      });
+
+      it("omits it when the timeout is absent or not a positive number", () => {
+        for (const timeout of [undefined, 0, "300"]) expect(bashLabel(timeout)).not.toContain("timeout");
+      });
+
+      it("is only shown for bash", () => {
+        const session = makeMockSession([
+          {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "t1", name: "uniqtool", arguments: { timeout: 300 } }],
+          },
+          { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: [] },
+        ]);
+        expect(contentRows(open(session, { expanded: false }))[1]).not.toContain("(timeout");
+      });
+    });
+
+    describe("clicking a call", () => {
+      const CONTENT_TOP = 4; // top border, 2 header rows, separator
+      function click(y: number, button: TuiMouseEvent["button"] = "left"): TuiMouseEvent {
+        return {
+          type: "click",
+          button,
+          x: 5,
+          y,
+          screenX: 10,
+          screenY: 10 + y,
+          width: 80,
+          height: 24,
+          shift: false,
+          alt: false,
+          ctrl: false,
+        };
+      }
+      function twoCalls() {
+        const result = (id: string) => ({
+          role: "toolResult",
+          toolCallId: id,
+          toolName: "uniqtool",
+          isError: false,
+          content: [{ type: "text", text: lines(6).join("\n") }],
+        });
+        return makeMockSession([
+          {
+            role: "assistant",
+            content: [
+              { type: "toolCall", id: "t1", name: "uniqtool" },
+              { type: "toolCall", id: "t2", name: "uniqtool" },
+            ],
+          },
+          result("t1"),
+          result("t2"),
+        ]);
+      }
+      // Each call renders 7 rows plus a blank separator: t1 at 0-6, t2 at 8-14.
+      const firstTitle = CONTENT_TOP + 1;
+      const secondTitle = CONTENT_TOP + 9;
+
+      it("expands only the clicked call and collapses it again on a second click", () => {
+        const flag = { expanded: false };
+        const viewer = open(twoCalls(), flag);
+        const collapsed = expectedResultBlock(bg, "uniqtool", [
+          "line1",
+          "line2",
+          "line3",
+          "... (3 more lines, ctrl+o to expand)",
+        ]);
+        expect(contentRows(viewer)).toEqual([...collapsed, ...collapsed]);
+
+        expect(viewer.handleMouse(click(firstTitle))).toEqual({ handled: true });
+        expect(contentRows(viewer)).toEqual([...expectedResultBlock(bg, "uniqtool", lines(6)), ...collapsed]);
+
+        expect(viewer.handleMouse(click(firstTitle))).toEqual({ handled: true });
+        expect(contentRows(viewer)).toEqual([...collapsed, ...collapsed]);
+        expect(flag.expanded).toBe(false); // pi's global flag is untouched
+      });
+
+      it("targets the call under the pointer, including when scrolled", () => {
+        const viewer = open(twoCalls(), { expanded: false });
+        viewer.render(80);
+
+        viewer.handleMouse(click(secondTitle));
+        const collapsed = expectedResultBlock(bg, "uniqtool", [
+          "line1",
+          "line2",
+          "line3",
+          "... (3 more lines, ctrl+o to expand)",
+        ]);
+        expect(contentRows(viewer)).toEqual([...collapsed, ...expectedResultBlock(bg, "uniqtool", lines(6))]);
+      });
+
+      it("can collapse a single call while the global flag is expanded", () => {
+        const viewer = open(twoCalls(), { expanded: true });
+        viewer.render(80);
+        viewer.handleMouse(click(firstTitle));
+
+        const rows = contentRows(viewer);
+        expect(rows).toEqual([
+          ...expectedResultBlock(bg, "uniqtool", ["line1", "line2", "line3", "... (3 more lines, ctrl+o to expand)"]),
+          ...expectedResultBlock(bg, "uniqtool", lines(6)),
+        ]);
+      });
+
+      it("drops per-call state when the global flag flips, as pi does", () => {
+        const flag = { expanded: false };
+        const viewer = open(twoCalls(), flag);
+        viewer.handleMouse(click(firstTitle));
+
+        flag.expanded = true;
+        expect(contentRows(viewer)).toEqual([
+          ...expectedResultBlock(bg, "uniqtool", lines(6)),
+          ...expectedResultBlock(bg, "uniqtool", lines(6)),
+        ]);
+        flag.expanded = false;
+        expect(contentRows(viewer)).toHaveLength(14); // both collapsed again
+      });
+
+      it("ignores clicks outside a settled call, other buttons, and pending calls", () => {
+        const viewer = open(twoCalls(), { expanded: false });
+        viewer.render(80);
+
+        expect(viewer.handleMouse(click(CONTENT_TOP + 7))).toBeUndefined(); // blank row between calls
+        expect(viewer.handleMouse(click(1))).toBeUndefined(); // header
+        expect(viewer.handleMouse(click(firstTitle, "right"))).toBeUndefined();
+        expect(contentRows(viewer)).toHaveLength(14);
+
+        const pending = open(
+          makeMockSession([{ role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] }]),
+          { expanded: false },
+        );
+        pending.render(80);
+        expect(pending.handleMouse(click(firstTitle))).toBeUndefined();
+      });
+
+      it("shows the full command label of a clicked call", () => {
+        const command = "echo " + "x".repeat(400);
+        const session = makeMockSession([
+          { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command } }] },
+          { role: "toolResult", toolCallId: "t1", toolName: "bash", isError: false, content: [] },
+        ]);
+        const viewer = open(session, { expanded: false });
+        const text = () =>
+          contentRows(viewer)
+            .join("")
+            .replace(/\x1b\[[0-9;]*m/g, "");
+        expect(text()).toContain("…");
+
+        viewer.handleMouse(click(firstTitle));
+
+        expect(text()).not.toContain("…");
+      });
+    });
+
+    it("re-renders when pi's global flag flips, without any event", () => {
+      const flag = { expanded: false };
+      const viewer = open(sessionWith("uniqtool", lines(10)), flag);
+      expect(contentRows(viewer)).toHaveLength(7);
+
+      flag.expanded = true;
+      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", lines(10)));
+
+      flag.expanded = false;
+      expect(contentRows(viewer)).toHaveLength(7);
+    });
+
+    it("the expand key calls the toggle callback and requests a render", () => {
+      const toggleExpanded = vi.fn();
+      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: false }, { toggleExpanded });
+      mockRequestRender.mockClear();
+
+      viewer.handleInput("ctrl+o");
+
+      expect(toggleExpanded).toHaveBeenCalledTimes(1);
+      expect(mockRequestRender).toHaveBeenCalled();
+    });
+
+    it("follows the user's keybinding: matches app.tools.expand and names its key in the hint", () => {
+      const toggleExpanded = vi.fn();
+      const keybindings = {
+        matches: vi.fn((data: string, id: string) => id === "app.tools.expand" && data === "\x0f"),
+        getKeys: vi.fn(() => ["alt+e"]),
+      };
+      const session = sessionWith("uniqtool", lines(10));
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(
+        makeTui(),
+        session,
+        record,
+        bgMarkingTheme,
+        vi.fn(),
+        undefined,
+        keybindings,
+        undefined,
+        {
+          isExpanded: () => false,
+          toggleExpanded,
+        },
+      );
+
+      expect(contentRows(viewer).at(-2)).toContain("(7 more lines, alt+e to expand)");
+      viewer.handleInput("ctrl+o"); // default key, no longer bound
+      expect(toggleExpanded).not.toHaveBeenCalled();
+      viewer.handleInput("\x0f");
+      expect(toggleExpanded).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores the expand key when no toggle is wired", () => {
+      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: false });
+
+      expect(() => viewer.handleInput("ctrl+o")).not.toThrow();
+    });
+  });
+
   describe("caching", () => {
     it("re-renders a cached pending tool call to its settled color when its result arrives", () => {
       const session = makeMockSession([
@@ -925,12 +1441,12 @@ describe("ConversationViewer", () => {
       });
 
       // The cached call line must refresh to the settled background — a frozen
-      // pending color would hide the completion. Result text stays hidden.
+      // pending color would hide the completion; the result line joins the block.
       const settled = viewer.render(80).join("\n");
       expect(settled).not.toContain(BG_ON.toolPendingBg);
-      expect(count(settled, BG_ON.toolSuccessBg)).toBe(3);
+      expect(count(settled, BG_ON.toolSuccessBg)).toBe(4);
       expect(count(settled, "uniqtool")).toBe(1);
-      expect(settled).not.toContain("UNIQRESULT");
+      expect(count(settled, "UNIQRESULT")).toBe(1);
     });
 
     it("scrolls to the true bottom when streaming adds lines (scrollMax not stale)", () => {

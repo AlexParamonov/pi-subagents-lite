@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vite-plus/test";
 import {
   buildStatsParts,
+  formatToolDuration,
   getDisplayName,
   buildMetadataLineParts,
   describeActivity,
@@ -539,5 +540,21 @@ describe("agentColoredText", () => {
   it("returns plain text when agentType is undefined", () => {
     const result = agentColoredText("my-name", undefined);
     expect(result).toBe("my-name");
+  });
+});
+
+describe("formatToolDuration", () => {
+  it("formats like pi's tool rows", () => {
+    expect(formatToolDuration(0)).toBe("0.0s");
+    expect(formatToolDuration(42)).toBe("0.0s");
+    expect(formatToolDuration(4200)).toBe("4.2s");
+    expect(formatToolDuration(59_940)).toBe("59.9s");
+    expect(formatToolDuration(90_000)).toBe("1m 30s");
+    expect(formatToolDuration(3_600_000)).toBe("1h 0m 0s");
+    expect(formatToolDuration(7_384_000)).toBe("2h 3m 4s");
+  });
+
+  it("clamps negative durations to zero", () => {
+    expect(formatToolDuration(-5)).toBe("0.0s");
   });
 });

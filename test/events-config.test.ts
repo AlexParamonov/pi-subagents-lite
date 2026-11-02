@@ -111,7 +111,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   Markdown: class Markdown {},
   Spacer: class Spacer {},
   Text: class Text {},
-  getKeybindings: () => [],
+  getKeybindings: () => ({ matches: () => false }),
   visibleWidth: (text: string) => text.length,
 }));
 
