@@ -21,6 +21,7 @@ import { createNavInputHandler } from "../src/events.js";
 /* ------------------------------------------------------------------ */
 
 const mockMatchesKey = vi.fn<(data: string, keyId: KeyId) => boolean>();
+const mockKeybindingMatches = vi.fn<(data: string, id: string) => boolean>(() => false);
 const mockIsKeyRelease = vi.fn<(data: string) => boolean>(() => false);
 
 vi.mock("@earendil-works/pi-tui", () => ({
@@ -32,7 +33,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
   Markdown: class Markdown {},
   Spacer: class Spacer {},
   Text: class Text {},
-  getKeybindings: () => [],
+  getKeybindings: () => ({ matches: (data: string, id: string) => mockKeybindingMatches(data, id) }),
   visibleWidth: (text: string) => text.length,
 }));
 
@@ -304,10 +305,10 @@ describe("navigation key handler (createNavInputHandler)", () => {
     beforeEach(() => {
       mockWidget.isNavActive.mockReturnValue(false);
       mockWidget.isEditorFocused.mockReturnValue(true);
-      mockMatchesKey.mockImplementation((_data: string, key: KeyId) => key === "ctrl+o");
+      mockKeybindingMatches.mockImplementation((_data: string, id: string) => id === "app.tools.expand");
     });
 
-    it("passes raw input to matchesKey and syncs expanded state", () => {
+    it("resolves the key through pi's keybindings and syncs expanded state", () => {
       vi.mocked(ctx.ui.getToolsExpanded).mockReturnValue(true);
       const handler = createNavInputHandler(ctx);
 
@@ -315,19 +316,23 @@ describe("navigation key handler (createNavInputHandler)", () => {
       handler("\u000f");
       vi.advanceTimersByTime(0);
 
-      expect(mockMatchesKey).toHaveBeenCalledWith("\u000f", "ctrl+o");
+      expect(mockKeybindingMatches).toHaveBeenCalledWith("\u000f", "app.tools.expand");
       expect(mockStore.notifyToolsExpanded).toHaveBeenCalledWith(true);
     });
 
-    it("passes kitty / modifyOtherKeys input format through", () => {
+    it("follows a remapped key: only what pi binds to app.tools.expand syncs", () => {
+      mockKeybindingMatches.mockImplementation(
+        (data: string, id: string) => id === "app.tools.expand" && data === "\x1be",
+      );
       const handler = createNavInputHandler(ctx);
 
-      // CSI u: codepoint 111 ('o') with ctrl modifier (5)
-      handler("\x1b[111;5u");
+      handler("\u000f"); // the default key, no longer bound
       vi.advanceTimersByTime(0);
+      expect(mockStore.notifyToolsExpanded).not.toHaveBeenCalled();
 
-      expect(mockMatchesKey).toHaveBeenCalledWith("\x1b[111;5u", "ctrl+o");
-      expect(mockStore.notifyToolsExpanded).toHaveBeenCalledWith(false);
+      handler("\x1be");
+      vi.advanceTimersByTime(0);
+      expect(mockStore.notifyToolsExpanded).toHaveBeenCalledTimes(1);
     });
 
     it("does not consume ctrl+o input", () => {
@@ -343,16 +348,6 @@ describe("navigation key handler (createNavInputHandler)", () => {
 
       handler("\u000f");
       expect(mockStore.notifyToolsExpanded).not.toHaveBeenCalled();
-    });
-
-    it("real matchesKey recognizes ctrl+o in every supported format", async () => {
-      const { matchesKey: realMatchesKey } =
-        await vi.importActual<typeof import("@earendil-works/pi-tui")>("@earendil-works/pi-tui");
-
-      expect(realMatchesKey("\u000f", "ctrl+o")).toBe(true); // legacy control char
-      expect(realMatchesKey("\x1b[111;5u", "ctrl+o")).toBe(true); // kitty / modifyOtherKeys
-      expect(realMatchesKey("o", "ctrl+o")).toBe(false); // plain key
-      expect(realMatchesKey("\x03", "ctrl+o")).toBe(false); // unrelated ctrl combo
     });
   });
 });

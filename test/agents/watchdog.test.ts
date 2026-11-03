@@ -18,6 +18,22 @@ function makeClock() {
 const alwaysRunning = () => true;
 
 describe("Watchdog", () => {
+  it("reports when an in-flight tool call began, until it ends", () => {
+    const clock = makeClock();
+    const wd = new Watchdog(clock.now);
+    wd.start("a1");
+    clock.advance(1000);
+    wd.recordActivity("a1", { type: "start", toolName: "bash", toolCallId: "c1" });
+
+    clock.advance(5000);
+    expect(wd.toolStartedAt("a1", "c1")).toBe(1000);
+    expect(wd.toolStartedAt("a1", "other")).toBeUndefined();
+    expect(wd.toolStartedAt("unwatched", "c1")).toBeUndefined();
+
+    wd.recordActivity("a1", { type: "end", toolName: "bash", toolCallId: "c1" });
+    expect(wd.toolStartedAt("a1", "c1")).toBeUndefined();
+  });
+
   it("records no decision when both checks are disabled (0)", () => {
     const clock = makeClock();
     const wd = new Watchdog(clock.now);

@@ -27,6 +27,7 @@ import {
 import type { AgentRecord } from "../../types.ts";
 import { SHORT_ID_LENGTH } from "../../types.ts";
 import { ConversationViewer } from "../conversation-viewer.ts";
+import { toolExpansionControls } from "../tool-display.ts";
 import { getDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
 import { getManager, getStore } from "../../shell.ts";
@@ -52,6 +53,10 @@ async function showConversationViewer(ctx: ExtensionCommandContext, record: Agen
         () => manager?.abort(record.id, "user"),
         kb,
         (msg: string) => manager?.steer(record.id, msg),
+        {
+          getToolStartedAt: (toolCallId: string) => manager?.getToolStartedAt(record.id, toolCallId),
+          ...toolExpansionControls(ctx),
+        },
       );
       viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
       return viewer;

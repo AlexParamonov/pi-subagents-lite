@@ -58,6 +58,11 @@ export class Watchdog {
     }
   }
 
+  /** When an in-flight tool call began, or undefined if the agent or call is not being watched. */
+  toolStartedAt(agentId: string, toolCallId: string): number | undefined {
+    return this.agents.get(agentId)?.toolCalls.get(toolCallId)?.startedAt;
+  }
+
   /** Reset the idle clock on streamed response text. */
   recordText(agentId: string): void {
     this.touch(agentId);

@@ -120,6 +120,22 @@ export function formatMs(ms: number): string {
   return parts.join(" ");
 }
 
+/**
+ * Format a tool call duration like pi's tool rows: "4.2s" below a minute, then "1m 30s" and "2h 3m 4s".
+ * Sub-second precision matters here (a bash call usually takes under a second), unlike {@link formatMs}.
+ */
+export function formatToolDuration(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainder}s`;
+
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ${remainder}s`;
+}
+
 /** Visibility flags for stats parts. All default to true. */
 export interface StatsVisibility {
   showTools?: boolean;
