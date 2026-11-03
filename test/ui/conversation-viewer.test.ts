@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import type { MarkdownTheme, TUI } from "@earendil-works/pi-tui";
+import type { MarkdownTheme, TUI, TuiMouseEvent } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
 import { asAgentSession } from "../pi-boundaries.js";
@@ -524,6 +524,84 @@ describe("ConversationViewer", () => {
       const text = viewer.render(80).join("\n");
       expect(text).not.toContain("Enter send · Esc cancel");
       expect(text).not.toContain("✎ steer");
+    });
+  });
+
+  describe("mouse wheel", () => {
+    const manyLines = Array.from({ length: 30 }, (_, i) => `line${i}`).join("\n");
+
+    function wheel(wheelDelta: number | undefined, type: TuiMouseEvent["type"] = "wheel"): TuiMouseEvent {
+      return {
+        type,
+        button: "none",
+        x: 5,
+        y: 5,
+        screenX: 10,
+        screenY: 10,
+        width: 80,
+        height: 24,
+        shift: false,
+        alt: false,
+        ctrl: false,
+        ...(wheelDelta === undefined ? {} : { wheelDelta }),
+      };
+    }
+
+    function setup() {
+      const session = makeMockSession([{ role: "user", content: manyLines }]);
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+      viewer.render(80); // parked at the bottom by autoScroll
+      return viewer;
+    }
+
+    it("scrolls up and down by the wheel delta and reports the event handled", () => {
+      const viewer = setup();
+
+      expect(viewer.handleMouse(wheel(-3))).toEqual({ handled: true });
+      expect(contentRows(viewer)[0]).toBe("line8"); // bottom window starts at line11
+
+      expect(viewer.handleMouse(wheel(2))).toEqual({ handled: true });
+      expect(contentRows(viewer)[0]).toBe("line10");
+    });
+
+    it("clamps at the top and the bottom", () => {
+      const viewer = setup();
+
+      viewer.handleMouse(wheel(-100));
+      expect(contentRows(viewer)[0]).toBe("line0");
+
+      viewer.handleMouse(wheel(100));
+      const visible = contentRows(viewer);
+      expect(visible[0]).toBe("line11");
+      expect(visible[visible.length - 1]).toBe("line29");
+    });
+
+    it("leaves auto-scroll when scrolled up and re-engages at the bottom", () => {
+      const viewer = setup();
+
+      viewer.handleMouse(wheel(-5));
+      viewer.handleMouse(wheel(5));
+      // Back at the bottom: new content follows again, so the window stays pinned.
+      expect(contentRows(viewer)[0]).toBe("line11");
+      viewer.handleMouse(wheel(-1));
+      expect(contentRows(viewer)[0]).toBe("line10");
+    });
+
+    it("ignores other mouse events and zero deltas so pi keeps its default handling", () => {
+      const viewer = setup();
+
+      expect(viewer.handleMouse(wheel(undefined, "click"))).toBeUndefined();
+      expect(viewer.handleMouse(wheel(3, "drag"))).toBeUndefined();
+      expect(viewer.handleMouse(wheel(0))).toBeUndefined();
+      expect(contentRows(viewer)[0]).toBe("line11");
+    });
+
+    it("ignores the wheel after close", () => {
+      const viewer = setup();
+      viewer.handleInput("q");
+
+      expect(viewer.handleMouse(wheel(-3))).toBeUndefined();
     });
   });
 

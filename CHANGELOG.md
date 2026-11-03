@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mouse-wheel scrolling over the conversation viewer scrolls the viewer instead of the chat behind it (pi fullscreen mode).
 - Parent-directed subagent messages render with a `Message from …` heading, model, thinking and runtime statistics, the saved task description, and a Markdown body. Saved agent types remain identifiable if a custom definition is later removed.
 - Child-only `MessageAgent` tool descriptions explain parent routing, actionable-update guidance, and automatic final-response delivery. This guidance is present only when the tool is active and does not mutate the system prompt per run.
 - Child extension setup now carries the parent capability across Pi's fresh module loads when a child uses a different cwd; children still receive only the communication tools allowed by their extension and tool settings.
