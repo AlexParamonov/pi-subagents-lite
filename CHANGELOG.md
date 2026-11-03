@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-11-03
+
 ### Added
 
 - Subagents can use `MessageAgent` and `AgentStatus` when the extension and tool settings permit. Omitting `agent_id` (or passing `null`) submits a parent message; explicit IDs still address managed subagents. Children with active `MessageAgent` tools are automatically backgrounded, even when foreground was requested.
