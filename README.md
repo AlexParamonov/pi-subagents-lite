@@ -5,7 +5,7 @@
 
 Sub-agents for [pi](https://pi.dev). Schema-first, minimal token overhead.
 
-Spawn custom agents in isolated sessions with their own tools, extensions, and model. Most tool descriptions stay minimal; the child-only `MessageAgent` description carries routing guidance when the tool is active. The tool names and parameter names, such as `run_in_background` and `worktree_path`, are part of the schema.
+Spawn custom agents in isolated sessions with their own tools, extensions, and model. Four tools (`Agent`, `StopAgent`, `MessageAgent`, and `AgentStatus`) use no description to minimize schema overhead. The tool names and parameter names, such as `run_in_background` and `worktree_path`, are part of the schema.
 
 Foreground and background agents with detailed model configuration, concurrency, custom agent types, steering and continuation, cross-repo worktree support, configurable system prompt modes, a live widget and conversation viewer with cost tracking, and a watchdog for stuck agents.
 
@@ -39,14 +39,14 @@ The `/agents` menu covers active and settled agents (view, steer or continue, st
 
 ### Agent tools
 
-- `Agent` spawns a sub-agent (see [Agent options](#agent-options) for parameters). If the child's active tools include `MessageAgent`, it is automatically backgrounded, even when `run_in_background` is explicitly `false`.
+- `Agent` spawns a sub-agent (see [Agent options](#agent-options) for parameters).
 - `StopAgent` stops a running or queued agent by ID. IDs come from the spawn result, the stop error, or `/agents`.
-- `MessageAgent` gives an existing agent more input by ID: a running one picks it up at its next turn boundary; a settled one continues with its own context if its session is live and a model concurrency slot is available. Subagents can also use it; omitting `agent_id` (or setting it to `null`) submits a message to their parent instead. The child receives an acknowledgement of submission, not confirmation of delivery.
+- `MessageAgent` gives an existing agent more input by ID: a running one picks it up at its next turn boundary; a settled one continues with its own context if its session is live and a model concurrency slot is available. Subagents can also use it; omitting `agent_id` (or setting it to `null`) sends the message to their parent instead.
 - `AgentStatus` lists every running and queued agent, plus a configurable number of recently settled agents (default: twice the default concurrency). It tells the LLM not to poll for updates.
 
 Subagents receive `MessageAgent` and `AgentStatus` when this extension is loaded in their sessions, subject to their tool settings. Their active `MessageAgent` tool description explains parent routing and message discipline. They can list and message other managed subagents, but cannot spawn or stop agents. Parent-directed messages are submitted as steering input to a busy parent or as a follow-up for an idle parent; the child acknowledgement does not guarantee delivery. In the UI, messages show a `Message from …` heading with the model, thinking level, runtime statistics, and saved task description. Completion notifications still go only to the parent. If `MessageAgent` is active, the child is automatically backgrounded so the parent can handle its messages while it works; this overrides `run_in_background: false`.
 
-Other foreground agents keep the `Agent` tool call open until they finish and are stopped by the parent's interrupt. Background agents return without waiting for completion and do not inherit that interrupt, but can still be steered or stopped through the UI or tools.
+Foreground agents keep the `Agent` tool call open until they finish and are stopped by the parent's interrupt. Background agents return immediately and do not inherit that interrupt, but can still be steered or stopped through the UI or tools.
 
 ### Steering and continuation
 
