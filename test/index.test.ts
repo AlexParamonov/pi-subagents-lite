@@ -4,11 +4,12 @@
  * Full integration testing is manual via pi TUI.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vite-plus/test";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, type Mock } from "vite-plus/test";
 import { createMockExtensionAPI, fakeCtx, loadExtension, shellMock, type MockExtensionAPI } from "./fixtures";
 import type { CustomToolCallEvent } from "@earendil-works/pi-coding-agent";
 import type { ResolveModelOptions } from "../src/models/model-precedence.js";
 import { registerAgentTool } from "../src/registration.js";
+import { getManager } from "../src/shell.js";
 import { withSubagentParent } from "../src/agents/subagent-context.js";
 import { asExtensionAPI } from "./pi-boundaries.js";
 
@@ -375,6 +376,43 @@ describe("event listener registration", () => {
 
   it("registers session_shutdown listener", () => {
     expect(api.listeners.some((l) => l.event === "session_shutdown")).toBe(true);
+  });
+
+  it("registers session_compact listener", () => {
+    expect(api.listeners.some((l) => l.event === "session_compact")).toBe(true);
+  });
+});
+
+describe("session_compact clears completed agents", () => {
+  const record = (id: string, status: string) => ({ id, lifecycle: { status } });
+  const compact = async () =>
+    api.listeners.find((l) => l.event === "session_compact")!.handler({ type: "session_compact" }, fakeCtx());
+
+  it("clears completed records only, like /agents → Clear done", async () => {
+    const manager = getManager() as unknown as { listAgents: Mock; clear: Mock };
+    manager.clear = vi.fn();
+    manager.listAgents.mockReturnValue(
+      ["completed", "running", "queued", "stopped", "error", "aborted", "turn_limited"].map((s, i) =>
+        record(`a${i}`, s),
+      ),
+    );
+    await compact();
+    expect(manager.clear.mock.calls).toEqual([["a0"]]);
+    manager.listAgents.mockReturnValue([]);
+  });
+
+  it("does nothing without a manager", async () => {
+    const shell = await import("../src/shell.js");
+    const spy = vi.spyOn(shell, "getManager").mockReturnValue(null as never);
+    await expect(compact()).resolves.toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it("is not registered in a child session's extension load", async () => {
+    const childApi = createMockExtensionAPI();
+    const parent = { pi: asExtensionAPI(childApi.api), ctx: fakeCtx() };
+    await withSubagentParent(parent, () => loadExtension(childApi.api));
+    expect(childApi.listeners.map((l) => l.event)).not.toContain("session_compact");
   });
 });
 
