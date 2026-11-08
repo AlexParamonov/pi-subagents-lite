@@ -16,7 +16,14 @@ import { defaultTheme } from "../mock-utils.js";
 const mockSubscribe = vi.fn<(listener: (event?: unknown) => void) => () => void>(() => () => {});
 const mockRequestRender = vi.fn();
 
-vi.mock("@earendil-works/pi-tui", () => ({
+function pickImageApi(actual: typeof import("@earendil-works/pi-tui")) {
+  const { Image, getCapabilities, getImageDimensions, imageFallback, setCapabilities } = actual;
+  return { Image, getCapabilities, getImageDimensions, imageFallback, setCapabilities };
+}
+
+vi.mock("@earendil-works/pi-tui", async (importActual) => ({
+  // Image rendering is pi-tui's own and pure; only text layout and input are faked.
+  ...pickImageApi(await importActual<typeof import("@earendil-works/pi-tui")>()),
   matchesKey: vi.fn((data: string, key: string) => {
     const map: Record<string, string[]> = {
       up: ["\x1b[A", "k"],

@@ -22,7 +22,9 @@ import { defaultTheme } from "../mock-utils.js";
 const mockSubscribe = vi.fn<(listener: (event?: unknown) => void) => () => void>(() => () => {});
 const mockRequestRender = vi.fn();
 
-vi.mock("@earendil-works/pi-tui", () => {
+vi.mock("@earendil-works/pi-tui", async (importActual) => {
+  // Image support is pi-tui's own and pure; only text layout and input are faked.
+  const { getCapabilities } = await importActual<typeof import("@earendil-works/pi-tui")>();
   // Width is screen width: real ANSI and the marking theme's \u0001<bg>\u0001 and
   // \u0002<fg>\u0002 row markers cost nothing, so every rule below segments a row the
   // same way - including the wrap, which must never cut through a marker.
@@ -32,6 +34,7 @@ vi.mock("@earendil-works/pi-tui", () => {
   const cell = (seg: string) => seg.length === 1;
   const visible = (s: string) => segmentsOf(s).filter(cell).join("");
   return {
+    getCapabilities,
     matchesKey: vi.fn((data: string, key: string) => {
       const map: Record<string, string[]> = {
         up: ["\x1b[A", "k"],

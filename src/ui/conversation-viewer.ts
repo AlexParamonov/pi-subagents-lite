@@ -39,6 +39,14 @@ import { plainText } from "./sanitize.ts";
 import { formatCallLine, nestedCallLine } from "./pi-call-line.ts";
 import { overlayViewportRows } from "./overlay.ts";
 import { createViewerKeys, keyLabel, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
+import {
+  cropKittyImageLine,
+  imageBlocksOf,
+  isKittyImageLine,
+  ToolImages,
+  type ImageSpan,
+  type ToolImageOptions,
+} from "./viewer-images.ts";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;
@@ -81,7 +89,7 @@ function userText(msg: any): string {
 }
 
 /** Optional wiring for tool-call display: timing seeds and the global collapsed/expanded flag. */
-export interface ToolDisplayOptions {
+export interface ToolDisplayOptions extends ToolImageOptions {
   /**
    * Start time of an executing tool call, for calls already running when the
    * viewer opened (their `tool_execution_start` was never seen). Omitted -> no timing for those.
@@ -203,6 +211,8 @@ interface CachedMessage {
   rows: string[];
   blocks: ToolBlock[];
   calls: (string[] | undefined)[];
+  /** Drawn images, relative to the first row of `rows`. */
+  images: ImageSpan[];
 }
 
 /** The message's tool calls, in the order the viewer paints them. */
@@ -230,9 +240,10 @@ export class ConversationViewer implements Component {
   /** Cached paint per message index - avoids re-rendering unchanged messages and their call blocks. */
   private messageCache = new Map<number, CachedMessage>();
   /** Message count and width of the last cache population. Mismatch → stale. */
-  private cacheMeta: { count: number; width: number; messagesRef: any[] | undefined } = {
+  private cacheMeta: { count: number; width: number; termRows: number; messagesRef: any[] | undefined } = {
     count: 0,
     width: 0,
+    termRows: 0,
     messagesRef: undefined,
   };
   /** Full content lines from the last build — avoids re-iterating cached messages. */
@@ -277,6 +288,9 @@ export class ConversationViewer implements Component {
    * line. Undefined until something has been rendered.
    */
   private clickOrigin: { topRow: number; firstLine: number; rows: number } | undefined;
+  /** Drawn images in `cachedContentLines` coordinates. */
+  private imageSpans: ImageSpan[] = [];
+  private toolImages: ToolImages;
   /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
   private thinkingVisible: boolean;
   /** Compact presentation, fixed at open: summarized call runs, no result bodies and no hidden thinking. */
@@ -301,6 +315,7 @@ export class ConversationViewer implements Component {
     this.thinkingVisible = !getHideThinkingBlock();
     this.compactToolCalls = options.compactToolCalls !== false;
     this.ungroupedTools = new Set(options.ungroupedTools ?? []);
+    this.toolImages = new ToolImages(this.toolDisplay, (text) => this.theme.fg("toolOutput", text));
     this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
     this.seedRunningToolCalls();
@@ -538,13 +553,14 @@ export class ConversationViewer implements Component {
     toolResults: Map<string, ToolResultStatus>,
   ): CachedMessage {
     const blocks: ToolBlock[] = [];
-    const rows = this.renderMessage(msg, width, toolResults, blocks);
+    const images: ImageSpan[] = [];
+    const rows = this.renderMessage(msg, width, toolResults, blocks, images);
     const calls = this.compactToolCalls
       ? callsOfMessage(msg).map((call) =>
           this.ungroupedTools.has(call.name) ? this.renderToolCall(call, width, toolResults) : undefined,
         )
       : [];
-    const cached: CachedMessage = { rows, blocks, calls };
+    const cached: CachedMessage = { rows, blocks, calls, images };
     this.messageCache.set(index, cached);
     return cached;
   }
@@ -555,12 +571,13 @@ export class ConversationViewer implements Component {
     width: number,
     toolResults: Map<string, ToolResultStatus>,
     blocks: ToolBlock[],
+    images: ImageSpan[],
   ): string[] {
     switch (msg.role) {
       case "user":
         return this.renderUserMessage(msg, width);
       case "assistant":
-        return this.renderAssistantMessage(msg, width, toolResults, blocks);
+        return this.renderAssistantMessage(msg, width, toolResults, blocks, images);
       case "toolResult":
         // A standalone result message paints nothing: its text reaches the frame inside its call's
         // block, and compact mode paints no such block content at all.
@@ -763,6 +780,7 @@ export class ConversationViewer implements Component {
 
     const visibleStart = Math.min(this.scrollOffset, maxScroll);
     const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
+    this.cropClippedImages(visible, visibleStart);
     // Recorded from what is actually painted, so a click maps to the row under
     // the pointer even when auto-scroll or streaming moved the window.
     this.clickOrigin = { topRow: lines.length, firstLine: visibleStart, rows: viewportHeight };
@@ -813,6 +831,26 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
+  /**
+   * Re-place images that are only partly in the window: drawn whole from their
+   * anchor row they would spill over the header, footer or border, and with the
+   * anchor row scrolled off they would vanish. The visible rows are cropped
+   * (see `cropKittyImageLine`), anchored at the window's first row of the image.
+   */
+  private cropClippedImages(visible: string[], offset: number): void {
+    const end = offset + visible.length;
+    for (const span of this.imageSpans) {
+      const spanEnd = span.start + span.rows;
+      if (spanEnd <= offset || span.start >= end) continue;
+      if (span.start >= offset && spanEnd <= end) continue;
+      const first = Math.max(span.start, offset);
+      const last = Math.min(spanEnd, end);
+      const cropped = cropKittyImageLine(span.line, span.rows, first - span.start, last - first);
+      for (let i = first; i < last; i++) visible[i - offset] = span.blank;
+      visible[first - offset] = cropped ? span.makeRow(cropped) : span.placeholder;
+    }
+  }
+
   private isActive(): boolean {
     return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
   }
@@ -850,8 +888,9 @@ export class ConversationViewer implements Component {
     this.messageCache.clear();
     this.cachedContentLines = undefined;
     this.clickOrigin = undefined; // no frame on screen, so the rows its blocks were mapped to are gone
-    this.cacheMeta = { count: 0, width: 0, messagesRef: undefined };
+    this.cacheMeta = { count: 0, width: 0, termRows: 0, messagesRef: undefined };
     this.cachedNonStreamingCount = 0;
+    this.toolImages.invalidate();
   }
 
   dispose(): void {
@@ -921,7 +960,7 @@ export class ConversationViewer implements Component {
 
   /** Record the messages array reference so array replacement (e.g. compaction) is detected. */
   private updateCacheMeta(messages: any[], width: number): void {
-    this.cacheMeta = { count: messages.length, width, messagesRef: messages };
+    this.cacheMeta = { count: messages.length, width, termRows: this.tui.terminal.rows, messagesRef: messages };
     this.cachedContentLines = undefined;
   }
 
@@ -948,6 +987,7 @@ export class ConversationViewer implements Component {
     width: number,
     toolResults: Map<string, ToolResultStatus>,
     blocks: ToolBlock[],
+    images: ImageSpan[],
   ): string[] {
     const th = this.theme;
     const lines: string[] = [];
@@ -983,7 +1023,7 @@ export class ConversationViewer implements Component {
     // blocks of the calls that layout keeps whole beside these rows rather than inside them.
     if (this.compactToolCalls) return lines;
     for (const tc of callsOfMessage(msg)) {
-      this.appendCallBlock(tc, width, toolResults, lines, blocks);
+      this.appendCallBlock(tc, width, toolResults, lines, blocks, undefined, images);
     }
     return lines;
   }
@@ -1000,9 +1040,11 @@ export class ConversationViewer implements Component {
     lines: string[],
     blocks: ToolBlock[],
     cached?: string[],
+    images?: ImageSpan[],
   ): void {
     const start = lines.length;
     lines.push(...(cached ?? this.renderToolCall(tc, width, toolResults)));
+    lines.push(...this.imageRows(tc.id, tc.id ? toolResults.get(tc.id) : undefined, width, lines.length, images));
     // Like pi, only a call with a result can be toggled by clicking it.
     if (tc.id && toolResults.has(tc.id)) blocks.push({ id: tc.id, start, end: lines.length });
     lines.push("");
@@ -1033,6 +1075,54 @@ export class ConversationViewer implements Component {
       }
     }
     return this.wrapInBg(bg, inner, width);
+  }
+
+  /**
+   * Rows for the result's images, drawn in place (Kitty) below the call's
+   * block, outside its background and after a blank row, as pi does. Images
+   * that are not drawn are listed by `resultLines` instead (not in compact
+   * mode, which shows no result text). `base` is the index in the output where
+   * these rows will be appended, so `images` gets each drawn image's rows in
+   * that output's coordinates.
+   */
+  private imageRows(
+    id: string | undefined,
+    result: ToolResultStatus | undefined,
+    width: number,
+    base: number,
+    images: ImageSpan[] = [],
+  ): string[] {
+    if (!this.toolImages.inline()) return [];
+    const th = this.theme;
+    const row = (text: string) => ` ${text}`;
+    const rows: string[] = [];
+    imageBlocksOf(result?.content).forEach((block, n) => {
+      if (!block.data || !block.mimeType) return;
+      const lines = this.toolImages.render(
+        `${id ?? "call"}:${n}`,
+        { data: block.data, mimeType: block.mimeType },
+        width - 2,
+        this.imageMaxRows(),
+      );
+      rows.push("");
+      if (lines.some(isKittyImageLine)) {
+        images.push({
+          start: base + rows.length,
+          rows: lines.length,
+          line: lines[0],
+          makeRow: row,
+          blank: "",
+          placeholder: row(th.fg("toolOutput", this.toolImages.indicator(block))),
+        });
+      }
+      for (const line of lines) rows.push(row(line));
+    });
+    return rows;
+  }
+
+  /** Tallest image that can ever be fully on screen (a clipped image is not drawn), with a little slack to scroll. */
+  private imageMaxRows(): number {
+    return Math.max(1, overlayViewportRows(this.tui.terminal.rows, CHROME_LINES_BASE) - 2);
   }
 
   private appendCodemodeCalls(
@@ -1120,7 +1210,8 @@ export class ConversationViewer implements Component {
       if (cached.rows.length > 0) openRun = undefined;
       for (const [position, call] of callsOfMessage(msg).entries()) {
         const keepWhole = call.name === "codemode" || this.ungroupedTools.has(call.name);
-        if (this.toolsExpanded || keepWhole) {
+        // A call whose image is drawn stands alone, so the image follows that call, as in pi.
+        if (this.toolsExpanded || keepWhole || this.drawsImage(call, toolResults)) {
           entries.push({
             kind: keepWhole ? "normal-call" : "compact-call",
             call,
@@ -1141,6 +1232,12 @@ export class ConversationViewer implements Component {
     );
   }
 
+  /** Whether the call's result has an image that `imageRows` draws in place. */
+  private drawsImage(call: ToolCall, toolResults: Map<string, ToolResultStatus>): boolean {
+    if (!call.id || !this.toolImages.inline()) return false;
+    return imageBlocksOf(toolResults.get(call.id)?.content).some((block) => block.data && block.mimeType);
+  }
+
   /**
    * Compact content rows and their click targets. Grouping comes straight from the transcript, never
    * from cached rows; a call the layout keeps whole paints the block cached with its own message.
@@ -1155,6 +1252,7 @@ export class ConversationViewer implements Component {
     toolResults: Map<string, ToolResultStatus>,
     lines: string[],
     toolBlocks: ToolBlock[],
+    images: ImageSpan[],
   ): void {
     for (const entry of this.compactEntries(messages, width, toolResults)) {
       if (entry.kind === "rows") {
@@ -1163,12 +1261,12 @@ export class ConversationViewer implements Component {
       }
       if (entry.kind === "normal-call") {
         // A missing block means the message grew in place since it was cached, so render this one.
-        this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks, entry.cachedBlock);
+        this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks, entry.cachedBlock, images);
         continue;
       }
       if (entry.kind === "run") {
         lines.push(...this.callRows(this.runSummaryText(entry.calls), "toolPendingBg", width));
-      } else this.appendCompactCall(entry.call, width, toolResults, lines, toolBlocks);
+      } else this.appendCompactCall(entry.call, width, toolResults, lines, toolBlocks, images);
       lines.push("");
     }
   }
@@ -1183,18 +1281,20 @@ export class ConversationViewer implements Component {
     return this.theme.bold(` ${calls.length} tools (${names})${state ? ` · ${state}` : ""} `);
   }
 
-  /** One eligible call as one status-colored row: no fill bars, no result, no padding of its own. */
+  /** One eligible call as one status-colored row, then its drawn images: no fill bars, no result text, no padding of its own. */
   private appendCompactCall(
     call: ToolCall,
     width: number,
     toolResults: Map<string, ToolResultStatus>,
     lines: string[],
     toolBlocks: ToolBlock[],
+    images: ImageSpan[],
   ): void {
     const start = lines.length;
     const result = call.id ? toolResults.get(call.id) : undefined;
     const timing = this.toolTimingText(call.id, result);
     lines.push(...this.callRows(this.callTitleText(call, timing), callBg(result), width));
+    lines.push(...this.imageRows(call.id, result, width, lines.length, images));
     // Like pi, only a call with a result can be toggled by clicking it.
     if (call.id && toolResults.has(call.id)) toolBlocks.push({ id: call.id, start, end: lines.length });
   }
@@ -1211,7 +1311,7 @@ export class ConversationViewer implements Component {
     width: number,
     expanded: boolean,
   ): string[] {
-    const text = resultText(result?.content);
+    const text = [resultText(result?.content), ...this.imageIndicators(result?.content)].filter(Boolean).join("\n");
     if (!text) return [];
     const all = wrapTextWithAnsi(text, width);
     while (all.length > 0 && all[all.length - 1].trim() === "") all.pop();
@@ -1222,6 +1322,14 @@ export class ConversationViewer implements Component {
       return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
     }
     return [...all.slice(0, COLLAPSED_RESULT_LINES), this.expandHintLine(`${hidden} more lines`)];
+  }
+
+  /** Text indicators for images not drawn inline: all of them, or only the ones without data. */
+  private imageIndicators(content: unknown): string[] {
+    const inline = this.toolImages.inline();
+    return imageBlocksOf(content)
+      .filter((block) => !inline || !block.data || !block.mimeType)
+      .map((block) => this.toolImages.indicator(block));
   }
 
   /** "... (N more lines, ctrl+o to expand)" colored like pi's keyHint. */
@@ -1249,6 +1357,7 @@ export class ConversationViewer implements Component {
     if (messages.length === 0) {
       this.cachedContentLines = undefined;
       this.toolBlocks = []; // no calls on screen, so nothing to hit
+      this.imageSpans = [];
       const lines = [th.fg("dim", "(waiting for first message...)")];
       const streamingLines = this.buildStreamingLines(width);
       this.cachedNonStreamingCount = lines.length;
@@ -1258,7 +1367,12 @@ export class ConversationViewer implements Component {
     }
 
     // Invalidate cache on array replacement or width change (both require full rebuild)
-    if (messages !== this.cacheMeta.messagesRef || width !== this.cacheMeta.width) {
+    // Terminal height matters too: it caps how tall an image may be drawn.
+    if (
+      messages !== this.cacheMeta.messagesRef ||
+      width !== this.cacheMeta.width ||
+      this.tui.terminal.rows !== this.cacheMeta.termRows
+    ) {
       this.messageCache.clear();
       this.updateCacheMeta(messages, width);
     } else if (messages.length !== this.cacheMeta.count) {
@@ -1289,9 +1403,10 @@ export class ConversationViewer implements Component {
 
     const lines: string[] = [];
     const toolBlocks: ToolBlock[] = [];
+    const imageSpans: ImageSpan[] = [];
 
     if (this.compactToolCalls) {
-      this.appendCompactRows(messages, width, toolResults, lines, toolBlocks);
+      this.appendCompactRows(messages, width, toolResults, lines, toolBlocks, imageSpans);
     } else {
       for (let i = 0; i < messages.length; i++) {
         const base = lines.length;
@@ -1300,9 +1415,11 @@ export class ConversationViewer implements Component {
         for (const b of cached.blocks) {
           toolBlocks.push({ id: b.id, start: base + b.start, end: base + b.end });
         }
+        for (const span of cached.images) imageSpans.push({ ...span, start: base + span.start });
       }
     }
     this.toolBlocks = toolBlocks;
+    this.imageSpans = imageSpans;
 
     const streamingLines = this.buildStreamingLines(width);
     this.cachedNonStreamingCount = lines.length;

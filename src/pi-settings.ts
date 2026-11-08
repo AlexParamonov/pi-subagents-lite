@@ -81,3 +81,12 @@ export function getPiModelThinkingLevel(
 export function getPiModelThinkingLevels(cwd: string, scope?: PiSettingsScope): Record<string, ThinkingLevel> {
   return settingsFor(cwd, scope ?? {}).getAllModelThinkingLevels();
 }
+
+/** pi's `terminal.showImages` and `terminal.imageWidthCells` for `cwd` (project over global). */
+export function getPiImageSettings(
+  cwd: string,
+  scope?: PiSettingsScope,
+): { showImages: boolean; imageWidthCells: number } {
+  const settings = settingsFor(cwd, scope ?? {});
+  return { showImages: settings.getShowImages(), imageWidthCells: settings.getImageWidthCells() };
+}

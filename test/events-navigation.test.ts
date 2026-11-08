@@ -91,6 +91,10 @@ vi.mock("../src/ui/agent-widget.js", () => ({
  * pinned in the viewer's own suite; here only what the composition root passes matters. */
 type ViewerArgs = ConstructorParameters<typeof import("../src/ui/conversation-viewer.js").ConversationViewer>;
 const viewerOptions: ViewerArgs[5][] = [];
+vi.mock("../src/pi-settings.js", () => ({
+  getPiImageSettings: () => ({ showImages: true, imageWidthCells: 60 }),
+}));
+
 vi.mock("../src/ui/conversation-viewer.js", () => ({
   ConversationViewer: class MockConversationViewer {
     constructor(...args: ViewerArgs) {
@@ -323,7 +327,11 @@ describe("navigation key handler (createNavInputHandler)", () => {
           factory({ terminal: { rows: 40, cols: 120 }, requestRender: vi.fn() }, {}, undefined, () => {});
         },
       );
-      const viewerCtx = asExtensionContext({ ui: { ...ctx.ui, custom, notify: vi.fn() } });
+      const viewerCtx = asExtensionContext({
+        cwd: "/project",
+        isProjectTrusted: () => false,
+        ui: { ...ctx.ui, custom, notify: vi.fn() },
+      });
 
       createNavInputHandler(viewerCtx)("some_data");
       await vi.runAllTimersAsync(); // openViewer awaits ctx.ui.custom

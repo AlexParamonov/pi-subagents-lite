@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getPiImageSettings } from "../pi-settings.ts";
 import { getStore } from "../shell.ts";
 import type { ConfigStore } from "../config/config-store.ts";
 import type { AgentManager } from "../agents/agent-manager.ts";
@@ -36,4 +37,11 @@ export function viewerToolDisplay(
       getStore().notifyToolsExpanded(expanded);
     },
   };
+}
+
+/** pi's image settings for the viewer, read when it opens (the same scope pi reads them with). */
+export function toolImageSettings(
+  ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">,
+): Pick<ToolDisplayOptions, "showImages" | "imageWidthCells"> {
+  return getPiImageSettings(ctx.cwd, { projectTrusted: ctx.isProjectTrusted() });
 }
