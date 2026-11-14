@@ -367,7 +367,7 @@ describe("ConversationViewer compact tool calls", () => {
 
     // Shown one by one, the same calls carry their own status colors.
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
-      { bg: "toolErrorBg", text: 'read("/a.md")  Took 1.0s' },
+      { bg: "toolErrorBg", text: 'read path="/a.md"  Took 1.0s' },
       { bg: "", text: "" },
       { bg: "toolSuccessBg", text: "grep  Took 0.2s" },
     ]);
@@ -376,7 +376,7 @@ describe("ConversationViewer compact tool calls", () => {
   it("shows a lone eligible call as its own call row", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "read", args: { path: "/notes.md" } })]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: 'read("/notes.md")' }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: 'read path="/notes.md"' }]);
   });
 
   it("keeps an excluded call whole between a summarized run and a compact call", () => {
@@ -394,7 +394,7 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "toolPendingBg", text: "3 tools (read, grep)" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "" },
-      { bg: "toolPendingBg", text: 'bash("ls -la")' },
+      { bg: "toolPendingBg", text: "$ ls -la" },
       { bg: "toolPendingBg", text: "" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "read" },
@@ -417,7 +417,7 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "toolPendingBg", text: "2 tools (read, grep)" },
       { bg: "", text: "" },
       { bg: "toolSuccessBg", text: "" },
-      { bg: "toolSuccessBg", text: 'write("/notes.md", 5 chars)  Took 1.2s' },
+      { bg: "toolSuccessBg", text: 'write path="/notes.md" content="hello"  Took 1.2s' },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "2 tools (read, grep)" },
@@ -452,7 +452,7 @@ describe("ConversationViewer compact tool calls", () => {
     const viewer = openCompactView(messages);
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "" },
-      { bg: "toolPendingBg", text: 'write("/a.md", 2 chars)' },
+      { bg: "toolPendingBg", text: 'write path="/a.md" content="hi"' },
       { bg: "toolPendingBg", text: "" },
       { bg: "", text: "" },
       { bg: "", text: "end" },
@@ -461,7 +461,7 @@ describe("ConversationViewer compact tool calls", () => {
     messages.push(resultOf("t1", { name: "write", durationMs: 500, text: "fixture-write-result" }));
     expect(contentRows(viewer)).toEqual([
       { bg: "toolSuccessBg", text: "" },
-      { bg: "toolSuccessBg", text: 'write("/a.md", 2 chars)  Took 0.5s' },
+      { bg: "toolSuccessBg", text: 'write path="/a.md" content="hi"  Took 0.5s' },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
       { bg: "", text: "end" },
@@ -633,15 +633,37 @@ describe("ConversationViewer compact tool calls", () => {
     );
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolSuccessBg", text: 'write("/a.md", 5 chars)  Took 4.2s' },
+      { bg: "toolSuccessBg", text: 'write path="/a.md" content="hello"  Took 4.2s' },
       { bg: "", text: "" },
-      { bg: "toolErrorBg", text: 'write("/b.md", 5 chars)  Took 0.1s' },
+      { bg: "toolErrorBg", text: 'write path="/b.md" content="hello"  Took 0.1s' },
+    ]);
+  });
+
+  it("shows each displayed call in pi's call-row form, whether collapsed or expanded", () => {
+    const transcript = [
+      callsOf(
+        { id: "t1", name: "bash", args: { command: "ls -la", timeout: 30 } },
+        { id: "t2", name: "read", args: { path: "/notes.md" } },
+      ),
+      resultOf("t1", { name: "bash", durationMs: 500 }),
+    ];
+
+    expect(contentRows(openCompactView(transcript, { ungrouped: [], flag: { expanded: true } }))).toEqual([
+      { bg: "toolSuccessBg", text: "$ ls -la (timeout 30s) Took 0.5s" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: 'read path="/notes.md"' },
+    ]);
+
+    // Collapsed the same two calls are one run, and a summary names the tools instead of their rows.
+    expect(contentRows(openCompactView(transcript, { ungrouped: [] }))).toEqual([
+      { bg: "toolPendingBg", text: "2 tools (bash, read)" },
     ]);
   });
 
   it("wraps a long call over several rows of its own color without passing the frame width", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "bash", args: { command: "x".repeat(120) } })], {
       ungrouped: [],
+      flag: { expanded: true },
     });
 
     const rows = contentRows(viewer, 40);

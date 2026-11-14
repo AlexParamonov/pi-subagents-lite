@@ -10,11 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Compact conversation viewer (`/agents` > Settings > Agent behavior): **Compact tool calls** (on by default; switch it off for the ordinary viewer) summarizes each run of consecutive eligible tool calls, across turns, into one `N tools (name, name, …)` row on the pending background, and shows every other eligible call on a single status-colored row with no fill bar. While compact mode is on no tool result body is shown for any call, so a fresh install shows none until it is switched off, and every summary and displayed call row keeps the viewer's usual blank spacing row; hidden thinking is omitted entirely, so a run can span it. **Ungrouped tools** (default `write, edit, replace, bash, codemode, Agent, StopAgent, MessageAgent`) names the tools that keep their normal call block minus the result body and split a run, and is listed only while compact is on. Both are global-only settings, read when the viewer opens; pi's tool-output flag still chooses summaries over individual calls.
-- The conversation viewer shows `timeout`, tool results. It follows pi's global tool-output flag, and pi's `app.tools.expand` key (ctrl+o by default, honoring remaps). Expanded view shows each tool call's whole command or argument instead of cutting it at 350 characters with `…`. A heredoc body stays out of the summary either way.
+- The conversation viewer shows `timeout`, tool results. It follows pi's global tool-output flag, and pi's `app.tools.expand` key (ctrl+o by default, honoring remaps). Expanded view shows each tool call's whole command or arguments instead of pi's 100-character collapsed preview.
 - Mouse interaction in the viewer (wheel scroll, click to expand) needs pi's fullscreen TUI: under `tuiMode: "regular"` the terminal reports no mouse events, so those gestures do nothing.
 
 ### Changed
 
+- Viewer call rows now read the way pi writes its own: `$ <command>` for `bash` and `PS> <command>` for `powershell` (a `timeout` argument stays pi's ` (timeout Ns)` suffix), and `<name> key=value …` for every other tool — no parentheses, brackets or JSON wrapper — in compact and ordinary presentation alike, and in both expansion states. Transcript logs and prompt snapshots keep the `name(args)` summary form.
 - Shared conversation-viewer tool-title formatting reuses the renderer's timing text without changing either presentation.
 - Rebuilding a settings list keeps the cursor on the row it was on instead of returning to the top, so a toggle that shows or hides another row leaves your place.
 - Compact conversation layout records normal versus compact call presentation before rendering, without changing display or controls.

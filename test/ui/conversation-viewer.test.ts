@@ -662,6 +662,79 @@ describe("ConversationViewer", () => {
     });
   });
 
+  describe("call row presentation", () => {
+    /** Every non-blank content row of the frame, borders and padding stripped. */
+    function shownOf(viewer: ConversationViewer, width = 80): string[] {
+      return frameLines(viewer, width)
+        .map((line) =>
+          line
+            .replace(/^\u2502 ?/, "")
+            .replace(/ ?\u2502$/, "")
+            .trim(),
+        )
+        .filter((text) => text !== "");
+    }
+
+    it("shows a shell call as its prompt and command, with no tool name", () => {
+      for (const [tool, prompt] of [
+        ["bash", "$"],
+        ["powershell", "PS>"],
+      ] as const) {
+        const shown = shownOf(openCallView([callsOf({ id: "t1", name: tool, args: { command: "ls -la" } })]));
+
+        expect(shown).toContain(`${prompt} ls -la`);
+        expect(shown.join(" ")).not.toContain(tool);
+      }
+    });
+
+    it("keeps pi's timeout suffix on a shell row instead of a timeout argument pair", () => {
+      const shown = shownOf(
+        openCallView([
+          callsOf({ id: "t1", name: "bash", args: { command: "sleep 1", timeout: 30 } }),
+          resultOf("t1", { name: "bash", durationMs: 1000 }),
+        ]),
+      );
+
+      expect(shown).toContain("$ sleep 1 (timeout 30s) Took 1.0s");
+    });
+
+    it("shows any other tool as its name and key=value pairs, with no parentheses or JSON wrapper", () => {
+      const shown = shownOf(
+        openCallView([
+          callsOf(
+            { id: "t1", name: "read", args: { path: "/notes.md" } },
+            { id: "t2", name: "mcp__search", args: { query: "pets", limit: 3 } },
+          ),
+        ]),
+      );
+
+      expect(shown).toContain('read path="/notes.md"');
+      expect(shown).toContain('mcp__search query="pets" limit=3');
+    });
+
+    it("shows the whole arguments expanded and a shortened row collapsed, in the same form", () => {
+      const long = "y".repeat(400);
+      const messages = [callsOf({ id: "t1", name: "grep", args: { pattern: long, path: "/src" } })];
+
+      const expanded = shownOf(openCallView(messages, { flag: { expanded: true } })).join("");
+      expect(expanded).toContain(`pattern="${long}" path="/src"`);
+
+      const collapsed = shownOf(openCallView(messages)).join("");
+      expect(collapsed).toContain('pattern="y');
+      expect(collapsed).not.toContain(long);
+    });
+
+    it("shows a call that carries no arguments as its name alone", () => {
+      expect(shownOf(openCallView([callsOf({ id: "t1", name: "AgentStatus" })]))).toContain("AgentStatus");
+    });
+
+    it("shows a tool named after an Object property as an ordinary call, not a shell one", () => {
+      const shown = shownOf(openCallView([callsOf({ id: "t1", name: "constructor", args: { path: "/a.md" } })]));
+
+      expect(shown).toContain('constructor path="/a.md"');
+    });
+  });
+
   describe("tool call timing", () => {
     /** Event emitter of a viewer's subscription, so a test can deliver pi's own events. */
     function emitter(): (event: unknown) => void {

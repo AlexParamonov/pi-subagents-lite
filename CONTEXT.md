@@ -164,3 +164,7 @@ _Avoid_: ResultViewer, snapshot viewer
 **Call run**:
 Two or more consecutive eligible tool calls in the **ConversationViewer overlay**'s display order, counted across turns. Visible text, revealed thinking, or an **Ungrouped tools** name ends it; tool-result messages and rows that paint nothing do not, and a run of one is not a run. Under **Compact tool calls** a run shows as one summary row on the pending background, written `N tools (name, name, …)` with its call count and its unique names in first-seen order, with no timing.
 _Avoid_: Tool group, tool batch, call cluster, merged calls, assistant turn
+
+**Call row**:
+One tool call on one row of the **ConversationViewer overlay**, in either presentation and either expansion state, written the way pi writes its own call line: a shell tool shows its prompt and command (`$ <command>`, `PS> <command>`) with a `timeout` argument kept as the ` (timeout Ns)` suffix, any other tool its name followed by muted `key=value` argument pairs, with no parentheses, brackets or JSON wrapper. Collapsed, that argument text is pi's 100-character preview; expanded, it is whole. pi keeps its own formatters in internal modules the package entry point does not publish, so the viewer mirrors the form; the `name(args)` summary of **summarizeToolArgs** stays the form of transcript logs and prompt snapshots.
+_Avoid_: Tool line, call summary, bash prefix
