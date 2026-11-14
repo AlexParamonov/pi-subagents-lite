@@ -268,9 +268,9 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** The hostile-output test read the frame through a helper that strips styling, then asserted no escape text remained. A leak limited to colour codes passed: the helper had removed the leak it was checking for. Separately, stripping only the result body left the call line open, because `JSON.stringify` turns C0 controls into inert text but leaves the 8-bit (`\u009b`) encodings as real characters.
 **Next time:** Assert absence on the painted frame: theme SGR is the only styling a fixture theme owns, so strip it and require no other escape or control character; then name the hostile sequence literally, because a leaked colour code is shaped exactly like an owned one. Include DEL (`U+007F`) explicitly: it is neither in the C0 nor C1 range. Strip actual Unicode bidi controls too; U+FFF9–U+FFFB are interlinear annotation controls, not bidi isolates. And sanitize every row built from tool data, not just the result: arguments reach the frame through their own path.
 
-## Tool timings omit durations below a tenth - 2026-11-14
-**What failed:** One-decimal seconds made short nonzero durations look like `0.0s`, which obscured quick file operations.
-**Next time:** Omit durations below 100ms and test both sides of that threshold through the viewer seam.
+## Tool timing cutoff - 2026-11-14
+**What failed:** Fast calls looked like `0.0s`.
+**Next time:** Omit durations below 100ms; test 99ms and 100ms at the viewer seam.
 
 ## A test options interface mirroring a ctor tail belongs in code - 2026-11-14
 **What failed:** The viewer tests declared their own options interface and spread it into a nine-parameter positional constructor with four optional trailing arguments, so the test type had to be kept in step by hand and a caller could reorder arguments with nothing catching it.

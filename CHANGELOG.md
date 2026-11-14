@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The subagent conversation viewer shows each tool call's run time — `Took 4.2s` once settled, `Elapsed 4.2s` while it runs, redrawn every second — in pi's wording; timings below 0.1s are omitted rather than rounded to `0.0s`. Display only; nothing changes in the agent's context.
+- The conversation viewer omits tool timings under 0.1s.
 - The conversation viewer shows a `bash` call's `timeout` as a muted `(timeout 300s)` after the command, like pi.
 - The conversation viewer shows tool results as plain text under each call: the first 3 rows (the last 3 for `bash`) plus a `… (N more lines, ctrl+o to expand)` hint collapsed, everything expanded — pi's generic result rendering, held to the viewer's smaller window. It follows pi's global tool-output flag, and pi's `app.tools.expand` key (ctrl+o by default, honoring remaps) toggles that flag from inside the viewer, so the main chat's tool rows update too.
 - Clicking a finished tool call in the conversation viewer expands or collapses just that call, as in pi's chat; any flip of pi's global flag (its expand key, or the chat behind the overlay) resets every call. The hint names the bound key and is colored like pi's. Collapsed, the timing sits on the call line to save a row; expanded, it is a muted line under the result, where pi always puts it.

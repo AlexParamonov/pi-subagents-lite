@@ -120,7 +120,7 @@ export function formatMs(ms: number): string {
   return parts.join(" ");
 }
 
-/** Omit sub-tenth-second calls; format longer runs in seconds, minutes, or hours. */
+/** Omit durations below 100ms. */
 export function formatToolDuration(ms: number): string | undefined {
   if (ms < 100) return undefined;
 
