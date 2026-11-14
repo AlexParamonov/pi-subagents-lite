@@ -83,6 +83,8 @@ export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
   modelThinkingPlacement: "header",
   statusBarFormat: "full",
   showAgentColors: true,
+  compactToolCalls: true,
+  ungroupedTools: [...DEFAULT_UNGROUPED_TOOLS],
 };
 
 /**

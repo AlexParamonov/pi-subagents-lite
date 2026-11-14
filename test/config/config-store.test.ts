@@ -1041,6 +1041,14 @@ describe("ConfigStore compact conversation viewer preferences", () => {
     ]);
   });
 
+  it("bakes both defaults into the raw shape, so a raw read is not the opposite of the preference", () => {
+    const store = new ConfigStore(minimalIO());
+    const raw = store.agentConfigSnapshot();
+
+    expect(raw.compactToolCalls).toBe(true);
+    expect(raw.ungroupedTools).toEqual(store.agent.ungroupedTools);
+  });
+
   it("keeps the normal viewer for an explicit compactToolCalls: false", () => {
     const { io } = memIO({ global: { agent: { compactToolCalls: false } } });
     expect(new ConfigStore(io).agent.compactToolCalls).toBe(false);
