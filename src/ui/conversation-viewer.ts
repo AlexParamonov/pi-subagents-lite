@@ -74,6 +74,11 @@ function resultText(content: unknown): string {
   return plainText(text);
 }
 
+/** A user message's text: pi stores it as a plain string or as content blocks. */
+function userText(msg: any): string {
+  return typeof msg.content === "string" ? msg.content : extractText(msg.content);
+}
+
 /** Optional wiring for tool-call display: timing seeds and the global collapsed/expanded flag. */
 export interface ToolDisplayOptions {
   /**
@@ -113,8 +118,8 @@ interface ToolBlock {
 /** Background a call row is painted on while it runs and once its result lands. */
 type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
 
-/** A tool call the compact layout positions, as the viewer paints it. */
-interface CompactCall {
+/** A tool call as the viewer paints it: the id links its result and clicks, name and args fill the row. */
+interface ToolCall {
   id?: string;
   name: string;
   args?: Record<string, unknown>;
@@ -123,13 +128,13 @@ interface CompactCall {
 /** One position of the compact layout: a message's non-call rows, one call, or a collapsed run. */
 type CompactEntry =
   | { kind: "rows"; msgIndex: number }
-  | { kind: "call"; call: CompactCall }
-  | { kind: "run"; calls: CompactCall[] };
+  | { kind: "call"; call: ToolCall }
+  | { kind: "run"; calls: ToolCall[] };
 
 /** The message's tool calls, in the order the viewer paints them. */
-function callsOfMessage(msg: any): CompactCall[] {
+function callsOfMessage(msg: any): ToolCall[] {
   if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return [];
-  const calls: CompactCall[] = [];
+  const calls: ToolCall[] = [];
   for (const c of msg.content) {
     if (c?.type === "toolCall") calls.push({ id: c.id, name: c.name, args: c.arguments });
   }
@@ -142,7 +147,7 @@ function callBg(result: ToolResultStatus | undefined): ToolBg {
 }
 
 /** One color for a whole run: a failed call wins, then an unfinished one, else success. */
-function runBg(calls: CompactCall[], toolResults: Map<string, ToolResultStatus>): ToolBg {
+function runBg(calls: ToolCall[], toolResults: Map<string, ToolResultStatus>): ToolBg {
   const results = calls.map((call) => (call.id ? toolResults.get(call.id) : undefined));
   if (results.some((result) => result?.isError)) return "toolErrorBg";
   if (results.some((result) => !result)) return "toolPendingBg";
@@ -840,7 +845,7 @@ export class ConversationViewer implements Component {
 
   private renderUserMessage(msg: any, width: number): string[] {
     const th = this.theme;
-    const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
+    const text = userText(msg);
     if (!text.trim()) return [];
     const wrapped = wrapTextWithAnsi(text.trim(), width - 2);
     const inner: string[] = [];
@@ -861,13 +866,9 @@ export class ConversationViewer implements Component {
     const lines: string[] = [];
     const textParts: string[] = [];
     const thinkingParts: string[] = [];
-    const toolCalls: Array<{ id?: string; name: string; args?: Record<string, unknown> }> = [];
     for (const c of msg.content) {
       if (c.type === "text" && c.text) textParts.push(c.text);
       else if (c.type === "thinking" && c.thinking) thinkingParts.push(c.thinking);
-      else if (c.type === "toolCall") {
-        toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
-      }
     }
     // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
     if (thinkingParts.length > 0) {
@@ -891,9 +892,9 @@ export class ConversationViewer implements Component {
         lines.push("");
       }
     }
-    // Tool calls
-    if (this.compactToolCalls) return lines; // compact assembly paints call rows per frame, never from this cache
-    for (const tc of toolCalls) {
+    // Tool calls. In compact mode the assembly paints them per frame, never from this cache.
+    if (this.compactToolCalls) return lines;
+    for (const tc of callsOfMessage(msg)) {
       const start = lines.length;
       lines.push(...this.renderToolCall(tc, width, toolResults));
       // Like pi, only a call with a result can be toggled by clicking it.
@@ -903,11 +904,7 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  private renderToolCall(
-    tc: { id?: string; name: string; args?: Record<string, unknown> },
-    width: number,
-    toolResults: Map<string, ToolResultStatus>,
-  ): string[] {
+  private renderToolCall(tc: ToolCall, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
     const th = this.theme;
     const expanded = this.isCallExpanded(tc.id);
     const result = tc.id ? toolResults.get(tc.id) : undefined;
@@ -928,10 +925,7 @@ export class ConversationViewer implements Component {
   }
 
   /** The call row's own text: name, argument summary, bash timeout, and timing when it sits on the row. */
-  private callTitleText(
-    tc: { id?: string; name: string; args?: Record<string, unknown> },
-    timing: string | undefined,
-  ): string {
+  private callTitleText(tc: ToolCall, timing: string | undefined): string {
     const th = this.theme;
     const expanded = this.isCallExpanded(tc.id);
     const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
@@ -964,7 +958,7 @@ export class ConversationViewer implements Component {
    */
   private compactEntries(messages: any[]): CompactEntry[] {
     const entries: CompactEntry[] = [];
-    let openRun: { kind: "run"; calls: CompactCall[] } | undefined;
+    let openRun: { kind: "run"; calls: ToolCall[] } | undefined;
     messages.forEach((msg: any, msgIndex: number) => {
       entries.push({ kind: "rows", msgIndex });
       if (this.paintsNonCallContent(msg)) openRun = undefined;
@@ -988,10 +982,7 @@ export class ConversationViewer implements Component {
 
   /** True when a message paints content other than calls, which bounds a compact run. */
   private paintsNonCallContent(msg: any): boolean {
-    if (msg?.role === "user") {
-      const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
-      return text.trim() !== "";
-    }
+    if (msg?.role === "user") return userText(msg).trim() !== "";
     if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return false;
     return msg.content.some(
       (c: any) => (c?.type === "text" && c.text) || (c?.type === "thinking" && c.thinking && this.thinkingVisible),
