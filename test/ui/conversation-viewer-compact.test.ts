@@ -182,6 +182,12 @@ function userOf(text: string): TestMessage {
   return { role: "user", content: [{ type: "text", text }] };
 }
 
+/**
+ * A tool pi has no renderer for, so its row keeps pi's generic `key=value` preview. That preview is
+ * the one argument presentation a click changes, so the per-call expansion cases below use it.
+ */
+const CUSTOM = "mcp__run";
+
 /** The viewer's session subscriber, captured so a test can deliver live events. */
 let emit: (event?: unknown) => void = () => {};
 
@@ -367,16 +373,16 @@ describe("ConversationViewer compact tool calls", () => {
 
     // Shown one by one, the same calls carry their own status colors.
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
-      { bg: "toolErrorBg", text: 'read path="/a.md"  Took 1.0s' },
+      { bg: "toolErrorBg", text: "read /a.md  Took 1.0s" },
       { bg: "", text: "" },
-      { bg: "toolSuccessBg", text: "grep  Took 0.2s" },
+      { bg: "toolSuccessBg", text: "grep // in .  Took 0.2s" },
     ]);
   });
 
   it("shows a lone eligible call as its own call row", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "read", args: { path: "/notes.md" } })]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: 'read path="/notes.md"' }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read /notes.md" }]);
   });
 
   it("keeps an excluded call whole between a summarized run and a compact call", () => {
@@ -397,7 +403,7 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "toolPendingBg", text: "$ ls -la" },
       { bg: "toolPendingBg", text: "" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
     ]);
   });
 
@@ -417,7 +423,7 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "toolPendingBg", text: "2 tools (read, grep)" },
       { bg: "", text: "" },
       { bg: "toolSuccessBg", text: "" },
-      { bg: "toolSuccessBg", text: 'write path="/notes.md" content="hello"  Took 1.2s' },
+      { bg: "toolSuccessBg", text: "write /notes.md (1 line)  Took 1.2s" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "2 tools (read, grep)" },
@@ -452,7 +458,7 @@ describe("ConversationViewer compact tool calls", () => {
     const viewer = openCompactView(messages);
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "" },
-      { bg: "toolPendingBg", text: 'write path="/a.md" content="hi"' },
+      { bg: "toolPendingBg", text: "write /a.md (1 line)" },
       { bg: "toolPendingBg", text: "" },
       { bg: "", text: "" },
       { bg: "", text: "end" },
@@ -461,7 +467,7 @@ describe("ConversationViewer compact tool calls", () => {
     messages.push(resultOf("t1", { name: "write", durationMs: 500, text: "fixture-write-result" }));
     expect(contentRows(viewer)).toEqual([
       { bg: "toolSuccessBg", text: "" },
-      { bg: "toolSuccessBg", text: 'write path="/a.md" content="hi"  Took 0.5s' },
+      { bg: "toolSuccessBg", text: "write /a.md (1 line)  Took 0.5s" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
       { bg: "", text: "end" },
@@ -472,33 +478,33 @@ describe("ConversationViewer compact tool calls", () => {
     const messages = [callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" })];
     const viewer = openCompactView(messages, { flag: { expanded: true }, ungrouped: [] });
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
 
     messages.push(resultOf("t1", { durationMs: 900, text: "fixture-result" }));
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolSuccessBg", text: "read  Took 0.9s" },
+      { bg: "toolSuccessBg", text: "read ...  Took 0.9s" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
 
     messages.push(resultOf("t2", { isError: true, text: "fixture-failure" }));
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolSuccessBg", text: "read  Took 0.9s" },
+      { bg: "toolSuccessBg", text: "read ...  Took 0.9s" },
       { bg: "", text: "" },
-      { bg: "toolErrorBg", text: "grep" },
+      { bg: "toolErrorBg", text: "grep // in ." },
     ]);
   });
 
   it("refreshes a lone compact call shown while tools are collapsed", () => {
     const messages = [callsOf({ id: "t1", name: "read" })];
     const viewer = openCompactView(messages, { ungrouped: [] });
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read ..." }]);
 
     messages.push(resultOf("t1", { durationMs: 200, isError: true, text: "fixture-failure" }));
-    expect(contentRows(viewer)).toEqual([{ bg: "toolErrorBg", text: "read  Took 0.2s" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolErrorBg", text: "read ...  Took 0.2s" }]);
   });
 
   it("matches excluded names exactly, so a custom name stays and a differently cased one groups", () => {
@@ -543,11 +549,11 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
       { bg: "", text: "fixture-visible-answer" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
   });
 
@@ -569,13 +575,13 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
       { bg: "userMessageBg", text: "" },
       { bg: "userMessageBg", text: "fixture-user-turn" },
       { bg: "userMessageBg", text: "" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
   });
 
@@ -593,7 +599,7 @@ describe("ConversationViewer compact tool calls", () => {
     expect(contentRows(viewer)).toEqual([
       { bg: "", text: "answer" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
     ]);
   });
 
@@ -613,9 +619,9 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(contentRows(openCompactView(transcript))).toEqual([{ bg: "toolPendingBg", text: "2 tools (read, grep)" }]);
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
-      { bg: "toolSuccessBg", text: "read" },
+      { bg: "toolSuccessBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolSuccessBg", text: "grep" },
+      { bg: "toolSuccessBg", text: "grep // in ." },
     ]);
   });
 
@@ -633,9 +639,9 @@ describe("ConversationViewer compact tool calls", () => {
     );
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolSuccessBg", text: 'write path="/a.md" content="hello"  Took 4.2s' },
+      { bg: "toolSuccessBg", text: "write /a.md (1 line)  Took 4.2s" },
       { bg: "", text: "" },
-      { bg: "toolErrorBg", text: 'write path="/b.md" content="hello"  Took 0.1s' },
+      { bg: "toolErrorBg", text: "write /b.md (1 line)  Took 0.1s" },
     ]);
   });
 
@@ -651,7 +657,7 @@ describe("ConversationViewer compact tool calls", () => {
     expect(contentRows(openCompactView(transcript, { ungrouped: [], flag: { expanded: true } }))).toEqual([
       { bg: "toolSuccessBg", text: "$ ls -la (timeout 30s) Took 0.5s" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: 'read path="/notes.md"' },
+      { bg: "toolPendingBg", text: "read /notes.md" },
     ]);
 
     // Collapsed the same two calls are one run, and a summary names the tools instead of their rows.
@@ -663,7 +669,6 @@ describe("ConversationViewer compact tool calls", () => {
   it("wraps a long call over several rows of its own color without passing the frame width", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "bash", args: { command: "x".repeat(120) } })], {
       ungrouped: [],
-      flag: { expanded: true },
     });
 
     const rows = contentRows(viewer, 40);
@@ -696,11 +701,11 @@ describe("ConversationViewer compact tool calls", () => {
       { flag: { expanded: true } },
     );
     expect(contentRows(three)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "find" },
+      { bg: "toolPendingBg", text: "find  in ." },
     ]);
 
     const beforeText = openCompactView(
@@ -708,9 +713,9 @@ describe("ConversationViewer compact tool calls", () => {
       { flag: { expanded: true } },
     );
     expect(contentRows(beforeText)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
       { bg: "", text: "" },
       { bg: "", text: "answer" },
     ]);
@@ -727,9 +732,9 @@ describe("ConversationViewer compact tool calls", () => {
     );
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolSuccessBg", text: "read" },
+      { bg: "toolSuccessBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
   });
 
@@ -738,12 +743,12 @@ describe("ConversationViewer compact tool calls", () => {
     const transcript = [thinkingOf("fixture-hidden-thought"), callsOf({ id: "t1", name: "read" }), textOf("answer")];
 
     expect(contentRows(openCompactView(transcript))).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
       { bg: "", text: "answer" },
     ]);
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
       { bg: "", text: "answer" },
     ]);
@@ -754,11 +759,11 @@ describe("ConversationViewer compact tool calls", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "read" })]);
 
     emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "fixture-live-thought" } });
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read ..." }]);
 
     viewer.handleInput("\x14");
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
       { bg: "", text: "fixture-live-thought" },
     ]);
@@ -776,11 +781,11 @@ describe("ConversationViewer compact tool calls", () => {
 
     viewer.handleInput("\x14"); // reveal thinking: the run splits at the visible block
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
       { bg: "", text: "fixture-hidden-thought" },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
 
     viewer.handleInput("\x14"); // hide it again: the same two calls are one run
@@ -790,7 +795,7 @@ describe("ConversationViewer compact tool calls", () => {
   it("regroups as calls are appended and settle, without dropping or repeating one", () => {
     const messages = [callsOf({ id: "t1", name: "read" }), resultOf("t1")];
     const viewer = openCompactView(messages, { ungrouped: [] });
-    expect(contentRows(viewer)).toEqual([{ bg: "toolSuccessBg", text: "read" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolSuccessBg", text: "read ..." }]);
 
     messages.push(callsOf({ id: "t2", name: "grep" }, { id: "t3", name: "bash" }));
     expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "3 tools (read, grep, bash)" }]);
@@ -802,7 +807,7 @@ describe("ConversationViewer compact tool calls", () => {
   it("groups a call that arrives in the streaming message, whose object is replaced in place", () => {
     const messages = [callsOf({ id: "t1", name: "read" })];
     const viewer = openCompactView(messages);
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read ..." }]);
 
     // pi replaces the last array slot as the partial message grows: same reference, same length.
     const grew = callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" });
@@ -834,9 +839,9 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(viewer.handleMouse(click(pendingRow!))).toBeUndefined();
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "read" },
+      { bg: "toolPendingBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolPendingBg", text: "grep" },
+      { bg: "toolPendingBg", text: "grep // in ." },
     ]);
   });
 
@@ -845,10 +850,10 @@ describe("ConversationViewer compact tool calls", () => {
     const long = "y".repeat(400);
     const viewer = openCompactView(
       [
-        callsOf({ id: "t1", name: "bash", args: { command: `echo ${long} ONE` } }),
+        callsOf({ id: "t1", name: CUSTOM, args: { command: `echo ${long} ONE` } }),
         resultOf("t1"),
         thinkingOf("fixture-hidden-thought"),
-        callsOf({ id: "t2", name: "bash", args: { command: `ls ${long} TWO` } }),
+        callsOf({ id: "t2", name: CUSTOM, args: { command: `ls ${long} TWO` } }),
         resultOf("t2"),
       ],
       { ungrouped: [] },
@@ -858,7 +863,7 @@ describe("ConversationViewer compact tool calls", () => {
         .map((row) => row.text)
         .join("");
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tools (bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: `2 tools (${CUSTOM})` }]);
     expect(viewer.handleMouse(click(rowsHolding(viewer, "2 tools")[0]!))).toBeUndefined();
 
     viewer.handleInput("\x14"); // reveal thinking: the run splits into two compact rows around the block
@@ -866,8 +871,8 @@ describe("ConversationViewer compact tool calls", () => {
     const [secondCall] = rowsHolding(viewer, "ls ");
     expect(viewer.handleMouse(click(secondCall!))).toEqual({ handled: true });
 
-    expect(shown()).toContain(`ls ${long} TWO`); // the call under the pointer opened its own arguments
-    expect(shown()).not.toContain(`echo ${long} ONE`);
+    expect(shown()).toContain(`${long} TWO`); // the call under the pointer opened its own arguments
+    expect(shown()).not.toContain(`${long} ONE`);
   });
 
   it("expands only the clicked call's arguments, keeps pi's flag alone, and still shows no result", () => {
@@ -875,9 +880,9 @@ describe("ConversationViewer compact tool calls", () => {
     const flag = { expanded: false };
     const viewer = openCompactView(
       [
-        callsOf({ id: "t1", name: "bash", args: { command: `echo ${long}` } }),
+        callsOf({ id: "t1", name: CUSTOM, args: { command: `echo ${long} ONE` } }),
         textOf("between"),
-        callsOf({ id: "t2", name: "bash", args: { command: `ls ${long}` } }),
+        callsOf({ id: "t2", name: CUSTOM, args: { command: `ls ${long} TWO` } }),
         resultOf("t1", { text: "fixture-result-detail" }),
         resultOf("t2", { text: "fixture-other-result" }),
       ],
@@ -891,8 +896,9 @@ describe("ConversationViewer compact tool calls", () => {
 
     const rows = contentRows(viewer);
     const texts = rows.map((row) => row.text);
-    expect(texts.join("")).toContain(`echo ${long}`); // the clicked call now shows its whole argument
-    expect(texts.filter((text) => text.includes("ls"))).toHaveLength(1); // the other one stays collapsed
+    expect(texts.join("")).toContain(`${long} ONE`); // the clicked call now shows its whole argument
+    expect(texts.join("")).not.toContain(`${long} TWO`); // the other one stays as it was
+    expect(texts.filter((text) => text.includes("ls"))).toHaveLength(1);
     expect(texts.join("")).not.toContain("fixture-result-detail");
     expect(rows.filter((row) => row.bg === "toolSuccessBg" && row.text === "")).toEqual([]); // still no fill bar with its arguments open
     expect(flag.expanded).toBe(false); // a per-call choice leaves pi's flag alone
@@ -901,8 +907,8 @@ describe("ConversationViewer compact tool calls", () => {
   it("keeps an excluded call's click on its arguments, with no result body anywhere", () => {
     const long = "y".repeat(400);
     const transcript = [
-      callsOf({ id: "t1", name: "bash", args: { command: `echo ${long}` } }),
-      resultOf("t1", { name: "bash", text: "line1\nline2\nline3\nline4\nline5" }),
+      callsOf({ id: "t1", name: CUSTOM, args: { command: `echo ${long}` } }),
+      resultOf("t1", { name: CUSTOM, text: "line1\nline2\nline3\nline4\nline5" }),
     ];
     const shownOf = (viewer: ConversationViewer) =>
       contentRows(viewer)
@@ -911,39 +917,44 @@ describe("ConversationViewer compact tool calls", () => {
 
     const ordinary = shownOf(openCompactView(transcript, { compact: false }));
     expect(ordinary).toContain("line3"); // the collapsed preview the ordinary viewer shows
-    expect(ordinary).toContain("2 earlier lines"); // bash keeps the tail, so the hint counts what came before
+    expect(ordinary).toContain("2 more lines"); // and the hint naming the key that opens the rest
 
-    const viewer = openCompactView(transcript);
+    const viewer = openCompactView(transcript, { ungrouped: [CUSTOM] });
     expect(shownOf(viewer)).not.toContain("line3");
     expect(shownOf(viewer)).not.toContain("more lines");
+    expect(shownOf(viewer)).not.toContain(long); // collapsed, the row carries pi's preview
 
-    const [bashRow] = rowsHolding(viewer, "echo");
-    expect(viewer.handleMouse(click(bashRow!))).toEqual({ handled: true });
+    const [callRow] = rowsHolding(viewer, "echo");
+    expect(viewer.handleMouse(click(callRow!))).toEqual({ handled: true });
 
-    expect(shownOf(viewer)).toContain(`echo ${long}`); // the click still opens the whole argument
+    expect(shownOf(viewer)).toContain(long); // the click still opens the whole argument
     expect(shownOf(viewer)).not.toContain("line5"); // and never shows the result
   });
 
   it("keeps a clicked call's opened arguments when a later timing tick rebuilds the frame", () => {
     const long = "y".repeat(400);
-    const viewer = openCompactView([
-      callsOf({ id: "t1", name: "bash", args: { command: `echo ${long}` } }),
-      resultOf("t1", { name: "bash", text: "fixture-result-detail" }),
-      callsOf({ id: "t2", name: "grep" }),
-    ]);
+    const viewer = openCompactView(
+      [
+        callsOf({ id: "t1", name: CUSTOM, args: { command: `echo ${long}` } }),
+        resultOf("t1", { name: CUSTOM, text: "fixture-result-detail" }),
+        callsOf({ id: "t2", name: "grep" }),
+      ],
+      { ungrouped: [CUSTOM] },
+    );
     const shown = () =>
       contentRows(viewer)
         .map((row) => row.text)
         .join("");
 
     expect(shown()).not.toContain("fixture-result-detail");
-    const [bashRow] = rowsHolding(viewer, "echo");
-    expect(viewer.handleMouse(click(bashRow!))).toEqual({ handled: true });
-    expect(shown()).toContain(`echo ${long}`);
+    expect(shown()).not.toContain(long);
+    const [callRow] = rowsHolding(viewer, "echo");
+    expect(viewer.handleMouse(click(callRow!))).toEqual({ handled: true });
+    expect(shown()).toContain(long);
 
     emit({ type: "tool_execution_start", toolCallId: "t2" }); // the 1s elapsed tick of another call
 
-    expect(shown()).toContain(`echo ${long}`); // the rebuild keeps the argument the click opened
+    expect(shown()).toContain(long); // the rebuild keeps the argument the click opened
     expect(shown()).not.toContain("fixture-result-detail");
   });
 
@@ -963,8 +974,8 @@ describe("ConversationViewer compact tool calls", () => {
       [
         ...notes,
         callsOf(
-          { id: "t1", name: "bash", args: { command: `echo ${long} ONETOKEN` } },
-          { id: "t2", name: "bash", args: { command: `ls ${long} TWOTOKEN` } },
+          { id: "t1", name: CUSTOM, args: { command: `echo ${long} ONETOKEN` } },
+          { id: "t2", name: CUSTOM, args: { command: `ls ${long} TWOTOKEN` } },
         ),
         resultOf("t1"),
         resultOf("t2"),
@@ -1038,9 +1049,9 @@ describe("ConversationViewer compact tool calls", () => {
     viewer.handleInput("\u001be");
     expect(toggleExpanded).toHaveBeenCalledOnce(); // the host's own setter, so pi's chat follows too
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolSuccessBg", text: "read" },
+      { bg: "toolSuccessBg", text: "read ..." },
       { bg: "", text: "" },
-      { bg: "toolSuccessBg", text: "grep" },
+      { bg: "toolSuccessBg", text: "grep // in ." },
     ]);
   });
 

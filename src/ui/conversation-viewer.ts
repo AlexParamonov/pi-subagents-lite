@@ -36,6 +36,7 @@ import {
   statusIcon,
 } from "./format.ts";
 import { plainText } from "./sanitize.ts";
+import { formatCallLine } from "./pi-call-line.ts";
 import { overlayViewportRows } from "./overlay.ts";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
 
@@ -117,36 +118,11 @@ interface ToolBlock {
 /** Background a call row is painted on while it runs and once its result lands. */
 type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
 
-/** pi's call row: the argument text is cut to this while the call is collapsed. */
-const COLLAPSED_ARGS_CHARS = 100;
-
 /** A tool call as the viewer paints it: the id links its result and clicks, name and args fill the row. */
 interface ToolCall {
   id?: string;
   name: string;
   args?: Record<string, unknown>;
-}
-
-/**
- * The prompt a shell tool shows in place of its own name, or undefined for any other tool. pi keeps its
- * prompts in internal tool modules the package entry point does not publish, so the viewer mirrors them.
- */
-function shellPrompt(name: string): string | undefined {
-  if (name === "bash") return "$";
-  if (name === "powershell") return "PS>";
-  return undefined;
-}
-
-/** pi's generic argument summary: `key=value` pairs, one per argument, in the call's own order. */
-function argPairs(args: Record<string, unknown>): string {
-  return Object.entries(args)
-    .map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`)
-    .join(" ");
-}
-
-/** The whole argument text of an expanded call, the collapsed preview of a collapsed one. */
-function preview(text: string, full: boolean): string {
-  return full || text.length <= COLLAPSED_ARGS_CHARS ? text : `${text.slice(0, COLLAPSED_ARGS_CHARS - 3)}...`;
 }
 
 /**
@@ -990,25 +966,9 @@ export class ConversationViewer implements Component {
     return this.wrapInBg(bg, inner, width);
   }
 
-  /** The call row's own text: pi's call line, plus the timing when it sits on the row. */
+  /** The call row's own text: pi's call line, then the timing, padded for the fill bar. */
   private callTitleText(tc: ToolCall, timing: string | undefined): string {
-    const th = this.theme;
-    const full = this.isCallExpanded(tc.id);
-    const args = tc.args ?? {};
-    const prompt = shellPrompt(tc.name);
-    const shell = prompt !== undefined;
-    const command = typeof args.command === "string" && args.command !== "" ? args.command : "...";
-    const pairs = shell ? "" : preview(argPairs(args), full);
-    // The call row's own text is model-produced tool data, so it gets the same strip as the result.
-    const title = plainText(shell ? `${prompt} ${preview(command, full)}` : tc.name);
-    const argsText = pairs ? th.fg("muted", plainText(pairs)) : "";
-    // Like pi's shell renderer: a muted "(timeout 300s)" after the command, never a timeout pair.
-    const timeout = typeof args.timeout === "number" && args.timeout > 0 ? args.timeout : undefined;
-    const timeoutSuffix = !shell || timeout === undefined ? "" : th.fg("muted", ` (timeout ${timeout}s)`);
-    // The timeout suffix already starts with a space, so a single one separates it from the timing.
-    const timingGap = timeoutSuffix ? " " : "  ";
-    const timingText = timing ? `${timingGap}${th.fg("muted", timing)}` : "";
-    return ` ${th.bold(title)}${argsText ? ` ${argsText}` : ""}${timeoutSuffix}${timingText} `;
+    return ` ${formatCallLine(tc.name, tc.args, this.theme, this.isCallExpanded(tc.id), timing)} `;
   }
 
   /** Wrap one row of text and paint it full width on a call's status background. */

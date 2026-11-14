@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { homedir } from "node:os";
 import type { MarkdownTheme, TUI, TuiMouseEvent } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
 import type { ViewerKeybindings } from "../../src/ui/viewer-keys.js";
@@ -643,15 +644,6 @@ describe("ConversationViewer", () => {
       expect(shown).toContain("after");
     });
 
-    it("shows the whole command once expanded and a shortened one collapsed", () => {
-      const whole = "echo " + "TAIL".repeat(120) + " fixture-command-end";
-      const tail = "fixture-command-end";
-      const messages = [callsOf({ id: "t1", name: "bash", args: { command: whole } })];
-
-      expect(frameText(openCallView(messages))).not.toContain(tail);
-      expect(frameText(openCallView(messages, { flag: { expanded: true } }))).toContain(tail);
-    });
-
     it("carries a bash timeout, and only a usable one on a bash call", () => {
       const output = (name: string, args?: Record<string, unknown>) =>
         frameText(openCallView([callsOf({ id: "t1", name, args })]));
@@ -675,6 +667,87 @@ describe("ConversationViewer", () => {
         .filter((text) => text !== "");
     }
 
+    it("shows a write call as its path and the count of content lines", () => {
+      const shown = shownOf(
+        openCallView([callsOf({ id: "t1", name: "write", args: { path: "/notes.md", content: "one\ntwo\nthree\n" } })]),
+      );
+
+      expect(shown).toContain("write /notes.md (3 lines)");
+    });
+
+    it("shows an edit call as its path and the count of edits", () => {
+      const shown = shownOf(
+        openCallView([
+          callsOf({
+            id: "t1",
+            name: "edit",
+            args: {
+              path: "/notes.md",
+              edits: [
+                { oldText: "a", newText: "b" },
+                { oldText: "c", newText: "d" },
+              ],
+            },
+          }),
+        ]),
+      );
+
+      expect(shown).toContain("edit /notes.md (2 edits)");
+    });
+
+    it("shows a grep call as its pattern and search path, with pi's glob and limit additions", () => {
+      const shown = shownOf(
+        openCallView([
+          callsOf({ id: "t1", name: "grep", args: { pattern: "TODO", path: "/src", glob: "*.ts", limit: 5 } }),
+        ]),
+      );
+
+      expect(shown).toContain("grep /TODO/ in /src (*.ts) limit 5");
+    });
+
+    it("shows a find call as its pattern and search path, with pi's limit", () => {
+      const shown = shownOf(
+        openCallView([callsOf({ id: "t1", name: "find", args: { pattern: "*.ts", path: "/src", limit: 20 } })]),
+      );
+
+      expect(shown).toContain("find *.ts in /src (limit 20)");
+    });
+
+    it("shows an ls call as its path, which defaults to the working directory", () => {
+      const shown = shownOf(openCallView([callsOf({ id: "t1", name: "ls", args: { limit: 10 } })]));
+
+      expect(shown).toContain("ls . (limit 10)");
+    });
+
+    it("shows a path under the home directory as ~, the way pi shortens it", () => {
+      const shown = shownOf(
+        openCallView([callsOf({ id: "t1", name: "read", args: { path: `${homedir()}/code/app/src/utils.ts` } })]),
+      );
+
+      expect(shown).toContain("read ~/code/app/src/utils.ts");
+    });
+
+    it("shows only the offset as the start of pi's read range", () => {
+      const shown = shownOf(
+        openCallView([callsOf({ id: "t1", name: "read", args: { path: "/notes.md", offset: 42 } })]),
+      );
+
+      expect(shown).toContain("read /notes.md:42");
+    });
+
+    it("shows pi's own markers for a path that is not a string or is absent", () => {
+      expect(shownOf(openCallView([callsOf({ id: "t1", name: "read", args: { path: 7 } })]))).toContain(
+        "read [invalid arg]",
+      );
+      expect(shownOf(openCallView([callsOf({ id: "t2", name: "read" })]))).toContain("read ...");
+    });
+
+    it("searches the working directory when a search tool got no path", () => {
+      const shown = shownOf(openCallView([callsOf({ id: "t1", name: "grep", args: { pattern: "TODO" } })]));
+
+      expect(shown).toContain("grep /TODO/ in .");
+    });
+
     it("shows a shell call as its prompt and command, with no tool name", () => {
       for (const [tool, prompt] of [
         ["bash", "$"],
@@ -685,6 +758,22 @@ describe("ConversationViewer", () => {
         expect(shown).toContain(`${prompt} ls -la`);
         expect(shown.join(" ")).not.toContain(tool);
       }
+    });
+
+    it("shows a read call as its path with pi's line range", () => {
+      const shown = shownOf(
+        openCallView([callsOf({ id: "t1", name: "read", args: { path: "/notes.md", offset: 148, limit: 30 } })]),
+      );
+
+      expect(shown).toContain("read /notes.md:148-177");
+    });
+
+    it("shows a long shell command whole, wrapped over rows instead of cut short", () => {
+      const whole = "echo " + "TAIL".repeat(120) + " fixture-command-end";
+      const shown = shownOf(openCallView([callsOf({ id: "t1", name: "bash", args: { command: whole } })]));
+
+      expect(shown.join("").replace(/\s/g, "")).toContain("fixture-command-end");
+      expect(shown.filter((row) => row.includes("TAIL")).length).toBeGreaterThan(1);
     });
 
     it("keeps pi's timeout suffix on a shell row instead of a timeout argument pair", () => {
@@ -698,30 +787,30 @@ describe("ConversationViewer", () => {
       expect(shown).toContain("$ sleep 1 (timeout 30s) Took 1.0s");
     });
 
-    it("shows any other tool as its name and key=value pairs, with no parentheses or JSON wrapper", () => {
+    it("shows a tool pi does not know as its name and key=value pairs, with no parentheses or JSON", () => {
       const shown = shownOf(
-        openCallView([
-          callsOf(
-            { id: "t1", name: "read", args: { path: "/notes.md" } },
-            { id: "t2", name: "mcp__search", args: { query: "pets", limit: 3 } },
-          ),
-        ]),
+        openCallView([callsOf({ id: "t1", name: "mcp__search", args: { query: "pets", limit: 3 } })]),
       );
 
-      expect(shown).toContain('read path="/notes.md"');
       expect(shown).toContain('mcp__search query="pets" limit=3');
     });
 
-    it("shows the whole arguments expanded and a shortened row collapsed, in the same form", () => {
+    it("cuts pi's generic preview at 100 characters and never a curated path", () => {
       const long = "y".repeat(400);
-      const messages = [callsOf({ id: "t1", name: "grep", args: { pattern: long, path: "/src" } })];
+      const messages = [callsOf({ id: "t1", name: "mcp__search", args: { query: long } })];
 
       const expanded = shownOf(openCallView(messages, { flag: { expanded: true } })).join("");
-      expect(expanded).toContain(`pattern="${long}" path="/src"`);
+      expect(expanded).toContain(`query="${long}"`);
 
       const collapsed = shownOf(openCallView(messages)).join("");
-      expect(collapsed).toContain('pattern="y');
+      expect(collapsed).toContain('query="y');
       expect(collapsed).not.toContain(long);
+
+      // A curated path is never cut, so the row wraps and keeps its end.
+      const deep = shownOf(
+        openCallView([callsOf({ id: "t2", name: "read", args: { path: `/src/${"d".repeat(300)}/target.ts` } })]),
+      ).join("");
+      expect(deep).toContain("target.ts");
     });
 
     it("shows a call that carries no arguments as its name alone", () => {
