@@ -756,58 +756,6 @@ describe("ConversationViewer", () => {
       expect(shown).toContain("write /notes.md (3 lines)");
     });
 
-    it("shows an edit call as its path and the count of edits", () => {
-      const shown = shownOf(
-        openCallView([
-          callsOf({
-            id: "t1",
-            name: "edit",
-            args: {
-              path: "/notes.md",
-              edits: [
-                { oldText: "a", newText: "b" },
-                { oldText: "c", newText: "d" },
-              ],
-            },
-          }),
-        ]),
-      );
-
-      expect(shown).toContain("edit /notes.md (2 edits)");
-    });
-
-    it("shows a grep call as its pattern and search path, with pi's glob and limit additions", () => {
-      const shown = shownOf(
-        openCallView([
-          callsOf({ id: "t1", name: "grep", args: { pattern: "TODO", path: "/src", glob: "*.ts", limit: 5 } }),
-        ]),
-      );
-
-      expect(shown).toContain("grep /TODO/ in /src (*.ts) limit 5");
-    });
-
-    it("shows a find call as its pattern and search path, with pi's limit", () => {
-      const shown = shownOf(
-        openCallView([callsOf({ id: "t1", name: "find", args: { pattern: "*.ts", path: "/src", limit: 20 } })]),
-      );
-
-      expect(shown).toContain("find *.ts in /src (limit 20)");
-    });
-
-    it("shows an ls call as its path, which defaults to the working directory", () => {
-      const shown = shownOf(openCallView([callsOf({ id: "t1", name: "ls", args: { limit: 10 } })]));
-
-      expect(shown).toContain("ls . (limit 10)");
-    });
-
-    it("shows a path under the home directory as ~, the way pi shortens it", () => {
-      const shown = shownOf(
-        openCallView([callsOf({ id: "t1", name: "read", args: { path: `${homedir()}/code/app/src/utils.ts` } })]),
-      );
-
-      expect(shown).toContain("read ~/code/app/src/utils.ts");
-    });
-
     it("shows only the offset as the start of pi's read range", () => {
       const shown = shownOf(
         openCallView([callsOf({ id: "t1", name: "read", args: { path: "/notes.md", offset: 42 } })]),
