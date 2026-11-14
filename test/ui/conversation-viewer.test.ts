@@ -1446,4 +1446,45 @@ describe("ConversationViewer", () => {
       }
     });
   });
+
+  describe("footer action hints", () => {
+    /** Keybinding manager answering `app.tools.expand` with exactly these keys. */
+    function boundTo(keys: string[]): ViewerKeybindings {
+      return { matches: () => false, getKeys: () => keys };
+    }
+
+    /** The footer row itself: the line above the bottom border. */
+    function footerOf(view: CallView, width: number): string {
+      return frameLines(openCallView([callsOf({ id: "t1", name: "read" })], view), width).at(-2) ?? "";
+    }
+
+    it("names the expansion key beside the thinking toggle, in the footer's own key notation", () => {
+      const footer = footerOf({}, 120);
+
+      expect(footer).toContain("C-t thinking");
+      expect(footer.indexOf("C-t thinking")).toBeLessThan(footer.indexOf("C-o tools"));
+    });
+
+    it("names the remapped expansion key, and every key when several are bound", () => {
+      expect(footerOf({ keybindings: boundTo(["alt+e"]) }, 120)).toContain("M-e tools");
+      expect(footerOf({ keybindings: boundTo(["ctrl+shift+p"]) }, 120)).toContain("C-S-p tools");
+      expect(footerOf({ keybindings: boundTo(["alt+e", "ctrl+o"]) }, 120)).toContain("M-e/C-o tools");
+      expect(footerOf({ keybindings: boundTo(["super+k"]) }, 120)).toContain("super+k tools");
+    });
+
+    it("names no expansion key when the action is unbound", () => {
+      const footer = footerOf({ keybindings: boundTo([]) }, 120);
+
+      expect(footer).toContain("C-t thinking");
+      expect(footer).not.toContain(" tools");
+      expect(footer).not.toMatch(/·\s*↑/); // no empty hint slot left before the navigation group
+    });
+
+    it("drops the action group before the navigation group when the terminal is narrow", () => {
+      const footer = footerOf({}, 60);
+
+      expect(footer).not.toContain("C-t thinking");
+      expect(footer).toContain("Esc/q close");
+    });
+  });
 });

@@ -38,7 +38,7 @@ import {
 import { plainText } from "./sanitize.ts";
 import { formatCallLine } from "./pi-call-line.ts";
 import { overlayViewportRows } from "./overlay.ts";
-import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
+import { createViewerKeys, keyLabel, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;
@@ -725,6 +725,8 @@ export class ConversationViewer implements Component {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
       actions.push(th.fg("dim", "C-t thinking"));
+      const expandKey = this.keys.expandHint();
+      if (expandKey !== undefined) actions.push(th.fg("dim", `${keyLabel(expandKey)} tools`));
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
@@ -732,13 +734,9 @@ export class ConversationViewer implements Component {
       const scrollPct = totalContentLines <= viewportHeight ? 100 : Math.round((currentLine / totalContentLines) * 100);
       const count = th.fg("dim", `(${currentLine}/${totalContentLines} · ${scrollPct}%)`);
       const withCount = [count, ...actions].join(sep);
-      // Always show readout; drop thinking state if needed
-      const footerLeft =
-        visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
-          ? withCount
-          : visibleWidth(count) + visibleWidth(footerRight) + 1 <= innerW
-            ? count
-            : actions.join(sep);
+      // Widest left side that still fits beside the navigation group, readout first.
+      const fits = (left: string) => visibleWidth(left) + 1 + visibleWidth(footerRight) <= innerW;
+      const footerLeft = [withCount, count, actions.join(sep)].find(fits) ?? "";
 
       const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
       lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));

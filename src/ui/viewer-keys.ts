@@ -1,5 +1,5 @@
 /**
- * viewer-keys.ts — Scroll key matchers for the conversation viewer.
+ * viewer-keys.ts — Scroll and tool-toggle key matchers for the conversation viewer.
  *
  * Resolves `tui.select.*` through the user's keybindings when pi provides a
  * manager, falling back to the previous hardcoded keys otherwise. The viewer's
@@ -23,6 +23,17 @@ export interface ViewerKeybindings {
 
 /** pi's default for `app.tools.expand`; used when no keybinding manager is available. */
 const DEFAULT_EXPAND_KEY: KeyId = "ctrl+o";
+
+/** The footer's short form of pi's modifier names; a modifier missing here stays as pi writes it. */
+const KEY_PREFIXES = new Map([
+  ["ctrl", "C-"],
+  ["alt", "M-"],
+  ["shift", "S-"],
+]);
+
+function compactKey(key: string): string {
+  return key.replace(/([a-z]+)\+/g, (modifier) => KEY_PREFIXES.get(modifier.slice(0, -1)) ?? modifier);
+}
 
 export interface ViewerKeys {
   scrollUp(data: string): boolean;
@@ -50,4 +61,9 @@ export function createViewerKeys(keybindings?: ViewerKeybindings): ViewerKeys {
       return keys.length > 0 ? keys.join("/") : undefined;
     },
   };
+}
+
+/** A key label from {@link ViewerKeys.expandHint} in the footer's notation: `ctrl+o` is `C-o`. */
+export function keyLabel(label: string): string {
+  return label.split("/").map(compactKey).join("/");
 }
