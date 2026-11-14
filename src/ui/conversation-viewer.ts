@@ -102,7 +102,7 @@ export interface ConversationViewerOptions {
   onSteer?: (message: string) => void;
   /** Tool timing seeds and pi's global collapsed/expanded flag. */
   toolDisplay?: ToolDisplayOptions;
-  /** Summarize runs of adjacent eligible calls, show no tool result body and omit hidden thinking. */
+  /** Summarize runs of adjacent eligible calls, show no tool result body and omit hidden thinking. Omitted means on, as the preference does. */
   compactToolCalls?: boolean;
   /** Tool names that keep their normal call block, minus the result body, and split a run. Matched exactly, case-sensitively. */
   ungroupedTools?: readonly string[];
@@ -239,7 +239,7 @@ export class ConversationViewer implements Component {
     this.onSteer = options.onSteer;
     this.toolDisplay = options.toolDisplay ?? {};
     this.thinkingVisible = !getHideThinkingBlock();
-    this.compactToolCalls = options.compactToolCalls === true;
+    this.compactToolCalls = options.compactToolCalls !== false;
     this.ungroupedTools = new Set(options.ungroupedTools ?? []);
     this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;

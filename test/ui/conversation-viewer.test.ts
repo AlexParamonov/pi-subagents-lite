@@ -185,12 +185,16 @@ interface ViewerOptions extends ConversationViewerOptions {
   onClose?: () => void;
 }
 
+/** This suite is the ordinary viewer, so compact rendering is off unless a test asks for it. */
 function openViewer(
   session: ReturnType<typeof makeMockSession>,
   record: AgentRecord,
   { rows, onClose, ...options }: ViewerOptions = {},
 ): ConversationViewer {
-  return new ConversationViewer(makeTui(rows), session, record, defaultTheme, onClose ?? vi.fn(), options);
+  return new ConversationViewer(makeTui(rows), session, record, defaultTheme, onClose ?? vi.fn(), {
+    compactToolCalls: false,
+    ...options,
+  });
 }
 
 // --- Tests ---

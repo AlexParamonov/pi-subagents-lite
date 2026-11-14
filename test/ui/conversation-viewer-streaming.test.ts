@@ -141,7 +141,10 @@ function setup(): { stream: FakeStream; render: () => string } {
     return () => {};
   });
   const session = asAgentSession({ messages, subscribe: mockSubscribe });
-  const viewer = new ConversationViewer(makeTui(), session as never, makeRecord(session), defaultTheme, vi.fn());
+  // Streaming blocks in the ordinary viewer: compact rendering is off here.
+  const viewer = new ConversationViewer(makeTui(), session as never, makeRecord(session), defaultTheme, vi.fn(), {
+    compactToolCalls: false,
+  });
   return { stream, render: () => viewer.render(80).join("\n") };
 }
 

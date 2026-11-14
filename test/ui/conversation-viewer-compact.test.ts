@@ -190,7 +190,7 @@ interface CompactView {
   flag?: { expanded: boolean };
   /** Tools the viewer keeps individually; defaults to the shipped default list. */
   ungrouped?: string[];
-  /** false opens the ordinary viewer, with the preferences still carried in. */
+  /** false opens the ordinary viewer; absent means the shipped default, which is compact. */
   compact?: boolean;
   toolDisplay?: ToolDisplayOptions;
   keybindings?: ViewerKeybindings;
@@ -219,7 +219,7 @@ function openCompactView(messages: TestMessage[], view: CompactView = {}): Conve
   } as unknown as AgentRecord;
   const tui = asTui({ terminal: { rows: view.rows ?? 40, cols: 120 }, requestRender: mockRequestRender });
   return new ConversationViewer(tui, session, record, view.plain ? defaultTheme : markingTheme, vi.fn(), {
-    compactToolCalls: view.compact !== false,
+    compactToolCalls: view.compact,
     ungroupedTools: view.ungrouped ?? [
       "write",
       "edit",
@@ -322,6 +322,15 @@ beforeEach(() => {
 });
 
 describe("ConversationViewer compact tool calls", () => {
+  it("compacts when the option is absent, the way the preference defaults", () => {
+    const transcript = [callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" }), resultOf("t1")];
+
+    expect(contentRows(openCompactView(transcript))).toEqual([{ bg: "toolPendingBg", text: "2 tools (read, grep)" }]);
+    // Only an explicit false brings the ordinary presentation back.
+    const ordinary = contentRows(openCompactView(transcript, { compact: false }));
+    expect(ordinary.some((row) => row.bg === "toolSuccessBg" && row.text === "")).toBe(true);
+  });
+
   it("summarizes consecutive eligible calls as one count-and-names row", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" })]);
 
