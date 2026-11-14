@@ -245,8 +245,8 @@ describe("renderSubagentResult — reply first line", () => {
     };
   };
 
-  /** Rows the card built as width-truncated single rows. */
-  const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText");
+  /** Text of the rows the card built as width-truncated single rows, i.e. the reply preview rows. */
+  const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText").map((r) => r.text);
   /** The card's rendered lines, in order, blank rows included. */
   const cardLines = () => renderedRows.flatMap((r) => (r.kind === "Spacer" ? [""] : r.text.split("\n")));
 
@@ -262,7 +262,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Vendor fetch fails on the first attempt." }]);
+    expect(truncatedRows()).toEqual(["  Vendor fetch fails on the first attempt."]);
   });
 
   it("skips the envelope line and the blank lines that follow it", () => {
@@ -276,7 +276,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Heading line" }]);
+    expect(truncatedRows()).toEqual(["  Heading line"]);
   });
 
   it.each([
@@ -291,7 +291,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Stopping after two failed edits." }]);
+    expect(truncatedRows()).toEqual(["  Stopping after two failed edits."]);
   });
 
   it.each([
@@ -301,7 +301,7 @@ describe("renderSubagentResult — reply first line", () => {
   ] as const)("keeps the status note off a one-line reply (%s)", (status, lifecycle) => {
     renderSubagentResult(nudge("Done.", { status, ...lifecycle }), { expanded: false }, defaultTheme, SHOW_COST);
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Done." }]);
+    expect(truncatedRows()).toEqual(["  Done."]);
   });
 
   it("keeps a reply that opens with a parenthetical", () => {
@@ -312,7 +312,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  (nothing to do)" }]);
+    expect(truncatedRows()).toEqual(["  (nothing to do)"]);
   });
 
   it("keeps a prose parenthetical at the end of a one-line reply under a status note", () => {
@@ -323,7 +323,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Fixed the flake (see notes.md)" }]);
+    expect(truncatedRows()).toEqual(["  Fixed the flake (see notes.md)"]);
   });
 
   it("keeps a parenthetical in a completed one-line reply untouched", () => {
@@ -334,7 +334,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Fixed the flake (see notes.md)" }]);
+    expect(truncatedRows()).toEqual(["  Fixed the flake (see notes.md)"]);
   });
 
   it.each([
@@ -373,7 +373,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: `  ${longLine}` }]);
+    expect(truncatedRows()).toEqual([`  ${longLine}`]);
   });
 
   it("keeps the collapsed card unchanged when the agent said nothing", () => {
