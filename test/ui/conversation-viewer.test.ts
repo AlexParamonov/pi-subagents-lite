@@ -498,6 +498,70 @@ describe("ConversationViewer", () => {
   }
 
   describe("transcript data", () => {
+    /** A click on the first frame row holding `needle`, at the width the row was found in. */
+    function clickRowWith(viewer: ConversationViewer, needle: string): void {
+      const y = frameLines(viewer).findIndex((line) => line.includes(needle));
+      expect(y, `no painted row holds ${needle}`).toBeGreaterThanOrEqual(0);
+      viewer.handleMouse({
+        type: "click",
+        button: "left",
+        x: 5,
+        y,
+        screenX: 10,
+        screenY: 10 + y,
+        width: 80,
+        height: 24,
+        shift: false,
+        alt: false,
+        ctrl: false,
+      });
+    }
+
+    it("renders every presentation without changing the transcript data it reads", () => {
+      // The arguments carry the shapes the viewer rewrites for display: a home-directory path it
+      // shows as ~, content whose trailing blank rows it does not count, a command longer than
+      // pi's collapsed preview and generic argument text longer than it.
+      const messages: TestMessage[] = [
+        { role: "user", content: "fixture-request" },
+        callsOf(
+          { id: "t1", name: "read", args: { path: `${homedir()}/notes.md`, offset: 148, limit: 30 } },
+          { id: "t2", name: "grep", args: { pattern: "TODO", path: "/src", glob: "*.ts", limit: 5 } },
+        ),
+        { role: "assistant", content: [{ type: "thinking", thinking: "fixture-thinking" }] },
+        callsOf({ id: "t3", name: "bash", args: { command: `echo ${bodyText(10)}`, timeout: 30 } }),
+        callsOf({ id: "t4", name: "mcp__run", args: { query: "pets", note: bodyText(20) } }),
+        callsOf({ id: "t5", name: "write", args: { path: "/tmp/notes.md", content: "one\ntwo\n\n\n" } }),
+        resultOf("t1", { name: "read", text: bodyText(10) }),
+        resultOf("t2", { name: "grep", text: "fixture-grep-result" }),
+        resultOf("t3", { name: "bash", text: "hi" }),
+        resultOf("t4", { name: "mcp__run", text: "fixture-run-result", isError: true, durationMs: 1200 }),
+        resultOf("t5", { name: "write", text: "ok" }),
+      ];
+      const written = structuredClone(messages);
+      const session = asAgentSession({ messages, subscribe: mockSubscribe });
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+
+      for (const compactToolCalls of [true, false]) {
+        const flag = { expanded: false };
+        const viewer = openViewer(session, record, {
+          compactToolCalls,
+          ungroupedTools: ["mcp__run"],
+          toolDisplay: { isExpanded: () => flag.expanded },
+        });
+        viewer.render(80);
+        clickRowWith(viewer, "mcp__run"); // a settled call's own expansion
+        flag.expanded = true; // pi's global tool-output flag
+        viewer.render(80);
+        viewer.handleInput("\x14"); // thinking visibility, which moves compact run boundaries
+        viewer.render(40); // narrow enough to wrap every call row
+        viewer.dispose();
+      }
+
+      // The transcript is the agent's own context: presentation may read it, never edit it.
+      expect(messages).toStrictEqual(written);
+      expect(session.messages).toBe(messages);
+    });
+
     it("shows user and assistant messages without rendering an unpaired tool result", () => {
       const session = makeMockSession([
         { role: "user", content: "fixture-user-message" },
