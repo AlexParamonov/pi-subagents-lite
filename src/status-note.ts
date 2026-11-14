@@ -47,11 +47,13 @@ export function formatWatchdogSummary(lifecycle: AgentLifecycle): string | undef
 }
 
 /**
- * Whether formatResultContent's output ends with a status note. The note is glued onto the reply's
- * last line (no separator), so a consumer that reads reply text back out of it must cut the tail.
+ * Whether formatResultContent's output ends with a status note. Mirrors getStatusNote's branch:
+ * stopped always notes, other statuses only when STATUS_NOTES has one. The note is glued onto the
+ * reply's last line (no separator), so a consumer that reads reply text back out of it must cut the tail.
  */
 export function appendsStatusNote(status: string | undefined): boolean {
-  return status === "stopped" || (!!status && status in STATUS_NOTES);
+  // Own-property check: details.status comes from stored messages, so inherited keys must not match.
+  return status === "stopped" || (!!status && Object.prototype.hasOwnProperty.call(STATUS_NOTES, status));
 }
 
 export function getStatusNote(lifecycle: AgentLifecycle): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { getStatusNote, formatStopReason, formatWatchdogSummary } from "../src/status-note.js";
+import { getStatusNote, formatStopReason, formatWatchdogSummary, appendsStatusNote } from "../src/status-note.js";
 import type { AgentLifecycle } from "../src/types.js";
 
 /** Fixture lifecycle; tests override only the fields they vary. */
@@ -26,6 +26,21 @@ describe("getStatusNote", () => {
 
   it("wraps known notes with space-parentheses", () => {
     expect(getStatusNote(lifecycle({ stoppedBy: "user" }))).toMatch(/^ \(.+\)$/);
+  });
+});
+
+describe("appendsStatusNote", () => {
+  it.each(["stopped", "aborted", "turn_limited"])("reports a note for the %s status", (status) => {
+    expect(appendsStatusNote(status)).toBe(true);
+  });
+
+  it.each(["completed", "queued", "running", "", undefined])("reports no note for %j", (status) => {
+    expect(appendsStatusNote(status)).toBe(false);
+  });
+
+  it("does not match a key inherited from Object.prototype", () => {
+    // details.status comes from stored messages, so "toString" must not read as a noted status.
+    expect(appendsStatusNote("toString")).toBe(false);
   });
 });
 
