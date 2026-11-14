@@ -8,12 +8,18 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getStore } from "../shell.ts";
+import type { AgentManager } from "../agents/agent-manager.ts";
 import type { ToolDisplayOptions } from "./conversation-viewer.ts";
 
-export function toolExpansionControls(
+/** The viewer's tool-display wiring: live timings for the agent's calls, plus pi's global expand flag. */
+export function viewerToolDisplay(
   ctx: Pick<ExtensionContext, "ui">,
-): Pick<ToolDisplayOptions, "isExpanded" | "toggleExpanded"> {
+  manager: AgentManager | null | undefined,
+  agentId: string,
+): ToolDisplayOptions {
   return {
+    // Calls already running when the viewer opened: their start was recorded by the watchdog.
+    getToolStartedAt: (toolCallId: string) => manager?.getToolStartedAt(agentId, toolCallId),
     isExpanded: () => ctx.ui.getToolsExpanded(),
     toggleExpanded: () => {
       const expanded = !ctx.ui.getToolsExpanded();

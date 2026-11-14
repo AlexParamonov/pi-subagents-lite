@@ -9,7 +9,8 @@ vi.mock("../../src/shell.js", () => ({
   getStore: () => ({ notifyToolsExpanded }),
 }));
 
-import { toolExpansionControls } from "../../src/ui/tool-display.js";
+import { viewerToolDisplay } from "../../src/ui/tool-display.js";
+import type { AgentManager } from "../../src/agents/agent-manager.js";
 
 function makeCtx(initial: boolean) {
   let expanded = initial;
@@ -22,21 +23,32 @@ function makeCtx(initial: boolean) {
   return { ui, ctx: { ui } as unknown as Pick<ExtensionContext, "ui"> };
 }
 
-describe("toolExpansionControls", () => {
-  it("reads pi's flag live", () => {
-    const { ctx } = makeCtx(false);
-    const controls = toolExpansionControls(ctx);
-    expect(controls.isExpanded?.()).toBe(false);
-    controls.toggleExpanded?.();
-    expect(controls.isExpanded?.()).toBe(true);
+/** Manager stub: only the tool-start lookup the viewer asks for. */
+function makeManager(starts: Record<string, number> = {}) {
+  return {
+    getToolStartedAt: vi.fn((agentId: string, toolCallId: string) =>
+      agentId === "a1" ? starts[toolCallId] : undefined,
+    ),
+  } as unknown as AgentManager;
+}
+
+describe("viewerToolDisplay", () => {
+  it("follows pi's tool-output flag, and tells the widgets when it flips", () => {
+    const { ui, ctx } = makeCtx(true);
+    const display = viewerToolDisplay(ctx, makeManager(), "a1");
+
+    expect(display.isExpanded?.()).toBe(true);
+    display.toggleExpanded?.();
+    expect(display.isExpanded?.()).toBe(false); // read live, not snapshotted at construction
+    expect(ui.setToolsExpanded).toHaveBeenCalledWith(false); // pi's own setter, so the menu follows
+    expect(notifyToolsExpanded).toHaveBeenCalledWith(false);
   });
 
-  it("toggles through pi's setter and syncs the widget compact mode", () => {
-    const { ui, ctx } = makeCtx(true);
+  it("finds running-call starts for the viewer's own agent, and none without a manager", () => {
+    const display = viewerToolDisplay(makeCtx(false).ctx, makeManager({ t1: 1234 }), "a1");
 
-    toolExpansionControls(ctx).toggleExpanded?.();
-
-    expect(ui.setToolsExpanded).toHaveBeenCalledWith(false);
-    expect(notifyToolsExpanded).toHaveBeenCalledWith(false);
+    expect(display.getToolStartedAt?.("t1")).toBe(1234);
+    expect(display.getToolStartedAt?.("other")).toBeUndefined();
+    expect(viewerToolDisplay(makeCtx(false).ctx, undefined, "a1").getToolStartedAt?.("t1")).toBeUndefined();
   });
 });

@@ -40,8 +40,6 @@ import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./vie
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;
-/** Rows above the content area: top border, 2 header rows and a separator. Mouse rows are relative to the viewer. */
-const CONTENT_TOP_ROW = 4;
 const MIN_VIEWPORT = 3;
 /** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
 export const VIEWPORT_HEIGHT_PCT = 70;
@@ -60,14 +58,59 @@ const COLLAPSED_RESULT_LINES = 3;
  */
 interface ToolResultStatus {
   isError: boolean;
+  /**
+   * Read straight off the toolResult message: only hosts >= pi 1.1 stamp it, so
+   * on older hosts timing comes solely from the events the viewer itself saw.
+   */
   durationMs?: number;
   content?: unknown;
 }
 
-/** Plain text of a tool result's content, tabs expanded so width math holds. */
+/**
+ * One terminal control sequence: CSI (`ESC [` parameters, intermediates and final
+ * byte, or the 8-bit CSI introducing them directly), or a string sequence
+ * (OSC/DCS/SOS/PMC/APC) ended by BEL or ST, or a lone `ESC`. Parameters cannot hold
+ * a terminator and string sequences stop at the next `ESC`, BEL or ST, so text
+ * after an unterminated sequence survives.
+ *
+ * Shaped like pi's own `stripAnsi`, which is what its `getTextOutput` runs over
+ * tool output. Two library helpers were rejected: pi-tui's `stripTerminalSequences`
+ * recognises only `m`, `G`, `K`, `H` and `J` as CSI terminators, so DEC private
+ * modes (`ESC[?1049h` alternate screen, `ESC[?25l` hide cursor), `ESC[6n` (the
+ * terminal's reply arrives on stdin, i.e. as typed input) and window manipulation
+ * pass through it; `stripAnsi` itself is not exported from the package entry point.
+ */
+const CONTROL_SEQUENCE =
+  // oxlint-disable-next-line no-control-regex -- matching control characters is the point
+  /\u001B(?:\[[0-?]*[ -/]*[@-~]|[PX^_][^\u0007\u001B\u009C]*(?:\u0007|\u001B\\|\u009C)|][^\u0007\u001B\u009C]*(?:\u0007|\u001B\\|\u009C))|\u009B[0-?]*[ -/]*[@-~]/g;
+
+/**
+ * C0 except tab/LF, DEL, C1, Unicode bidi controls and interlinear annotation
+ * controls. Carriage return is removed as a C0 control, as pi's `getTextOutput` does.
+ * Leftover introducers and terminators the sequence pattern did not consume go
+ * here, so no control character reaches the terminal whatever its encoding.
+ * Every member is a single UTF-16 code unit, so surrogate pairs are never split.
+ */
+// oxlint-disable-next-line no-control-regex -- removing control characters is the point
+const CONTROL_CHARACTER = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\p{Bidi_Control}\uFFF9-\uFFFB]/gu;
+
+/**
+ * Text with terminal control sequences and control characters removed, in both the
+ * 7-bit (`ESC [`) and the 8-bit (`CSI`) encodings, as pi's own `getTextOutput` does.
+ * Tabs stay as they are: pi-tui counts a tab as three cells and expands it when it
+ * writes the line, which is what pi's `replaceTabs` asks for.
+ */
+function plainText(text: string): string {
+  return text.replace(CONTROL_SEQUENCE, "").replace(CONTROL_CHARACTER, "");
+}
+
+/**
+ * Plain text of a tool result's content, safe to render. Tool output is untrusted
+ * bytes (a `curl` body, a binary `grep`), so it goes through {@link plainText}.
+ */
 function resultText(content: unknown): string {
   const text = typeof content === "string" ? content : Array.isArray(content) ? extractText(content) : "";
-  return text.replace(/\r/g, "").replace(/\t/g, "  ");
+  return plainText(text);
 }
 
 /** Optional wiring for tool-call display: timing seeds and the global collapsed/expanded flag. */
@@ -140,6 +183,13 @@ export class ConversationViewer implements Component {
   private messageBlocks = new Map<number, ToolBlock[]>();
   /** Clickable (settled) tool blocks in `cachedContentLines` coordinates. */
   private toolBlocks: ToolBlock[] = [];
+  /**
+   * Content area of the last rendered frame: the viewer row the content starts
+   * at, the first content line shown, and the number of rows. Mouse rows are
+   * relative to this component, so this is what maps a click to a `toolBlocks`
+   * line. Undefined until something has been rendered.
+   */
+  private clickOrigin: { topRow: number; firstLine: number; rows: number } | undefined;
   /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
   private thinkingVisible: boolean;
 
@@ -364,7 +414,6 @@ export class ConversationViewer implements Component {
     this.scheduleRender();
   }
 
-  /** Render one message's lines — shared by the full rebuild and the streaming refresh. */
   /** Render a message and cache its lines together with its clickable tool blocks. */
   private cacheMessage(index: number, msg: any, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
     const blocks: ToolBlock[] = [];
@@ -374,6 +423,7 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
+  /** Render one message's lines, recording the tool blocks it paints; shared by the rebuild paths. */
   private renderMessage(
     msg: any,
     width: number,
@@ -488,10 +538,11 @@ export class ConversationViewer implements Component {
 
   /** Clicking a settled tool call expands/collapses just that call, like clicking a tool row in pi. */
   private toggleCallAt(row: number): TuiMouseEventResult | undefined {
-    const contentRow = row - CONTENT_TOP_ROW;
-    if (contentRow < 0 || contentRow >= this.viewportHeight()) return undefined;
-    const lineCount = this.buildContentLines(this.lastInnerW).length; // refreshes toolBlocks
-    const line = Math.min(this.scrollOffset, Math.max(0, lineCount - this.viewportHeight())) + contentRow;
+    const origin = this.clickOrigin;
+    if (!origin) return undefined;
+    const contentRow = row - origin.topRow;
+    if (contentRow < 0 || contentRow >= origin.rows) return undefined;
+    const line = origin.firstLine + contentRow;
     const block = this.toolBlocks.find((b) => line >= b.start && line < b.end);
     if (!block) return undefined;
 
@@ -510,7 +561,11 @@ export class ConversationViewer implements Component {
 
   render(width: number): string[] {
     if (this.closed) return []; // closing — framework may still call render after done()
-    if (width < 6) return []; // too narrow for any meaningful rendering
+    if (width < 6) {
+      // Too narrow for any meaningful rendering, so there is no frame to hit-test against.
+      this.clickOrigin = undefined;
+      return [];
+    }
     this.syncToolsExpanded();
     const th = this.theme;
     const innerW = width - 4; // border + padding
@@ -582,6 +637,9 @@ export class ConversationViewer implements Component {
 
     const visibleStart = Math.min(this.scrollOffset, maxScroll);
     const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
+    // Recorded from what is actually painted, so a click maps to the row under
+    // the pointer even when auto-scroll or streaming moved the window.
+    this.clickOrigin = { topRow: lines.length, firstLine: visibleStart, rows: viewportHeight };
 
     for (let i = 0; i < viewportHeight; i++) {
       lines.push(row(visible[i] ?? ""));
@@ -667,6 +725,7 @@ export class ConversationViewer implements Component {
   invalidate(): void {
     this.messageCache.clear();
     this.cachedContentLines = undefined;
+    this.clickOrigin = undefined; // no frame on screen, so the rows its blocks were mapped to are gone
     this.cacheMeta = { count: 0, width: 0, messagesRef: undefined };
     this.cachedNonStreamingCount = 0;
   }
@@ -821,7 +880,9 @@ export class ConversationViewer implements Component {
     const th = this.theme;
     const expanded = this.isCallExpanded(tc.id);
     const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
-    const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
+    // The call line is tool data as much as the result is: argument text is model-produced.
+    // Argument text is tool data too, so it gets the same strip as the result does.
+    const label = plainText(argsSummary ? `${tc.name}${argsSummary}` : tc.name);
     // Status color: pending while it runs, success/error once settled.
     const result = tc.id ? toolResults.get(tc.id) : undefined;
     const bg = result ? (result.isError ? "toolErrorBg" : "toolSuccessBg") : "toolPendingBg";
@@ -833,7 +894,7 @@ export class ConversationViewer implements Component {
     // Collapsed: timing sits on the title line. Expanded: at the end, like pi's muted footer line.
     // The timeout suffix already starts with a space, so a single one separates it from the timing.
     const timingGap = timeoutSuffix ? " " : "  ";
-    const timingOnTitle = timing && !expanded ? `${timingGap}${th.fg("dim", timing)}` : "";
+    const timingOnTitle = timing && !expanded ? `${timingGap}${th.fg("muted", timing)}` : "";
     const toolLine = ` ${th.bold(label)}${timeoutSuffix}${timingOnTitle} `;
     for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
       const padNeeded = Math.max(0, width - visibleWidth(tl));
@@ -901,6 +962,7 @@ export class ConversationViewer implements Component {
 
     if (messages.length === 0) {
       this.cachedContentLines = undefined;
+      this.toolBlocks = []; // no calls on screen, so nothing to hit
       const lines = [th.fg("dim", "(waiting for first message...)")];
       const streamingLines = this.buildStreamingLines(width);
       this.cachedNonStreamingCount = lines.length;

@@ -2,10 +2,11 @@
  * conversation-viewer.test.ts — Tests for ConversationViewer.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { MarkdownTheme, TUI, TuiMouseEvent } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
+import type { ViewerKeybindings } from "../../src/ui/viewer-keys.js";
 import { asAgentSession } from "../pi-boundaries.js";
 
 // --- Mocks ---
@@ -183,20 +184,35 @@ function makeMockRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
   };
 }
 
+/** The background each call state is painted with: the status is otherwise invisible. */
+const STATUS_BG = { success: BG_ON.toolSuccessBg, error: BG_ON.toolErrorBg, pending: BG_ON.toolPendingBg };
+/**
+ * What the viewer hands pi-tui must carry no control text of its own. The theme adds
+ * SGR (colours), so those come out first: any escape or control character left would
+ * be acted on by the terminal.
+ */
+function expectNoControlText(lines: string[]): void {
+  const painted = lines.join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+  expect(painted).not.toContain("\u001b");
+  // oxlint-disable-next-line no-control-regex -- asserting no control character survives is the point
+  expect(painted).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\uFFF9-\uFFFB\p{Bidi_Control}]/u);
+}
+
+function statusShown(viewer: ConversationViewer): keyof typeof STATUS_BG | undefined {
+  const painted = viewer.render(80).join("");
+  return (Object.keys(STATUS_BG) as Array<keyof typeof STATUS_BG>).find((s) => painted.includes(STATUS_BG[s]));
+}
+
 /** Assert a fake TUI at the boundary: the viewer reads only requestRender and terminal.rows. */
 function asTui<S extends object>(fake: S): TUI & S {
   return fake as TUI & S;
 }
 
-function makeTui(): TUI {
+function makeTui(rows = 40): TUI {
   return asTui({
-    terminal: { rows: 40, cols: 120 },
+    terminal: { rows, cols: 120 },
     requestRender: mockRequestRender,
   });
-}
-
-function count(haystack: string, needle: string): number {
-  return haystack.split(needle).length - 1;
 }
 
 /** Total content lines from the footer scroll readout (N/N · pct%). */
@@ -207,9 +223,7 @@ function readoutTotal(text: string): number {
 
 /**
  * Content rows between the separator under the header and the one above the
- * footer, trimmed of the `│ … │` row frame and empties. With bgMarkingTheme
- * this pins the exact rendered content array (per the layout lesson), not
- * just membership.
+ * footer, trimmed of the `│ … │` row frame and empties.
  */
 function contentRows(viewer: ConversationViewer): string[] {
   const lines = viewer.render(80);
@@ -221,26 +235,6 @@ function contentRows(viewer: ConversationViewer): string[] {
     .slice(seps[1] + 1, seps[2])
     .map((l) => l.replace(/^│/, "").replace(/│$/, "").trim())
     .filter(Boolean);
-}
-
-/**
- * The exact 3-row block a tool call renders at render(80): bg fill / title /
- * bg fill — the same shape whether the call is pending or settled, since
- * results never add rows.
- */
-function expectedCallBlock(bg: string, label: string): string[] {
-  const innerW = 76; // render(80) minus border + padding
-  const fill = `${bg}${" ".repeat(innerW)}${BG_OFF}`;
-  const title = `${bg} ${label} ${" ".repeat(innerW - ` ${label} `.length)}${BG_OFF}`;
-  return [fill, title, fill];
-}
-
-/** A call block with result rows under the title, all inside one status background. */
-function expectedResultBlock(bg: string, label: string, resultRows: string[]): string[] {
-  const innerW = 76;
-  const [fill, title] = expectedCallBlock(bg, label);
-  const row = (text: string) => `${bg} ${text}${" ".repeat(innerW - 2 - text.length)} ${BG_OFF}`;
-  return [fill, title, ...resultRows.map(row), fill];
 }
 
 // --- Tests ---
@@ -772,7 +766,7 @@ describe("ConversationViewer", () => {
       expect(viewer.render(80).join("\n")).not.toContain("file contents here");
     });
 
-    it("renders a settled tool call as a status-colored block with its result text under the title", () => {
+    it("marks a settled call as finished and shows its result under the title", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
         {
@@ -787,10 +781,11 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
 
-      expect(contentRows(viewer)).toEqual(expectedResultBlock(BG_ON.toolSuccessBg, "uniqtool", ["SECRET-RESULT-TEXT"]));
+      expect(statusShown(viewer)).toBe("success");
+      expect(shownRows(viewer)).toEqual(["uniqtool", "SECRET-RESULT-TEXT"]);
     });
 
-    it("renders an errored tool call with the error background and its result text", () => {
+    it("marks an errored call as failed and shows the failure under the title", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
         {
@@ -805,7 +800,8 @@ describe("ConversationViewer", () => {
 
       const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
 
-      expect(contentRows(viewer)).toEqual(expectedResultBlock(BG_ON.toolErrorBg, "uniqtool", ["boom trace"]));
+      expect(statusShown(viewer)).toBe("error");
+      expect(shownRows(viewer)).toEqual(["uniqtool", "boom trace"]);
     });
 
     it("renders thinking blocks in assistant messages", () => {
@@ -885,535 +881,642 @@ describe("ConversationViewer", () => {
     });
   });
 
-  describe("tool call timing", () => {
-    function subscribeCapture(): { emit: (event: unknown) => void } {
-      const capture = { emit: (_event: unknown) => {} };
-      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
-        capture.emit = cb;
-        return () => {};
-      });
-      return capture;
-    }
-    const callMessage: TestMessage = { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] };
-    function resultMessage(durationMs?: number, isError = false): TestMessage & { durationMs?: number } {
-      return { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError, content: [], durationMs };
-    }
+  // --- Tool calls: result previews, timings, expanding -------------------------------------------
+  //
+  // These read the content area with styling stripped: which lines the viewer
+  // shows, and how much of a result it hides, is the contract. The colors,
+  // padding and row framing it paints them with are not.
 
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-    afterEach(() => {
-      vi.useRealTimers();
-    });
+  function shownRows(viewer: ConversationViewer): string[] {
+    return contentRows(viewer)
+      .map((row) => row.replace(/\u001b\[[0-9;]*m/g, "").trim())
+      .filter(Boolean); // padding and background-only rows are not content
+  }
+  /** Result bodies are built from `bodyN` markers, so a test can count what is on screen. */
+  const bodyText = (n: number) => Array.from({ length: n }, (_, i) => `body${i + 1}`).join("\n");
+  const bodyRows = (viewer: ConversationViewer) => shownRows(viewer).filter((row) => /^body\d+$/.test(row));
+  /** The hint is the one row that starts with pi's ellipsis. */
+  const hintRow = (viewer: ConversationViewer) => shownRows(viewer).find((row) => row.startsWith("..."));
+  /** The timing on screen: `Took ...` once a call settled, `Elapsed ...` while it runs. */
+  const timingOf = (viewer: ConversationViewer) =>
+    shownRows(viewer)
+      .join(" ")
+      .match(/(Took|Elapsed) \S+/)?.[0];
 
-    it("appends the recorded duration to a settled call line", () => {
-      const session = makeMockSession([callMessage, resultMessage(1500)]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+  /** One assistant message holding these tool calls. */
+  function callsOf(...calls: Array<{ id: string; name?: string; args?: Record<string, unknown> }>): TestMessage {
+    return {
+      role: "assistant",
+      content: calls.map((c) => ({ type: "toolCall", id: c.id, name: c.name ?? "uniqtool", arguments: c.args })),
+    };
+  }
+  function resultOf(
+    id: string,
+    opts: { name?: string; text?: string; blocks?: TestContentBlock[]; isError?: boolean; durationMs?: number } = {},
+  ): TestMessage {
+    return {
+      role: "toolResult",
+      toolCallId: id,
+      toolName: opts.name ?? "uniqtool",
+      isError: opts.isError ?? false,
+      content: opts.blocks ?? [{ type: "text", text: opts.text ?? "" }],
+      durationMs: opts.durationMs,
+    };
+  }
 
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool  Took 1.5s"));
-    });
+  interface CallView {
+    /** pi's global tool-output flag, in a holder the test flips. */
+    flag?: { expanded: boolean };
+    toolDisplay?: Record<string, unknown>;
+    keybindings?: ViewerKeybindings;
+    /** Terminal rows: fewer rows than the transcript forces scrolling. */
+    rows?: number;
+  }
+  function openCallView(messages: TestMessage[], view: CallView = {}): ConversationViewer {
+    const session = makeMockSession(messages);
+    const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+    return new ConversationViewer(
+      makeTui(view.rows),
+      session,
+      record,
+      noopTheme,
+      vi.fn(),
+      undefined,
+      view.keybindings,
+      undefined,
+      { isExpanded: () => view.flag?.expanded ?? false, ...view.toolDisplay },
+    );
+  }
 
-    it("moves the duration to a footer line under the result when expanded, like pi", () => {
-      const settled = { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, durationMs: 2100 };
-      const session = makeMockSession([callMessage, { ...settled, content: [{ type: "text", text: "out" }] }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(
-        makeTui(),
-        session,
-        record,
-        bgMarkingTheme,
-        vi.fn(),
-        undefined,
-        undefined,
-        undefined,
-        { isExpanded: () => true },
-      );
-
-      expect(contentRows(viewer)).toEqual(
-        expectedResultBlock(BG_ON.toolSuccessBg, "uniqtool", ["out", "", "Took 2.1s"]),
-      );
-    });
-
-    it("keeps the duration on an errored call line", () => {
-      const session = makeMockSession([callMessage, resultMessage(65_000, true)]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolErrorBg, "uniqtool  Took 1m 5s"));
-    });
-
-    it("shows no timing for a settled call whose result has no duration", () => {
-      const session = makeMockSession([callMessage, resultMessage()]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool"));
-    });
-
-    it("counts up a running call each second, then settles on the reported duration", () => {
-      const capture = subscribeCapture();
-      const session = makeMockSession([callMessage]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool"));
-
-      capture.emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "uniqtool" });
-      vi.advanceTimersByTime(100);
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 0.1s"));
-
-      vi.advanceTimersByTime(1900);
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 2.0s"));
-
-      // The tool ends before its result message lands: Took shows at once and the clock stops.
-      capture.emit({ type: "tool_execution_end", toolCallId: "t1", toolName: "uniqtool", durationMs: 2042 });
-      vi.runOnlyPendingTimers();
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Took 2.0s"));
-      expect(vi.getTimerCount()).toBe(0);
-
-      // The persisted result's duration then takes over.
-      session.messages.push(resultMessage(2042));
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool  Took 2.0s"));
-    });
-
-    it("counts a call already running at open from the owner's start time", () => {
-      subscribeCapture();
-      const session = makeMockSession([callMessage]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const getToolStartedAt = vi.fn((id: string) => (id === "t1" ? Date.now() - 3000 : undefined));
-      const viewer = new ConversationViewer(
-        makeTui(),
-        session,
-        record,
-        bgMarkingTheme,
-        vi.fn(),
-        undefined,
-        undefined,
-        undefined,
-        { getToolStartedAt },
-      );
-
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 3.0s"));
-      vi.advanceTimersByTime(2000);
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool  Elapsed 5.0s"));
-    });
-
-    it("does not seed calls that already have a result", () => {
-      subscribeCapture();
-      const session = makeMockSession([callMessage, resultMessage(800)]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const getToolStartedAt = vi.fn(() => Date.now() - 3000);
-      const viewer = new ConversationViewer(
-        makeTui(),
-        session,
-        record,
-        bgMarkingTheme,
-        vi.fn(),
-        undefined,
-        undefined,
-        undefined,
-        { getToolStartedAt },
-      );
-
-      expect(getToolStartedAt).not.toHaveBeenCalled();
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolSuccessBg, "uniqtool  Took 0.8s"));
-    });
-
-    it("shows no timing for a running call whose start was not observed", () => {
-      subscribeCapture();
-      const session = makeMockSession([callMessage]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      vi.advanceTimersByTime(5000);
-      expect(contentRows(viewer)).toEqual(expectedCallBlock(BG_ON.toolPendingBg, "uniqtool"));
-    });
-
-    it("stops the redraw timer on dispose", () => {
-      const capture = subscribeCapture();
-      const session = makeMockSession([callMessage]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      capture.emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "uniqtool" });
-      vi.runOnlyPendingTimers(); // flush the debounced render, keep the 1s interval
-      expect(vi.getTimerCount()).toBeGreaterThan(0);
-
-      viewer.dispose();
-      expect(vi.getTimerCount()).toBe(0);
-    });
-  });
-
-  describe("tool result output", () => {
-    const lines = (n: number) => Array.from({ length: n }, (_, i) => `line${i + 1}`);
-    function sessionWith(toolName: string, resultLines: string[]) {
-      return makeMockSession([
-        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: toolName }] },
-        {
-          role: "toolResult",
-          toolCallId: "t1",
-          toolName,
-          isError: false,
-          content: [{ type: "text", text: resultLines.join("\n") }],
-        },
+  describe("tool call results", () => {
+    it("shows a short result whole and a long one with a hint naming what is hidden", () => {
+      expect(bodyRows(openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(2) })]))).toEqual([
+        "body1",
+        "body2",
       ]);
-    }
-    function open(session: ReturnType<typeof makeMockSession>, flag: { expanded: boolean }, extra = {}) {
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      return new ConversationViewer(
-        makeTui(),
-        session,
-        record,
-        bgMarkingTheme,
-        vi.fn(),
-        undefined,
-        undefined,
-        undefined,
-        {
-          isExpanded: () => flag.expanded,
-          ...extra,
-        },
-      );
-    }
-    const bg = BG_ON.toolSuccessBg;
 
-    it("collapsed: shows the first 3 lines and a hint with the remaining count", () => {
-      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: false });
+      const flag = { expanded: false };
+      const long = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(10) })], { flag });
+      expect(bodyRows(long)).toEqual(["body1", "body2", "body3"]);
+      expect(hintRow(long)).toMatch(/\b7\b/); // 10 rows in the fixture, 3 shown
+      expect(hintRow(long)).toContain("ctrl+o"); // the key that shows the rest
 
-      expect(contentRows(viewer)).toEqual(
-        expectedResultBlock(bg, "uniqtool", ["line1", "line2", "line3", "... (7 more lines, ctrl+o to expand)"]),
-      );
+      flag.expanded = true;
+      expect(bodyRows(long)).toEqual(bodyText(10).split("\n"));
+      expect(hintRow(long)).toBeUndefined();
     });
 
-    it("collapsed bash: shows the last 3 lines under an 'earlier lines' hint", () => {
-      const viewer = open(sessionWith("bash", lines(10)), { expanded: false });
-
-      expect(contentRows(viewer)).toEqual(
-        expectedResultBlock(bg, "bash", ["... (7 earlier lines, ctrl+o to expand)", "line8", "line9", "line10"]),
-      );
-    });
-
-    it("collapsed: a result of 3 lines or fewer shows in full with no hint", () => {
-      const viewer = open(sessionWith("uniqtool", lines(3)), { expanded: false });
-
-      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", ["line1", "line2", "line3"]));
-    });
-
-    it("expanded: shows every line with no hint", () => {
-      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: true });
-
-      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", lines(10)));
-    });
-
-    describe("long tool-call label", () => {
-      const command = "echo " + "x".repeat(400);
-      const session = () =>
-        makeMockSession([
-          { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command } }] },
-        ]);
-      const rendered = (viewer: ConversationViewer) =>
-        contentRows(viewer)
-          .join("")
-          .replace(/\x1b\[[0-9;]*m/g, "");
-
-      it("collapsed: cuts the command at 350 characters with an ellipsis", () => {
-        const text = rendered(open(session(), { expanded: false }));
-
-        expect(text).toContain("…");
-        expect(text).not.toContain("x".repeat(346));
-      });
-
-      it("expanded: shows the whole command, wrapped, without an ellipsis", () => {
-        const text = rendered(open(session(), { expanded: true }));
-
-        expect(text).not.toContain("…");
-        // Wrapping splits the command across rows; stripping row padding recovers it whole.
-        expect(text.replace(/\s+/g, "")).toContain(`bash(${JSON.stringify(command)})`.replace(/\s+/g, ""));
-      });
+    it("keeps the end of a bash result and the start of any other tool's", () => {
+      const result = { text: bodyText(10) };
+      expect(bodyRows(openCallView([callsOf({ id: "t1", name: "bash" }), resultOf("t1", result)]))).toEqual([
+        "body8",
+        "body9",
+        "body10",
+      ]);
+      expect(bodyRows(openCallView([callsOf({ id: "t1", name: "read" }), resultOf("t1", result)]))).toEqual([
+        "body1",
+        "body2",
+        "body3",
+      ]);
     });
 
     it("counts wrapped rows, not source lines, and ignores non-text blocks", () => {
-      const session = makeMockSession([
-        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
-        {
-          role: "toolResult",
-          toolCallId: "t1",
-          toolName: "uniqtool",
-          isError: false,
-          content: [{ type: "text", text: "x".repeat(150) }, { type: "image" }],
-        },
+      // One source line of 320 characters: 5 wrapped rows at this width, so 2 stay hidden.
+      const wide = [callsOf({ id: "t1" }), resultOf("t1", { text: "x".repeat(320) })];
+      expect(shownRows(openCallView(wide)).filter((row) => /^x+$/.test(row))).toHaveLength(3);
+      expect(hintRow(openCallView(wide))).toMatch(/\b2\b/); // 5 wrapped rows, 3 shown
+
+      const withImage = [
+        callsOf({ id: "t1" }),
+        resultOf("t1", { blocks: [{ type: "text", text: "x".repeat(320) }, { type: "image" }] }),
+      ];
+      expect(shownRows(openCallView(withImage)).filter((row) => /^x+$/.test(row))).toHaveLength(3);
+    });
+
+    it("renders no escape or control sequences from hostile result text", () => {
+      // Each of these would take over the terminal, or make the terminal send input back to
+      // us. The 8-bit (C1) encodings count too: xterm and VTE decode them as UTF-8 controls.
+      const raw =
+        "sgr \u001b[31mred\u001b[0m\n" +
+        "altscreen \u001b[?1049h\n" +
+        "hidecursor \u001b[?25l\n" +
+        "query \u001b[6n\n" +
+        "resize \u001b[8;40;120t\n" +
+        "device \u001bPtm;#q1\u001b\\\n" +
+        "graphics \u001b_Gk=q;7;1;2;0;0;1\u001b\\\n" +
+        "c1 graphics \u001b_Gk=q;7\u009c\n" +
+        "title \u001b]0;window-title\u009c\n" +
+        "clipboard \u001b]52;c;aGVsbG8=\u0007\n" +
+        "private \u001b_x\u001b\\\n" +
+        "c1 sgr A\u009b31mredB\u009b0mC\n" +
+        "c1 altscreen A\u009b?1049hB\n" +
+        "c1 stray A\u0090B\n" +
+        "c1 stop A\u009cB\n" +
+        "lone \u001b end\n" +
+        "carriage return before\r after\n" +
+        "tabs\tin\toutput stay\n" +
+        "nul\u0000 bell\u0007 format\uFFF9 del before\u007f after bidi \u2066isolate\u2069 rtl \u202eword";
+      const viewer = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: raw })], { flag: { expanded: true } });
+      // Read the painted frame, not the rows that have had their styling removed to read
+      // content: a leak of colour codes would be invisible in those.
+      const frame = viewer.render(80);
+      expectNoControlText(frame);
+      // Colour codes are the one thing the theme emits too, so the frame-wide check cannot
+      // tell a leaked one from an owned one. The hostile one is named.
+      expect(frame.join("")).not.toContain("\u001b[31mred");
+      const shown = shownRows(viewer).join("\n");
+      // What is left is the text around each sequence: removing one must not take its
+      // neighbours with it, and must not leave the sequence's own parameters behind.
+      expect(shown).toContain("sgr red");
+      expect(shown).toContain("c1 sgr AredBC"); // the 8-bit CSI and its parameters go, the words stay
+      expect(shown).toContain("c1 altscreen AB");
+      expect(shown).toContain("carriage return before after");
+      expect(shown).toContain("del before after");
+      expect(shown).toContain("bidi isolate");
+      expect(shown).toContain("rtl word");
+      // A string sequence goes away whole, whichever terminator the writer used.
+      expect(shown).toContain("title");
+      expect(shown).not.toContain("window-title");
+      expect(shown).toContain("c1 graphics");
+      expect(shown).not.toContain("k=q");
+      expect(shown).toContain("lone");
+      expect(shown).toContain("end");
+      expect(shown).toContain("tabs\tin\toutput stay"); // pi-tui lays a tab out; we are not to eat it
+    });
+
+    it("renders no escape or control sequences from hostile call arguments", () => {
+      // The call line is built from tool data the same way the result is. JSON.stringify
+      // escapes C0 but leaves the 8-bit encodings exactly as they came.
+      const hostile = makeMockSession([
+        callsOf({ id: "t1", args: { command: "echo A\u009b?1049hB \u001b]0;window-title\u0007 done" } }),
+        resultOf("t1", { text: bodyText(3) }),
       ]);
-      const viewer = open(session, { expanded: true });
-
-      // 150 chars wrap at 74 columns -> 3 rows (74 + 74 + 2)
-      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", ["x".repeat(74), "x".repeat(74), "xx"]));
+      for (const expanded of [false, true]) {
+        const viewer = openCallView(hostile.messages, { flag: { expanded } });
+        expectNoControlText(viewer.render(80));
+        expect(shownRows(viewer).join(" ")).toContain("echo AB"); // the command stays readable
+        // JSON.stringify escapes the 7-bit controls into inert text, but not the 8-bit
+        // ones: those reached the frame until the call line got the same strip as the result.
+        expect(shownRows(viewer).join(" ")).toContain('("echo AB ');
+      }
     });
 
-    it("colors the key in the hint like pi's keyHint: muted text around a dim key", () => {
-      const sgr: Record<string, string> = { toolOutput: "33", muted: "35", dim: "36" };
-      const tagTheme: Theme = {
-        ...noopTheme,
-        fg: (color, text) => `\x1b[${sgr[color] ?? "0"}m${text}\x1b[39m`,
-      };
-      const session = sessionWith("uniqtool", lines(10));
+    it("keeps the text after an unterminated escape sequence", () => {
+      const shown = shownRows(
+        openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: "before \u001b]0;never-ended after" })]),
+      ).join("\n");
+
+      expect(shown).not.toContain("\u001b");
+      expect(shown).toContain("before");
+      expect(shown).toContain("after");
+    });
+
+    it("shows the whole command once expanded and a shortened one collapsed", () => {
+      const whole = "echo " + "TAIL".repeat(120);
+      const messages = [callsOf({ id: "t1", name: "bash", args: { command: whole } })];
+
+      expect(shownRows(openCallView(messages)).join(" ")).not.toContain(whole);
+      expect(shownRows(openCallView(messages, { flag: { expanded: true } })).join("")).toContain(whole);
+    });
+
+    it("carries a bash timeout, and only a usable one on a bash call", () => {
+      const title = (name: string, args?: Record<string, unknown>) =>
+        shownRows(openCallView([callsOf({ id: "t1", name, args })]))[0];
+
+      expect(title("bash", { command: "ls", timeout: 300 })).toMatch(/timeout 300s/);
+      expect(title("uniqtool", { timeout: 300 })).not.toContain("timeout");
+      expect(title("bash", { command: "ls", timeout: 0 })).not.toContain("timeout");
+    });
+  });
+
+  describe("tool call timing", () => {
+    /** Event emitter of a viewer's subscription, so a test can deliver pi's own events. */
+    function emitter(): (event: unknown) => void {
+      let emit: (event: unknown) => void = () => {};
+      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+        emit = cb;
+        return () => {};
+      });
+      return (event) => emit(event);
+    }
+
+    it("reports the duration its result carries, whether the call failed or not", () => {
+      for (const isError of [false, true]) {
+        const settled = resultOf("t1", { durationMs: 1500, isError });
+        expect(timingOf(openCallView([callsOf({ id: "t1", name: "bash" }), settled]))).toBe("Took 1.5s");
+      }
+    });
+
+    it("puts the timing on the call line collapsed and on its own line under the result expanded", () => {
+      const messages = [callsOf({ id: "t1", name: "bash" }), resultOf("t1", { text: bodyText(2), durationMs: 1500 })];
+
+      const collapsed = shownRows(openCallView(messages));
+      expect(collapsed[0]).toContain("Took 1.5s"); // shares the call's line, to save a row
+      expect(collapsed.filter((row) => row.includes("Took"))).toHaveLength(1);
+
+      const expanded = shownRows(openCallView(messages, { flag: { expanded: true } }));
+      expect(expanded[0]).not.toContain("Took");
+      expect(expanded.indexOf("Took 1.5s")).toBeGreaterThan(expanded.indexOf("body2")); // after the output, as pi does
+    });
+
+    it("takes the duration its result recorded over the one its end event reported", () => {
+      vi.useFakeTimers();
+      try {
+        const emit = emitter();
+        const viewer = openCallView([
+          callsOf({ id: "t1", name: "bash" }),
+          resultOf("t1", { name: "bash", durationMs: 9999 }),
+        ]);
+        emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
+        emit({ type: "tool_execution_end", toolCallId: "t1", toolName: "bash", durationMs: 2042 });
+
+        // The result's number is monotonic and survives a reload; the viewer's clock is neither.
+        expect(timingOf(viewer)).toBe("Took 10.0s");
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("stays quiet when nothing recorded how long the call took", () => {
+      // Settled, but the host that wrote the result stored no duration.
+      expect(timingOf(openCallView([callsOf({ id: "t1", name: "bash" }), resultOf("t1")]))).toBeUndefined();
+      // Running, but it started before the viewer opened and nobody knows its start.
+      expect(timingOf(openCallView([callsOf({ id: "t1", name: "bash" })]))).toBeUndefined();
+
+      // A result that landed without a duration ends the count too: a settled call never
+      // counts up, even when its start arrives after the result.
+      vi.useFakeTimers();
+      try {
+        const emit = emitter();
+        const viewer = openCallView([callsOf({ id: "t1", name: "bash" }), resultOf("t1", { name: "bash" })]);
+        emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
+        vi.advanceTimersByTime(1000);
+        expect(timingOf(viewer)).toBeUndefined();
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("reads the text of a result that arrives as a plain string", () => {
+      const session = makeMockSession([
+        callsOf({ id: "t1" }),
+        { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: "plain text result" },
+      ]);
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, tagTheme, vi.fn());
+      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
 
-      const hint = contentRows(viewer).find((row) => row.includes("to expand"));
-
-      expect(hint).toContain(
-        "\x1b[35m... (7 more lines,\x1b[39m \x1b[36mctrl+o\x1b[39m\x1b[35m to expand\x1b[39m\x1b[35m)\x1b[39m",
-      );
+      expect(shownRows(viewer)).toContain("plain text result");
     });
 
-    describe("bash timeout", () => {
-      function bashLabel(timeout: unknown): string {
-        const session = makeMockSession([
-          {
-            role: "assistant",
-            content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls", timeout } }],
-          },
-          { role: "toolResult", toolCallId: "t1", toolName: "bash", isError: false, content: [] },
-        ]);
-        return contentRows(open(session, { expanded: false }))[1]
-          .replace(/\x1b\[[0-9;]*m/g, "")
-          .trim();
+    it("counts a running call up, then settles on the time it actually took", () => {
+      vi.useFakeTimers();
+      try {
+        const emit = emitter();
+        const viewer = openCallView([callsOf({ id: "t1", name: "bash" })]);
+        expect(timingOf(viewer)).toBeUndefined();
+
+        emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
+        vi.advanceTimersByTime(100);
+        expect(timingOf(viewer)).toBe("Elapsed 0.1s");
+        vi.advanceTimersByTime(1900);
+        expect(timingOf(viewer)).toBe("Elapsed 2.0s");
+
+        // The call ends before its result message lands, so the event carries the time.
+        emit({ type: "tool_execution_end", toolCallId: "t1", toolName: "bash", durationMs: 2042 });
+        vi.advanceTimersByTime(100);
+        expect(timingOf(viewer)).toBe("Took 2.0s");
+
+        vi.advanceTimersByTime(100); // let the repaint settle
+        expect(vi.getTimerCount()).toBe(0); // no call is running, so the once-a-second redraw is gone
+
+        mockRequestRender.mockClear();
+        vi.advanceTimersByTime(5000);
+        expect(mockRequestRender).not.toHaveBeenCalled(); // nothing left to redraw
+      } finally {
+        vi.useRealTimers();
       }
-
-      it("shows pi's muted (timeout Ns) suffix after the command", () => {
-        expect(bashLabel(300)).toBe('bash("ls") (timeout 300s)');
-      });
-
-      it("separates the suffix from the timing with a single space", () => {
-        const session = makeMockSession([
-          {
-            role: "assistant",
-            content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls", timeout: 300 } }],
-          },
-          {
-            role: "toolResult",
-            toolCallId: "t1",
-            toolName: "bash",
-            isError: false,
-            content: [],
-            durationMs: 2100,
-          },
-        ]);
-        const title = contentRows(open(session, { expanded: false }))[1]
-          .replace(/\x1b\[[0-9;]*m/g, "")
-          .trim();
-        expect(title).toBe('bash("ls") (timeout 300s) Took 2.1s');
-      });
-
-      it("omits it when the timeout is absent or not a positive number", () => {
-        for (const timeout of [undefined, 0, "300"]) expect(bashLabel(timeout)).not.toContain("timeout");
-      });
-
-      it("is only shown for bash", () => {
-        const session = makeMockSession([
-          {
-            role: "assistant",
-            content: [{ type: "toolCall", id: "t1", name: "uniqtool", arguments: { timeout: 300 } }],
-          },
-          { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: [] },
-        ]);
-        expect(contentRows(open(session, { expanded: false }))[1]).not.toContain("(timeout");
-      });
     });
 
-    describe("clicking a call", () => {
-      const CONTENT_TOP = 4; // top border, 2 header rows, separator
-      function click(y: number, button: TuiMouseEvent["button"] = "left"): TuiMouseEvent {
-        return {
-          type: "click",
-          button,
-          x: 5,
-          y,
-          screenX: 10,
-          screenY: 10 + y,
-          width: 80,
-          height: 24,
-          shift: false,
-          alt: false,
-          ctrl: false,
-        };
-      }
-      function twoCalls() {
-        const result = (id: string) => ({
-          role: "toolResult",
-          toolCallId: id,
-          toolName: "uniqtool",
-          isError: false,
-          content: [{ type: "text", text: lines(6).join("\n") }],
-        });
-        return makeMockSession([
-          {
-            role: "assistant",
-            content: [
-              { type: "toolCall", id: "t1", name: "uniqtool" },
-              { type: "toolCall", id: "t2", name: "uniqtool" },
-            ],
-          },
-          result("t1"),
-          result("t2"),
-        ]);
-      }
-      // Each call renders 7 rows plus a blank separator: t1 at 0-6, t2 at 8-14.
-      const firstTitle = CONTENT_TOP + 1;
-      const secondTitle = CONTENT_TOP + 9;
-
-      it("expands only the clicked call and collapses it again on a second click", () => {
-        const flag = { expanded: false };
-        const viewer = open(twoCalls(), flag);
-        const collapsed = expectedResultBlock(bg, "uniqtool", [
-          "line1",
-          "line2",
-          "line3",
-          "... (3 more lines, ctrl+o to expand)",
-        ]);
-        expect(contentRows(viewer)).toEqual([...collapsed, ...collapsed]);
-
-        expect(viewer.handleMouse(click(firstTitle))).toEqual({ handled: true });
-        expect(contentRows(viewer)).toEqual([...expectedResultBlock(bg, "uniqtool", lines(6)), ...collapsed]);
-
-        expect(viewer.handleMouse(click(firstTitle))).toEqual({ handled: true });
-        expect(contentRows(viewer)).toEqual([...collapsed, ...collapsed]);
-        expect(flag.expanded).toBe(false); // pi's global flag is untouched
-      });
-
-      it("targets the call under the pointer, including when scrolled", () => {
-        const viewer = open(twoCalls(), { expanded: false });
-        viewer.render(80);
-
-        viewer.handleMouse(click(secondTitle));
-        const collapsed = expectedResultBlock(bg, "uniqtool", [
-          "line1",
-          "line2",
-          "line3",
-          "... (3 more lines, ctrl+o to expand)",
-        ]);
-        expect(contentRows(viewer)).toEqual([...collapsed, ...expectedResultBlock(bg, "uniqtool", lines(6))]);
-      });
-
-      it("can collapse a single call while the global flag is expanded", () => {
-        const viewer = open(twoCalls(), { expanded: true });
-        viewer.render(80);
-        viewer.handleMouse(click(firstTitle));
-
-        const rows = contentRows(viewer);
-        expect(rows).toEqual([
-          ...expectedResultBlock(bg, "uniqtool", ["line1", "line2", "line3", "... (3 more lines, ctrl+o to expand)"]),
-          ...expectedResultBlock(bg, "uniqtool", lines(6)),
-        ]);
-      });
-
-      it("drops per-call state when the global flag flips, as pi does", () => {
-        const flag = { expanded: false };
-        const viewer = open(twoCalls(), flag);
-        viewer.handleMouse(click(firstTitle));
-
-        flag.expanded = true;
-        expect(contentRows(viewer)).toEqual([
-          ...expectedResultBlock(bg, "uniqtool", lines(6)),
-          ...expectedResultBlock(bg, "uniqtool", lines(6)),
-        ]);
-        flag.expanded = false;
-        expect(contentRows(viewer)).toHaveLength(14); // both collapsed again
-      });
-
-      it("ignores clicks outside a settled call, other buttons, and pending calls", () => {
-        const viewer = open(twoCalls(), { expanded: false });
-        viewer.render(80);
-
-        expect(viewer.handleMouse(click(CONTENT_TOP + 7))).toBeUndefined(); // blank row between calls
-        expect(viewer.handleMouse(click(1))).toBeUndefined(); // header
-        expect(viewer.handleMouse(click(firstTitle, "right"))).toBeUndefined();
-        expect(contentRows(viewer)).toHaveLength(14);
-
-        const pending = open(
-          makeMockSession([{ role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] }]),
-          { expanded: false },
+    it("counts calls that were already running when the viewer opened, and only those", () => {
+      vi.useFakeTimers();
+      try {
+        const startedBeforeViewer = Date.now() - 4000;
+        const getToolStartedAt = vi.fn<(id: string) => number | undefined>((id) =>
+          id === "t2" ? startedBeforeViewer : undefined,
         );
-        pending.render(80);
-        expect(pending.handleMouse(click(firstTitle))).toBeUndefined();
-      });
+        const viewer = openCallView(
+          [
+            callsOf({ id: "t1", name: "bash" }, { id: "t2", name: "bash" }),
+            resultOf("t1", { name: "bash", durationMs: 900 }),
+          ],
+          {
+            toolDisplay: { getToolStartedAt },
+          },
+        );
 
-      it("shows the full command label of a clicked call", () => {
-        const command = "echo " + "x".repeat(400);
-        const session = makeMockSession([
-          { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command } }] },
-          { role: "toolResult", toolCallId: "t1", toolName: "bash", isError: false, content: [] },
-        ]);
-        const viewer = open(session, { expanded: false });
-        const text = () =>
-          contentRows(viewer)
-            .join("")
-            .replace(/\x1b\[[0-9;]*m/g, "");
-        expect(text()).toContain("…");
-
-        viewer.handleMouse(click(firstTitle));
-
-        expect(text()).not.toContain("…");
-      });
+        const shown = shownRows(viewer).join(" ");
+        expect(shown).toContain("Took 0.9s"); // settled: its own result answers for it
+        expect(shown).toContain("Elapsed 4.0s"); // running: counted from the start its owner recorded
+        expect(getToolStartedAt).toHaveBeenCalledWith("t2");
+        expect(getToolStartedAt).not.toHaveBeenCalledWith("t1");
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
-    it("re-renders when pi's global flag flips, without any event", () => {
+    it("stops counting once the viewer is closed", () => {
+      vi.useFakeTimers();
+      try {
+        const emit = emitter();
+        const viewer = openCallView([callsOf({ id: "t1", name: "bash" })]);
+        emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
+        vi.advanceTimersByTime(100);
+        mockRequestRender.mockClear();
+
+        expect(vi.getTimerCount()).toBe(1); // the once-a-second redraw is running
+
+        viewer.dispose();
+        expect(vi.getTimerCount()).toBe(0); // closing stops it, rather than leaving a ticking viewer
+
+        vi.advanceTimersByTime(5000);
+        expect(mockRequestRender).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("expanding a call", () => {
+    // Each call carries its own body markers, so a test can see which call opened.
+    const markerBody = (marker: string) => Array.from({ length: 6 }, (_, i) => `${marker}${i + 1}`).join("\n");
+    const TWO_CALLS = [
+      callsOf({ id: "t1" }, { id: "t2" }),
+      resultOf("t1", { text: markerBody("a") }),
+      resultOf("t2", { text: markerBody("b") }),
+    ];
+    /** Collapsed calls show 3 body rows, expanded calls all 6. */
+    const COLLAPSED = 3;
+    const EXPANDED = 6;
+    /** Tall enough that one opened call fits, short enough that the transcript scrolls. */
+    const SCROLLABLE_ROWS = 32;
+    /** 4 frame rows above the content area, then the first call's title row. */
+    const FIRST_CALL_TITLE = 5;
+
+    function click(y: number, button: TuiMouseEvent["button"] = "left"): TuiMouseEvent {
+      return {
+        type: "click",
+        button,
+        x: 5,
+        y,
+        screenX: 10,
+        screenY: 10 + y,
+        width: 80,
+        height: 24,
+        shift: false,
+        alt: false,
+        ctrl: false,
+      };
+    }
+    function wheel(delta: number): TuiMouseEvent {
+      return { ...click(0), type: "wheel", button: "none", wheelDelta: delta };
+    }
+    /** How much of one call's result is on screen. */
+    const shownOf = (viewer: ConversationViewer, marker: "a" | "b") =>
+      shownRows(viewer).filter((row) => new RegExp(`^${marker}\\d+$`).test(row)).length;
+
+    it("expands only the clicked call, and collapses it again on the next click", () => {
       const flag = { expanded: false };
-      const viewer = open(sessionWith("uniqtool", lines(10)), flag);
-      expect(contentRows(viewer)).toHaveLength(7);
+      const viewer = openCallView(TWO_CALLS, { flag });
+      viewer.render(80);
+      expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, COLLAPSED]);
+
+      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toEqual({ handled: true });
+      expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([EXPANDED, COLLAPSED]);
+      expect(flag.expanded).toBe(false); // a per-call choice leaves pi's flag alone
+
+      viewer.handleMouse(click(FIRST_CALL_TITLE));
+      expect(shownOf(viewer, "a")).toBe(COLLAPSED);
+
+      const secondTitle = viewer.render(80).flatMap((l, i) => (l.includes("uniqtool") ? [i] : []))[1];
+      expect(viewer.handleMouse(click(secondTitle))).toEqual({ handled: true });
+      expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, EXPANDED]);
+    });
+
+    it("maps a click to the frame on screen, not to the scroll position behind it", () => {
+      const notes: TestMessage[] = Array.from({ length: 30 }, (_, i) => ({
+        role: "user",
+        content: [{ type: "text", text: `note${i + 1}` }],
+      }));
+      const viewer = openCallView(
+        [
+          ...notes,
+          callsOf({ id: "t1" }, { id: "t2" }),
+          resultOf("t1", { text: markerBody("a") }),
+          resultOf("t2", { text: markerBody("b") }),
+        ],
+        {
+          rows: SCROLLABLE_ROWS,
+        },
+      );
+      const scroll = (delta: number) => {
+        viewer.handleMouse(wheel(delta));
+        viewer.render(80);
+      };
+      scroll(999);
+      const painted = viewer.render(80);
+      const secondTitle = painted.map((l, i) => (l.includes("uniqtool") ? i : -1)).filter((i) => i >= 0)[1];
+      expect(secondTitle).toBeGreaterThan(0); // the second call is the one on screen
+
+      // Scroll away without rendering: pi-tui has until its next frame to repaint, and a
+      // click can arrive in that window. The paint, not the offset, decides what it hits.
+      viewer.handleMouse(wheel(-999));
+      expect(viewer.handleMouse(click(secondTitle))).toEqual({ handled: true });
+
+      scroll(999); // look at the frame that was on screen when the click arrived
+      expect(shownOf(viewer, "b")).toBe(EXPANDED); // the call that was under the pointer opened
+      expect(shownOf(viewer, "a")).toBeLessThanOrEqual(COLLAPSED); // not whatever the new offset put there
+    });
+
+    it("maps a click through the scroll position, not the top of the transcript", () => {
+      // Long enough that only the tail of the transcript fits on screen.
+      const notes: TestMessage[] = Array.from({ length: 30 }, (_, i) => ({
+        role: "user",
+        content: [{ type: "text", text: `note${i + 1}` }],
+      }));
+      const viewer = openCallView([...notes, callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("b") })], {
+        rows: SCROLLABLE_ROWS,
+      });
+      const scroll = (delta: number) => {
+        viewer.handleMouse(wheel(delta));
+        viewer.render(80);
+      };
+      scroll(999); // auto-scroll already rests here; the call is on screen
+      const titleRow = viewer.render(80).findIndex((line) => line.includes("uniqtool"));
+      expect(titleRow).toBeGreaterThan(0);
+
+      expect(viewer.handleMouse(click(titleRow))).toEqual({ handled: true });
+      expect(shownRows(viewer)).toContain("b6"); // the call under the pointer opened
+
+      scroll(-999);
+      expect(viewer.render(80).join(" ")).not.toContain("uniqtool"); // precondition: the call is off screen
+      expect(viewer.handleMouse(click(titleRow))).toBeUndefined(); // that row belongs to someone else now
+    });
+
+    it("collapses one call while pi's global flag has the rest expanded", () => {
+      const viewer = openCallView(TWO_CALLS, { flag: { expanded: true } });
+      viewer.render(80);
+
+      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toEqual({ handled: true });
+      expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, EXPANDED]);
+    });
+
+    it("drops per-call choices when pi's global flag flips, and follows the flag without any event", () => {
+      const flag = { expanded: false };
+      const viewer = openCallView(TWO_CALLS, { flag });
+      viewer.render(80);
+      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toEqual({ handled: true });
 
       flag.expanded = true;
-      expect(contentRows(viewer)).toEqual(expectedResultBlock(bg, "uniqtool", lines(10)));
-
+      expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([EXPANDED, EXPANDED]); // the click no longer overrides
       flag.expanded = false;
-      expect(contentRows(viewer)).toHaveLength(7);
+      expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, COLLAPSED]);
     });
 
-    it("the expand key calls the toggle callback and requests a render", () => {
-      const toggleExpanded = vi.fn();
-      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: false }, { toggleExpanded });
-      mockRequestRender.mockClear();
-
-      viewer.handleInput("ctrl+o");
-
-      expect(toggleExpanded).toHaveBeenCalledTimes(1);
-      expect(mockRequestRender).toHaveBeenCalled();
-    });
-
-    it("follows the user's keybinding: matches app.tools.expand and names its key in the hint", () => {
-      const toggleExpanded = vi.fn();
-      const keybindings = {
-        matches: vi.fn((data: string, id: string) => id === "app.tools.expand" && data === "\x0f"),
-        getKeys: vi.fn(() => ["alt+e"]),
-      };
-      const session = sessionWith("uniqtool", lines(10));
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(
-        makeTui(),
-        session,
-        record,
-        bgMarkingTheme,
+    it("ignores clicks that land anywhere but on a finished call", () => {
+      const viewer = openCallView(TWO_CALLS);
+      // The row count has to come from the painted frame, not from what the viewport
+      // would be right now: opening the steering composer makes the viewer one row
+      // shorter, and a click can arrive before the next frame is painted.
+      const notes: TestMessage[] = Array.from({ length: 20 }, (_, i) => ({
+        role: "user",
+        content: [{ type: "text", text: `note${i + 1}` }],
+      }));
+      const steerable = makeMockSession([...notes, callsOf({ id: "t2" }), resultOf("t2", { text: bodyText(3) })]);
+      const live = new ConversationViewer(
+        makeTui(SCROLLABLE_ROWS),
+        steerable,
+        makeMockRecord({
+          lifecycle: { status: "running", startedAt: Date.now(), started: true },
+          execution: { settled: false, settlementCount: 0, session: steerable },
+        }),
+        noopTheme,
         vi.fn(),
         undefined,
-        keybindings,
         undefined,
-        {
-          isExpanded: () => false,
-          toggleExpanded,
-        },
+        vi.fn(),
       );
+      live.render(80); // auto-scroll rests one blank row under the call
+      live.handleMouse(wheel(-1)); // one row up, so the frame's last row is the call's own
+      const painted = live.render(80);
+      const paintedSeparators = painted.flatMap((line, i) => (line.includes("─") ? [i] : []));
+      const lastPaintedRow = paintedSeparators[2] - 1;
+      expect(live.handleMouse(click(lastPaintedRow))).toEqual({ handled: true });
 
-      expect(contentRows(viewer).at(-2)).toContain("(7 more lines, alt+e to expand)");
-      viewer.handleInput("ctrl+o"); // default key, no longer bound
-      expect(toggleExpanded).not.toHaveBeenCalled();
-      viewer.handleInput("\x0f");
-      expect(toggleExpanded).toHaveBeenCalledTimes(1);
+      live.handleInput("\r"); // opens the composer: the live viewport is a row shorter
+      expect(live.handleMouse(click(lastPaintedRow))).toEqual({ handled: true });
+      // The frame keeps its height; the content area gives a row to the composer.
+      const shrunk = live.render(80).flatMap((line, i) => (line.includes("─") ? [i] : []));
+      expect(shrunk[2]).toBe(paintedSeparators[2] - 1);
+
+      // Nothing has been rendered yet, so there are no rows to hit.
+      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
+      viewer.render(80);
+
+      expect(viewer.handleMouse(click(0))).toBeUndefined(); // header
+      expect(viewer.handleMouse(click(FIRST_CALL_TITLE, "right"))).toBeUndefined(); // not the left button
+      expect(shownOf(viewer, "a")).toBe(COLLAPSED);
+
+      // The rows under the content area are the footer and the bottom border. Seen from
+      // the top of a scrolling transcript they still map to content lines, lines that
+      // belong to a call painted below the fold. Only the painted row count stops a
+      // click there, not the block list: the line it maps to is inside a block.
+      // Twelve text lines put the first call's body just under the fold.
+      const twelveLines = Array.from({ length: 12 }, (_, i) => `note${i + 1}`).join("\n");
+      const tall = openCallView([{ role: "user", content: [{ type: "text", text: twelveLines }] }, ...TWO_CALLS], {
+        rows: SCROLLABLE_ROWS,
+      });
+      tall.render(80);
+      tall.handleMouse(wheel(-999)); // back to the top
+      const frame = tall.render(80);
+      const separators = frame.flatMap((line, i) => (line.includes("─") ? [i] : []));
+      const belowContent = separators[2]; // the separator the content area ends at
+      expect(belowContent).toBeGreaterThan(separators[1]);
+      expect(shownOf(tall, "a")).toBe(0); // its body rows are below the fold
+
+      for (const row of [belowContent, belowContent + 1, belowContent + 2, frame.length - 1]) {
+        expect(tall.handleMouse(click(row))).toBeUndefined();
+        expect(shownOf(tall, "a")).toBe(0); // and none of them opened the call down there
+      }
+
+      // A block runs from its first painted row to its last; the blank row after it, and
+      // the row before it, belong to no call. Row indices come from the painted frame.
+      const titles = viewer.render(80).flatMap((line, i) => (line.includes("uniqtool") ? [i] : []));
+      const [firstTitle, secondTitle] = titles;
+      expect(secondTitle - firstTitle).toBeGreaterThan(3);
+      expect(viewer.handleMouse(click(secondTitle - 2))).toBeUndefined(); // the gap between the blocks
+      expect(viewer.handleMouse(click(firstTitle - 1))).toEqual({ handled: true }); // the block's own row above its title
+      expect(shownOf(viewer, "a")).toBe(EXPANDED);
+
+      // A frame that was never painted, or is about to be rebuilt, has nothing to hit.
+      const torn = openCallView(TWO_CALLS);
+      torn.render(80);
+      torn.render(4); // too narrow to render anything
+      expect(torn.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
+      torn.render(80);
+      torn.invalidate();
+      expect(torn.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
+
+      // A transcript that emptied while the viewer was open shows no calls, so the rows
+      // the last one painted are gone with it.
+      const emptied = makeMockSession([callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("a") })]);
+      const emptiedViewer = new ConversationViewer(
+        makeTui(),
+        emptied,
+        makeMockRecord({ execution: { settled: false, settlementCount: 0, session: emptied } }),
+        noopTheme,
+        vi.fn(),
+      );
+      emptiedViewer.render(80);
+      emptied.messages.length = 0;
+      emptiedViewer.render(80);
+      expect(emptiedViewer.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
+
+      // A call still waiting for its result is not clickable.
+      const running = openCallView([callsOf({ id: "t1" })]);
+      running.render(80);
+      expect(running.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
     });
 
-    it("ignores the expand key when no toggle is wired", () => {
-      const viewer = open(sessionWith("uniqtool", lines(10)), { expanded: false });
+    it("takes the expand key and its hint label from the user's binding", () => {
+      const toggleExpanded = vi.fn();
+      const bound = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(10) })], {
+        toolDisplay: { toggleExpanded },
+        keybindings: {
+          matches: (data: string, id: string) => id === "app.tools.expand" && data === "\u001be",
+          getKeys: () => ["alt+e"],
+        },
+      });
 
-      expect(() => viewer.handleInput("ctrl+o")).not.toThrow();
+      bound.handleInput("\u000f"); // pi's default key, unbound for this user
+      expect(toggleExpanded).not.toHaveBeenCalled();
+      bound.handleInput("o"); // a letter the user typed, not a binding
+      expect(toggleExpanded).not.toHaveBeenCalled();
+      bound.handleInput("\u001be");
+      expect(toggleExpanded).toHaveBeenCalledTimes(1);
+      expect(mockRequestRender).toHaveBeenCalled();
+      expect(hintRow(bound)).toContain("alt+e");
+
+      // Headless use wires no toggle at all: the bound key must be ignored, not thrown on.
+      const unwired = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("a") })], {
+        keybindings: { matches: () => true },
+      });
+      const collapsed = shownOf(unwired, "a");
+      expect(collapsed).toBeGreaterThan(0);
+      expect(() => unwired.handleInput("\u000f")).not.toThrow();
+      expect(shownOf(unwired, "a")).toBe(collapsed);
     });
   });
 
@@ -1425,11 +1528,10 @@ describe("ConversationViewer", () => {
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
       const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
 
-      // First render caches the assistant message as a pending tool call:
-      // fill / title / fill, all pending.
-      const pending = viewer.render(80).join("\n");
-      expect(count(pending, BG_ON.toolPendingBg)).toBe(3);
-      expect(pending).not.toContain(BG_ON.toolSuccessBg);
+      // First render caches the assistant message as a pending tool call.
+      viewer.render(80);
+      expect(statusShown(viewer)).toBe("pending");
+      expect(shownRows(viewer)).toEqual(["uniqtool"]);
 
       // The tool result then arrives as a new message.
       session.messages.push({
@@ -1440,13 +1542,11 @@ describe("ConversationViewer", () => {
         content: [{ type: "text", text: "UNIQRESULT" }],
       });
 
-      // The cached call line must refresh to the settled background — a frozen
-      // pending color would hide the completion; the result line joins the block.
-      const settled = viewer.render(80).join("\n");
-      expect(settled).not.toContain(BG_ON.toolPendingBg);
-      expect(count(settled, BG_ON.toolSuccessBg)).toBe(4);
-      expect(count(settled, "uniqtool")).toBe(1);
-      expect(count(settled, "UNIQRESULT")).toBe(1);
+      // The cached call line must be rebuilt: a frozen pending state would hide the
+      // completion, and the result has to appear under it exactly once.
+      viewer.render(80);
+      expect(statusShown(viewer)).toBe("success");
+      expect(shownRows(viewer)).toEqual(["uniqtool", "UNIQRESULT"]);
     });
 
     it("scrolls to the true bottom when streaming adds lines (scrollMax not stale)", () => {

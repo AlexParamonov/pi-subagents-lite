@@ -33,7 +33,7 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
   └ Now I have enough information to provide a comprehensive answer.
 ```
 
-The widget shows running and recently finished agents above the editor. `↓`/`↑` highlights an agent, `Enter` opens the conversation viewer, `Esc` closes navigation. The viewer streams the live transcript — thinking blocks, tool calls, and compaction summaries. Each tool call is a status-colored block (pending → success/error) with its run time (`Elapsed`/`Took`) and its result as plain text: 3 lines collapsed, everything expanded. The viewer follows pi's global tool-output flag, and pi's expand key (`Ctrl+O` by default) toggles it from inside the viewer.
+The widget shows running and recently finished agents above the editor. `↓`/`↑` highlights an agent, `Enter` opens the conversation viewer, `Esc` closes navigation. The viewer streams the live transcript — thinking blocks, tool calls, and compaction summaries. Each tool call is a status-colored block (pending → success/error) with its run time (`Elapsed`/`Took`) and its result as plain text: 3 rows collapsed, everything expanded, and clicking a finished call expands just that one. The viewer follows pi's global tool-output flag, and pi's expand key (`Ctrl+O` by default) toggles it from inside the viewer. Mouse gestures (scrolling, clicking) need pi's fullscreen TUI: under `tuiMode: "regular"` the terminal reports no mouse events.
 
 The `/agents` menu covers active and settled agents (view, steer or continue, stop, clear), manual spawns without an LLM round-trip, model and concurrency settings, agent behavior, system prompts, widget settings, and diagnostics.
 

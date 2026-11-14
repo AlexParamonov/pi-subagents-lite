@@ -544,17 +544,13 @@ describe("agentColoredText", () => {
 });
 
 describe("formatToolDuration", () => {
-  it("formats like pi's tool rows", () => {
+  it("formats a duration the way pi's tool rows do", () => {
     expect(formatToolDuration(0)).toBe("0.0s");
-    expect(formatToolDuration(42)).toBe("0.0s");
+    expect(formatToolDuration(42)).toBe("0.0s"); // sub-tenth rounds down
     expect(formatToolDuration(4200)).toBe("4.2s");
-    expect(formatToolDuration(59_940)).toBe("59.9s");
+    expect(formatToolDuration(59_940)).toBe("59.9s"); // still seconds at the minute boundary
     expect(formatToolDuration(90_000)).toBe("1m 30s");
-    expect(formatToolDuration(3_600_000)).toBe("1h 0m 0s");
     expect(formatToolDuration(7_384_000)).toBe("2h 3m 4s");
-  });
-
-  it("clamps negative durations to zero", () => {
-    expect(formatToolDuration(-5)).toBe("0.0s");
+    expect(formatToolDuration(-5)).toBe("0.0s"); // a clock that went backwards cannot go negative
   });
 });

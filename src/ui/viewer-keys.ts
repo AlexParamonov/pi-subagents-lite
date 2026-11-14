@@ -44,6 +44,6 @@ export function createViewerKeys(keybindings?: ViewerKeybindings): ViewerKeys {
     pageUp: (data) => matches(data, "tui.select.pageUp", "pageUp") || matchesKey(data, "shift+up"),
     pageDown: (data) => matches(data, "tui.select.pageDown", "pageDown") || matchesKey(data, "shift+down"),
     toggleExpand: (data) => matches(data, "app.tools.expand", DEFAULT_EXPAND_KEY),
-    expandHint: () => keybindings?.getKeys?.("app.tools.expand")?.[0] ?? DEFAULT_EXPAND_KEY,
+    expandHint: () => keybindings?.getKeys?.("app.tools.expand")?.join("/") ?? DEFAULT_EXPAND_KEY,
   };
 }
