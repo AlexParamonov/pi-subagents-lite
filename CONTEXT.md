@@ -57,11 +57,11 @@ An extension bundled with the pi CLI itself (codemode, tool-search, mcp; llama.c
 _Avoid_: Core extension, internal extension, bundled tool
 
 **Compact tool calls**:
-Global **ConversationViewer overlay** preference (default off) that replaces each **Call run** with one count-and-names row in the default text color, paints every other eligible tool call as a single status-colored row with no result body, fill bar or padding of its own (one blank row between two adjacent such rows), keeps every **Ungrouped tools** name in its complete normal call block, and omits hidden thinking completely. Read when the viewer opens, from both entry points; pi's tool-output flag still selects summaries (collapsed) or individual calls (expanded).
+Global **ConversationViewer overlay** preference (default off) that replaces each **Call run** with one count-and-names row on the pending background, paints every other eligible tool call as a single status-colored row with no fill bar, shows no tool result body for any call, keeps every **Ungrouped tools** name in its normal call block minus that result body, and omits hidden thinking completely. Each summary and each displayed call row carries the **ConversationViewer overlay**'s usual blank spacing row. Read when the viewer opens, from both entry points; pi's tool-output flag still selects summaries (collapsed) or individual calls (expanded).
 _Avoid_: Compact mode (that is the widget's own state), condensed view
 
 **Ungrouped tools**:
-Global comma-editable list of tool names the **Compact tool calls** presentation keeps whole, in their complete normal presentation, ending the **Call run** around them. An absent key means `write`, `edit`, `replace`, `bash`, an empty list groups every call. Names match exactly and case-sensitively, custom and MCP names included.
+Global comma-editable list of tool names the **Compact tool calls** presentation keeps whole, in their normal call block minus its result body, ending the **Call run** around them. An absent key means `write`, `edit`, `replace`, `bash`, an empty list groups every call. Names match exactly and case-sensitively, custom and MCP names included.
 _Avoid_: Excluded tools, tool categories, grouping allowlist
 
 ### Worktrees
@@ -162,5 +162,5 @@ Live, scrollable view of an agent's conversation, streamed from session events. 
 _Avoid_: ResultViewer, snapshot viewer
 
 **Call run**:
-Two or more consecutive eligible tool calls in the **ConversationViewer overlay**'s display order, counted across turns. Visible text, revealed thinking, or an **Ungrouped tools** name ends it; tool-result messages and rows that paint nothing do not, and a run of one is not a run. Under **Compact tool calls** a run shows as one summary row in the default text color, carrying its call count and its unique names in first-seen order, with no status color and no timing.
+Two or more consecutive eligible tool calls in the **ConversationViewer overlay**'s display order, counted across turns. Visible text, revealed thinking, or an **Ungrouped tools** name ends it; tool-result messages and rows that paint nothing do not, and a run of one is not a run. Under **Compact tool calls** a run shows as one summary row on the pending background, carrying its call count and its unique names in first-seen order, with no timing.
 _Avoid_: Tool group, tool batch, call cluster, merged calls, assistant turn
