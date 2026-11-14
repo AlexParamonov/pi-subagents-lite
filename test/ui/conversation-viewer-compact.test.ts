@@ -468,6 +468,39 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
   });
 
+  it("refreshes an individually shown call's color and timing when its result lands", () => {
+    const messages = [callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" })];
+    const viewer = openCompactView(messages, { flag: { expanded: true }, ungrouped: [] });
+    expect(contentRows(viewer)).toEqual([
+      { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "grep" },
+    ]);
+
+    messages.push(resultOf("t1", { durationMs: 900, text: "fixture-result" }));
+    expect(contentRows(viewer)).toEqual([
+      { bg: "toolSuccessBg", text: "read  Took 0.9s" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "grep" },
+    ]);
+
+    messages.push(resultOf("t2", { isError: true, text: "fixture-failure" }));
+    expect(contentRows(viewer)).toEqual([
+      { bg: "toolSuccessBg", text: "read  Took 0.9s" },
+      { bg: "", text: "" },
+      { bg: "toolErrorBg", text: "grep" },
+    ]);
+  });
+
+  it("refreshes a lone compact call shown while tools are collapsed", () => {
+    const messages = [callsOf({ id: "t1", name: "read" })];
+    const viewer = openCompactView(messages, { ungrouped: [] });
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "read" }]);
+
+    messages.push(resultOf("t1", { durationMs: 200, isError: true, text: "fixture-failure" }));
+    expect(contentRows(viewer)).toEqual([{ bg: "toolErrorBg", text: "read  Took 0.2s" }]);
+  });
+
   it("matches excluded names exactly, so a custom name stays and a differently cased one groups", () => {
     const custom = openCompactView(
       [callsOf({ id: "t1", name: "mcp__search" }, { id: "t2", name: "mcp__search" }), textOf("end")],
