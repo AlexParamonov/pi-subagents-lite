@@ -151,3 +151,15 @@ _Avoid_: Re-sort, refresh
 **ConversationViewer overlay**:
 Live, scrollable view of an agent's conversation, streamed from session events. Opened from the running-agents menu; owns input while open (`Enter` steers, `s` stops).
 _Avoid_: ResultViewer, snapshot viewer
+
+**Compact tool calls**:
+An opt-in **ConversationViewer overlay** presentation, off by default, that summarizes **Tool-call groups** and displays other calls directly as one status-colored row each, with no result bodies. When thinking is hidden, both its content and indicators are omitted; showing thinking restores it and immediately splits any groups spanning it.
+_Avoid_: Compact widget mode, result folding
+
+**Tool-call group**:
+Two or more consecutive eligible calls in the viewer's existing display order, including across turns, ignoring tool-result messages and hidden thinking; visible non-tool content and **Ungrouped tools** break a group. Its summary counts its member calls and lists unique names in first-seen order, with failure color taking precedence over pending, then success.
+_Avoid_: Tool batch, assistant turn
+
+**Ungrouped tools**:
+A global, user-editable exclusion list for **Compact tool calls**, defaulting to `write`, `edit`, `replace`, whose names match tools exactly and case-sensitively. Listed calls remain individually visible and break groups; an explicit empty list excludes nothing.
+_Avoid_: Read-only tool classification, exploration tools
