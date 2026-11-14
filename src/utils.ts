@@ -97,7 +97,8 @@ function truncateWithEllipsis(s: string, max: number): string {
 /**
  * Summarize tool arguments for log-friendly display. Heavy tools (read,
  * write, edit, bash, grep, rg) get compact summaries; others default to JSON.
- * Layer-neutral: used by output-file logs, prompt snapshots, and the UI.
+ * Transcript logs only: the conversation viewer has its own pi-style call row,
+ * see ui/pi-call-line.ts `formatCallLine`.
  * Long bash commands and string arguments are cut with "…" unless `full` is set.
  */
 export function summarizeToolArgs(
