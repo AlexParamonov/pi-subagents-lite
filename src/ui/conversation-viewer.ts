@@ -125,11 +125,27 @@ interface ToolCall {
   args?: Record<string, unknown>;
 }
 
-/** One position of the compact layout: non-call rows, a normal or compact call, or a collapsed run. */
+/**
+ * One position of the compact layout: non-call rows, a normal or compact call, or a collapsed run.
+ * A normal call carries the whole block its message was cached with, wherever the cache holds one.
+ */
 type CompactEntry =
   | { kind: "rows"; rows: string[] }
-  | { kind: "normal-call" | "compact-call"; call: ToolCall }
+  | { kind: "normal-call" | "compact-call"; call: ToolCall; cachedBlock?: string[] }
   | { kind: "run"; calls: ToolCall[] };
+
+/**
+ * One message's cached paint: `rows` is everything it paints outside its calls, `blocks` the click
+ * targets inside them, `calls` - compact mode only - the whole block of every call that layout keeps
+ * whole, aligned with `callsOfMessage` and undefined where the layout paints the call itself. That
+ * layout is planned from the transcript on every rebuild, and a kept call's block is the part of it
+ * no grouping can change.
+ */
+interface CachedMessage {
+  rows: string[];
+  blocks: ToolBlock[];
+  calls: (string[] | undefined)[];
+}
 
 /** The message's tool calls, in the order the viewer paints them. */
 function callsOfMessage(msg: any): ToolCall[] {
@@ -153,8 +169,8 @@ export class ConversationViewer implements Component {
   private unsubscribe: (() => void) | undefined;
   private lastInnerW = 0;
   private closed = false;
-  /** Rendered lines per message index — avoids re-rendering unchanged messages. */
-  private messageCache = new Map<number, string[]>();
+  /** Cached paint per message index - avoids re-rendering unchanged messages and their call blocks. */
+  private messageCache = new Map<number, CachedMessage>();
   /** Message count and width of the last cache population. Mismatch → stale. */
   private cacheMeta: { count: number; width: number; messagesRef: any[] | undefined } = {
     count: 0,
@@ -192,8 +208,6 @@ export class ConversationViewer implements Component {
   private toolsExpanded = false;
   /** Per-call state set by clicking a call; wins over the global flag until that flag flips (as in pi). */
   private expandedByCall = new Map<string, boolean>();
-  /** Rendered tool blocks per message index, relative to the message's first line (parallel to messageCache). */
-  private messageBlocks = new Map<number, ToolBlock[]>();
   /** Clickable (settled) tool blocks in `cachedContentLines` coordinates. */
   private toolBlocks: ToolBlock[] = [];
   /**
@@ -443,13 +457,29 @@ export class ConversationViewer implements Component {
     this.scheduleRender();
   }
 
-  /** Render a message and cache its lines together with its clickable tool blocks. */
-  private cacheMessage(index: number, msg: any, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
+  /**
+   * Render a message once and cache what paints it: its own rows, the click targets inside them and,
+   * in compact mode, the whole block of each call that layout keeps whole. Such a block changes only
+   * when its result, timing, width or expansion changes - and each of those already drops this entry -
+   * so a compact rebuild can paint it without rendering anything. An eligible call has no block here:
+   * the layout summarizes it or paints its own row.
+   */
+  private cacheMessage(
+    index: number,
+    msg: any,
+    width: number,
+    toolResults: Map<string, ToolResultStatus>,
+  ): CachedMessage {
     const blocks: ToolBlock[] = [];
-    const lines = this.renderMessage(msg, width, toolResults, blocks);
-    this.messageCache.set(index, lines);
-    this.messageBlocks.set(index, blocks);
-    return lines;
+    const rows = this.renderMessage(msg, width, toolResults, blocks);
+    const calls = this.compactToolCalls
+      ? callsOfMessage(msg).map((call) =>
+          this.ungroupedTools.has(call.name) ? this.renderToolCall(call, width, toolResults) : undefined,
+        )
+      : [];
+    const cached: CachedMessage = { rows, blocks, calls };
+    this.messageCache.set(index, cached);
+    return cached;
   }
 
   /** Render one message's lines, recording the tool blocks it paints; shared by the rebuild paths. */
@@ -884,7 +914,8 @@ export class ConversationViewer implements Component {
         lines.push("");
       }
     }
-    // Tool calls. In compact mode the assembly paints them per frame, never from this cache.
+    // Tool calls. In compact mode the assembly paints them per frame, and cacheMessage keeps the
+    // blocks of the calls that layout keeps whole beside these rows rather than inside them.
     if (this.compactToolCalls) return lines;
     for (const tc of callsOfMessage(msg)) {
       this.appendCallBlock(tc, width, toolResults, lines, blocks);
@@ -892,16 +923,20 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  /** One call's complete normal block: fill bars, result, its own trailing blank row, click target included. */
+  /**
+   * One call's complete normal block: fill bars, result, its own trailing blank row, click target
+   * included. `cached` supplies the block's own rows, so a cached message is not rendered again.
+   */
   private appendCallBlock(
     tc: ToolCall,
     width: number,
     toolResults: Map<string, ToolResultStatus>,
     lines: string[],
     blocks: ToolBlock[],
+    cached?: string[],
   ): void {
     const start = lines.length;
-    lines.push(...this.renderToolCall(tc, width, toolResults));
+    lines.push(...(cached ?? this.renderToolCall(tc, width, toolResults)));
     // Like pi, only a call with a result can be toggled by clicking it.
     if (tc.id && toolResults.has(tc.id)) blocks.push({ id: tc.id, start, end: lines.length });
     lines.push("");
@@ -963,16 +998,20 @@ export class ConversationViewer implements Component {
     const entries: CompactEntry[] = [];
     let openRun: { kind: "run"; calls: ToolCall[] } | undefined;
     messages.forEach((msg: any, msgIndex: number) => {
-      // In compact mode a cached message holds only its non-call rows, so those rows are
-      // the one answer to "does this message paint visible content?": blank text and
-      // blank turns paint nothing, so they do not end the open run.
-      const rows = this.messageCache.get(msgIndex) ?? this.cacheMessage(msgIndex, msg, width, toolResults);
-      entries.push({ kind: "rows", rows });
-      if (rows.length > 0) openRun = undefined;
-      for (const call of callsOfMessage(msg)) {
+      // In compact mode a cached message's rows hold no call rows, so they are the one answer to
+      // "does this message paint visible content?": blank text and blank turns paint nothing, so they
+      // do not end the open run. The same entry holds the blocks the layout keeps whole, by position.
+      const cached = this.messageCache.get(msgIndex) ?? this.cacheMessage(msgIndex, msg, width, toolResults);
+      entries.push({ kind: "rows", rows: cached.rows });
+      if (cached.rows.length > 0) openRun = undefined;
+      for (const [position, call] of callsOfMessage(msg).entries()) {
         const ungrouped = this.ungroupedTools.has(call.name);
         if (this.toolsExpanded || ungrouped) {
-          entries.push({ kind: ungrouped ? "normal-call" : "compact-call", call });
+          entries.push({
+            kind: ungrouped ? "normal-call" : "compact-call",
+            call,
+            cachedBlock: ungrouped ? cached.calls[position] : undefined,
+          });
           openRun = undefined;
         } else if (openRun) {
           openRun.calls.push(call);
@@ -989,7 +1028,8 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * Compact content rows and their click targets, straight from the transcript: never cached call rows.
+   * Compact content rows and their click targets. Grouping comes straight from the transcript, never
+   * from cached rows; a call the layout keeps whole paints the block cached with its own message.
    *
    * Exactly one blank row separates two adjacent compact items (a run summary or an individually shown
    * eligible call). A message that paints nothing leaves them adjacent; visible content and an excluded
@@ -1010,11 +1050,8 @@ export class ConversationViewer implements Component {
         continue;
       }
       if (entry.kind === "normal-call") {
-        // shortcut: the message cache holds non-call rows only, so this block - its whole result
-        // re-wrapped - is rebuilt by every frame that rebuilds. Measured on a 60-call transcript with
-        // 6MB of results: 20ms collapsed / 45ms expanded per rebuild, against 0.5-1.6ms from the cache.
-        // Upgrade by caching blocks per call id, keyed on width, expansion, timing and the result object.
-        this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks);
+        // A missing block means the message grew in place since it was cached, so render this one.
+        this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks, entry.cachedBlock);
         afterCompactItem = false;
         continue;
       }
@@ -1147,9 +1184,9 @@ export class ConversationViewer implements Component {
     } else {
       for (let i = 0; i < messages.length; i++) {
         const base = lines.length;
-        const msgLines = this.messageCache.get(i) ?? this.cacheMessage(i, messages[i], width, toolResults);
-        lines.push(...msgLines);
-        for (const b of this.messageBlocks.get(i) ?? []) {
+        const cached = this.messageCache.get(i) ?? this.cacheMessage(i, messages[i], width, toolResults);
+        lines.push(...cached.rows);
+        for (const b of cached.blocks) {
           toolBlocks.push({ id: b.id, start: base + b.start, end: base + b.end });
         }
       }

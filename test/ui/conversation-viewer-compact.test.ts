@@ -831,6 +831,29 @@ describe("ConversationViewer compact tool calls", () => {
     expect(shown()).not.toContain("more lines");
   });
 
+  it("keeps a clicked call's whole block when a later timing tick rebuilds the frame", () => {
+    const long = "y".repeat(400);
+    const viewer = openCompactView([
+      callsOf({ id: "t1", name: "write", args: { path: `/notes/${long}.md`, content: "hello" } }),
+      resultOf("t1", { name: "write", text: "line1\nline2\nline3\nline4\nline5" }),
+      callsOf({ id: "t2", name: "grep" }),
+    ]);
+    const shown = () =>
+      contentRows(viewer)
+        .map((row) => row.text)
+        .join("");
+
+    expect(shown()).toContain("2 more lines");
+    const [writeRow] = rowsHolding(viewer, "write(");
+    expect(viewer.handleMouse(click(writeRow!))).toEqual({ handled: true });
+    expect(shown()).toContain("line5");
+
+    emit({ type: "tool_execution_start", toolCallId: "t2" }); // the 1s elapsed tick of another call
+
+    expect(shown()).toContain("line5"); // the rebuild keeps the block the click opened
+    expect(shown()).not.toContain("more lines");
+  });
+
   it("groups every call once the exclusion list is emptied", () => {
     const viewer = openCompactView(
       [callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hi" } }, { id: "t2", name: "edit" })],

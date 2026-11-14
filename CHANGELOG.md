@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Shared conversation-viewer tool-title formatting reuses the renderer's timing text without changing either presentation.
 - Compact conversation layout records normal versus compact call presentation before rendering, without changing display or controls.
+- Compact conversation viewer renders each ungrouped tool call's block once, together with the rest of its message, so a running call's per-second repaint no longer re-wraps every earlier result: a 60-call transcript holding 6MB of tool output rebuilds in ~1.6ms instead of ~40ms.
 
 ## [1.18.0] - 2026-11-03
 
