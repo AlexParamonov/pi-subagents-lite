@@ -124,7 +124,7 @@ export function formatMs(ms: number): string {
 export function formatToolDuration(ms: number): string | undefined {
   if (ms < 100) return undefined;
 
-  const elapsedMs = Math.max(0, Math.round(ms));
+  const elapsedMs = Math.round(ms);
   const seconds = elapsedMs / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
 
