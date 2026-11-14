@@ -283,9 +283,14 @@ function firstReplyLine(content: string, status: string | undefined): string {
   return reply.startsWith("Error: ") ? "" : reply;
 }
 
-/** Dim row pointing at a path the user can follow; empty when the details carry none. */
-function pathRow(prefix: string, value: unknown, theme: Theme): string {
-  return typeof value === "string" && value ? `  ${theme.fg("dim", `${prefix}${value}`)}` : "";
+/** The card's dim path rows in order, omitting whatever the details don't carry. */
+function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string {
+  const outputFile = d?.outputFile;
+  const worktreePath = d?.worktreePath;
+  const rows: string[] = [];
+  if (typeof outputFile === "string" && outputFile) rows.push(`  ${theme.fg("dim", `tail -f ${outputFile}`)}`);
+  if (typeof worktreePath === "string" && worktreePath) rows.push(`  ${theme.fg("dim", `worktree: ${worktreePath}`)}`);
+  return rows.join("\n");
 }
 
 /** Render a subagent-result message injected after background agent completion. */
@@ -322,9 +327,7 @@ export function renderSubagentResult(
       }
     }
 
-    const pathLines = [pathRow("tail -f ", d.outputFile, theme), pathRow("worktree: ", d.worktreePath, theme)]
-      .filter(Boolean)
-      .join("\n");
+    const pathLines = pathRows(d, theme);
     if (pathLines) {
       inner.addChild(new Text(pathLines, 0, 0));
     }
@@ -368,9 +371,7 @@ function buildFallbackResultLine(
   }
   const desc = typeof d?.description === "string" ? d.description : "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
-  const pathLines = [pathRow("tail -f ", d?.outputFile, theme), pathRow("worktree: ", d?.worktreePath, theme)]
-    .filter(Boolean)
-    .join("\n");
+  const pathLines = pathRows(d, theme);
   if (pathLines) line += `\n${pathLines}`;
   return line;
 }
