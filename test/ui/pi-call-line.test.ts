@@ -22,6 +22,10 @@ function line(name: string, args?: Record<string, unknown>, timing?: string): st
   return formatCallLine(name, args, theme, false, timing);
 }
 
+function expandedLine(name: string, args?: Record<string, unknown>): string {
+  return formatCallLine(name, args, theme, true);
+}
+
 describe("pi call line", () => {
   it("shows the shell tools as their prompt and command in the title color", () => {
     expect(line("bash", { command: "ls -la" })).toBe("[toolTitle:*$ ls -la*]");
@@ -91,6 +95,46 @@ describe("pi call line", () => {
     expect(line("mcp__search", { query: "pets", limit: 3 })).toBe(
       '[toolTitle:*mcp__search*] [muted:query="pets" limit=3]',
     );
+  });
+
+  // pi's COLLAPSED_ARGS_CHARS = 100 counts the joined pairs, so 92 values fill it exactly and 93 pass it.
+  const wholePreview = "y".repeat(92);
+  const pastPreview = "y".repeat(93);
+
+  it("shows a generic preview of exactly 100 pairs characters whole", () => {
+    expect(line("mcp__search", { query: wholePreview })).toBe(
+      `[toolTitle:*mcp__search*] [muted:query="${wholePreview}"]`,
+    );
+  });
+
+  it("cuts a generic preview one pair character past 100 to exactly 100 characters", () => {
+    expect(line("mcp__search", { query: pastPreview })).toBe(
+      `[toolTitle:*mcp__search*] [muted:query="${"y".repeat(90)}...]`,
+    );
+  });
+
+  it("shows the whole generic arguments of an expanded call, past the collapsed limit", () => {
+    expect(expandedLine("mcp__search", { query: pastPreview })).toBe(
+      `[toolTitle:*mcp__search*] [muted:query="${pastPreview}"]`,
+    );
+  });
+
+  it("never applies the collapsed preview limit to a curated row", () => {
+    const long = "d".repeat(300);
+    const rows: Array<[string, Record<string, unknown>]> = [
+      ["bash", { command: long }],
+      ["powershell", { command: long }],
+      ["read", { path: long }],
+      ["write", { path: long, content: "one" }],
+      ["edit", { path: long, oldText: "a", newText: "b" }],
+      ["grep", { pattern: long, path: long }],
+      ["find", { pattern: long, path: long }],
+      ["ls", { path: long }],
+    ];
+
+    for (const [name, args] of rows) {
+      expect(line(name, args)).toContain(long);
+    }
   });
 
   it("shows pi's markers for a path that is not a string, is empty or is absent", () => {
