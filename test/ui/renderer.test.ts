@@ -105,6 +105,9 @@ import { getManager } from "../../src/shell.js";
 
 const SHOW_COST = false;
 
+/** Text of the rows the renderer built as width-truncated single rows, i.e. the collapsed reply preview rows. */
+const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText").map((r) => r.text);
+
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */
 /* ------------------------------------------------------------------ */
@@ -245,8 +248,6 @@ describe("renderSubagentResult — reply first line", () => {
     };
   };
 
-  /** Text of the rows the card built as width-truncated single rows, i.e. the reply preview rows. */
-  const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText").map((r) => r.text);
   /** The card's rendered lines, in order, blank rows included. */
   const cardLines = () => renderedRows.flatMap((r) => (r.kind === "Spacer" ? [""] : r.text.split("\n")));
 
@@ -509,9 +510,6 @@ describe("renderAgentToolResult — reply first line", () => {
       details: buildAgentDetails(record, { includeStats: true, includeStatus: true }),
     };
   };
-
-  /** Text of the rows built as width-truncated single rows, i.e. the reply preview rows. */
-  const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText").map((r) => r.text);
 
   it("shows the reply's first line after the stats and description rows while collapsed", () => {
     renderAgentToolResult(
