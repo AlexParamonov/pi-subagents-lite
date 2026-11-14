@@ -1026,10 +1026,23 @@ describe("AgentStatus settled limit resolution", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore compact conversation viewer preferences", () => {
-  it("defaults compact tool calls off and ungrouped tools to write, edit, replace, bash", () => {
+  it("defaults compact tool calls on and ungrouped tools to the shipped exclusions", () => {
     const store = new ConfigStore(minimalIO());
-    expect(store.agent.compactToolCalls).toBe(false);
-    expect(store.agent.ungroupedTools).toEqual(["write", "edit", "replace", "bash"]);
+    expect(store.agent.compactToolCalls).toBe(true);
+    expect(store.agent.ungroupedTools).toEqual([
+      "write",
+      "edit",
+      "replace",
+      "bash",
+      "Agent",
+      "StopAgent",
+      "MessageAgent",
+    ]);
+  });
+
+  it("keeps the normal viewer for an explicit compactToolCalls: false", () => {
+    const { io } = memIO({ global: { agent: { compactToolCalls: false } } });
+    expect(new ConfigStore(io).agent.compactToolCalls).toBe(false);
   });
 
   it("reads an explicit empty ungrouped list as no exclusions, not as the defaults", () => {
@@ -1066,11 +1079,11 @@ describe("ConfigStore compact conversation viewer preferences", () => {
 
   it("survives clearAllModelOverrides (dedicated non-model key test)", () => {
     const { io } = memIO({
-      global: { agent: { default: "g", Explore: "g/explore", compactToolCalls: true, ungroupedTools: ["read"] } },
+      global: { agent: { default: "g", Explore: "g/explore", compactToolCalls: false, ungroupedTools: ["read"] } },
     });
     const store = new ConfigStore(io);
     store.mutate.agent.clearAllModelOverrides();
-    expect(store.agent.compactToolCalls).toBe(true);
+    expect(store.agent.compactToolCalls).toBe(false);
     expect(store.agent.ungroupedTools).toEqual(["read"]);
     expect(store.agentConfigSnapshot().Explore).toBeUndefined();
   });

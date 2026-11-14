@@ -56,10 +56,10 @@ describe("viewerToolDisplay", () => {
 });
 
 describe("viewerPresentation", () => {
-  it("keeps the normal viewer when nothing is configured", () => {
+  it("hands the shipped defaults to the viewer when nothing is configured", () => {
     expect(viewerPresentation(new ConfigStore(minimalIO()))).toEqual({
-      compactToolCalls: false,
-      ungroupedTools: ["write", "edit", "replace", "bash"],
+      compactToolCalls: true,
+      ungroupedTools: ["write", "edit", "replace", "bash", "Agent", "StopAgent", "MessageAgent"],
     });
   });
 

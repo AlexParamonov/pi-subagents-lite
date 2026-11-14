@@ -31,8 +31,16 @@ export const DEFAULT_GRACE_TURNS = 6;
 export const DEFAULT_WATCHDOG_TIMEOUT_MINUTES = 45;
 /** Minimum finished retention: 1 second expressed in minutes. */
 export const MIN_FINISHED_RETENTION_MINUTES = 1 / 60;
-/** Tools the conversation viewer leaves ungrouped until the user edits the list. */
-export const DEFAULT_UNGROUPED_TOOLS: readonly string[] = ["write", "edit", "replace", "bash"];
+/** Tools the viewer leaves ungrouped until the user edits the list; `replace` matches only a custom or MCP tool of that name. */
+export const DEFAULT_UNGROUPED_TOOLS: readonly string[] = [
+  "write",
+  "edit",
+  "replace",
+  "bash",
+  "Agent",
+  "StopAgent",
+  "MessageAgent",
+];
 
 export const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", "custom"]);
 

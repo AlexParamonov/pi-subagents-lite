@@ -82,9 +82,9 @@ export interface SubagentsConfig {
     modelThinkingPlacement?: ModelThinkingPlacement;
     /** Status bar format: 'full' (default) or 'compact'. */
     statusBarFormat?: "full" | "compact";
-    /** Summarize eligible tool-call runs in the conversation viewer. Default: false. */
+    /** Summarize eligible tool-call runs in the conversation viewer. An absent key means on. */
     compactToolCalls?: boolean;
-    /** Tool names the conversation viewer never groups. Default: DEFAULT_UNGROUPED_TOOLS. */
+    /** Tool names the conversation viewer never groups. An absent key means DEFAULT_UNGROUPED_TOOLS, an empty list none. */
     ungroupedTools?: string[];
     [agentType: string]: string | null | undefined | boolean | number | string[];
   };

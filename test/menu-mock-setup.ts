@@ -301,7 +301,7 @@ vi.mock("../src/shell.js", async () => {
         widgetShowThinking: a.widgetShowThinking !== false,
         widgetNavHint: a.widgetNavHint !== false,
         exposeDescriptions: a.exposeDescriptions === true,
-        compactToolCalls: a.compactToolCalls === true,
+        compactToolCalls: a.compactToolCalls !== false,
         ungroupedTools: a.ungroupedTools ?? DEFAULT_UNGROUPED_TOOLS,
       };
     },

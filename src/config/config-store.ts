@@ -141,9 +141,9 @@ export interface ResolvedAgentSettings {
   readonly outputTranscript: boolean;
   /** Whether agent colors (spinner, status icons, picker bullets) are enabled. Default: true. */
   readonly showAgentColors: boolean;
-  /** Whether the conversation viewer groups eligible tool calls into summaries. Default: false. */
+  /** Whether the conversation viewer groups eligible tool calls into summaries. An absent setting means on. */
   readonly compactToolCalls: boolean;
-  /** Tool names the conversation viewer renders individually and never groups. */
+  /** Tool names the viewer renders individually and never groups. An absent setting means DEFAULT_UNGROUPED_TOOLS. */
   readonly ungroupedTools: readonly string[];
 }
 
@@ -244,7 +244,7 @@ export class ConfigStore {
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       outputTranscript: a.outputTranscript === true,
       showAgentColors: a.showAgentColors !== false,
-      compactToolCalls: a.compactToolCalls === true,
+      compactToolCalls: a.compactToolCalls !== false,
       // Absent means the built-in exclusions; a stored [] means none.
       ungroupedTools: a.ungroupedTools ?? DEFAULT_UNGROUPED_TOOLS,
     };

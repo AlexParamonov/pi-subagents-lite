@@ -692,12 +692,14 @@ describe("showSpawnOptionsMenu — compact conversation viewer", () => {
     return settingsListCalls[0].items;
   };
 
-  it("shows compact tool calls OFF with the default ungrouped names", async () => {
+  it("shows compact tool calls ON with the default ungrouped names", async () => {
     const items = await rows(createMockCtx());
     const compact = items.find((i) => i.id === "compactToolCalls")!;
-    expect(compact.currentValue).toBe("OFF");
+    expect(compact.currentValue).toBe("ON");
     expect(compact.values).toEqual(["ON", "OFF"]);
-    expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe("write, edit, replace, bash");
+    expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe(
+      "write, edit, replace, bash, Agent, StopAgent, MessageAgent",
+    );
   });
 
   it("shows the stored values when both are configured", async () => {
