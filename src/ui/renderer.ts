@@ -275,8 +275,8 @@ const TRAILING_STATUS_NOTE = / \([^()]*\)\s*$/;
  * separator of its own and is cut positionally; the error note keeps its own line, so a one-line
  * reply opening with "Error: " is content-identical to it and loses the row.
  */
-function firstReplyLine(content: string, statusNoteAppended: boolean): string {
-  const text = statusNoteAppended ? content.replace(TRAILING_STATUS_NOTE, "") : content;
+function firstReplyLine(content: string, status: string | undefined): string {
+  const text = appendsStatusNote(status) ? content.replace(TRAILING_STATUS_NOTE, "") : content;
   const lines = text.split("\n");
   const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
   const reply = body.find((l) => l.trim())?.trim() ?? "";
@@ -315,9 +315,11 @@ export function renderSubagentResult(
     const description = typeof d.description === "string" ? d.description : "";
     inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
 
-    const replyLine = expanded ? "" : firstReplyLine(text, appendsStatusNote(d.status as string | undefined));
-    if (replyLine) {
-      inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
+    if (!expanded) {
+      const replyLine = firstReplyLine(text, d.status as string | undefined);
+      if (replyLine) {
+        inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
+      }
     }
 
     const pathLines = [pathRow("tail -f ", d.outputFile, theme), pathRow("worktree: ", d.worktreePath, theme)]
