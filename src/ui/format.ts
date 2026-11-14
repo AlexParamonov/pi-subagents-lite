@@ -120,11 +120,11 @@ export function formatMs(ms: number): string {
   return parts.join(" ");
 }
 
-/** Keep sub-second calls distinguishable; format longer runs in seconds, minutes, or hours. */
-export function formatToolDuration(ms: number): string {
-  const elapsedMs = Math.max(0, Math.round(ms));
-  if (elapsedMs < 1000) return `${elapsedMs}ms`;
+/** Omit sub-tenth-second calls; format longer runs in seconds, minutes, or hours. */
+export function formatToolDuration(ms: number): string | undefined {
+  if (ms < 100) return undefined;
 
+  const elapsedMs = Math.max(0, Math.round(ms));
   const seconds = elapsedMs / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
 

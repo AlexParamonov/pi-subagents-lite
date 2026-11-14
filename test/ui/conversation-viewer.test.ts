@@ -679,10 +679,12 @@ describe("ConversationViewer", () => {
       }
     });
 
-    it.each(["edit", "write"] as const)("shows a small duration for %s calls", (name) => {
+    it.each(["edit", "write"] as const)("hides timings below 0.1s for %s calls", (name) => {
       const viewer = openCallView([callsOf({ id: "file-op", name }), resultOf("file-op", { name, durationMs: 42 })]);
+      const toolLine = frameLines(viewer).find((line) => line.includes(` ${name} `));
 
-      expect(frameText(viewer)).toContain("42ms");
+      expect(toolLine).toBeDefined();
+      expect(toolLine).not.toMatch(/\b\d+(?:\.\d+)?(?:ms|s)\b/);
     });
 
     it("takes the duration its result recorded over the one its end event reported", () => {
@@ -746,7 +748,7 @@ describe("ConversationViewer", () => {
 
         emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
         vi.advanceTimersByTime(100);
-        expect(frameText(viewer)).toContain("100ms");
+        expect(frameText(viewer)).toContain("0.1s");
         vi.advanceTimersByTime(1900);
         expect(frameText(viewer)).toContain("2.0s");
 
@@ -782,7 +784,7 @@ describe("ConversationViewer", () => {
         );
 
         const shown = frameText(viewer);
-        expect(shown).toContain("900ms");
+        expect(shown).toContain("0.9s");
         expect(shown).toContain("4.0s");
         viewer.dispose();
       } finally {

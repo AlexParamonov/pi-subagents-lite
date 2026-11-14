@@ -332,10 +332,15 @@ export class ConversationViewer implements Component {
   private toolTimingText(id: string | undefined, result: ToolResultStatus | undefined): string | undefined {
     if (!id) return undefined;
     const durationMs = result?.durationMs ?? this.toolFinishedMs.get(id);
-    if (durationMs !== undefined) return `Took ${formatToolDuration(durationMs)}`;
+    if (durationMs !== undefined) {
+      const formatted = formatToolDuration(durationMs);
+      return formatted === undefined ? undefined : `Took ${formatted}`;
+    }
     if (result) return undefined; // settled without a recorded duration
     const startedAt = this.toolStartedAt.get(id);
-    return startedAt === undefined ? undefined : `Elapsed ${formatToolDuration(Date.now() - startedAt)}`;
+    if (startedAt === undefined) return undefined;
+    const formatted = formatToolDuration(Date.now() - startedAt);
+    return formatted === undefined ? undefined : `Elapsed ${formatted}`;
   }
 
   private scheduleRender(): void {
