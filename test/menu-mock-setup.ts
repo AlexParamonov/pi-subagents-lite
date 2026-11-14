@@ -248,7 +248,7 @@ vi.mock("../src/agents/tool-execution.js", () => ({
 vi.mock("../src/shell.js", async () => {
   // Derive the getter defaults from src's real config constants (via the mocked
   // config-io module above) so menu tests pin src's defaults, not a hand copy.
-  const { DEFAULT_AGENT, DEFAULT_CONCURRENCY } = await import("../src/config/config-io.js");
+  const { DEFAULT_AGENT, DEFAULT_CONCURRENCY, DEFAULT_UNGROUPED_TOOLS } = await import("../src/config/config-io.js");
   const { resolveModel } = await import("../src/models/model-precedence.js");
   const {
     agentLayerHasModelSettings,
@@ -301,6 +301,8 @@ vi.mock("../src/shell.js", async () => {
         widgetShowThinking: a.widgetShowThinking !== false,
         widgetNavHint: a.widgetNavHint !== false,
         exposeDescriptions: a.exposeDescriptions === true,
+        compactToolCalls: a.compactToolCalls === true,
+        ungroupedTools: a.ungroupedTools ?? DEFAULT_UNGROUPED_TOOLS,
       };
     },
     get concurrency() {
@@ -505,6 +507,12 @@ vi.mock("../src/shell.js", async () => {
         },
         setOutputTranscript(enabled: boolean) {
           mockModules.mockConfig.agent.outputTranscript = enabled;
+        },
+        setCompactToolCalls(enabled: boolean) {
+          mockModules.mockConfig.agent.compactToolCalls = enabled;
+        },
+        setUngroupedTools(names: readonly string[]) {
+          mockModules.mockConfig.agent.ungroupedTools = [...names];
         },
       },
       widget: {

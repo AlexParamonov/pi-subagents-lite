@@ -157,9 +157,7 @@ export function buildModelOptions(
  *   - agent.default (global default model)
  *   - agent[type] for each agent type (per-type overrides)
  */
-export function extractConfiguredModels(
-  agentConfig: Readonly<{ default: string | null; [agentType: string]: string | null | undefined | boolean | number }>,
-): string[] {
+export function extractConfiguredModels(agentConfig: Readonly<Record<string, unknown>>): string[] {
   const models: string[] = [];
 
   // Add default model if set

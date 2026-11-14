@@ -74,6 +74,11 @@ function resultText(content: unknown): string {
   return plainText(text);
 }
 
+/** A user message's text: pi stores it as a plain string or as content blocks. */
+function userText(msg: any): string {
+  return typeof msg.content === "string" ? msg.content : extractText(msg.content);
+}
+
 /** Optional wiring for tool-call display: timing seeds and the global collapsed/expanded flag. */
 export interface ToolDisplayOptions {
   /**
@@ -97,6 +102,10 @@ export interface ConversationViewerOptions {
   onSteer?: (message: string) => void;
   /** Tool timing seeds and pi's global collapsed/expanded flag. */
   toolDisplay?: ToolDisplayOptions;
+  /** Summarize runs of adjacent eligible calls; drop result bodies, padding and hidden thinking. */
+  compactToolCalls?: boolean;
+  /** Tool names that keep their own row and split a run. Matched exactly, case-sensitively. */
+  ungroupedTools?: readonly string[];
 }
 
 /** A settled tool call's rows: lines [start, end) of a message or of the content. */
@@ -104,6 +113,45 @@ interface ToolBlock {
   id: string;
   start: number;
   end: number;
+}
+
+/** Background a call row is painted on while it runs and once its result lands. */
+type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
+
+/** A tool call as the viewer paints it: the id links its result and clicks, name and args fill the row. */
+interface ToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+}
+
+/** One position of the compact layout: a message's non-call rows, one call, or a collapsed run. */
+type CompactEntry =
+  | { kind: "rows"; msgIndex: number }
+  | { kind: "call"; call: ToolCall }
+  | { kind: "run"; calls: ToolCall[] };
+
+/** The message's tool calls, in the order the viewer paints them. */
+function callsOfMessage(msg: any): ToolCall[] {
+  if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return [];
+  const calls: ToolCall[] = [];
+  for (const c of msg.content) {
+    if (c?.type === "toolCall") calls.push({ id: c.id, name: c.name, args: c.arguments });
+  }
+  return calls;
+}
+
+/** The status background of one call. */
+function callBg(result: ToolResultStatus | undefined): ToolBg {
+  return result ? (result.isError ? "toolErrorBg" : "toolSuccessBg") : "toolPendingBg";
+}
+
+/** One color for a whole run: a failed call wins, then an unfinished one, else success. */
+function runBg(calls: ToolCall[], toolResults: Map<string, ToolResultStatus>): ToolBg {
+  const results = calls.map((call) => (call.id ? toolResults.get(call.id) : undefined));
+  if (results.some((result) => result?.isError)) return "toolErrorBg";
+  if (results.some((result) => !result)) return "toolPendingBg";
+  return "toolSuccessBg";
 }
 
 export class ConversationViewer implements Component {
@@ -165,6 +213,10 @@ export class ConversationViewer implements Component {
   private clickOrigin: { topRow: number; firstLine: number; rows: number } | undefined;
   /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
   private thinkingVisible: boolean;
+  /** Compact presentation, fixed at open: summarized call runs and no results, padding or hidden thinking. */
+  private readonly compactToolCalls: boolean;
+  /** Tool names the compact layout keeps individually; each one also splits a run. */
+  private readonly ungroupedTools: ReadonlySet<string>;
   private readonly onStop?: () => void;
   private readonly onSteer?: (message: string) => void;
   private readonly toolDisplay: ToolDisplayOptions;
@@ -181,6 +233,8 @@ export class ConversationViewer implements Component {
     this.onSteer = options.onSteer;
     this.toolDisplay = options.toolDisplay ?? {};
     this.thinkingVisible = !getHideThinkingBlock();
+    this.compactToolCalls = options.compactToolCalls === true;
+    this.ungroupedTools = new Set(options.ungroupedTools ?? []);
     this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
     this.seedRunningToolCalls();
@@ -791,7 +845,7 @@ export class ConversationViewer implements Component {
 
   private renderUserMessage(msg: any, width: number): string[] {
     const th = this.theme;
-    const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
+    const text = userText(msg);
     if (!text.trim()) return [];
     const wrapped = wrapTextWithAnsi(text.trim(), width - 2);
     const inner: string[] = [];
@@ -812,13 +866,9 @@ export class ConversationViewer implements Component {
     const lines: string[] = [];
     const textParts: string[] = [];
     const thinkingParts: string[] = [];
-    const toolCalls: Array<{ id?: string; name: string; args?: Record<string, unknown> }> = [];
     for (const c of msg.content) {
       if (c.type === "text" && c.text) textParts.push(c.text);
       else if (c.type === "thinking" && c.thinking) thinkingParts.push(c.thinking);
-      else if (c.type === "toolCall") {
-        toolCalls.push({ id: c.id, name: c.name, args: c.arguments });
-      }
     }
     // Thinking blocks — italic Markdown, matching Pi's assistant-message.ts
     if (thinkingParts.length > 0) {
@@ -842,8 +892,9 @@ export class ConversationViewer implements Component {
         lines.push("");
       }
     }
-    // Tool calls
-    for (const tc of toolCalls) {
+    // Tool calls. In compact mode the assembly paints them per frame, never from this cache.
+    if (this.compactToolCalls) return lines;
+    for (const tc of callsOfMessage(msg)) {
       const start = lines.length;
       lines.push(...this.renderToolCall(tc, width, toolResults));
       // Like pi, only a call with a result can be toggled by clicking it.
@@ -853,33 +904,14 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  private renderToolCall(
-    tc: { id?: string; name: string; args?: Record<string, unknown> },
-    width: number,
-    toolResults: Map<string, ToolResultStatus>,
-  ): string[] {
+  private renderToolCall(tc: ToolCall, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
     const th = this.theme;
     const expanded = this.isCallExpanded(tc.id);
-    const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
-    // The call line's own text is model-produced tool data, so it gets the same strip as the result.
-    const label = plainText(argsSummary ? `${tc.name}${argsSummary}` : tc.name);
-    // Status color: pending while it runs, success/error once settled.
     const result = tc.id ? toolResults.get(tc.id) : undefined;
-    const bg = result ? (result.isError ? "toolErrorBg" : "toolSuccessBg") : "toolPendingBg";
-    const inner: string[] = [];
+    const bg = callBg(result);
     const timing = this.toolTimingText(tc.id, result);
-    // Like pi's bash renderer: a muted "(timeout 300s)" after the command.
-    const timeout = tc.name === "bash" ? tc.args?.timeout : undefined;
-    const timeoutSuffix = typeof timeout === "number" && timeout > 0 ? th.fg("muted", ` (timeout ${timeout}s)`) : "";
     // Collapsed: timing sits on the title line. Expanded: at the end, like pi's muted footer line.
-    // The timeout suffix already starts with a space, so a single one separates it from the timing.
-    const timingGap = timeoutSuffix ? " " : "  ";
-    const timingOnTitle = timing && !expanded ? `${timingGap}${th.fg("muted", timing)}` : "";
-    const toolLine = ` ${th.bold(label)}${timeoutSuffix}${timingOnTitle} `;
-    for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
-      const padNeeded = Math.max(0, width - visibleWidth(tl));
-      inner.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
-    }
+    const inner = this.callRows(this.callTitleText(tc, expanded ? undefined : timing), bg, width);
     for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
       const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
       inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
@@ -890,6 +922,106 @@ export class ConversationViewer implements Component {
       }
     }
     return this.wrapInBg(bg, inner, width);
+  }
+
+  /** The call row's own text: name, argument summary, bash timeout, and timing when it sits on the row. */
+  private callTitleText(tc: ToolCall, timing: string | undefined): string {
+    const th = this.theme;
+    const expanded = this.isCallExpanded(tc.id);
+    const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
+    // The call line's own text is model-produced tool data, so it gets the same strip as the result.
+    const label = plainText(argsSummary ? `${tc.name}${argsSummary}` : tc.name);
+    // Like pi's bash renderer: a muted "(timeout 300s)" after the command.
+    const timeout = tc.name === "bash" ? tc.args?.timeout : undefined;
+    const timeoutSuffix = typeof timeout === "number" && timeout > 0 ? th.fg("muted", ` (timeout ${timeout}s)`) : "";
+    // The timeout suffix already starts with a space, so a single one separates it from the timing.
+    const timingGap = timeoutSuffix ? " " : "  ";
+    const timingText = timing ? `${timingGap}${th.fg("muted", timing)}` : "";
+    return ` ${th.bold(label)}${timeoutSuffix}${timingText} `;
+  }
+
+  /** Wrap one row of text and paint it full width on a call's status background. */
+  private callRows(text: string, bg: ToolBg, width: number): string[] {
+    const th = this.theme;
+    return wrapTextWithAnsi(text, width - 2).map((line) => {
+      const padNeeded = Math.max(0, width - visibleWidth(line));
+      return th.bg(bg, th.fg("toolTitle", `${line}${" ".repeat(padNeeded)}`));
+    });
+  }
+
+  /**
+   * Compact layout entries in display order: each message's non-call rows, then
+   * its calls. Two or more consecutive eligible calls collapse into one run at
+   * the position of their first member; anything that paints non-call content,
+   * and any excluded call, ends the open run. pi's expanded flag shows every
+   * call itself, so no run forms at all.
+   */
+  private compactEntries(messages: any[]): CompactEntry[] {
+    const entries: CompactEntry[] = [];
+    let openRun: { kind: "run"; calls: ToolCall[] } | undefined;
+    messages.forEach((msg: any, msgIndex: number) => {
+      entries.push({ kind: "rows", msgIndex });
+      if (this.paintsNonCallContent(msg)) openRun = undefined;
+      for (const call of callsOfMessage(msg)) {
+        if (this.toolsExpanded || this.ungroupedTools.has(call.name)) {
+          entries.push({ kind: "call", call });
+          openRun = undefined;
+        } else if (openRun) {
+          openRun.calls.push(call);
+        } else {
+          openRun = { kind: "run", calls: [call] };
+          entries.push(openRun);
+        }
+      }
+    });
+    // A run of one is not a summary: it shows the call itself.
+    return entries.map((entry) =>
+      entry.kind === "run" && entry.calls.length === 1 ? { kind: "call", call: entry.calls[0]! } : entry,
+    );
+  }
+
+  /**
+   * True when a message paints rows other than calls, which bounds a compact run.
+   * Blank text paints no row (pi's Markdown skips it), so like a blank user turn it
+   * is not a boundary.
+   */
+  private paintsNonCallContent(msg: any): boolean {
+    if (msg?.role === "user") return userText(msg).trim() !== "";
+    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return false;
+    return msg.content.some(
+      (c: any) =>
+        (c?.type === "text" && c.text?.trim()) || (c?.type === "thinking" && c.thinking && this.thinkingVisible),
+    );
+  }
+
+  /** Compact content rows and their click targets, straight from the transcript: never cached call rows. */
+  private appendCompactRows(
+    messages: any[],
+    width: number,
+    toolResults: Map<string, ToolResultStatus>,
+    lines: string[],
+    toolBlocks: ToolBlock[],
+  ): void {
+    for (const entry of this.compactEntries(messages)) {
+      if (entry.kind === "rows") {
+        const cached = this.messageCache.get(entry.msgIndex);
+        lines.push(...(cached ?? this.cacheMessage(entry.msgIndex, messages[entry.msgIndex], width, toolResults)));
+        continue;
+      }
+      if (entry.kind === "run") {
+        const names = plainText([...new Set(entry.calls.map((call) => call.name))].join(", "));
+        const text = ` ${this.theme.bold(`${entry.calls.length} tool calls (${names})`)} `;
+        lines.push(...this.callRows(text, runBg(entry.calls, toolResults), width));
+        continue;
+      }
+      const start = lines.length;
+      const call = entry.call;
+      const result = call.id ? toolResults.get(call.id) : undefined;
+      const timing = this.toolTimingText(call.id, result);
+      lines.push(...this.callRows(this.callTitleText(call, timing), callBg(result), width));
+      // Like pi, only a call with a result can be toggled by clicking it.
+      if (call.id && toolResults.has(call.id)) toolBlocks.push({ id: call.id, start, end: lines.length });
+    }
   }
 
   /**
@@ -983,12 +1115,16 @@ export class ConversationViewer implements Component {
     const lines: string[] = [];
     const toolBlocks: ToolBlock[] = [];
 
-    for (let i = 0; i < messages.length; i++) {
-      const base = lines.length;
-      const msgLines = this.messageCache.get(i) ?? this.cacheMessage(i, messages[i], width, toolResults);
-      lines.push(...msgLines);
-      for (const b of this.messageBlocks.get(i) ?? []) {
-        toolBlocks.push({ id: b.id, start: base + b.start, end: base + b.end });
+    if (this.compactToolCalls) {
+      this.appendCompactRows(messages, width, toolResults, lines, toolBlocks);
+    } else {
+      for (let i = 0; i < messages.length; i++) {
+        const base = lines.length;
+        const msgLines = this.messageCache.get(i) ?? this.cacheMessage(i, messages[i], width, toolResults);
+        lines.push(...msgLines);
+        for (const b of this.messageBlocks.get(i) ?? []) {
+          toolBlocks.push({ id: b.id, start: base + b.start, end: base + b.end });
+        }
       }
     }
     this.toolBlocks = toolBlocks;
@@ -1027,6 +1163,8 @@ export class ConversationViewer implements Component {
    * Matches pi's behavior: italic styling with thinkingText color.
    */
   private renderHiddenThinkingLabel(): string[] {
+    // Compact mode drops hidden thinking entirely: no indicator, no spacer row.
+    if (this.compactToolCalls) return [];
     const th = this.theme;
     const thinkingText = th.fg("thinkingText", "Thinking...");
     const label = th.italic ? th.italic(thinkingText) : thinkingText;

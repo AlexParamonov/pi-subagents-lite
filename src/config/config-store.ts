@@ -26,6 +26,7 @@ import type { ThinkingChoice } from "../types.ts";
 import {
   VALID_SYSTEM_PROMPT_MODES,
   DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
+  DEFAULT_UNGROUPED_TOOLS,
   MIN_FINISHED_RETENTION_MINUTES,
   MODEL_FAMILY_KEYS,
   createConfigIO,
@@ -140,6 +141,10 @@ export interface ResolvedAgentSettings {
   readonly outputTranscript: boolean;
   /** Whether agent colors (spinner, status icons, picker bullets) are enabled. Default: true. */
   readonly showAgentColors: boolean;
+  /** Whether the conversation viewer groups eligible tool calls into summaries. Default: false. */
+  readonly compactToolCalls: boolean;
+  /** Tool names the conversation viewer renders individually and never groups. */
+  readonly ungroupedTools: readonly string[];
 }
 
 /** Side-effect targets, injected after construction. */
@@ -239,6 +244,9 @@ export class ConfigStore {
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       outputTranscript: a.outputTranscript === true,
       showAgentColors: a.showAgentColors !== false,
+      compactToolCalls: a.compactToolCalls === true,
+      // Absent means the built-in exclusions; a stored [] means none.
+      ungroupedTools: a.ungroupedTools ?? DEFAULT_UNGROUPED_TOOLS,
     };
   }
 
@@ -428,6 +436,8 @@ export class ConfigStore {
         this.setAgentLayerEntry("agentStatusLimit", canonicalAgentStatusLimit(limit), "global");
       },
       setShowAgentColors: (enabled: boolean) => this.setAgentLayerEntry("showAgentColors", enabled, "global"),
+      setCompactToolCalls: (enabled: boolean) => this.setAgentLayerEntry("compactToolCalls", enabled, "global"),
+      setUngroupedTools: (names: readonly string[]) => this.setAgentLayerEntry("ungroupedTools", [...names], "global"),
     },
     widget: {
       setCompact: (enabled: boolean): void => {

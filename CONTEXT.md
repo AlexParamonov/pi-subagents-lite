@@ -56,6 +56,14 @@ _Avoid_: Default tools inheritance, tool fallback
 An extension bundled with the pi CLI itself (codemode, tool-search, mcp; llama.cpp excluded) that a Subagent session loads via pi's public SDK creators wrapped with pi's own names and `builtin`/`replaceable` flags, so settings-level extension selection applies inside the child loader unchanged. Selectable and deselectable by bare name in Agent type frontmatter `extensions`.
 _Avoid_: Core extension, internal extension, bundled tool
 
+**Compact tool calls**:
+Global **ConversationViewer overlay** preference (default off) that replaces each **Call run** with one count-and-names row, paints every other tool call as a single status-colored row without result body, fill bar or blank separator, and omits hidden thinking completely. Read when the viewer opens, from both entry points; pi's tool-output flag still selects summaries (collapsed) or individual calls (expanded).
+_Avoid_: Compact mode (that is the widget's own state), condensed view
+
+**Ungrouped tools**:
+Global comma-editable list of tool names the **Compact tool calls** presentation keeps on their own row; each one also ends the **Call run** around it. An absent key means `write`, `edit`, `replace`, an empty list groups every call. Names match exactly and case-sensitively, custom and MCP names included.
+_Avoid_: Excluded tools, tool categories, grouping allowlist
+
 ### Worktrees
 
 **Worktree**:
@@ -127,6 +135,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - **MessageAgent** continues any **Settled** **Subagent** with a live session, including one a human stopped: the model can restart a deliberately stopped agent
 - Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
 - A **Nudge** carries a **Subagent** result parent-ward; **MessageAgent** carries input the other way
+- **Compact tool calls** and **Ungrouped tools** live in the **Global config** only: a **Project config** cannot carry either, and clearing **Model override**s keeps both
 
 ### Navigation
 
@@ -152,14 +161,6 @@ _Avoid_: Re-sort, refresh
 Live, scrollable view of an agent's conversation, streamed from session events. Opened from the running-agents menu; owns input while open (`Enter` steers, `s` stops).
 _Avoid_: ResultViewer, snapshot viewer
 
-**Compact tool calls**:
-An opt-in **ConversationViewer overlay** presentation, off by default, that summarizes **Tool-call groups** and displays other calls directly as one status-colored row each, with no result bodies. When thinking is hidden, both its content and indicators are omitted; showing thinking restores it and immediately splits any groups spanning it.
-_Avoid_: Compact widget mode, result folding
-
-**Tool-call group**:
-Two or more consecutive eligible calls in the viewer's existing display order, including across turns, ignoring tool-result messages and hidden thinking; visible non-tool content and **Ungrouped tools** break a group. Its summary counts its member calls and lists unique names in first-seen order, with failure color taking precedence over pending, then success.
-_Avoid_: Tool batch, assistant turn
-
-**Ungrouped tools**:
-A global, user-editable exclusion list for **Compact tool calls**, defaulting to `write`, `edit`, `replace`, whose names match tools exactly and case-sensitively. Listed calls remain individually visible and break groups; an explicit empty list excludes nothing.
-_Avoid_: Read-only tool classification, exploration tools
+**Call run**:
+Two or more consecutive eligible tool calls in the **ConversationViewer overlay**'s display order, counted across turns. Visible text, revealed thinking, or an **Ungrouped tools** name ends it; tool-result messages and rows that paint nothing do not, and a run of one is not a run. Under **Compact tool calls** a run shows as one summary row carrying its count, unique names in first-seen order, and one status color: a failed call wins, then an unfinished one, else success.
+_Avoid_: Tool group, tool batch, call cluster, merged calls, assistant turn

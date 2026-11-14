@@ -1020,3 +1020,56 @@ describe("AgentStatus settled limit resolution", () => {
     expect(store.agentConfigSnapshot().Explore).toBeUndefined();
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Compact conversation viewer preferences (global-only keys)         */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore compact conversation viewer preferences", () => {
+  it("defaults compact tool calls off and ungrouped tools to write, edit, replace", () => {
+    const store = new ConfigStore(minimalIO());
+    expect(store.agent.compactToolCalls).toBe(false);
+    expect(store.agent.ungroupedTools).toEqual(["write", "edit", "replace"]);
+  });
+
+  it("reads an explicit empty ungrouped list as no exclusions, not as the defaults", () => {
+    const { io } = memIO({ global: { agent: { ungroupedTools: [] } } });
+    expect(new ConfigStore(io).agent.ungroupedTools).toEqual([]);
+  });
+
+  it("setCompactToolCalls persists to the global layer", () => {
+    const { io, saves, global } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setCompactToolCalls(true);
+    expect(store.agent.compactToolCalls).toBe(true);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(global().agent!.compactToolCalls).toBe(true);
+    store.mutate.agent.setCompactToolCalls(false);
+    expect(global().agent!.compactToolCalls).toBe(false);
+  });
+
+  it("setUngroupedTools persists the name list, an empty list included, and reload keeps it", () => {
+    const { io, global } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.agent.setUngroupedTools(["Read", "my_custom_tool"]);
+    expect(store.agent.ungroupedTools).toEqual(["Read", "my_custom_tool"]);
+    expect(global().agent!.ungroupedTools).toEqual(["Read", "my_custom_tool"]);
+    expect(new ConfigStore(io).agent.ungroupedTools).toEqual(["Read", "my_custom_tool"]);
+
+    store.mutate.agent.setUngroupedTools([]);
+    expect(global().agent!.ungroupedTools).toEqual([]);
+    expect(new ConfigStore(io).agent.ungroupedTools).toEqual([]);
+  });
+
+  it("survives clearAllModelOverrides (dedicated non-model key test)", () => {
+    const { io } = memIO({
+      global: { agent: { default: "g", Explore: "g/explore", compactToolCalls: true, ungroupedTools: ["read"] } },
+    });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.compactToolCalls).toBe(true);
+    expect(store.agent.ungroupedTools).toEqual(["read"]);
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+  });
+});

@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, SelectList, type SettingItem, type Component } from "@earendil-works/pi-tui";
+import { SettingsList, SelectList, Input, type SettingItem, type Component } from "@earendil-works/pi-tui";
 import { SEPARATOR_ID, buildSettingsListTheme, buildSelectListTheme, headerItem } from "./helpers.ts";
 import { createTargetSelectSubmenu } from "./submenus/target-select.ts";
 import { createNumericSubmenu } from "./submenus/numeric-input.ts";
@@ -165,6 +165,35 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       values: ["full", "compact"],
       description: "Status bar format: full (Agents: N active · M done) or compact (N MΣ).",
     },
+    {
+      id: "compactToolCalls",
+      label: "Compact tool calls",
+      currentValue: store.agent.compactToolCalls ? "ON" : "OFF",
+      values: ["ON", "OFF"],
+      description: "Summarize runs of adjacent tool calls in the conversation viewer. Applies when the viewer opens.",
+    },
+    {
+      id: "ungroupedTools",
+      label: "Ungrouped tools",
+      currentValue: store.agent.ungroupedTools.join(", "),
+      submenu: (currentValue, done) => {
+        const input = new Input();
+        input.setValue(currentValue);
+        input.onSubmit = (value: string) => {
+          const names = value
+            .split(",")
+            .map((name) => name.trim())
+            .filter((name) => name !== "");
+          store.mutate.agent.setUngroupedTools(names);
+          ctx.ui.notify(`Ungrouped tools: ${names.length > 0 ? names.join(", ") : "(none)"}`, "info");
+          done(names.join(", "));
+        };
+        // Escape closes without a value, so SettingsList never fires onChange: the stored list stands.
+        input.onEscape = () => done();
+        return input;
+      },
+      description: "Comma-separated tools kept on their own row, splitting a run. Blank groups every tool call.",
+    },
     // --- Tools ---
     { id: SEPARATOR_ID, label: " ", currentValue: "" },
     headerItem(theme, "Tools"),
@@ -250,6 +279,13 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       case "statusBarFormat":
         store.mutate.widget.setStatusBarFormat(newValue as "full" | "compact");
         ctx.ui.notify(`Status bar format: ${newValue}`, "info");
+        break;
+      case "compactToolCalls":
+        store.mutate.agent.setCompactToolCalls(newValue === "ON");
+        ctx.ui.notify(`Compact tool calls ${newValue} (applies when the viewer opens)`, "info");
+        break;
+      case "ungroupedTools":
+        // Handled by its input submenu, not onChange
         break;
       case "outputTranscript":
         store.mutate.agent.setOutputTranscript(newValue === "ON");

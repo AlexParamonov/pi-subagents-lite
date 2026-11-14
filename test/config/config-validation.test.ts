@@ -86,6 +86,38 @@ describe("validateRawLayer — enums, nulls, and message shape", () => {
   });
 });
 
+describe("validateRawLayer — compact viewer preferences", () => {
+  it("keeps a tool-name array for ungroupedTools, including an explicit empty one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(validateRawLayer({ agent: { ungroupedTools: ["write", "edit"] } }, "/g.json").agent).toEqual({
+        ungroupedTools: ["write", "edit"],
+      });
+      expect(validateRawLayer({ agent: { ungroupedTools: [] } }, "/g.json").agent).toEqual({ ungroupedTools: [] });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("drops a comma string, a non-string entry and a non-boolean compact flag with warnings", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(validateRawLayer({ agent: { ungroupedTools: "write,edit" } }, "/g.json").agent ?? {}).toEqual({});
+      expect(warn.mock.calls[0][0]).toContain("agent.ungroupedTools");
+      expect(warn.mock.calls[0][0]).toContain("array");
+
+      expect(validateRawLayer({ agent: { ungroupedTools: ["read", 7] } }, "/g.json").agent ?? {}).toEqual({});
+      expect(warn).toHaveBeenCalledTimes(2);
+
+      expect(validateRawLayer({ agent: { compactToolCalls: "yes" } }, "/g.json").agent ?? {}).toEqual({});
+      expect(warn.mock.calls[2][0]).toContain("expected boolean");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("menu crash vector", () => {
   it("menu helpers tolerate object model values without throw", () => {
     const bad = { model: "x" };

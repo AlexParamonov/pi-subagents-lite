@@ -42,4 +42,6 @@ export const CONFIG_AGENT_NON_MODEL_KEYS = [
   "statusBarFormat",
   "outputTranscript",
   "showAgentColors",
+  "compactToolCalls",
+  "ungroupedTools",
 ];

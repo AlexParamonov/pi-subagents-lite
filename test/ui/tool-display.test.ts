@@ -9,8 +9,10 @@ vi.mock("../../src/shell.js", () => ({
   getStore: () => ({ notifyToolsExpanded }),
 }));
 
-import { viewerToolDisplay } from "../../src/ui/tool-display.js";
+import { viewerToolDisplay, viewerPresentation } from "../../src/ui/tool-display.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
+import { ConfigStore } from "../../src/config/config-store.js";
+import { memIO, minimalIO } from "../config/config-store-helpers.js";
 
 function makeCtx(initial: boolean) {
   let expanded = initial;
@@ -50,5 +52,20 @@ describe("viewerToolDisplay", () => {
     expect(display.getToolStartedAt?.("t1")).toBe(1234);
     expect(display.getToolStartedAt?.("other")).toBeUndefined();
     expect(viewerToolDisplay(makeCtx(false).ctx, undefined, "a1").getToolStartedAt?.("t1")).toBeUndefined();
+  });
+});
+
+describe("viewerPresentation", () => {
+  it("keeps the normal viewer when nothing is configured", () => {
+    expect(viewerPresentation(new ConfigStore(minimalIO()))).toEqual({
+      compactToolCalls: false,
+      ungroupedTools: ["write", "edit", "replace"],
+    });
+  });
+
+  it("hands both stored preferences to the viewer", () => {
+    const { io } = memIO({ global: { agent: { compactToolCalls: true, ungroupedTools: [] } } });
+
+    expect(viewerPresentation(new ConfigStore(io))).toEqual({ compactToolCalls: true, ungroupedTools: [] });
   });
 });

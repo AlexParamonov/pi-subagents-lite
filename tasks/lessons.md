@@ -279,3 +279,19 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## A pure helper inside a wholesale-mocked module is undefined at runtime - 2026-11-14
 **What failed:** Putting the shared text sanitizer in `src/ui/format.ts` type-checked clean while `menu-mock-setup.ts` replaces that module with a four-export object, so every menu test that reached the helper died on an undefined import: 11 failures measured after moving the import, none from `vp check`.
 **Next time:** Give a dependency-free helper its own module when consumers' suites mock whole modules without spreading `importActual`, and confirm with the test run rather than the type check - a missing mock export is type-clean by construction. If it must live in the mocked module, add it to the mock as the real implementation, the way `formatMs` is passed through there.
+
+## A row that exists because of a sequence cannot come from a per-item cache - 2026-11-14
+**What failed:** Compact tool calls replaces runs of calls spanning messages with one summary row. The viewer caches rendered lines per message index, so a run's shape is a property no single cache entry can know, and the only invalidation on an appended message keys off newly arrived tool-result ids.
+**Next time:** Split the cache at the grouping boundary instead of widening invalidation: cache what depends only on (content, width, thinking visibility), and render the sequence-dependent rows fresh at content-assembly time from transcript data. Nothing cached can then contradict the run, the streaming last-slot refresh keeps working, and the 1s elapsed repaint touches no Markdown. Recompute only on the slow path, and confirm the control that flips the mode still forces that path.
+
+## A second presentation mode must consult the state the old control flips - 2026-11-14
+**What failed:** Compact grouping was written as if calls were always summarized, and the tests that passed never opened the expanded state, so the viewer's compact mode ignored pi's global tool-output flag: ctrl+o changed nothing visible.
+**Next time:** When a mode reuses an existing control, list every decision that control governs and re-check each one in the new mode, then drive the flag holder in a test for each. In the viewer the flag selects summaries versus individual calls, clears per-call overrides on a flip, and must re-enter the slow path so grouping is recomputed.
+
+## A test theme that marks rows with a control character blocks frame-wide control checks - 2026-11-14
+**What failed:** A theme whose `bg` wraps rows in `\u0001<color>\u0001` made status color assertable, and `expectNoTerminalControls` failed on the marker itself. The same marker inflated `visibleWidth` under the width mocks, so padded rows were truncated and their parsed text ended in `...`.
+**Next time:** Teach the width mocks that the marker is invisible, exactly as they treat ANSI, and keep an identity-theme fixture for assertions that inspect the frame's own characters. Assert row order as (background, text) pairs over the whole content area: that pins grouping, padding and separators in one assertion.
+
+## A mock that answers differently from the library for blank input hides a boundary bug - 2026-11-14
+**What failed:** The compact run boundary asked `c.text` (truthy) while pi's `Markdown.render` returns no lines at all for blank text, so a whitespace-only text block split a run that paints nothing. The suite's mocked `Markdown` returned a line for blank text, so 28 green frames could not observe the difference.
+**Next time:** When a decision depends on whether something renders, copy the dependency's emptiness test into the mock (read its source for the blank case instead of inferring it from the mock's shape), then pin the degenerate input through the same public seam. Asking the same emptiness question at both sites keeps "does this paint?" one rule rather than two.
