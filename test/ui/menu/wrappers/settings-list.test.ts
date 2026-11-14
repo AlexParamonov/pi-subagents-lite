@@ -145,8 +145,7 @@ describe("SettingsListWrapper — __sep__ navigation", () => {
 });
 
 describe("SettingsListWrapper — onRebuild sets items directly", () => {
-  it("rebuild replaces items without appending wrapper (__sep__/__back__) items", () => {
-    const list = makeSettingsList([{ id: "a", label: "A", currentValue: "" }]);
+  const rebuildOf = (list: FakeSettingsList) => {
     let rebuild: ((items: SettingItem[]) => void) | undefined;
     new SettingsListWrapper(list, {
       title: "T",
@@ -156,10 +155,46 @@ describe("SettingsListWrapper — onRebuild sets items directly", () => {
         rebuild = r;
       },
     });
-    expect(rebuild).toBeDefined();
-    rebuild!([{ id: "x", label: "X", currentValue: "x" }]);
+    return rebuild!;
+  };
+
+  it("rebuild replaces items without appending wrapper (__sep__/__back__) items", () => {
+    const list = makeSettingsList([{ id: "a", label: "A", currentValue: "" }]);
+    const rebuild = rebuildOf(list);
+
+    rebuild([{ id: "x", label: "X", currentValue: "x" }]);
     expect(list.items.map((i) => i.id)).toEqual(["x"]);
     expect(list.filteredItems).toEqual(list.items);
+    expect(list.selectedIndex).toBe(0);
+  });
+
+  it("keeps the cursor on the same item, so a toggle does not send it to the top", () => {
+    const list = makeSettingsList([
+      { id: "a", label: "A", currentValue: "" },
+      { id: "b", label: "B", currentValue: "ON" },
+      { id: "c", label: "C", currentValue: "" },
+    ]);
+    list.selectedIndex = 1;
+    const rebuild = rebuildOf(list);
+
+    rebuild([
+      { id: "a", label: "A", currentValue: "" },
+      { id: "b", label: "B", currentValue: "OFF" },
+    ]);
+
+    expect(list.selectedIndex).toBe(1);
+  });
+
+  it("starts from the top when the item the cursor held is gone", () => {
+    const list = makeSettingsList([
+      { id: "a", label: "A", currentValue: "" },
+      { id: "b", label: "B", currentValue: "" },
+    ]);
+    list.selectedIndex = 1;
+    const rebuild = rebuildOf(list);
+
+    rebuild([{ id: "c", label: "C", currentValue: "" }]);
+
     expect(list.selectedIndex).toBe(0);
   });
 });

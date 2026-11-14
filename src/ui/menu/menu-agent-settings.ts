@@ -247,6 +247,12 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
     },
   ];
 
+  /** The Ungrouped tools row means nothing while Compact tool calls is off, so it is not offered. */
+  const visibleItems = (theme: Theme): SettingItem[] => {
+    const items = buildItems(theme);
+    return store.agent.compactToolCalls ? items : items.filter((item) => item.id !== "ungroupedTools");
+  };
+
   const onChange = (id: string, newValue: string) => {
     switch (id) {
       case "forceBackground":
@@ -301,17 +307,21 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
   let rebuild: ((items: SettingItem[]) => void) | undefined;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const items = buildItems(theme);
-    const triggerRebuild = () => rebuild?.(buildItems(theme));
+    let items = visibleItems(theme);
+    const triggerRebuild = () => {
+      items = visibleItems(theme);
+      rebuild?.(items);
+    };
     const settingsList = new SettingsList(
       items,
       10,
       buildSettingsListTheme(theme),
       (id, newValue) => {
         onChange(id, newValue);
-        // Submenu-driven rows rebuild to refresh value + provenance tag; toggle
-        // rows update in place via SettingsList (a rebuild would reset the cursor).
-        if (items.some((i) => i.id === id && i.submenu)) triggerRebuild();
+        // Submenu-driven rows rebuild to refresh value + provenance tag, and the compact
+        // toggle rebuilds to add or remove the Ungrouped tools row. The wrapper's rebuild
+        // keeps the cursor on the row it was on.
+        if (id === "compactToolCalls" || items.some((i) => i.id === id && i.submenu)) triggerRebuild();
       },
       () => done(undefined),
     );

@@ -720,6 +720,27 @@ describe("showSpawnOptionsMenu — compact conversation viewer", () => {
     expect(mockModules.mockConfig.agent.compactToolCalls).toBe(false);
   });
 
+  it("hides the ungrouped tools row while compact tool calls is off", async () => {
+    mockModules.mockConfig.agent.compactToolCalls = false;
+    const items = await rows(createMockCtx());
+    expect(items.find((i) => i.id === "compactToolCalls")!.currentValue).toBe("OFF");
+    expect(items.some((i) => i.id === "ungroupedTools")).toBe(false);
+  });
+
+  it("adds and removes the ungrouped tools row in place as compact tool calls is toggled", async () => {
+    const ctx = createMockCtx();
+    await rows(ctx);
+    const list = settingsListCalls[0].list;
+    const shown = () => list.items.some((i) => i.id === "ungroupedTools");
+    expect(shown()).toBe(true);
+
+    settingsListCalls[0].onChange("compactToolCalls", "OFF");
+    expect(shown()).toBe(false);
+
+    settingsListCalls[0].onChange("compactToolCalls", "ON");
+    expect(shown()).toBe(true);
+  });
+
   it("prefills the ungrouped editor with the stored names", async () => {
     mockModules.mockConfig.agent.ungroupedTools = ["read", "my_custom_tool"];
     const items = await rows(createMockCtx());

@@ -77,12 +77,15 @@ export class SettingsListWrapper implements Component {
 
     // Expose rebuild callback. Items are set directly without appending any
     // wrapper-controlled items: descriptions are read dynamically at render
-    // time, so they remain correct after a rebuild.
+    // time, so they remain correct after a rebuild. The cursor follows the item
+    // it held, so removing another row keeps the user's place.
     if (options.onRebuild) {
       const rebuild = (newItems: any[]) => {
+        const selectedId = list.items?.[list.selectedIndex]?.id;
+        const selectedIndex = newItems.findIndex((item: any) => item.id === selectedId);
         list.items = newItems;
         list.filteredItems = newItems;
-        list.selectedIndex = 0;
+        list.selectedIndex = selectedIndex < 0 ? 0 : selectedIndex;
         list.submenuComponent = null;
       };
       options.onRebuild(rebuild);
