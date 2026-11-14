@@ -6,11 +6,12 @@ import { defaultTheme } from "../mock-utils.js";
 /*  Mock setup — capture Text content for assertions                  */
 /* ------------------------------------------------------------------ */
 
-/** The mock Text instances the pi-tui mock records for assertions. */
-interface MockText {
+/** Every row the pi-tui mock builds, in build order, so tests can pin a card's full layout. */
+interface RenderedRow {
+  kind: "Spacer" | "Text" | "TruncatedText";
   text: string;
 }
-const textInstances: MockText[] = [];
+const renderedRows: RenderedRow[] = [];
 
 vi.mock("@earendil-works/pi-tui", () => ({
   Container: class {
@@ -22,12 +23,19 @@ vi.mock("@earendil-works/pi-tui", () => ({
       this.children = [];
     }
   },
-  Spacer: class {},
+  Spacer: class {
+    constructor(_count?: number) {
+      renderedRows.push({ kind: "Spacer", text: "" });
+    }
+  },
   Text: class {
-    text: string;
     constructor(text: string, _x?: number, _y?: number) {
-      this.text = text;
-      textInstances.push(this);
+      renderedRows.push({ kind: "Text", text });
+    }
+  },
+  TruncatedText: class {
+    constructor(text: string, _x?: number, _y?: number) {
+      renderedRows.push({ kind: "TruncatedText", text });
     }
   },
   Box: class {
@@ -38,6 +46,10 @@ vi.mock("@earendil-works/pi-tui", () => ({
   },
   visibleWidth: (text: string) => text.length,
 }));
+
+beforeEach(() => {
+  renderedRows.length = 0;
+});
 
 vi.mock("../../src/shell.js", () => ({
   getManager: vi.fn(() => null),
@@ -94,10 +106,6 @@ const SHOW_COST = false;
 /* ------------------------------------------------------------------ */
 
 describe("renderSubagentResult — completion visibility", () => {
-  beforeEach(() => {
-    textInstances.length = 0;
-  });
-
   it("renders by default", () => {
     const result = renderSubagentResult({ content: "Result" }, { expanded: false }, defaultTheme, SHOW_COST);
 
@@ -110,16 +118,12 @@ describe("renderSubagentResult — completion visibility", () => {
       const result = renderSubagentResult({ content: "Result" }, options, defaultTheme, SHOW_COST, "id", true);
 
       expect(result.children).toHaveLength(0);
-      expect(textInstances).toHaveLength(0);
+      expect(renderedRows).toHaveLength(0);
     },
   );
 });
 
 describe("renderSubagentResult — worktree path display", () => {
-  beforeEach(() => {
-    textInstances.length = 0;
-  });
-
   it("shows worktree path in details pane for a completed agent with stats", () => {
     const message = {
       content: "Agent output",
@@ -134,7 +138,7 @@ describe("renderSubagentResult — worktree path display", () => {
 
     renderSubagentResult(message, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature");
   });
 
@@ -150,7 +154,7 @@ describe("renderSubagentResult — worktree path display", () => {
 
     renderSubagentResult(message, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature/packages/web");
   });
 
@@ -167,16 +171,12 @@ describe("renderSubagentResult — worktree path display", () => {
 
     renderSubagentResult(message, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).not.toContain("worktree:");
   });
 });
 
 describe("renderSubagentResult — status icon", () => {
-  beforeEach(() => {
-    textInstances.length = 0;
-  });
-
   it.each([
     ["queued", "◆"],
     ["running", "◈"],
@@ -197,7 +197,7 @@ describe("renderSubagentResult — status icon", () => {
       SHOW_COST,
     );
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain(icon);
   });
 });
@@ -207,10 +207,6 @@ describe("renderSubagentResult — status icon", () => {
 /* ------------------------------------------------------------------ */
 
 describe("renderAgentToolResult — error icon", () => {
-  beforeEach(() => {
-    textInstances.length = 0;
-  });
-
   const baseResult = {
     content: [{ type: "text", text: "Agent output" }],
     details: {
@@ -230,7 +226,7 @@ describe("renderAgentToolResult — error icon", () => {
       executionStarted: true,
     });
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result line shows stats + description (icon + name in call line)
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
@@ -243,7 +239,7 @@ describe("renderAgentToolResult — error icon", () => {
       executionStarted: true,
     });
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result line shows stats + description (icon + name in call line)
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
@@ -256,7 +252,7 @@ describe("renderAgentToolResult — error icon", () => {
       executionStarted: true,
     });
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result line shows stats + description (icon + name in call line)
     expect(allText).toContain("5 uses");
     expect(allText).toContain("3 turns");
@@ -273,14 +269,14 @@ describe("renderAgentToolResult — error icon", () => {
       "id",
     );
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("(claude-sonnet-4-5)·");
   });
 
   it("does not lead with a separator when the model tag is empty", () => {
     renderAgentToolResult(baseResult, { expanded: false }, defaultTheme, SHOW_COST, "id");
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("3 turns");
     expect(allText).not.toContain("  ·");
   });
@@ -292,7 +288,6 @@ describe("renderAgentToolResult — error icon", () => {
 
 describe("renderAgentToolResult — background agent status indicators", () => {
   beforeEach(() => {
-    textInstances.length = 0;
     cleanupInvalidations();
   });
 
@@ -309,7 +304,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   it("shows only description when status is queued", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     // Icon and status are in the call line
     expect(allText).toContain("Fix vendor approach");
@@ -328,7 +323,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
       SHOW_COST,
     );
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("◈");
@@ -346,7 +341,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
       SHOW_COST,
     );
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("✓");
@@ -363,7 +358,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
       SHOW_COST,
     );
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("✗");
@@ -373,7 +368,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   it("result renderer shows only description for background agents", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("◇");
@@ -386,7 +381,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
 
     renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description
     expect(allText).toContain("Fix vendor approach");
   });
@@ -394,7 +389,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   it("result renderer shows only description when agent is queued", () => {
     renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("◇");
@@ -410,7 +405,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
       SHOW_COST,
     );
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     // Result renderer only shows description for background agents
     expect(allText).toContain("Fix vendor approach");
     expect(allText).not.toContain("◈");
@@ -470,14 +465,10 @@ describe("agent invalidation map", () => {
 /* ------------------------------------------------------------------ */
 
 describe("renderAgentToolCall — background agent icon", () => {
-  beforeEach(() => {
-    textInstances.length = 0;
-  });
-
   it("shows ▸ icon for foreground agents", () => {
     renderAgentToolCall({ agent: "builder" }, defaultTheme);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("▸");
     expect(allText).toContain("Builder");
   });
@@ -485,7 +476,7 @@ describe("renderAgentToolCall — background agent icon", () => {
   it("shows ◆ icon for background agents (queued state)", () => {
     renderAgentToolCall({ agent: "builder", run_in_background: true }, defaultTheme);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("◆");
     expect(allText).toContain("Builder");
     expect(allText).not.toContain("◇");
@@ -494,14 +485,14 @@ describe("renderAgentToolCall — background agent icon", () => {
   it("shows ▸ icon when run_in_background is false", () => {
     renderAgentToolCall({ agent: "builder", run_in_background: false }, defaultTheme);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("▸");
   });
 
   it("shows model override when present", () => {
     renderAgentToolCall({ agent: "builder", _modelOverride: "claude-3" }, defaultTheme);
 
-    const allText = textInstances.map((t) => t.text).join("\n");
+    const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("(claude-3)");
   });
 });
