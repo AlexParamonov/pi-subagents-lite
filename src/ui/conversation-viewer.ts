@@ -937,14 +937,13 @@ export class ConversationViewer implements Component {
     return [...all.slice(0, COLLAPSED_RESULT_LINES), this.expandHintLine(`${hidden} more lines`)];
   }
 
-  /** "... (N more lines, ctrl+o to expand)" colored like pi's keyHint: muted text around a dim key. */
+  /** "... (N more lines, ctrl+o to expand)" colored like pi's keyHint. */
   private expandHintLine(what: string): string {
     const th = this.theme;
+    const key = this.keys.expandHint();
     return (
-      th.fg("muted", `... (${what},`) +
-      " " +
-      th.fg("dim", this.keys.expandHint()) +
-      th.fg("muted", " to expand") +
+      th.fg("muted", `... (${what}${key ? "," : ""}`) +
+      (key ? ` ${th.fg("dim", key)}${th.fg("muted", " to expand")}` : "") +
       th.fg("muted", ")")
     );
   }

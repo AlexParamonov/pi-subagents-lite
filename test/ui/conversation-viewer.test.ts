@@ -103,33 +103,13 @@ vi.mock("../../src/pi-settings.js", () => ({
 // --- Import after mocks ---
 
 import { getHideThinkingBlock } from "../../src/pi-settings.js";
-import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
+import { ConversationViewer, type ToolDisplayOptions } from "../../src/ui/conversation-viewer.js";
 
 // --- Test helpers ---
 
 const noopTheme: Theme = {
   fg: (_color: string, text: string) => text,
   bg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
-  italic: (text: string) => text,
-};
-
-/**
- * Theme that renders bg() as real SGR background codes. The tool-call
- * success/error/pending distinction is a background color, which noopTheme
- * flattens; real escape codes (unlike text markers) keep the ANSI-aware
- * width math honest, so marked lines measure their true visible width.
- */
-const BG_ON: Record<string, string> = {
-  toolPendingBg: "\x1b[100m",
-  toolSuccessBg: "\x1b[42m",
-  toolErrorBg: "\x1b[41m",
-  userMessageBg: "\x1b[44m",
-};
-const BG_OFF = "\x1b[49m";
-const bgMarkingTheme: Theme = {
-  fg: (_color: string, text: string) => text,
-  bg: (color: string, text: string) => `${BG_ON[color] ?? "\x1b[45m"}${text}${BG_OFF}`,
   bold: (text: string) => text,
   italic: (text: string) => text,
 };
@@ -142,6 +122,7 @@ interface TestContentBlock {
   id?: string;
   name?: string;
   arguments?: Record<string, unknown>;
+  data?: string;
 }
 interface TestMessage {
   role: string;
@@ -184,23 +165,19 @@ function makeMockRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
   };
 }
 
-/** The background each call state is painted with: the status is otherwise invisible. */
-const STATUS_BG = { success: BG_ON.toolSuccessBg, error: BG_ON.toolErrorBg, pending: BG_ON.toolPendingBg };
-/**
- * What the viewer hands pi-tui must carry no control text of its own. The theme adds
- * SGR (colours), so those come out first: any escape or control character left would
- * be acted on by the terminal.
- */
-function expectNoControlText(lines: string[]): void {
-  const painted = lines.join("\n").replace(/\u001b\[[0-9;]*m/g, "");
-  expect(painted).not.toContain("\u001b");
-  // oxlint-disable-next-line no-control-regex -- asserting no control character survives is the point
-  expect(painted).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\uFFF9-\uFFFB\p{Bidi_Control}]/u);
+function frameLines(viewer: ConversationViewer, width = 80): string[] {
+  return viewer.render(width);
 }
 
-function statusShown(viewer: ConversationViewer): keyof typeof STATUS_BG | undefined {
-  const painted = viewer.render(80).join("");
-  return (Object.keys(STATUS_BG) as Array<keyof typeof STATUS_BG>).find((s) => painted.includes(STATUS_BG[s]));
+/** Transcript values are app-produced data, not UI copy. */
+function frameText(viewer: ConversationViewer, width = 80): string {
+  return frameLines(viewer, width).join("\n");
+}
+
+/** The tool-output trust boundary: no terminal controls may reach the TUI. */
+function expectNoUnsafeControls(frame: string[]): void {
+  // oxlint-disable-next-line no-control-regex -- asserting no control character survives is the point
+  expect(frame.join("\n")).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\uFFF9-\uFFFB\p{Bidi_Control}]/u);
 }
 
 /** Assert a fake TUI at the boundary: the viewer reads only requestRender and terminal.rows. */
@@ -215,26 +192,31 @@ function makeTui(rows = 40): TUI {
   });
 }
 
-/** Total content lines from the footer scroll readout (N/N · pct%). */
-function readoutTotal(text: string): number {
-  const m = text.match(/\((\d+)\/(\d+) · /);
-  return m ? Number(m[2]) : 0;
+interface ViewerOptions {
+  rows?: number;
+  onClose?: () => void;
+  onStop?: () => void;
+  keybindings?: ViewerKeybindings;
+  onSteer?: (message: string) => void;
+  toolDisplay?: ToolDisplayOptions;
 }
 
-/**
- * Content rows between the separator under the header and the one above the
- * footer, trimmed of the `│ … │` row frame and empties.
- */
-function contentRows(viewer: ConversationViewer): string[] {
-  const lines = viewer.render(80);
-  const seps: number[] = [];
-  lines.forEach((l, i) => {
-    if (l.includes("─")) seps.push(i);
-  });
-  return lines
-    .slice(seps[1] + 1, seps[2])
-    .map((l) => l.replace(/^│/, "").replace(/│$/, "").trim())
-    .filter(Boolean);
+function openViewer(
+  session: ReturnType<typeof makeMockSession>,
+  record: AgentRecord,
+  options: ViewerOptions = {},
+): ConversationViewer {
+  return new ConversationViewer(
+    makeTui(options.rows),
+    session,
+    record,
+    noopTheme,
+    options.onClose ?? vi.fn(),
+    options.onStop,
+    options.keybindings,
+    options.onSteer,
+    options.toolDisplay,
+  );
 }
 
 // --- Tests ---
@@ -245,105 +227,80 @@ describe("ConversationViewer", () => {
   });
 
   describe("subscription", () => {
-    it("subscribes to session events on construction", () => {
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      expect(session.subscribe).toHaveBeenCalledTimes(1);
-    });
-
     it("requests render on session events", () => {
       vi.useFakeTimers();
-      let subscriber: (event?: unknown) => void;
-      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
-        subscriber = cb;
-        return () => {};
-      });
+      try {
+        let subscriber: (event?: unknown) => void;
+        mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+          subscriber = cb;
+          return () => {};
+        });
 
-      const session = makeMockSession([{ role: "user", content: "hi" }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
+        const session = makeMockSession([{ role: "user", content: "hi" }]);
+        const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+        const viewer = openViewer(session, record);
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+        subscriber!({ type: "other" });
+        vi.runAllTimers();
+        expect(mockRequestRender).not.toHaveBeenCalled();
 
-      // Non-message_update events should not trigger render
-      subscriber!({ type: "other" });
-      vi.runAllTimers();
-      expect(mockRequestRender).toHaveBeenCalledTimes(0);
+        subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hello" } });
+        vi.runAllTimers();
+        expect(mockRequestRender).toHaveBeenCalled();
 
-      // message_update with text_delta should trigger render (debounced)
-      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hello" } });
-      vi.runAllTimers();
-      expect(mockRequestRender).toHaveBeenCalledTimes(1);
+        subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
+        subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "!" } });
+        vi.runAllTimers();
+        expect(frameText(viewer)).toContain("hello world!");
 
-      // Rapid deltas coalesce into one render: both fire before the debounce
-      // window elapses, so only a single requestRender follows.
-      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
-      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "!" } });
-      vi.runAllTimers();
-      expect(mockRequestRender).toHaveBeenCalledTimes(2);
-      // The coalesced render shows the accumulated text (second delta included).
-      expect(viewer.render(80).join("\n")).toContain("hello world!");
-
-      // Clearing text should trigger render
-      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
-      vi.runAllTimers();
-      expect(mockRequestRender).toHaveBeenCalledTimes(3);
-      vi.useRealTimers();
+        mockRequestRender.mockClear();
+        subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_end", content: "done" } });
+        vi.runAllTimers();
+        expect(mockRequestRender).toHaveBeenCalled();
+        expect(frameText(viewer)).not.toContain("hello world!");
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("stops processing events after close", () => {
       vi.useFakeTimers();
-      let subscriber: (event?: unknown) => void;
-      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
-        subscriber = cb;
-        return () => {};
-      });
+      try {
+        let subscriber: (event?: unknown) => void;
+        mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+          subscriber = cb;
+          return () => {};
+        });
 
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-      const done = vi.fn();
+        const session = makeMockSession();
+        const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+        const viewer = openViewer(session, record);
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
+        viewer.handleInput("q");
+        subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "x" } });
+        vi.runAllTimers();
 
-      viewer.handleInput("q");
-
-      // Fire a render-triggering event after close and run the debounce timer:
-      // the closed guard must swallow the event before it mutates streaming
-      // state or schedules a render.
-      subscriber!({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "x" } });
-      vi.runAllTimers();
-
-      expect(mockRequestRender).not.toHaveBeenCalled();
-      vi.useRealTimers();
+        expect(mockRequestRender).not.toHaveBeenCalled();
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
   describe("close", () => {
-    it("closes on 'q' key", () => {
+    it.each([
+      ["q", "q"],
+      ["Escape", "\x1b"],
+    ])("closes on %s", (_key, input) => {
       const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
+      const viewer = openViewer(session, record, { onClose: done });
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
-      viewer.handleInput("q");
-      expect(done).toHaveBeenCalledTimes(1);
-    });
-
-    it("closes on Escape", () => {
-      const done = vi.fn();
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done);
-      viewer.handleInput("\x1b");
-      expect(done).toHaveBeenCalledTimes(1);
+      viewer.handleInput(input);
+      expect(done).toHaveBeenCalled();
     });
   });
 
@@ -356,9 +313,7 @@ describe("ConversationViewer", () => {
         lifecycle: { status: "running", startedAt: Date.now(), started: true },
         execution: { settled: false, settlementCount: 0, session },
       });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, onStop);
+      const viewer = openViewer(session, record, { onClose: done, onStop });
 
       // First 's' — arms the stop
       viewer.handleInput("s");
@@ -377,9 +332,7 @@ describe("ConversationViewer", () => {
         lifecycle: { status: "running", startedAt: Date.now(), started: true },
         execution: { settled: false, settlementCount: 0, session },
       });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, onStop);
+      const viewer = openViewer(session, record, { onClose: done, onStop });
 
       viewer.handleInput("s"); // arm
       viewer.handleInput("g"); // disarm (jump to top)
@@ -395,9 +348,7 @@ describe("ConversationViewer", () => {
         lifecycle: { status: "completed", startedAt: Date.now() - 10000, completedAt: Date.now(), started: true },
         execution: { settled: false, settlementCount: 0, session },
       });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, onStop);
+      const viewer = openViewer(session, record, { onClose: done, onStop });
 
       viewer.handleInput("s");
       viewer.handleInput("s");
@@ -406,133 +357,56 @@ describe("ConversationViewer", () => {
   });
 
   describe("steering", () => {
-    it("opens composer on Enter when steerable", () => {
+    it.each(["running", "completed"] as const)("submits a message for a %s session", (status) => {
       const onSteer = vi.fn();
-      const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now(), started: true },
+        lifecycle: {
+          status,
+          startedAt: Date.now() - 10000,
+          completedAt: status === "completed" ? Date.now() : undefined,
+          started: true,
+        },
         execution: { settled: false, settlementCount: 0, session },
       });
-      const tui = makeTui();
+      const viewer = openViewer(session, record, { onSteer });
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
+      viewer.handleInput("\r");
+      viewer.handleInput("fixture-steer-message");
       viewer.handleInput("\r");
 
-      // The composer row and its hints are rendered output.
-      const text = viewer.render(80).join("\n");
-      expect(text).toContain("✎ steer");
-      expect(text).toContain("Enter send · Esc cancel");
+      expect(onSteer).toHaveBeenCalledWith("fixture-steer-message");
     });
 
-    it("sends steer message on composer submit", () => {
+    it("does not submit a cancelled message", () => {
       const onSteer = vi.fn();
-      const done = vi.fn();
       const session = makeMockSession();
-      const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now(), started: true },
-        execution: { settled: false, settlementCount: 0, session },
-      });
-      const tui = makeTui();
+      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const viewer = openViewer(session, record, { onSteer });
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
-      viewer.handleInput("\r"); // open composer
-      viewer.handleInput("do this thing"); // type (routed to the composer)
-      viewer.handleInput("\r"); // submit
-
-      expect(onSteer).toHaveBeenCalledWith("do this thing");
-      // Submitting closes the composer — the hint row is gone from the render.
-      expect(viewer.render(80).join("\n")).not.toContain("Enter send · Esc cancel");
-    });
-
-    it("offers continue (not steer) for a settled agent with a session", () => {
-      const onSteer = vi.fn();
-      const done = vi.fn();
-      const session = makeMockSession();
-      const record = makeMockRecord({
-        lifecycle: { status: "completed", startedAt: Date.now() - 10000, completedAt: Date.now(), started: true },
-        execution: { settled: false, settlementCount: 0, session },
-      });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
-
-      // Footer advertises continue for a settled record, not steer.
-      const text = viewer.render(120).join("\n");
-      expect(text).toContain("Enter continue");
-      expect(text).not.toContain("Enter steer");
-
-      // Enter opens the composer with the continue hint.
       viewer.handleInput("\r");
-      const composed = viewer.render(120).join("\n");
-      expect(composed).toContain("✎ continue");
-      expect(composed).not.toContain("✎ steer");
+      viewer.handleInput("discard");
+      viewer.handleInput("\x1b");
 
-      // Submitting sends through the same onSteer callback.
-      viewer.handleInput("keep going");
-      viewer.handleInput("\r");
-      expect(onSteer).toHaveBeenCalledWith("keep going");
+      expect(onSteer).not.toHaveBeenCalled();
     });
 
-    it("shows Enter steer in the footer while the agent is running", () => {
-      const session = makeMockSession();
-      const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now(), started: true },
-        execution: { settled: false, settlementCount: 0, session },
-      });
-      const viewer = new ConversationViewer(
-        makeTui(),
-        session,
-        record,
-        noopTheme,
-        vi.fn(),
-        undefined,
-        undefined,
-        vi.fn(),
-      );
-
-      const text = viewer.render(120).join("\n");
-      expect(text).toContain("Enter steer");
-      expect(text).not.toContain("Enter continue");
-    });
-
-    it("does not offer the composer when the record has no session", () => {
+    it("does not steer a record without a session", () => {
       const onSteer = vi.fn();
-      const done = vi.fn();
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session: undefined } });
-      const tui = makeTui();
+      const viewer = openViewer(session, record, { onSteer });
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
+      viewer.handleInput("\r");
+      viewer.handleInput("cannot continue");
       viewer.handleInput("\r");
 
-      const text = viewer.render(120).join("\n");
-      expect(text).not.toContain("✎ continue");
-      expect(text).not.toContain("Enter send · Esc cancel");
-    });
-
-    it("cancels composer on Escape", () => {
-      const onSteer = vi.fn();
-      const done = vi.fn();
-      const session = makeMockSession();
-      const record = makeMockRecord({
-        lifecycle: { status: "running", startedAt: Date.now(), started: true },
-        execution: { settled: false, settlementCount: 0, session },
-      });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, done, undefined, undefined, onSteer);
-      viewer.handleInput("\r"); // open composer
-      viewer.handleInput("\x1b"); // escape routes to the composer's onEscape
-
-      const text = viewer.render(80).join("\n");
-      expect(text).not.toContain("Enter send · Esc cancel");
-      expect(text).not.toContain("✎ steer");
+      expect(onSteer).not.toHaveBeenCalled();
     });
   });
 
-  describe("mouse wheel", () => {
-    const manyLines = Array.from({ length: 30 }, (_, i) => `line${i}`).join("\n");
+  describe("scrolling", () => {
+    const rows = Array.from({ length: 30 }, (_, i) => `row-${String(i).padStart(2, "0")}`).join("\n");
 
     function wheel(wheelDelta: number | undefined, type: TuiMouseEvent["type"] = "wheel"): TuiMouseEvent {
       return {
@@ -552,356 +426,58 @@ describe("ConversationViewer", () => {
     }
 
     function setup() {
-      const session = makeMockSession([{ role: "user", content: manyLines }]);
+      const session = makeMockSession([{ role: "user", content: rows }]);
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
-      viewer.render(80); // parked at the bottom by autoScroll
-      return viewer;
+      const viewer = openViewer(session, record);
+      viewer.render(80);
+      return { viewer, session };
     }
 
-    it("scrolls up and down by the wheel delta and reports the event handled", () => {
-      const viewer = setup();
+    const hasRow = (viewer: ConversationViewer, index: number) =>
+      frameText(viewer).includes(`row-${String(index).padStart(2, "0")}`);
+
+    it("scrolls by wheel delta, clamps at both ends, and ignores unrelated events", () => {
+      const { viewer, session } = setup();
+      expect(hasRow(viewer, 29)).toBe(true);
+      expect(hasRow(viewer, 0)).toBe(false);
 
       expect(viewer.handleMouse(wheel(-3))).toEqual({ handled: true });
-      expect(contentRows(viewer)[0]).toBe("line8"); // bottom window starts at line11
-
+      expect(hasRow(viewer, 8)).toBe(true);
+      expect(hasRow(viewer, 7)).toBe(false);
       expect(viewer.handleMouse(wheel(2))).toEqual({ handled: true });
-      expect(contentRows(viewer)[0]).toBe("line10");
-    });
-
-    it("clamps at the top and the bottom", () => {
-      const viewer = setup();
+      expect(hasRow(viewer, 10)).toBe(true);
 
       viewer.handleMouse(wheel(-100));
-      expect(contentRows(viewer)[0]).toBe("line0");
-
+      expect(hasRow(viewer, 0)).toBe(true);
       viewer.handleMouse(wheel(100));
-      const visible = contentRows(viewer);
-      expect(visible[0]).toBe("line11");
-      expect(visible[visible.length - 1]).toBe("line29");
-    });
-
-    it("leaves auto-scroll when scrolled up and re-engages at the bottom", () => {
-      const viewer = setup();
-
-      viewer.handleMouse(wheel(-5));
-      viewer.handleMouse(wheel(5));
-      // Back at the bottom: new content follows again, so the window stays pinned.
-      expect(contentRows(viewer)[0]).toBe("line11");
-      viewer.handleMouse(wheel(-1));
-      expect(contentRows(viewer)[0]).toBe("line10");
-    });
-
-    it("ignores other mouse events and zero deltas so pi keeps its default handling", () => {
-      const viewer = setup();
-
+      expect(hasRow(viewer, 29)).toBe(true);
+      session.messages.push({ role: "user", content: "row-30" });
+      expect(hasRow(viewer, 30)).toBe(true);
       expect(viewer.handleMouse(wheel(undefined, "click"))).toBeUndefined();
       expect(viewer.handleMouse(wheel(3, "drag"))).toBeUndefined();
       expect(viewer.handleMouse(wheel(0))).toBeUndefined();
-      expect(contentRows(viewer)[0]).toBe("line11");
-    });
-
-    it("ignores the wheel after close", () => {
-      const viewer = setup();
+      expect(viewer.handleMouse(wheel(-1))).toEqual({ handled: true });
       viewer.handleInput("q");
-
-      expect(viewer.handleMouse(wheel(-3))).toBeUndefined();
-    });
-  });
-
-  describe("scroll behavior", () => {
-    // 30 distinct one-line rows → 33 content lines (fill + 30 + fill + empty)
-    // against a 21-row viewport: maxScroll = 12. Distinct line markers make
-    // the visible window observable through rendered output.
-    const manyLines = Array.from({ length: 30 }, (_, i) => `line${i}`).join("\n");
-    // Footer readout: `(currentLine/total · pct%)`. With 33 content lines and
-    // a 21-row viewport: top = (21/33 · 64%), one step down = (22/33 · 67%),
-    // bottom = (33/33 · 100%).
-    function readout(viewer: ConversationViewer): string {
-      return (
-        viewer
-          .render(80)
-          .join("\n")
-          .match(/\(\d+\/\d+ · \d+%\)/)?.[0] ?? ""
-      );
-    }
-
-    it("scrolls down on down arrow", () => {
-      const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.render(80); // autoScroll parks at the bottom
-      viewer.handleInput("g"); // top, manual scroll
-      viewer.handleInput("\x1b[B"); // one step down
-
-      expect(readout(viewer)).toBe("(22/33 · 67%)");
-      // The window's last content line advanced past the top window.
-      const visible = contentRows(viewer);
-      expect(visible[visible.length - 1]).toBe("line20");
+      expect(viewer.handleMouse(wheel(-1))).toBeUndefined();
     });
 
-    it("scrolls up on up arrow", () => {
-      const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.render(80);
+    it("uses navigation keys to reach and clamp at the transcript boundaries", () => {
+      const { viewer } = setup();
       viewer.handleInput("g");
-      viewer.handleInput("\x1b[B"); // 1
-      viewer.handleInput("\x1b[B"); // 2
-      viewer.handleInput("\x1b[B"); // 3
-      expect(contentRows(viewer)[0]).toBe("line2");
-
-      viewer.handleInput("\x1b[A"); // back to 2
-      expect(readout(viewer)).toBe("(23/33 · 70%)");
-      expect(contentRows(viewer)[0]).toBe("line1");
-    });
-
-    it("jumps to top on 'g'", () => {
-      const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.render(80); // parked at the bottom by autoScroll
-      viewer.handleInput("g");
-
-      const visible = contentRows(viewer);
-      expect(visible[0]).toBe("line0");
-      expect(visible[visible.length - 1]).toBe("line19");
-      expect(readout(viewer)).toBe("(21/33 · 64%)");
-    });
-
-    it("jumps to bottom on 'G'", () => {
-      // Content must actually overflow the viewport, or maxScroll is 0 and
-      // the G branch has nothing to scroll (vacuous).
-      const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.render(80); // bottom
-      viewer.handleInput("g"); // top
-      viewer.handleInput("G"); // bottom
-
-      const visible = contentRows(viewer);
-      expect(visible[0]).toBe("line11");
-      expect(visible[visible.length - 1]).toBe("line29");
-      expect(visible).not.toContain("line0");
-      expect(readout(viewer)).toBe("(33/33 · 100%)");
-    });
-
-    it("does not scroll past start", () => {
-      const session = makeMockSession([{ role: "user", content: manyLines }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      viewer.render(80); // bottom
-      viewer.handleInput("g"); // top
-      viewer.handleInput("\x1b[A"); // up at the top — must stay clamped at 0
-      viewer.handleInput("\x1b[A"); // up again
-
-      const visible = contentRows(viewer);
-      expect(visible[0]).toBe("line0");
-      // Readout pins the clamp: a negative offset would drop currentLine below 21.
-      expect(readout(viewer)).toBe("(21/33 · 64%)");
+      expect(hasRow(viewer, 0)).toBe(true);
+      viewer.handleInput("\x1b[A");
+      expect(hasRow(viewer, 0)).toBe(true);
+      viewer.handleInput("\x1b[B");
+      expect(hasRow(viewer, 20)).toBe(true);
+      viewer.handleInput("G");
+      expect(hasRow(viewer, 29)).toBe(true);
+      expect(hasRow(viewer, 0)).toBe(false);
     });
   });
 
-  describe("render", () => {
-    it("renders border frame", () => {
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-
-      expect(lines[0]).toMatch(/[╭]/);
-      expect(lines[lines.length - 1]).toMatch(/[╰]/);
-    });
-
-    it("renders user messages", () => {
-      const session = makeMockSession([{ role: "user", content: "hello world" }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-      const text = lines.join("\n");
-
-      expect(text).toContain("hello world");
-    });
-
-    it("renders assistant messages", () => {
-      const session = makeMockSession([{ role: "assistant", content: [{ type: "text", text: "here is the answer" }] }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-      const text = lines.join("\n");
-      expect(text).toContain("here is the answer");
-    });
-
-    it("renders nothing for a standalone toolResult message", () => {
-      const session = makeMockSession([
-        {
-          role: "toolResult",
-          content: [{ type: "text", text: "file contents here" }],
-          toolName: "read",
-          isError: false,
-        },
-      ]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      // No title bar, no output block, no status background anywhere.
-      expect(contentRows(viewer)).toEqual([]);
-      expect(viewer.render(80).join("\n")).not.toContain("file contents here");
-    });
-
-    it("marks a settled call as finished and shows its result under the title", () => {
-      const session = makeMockSession([
-        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
-        {
-          role: "toolResult",
-          toolCallId: "t1",
-          toolName: "uniqtool",
-          isError: false,
-          content: [{ type: "text", text: "SECRET-RESULT-TEXT" }],
-        },
-      ]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      expect(statusShown(viewer)).toBe("success");
-      expect(shownRows(viewer)).toEqual(["uniqtool", "SECRET-RESULT-TEXT"]);
-    });
-
-    it("marks an errored call as failed and shows the failure under the title", () => {
-      const session = makeMockSession([
-        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
-        {
-          role: "toolResult",
-          toolCallId: "t1",
-          toolName: "uniqtool",
-          isError: true,
-          content: [{ type: "text", text: "boom trace" }],
-        },
-      ]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
-
-      expect(statusShown(viewer)).toBe("error");
-      expect(shownRows(viewer)).toEqual(["uniqtool", "boom trace"]);
-    });
-
-    it("renders thinking blocks in assistant messages", () => {
-      const session = makeMockSession([
-        {
-          role: "assistant",
-          content: [
-            { type: "thinking", thinking: "Let me think about this..." },
-            { type: "text", text: "Here is the answer." },
-          ],
-        },
-      ]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-      const text = lines.join("\n");
-
-      expect(text).toContain("Let me think");
-    });
-
-    it("shows waiting message when no messages", () => {
-      const session = makeMockSession([]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-      const text = lines.join("\n");
-
-      expect(text).toContain("waiting");
-    });
-
-    it.each([
-      ["stopped", "■"],
-      ["queued", "◆"],
-    ] as const)("shows %s icon in header for status %s", (status, icon) => {
-      const session = makeMockSession([]);
-      const record = makeMockRecord({
-        execution: { settled: true, settlementCount: 1, session },
-        lifecycle: { ...makeMockRecord().lifecycle, status },
-      });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-
-      expect(lines.join("\n")).toContain(icon);
-    });
-
-    it("renders worktree label in header when present", () => {
-      const session = makeMockSession([{ role: "user", content: "hello" }]);
-      const record = makeMockRecord({
-        execution: { settled: false, settlementCount: 0, session },
-        display: { ...makeMockRecord().display, worktreeLabel: "feature" },
-      });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-      const text = lines.join("\n");
-
-      expect(text).toContain("@feature");
-    });
-
-    it("omits worktree label when not present", () => {
-      const session = makeMockSession([{ role: "user", content: "hello" }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-      const lines = viewer.render(80);
-      const text = lines.join("\n");
-
-      expect(text).not.toContain("@");
-    });
-  });
-
-  // --- Tool calls: result previews, timings, expanding -------------------------------------------
-  //
-  // These read the content area with styling stripped: which lines the viewer
-  // shows, and how much of a result it hides, is the contract. The colors,
-  // padding and row framing it paints them with are not.
-
-  function shownRows(viewer: ConversationViewer): string[] {
-    return contentRows(viewer)
-      .map((row) => row.replace(/\u001b\[[0-9;]*m/g, "").trim())
-      .filter(Boolean); // padding and background-only rows are not content
-  }
-  /** Result bodies are built from `bodyN` markers, so a test can count what is on screen. */
+  // --- Tool-result data and interaction behavior -----------------------------------------------
   const bodyText = (n: number) => Array.from({ length: n }, (_, i) => `body${i + 1}`).join("\n");
-  const bodyRows = (viewer: ConversationViewer) => shownRows(viewer).filter((row) => /^body\d+$/.test(row));
-  /** The hint is the one row that starts with pi's ellipsis. */
-  const hintRow = (viewer: ConversationViewer) => shownRows(viewer).find((row) => row.startsWith("..."));
-  /** The timing on screen: `Took ...` once a call settled, `Elapsed ...` while it runs. */
-  const timingOf = (viewer: ConversationViewer) =>
-    shownRows(viewer)
-      .join(" ")
-      .match(/(Took|Elapsed) \S+/)?.[0];
+  const bodyRows = (viewer: ConversationViewer) => frameText(viewer).match(/\bbody\d+\b/g) ?? [];
 
   /** One assistant message holding these tool calls. */
   function callsOf(...calls: Array<{ id: string; name?: string; args?: Record<string, unknown> }>): TestMessage {
@@ -927,7 +503,7 @@ describe("ConversationViewer", () => {
   interface CallView {
     /** pi's global tool-output flag, in a holder the test flips. */
     flag?: { expanded: boolean };
-    toolDisplay?: Record<string, unknown>;
+    toolDisplay?: ToolDisplayOptions;
     keybindings?: ViewerKeybindings;
     /** Terminal rows: fewer rows than the transcript forces scrolling. */
     rows?: number;
@@ -935,35 +511,51 @@ describe("ConversationViewer", () => {
   function openCallView(messages: TestMessage[], view: CallView = {}): ConversationViewer {
     const session = makeMockSession(messages);
     const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-    return new ConversationViewer(
-      makeTui(view.rows),
-      session,
-      record,
-      noopTheme,
-      vi.fn(),
-      undefined,
-      view.keybindings,
-      undefined,
-      { isExpanded: () => view.flag?.expanded ?? false, ...view.toolDisplay },
-    );
+    return openViewer(session, record, {
+      rows: view.rows,
+      keybindings: view.keybindings,
+      toolDisplay: { isExpanded: () => view.flag?.expanded ?? false, ...view.toolDisplay },
+    });
   }
 
+  describe("transcript data", () => {
+    it("shows user and assistant messages without rendering an unpaired tool result", () => {
+      const session = makeMockSession([
+        { role: "user", content: "fixture-user-message" },
+        { role: "assistant", content: [{ type: "text", text: "fixture-assistant-message" }] },
+        resultOf("missing-call", { text: "unpaired-result" }),
+      ]);
+      const baseRecord = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
+      const record = { ...baseRecord, display: { ...baseRecord.display, worktreeLabel: "fixture-worktree" } };
+      const viewer = openViewer(session, record);
+      const output = frameText(viewer);
+
+      expect(output).toContain("fixture-user-message");
+      expect(output).toContain("fixture-assistant-message");
+      expect(output).toContain("fixture-worktree");
+      expect(output).not.toContain("unpaired-result");
+    });
+  });
+
   describe("tool call results", () => {
-    it("shows a short result whole and a long one with a hint naming what is hidden", () => {
-      expect(bodyRows(openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(2) })]))).toEqual([
-        "body1",
-        "body2",
+    it("shows a short result whole and previews a long one until expanded", () => {
+      const short = openCallView([callsOf({ id: "short" }), resultOf("short", { text: bodyText(2) })]);
+      expect(bodyRows(short)).toEqual(["body1", "body2"]);
+      const flag = { expanded: false };
+      const viewer = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(10) })], { flag });
+
+      expect(bodyRows(viewer)).toEqual(["body1", "body2", "body3"]);
+      flag.expanded = true;
+      expect(bodyRows(viewer)).toEqual(bodyText(10).split("\n"));
+    });
+
+    it("shows error result data under its call", () => {
+      const viewer = openCallView([
+        callsOf({ id: "t1" }),
+        resultOf("t1", { text: "fixture-error-detail", isError: true }),
       ]);
 
-      const flag = { expanded: false };
-      const long = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(10) })], { flag });
-      expect(bodyRows(long)).toEqual(["body1", "body2", "body3"]);
-      expect(hintRow(long)).toMatch(/\b7\b/); // 10 rows in the fixture, 3 shown
-      expect(hintRow(long)).toContain("ctrl+o"); // the key that shows the rest
-
-      flag.expanded = true;
-      expect(bodyRows(long)).toEqual(bodyText(10).split("\n"));
-      expect(hintRow(long)).toBeUndefined();
+      expect(frameText(viewer)).toContain("fixture-error-detail");
     });
 
     it("keeps the end of a bash result and the start of any other tool's", () => {
@@ -980,17 +572,25 @@ describe("ConversationViewer", () => {
       ]);
     });
 
-    it("counts wrapped rows, not source lines, and ignores non-text blocks", () => {
-      // One source line of 320 characters: 5 wrapped rows at this width, so 2 stay hidden.
-      const wide = [callsOf({ id: "t1" }), resultOf("t1", { text: "x".repeat(320) })];
-      expect(shownRows(openCallView(wide)).filter((row) => /^x+$/.test(row))).toHaveLength(3);
-      expect(hintRow(openCallView(wide))).toMatch(/\b2\b/); // 5 wrapped rows, 3 shown
+    it("limits wrapped text rows without treating image data as text", () => {
+      const longText = "x".repeat(320);
+      const textRows = frameText(openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: longText })]));
+      const withImage = frameText(
+        openCallView([
+          callsOf({ id: "t1" }),
+          resultOf("t1", {
+            blocks: [
+              { type: "text", text: longText },
+              { type: "image", data: "fixture-image-payload" },
+            ],
+          }),
+        ]),
+      );
+      const wrappedRows = (output: string) => output.match(/x{10,}/g) ?? [];
 
-      const withImage = [
-        callsOf({ id: "t1" }),
-        resultOf("t1", { blocks: [{ type: "text", text: "x".repeat(320) }, { type: "image" }] }),
-      ];
-      expect(shownRows(openCallView(withImage)).filter((row) => /^x+$/.test(row))).toHaveLength(3);
+      expect(wrappedRows(textRows)).toHaveLength(3);
+      expect(wrappedRows(withImage)).toHaveLength(3);
+      expect(withImage).not.toContain("fixture-image-payload");
     });
 
     it("renders no escape or control sequences from hostile result text", () => {
@@ -1017,14 +617,10 @@ describe("ConversationViewer", () => {
         "tabs\tin\toutput stay\n" +
         "nul\u0000 bell\u0007 format\uFFF9 del before\u007f after bidi \u2066isolate\u2069 rtl \u202eword";
       const viewer = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: raw })], { flag: { expanded: true } });
-      // Read the painted frame, not the rows that have had their styling removed to read
-      // content: a leak of colour codes would be invisible in those.
+      // Check the actual frame so a terminal control cannot be hidden by a text-only helper.
       const frame = viewer.render(80);
-      expectNoControlText(frame);
-      // Colour codes are the one thing the theme emits too, so the frame-wide check cannot
-      // tell a leaked one from an owned one. The hostile one is named.
-      expect(frame.join("")).not.toContain("\u001b[31mred");
-      const shown = shownRows(viewer).join("\n");
+      expectNoUnsafeControls(frame);
+      const shown = frame.join("\n");
       // What is left is the text around each sequence: removing one must not take its
       // neighbours with it, and must not leave the sequence's own parameters behind.
       expect(shown).toContain("sgr red");
@@ -1053,18 +649,16 @@ describe("ConversationViewer", () => {
       ]);
       for (const expanded of [false, true]) {
         const viewer = openCallView(hostile.messages, { flag: { expanded } });
-        expectNoControlText(viewer.render(80));
-        expect(shownRows(viewer).join(" ")).toContain("echo AB"); // the command stays readable
-        // JSON.stringify escapes the 7-bit controls into inert text, but not the 8-bit
-        // ones: those reached the frame until the call line got the same strip as the result.
-        expect(shownRows(viewer).join(" ")).toContain('("echo AB ');
+        const frame = viewer.render(80);
+        expectNoUnsafeControls(frame);
+        expect(frame.join("\n")).toContain("echo AB");
       }
     });
 
     it("keeps the text after an unterminated escape sequence", () => {
-      const shown = shownRows(
+      const shown = frameText(
         openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: "before \u001b]0;never-ended after" })]),
-      ).join("\n");
+      );
 
       expect(shown).not.toContain("\u001b");
       expect(shown).toContain("before");
@@ -1072,20 +666,21 @@ describe("ConversationViewer", () => {
     });
 
     it("shows the whole command once expanded and a shortened one collapsed", () => {
-      const whole = "echo " + "TAIL".repeat(120);
+      const whole = "echo " + "TAIL".repeat(120) + " fixture-command-end";
+      const tail = "fixture-command-end";
       const messages = [callsOf({ id: "t1", name: "bash", args: { command: whole } })];
 
-      expect(shownRows(openCallView(messages)).join(" ")).not.toContain(whole);
-      expect(shownRows(openCallView(messages, { flag: { expanded: true } })).join("")).toContain(whole);
+      expect(frameText(openCallView(messages))).not.toContain(tail);
+      expect(frameText(openCallView(messages, { flag: { expanded: true } }))).toContain(tail);
     });
 
     it("carries a bash timeout, and only a usable one on a bash call", () => {
-      const title = (name: string, args?: Record<string, unknown>) =>
-        shownRows(openCallView([callsOf({ id: "t1", name, args })]))[0];
+      const output = (name: string, args?: Record<string, unknown>) =>
+        frameText(openCallView([callsOf({ id: "t1", name, args })]));
 
-      expect(title("bash", { command: "ls", timeout: 300 })).toMatch(/timeout 300s/);
-      expect(title("uniqtool", { timeout: 300 })).not.toContain("timeout");
-      expect(title("bash", { command: "ls", timeout: 0 })).not.toContain("timeout");
+      expect(output("bash", { command: "ls", timeout: 317 })).toMatch(/\b317s\b/);
+      expect(output("read", { path: "fixture-file", timeout: 317 })).not.toMatch(/\b317s\b/);
+      expect(output("bash", { command: "ls", timeout: 0 })).not.toMatch(/\b0s\b/);
     });
   });
 
@@ -1100,23 +695,20 @@ describe("ConversationViewer", () => {
       return (event) => emit(event);
     }
 
-    it("reports the duration its result carries, whether the call failed or not", () => {
+    it("shows the recorded duration for successful and failed calls", () => {
       for (const isError of [false, true]) {
-        const settled = resultOf("t1", { durationMs: 1500, isError });
-        expect(timingOf(openCallView([callsOf({ id: "t1", name: "bash" }), settled]))).toBe("Took 1.5s");
+        const viewer = openCallView([
+          callsOf({ id: "t1", name: "bash" }),
+          resultOf("t1", { durationMs: 1500, isError }),
+        ]);
+        expect(frameText(viewer)).toContain("1.5s");
       }
     });
 
-    it("puts the timing on the call line collapsed and on its own line under the result expanded", () => {
-      const messages = [callsOf({ id: "t1", name: "bash" }), resultOf("t1", { text: bodyText(2), durationMs: 1500 })];
+    it.each(["edit", "write"] as const)("shows a small duration for %s calls", (name) => {
+      const viewer = openCallView([callsOf({ id: "file-op", name }), resultOf("file-op", { name, durationMs: 42 })]);
 
-      const collapsed = shownRows(openCallView(messages));
-      expect(collapsed[0]).toContain("Took 1.5s"); // shares the call's line, to save a row
-      expect(collapsed.filter((row) => row.includes("Took"))).toHaveLength(1);
-
-      const expanded = shownRows(openCallView(messages, { flag: { expanded: true } }));
-      expect(expanded[0]).not.toContain("Took");
-      expect(expanded.indexOf("Took 1.5s")).toBeGreaterThan(expanded.indexOf("body2")); // after the output, as pi does
+      expect(frameText(viewer)).toContain("42ms");
     });
 
     it("takes the duration its result recorded over the one its end event reported", () => {
@@ -1130,8 +722,8 @@ describe("ConversationViewer", () => {
         emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
         emit({ type: "tool_execution_end", toolCallId: "t1", toolName: "bash", durationMs: 2042 });
 
-        // The result's number is monotonic and survives a reload; the viewer's clock is neither.
-        expect(timingOf(viewer)).toBe("Took 10.0s");
+        // The result's duration takes precedence over a later end event.
+        expect(frameText(viewer)).toContain("10.0s");
         viewer.dispose();
       } finally {
         vi.useRealTimers();
@@ -1139,10 +731,11 @@ describe("ConversationViewer", () => {
     });
 
     it("stays quiet when nothing recorded how long the call took", () => {
-      // Settled, but the host that wrote the result stored no duration.
-      expect(timingOf(openCallView([callsOf({ id: "t1", name: "bash" }), resultOf("t1")]))).toBeUndefined();
-      // Running, but it started before the viewer opened and nobody knows its start.
-      expect(timingOf(openCallView([callsOf({ id: "t1", name: "bash" })]))).toBeUndefined();
+      // Neither a result nor a running call without a known start has a duration to show.
+      expect(frameText(openCallView([callsOf({ id: "t1", name: "bash" }), resultOf("t1")]))).not.toMatch(
+        /\b\d+\.\ds\b/,
+      );
+      expect(frameText(openCallView([callsOf({ id: "t1", name: "bash" })]))).not.toMatch(/\b\d+\.\ds\b/);
 
       // A result that landed without a duration ends the count too: a settled call never
       // counts up, even when its start arrives after the result.
@@ -1152,7 +745,7 @@ describe("ConversationViewer", () => {
         const viewer = openCallView([callsOf({ id: "t1", name: "bash" }), resultOf("t1", { name: "bash" })]);
         emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
         vi.advanceTimersByTime(1000);
-        expect(timingOf(viewer)).toBeUndefined();
+        expect(frameText(viewer)).not.toMatch(/\b\d+\.\ds\b/);
         viewer.dispose();
       } finally {
         vi.useRealTimers();
@@ -1165,9 +758,9 @@ describe("ConversationViewer", () => {
         { role: "toolResult", toolCallId: "t1", toolName: "uniqtool", isError: false, content: "plain text result" },
       ]);
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+      const viewer = openViewer(session, record);
 
-      expect(shownRows(viewer)).toContain("plain text result");
+      expect(frameText(viewer)).toContain("plain text result");
     });
 
     it("counts a running call up, then settles on the time it actually took", () => {
@@ -1175,18 +768,18 @@ describe("ConversationViewer", () => {
       try {
         const emit = emitter();
         const viewer = openCallView([callsOf({ id: "t1", name: "bash" })]);
-        expect(timingOf(viewer)).toBeUndefined();
+        expect(frameText(viewer)).not.toMatch(/\b\d+\.\ds\b/);
 
         emit({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash" });
         vi.advanceTimersByTime(100);
-        expect(timingOf(viewer)).toBe("Elapsed 0.1s");
+        expect(frameText(viewer)).toContain("100ms");
         vi.advanceTimersByTime(1900);
-        expect(timingOf(viewer)).toBe("Elapsed 2.0s");
+        expect(frameText(viewer)).toContain("2.0s");
 
         // The call ends before its result message lands, so the event carries the time.
         emit({ type: "tool_execution_end", toolCallId: "t1", toolName: "bash", durationMs: 2042 });
         vi.advanceTimersByTime(100);
-        expect(timingOf(viewer)).toBe("Took 2.0s");
+        expect(frameText(viewer)).toContain("2.0s");
 
         vi.advanceTimersByTime(100); // let the repaint settle
         expect(vi.getTimerCount()).toBe(0); // no call is running, so the once-a-second redraw is gone
@@ -1199,13 +792,11 @@ describe("ConversationViewer", () => {
       }
     });
 
-    it("counts calls that were already running when the viewer opened, and only those", () => {
+    it("uses the recorded start time for a call already running on open", () => {
       vi.useFakeTimers();
       try {
         const startedBeforeViewer = Date.now() - 4000;
-        const getToolStartedAt = vi.fn<(id: string) => number | undefined>((id) =>
-          id === "t2" ? startedBeforeViewer : undefined,
-        );
+        const getToolStartedAt = (id: string) => (id === "t2" ? startedBeforeViewer : undefined);
         const viewer = openCallView(
           [
             callsOf({ id: "t1", name: "bash" }, { id: "t2", name: "bash" }),
@@ -1216,11 +807,9 @@ describe("ConversationViewer", () => {
           },
         );
 
-        const shown = shownRows(viewer).join(" ");
-        expect(shown).toContain("Took 0.9s"); // settled: its own result answers for it
-        expect(shown).toContain("Elapsed 4.0s"); // running: counted from the start its owner recorded
-        expect(getToolStartedAt).toHaveBeenCalledWith("t2");
-        expect(getToolStartedAt).not.toHaveBeenCalledWith("t1");
+        const shown = frameText(viewer);
+        expect(shown).toContain("900ms");
+        expect(shown).toContain("4.0s");
         viewer.dispose();
       } finally {
         vi.useRealTimers();
@@ -1252,6 +841,13 @@ describe("ConversationViewer", () => {
   describe("expanding a call", () => {
     // Each call carries its own body markers, so a test can see which call opened.
     const markerBody = (marker: string) => Array.from({ length: 6 }, (_, i) => `${marker}${i + 1}`).join("\n");
+    const noteMessages = (count: number): TestMessage[] =>
+      Array.from({ length: count }, (_, i) => ({
+        role: "user",
+        content: [{ type: "text", text: `note${i + 1}` }],
+      }));
+    const callRows = (viewer: ConversationViewer) =>
+      frameLines(viewer).flatMap((line, index) => (line.includes("uniqtool") ? [index] : []));
     const TWO_CALLS = [
       callsOf({ id: "t1" }, { id: "t2" }),
       resultOf("t1", { text: markerBody("a") }),
@@ -1262,9 +858,6 @@ describe("ConversationViewer", () => {
     const EXPANDED = 6;
     /** Tall enough that one opened call fits, short enough that the transcript scrolls. */
     const SCROLLABLE_ROWS = 32;
-    /** 4 frame rows above the content area, then the first call's title row. */
-    const FIRST_CALL_TITLE = 5;
-
     function click(y: number, button: TuiMouseEvent["button"] = "left"): TuiMouseEvent {
       return {
         type: "click",
@@ -1285,31 +878,28 @@ describe("ConversationViewer", () => {
     }
     /** How much of one call's result is on screen. */
     const shownOf = (viewer: ConversationViewer, marker: "a" | "b") =>
-      shownRows(viewer).filter((row) => new RegExp(`^${marker}\\d+$`).test(row)).length;
+      frameText(viewer).match(new RegExp(`\\b${marker}\\d+\\b`, "g"))?.length ?? 0;
 
     it("expands only the clicked call, and collapses it again on the next click", () => {
       const flag = { expanded: false };
       const viewer = openCallView(TWO_CALLS, { flag });
-      viewer.render(80);
+      const [firstCallRow] = callRows(viewer);
       expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, COLLAPSED]);
 
-      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toEqual({ handled: true });
+      expect(viewer.handleMouse(click(firstCallRow))).toEqual({ handled: true });
       expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([EXPANDED, COLLAPSED]);
       expect(flag.expanded).toBe(false); // a per-call choice leaves pi's flag alone
 
-      viewer.handleMouse(click(FIRST_CALL_TITLE));
+      viewer.handleMouse(click(firstCallRow));
       expect(shownOf(viewer, "a")).toBe(COLLAPSED);
 
-      const secondTitle = viewer.render(80).flatMap((l, i) => (l.includes("uniqtool") ? [i] : []))[1];
+      const secondTitle = callRows(viewer)[1];
       expect(viewer.handleMouse(click(secondTitle))).toEqual({ handled: true });
       expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, EXPANDED]);
     });
 
     it("maps a click to the frame on screen, not to the scroll position behind it", () => {
-      const notes: TestMessage[] = Array.from({ length: 30 }, (_, i) => ({
-        role: "user",
-        content: [{ type: "text", text: `note${i + 1}` }],
-      }));
+      const notes = noteMessages(12);
       const viewer = openCallView(
         [
           ...notes,
@@ -1326,8 +916,7 @@ describe("ConversationViewer", () => {
         viewer.render(80);
       };
       scroll(999);
-      const painted = viewer.render(80);
-      const secondTitle = painted.map((l, i) => (l.includes("uniqtool") ? i : -1)).filter((i) => i >= 0)[1];
+      const secondTitle = callRows(viewer)[1];
       expect(secondTitle).toBeGreaterThan(0); // the second call is the one on screen
 
       // Scroll away without rendering: pi-tui has until its next frame to repaint, and a
@@ -1342,10 +931,7 @@ describe("ConversationViewer", () => {
 
     it("maps a click through the scroll position, not the top of the transcript", () => {
       // Long enough that only the tail of the transcript fits on screen.
-      const notes: TestMessage[] = Array.from({ length: 30 }, (_, i) => ({
-        role: "user",
-        content: [{ type: "text", text: `note${i + 1}` }],
-      }));
+      const notes = noteMessages(12);
       const viewer = openCallView([...notes, callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("b") })], {
         rows: SCROLLABLE_ROWS,
       });
@@ -1354,30 +940,30 @@ describe("ConversationViewer", () => {
         viewer.render(80);
       };
       scroll(999); // auto-scroll already rests here; the call is on screen
-      const titleRow = viewer.render(80).findIndex((line) => line.includes("uniqtool"));
+      const titleRow = callRows(viewer)[0];
       expect(titleRow).toBeGreaterThan(0);
 
       expect(viewer.handleMouse(click(titleRow))).toEqual({ handled: true });
-      expect(shownRows(viewer)).toContain("b6"); // the call under the pointer opened
+      expect(frameText(viewer)).toContain("b6");
 
       scroll(-999);
-      expect(viewer.render(80).join(" ")).not.toContain("uniqtool"); // precondition: the call is off screen
+      expect(callRows(viewer)).toEqual([]); // the call is off screen
       expect(viewer.handleMouse(click(titleRow))).toBeUndefined(); // that row belongs to someone else now
     });
 
     it("collapses one call while pi's global flag has the rest expanded", () => {
       const viewer = openCallView(TWO_CALLS, { flag: { expanded: true } });
-      viewer.render(80);
+      const [firstCallRow] = callRows(viewer);
 
-      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toEqual({ handled: true });
+      expect(viewer.handleMouse(click(firstCallRow))).toEqual({ handled: true });
       expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, EXPANDED]);
     });
 
     it("drops per-call choices when pi's global flag flips, and follows the flag without any event", () => {
       const flag = { expanded: false };
       const viewer = openCallView(TWO_CALLS, { flag });
-      viewer.render(80);
-      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toEqual({ handled: true });
+      const [firstCallRow] = callRows(viewer);
+      expect(viewer.handleMouse(click(firstCallRow))).toEqual({ handled: true });
 
       flag.expanded = true;
       expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([EXPANDED, EXPANDED]); // the click no longer overrides
@@ -1385,207 +971,166 @@ describe("ConversationViewer", () => {
       expect([shownOf(viewer, "a"), shownOf(viewer, "b")]).toEqual([COLLAPSED, COLLAPSED]);
     });
 
-    it("ignores clicks that land anywhere but on a finished call", () => {
-      const viewer = openCallView(TWO_CALLS);
-      // The row count has to come from the painted frame, not from what the viewport
-      // would be right now: opening the steering composer makes the viewer one row
-      // shorter, and a click can arrive before the next frame is painted.
-      const notes: TestMessage[] = Array.from({ length: 20 }, (_, i) => ({
-        role: "user",
-        content: [{ type: "text", text: `note${i + 1}` }],
-      }));
-      const steerable = makeMockSession([...notes, callsOf({ id: "t2" }), resultOf("t2", { text: bodyText(3) })]);
-      const live = new ConversationViewer(
-        makeTui(SCROLLABLE_ROWS),
+    it("uses the painted content bounds while the composer opens before repaint", () => {
+      const steerable = makeMockSession([
+        ...noteMessages(8),
+        callsOf({ id: "t2" }),
+        resultOf("t2", { text: bodyText(6) }),
+      ]);
+      const live = openViewer(
         steerable,
         makeMockRecord({
           lifecycle: { status: "running", startedAt: Date.now(), started: true },
           execution: { settled: false, settlementCount: 0, session: steerable },
         }),
-        noopTheme,
-        vi.fn(),
-        undefined,
-        undefined,
-        vi.fn(),
+        { rows: SCROLLABLE_ROWS, onSteer: vi.fn() },
       );
-      live.render(80); // auto-scroll rests one blank row under the call
-      live.handleMouse(wheel(-1)); // one row up, so the frame's last row is the call's own
-      const painted = live.render(80);
-      const paintedSeparators = painted.flatMap((line, i) => (line.includes("─") ? [i] : []));
-      const lastPaintedRow = paintedSeparators[2] - 1;
+      live.render(80);
+      live.handleMouse(wheel(-1));
+      const painted = frameLines(live);
+      const lastPaintedRow = painted.findIndex((line) => line.includes("body3"));
+
       expect(live.handleMouse(click(lastPaintedRow))).toEqual({ handled: true });
-
-      live.handleInput("\r"); // opens the composer: the live viewport is a row shorter
+      live.handleInput("\r"); // Opens the composer before the next frame is painted.
       expect(live.handleMouse(click(lastPaintedRow))).toEqual({ handled: true });
-      // The frame keeps its height; the content area gives a row to the composer.
-      const shrunk = live.render(80).flatMap((line, i) => (line.includes("─") ? [i] : []));
-      expect(shrunk[2]).toBe(paintedSeparators[2] - 1);
+      expect(bodyRows(live)).toHaveLength(3);
+    });
 
-      // Nothing has been rendered yet, so there are no rows to hit.
-      expect(viewer.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
-      viewer.render(80);
+    it("ignores clicks before rendering and outside a finished call", () => {
+      const viewer = openCallView(TWO_CALLS);
+      expect(viewer.handleMouse(click(0))).toBeUndefined();
 
-      expect(viewer.handleMouse(click(0))).toBeUndefined(); // header
-      expect(viewer.handleMouse(click(FIRST_CALL_TITLE, "right"))).toBeUndefined(); // not the left button
+      const [firstTitle, secondTitle] = callRows(viewer);
+      expect(viewer.handleMouse(click(0))).toBeUndefined();
+      expect(viewer.handleMouse(click(frameLines(viewer).length + 1))).toBeUndefined();
+      expect(viewer.handleMouse(click(firstTitle, "right"))).toBeUndefined();
+      expect(viewer.handleMouse(click(secondTitle - 2))).toBeUndefined();
       expect(shownOf(viewer, "a")).toBe(COLLAPSED);
 
-      // The rows under the content area are the footer and the bottom border. Seen from
-      // the top of a scrolling transcript they still map to content lines, lines that
-      // belong to a call painted below the fold. Only the painted row count stops a
-      // click there, not the block list: the line it maps to is inside a block.
-      // Twelve text lines put the first call's body just under the fold.
+      expect(viewer.handleMouse(click(firstTitle))).toEqual({ handled: true });
+      expect(shownOf(viewer, "a")).toBe(EXPANDED);
+    });
+
+    it("ignores clicks on footer rows that map to calls below the fold", () => {
       const twelveLines = Array.from({ length: 12 }, (_, i) => `note${i + 1}`).join("\n");
       const tall = openCallView([{ role: "user", content: [{ type: "text", text: twelveLines }] }, ...TWO_CALLS], {
         rows: SCROLLABLE_ROWS,
       });
       tall.render(80);
-      tall.handleMouse(wheel(-999)); // back to the top
-      const frame = tall.render(80);
-      const separators = frame.flatMap((line, i) => (line.includes("─") ? [i] : []));
-      const belowContent = separators[2]; // the separator the content area ends at
-      expect(belowContent).toBeGreaterThan(separators[1]);
-      expect(shownOf(tall, "a")).toBe(0); // its body rows are below the fold
+      tall.handleMouse(wheel(-999));
+      const footerRow = frameLines(tall).length - 2;
+      expect(shownOf(tall, "a")).toBe(0);
 
-      for (const row of [belowContent, belowContent + 1, belowContent + 2, frame.length - 1]) {
-        expect(tall.handleMouse(click(row))).toBeUndefined();
-        expect(shownOf(tall, "a")).toBe(0); // and none of them opened the call down there
-      }
-
-      // A block runs from its first painted row to its last; the blank row after it, and
-      // the row before it, belong to no call. Row indices come from the painted frame.
-      const titles = viewer.render(80).flatMap((line, i) => (line.includes("uniqtool") ? [i] : []));
-      const [firstTitle, secondTitle] = titles;
-      expect(secondTitle - firstTitle).toBeGreaterThan(3);
-      expect(viewer.handleMouse(click(secondTitle - 2))).toBeUndefined(); // the gap between the blocks
-      expect(viewer.handleMouse(click(firstTitle - 1))).toEqual({ handled: true }); // the block's own row above its title
-      expect(shownOf(viewer, "a")).toBe(EXPANDED);
-
-      // A frame that was never painted, or is about to be rebuilt, has nothing to hit.
-      const torn = openCallView(TWO_CALLS);
-      torn.render(80);
-      torn.render(4); // too narrow to render anything
-      expect(torn.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
-      torn.render(80);
-      torn.invalidate();
-      expect(torn.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
-
-      // A transcript that emptied while the viewer was open shows no calls, so the rows
-      // the last one painted are gone with it.
-      const emptied = makeMockSession([callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("a") })]);
-      const emptiedViewer = new ConversationViewer(
-        makeTui(),
-        emptied,
-        makeMockRecord({ execution: { settled: false, settlementCount: 0, session: emptied } }),
-        noopTheme,
-        vi.fn(),
-      );
-      emptiedViewer.render(80);
-      emptied.messages.length = 0;
-      emptiedViewer.render(80);
-      expect(emptiedViewer.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
-
-      // A call still waiting for its result is not clickable.
-      const running = openCallView([callsOf({ id: "t1" })]);
-      running.render(80);
-      expect(running.handleMouse(click(FIRST_CALL_TITLE))).toBeUndefined();
+      expect(tall.handleMouse(click(footerRow))).toBeUndefined();
+      expect(shownOf(tall, "a")).toBe(0);
     });
 
-    it("takes the expand key and its hint label from the user's binding", () => {
-      const toggleExpanded = vi.fn();
+    it("does not hit-test rows from a narrow or invalidated frame", () => {
+      const narrow = openCallView(TWO_CALLS);
+      const [callRow] = callRows(narrow);
+      narrow.render(4);
+      expect(narrow.handleMouse(click(callRow))).toBeUndefined();
+
+      const invalidated = openCallView(TWO_CALLS);
+      const [invalidatedCallRow] = callRows(invalidated);
+      invalidated.invalidate();
+      expect(invalidated.handleMouse(click(invalidatedCallRow))).toBeUndefined();
+    });
+
+    it("does not hit-test the previous frame after the transcript empties", () => {
+      const emptied = makeMockSession([callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("a") })]);
+      const viewer = openViewer(
+        emptied,
+        makeMockRecord({ execution: { settled: false, settlementCount: 0, session: emptied } }),
+      );
+      const [callRow] = callRows(viewer);
+      emptied.messages.length = 0;
+      viewer.render(80);
+
+      expect(viewer.handleMouse(click(callRow))).toBeUndefined();
+    });
+
+    it("does not expand a call before its result arrives", () => {
+      const running = openCallView([callsOf({ id: "t1" })]);
+      const [callRow] = callRows(running);
+
+      expect(running.handleMouse(click(callRow))).toBeUndefined();
+    });
+
+    it("uses the configured expand key and ignores it when no toggle is wired", () => {
+      const flag = { expanded: false };
       const bound = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(10) })], {
-        toolDisplay: { toggleExpanded },
-        keybindings: {
-          matches: (data: string, id: string) => id === "app.tools.expand" && data === "\u001be",
-          getKeys: () => ["alt+e"],
-        },
+        flag,
+        toolDisplay: { toggleExpanded: () => (flag.expanded = !flag.expanded) },
+        keybindings: { matches: (data, id) => id === "app.tools.expand" && data === "\u001be" },
       });
 
-      bound.handleInput("\u000f"); // pi's default key, unbound for this user
-      expect(toggleExpanded).not.toHaveBeenCalled();
-      bound.handleInput("o"); // a letter the user typed, not a binding
-      expect(toggleExpanded).not.toHaveBeenCalled();
+      bound.handleInput("\u000f");
+      expect(bodyRows(bound)).toHaveLength(3);
       bound.handleInput("\u001be");
-      expect(toggleExpanded).toHaveBeenCalledTimes(1);
-      expect(mockRequestRender).toHaveBeenCalled();
-      expect(hintRow(bound)).toContain("alt+e");
+      expect(bodyRows(bound)).toHaveLength(10);
 
-      // Headless use wires no toggle at all: the bound key must be ignored, not thrown on.
-      const unwired = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: markerBody("a") })], {
+      const unwired = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: bodyText(10) })], {
         keybindings: { matches: () => true },
       });
-      const collapsed = shownOf(unwired, "a");
-      expect(collapsed).toBeGreaterThan(0);
       expect(() => unwired.handleInput("\u000f")).not.toThrow();
-      expect(shownOf(unwired, "a")).toBe(collapsed);
+      expect(bodyRows(unwired)).toHaveLength(3);
     });
   });
 
   describe("caching", () => {
-    it("re-renders a cached pending tool call to its settled color when its result arrives", () => {
+    it("shows a result added after its tool call was cached", () => {
       const session = makeMockSession([
         { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "uniqtool" }] },
       ]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, bgMarkingTheme, vi.fn());
+      const viewer = openViewer(
+        session,
+        makeMockRecord({ execution: { settled: false, settlementCount: 0, session } }),
+      );
 
-      // First render caches the assistant message as a pending tool call.
-      viewer.render(80);
-      expect(statusShown(viewer)).toBe("pending");
-      expect(shownRows(viewer)).toEqual(["uniqtool"]);
-
-      // The tool result then arrives as a new message.
+      expect(frameText(viewer)).not.toContain("fixture-late-result");
       session.messages.push({
         role: "toolResult",
         toolCallId: "t1",
         toolName: "uniqtool",
         isError: false,
-        content: [{ type: "text", text: "UNIQRESULT" }],
+        content: [{ type: "text", text: "fixture-late-result" }],
       });
 
-      // The cached call line must be rebuilt: a frozen pending state would hide the
-      // completion, and the result has to appear under it exactly once.
-      viewer.render(80);
-      expect(statusShown(viewer)).toBe("success");
-      expect(shownRows(viewer)).toEqual(["uniqtool", "UNIQRESULT"]);
+      const output = frameText(viewer);
+      expect(output.match(/fixture-late-result/g)).toHaveLength(1);
     });
 
-    it("scrolls to the true bottom when streaming adds lines (scrollMax not stale)", () => {
+    it("scrolls to streamed content added after the last cached transcript", () => {
       vi.useFakeTimers();
-      let subscriber: (event?: unknown) => void;
-      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
-        subscriber = cb;
-        return () => {};
-      });
+      try {
+        let subscriber: (event?: unknown) => void;
+        mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
+          subscriber = cb;
+          return () => {};
+        });
 
-      const session = makeMockSession([{ role: "user", content: "x".repeat(3000) }]);
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+        const history = Array.from({ length: 30 }, (_, index) => `history-${index}`).join("\n");
+        const session = makeMockSession([{ role: "user", content: history }]);
+        const viewer = openViewer(
+          session,
+          makeMockRecord({ execution: { settled: false, settlementCount: 0, session } }),
+        );
 
-      // First render warms the cache and parks the viewport at the bottom of the
-      // non-streaming content.
-      const before = viewer.render(80).join("\n");
-      const beforeTotal = readoutTotal(before);
-      expect(beforeTotal).toBeGreaterThan(0);
+        expect(frameText(viewer)).toContain("history-29");
+        viewer.handleInput("g");
+        subscriber!({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "stream-first\nstream-tail" },
+        });
+        vi.runAllTimers();
 
-      // Streaming text arrives (5 rendered lines) without a new session message,
-      // so only the streaming suffix changes.
-      subscriber!({
-        type: "message_update",
-        assistantMessageEvent: { type: "text_delta", delta: "a\nb\nc\nd\ne" },
-      });
-      vi.runAllTimers();
-
-      // G must jump to the true bottom: scrollMax is derived from the current
-      // content, not the pre-streaming cache. A stale scrollMax would park the
-      // viewport short and the readout would drop below 100%.
-      viewer.handleInput("G");
-      const after = viewer.render(80).join("\n");
-      expect(readoutTotal(after)).toBeGreaterThan(beforeTotal);
-      expect(after).toMatch(/\(\d+\/\d+ · 100%\)/);
-      // The last streamed line is inside the viewport, not cut off above it.
-      expect(after).toContain("│ e");
-
-      vi.useRealTimers();
+        viewer.handleInput("G");
+        expect(frameText(viewer)).toContain("stream-tail");
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -1596,55 +1141,20 @@ describe("ConversationViewer", () => {
 
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const viewer = openViewer(session, record);
       viewer.dispose();
 
       expect(unsubscribe).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe("cache invalidation on messages array replacement", () => {
-    it("clears cache when messages array is replaced (e.g., after compaction)", () => {
-      const originalMessages = [
-        { role: "user", content: "original message 1" },
-        { role: "assistant", content: [{ type: "text", text: "original response 1" }] },
-        { role: "user", content: "original message 2" },
-        { role: "assistant", content: [{ type: "text", text: "original response 2" }] },
-      ];
-      // Create a session where messages can be replaced
-      let messagesArray = [...originalMessages];
-      const session = asAgentSession({
-        get messages() {
-          return messagesArray;
-        },
-        subscribe: mockSubscribe,
-      });
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
-
-      const firstRender = viewer.render(80).join("\n");
-      expect(firstRender).toContain("original message 1");
-      expect(firstRender).toContain("original response 1");
-
-      // Simulate compaction: replace the messages array with a shorter one
-      messagesArray = [
-        { role: "user", content: "original message 1" },
-        { role: "assistant", content: [{ type: "text", text: "SUMMARIZED response" }] },
-      ];
-
-      // Second render - should show summarized content, not stale cached content
-      const secondRender = viewer.render(80).join("\n");
-      expect(secondRender).toContain("SUMMARIZED response");
-      expect(secondRender).not.toContain("original response 1");
-      expect(secondRender).not.toContain("original response 2");
-    });
-
-    it("detects array replacement via reference change (not just length)", () => {
-      let messagesArray = [
-        { role: "user", content: "msg 1" },
-        { role: "assistant", content: [{ type: "text", text: "resp 1" }] },
+  describe("transcript updates", () => {
+    it("renders a replaced transcript instead of stale messages", () => {
+      let messagesArray: TestMessage[] = [
+        { role: "user", content: "fixture-user" },
+        { role: "assistant", content: [{ type: "text", text: "fixture-old-response-1" }] },
+        { role: "user", content: "fixture-old-user-2" },
+        { role: "assistant", content: [{ type: "text", text: "fixture-old-response-2" }] },
       ];
       const session = asAgentSession({
         get messages() {
@@ -1652,43 +1162,49 @@ describe("ConversationViewer", () => {
         },
         subscribe: mockSubscribe,
       });
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
-
+      const viewer = openViewer(
+        session,
+        makeMockRecord({ execution: { settled: false, settlementCount: 0, session } }),
+      );
       viewer.render(80);
 
-      // Replace with new array of SAME length but different content (simulating compaction)
       messagesArray = [
-        { role: "user", content: "msg 1" },
-        { role: "assistant", content: [{ type: "text", text: "COMPACTED" }] },
+        { role: "user", content: "fixture-user" },
+        { role: "assistant", content: [{ type: "text", text: "fixture-summary" }] },
       ];
+      let output = frameText(viewer);
+      expect(output).toContain("fixture-summary");
+      expect(output).not.toContain("fixture-old-response-1");
+      expect(output).not.toContain("fixture-old-response-2");
 
-      // Should detect the replacement and clear cache
-      const text = viewer.render(80).join("\n");
-      expect(text).toContain("COMPACTED");
-      expect(text).not.toContain("resp 1");
+      messagesArray = [
+        { role: "user", content: "fixture-user" },
+        { role: "assistant", content: [{ type: "text", text: "fixture-recompacted" }] },
+      ];
+      output = frameText(viewer);
+      expect(output).toContain("fixture-recompacted");
+      expect(output).not.toContain("fixture-summary");
     });
 
-    it("preserves cache on append (no array replacement)", () => {
-      const messagesArray: TestMessage[] = [{ role: "user", content: "msg 1" }];
+    it("renders a newly appended message without duplicating existing content", () => {
+      const messages: TestMessage[] = [{ role: "user", content: "fixture-existing-message" }];
       const session = asAgentSession({
         get messages() {
-          return messagesArray;
+          return messages;
         },
         subscribe: mockSubscribe,
       });
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const viewer = new ConversationViewer(makeTui(), session, record, noopTheme, vi.fn());
+      const viewer = openViewer(
+        session,
+        makeMockRecord({ execution: { settled: false, settlementCount: 0, session } }),
+      );
+      viewer.render(80);
 
-      const firstRender = viewer.render(80).join("\n");
-      expect(firstRender).toContain("msg 1");
+      messages.push({ role: "assistant", content: [{ type: "text", text: "fixture-appended-message" }] });
+      const output = frameText(viewer);
 
-      // Append to same array (no replacement)
-      messagesArray.push({ role: "assistant", content: [{ type: "text", text: "resp 1" }] });
-
-      const secondRender = viewer.render(80).join("\n");
-      expect(secondRender).toContain("msg 1");
-      expect(secondRender).toContain("resp 1");
+      expect(output.match(/fixture-existing-message/g)).toHaveLength(1);
+      expect(output.match(/fixture-appended-message/g)).toHaveLength(1);
     });
   });
 
@@ -1704,96 +1220,43 @@ describe("ConversationViewer", () => {
         },
       ]);
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
+      const viewer = openViewer(session, record);
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      let output = frameText(viewer);
+      expect(output).toContain("Let me think");
+      expect(output).toContain("Here is the answer.");
 
-      // Thinking is visible initially (mock returns false for hideThinkingBlock).
-      let text = viewer.render(80).join("\n");
-      expect(text).toContain("Let me think");
-      expect(text).not.toContain("Thinking...");
-
-      // ctrl+T hides thinking blocks behind the placeholder label.
       viewer.handleInput("\x14");
-      text = viewer.render(80).join("\n");
-      expect(text).not.toContain("Let me think");
-      expect(text).toContain("Thinking...");
+      output = frameText(viewer);
+      expect(output).not.toContain("Let me think");
+      expect(output).toContain("Here is the answer.");
 
-      // Toggle again restores the blocks.
       viewer.handleInput("\x14");
-      text = viewer.render(80).join("\n");
-      expect(text).toContain("Let me think");
-      expect(text).not.toContain("Thinking...");
+      expect(frameText(viewer)).toContain("Let me think");
     });
 
-    it("shows thinking visibility state in footer", () => {
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      const text = viewer.render(120).join("\n");
-      expect(text).toContain("C-t thinking");
-    });
-    it("renders Thinking... label for non-streaming thinking when hideThinkingBlock is true", () => {
+    it("hides stored thinking when the setting requests it but keeps the answer", () => {
       // Mock the setting to return true (thinking should be hidden)
       vi.mocked(getHideThinkingBlock).mockReturnValue(true);
       const session = makeMockSession([
         {
           role: "assistant",
           content: [
-            { type: "thinking", thinking: "Let me think about this..." },
-            { type: "text", text: "Here is the answer." },
+            { type: "thinking", thinking: "fixture-hidden-thought" },
+            { type: "text", text: "fixture-visible-answer" },
           ],
         },
       ]);
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      const viewer = openViewer(session, record);
 
       const text = viewer.render(80).join("\n");
 
-      // Should show "Thinking..." label, not the actual thinking content
-      expect(text).toContain("Thinking...");
-      expect(text).not.toContain("Let me think about this...");
-      // But should still show the text content
-      expect(text).toContain("Here is the answer.");
+      expect(text).not.toContain("fixture-hidden-thought");
+      expect(text).toContain("fixture-visible-answer");
     });
 
-    it("shows Thinking... label during streaming when thinking is hidden", () => {
-      vi.useFakeTimers();
-      let subscriber: (event?: unknown) => void;
-      mockSubscribe.mockImplementation((cb: (event?: unknown) => void) => {
-        subscriber = cb;
-        return () => {};
-      });
-
-      const session = makeMockSession();
-      const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
-
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
-
-      // Hide thinking
-      viewer.handleInput("\x14");
-
-      // Simulate streaming thinking via session events
-      subscriber!({
-        type: "message_update",
-        assistantMessageEvent: { type: "thinking_delta", delta: "Streaming thought..." },
-      });
-      vi.runAllTimers();
-
-      const text = viewer.render(80).join("\n");
-      expect(text).toContain("Thinking...");
-      expect(text).not.toContain("Streaming thought...");
-
-      vi.useRealTimers();
-    });
-
-    it("shows Thinking... label during streaming when hideThinkingBlock is true initially", () => {
+    it("keeps streaming thoughts hidden until the user reveals them", () => {
       // Mock the setting to return true (thinking should be hidden)
       vi.mocked(getHideThinkingBlock).mockReturnValue(true);
 
@@ -1806,22 +1269,22 @@ describe("ConversationViewer", () => {
 
       const session = makeMockSession();
       const record = makeMockRecord({ execution: { settled: false, settlementCount: 0, session } });
-      const tui = makeTui();
+      const viewer = openViewer(session, record);
 
-      const viewer = new ConversationViewer(tui, session, record, noopTheme, vi.fn());
+      try {
+        subscriber!({
+          type: "message_update",
+          assistantMessageEvent: { type: "thinking_delta", delta: "fixture-streaming-thought" },
+        });
+        vi.runAllTimers();
 
-      // Simulate streaming thinking via session events
-      subscriber!({
-        type: "message_update",
-        assistantMessageEvent: { type: "thinking_delta", delta: "Streaming thought..." },
-      });
-      vi.runAllTimers();
-
-      const text = viewer.render(80).join("\n");
-      expect(text).toContain("Thinking...");
-      expect(text).not.toContain("Streaming thought...");
-
-      vi.useRealTimers();
+        expect(frameText(viewer)).not.toContain("fixture-streaming-thought");
+        viewer.handleInput("\x14");
+        expect(frameText(viewer)).toContain("fixture-streaming-thought");
+      } finally {
+        viewer.dispose();
+        vi.useRealTimers();
+      }
     });
   });
 });

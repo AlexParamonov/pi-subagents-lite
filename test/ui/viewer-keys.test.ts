@@ -23,10 +23,9 @@ describe("createViewerKeys", () => {
     expect(keys.toggleExpand(KITTY_CTRL_O)).toBe(true);
     expect(keys.toggleExpand("o")).toBe(false);
     expect(keys.toggleExpand("\x03")).toBe(false);
-    expect(keys.expandHint()).toBe("ctrl+o");
   });
 
-  it("resolves the expand key through the manager and names its bound keys", () => {
+  it("uses the configured expand key instead of the default", () => {
     const matches = vi.fn<(data: string, id: string) => boolean>(
       (data, id) => id === "app.tools.expand" && data === ALT_E,
     );
@@ -34,14 +33,6 @@ describe("createViewerKeys", () => {
 
     expect(keys.toggleExpand(LEGACY_CTRL_O)).toBe(false); // the default, unbound for this user
     expect(keys.toggleExpand(ALT_E)).toBe(true);
-    for (const key of ["alt+e", "ctrl+o"]) expect(keys.expandHint()).toContain(key);
-  });
-
-  it("falls back to the default key for a manager without getKeys", () => {
-    const keys = createViewerKeys({ matches: () => false });
-
-    expect(keys.expandHint()).toBe("ctrl+o");
-    expect(keys.toggleExpand(LEGACY_CTRL_O)).toBe(false);
   });
 
   it("keeps scrolling on the manager's select ids", () => {

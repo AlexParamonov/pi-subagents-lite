@@ -31,8 +31,8 @@ export interface ViewerKeys {
   pageDown(data: string): boolean;
   /** pi's `app.tools.expand` (ctrl+o by default): toggle collapsed/expanded tool output. */
   toggleExpand(data: string): boolean;
-  /** Label of the key bound to `toggleExpand`, for "(… to expand)" hints. */
-  expandHint(): string;
+  /** Label of the key bound to `toggleExpand`, or undefined when the action is unbound. */
+  expandHint(): string | undefined;
 }
 
 export function createViewerKeys(keybindings?: ViewerKeybindings): ViewerKeys {
@@ -44,6 +44,10 @@ export function createViewerKeys(keybindings?: ViewerKeybindings): ViewerKeys {
     pageUp: (data) => matches(data, "tui.select.pageUp", "pageUp") || matchesKey(data, "shift+up"),
     pageDown: (data) => matches(data, "tui.select.pageDown", "pageDown") || matchesKey(data, "shift+down"),
     toggleExpand: (data) => matches(data, "app.tools.expand", DEFAULT_EXPAND_KEY),
-    expandHint: () => keybindings?.getKeys?.("app.tools.expand")?.join("/") ?? DEFAULT_EXPAND_KEY,
+    expandHint: () => {
+      const keys = keybindings?.getKeys?.("app.tools.expand");
+      if (keys === undefined) return DEFAULT_EXPAND_KEY;
+      return keys.length > 0 ? keys.join("/") : undefined;
+    },
   };
 }
