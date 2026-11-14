@@ -17,11 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Viewer call rows now read the way pi writes each of its own tools: `$ <command>` and `PS> <command>` with a ` (timeout Ns)` suffix, `read <path>:start-end` from `offset`/`limit`, `write <path>` and `edit <path>` with their content-line and edit counts (pi shows the written content and the diff themselves, which takes more than the viewer's single row), `grep /<pattern>/ in <path>`, `find <pattern> in <path>` and `ls <path>`, with pi's generic `name key=value …` for every tool pi does not know. Home-directory paths show as `~`, and the colors follow pi (bold tool title, accent path or pattern, grep/find/ls additions on the tool-output color, muted `write`/`edit` counts and timeout suffix, warning line range). None of those forms is truncated, so a long command or path wraps onto more rows; only the generic form keeps pi's 100-character collapsed preview, whole when expanded. Compact and ordinary presentation alike, in both expansion states. Transcript logs keep the `name(args)` summary form.
-- Shared conversation-viewer tool-title formatting reuses the renderer's timing text without changing either presentation.
-- Centralized viewer tool-path normalization without changing call-row output.
 - Rebuilding a settings list keeps the cursor on the row it was on instead of returning to the top, so a toggle that shows or hides another row leaves your place.
-- Compact conversation layout records normal versus compact call presentation before rendering, without changing display or controls.
-- Compact conversation viewer renders each ungrouped tool call's block once, together with the rest of its message, so a running call's per-second repaint no longer re-wraps every earlier result: a 60-call transcript holding 6MB of tool output rebuilds in ~1.6ms instead of ~40ms.
 
 ## [1.18.0] - 2026-11-03
 
