@@ -127,7 +127,7 @@ interface ToolCall {
 
 /** One position of the compact layout: non-call rows, a normal or compact call, or a collapsed run. */
 type CompactEntry =
-  | { kind: "rows"; msgIndex: number }
+  | { kind: "rows"; rows: string[] }
   | { kind: "normal-call" | "compact-call"; call: ToolCall }
   | { kind: "run"; calls: ToolCall[] };
 
@@ -955,16 +955,20 @@ export class ConversationViewer implements Component {
   /**
    * Compact layout entries in display order: each message's non-call rows, then
    * its calls. Two or more consecutive eligible calls collapse into one run at
-   * the position of their first member; anything that paints non-call content,
+   * the position of their first member; a message that paints rows of its own,
    * and any excluded call, ends the open run. pi's expanded flag shows every
    * call itself, so no run forms at all.
    */
-  private compactEntries(messages: any[]): CompactEntry[] {
+  private compactEntries(messages: any[], width: number, toolResults: Map<string, ToolResultStatus>): CompactEntry[] {
     const entries: CompactEntry[] = [];
     let openRun: { kind: "run"; calls: ToolCall[] } | undefined;
     messages.forEach((msg: any, msgIndex: number) => {
-      entries.push({ kind: "rows", msgIndex });
-      if (this.paintsNonCallContent(msg)) openRun = undefined;
+      // In compact mode a cached message holds only its non-call rows, so those rows are
+      // the one answer to "does this message paint visible content?": blank text and
+      // blank turns paint nothing, so they do not end the open run.
+      const rows = this.messageCache.get(msgIndex) ?? this.cacheMessage(msgIndex, msg, width, toolResults);
+      entries.push({ kind: "rows", rows });
+      if (rows.length > 0) openRun = undefined;
       for (const call of callsOfMessage(msg)) {
         const ungrouped = this.ungroupedTools.has(call.name);
         if (this.toolsExpanded || ungrouped) {
@@ -985,20 +989,6 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * True when a message paints rows other than calls, which bounds a compact run.
-   * Blank text paints no row (pi's Markdown skips it), so like a blank user turn it
-   * is not a boundary.
-   */
-  private paintsNonCallContent(msg: any): boolean {
-    if (msg?.role === "user") return userText(msg).trim() !== "";
-    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return false;
-    return msg.content.some(
-      (c: any) =>
-        (c?.type === "text" && c.text?.trim()) || (c?.type === "thinking" && c.thinking && this.thinkingVisible),
-    );
-  }
-
-  /**
    * Compact content rows and their click targets, straight from the transcript: never cached call rows.
    *
    * Exactly one blank row separates two adjacent compact items (a run summary or an individually shown
@@ -1013,13 +1003,10 @@ export class ConversationViewer implements Component {
     toolBlocks: ToolBlock[],
   ): void {
     let afterCompactItem = false;
-    for (const entry of this.compactEntries(messages)) {
+    for (const entry of this.compactEntries(messages, width, toolResults)) {
       if (entry.kind === "rows") {
-        const cached =
-          this.messageCache.get(entry.msgIndex) ??
-          this.cacheMessage(entry.msgIndex, messages[entry.msgIndex]!, width, toolResults);
-        if (cached.length > 0) afterCompactItem = false;
-        lines.push(...cached);
+        if (entry.rows.length > 0) afterCompactItem = false;
+        lines.push(...entry.rows);
         continue;
       }
       if (entry.kind === "normal-call") {
