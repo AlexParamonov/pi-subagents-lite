@@ -23,12 +23,14 @@ const mockSubscribe = vi.fn<(listener: (event?: unknown) => void) => () => void>
 const mockRequestRender = vi.fn();
 
 vi.mock("@earendil-works/pi-tui", () => {
-  // Real ANSI is invisible to width; so are the test theme's \u0001<bg>\u0001 and \u0002<fg>\u0002 row markers.
-  const visible = (s: string) =>
-    s
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .replace(/\u0001[^\u0001]*\u0001/g, "")
-      .replace(/\u0002[^\u0002]*\u0002/g, "");
+  // Width is screen width: real ANSI and the marking theme's \u0001<bg>\u0001 and
+  // \u0002<fg>\u0002 row markers cost nothing, so every rule below segments a row the
+  // same way - including the wrap, which must never cut through a marker.
+  const SEGMENTS = /\u0001[^\u0001]*\u0001|\u0002[^\u0002]*\u0002|\x1b\[[0-9;]*m|[\s\S]/g;
+  const segmentsOf = (s: string) => s.match(SEGMENTS) ?? [];
+  /** A color marker is a multi-char segment; everything else is one screen cell. */
+  const cell = (seg: string) => seg.length === 1;
+  const visible = (s: string) => segmentsOf(s).filter(cell).join("");
   return {
     matchesKey: vi.fn((data: string, key: string) => {
       const map: Record<string, string[]> = {
@@ -89,18 +91,24 @@ vi.mock("@earendil-works/pi-tui", () => {
     truncateToWidth: vi.fn((s: string, w: number) => (visible(s).length > w ? visible(s).slice(0, w - 3) + "..." : s)),
     visibleWidth: vi.fn((s: string) => visible(s).length),
     wrapTextWithAnsi: vi.fn((text: string, width: number) => {
-      const result: string[] = [];
+      const rows: string[] = [];
       for (const line of text.split("\n")) {
-        if (line.length <= width) result.push(line);
-        else {
-          let remaining = line;
-          while (remaining.length > 0) {
-            result.push(remaining.slice(0, width));
-            remaining = remaining.slice(width);
+        let row = "";
+        let used = 0;
+        for (const seg of segmentsOf(line)) {
+          if (cell(seg)) {
+            if (used === width) {
+              rows.push(row);
+              row = "";
+              used = 0;
+            }
+            used++;
           }
+          row += seg;
         }
+        rows.push(row);
       }
-      return result;
+      return rows;
     }),
   };
 });
@@ -581,6 +589,23 @@ describe("ConversationViewer compact tool calls", () => {
     expect(rows.length).toBeGreaterThan(1);
     expect(rows.every((row) => row.bg === "toolPendingBg" && row.text !== "")).toBe(true);
     expect(rows.map((row) => row.text).join("")).toContain("x".repeat(120));
+    expect(viewer.render(40).every((line) => visibleWidthOf(line) <= 40)).toBe(true);
+  });
+
+  it("wraps a long run summary inside the frame without losing the names", () => {
+    const viewer = openCompactView([
+      callsOf(
+        { id: "t1", name: "mcp_server_read_file" },
+        { id: "t2", name: "mcp_server_list_dir" },
+        { id: "t3", name: "read" },
+      ),
+    ]);
+
+    const rows = contentRows(viewer, 40);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.every((row) => row.bg === "")).toBe(true);
+    // Wrapping may split the row anywhere, but it must not drop or garble a name.
+    expect(rows.map((row) => row.text).join("")).toBe("3 tool calls (mcp_server_read_file, mcp_server_list_dir, read)");
     expect(viewer.render(40).every((line) => visibleWidthOf(line) <= 40)).toBe(true);
   });
 
