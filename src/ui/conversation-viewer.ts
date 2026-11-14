@@ -914,7 +914,7 @@ export class ConversationViewer implements Component {
     const bg = callBg(result);
     const timing = this.toolTimingText(tc.id, result);
     // Collapsed: timing sits on the title line. Expanded: at the end, like pi's muted footer line.
-    const inner = this.callRows(this.callTitleText(tc, result, !expanded), bg, width);
+    const inner = this.callRows(this.callTitleText(tc, expanded ? undefined : timing), bg, width);
     for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
       const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
       inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
@@ -930,21 +930,19 @@ export class ConversationViewer implements Component {
   /** The call row's own text: name, argument summary, bash timeout, and timing when it sits on the row. */
   private callTitleText(
     tc: { id?: string; name: string; args?: Record<string, unknown> },
-    result: ToolResultStatus | undefined,
-    timingOnRow: boolean,
+    timing: string | undefined,
   ): string {
     const th = this.theme;
     const expanded = this.isCallExpanded(tc.id);
     const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
     // The call line's own text is model-produced tool data, so it gets the same strip as the result.
     const label = plainText(argsSummary ? `${tc.name}${argsSummary}` : tc.name);
-    const timing = this.toolTimingText(tc.id, result);
     // Like pi's bash renderer: a muted "(timeout 300s)" after the command.
     const timeout = tc.name === "bash" ? tc.args?.timeout : undefined;
     const timeoutSuffix = typeof timeout === "number" && timeout > 0 ? th.fg("muted", ` (timeout ${timeout}s)`) : "";
     // The timeout suffix already starts with a space, so a single one separates it from the timing.
     const timingGap = timeoutSuffix ? " " : "  ";
-    const timingText = timing && timingOnRow ? `${timingGap}${th.fg("muted", timing)}` : "";
+    const timingText = timing ? `${timingGap}${th.fg("muted", timing)}` : "";
     return ` ${th.bold(label)}${timeoutSuffix}${timingText} `;
   }
 
@@ -1023,7 +1021,8 @@ export class ConversationViewer implements Component {
       const start = lines.length;
       const call = entry.call;
       const result = call.id ? toolResults.get(call.id) : undefined;
-      lines.push(...this.callRows(this.callTitleText(call, result, true), callBg(result), width));
+      const timing = this.toolTimingText(call.id, result);
+      lines.push(...this.callRows(this.callTitleText(call, timing), callBg(result), width));
       // Like pi, only a call with a result can be toggled by clicking it.
       if (call.id && toolResults.has(call.id)) toolBlocks.push({ id: call.id, start, end: lines.length });
     }
