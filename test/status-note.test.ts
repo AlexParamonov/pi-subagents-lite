@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { getStatusNote, formatStopReason, formatWatchdogSummary } from "../src/status-note.js";
+import { getStatusNote, formatStopReason, formatWatchdogSummary, stripStatusNote } from "../src/status-note.js";
 import type { AgentLifecycle } from "../src/types.js";
 
 /** Fixture lifecycle; tests override only the fields they vary. */
@@ -26,6 +26,28 @@ describe("getStatusNote", () => {
 
   it("wraps known notes with space-parentheses", () => {
     expect(getStatusNote(lifecycle({ stoppedBy: "user" }))).toMatch(/^ \(.+\)$/);
+  });
+});
+
+describe("stripStatusNote", () => {
+  it.each(["stopped", "aborted", "turn_limited"])("cuts the glued note back off for the %s status", (status) => {
+    expect(stripStatusNote("Done. (STOPPED BY YOU before completion — output is partial)", status)).toBe("Done.");
+  });
+
+  it.each(["completed", "queued", "running", "", undefined])(
+    "leaves a prose parenthetical alone under the %j status",
+    (status) => {
+      expect(stripStatusNote("Fixed the flake (see notes.md)", status)).toBe("Fixed the flake (see notes.md)");
+    },
+  );
+
+  it("does not cut for a key inherited from Object.prototype", () => {
+    // details.status comes from stored messages, so "toString" must not read as a noted status.
+    expect(stripStatusNote("Fixed the flake (see notes.md)", "toString")).toBe("Fixed the flake (see notes.md)");
+  });
+
+  it("leaves text without a trailing note unchanged", () => {
+    expect(stripStatusNote("Done.", "stopped")).toBe("Done.");
   });
 });
 

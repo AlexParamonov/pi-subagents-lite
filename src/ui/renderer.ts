@@ -4,7 +4,7 @@
  * Extracted from index.ts to separate display concerns from extension wiring.
  */
 
-import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Markdown, Spacer, Text, TruncatedText } from "@earendil-works/pi-tui";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
 import type { SubagentMessageDetails } from "../agents/parent-message.ts";
@@ -18,6 +18,7 @@ import {
   statusIcon,
 } from "./format.ts";
 import { getManager } from "../shell.ts";
+import { stripStatusNote } from "../status-note.ts";
 
 // --- Stats rendering helpers ---
 
@@ -265,6 +266,29 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
+/**
+ * First line of the agent's own reply, read back from the nudge content emitIndividualNudge builds:
+ * `<envelope>\n\n<reply>` plus the notes formatResultContent appends last. stripStatusNote removes the
+ * glued status note; the error note keeps its own line, so a one-line reply opening with "Error: " is
+ * content-identical to it and loses the row.
+ */
+function firstReplyLine(content: string, status: string | undefined): string {
+  const lines = stripStatusNote(content, status).split("\n");
+  const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
+  const reply = body.find((l) => l.trim())?.trim() ?? "";
+  return reply.startsWith("Error: ") ? "" : reply;
+}
+
+/** The card's dim path rows in order, omitting whatever the details don't carry. */
+function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string {
+  const outputFile = d?.outputFile;
+  const worktreePath = d?.worktreePath;
+  const rows: string[] = [];
+  if (typeof outputFile === "string" && outputFile) rows.push(`  ${theme.fg("dim", `tail -f ${outputFile}`)}`);
+  if (typeof worktreePath === "string" && worktreePath) rows.push(`  ${theme.fg("dim", `worktree: ${worktreePath}`)}`);
+  return rows.join("\n");
+}
+
 /** Render a subagent-result message injected after background agent completion. */
 export function renderSubagentResult(
   message: { content?: string; details?: Record<string, unknown> },
@@ -290,14 +314,19 @@ export function renderSubagentResult(
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
     const description = typeof d.description === "string" ? d.description : "";
-    let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`;
-    if (typeof d.outputFile === "string" && d.outputFile) {
-      headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+    inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
+
+    if (!expanded) {
+      const replyLine = firstReplyLine(text, d.status as string | undefined);
+      if (replyLine) {
+        inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
+      }
     }
-    if (typeof d.worktreePath === "string" && d.worktreePath) {
-      headerLine += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
+
+    const pathLines = pathRows(d, theme);
+    if (pathLines) {
+      inner.addChild(new Text(pathLines, 0, 0));
     }
-    inner.addChild(new Text(headerLine, 0, 0));
 
     if (expanded && text) {
       inner.addChild(new Spacer(1));
@@ -338,11 +367,7 @@ function buildFallbackResultLine(
   }
   const desc = typeof d?.description === "string" ? d.description : "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
-  if (typeof d?.outputFile === "string" && d.outputFile) {
-    line += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-  }
-  if (typeof d?.worktreePath === "string" && d.worktreePath) {
-    line += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
-  }
+  const pathLines = pathRows(d, theme);
+  if (pathLines) line += `\n${pathLines}`;
   return line;
 }
