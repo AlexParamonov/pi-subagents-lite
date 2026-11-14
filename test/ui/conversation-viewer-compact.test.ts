@@ -316,7 +316,7 @@ describe("ConversationViewer compact tool calls", () => {
   it("summarizes consecutive eligible calls as one count-and-names row", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" })]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
   });
 
   it("counts every call and lists unique names in first-seen order", () => {
@@ -333,10 +333,10 @@ describe("ConversationViewer compact tool calls", () => {
       { ungrouped: [] },
     );
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "5 tool calls (read, grep, bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "5 tool calls (read, grep, bash)" }]);
   });
 
-  it("paints the summary in the default text color, with no status color and no timing", () => {
+  it("paints the summary on the pending background, with no timing", () => {
     const transcript = [
       callsOf({ id: "t1", name: "read", args: { path: "/a.md" } }, { id: "t2", name: "grep" }),
       resultOf("t1", { durationMs: 1000, isError: true, text: "fixture-failure" }),
@@ -344,8 +344,8 @@ describe("ConversationViewer compact tool calls", () => {
     ];
 
     const summarized = openCompactView(transcript);
-    expect(contentRows(summarized)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
-    expect(paintedFg(summarized, "2 tool calls")).toBe("text"); // the default text color, not a status one
+    expect(contentRows(summarized)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(paintedFg(summarized, "2 tool calls")).toBe("toolTitle"); // painted like any other call row
 
     // Shown one by one, the same calls carry their own status colors.
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
@@ -373,7 +373,7 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "", text: "3 tool calls (read, grep)" },
+      { bg: "toolPendingBg", text: "3 tool calls (read, grep)" },
       { bg: "toolPendingBg", text: "" },
       { bg: "toolPendingBg", text: 'bash("ls -la")' },
       { bg: "toolPendingBg", text: "" },
@@ -395,13 +395,13 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "", text: "2 tool calls (read, grep)" },
+      { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "toolSuccessBg", text: 'write("/notes.md", 5 chars)  Took 1.2s' },
       { bg: "toolSuccessBg", text: "fixture-write-result" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
-      { bg: "", text: "2 tool calls (read, grep)" },
+      { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
     ]);
   });
 
@@ -464,7 +464,7 @@ describe("ConversationViewer compact tool calls", () => {
     const cased = openCompactView([callsOf({ id: "t1", name: "Read" }, { id: "t2", name: "Read" })], {
       ungrouped: ["read"],
     });
-    expect(contentRows(cased)).toEqual([{ bg: "", text: "2 tool calls (Read)" }]);
+    expect(contentRows(cased)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (Read)" }]);
   });
 
   it("groups consecutive calls from different turns", () => {
@@ -475,7 +475,7 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t2"),
     ]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
   });
 
   it("does not group across visible assistant text", () => {
@@ -500,7 +500,7 @@ describe("ConversationViewer compact tool calls", () => {
       callsOf({ id: "t2", name: "grep" }),
     ]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
   });
 
   it("does not group across a user turn, whose own presentation is untouched", () => {
@@ -552,7 +552,7 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t2", { text: "fixture-second-result" }),
     ];
 
-    expect(contentRows(openCompactView(transcript))).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(openCompactView(transcript))).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
       { bg: "toolSuccessBg", text: "read" },
       { bg: "", text: "" },
@@ -603,7 +603,7 @@ describe("ConversationViewer compact tool calls", () => {
 
     const rows = contentRows(viewer, 40);
     expect(rows.length).toBeGreaterThan(1);
-    expect(rows.every((row) => row.bg === "")).toBe(true);
+    expect(rows.every((row) => row.bg === "toolPendingBg")).toBe(true);
     // Wrapping may split the row anywhere, but it must not drop or garble a name.
     expect(rows.map((row) => row.text).join("")).toBe("3 tool calls (mcp_server_read_file, mcp_server_list_dir, read)");
     expect(viewer.render(40).every((line) => visibleWidthOf(line) <= 40)).toBe(true);
@@ -687,7 +687,7 @@ describe("ConversationViewer compact tool calls", () => {
       callsOf({ id: "t2", name: "grep" }),
     ]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
 
     viewer.handleInput("\x14"); // reveal thinking: the run splits at the visible block
     expect(contentRows(viewer)).toEqual([
@@ -698,7 +698,7 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
 
     viewer.handleInput("\x14"); // hide it again: the same two calls are one run
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
   });
 
   it("regroups as calls are appended and settle, without dropping or repeating one", () => {
@@ -707,10 +707,10 @@ describe("ConversationViewer compact tool calls", () => {
     expect(contentRows(viewer)).toEqual([{ bg: "toolSuccessBg", text: "read" }]);
 
     messages.push(callsOf({ id: "t2", name: "grep" }, { id: "t3", name: "bash" }));
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "3 tool calls (read, grep, bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "3 tool calls (read, grep, bash)" }]);
 
     messages.push(resultOf("t2"), resultOf("t3"));
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "3 tool calls (read, grep, bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "3 tool calls (read, grep, bash)" }]);
   });
 
   it("groups a call that arrives in the streaming message, whose object is replaced in place", () => {
@@ -723,7 +723,7 @@ describe("ConversationViewer compact tool calls", () => {
     messages[messages.length - 1] = grew;
     emit({ type: "message_end", message: grew });
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
   });
 
   it("leaves a collapsed summary untouched when it is clicked", () => {
@@ -732,7 +732,7 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t1"),
       resultOf("t2"),
     ]);
-    const summary = { bg: "", text: "2 tool calls (read, grep)" };
+    const summary = { bg: "toolPendingBg", text: "2 tool calls (read, grep)" };
     const [summaryRow] = rowsHolding(viewer, "2 tool calls");
 
     expect(contentRows(viewer)).toEqual([summary]);
@@ -772,7 +772,7 @@ describe("ConversationViewer compact tool calls", () => {
         .map((row) => row.text)
         .join("");
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (bash)" }]);
     expect(viewer.handleMouse(click(rowsHolding(viewer, "2 tool calls")[0]!))).toBeUndefined();
 
     viewer.handleInput("\x14"); // reveal thinking: the run splits into two compact rows around the block
@@ -860,7 +860,7 @@ describe("ConversationViewer compact tool calls", () => {
       { ungrouped: [] },
     );
 
-    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (write, edit)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (write, edit)" }]);
   });
 
   it("maps a click to the frame it saw, after scrolling moved the grouped transcript", () => {
@@ -965,7 +965,7 @@ describe("ConversationViewer compact tool calls", () => {
       ],
       { flag, ungrouped: [] },
     );
-    const summary = { bg: "", text: "2 tool calls (bash, grep)" };
+    const summary = { bg: "toolPendingBg", text: "2 tool calls (bash, grep)" };
     expect(contentRows(viewer)).toEqual([summary]);
 
     flag.expanded = true;

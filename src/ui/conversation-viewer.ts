@@ -1063,13 +1063,13 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * A run as one summary item in the default text color: its call count and names in first-seen
-   * order, wrapped at the same padding a call row uses.
+   * A run as one summary row on the pending background: its call count and names in first-seen order,
+   * wrapped and colored exactly like a pending call row, and with no timing of its own.
    */
   private appendRunSummary(calls: ToolCall[], width: number, lines: string[]): void {
     const names = plainText([...new Set(calls.map((call) => call.name))].join(", "));
-    const text = this.theme.fg("text", this.theme.bold(` ${calls.length} tool calls (${names}) `));
-    lines.push(...wrapTextWithAnsi(text, width - 2));
+    const text = this.theme.bold(` ${calls.length} tool calls (${names}) `);
+    lines.push(...this.callRows(text, "toolPendingBg", width));
   }
 
   /** One eligible call as one status-colored row: no fill bars, no result, no padding of its own. */
