@@ -298,7 +298,7 @@ Drive real keyboard input through the component returned by ui.custom before del
 
 ## A frame parser must stay marker-aware when the test theme marks more colors - 2026-11-14
 **What failed:** Adding a foreground marker to the viewer test theme's existing background marker broke every exact-row assertion at once: the fixed-offset `line.slice(2, -2)` border strip cut into the marker wrapped around the border glyph, and the width mocks truncated any row whose raw length (markers included) passed the width, leaking color names into the parsed text.
-**Next time:** Put the marker *after* its text so the frame's border characters stay at the string edges, strip the border pair with a marker-aware pattern instead of offsets, and make every width mock measure and cut by visible width. To read the outermost color of a nested-painted row, take the last marker in it, since markers are suffixes.
+**Next time:** Put the marker *after* its text so the frame's border characters stay at the string edges, strip the border pair with a marker-aware pattern instead of offsets, and make every width mock measure and cut by visible width - deriving measure, truncate and wrap from one segmentation rule, so a cut can never land inside a color marker. To read the outermost color of a nested-painted row, take the last marker in it, since markers are suffixes.
 
 ## A frame helper that trims trailing blanks cannot see content that ends in blanks - 2026-11-14
 **What failed:** The content-row helper drops trailing blank rows to hide the viewport's padding, which also dropped a call block's closing fill row and its separator, so an exact eight-row assertion read six and looked like a rendering bug.
@@ -311,3 +311,7 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## Carry presentation decisions through the layout plan - 2026-11-14
 **What changed:** A compact-layout call entry represented both eligible compact rows and excluded normal blocks, so rendering repeated the exclusion lookup to recover which presentation the planner had chosen.
 **Next time:** Encode an existing rendering choice in the entry's discriminant instead of reclassifying it downstream. Characterize normal-block parity under both global expansion states before changing the plan, and keep both modes using the same normal-block renderer.
+
+## Ask the painted rows what painted, not the source a second time - 2026-11-14
+**What changed:** The compact run boundary re-read message content (`text.trim()`, `thinking && visible`) while the spacing rule beside it asked the cached rows of the same message whether they were empty - two answers to "does this message paint visible content?" that must agree for the no-separator-around-content rule to hold, and that already disagreed while a streaming message grew.
+**Next time:** Where a layout decision depends on what reached the screen, carry the produced rows through the plan and let them decide, so the boundary and the spacing read one value. It needs the cache to hold only that kind of row; when that invariant is what makes it safe, keep it documented where the renderer returns early.
