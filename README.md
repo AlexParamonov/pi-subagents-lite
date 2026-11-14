@@ -195,6 +195,12 @@ Settings
 
 Use `/agents` > Settings > Widget to configure layout, model/thinking labels, and displayed stats.
 
+### Conversation viewer display
+
+`compactToolCalls` (default off) presents tool calls compactly. A run of two or more consecutive eligible calls — in the order the viewer already shows them, across turns — becomes one row such as `5 tool calls (read, grep, bash)`, colored by the run's status. Every other call takes a single status-colored row: no result body, no fill bar, no blank separator. Hidden thinking is left out entirely, so a run can span it; revealing thinking (`Ctrl+T`) shows it again and splits that run at the visible block. pi's tool-output flag (ctrl+o by default) decides the presentation: collapsed summarizes, expanded shows every call on its own row. Clicking a shown call still opens just that call's argument detail, and clicking a summary does nothing.
+
+`ungroupedTools` (default `write`, `edit`, `replace`) names the tools that keep their own row and split the run around them. `/agents` > Settings > Agent behavior > Ungrouped tools edits the list as one comma-separated field: Enter saves the names it holds (spaces and empty entries are dropped), a blank field saves none so every call groups, and Esc keeps the stored list. Names match exactly and case-sensitively, so a custom or MCP tool name works the same way. Removing a default makes that tool eligible for grouping. Both settings are global-only: a project file cannot carry them, and clearing model overrides keeps them.
+
 ### Project-level config
 
 A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). This is an override layer, not a full config. It may contain only model and concurrency settings (`agent.default`, per-type model overrides, `concurrency`), and each key it sets overrides the global file's value. Every other setting (widget, watchdog, spawn defaults) always comes from the global file. The effective value of each key resolves as: session override > project file > global file > built-in default.
