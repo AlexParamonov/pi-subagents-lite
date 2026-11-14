@@ -37,6 +37,7 @@ export const DEFAULT_UNGROUPED_TOOLS: readonly string[] = [
   "edit",
   "replace",
   "bash",
+  "codemode",
   "Agent",
   "StopAgent",
   "MessageAgent",

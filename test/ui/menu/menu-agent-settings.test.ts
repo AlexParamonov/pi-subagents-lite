@@ -698,7 +698,7 @@ describe("showSpawnOptionsMenu — compact conversation viewer", () => {
     expect(compact.currentValue).toBe("ON");
     expect(compact.values).toEqual(["ON", "OFF"]);
     expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe(
-      "write, edit, replace, bash, Agent, StopAgent, MessageAgent",
+      "write, edit, replace, bash, codemode, Agent, StopAgent, MessageAgent",
     );
   });
 

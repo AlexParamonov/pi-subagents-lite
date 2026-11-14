@@ -1034,6 +1034,7 @@ describe("ConfigStore compact conversation viewer preferences", () => {
       "edit",
       "replace",
       "bash",
+      "codemode",
       "Agent",
       "StopAgent",
       "MessageAgent",

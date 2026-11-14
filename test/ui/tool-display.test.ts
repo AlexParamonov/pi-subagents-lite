@@ -59,7 +59,7 @@ describe("viewerPresentation", () => {
   it("hands the shipped defaults to the viewer when nothing is configured", () => {
     expect(viewerPresentation(new ConfigStore(minimalIO()))).toEqual({
       compactToolCalls: true,
-      ungroupedTools: ["write", "edit", "replace", "bash", "Agent", "StopAgent", "MessageAgent"],
+      ungroupedTools: ["write", "edit", "replace", "bash", "codemode", "Agent", "StopAgent", "MessageAgent"],
     });
   });
 
