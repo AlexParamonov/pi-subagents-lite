@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Shared conversation-viewer tool-title formatting reuses the renderer's timing text without changing either presentation.
+- Compact conversation layout records normal versus compact call presentation before rendering, without changing display or controls.
 
 ## [1.18.0] - 2026-11-03
 

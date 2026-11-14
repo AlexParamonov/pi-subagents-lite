@@ -125,10 +125,10 @@ interface ToolCall {
   args?: Record<string, unknown>;
 }
 
-/** One position of the compact layout: a message's non-call rows, one call, or a collapsed run. */
+/** One position of the compact layout: non-call rows, a normal or compact call, or a collapsed run. */
 type CompactEntry =
   | { kind: "rows"; msgIndex: number }
-  | { kind: "call"; call: ToolCall }
+  | { kind: "normal-call" | "compact-call"; call: ToolCall }
   | { kind: "run"; calls: ToolCall[] };
 
 /** The message's tool calls, in the order the viewer paints them. */
@@ -966,8 +966,9 @@ export class ConversationViewer implements Component {
       entries.push({ kind: "rows", msgIndex });
       if (this.paintsNonCallContent(msg)) openRun = undefined;
       for (const call of callsOfMessage(msg)) {
-        if (this.toolsExpanded || this.ungroupedTools.has(call.name)) {
-          entries.push({ kind: "call", call });
+        const ungrouped = this.ungroupedTools.has(call.name);
+        if (this.toolsExpanded || ungrouped) {
+          entries.push({ kind: ungrouped ? "normal-call" : "compact-call", call });
           openRun = undefined;
         } else if (openRun) {
           openRun.calls.push(call);
@@ -979,7 +980,7 @@ export class ConversationViewer implements Component {
     });
     // A run of one is not a summary: it shows the call itself.
     return entries.map((entry) =>
-      entry.kind === "run" && entry.calls.length === 1 ? { kind: "call", call: entry.calls[0]! } : entry,
+      entry.kind === "run" && entry.calls.length === 1 ? { kind: "compact-call", call: entry.calls[0]! } : entry,
     );
   }
 
@@ -1021,7 +1022,7 @@ export class ConversationViewer implements Component {
         lines.push(...cached);
         continue;
       }
-      if (entry.kind === "call" && this.ungroupedTools.has(entry.call.name)) {
+      if (entry.kind === "normal-call") {
         this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks);
         afterCompactItem = false;
         continue;

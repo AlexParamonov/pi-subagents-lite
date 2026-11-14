@@ -307,3 +307,7 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## A transcript test must use the transitions the host really makes - 2026-11-14
 **What failed:** Inserting a tool-result message with `splice` in the middle of the messages array painted one message's rows twice: the viewer caches rendered lines per message index and its cache metadata resets only on array replacement or width change, so the old entry was re-attributed to the message that moved into its index.
 **Next time:** Drive live updates the way the host does - append, or replace the whole array (compaction) - because the per-index cache assumes append-only growth. A genuine mid-array insertion would be a cache bug to fix in the viewer, not a shape to write tests around.
+
+## Carry presentation decisions through the layout plan - 2026-11-14
+**What changed:** A compact-layout call entry represented both eligible compact rows and excluded normal blocks, so rendering repeated the exclusion lookup to recover which presentation the planner had chosen.
+**Next time:** Encode an existing rendering choice in the entry's discriminant instead of reclassifying it downstream. Characterize normal-block parity under both global expansion states before changing the plan, and keep both modes using the same normal-block renderer.

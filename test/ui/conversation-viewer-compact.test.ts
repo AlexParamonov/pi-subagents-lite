@@ -397,7 +397,8 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
   });
 
-  it("renders a conversation of excluded calls exactly as the ordinary viewer does", () => {
+  it.each([false, true])("renders excluded calls exactly as the ordinary viewer with tools expanded=%s", (expanded) => {
+    const flag = { expanded };
     const transcript = [
       callsOf(
         { id: "t1", name: "write", args: { path: "/a.md", content: "hello" } },
@@ -405,10 +406,11 @@ describe("ConversationViewer compact tool calls", () => {
       ),
       resultOf("t1", { name: "write", text: "fixture-write-result" }),
       resultOf("t2", { name: "bash", text: "fixture-bash-result" }),
+      textOf("end"),
     ];
 
-    expect(contentRows(openCompactView(transcript))).toEqual(
-      contentRows(openCompactView(transcript, { compact: false })),
+    expect(contentRows(openCompactView(transcript, { flag }))).toEqual(
+      contentRows(openCompactView(transcript, { compact: false, flag })),
     );
   });
 
