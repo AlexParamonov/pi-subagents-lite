@@ -1068,7 +1068,7 @@ export class ConversationViewer implements Component {
    */
   private appendRunSummary(calls: ToolCall[], width: number, lines: string[]): void {
     const names = plainText([...new Set(calls.map((call) => call.name))].join(", "));
-    const text = this.theme.bold(` ${calls.length} tool calls (${names}) `);
+    const text = this.theme.bold(` ${calls.length} tools (${names}) `);
     lines.push(...this.callRows(text, "toolPendingBg", width));
   }
 
