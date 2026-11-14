@@ -269,14 +269,16 @@ export function renderSubagentMessage(
 /**
  * First line of the agent's own reply, read back from the nudge content emitIndividualNudge builds:
  * `<envelope>\n\n<reply>` plus the notes formatResultContent appends last. stripStatusNote removes the
- * glued status note; the error note keeps its own line, so a one-line reply opening with "Error: " is
- * content-identical to it and loses the row.
+ * glued status note; the error note opens a paragraph of its own, so a reply line sits directly under the
+ * envelope's blank separator line while an appended note cannot, even when the reply was blank.
  */
 function firstReplyLine(content: string, status: string | undefined): string {
   const lines = stripStatusNote(content, status).split("\n");
   const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
-  const reply = body.find((l) => l.trim())?.trim() ?? "";
-  return reply.startsWith("Error: ") ? "" : reply;
+  const index = body.findIndex((line) => line.trim());
+  const line = body[index]?.trim() ?? "";
+  const replyOpensHere = index <= 1;
+  return status === "error" && !replyOpensHere && line.startsWith("Error: ") ? "" : line;
 }
 
 /** The card's dim path rows in order, omitting whatever the details don't carry. */

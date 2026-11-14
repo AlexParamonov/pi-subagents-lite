@@ -337,6 +337,28 @@ describe("renderSubagentResult — reply first line", () => {
     expect(truncatedRows()).toEqual(["  Fixed the flake (see notes.md)"]);
   });
 
+  it("shows a genuine reply line that opens like the error note", () => {
+    renderSubagentResult(
+      nudge("Error: the fixture never ran, so the suite is still red.", { status: "error" }, "provider stream reset"),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual(["  Error: the fixture never ran, so the suite is still red."]);
+  });
+
+  it("shows a completed reply line that opens like the error note", () => {
+    renderSubagentResult(
+      nudge("Error: cannot reproduce the failure.", { status: "completed" }),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual(["  Error: cannot reproduce the failure."]);
+  });
+
   it.each([
     ["error note", "error", "spawn EACCES", {}],
     ["stop note", "stopped", undefined, { stoppedBy: "watchdog" }],
@@ -347,18 +369,26 @@ describe("renderSubagentResult — reply first line", () => {
     expect(truncatedRows()).toEqual([]);
   });
 
-  it("adds no row for a reply line that reads exactly like the error note", () => {
+  it("adds no row when the error note carries an Error: paragraph of its own", () => {
     renderSubagentResult(
-      {
-        content: '[Subagent "builder" a1b2c3d4 error]\n\nError: the fixtures are already red',
-        details: { ...nudgeDetails, status: "error" },
-      },
+      nudge("", { status: "error" }, "provider stream reset\n\nError: the retry failed too"),
       { expanded: false },
       defaultTheme,
       SHOW_COST,
     );
 
     expect(truncatedRows()).toEqual([]);
+  });
+
+  it("shows the reply line above an appended error note", () => {
+    renderSubagentResult(
+      nudge("Stopped at the second fixture.\n\nError: looked like mine but was not.", { status: "error" }, "gave up"),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual(["  Stopped at the second fixture."]);
   });
 
   it("hands a long first line to the width-truncating row component", () => {
