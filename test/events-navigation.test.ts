@@ -177,6 +177,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
     mockManager.listAgents.mockReturnValue([]);
     mockStore.agent.compactToolCalls = false;
     mockStore.agent.ungroupedTools = [];
+    viewerOptions.length = 0;
     mockMatchesKey.mockReturnValue(false);
     mockIsKeyRelease.mockReturnValue(false);
     ctx = asExtensionContext({
@@ -323,7 +324,6 @@ describe("navigation key handler (createNavInputHandler)", () => {
         },
       );
       const viewerCtx = asExtensionContext({ ui: { ...ctx.ui, custom, notify: vi.fn() } });
-      viewerOptions.length = 0;
 
       createNavInputHandler(viewerCtx)("some_data");
       await vi.runAllTimersAsync(); // openViewer awaits ctx.ui.custom

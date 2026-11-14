@@ -91,7 +91,7 @@ import { showRunningAgentsMenu, buildAgentActionsList } from "../../../src/ui/me
 /** Options of the ConversationViewer this entry point builds. The viewer's own suite pins
  * how it renders them; here only the hand-off from the saved preferences matters. */
 type ViewerArgs = ConstructorParameters<typeof import("../../../src/ui/conversation-viewer.js").ConversationViewer>;
-let viewerOptions: ViewerArgs[5][] = [];
+const viewerOptions: ViewerArgs[5][] = [];
 
 /** Nested-partial overrides the record factory merges over its base record. */
 interface RecordOverrides {
@@ -654,6 +654,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
   beforeEach(() => {
     selectListCalls = [];
     vi.clearAllMocks();
+    viewerOptions.length = 0;
   });
 
   it("shows View conversation action for completed agent with session", () => {
@@ -762,7 +763,6 @@ describe("buildAgentActionsList — completed agent with session", () => {
   it("hands the saved viewer presentation to the ConversationViewer", async () => {
     mockModules.mockConfig.agent.compactToolCalls = true;
     mockModules.mockConfig.agent.ungroupedTools = ["my_tool"];
-    viewerOptions = [];
     let capturedFactory: ComponentFactory | null = null;
     const record = makeRecord({
       lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
