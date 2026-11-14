@@ -98,8 +98,13 @@ function truncateWithEllipsis(s: string, max: number): string {
  * Summarize tool arguments for log-friendly display. Heavy tools (read,
  * write, edit, bash, grep, rg) get compact summaries; others default to JSON.
  * Layer-neutral: used by output-file logs, prompt snapshots, and the UI.
+ * Long bash commands and string arguments are cut with "…" unless `full` is set.
  */
-export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown> | undefined): string {
+export function summarizeToolArgs(
+  name: string,
+  rawArgs: Record<string, unknown> | undefined,
+  { full = false }: { full?: boolean } = {},
+): string {
   if (!rawArgs || typeof rawArgs !== "object" || Object.keys(rawArgs).length === 0) return "";
 
   switch (name) {
@@ -128,7 +133,7 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       // Strip heredoc: truncate at << followed by delimiter
       const heredocIdx = cmd.search(/<<\s*['"]?\w+['"]?/);
       const cleanCmd = heredocIdx >= 0 ? cmd.slice(0, heredocIdx).trim() : cmd.trim();
-      const display = truncateWithEllipsis(cleanCmd, MAX_COMMAND_DISPLAY_LENGTH);
+      const display = full ? cleanCmd : truncateWithEllipsis(cleanCmd, MAX_COMMAND_DISPLAY_LENGTH);
       return `(${JSON.stringify(display)})`;
     }
     case "grep":
@@ -143,7 +148,8 @@ export function summarizeToolArgs(name: string, rawArgs: Record<string, unknown>
       const keys = Object.keys(rawArgs);
       if (keys.length === 1) {
         const val = rawArgs[keys[0]];
-        const display = typeof val === "string" ? truncateWithEllipsis(val, MAX_DEFAULT_STRING_DISPLAY_LENGTH) : val;
+        const display =
+          typeof val === "string" && !full ? truncateWithEllipsis(val, MAX_DEFAULT_STRING_DISPLAY_LENGTH) : val;
         return `(${JSON.stringify(display)})`;
       }
       return ` ${JSON.stringify(rawArgs)}`;

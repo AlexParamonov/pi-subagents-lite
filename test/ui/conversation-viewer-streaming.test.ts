@@ -27,8 +27,8 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { TUI } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
-import type { Theme } from "../../src/ui/types.js";
-import { asAgentSession } from "../pi-boundaries.js";
+import { asAgentSession, asTui } from "../pi-boundaries.js";
+import { defaultTheme } from "../mock-utils.js";
 
 const mockSubscribe = vi.fn<(listener: (event?: unknown) => void) => () => void>(() => () => {});
 const mockRequestRender = vi.fn();
@@ -64,13 +64,6 @@ vi.mock("../../src/pi-settings.js", () => ({
 }));
 
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
-
-const noopTheme: Theme = {
-  fg: (_color: string, text: string) => text,
-  bg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
-  italic: (text: string) => text,
-};
 
 interface Block {
   type: string;
@@ -109,10 +102,10 @@ function makeRecord(session: unknown): AgentRecord {
 }
 
 function makeTui(): TUI {
-  return {
+  return asTui({
     terminal: { rows: 40, cols: 120 },
     requestRender: mockRequestRender,
-  } as unknown as TUI;
+  });
 }
 
 /** Mirrors agent-loop.ts streaming: partial message swapped per delta, array ref/count stable. */
@@ -148,7 +141,7 @@ function setup(): { stream: FakeStream; render: () => string } {
     return () => {};
   });
   const session = asAgentSession({ messages, subscribe: mockSubscribe });
-  const viewer = new ConversationViewer(makeTui(), session as never, makeRecord(session), noopTheme, vi.fn());
+  const viewer = new ConversationViewer(makeTui(), session as never, makeRecord(session), defaultTheme, vi.fn());
   return { stream, render: () => viewer.render(80).join("\n") };
 }
 
@@ -272,8 +265,8 @@ describe("ConversationViewer streaming", () => {
 
     // Tool result for the FIRST message's call arrives → its cache entry is
     // invalidated → the call line re-renders from the transcript with its
-    // settled status color. Result content itself never renders, and the
-    // on-screen content of the earlier message must not otherwise change.
+    // settled status color and a collapsed result preview. The on-screen
+    // content of the earlier message must not otherwise change.
     stream.messages.push({
       role: "toolResult",
       toolCallId: "t1",
@@ -286,7 +279,7 @@ describe("ConversationViewer streaming", () => {
     expect(recovered).toContain(THINKING);
     expect(recovered).toContain("PART-TWO-TEXT");
     expect(count(recovered, TEXT)).toBe(count(atCompletion, TEXT)); // no retroactive change
-    expect(count(recovered, "RESULT-ONE")).toBe(0); // results are never rendered
+    expect(count(recovered, "RESULT-ONE")).toBe(1); // short result shown once, under its call
   });
 });
 

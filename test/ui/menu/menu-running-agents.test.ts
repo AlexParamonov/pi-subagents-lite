@@ -10,8 +10,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import { mockModules, resetConfig } from "../../menu-mock-setup.js";
 import { createMockCtx, type ComponentFactory } from "../../menu-test-helpers.js";
 import { asAgentSession, selectListView } from "../../pi-boundaries.js";
+import { expectNoTerminalControls } from "../../fixtures.js";
+import { defaultTheme } from "../../mock-utils.js";
 import type { AgentRecord, AgentDisplayInfo, AgentExecutionState, AgentLifecycle } from "../../../src/types.js";
-import type { Theme } from "../../../src/ui/types.js";
 import type { Component, Input, SelectItem, SelectListTheme } from "@earendil-works/pi-tui";
 
 /** The mocked SelectList surface the tests drive: the items the menu built
@@ -117,8 +118,6 @@ function makeRecord(overrides: RecordOverrides = {}): AgentRecord {
     execution: { ...base.execution, ...overrides.execution },
   };
 }
-const noopTheme: Theme = { fg: (_c: string, t: string) => t, bg: (_c: string, t: string) => t, bold: (t: string) => t };
-
 /** The factory's unknown return narrowed at the render boundary: the real
  * showTextViewer builds a plain Component the tests render and feed keys to. */
 function asComponent(component: unknown): Component {
@@ -192,7 +191,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       makeRecord(),
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -210,7 +209,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -228,7 +227,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -246,7 +245,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -260,7 +259,7 @@ describe("buildAgentActionsList — actions submenu", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       makeRecord(),
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -292,7 +291,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -321,7 +320,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -350,7 +349,7 @@ describe("showTextViewer (via buildAgentActionsList)", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -380,7 +379,7 @@ describe("showTextViewer — component behavior", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -396,6 +395,25 @@ describe("showTextViewer — component behavior", () => {
     );
     return { component, done: doneFn };
   }
+
+  it("paints no terminal control from the text it shows", async () => {
+    // One carrier per class the sanitizer claims to close: a DEC private mode
+    // (alternate screen), a BEL-terminated string sequence, DEL, the 8-bit CSI
+    // encoding, and a bidi override that could reorder the whole row.
+    const hostile = "before\u001b[?1049hmiddle\u0007after\u007fdel\u009b31mred\u202eoverride";
+    const record = makeRecord({ error: hostile });
+    const { component } = await getComponent(record, "error", hostile);
+    const frame = component.render(80);
+
+    expectNoTerminalControls(frame);
+    const painted = frame.join("\n");
+    expect(painted).toContain("before");
+    expect(painted).toContain("middle");
+    expect(painted).toContain("after");
+    expect(painted).toContain("del");
+    expect(painted).toContain("red");
+    expect(painted).toContain("override");
+  });
 
   it("renders border frame with title", async () => {
     const record = makeRecord({ result: "hello world\nline 2" });
@@ -518,7 +536,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       onClose,
@@ -544,7 +562,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       setActive,
       () => {},
@@ -573,7 +591,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       setActive,
       () => {},
@@ -603,7 +621,7 @@ describe("buildAgentActionsList — stop/steer callback routing", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       setActive,
       () => {},
@@ -633,7 +651,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -651,7 +669,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -669,7 +687,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -687,7 +705,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -716,7 +734,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const list = buildAgentActionsList(
       ctx,
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -736,7 +754,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       record,
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -874,7 +892,7 @@ describe("clear actions for finished agents", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       makeRecord(),
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       () => {},
@@ -892,7 +910,7 @@ describe("clear actions for finished agents", () => {
           execution: { session: makeMockSession([]) },
           result: "",
         }),
-        noopTheme,
+        defaultTheme,
         () => {},
         () => {},
         () => {},
@@ -909,7 +927,7 @@ describe("clear actions for finished agents", () => {
     const list = buildAgentActionsList(
       ctx,
       makeRecord(),
-      noopTheme,
+      defaultTheme,
       () => {},
       () => {},
       onClose,

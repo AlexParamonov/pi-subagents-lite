@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The conversation viewer shows `timeout`, tool results. It follows pi's global tool-output flag, and pi's `app.tools.expand` key (ctrl+o by default, honoring remaps). Expanded view shows each tool call's whole command or argument instead of cutting it at 350 characters with `…`. A heredoc body stays out of the summary either way.
+- Mouse interaction in the viewer (wheel scroll, click to expand) needs pi's fullscreen TUI: under `tuiMode: "regular"` the terminal reports no mouse events, so those gestures do nothing.
+
 ## [1.18.0] - 2026-11-03
 
 ### Added

@@ -8,10 +8,13 @@
  *   - defaultSessionManager: default ReadonlySessionManager with typed stubs
  *   - defaultModel: default model config object
  *   - defaultModelRegistry: default ModelRegistry mock (declare class, needs cast)
+ *   - defaultTheme: Theme whose styling is the identity, so tests read the text a
+ *     component produced rather than its colour
  */
 
 import { vi } from "vite-plus/test";
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "../src/ui/types.js";
 
 /**
  * Shallow-merge two objects: source values win over defaults for each key.
@@ -139,3 +142,11 @@ export function defaultModelRegistry(
   // ModelRegistry is a declare class; structural satisfaction is impossible.
   return base as unknown as ExtensionContext["modelRegistry"];
 }
+
+/** Theme whose styling is the identity, so tests read the text a component produced. */
+export const defaultTheme: Theme = {
+  fg: (_color: string, text: string) => text,
+  bg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+  italic: (text: string) => text,
+};

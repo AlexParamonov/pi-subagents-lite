@@ -229,6 +229,13 @@ describe("findModelInRegistry", () => {
 });
 
 describe("summarizeToolArgs", () => {
+  it("keeps whole values when full is asked for, except a heredoc body", () => {
+    const long = "y".repeat(500);
+    expect(summarizeToolArgs("custom", { note: long }, { full: true })).toBe(`(${JSON.stringify(long)})`);
+    expect(summarizeToolArgs("bash", { command: "cat <<EOF\nline\nEOF" }, { full: true })).toBe('("cat")');
+    expect(summarizeToolArgs("bash", { command: long })).not.toBe(`(${JSON.stringify(long)})`); // collapsed cuts
+  });
+
   it("returns empty string for no or empty args", () => {
     expect(summarizeToolArgs("read", undefined)).toBe("");
     expect(summarizeToolArgs("read", {})).toBe("");

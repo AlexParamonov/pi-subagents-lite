@@ -48,6 +48,25 @@ describe("AgentManager", () => {
       mockStoreState.idleTimeoutMinutes = 0;
     });
 
+    it("reports when one of its own tool calls began, for the viewer's elapsed time", () => {
+      vi.useFakeTimers();
+      try {
+        manager = new AgentManager(onComplete);
+        const id = spawnRunningAgent();
+        getOnToolActivity()({ type: "start", toolName: "bash", toolCallId: "call_1" });
+        vi.advanceTimersByTime(1000);
+
+        expect(manager.getToolStartedAt(id, "call_1")).toBe(Date.now() - 1000);
+        expect(manager.getToolStartedAt(id, "other")).toBeUndefined();
+        expect(manager.getToolStartedAt("call_1", id)).toBeUndefined(); // the two ids are not interchangeable
+
+        getOnToolActivity()({ type: "end", toolName: "bash", toolCallId: "call_1" });
+        expect(manager.getToolStartedAt(id, "call_1")).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("stops an agent whose tool call runs longer than the tool timeout, recording the reason", () => {
       vi.useFakeTimers();
       try {

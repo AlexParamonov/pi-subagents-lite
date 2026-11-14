@@ -3,11 +3,12 @@ import type { AgentRecord } from "./types.ts";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { matchesKey, isKeyRelease } from "@earendil-works/pi-tui";
+import { matchesKey, isKeyRelease, getKeybindings } from "@earendil-works/pi-tui";
 import { registerAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.ts";
 import { AgentManager } from "./agents/agent-manager.ts";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.ts";
 import { ConversationViewer } from "./ui/conversation-viewer.ts";
+import { viewerToolDisplay } from "./ui/tool-display.ts";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
 import { toolCallListener } from "./agents/tool-execution.ts";
 import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.ts";
@@ -108,16 +109,12 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
     widget.setViewerOpen(true);
 
     await ctx.ui.custom<void>((tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(
-        tui,
-        record.execution.session!,
-        record,
-        theme,
-        done,
-        () => manager?.abort(record.id, "user"),
-        kb,
-        (msg: string) => manager?.steer(record.id, msg),
-      );
+      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
+        onStop: () => manager?.abort(record.id, "user"),
+        keybindings: kb,
+        onSteer: (msg: string) => manager?.steer(record.id, msg),
+        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
+      });
       viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
       return viewer;
     });
@@ -180,9 +177,10 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
       }
     }
 
-    // ctrl+o toggles tool expansion — sync compact mode with the new state.
+    // pi's tool-expansion key (app.tools.expand, ctrl+o by default, user-remappable)
+    // toggles tool expansion — sync compact mode with the new state.
     // Not consumed: pi's built-in handler owns the actual toggle.
-    if (matchesKey(data, "ctrl+o")) {
+    if (getKeybindings().matches(data, "app.tools.expand")) {
       // Read state after a tick so the built-in handler applies the toggle first.
       setTimeout(() => {
         const ui = ctx.ui as unknown as { getToolsExpanded?: () => boolean };

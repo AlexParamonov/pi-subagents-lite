@@ -495,6 +495,11 @@ export class AgentManager {
     return this.totalAgentCost;
   }
 
+  /** When an agent's in-flight tool call began (ms epoch), or undefined if it is not executing. */
+  getToolStartedAt(agentId: string, toolCallId: string): number | undefined {
+    return this.watchdog.toolStartedAt(agentId, toolCallId);
+  }
+
   /** Get the session-level completed agent count. Survives record removal (Clear/dispose). */
   getTotalAgentCount(): number {
     return this.totalAgentCount;

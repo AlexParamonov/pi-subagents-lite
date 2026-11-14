@@ -245,3 +245,37 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## Pi extension message acknowledgement - 2026-10-30
 **What failed:** Returning “sent” after calling `pi.sendMessage`, whose extension API is fire-and-forget and reports asynchronous persistence failures separately from the caller.
 **Next time:** Say “submitted” or best-effort unless the API provides an awaitable delivery acknowledgement. Don't add retries or polling without a delivery contract.
+
+## Terminal output is a trust boundary - 2026-11-14
+**What failed:** Showing tool results as plain text passed the result's own escape sequences through to the terminal, and the first fix leaned on pi-tui's `stripTerminalSequences`, which recognises only `m`, `G`, `K`, `H` and `J` as CSI terminators: DEC private modes (`ESC[?1049h`, `ESC[?25l`), `ESC[6n` (the terminal's reply arrives on stdin, i.e. as typed input), window manipulation and DCS all survived it.
+**Next time:** Before rendering anything the machine produced, strip control sequences and C0 controls the way pi's `getTextOutput` does, and test that stripping against the whole sequence set (SGR, OSC title and clipboard, DEC private modes, DSR, DCS, lone `ESC`) instead of trusting that a function named "strip" is complete.
+**Also:** `ESC [` is only one encoding of CSI. Terminals also accept the 8-bit forms (`\u009B` introducing parameters directly, `\u009C` ending a string sequence), so match pi's `stripAnsi`, which takes `[\u001B\u009B]` as introducer and BEL, `ESC \` or `\u009C` as terminators, and keep a C0-plus-C1 character class behind it so a stray introducer cannot survive either.
+**Scope:** This boundary covers tool output only. Assistant and user text still reach the terminal as written, as they do in pi; do not read a viewer frame as sanitized throughout.
+
+## Click hit-tests use the rendered frame - 2026-11-14
+**What failed:** Mapping a viewer click to a tool call recomputed the first visible content line from the current scroll offset and re-ran the content build, so it could disagree with what was on screen (auto-scroll moves the offset during the render) and could hit test stale blocks after an early return or an `invalidate()`.
+**Next time:** Record the content area (top row, first line, row count) from the frame that was actually rendered and map clicks through it, treating "never rendered" as "nothing to hit". pi-tui delivers component-local coordinates and hit-tests containers by re-rendering their children, so a component cannot reconstruct the frame more cheaply than it painted it.
+
+## Viewer tests separate behavior from presentation - 2026-11-14
+**What failed:** The first cleanup removed behavior checks along with copy, color, and frame-layout assertions, leaving transcript data, result association, cache refresh, and scrolling less covered than before.
+**Next time:** Before deleting a presentation assertion, identify the behavior it was covering. Drop copy, styling, and geometry checks, but keep fixture-derived data and interaction outcomes at the public seam. Security checks must inspect the raw painted frame, not a helper that may hide a leak.
+
+## One invariant needs one guard, or mutation cannot see it - 2026-11-14
+**What failed:** `invalidate()` cleared the click row map, the tool block ranges and the message blocks for the same invariant. The hit test consults the row map, so the other two were never observed: deleting either left the suite green, and with all three present, deleting the row map was invisible too.
+**Next time:** When guards overlap, keep the one the code consults and drop the rest, then mutate that one and require a failure. A click guard on painted rows needs a click that maps into a block below the fold - a short transcript, or a scroll issued before the first render (auto-scroll undoes it), proves nothing.
+
+## A sanitizing test must not sanitize its own reading - 2026-11-14
+**What failed:** The hostile-output test read the frame through a helper that strips styling, then asserted no escape text remained. A leak limited to colour codes passed: the helper had removed the leak it was checking for. Separately, stripping only the result body left the call line open, because `JSON.stringify` turns C0 controls into inert text but leaves the 8-bit (`\u009b`) encodings as real characters.
+**Next time:** Assert absence on the painted frame: theme SGR is the only styling a fixture theme owns, so strip it and require no other escape or control character; then name the hostile sequence literally, because a leaked colour code is shaped exactly like an owned one. Include DEL (`U+007F`) explicitly: it is neither in the C0 nor C1 range. Strip actual Unicode bidi controls too; U+FFF9–U+FFFB are interlinear annotation controls, not bidi isolates. And sanitize every row built from tool data, not just the result: arguments reach the frame through their own path.
+
+## Tool timing cutoff - 2026-11-14
+**What failed:** Fast calls looked like `0.0s`.
+**Next time:** Omit durations below 100ms; test 99ms and 100ms at the viewer seam.
+
+## A test options interface mirroring a ctor tail belongs in code - 2026-11-14
+**What failed:** The viewer tests declared their own options interface and spread it into a nine-parameter positional constructor with four optional trailing arguments, so the test type had to be kept in step by hand and a caller could reorder arguments with nothing catching it.
+**Next time:** When a test-local options object only mirrors a constructor's optional tail, promote it to production as the `*Options` parameter this codebase already uses for UI components, and leave in tests only the fields that exist for the fake (terminal rows, the close callback) by extending that type.
+
+## A pure helper inside a wholesale-mocked module is undefined at runtime - 2026-11-14
+**What failed:** Putting the shared text sanitizer in `src/ui/format.ts` type-checked clean while `menu-mock-setup.ts` replaces that module with a four-export object, so every menu test that reached the helper died on an undefined import: 11 failures measured after moving the import, none from `vp check`.
+**Next time:** Give a dependency-free helper its own module when consumers' suites mock whole modules without spreading `importActual`, and confirm with the test run rather than the type check - a missing mock export is type-clean by construction. If it must live in the mocked module, add it to the mock as the real implementation, the way `formatMs` is passed through there.

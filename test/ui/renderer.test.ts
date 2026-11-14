@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { Component } from "@earendil-works/pi-tui";
-import type { Theme } from "../../src/ui/types.js";
+import { defaultTheme } from "../mock-utils.js";
 
 /* ------------------------------------------------------------------ */
 /*  Mock setup — capture Text content for assertions                  */
@@ -87,12 +87,6 @@ import { getManager } from "../../src/shell.js";
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-const noopTheme: Theme = {
-  fg: (_color: string, text: string) => text,
-  bg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
-};
-
 const SHOW_COST = false;
 
 /* ------------------------------------------------------------------ */
@@ -105,7 +99,7 @@ describe("renderSubagentResult — completion visibility", () => {
   });
 
   it("renders by default", () => {
-    const result = renderSubagentResult({ content: "Result" }, { expanded: false }, noopTheme, SHOW_COST);
+    const result = renderSubagentResult({ content: "Result" }, { expanded: false }, defaultTheme, SHOW_COST);
 
     expect(result.children).not.toHaveLength(0);
   });
@@ -113,7 +107,7 @@ describe("renderSubagentResult — completion visibility", () => {
   it.each([{ expanded: false }, { expanded: true }, {}])(
     "returns an empty component when hiding is enabled (%j)",
     (options) => {
-      const result = renderSubagentResult({ content: "Result" }, options, noopTheme, SHOW_COST, "id", true);
+      const result = renderSubagentResult({ content: "Result" }, options, defaultTheme, SHOW_COST, "id", true);
 
       expect(result.children).toHaveLength(0);
       expect(textInstances).toHaveLength(0);
@@ -138,7 +132,7 @@ describe("renderSubagentResult — worktree path display", () => {
       },
     };
 
-    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
+    renderSubagentResult(message, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature");
@@ -154,7 +148,7 @@ describe("renderSubagentResult — worktree path display", () => {
       },
     };
 
-    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
+    renderSubagentResult(message, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("worktree: /wt/feature/packages/web");
@@ -171,7 +165,7 @@ describe("renderSubagentResult — worktree path display", () => {
       },
     };
 
-    renderSubagentResult(message, { expanded: false }, noopTheme, SHOW_COST);
+    renderSubagentResult(message, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).not.toContain("worktree:");
@@ -199,7 +193,7 @@ describe("renderSubagentResult — status icon", () => {
         details: { type: "builder", description: "Build something", turnCount: 5, status },
       },
       { expanded: false },
-      noopTheme,
+      defaultTheme,
       SHOW_COST,
     );
 
@@ -232,7 +226,7 @@ describe("renderAgentToolResult — error icon", () => {
   };
 
   it("shows stats + description for foreground agent with error", () => {
-    renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, noopTheme, SHOW_COST, "id", {
+    renderAgentToolResult({ ...baseResult, isError: true }, { expanded: false }, defaultTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
@@ -245,7 +239,7 @@ describe("renderAgentToolResult — error icon", () => {
   });
 
   it("shows stats + description for foreground agent without error", () => {
-    renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, noopTheme, SHOW_COST, "id", {
+    renderAgentToolResult({ ...baseResult, isError: false }, { expanded: false }, defaultTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
@@ -258,7 +252,7 @@ describe("renderAgentToolResult — error icon", () => {
   });
 
   it("shows stats + description for foreground agent when isError is undefined", () => {
-    renderAgentToolResult(baseResult, { expanded: false }, noopTheme, SHOW_COST, "id", {
+    renderAgentToolResult(baseResult, { expanded: false }, defaultTheme, SHOW_COST, "id", {
       executionStarted: true,
     });
 
@@ -274,7 +268,7 @@ describe("renderAgentToolResult — error icon", () => {
     renderAgentToolResult(
       { ...baseResult, details: { ...baseResult.details, modelName: "Sonnet", modelId: "claude-sonnet-4-5" } },
       { expanded: false },
-      noopTheme,
+      defaultTheme,
       SHOW_COST,
       "id",
     );
@@ -284,7 +278,7 @@ describe("renderAgentToolResult — error icon", () => {
   });
 
   it("does not lead with a separator when the model tag is empty", () => {
-    renderAgentToolResult(baseResult, { expanded: false }, noopTheme, SHOW_COST, "id");
+    renderAgentToolResult(baseResult, { expanded: false }, defaultTheme, SHOW_COST, "id");
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("3 turns");
@@ -313,7 +307,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   };
 
   it("shows only description when status is queued", () => {
-    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+    renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     // Result renderer only shows description for background agents
@@ -330,7 +324,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status: "running" } },
       { expanded: false },
-      noopTheme,
+      defaultTheme,
       SHOW_COST,
     );
 
@@ -348,7 +342,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status: "completed" } },
       { expanded: false },
-      noopTheme,
+      defaultTheme,
       SHOW_COST,
     );
 
@@ -365,7 +359,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status } },
       { expanded: false },
-      noopTheme,
+      defaultTheme,
       SHOW_COST,
     );
 
@@ -377,7 +371,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   });
 
   it("result renderer shows only description for background agents", () => {
-    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+    renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     // Result renderer only shows description for background agents
@@ -390,7 +384,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   it("result renderer shows description when manager returns null", () => {
     vi.mocked(getManager).mockReturnValue(null);
 
-    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+    renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     // Result renderer only shows description
@@ -398,7 +392,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
   });
 
   it("result renderer shows only description when agent is queued", () => {
-    renderAgentToolResult(backgroundResult, { expanded: false }, noopTheme, SHOW_COST);
+    renderAgentToolResult(backgroundResult, { expanded: false }, defaultTheme, SHOW_COST);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     // Result renderer only shows description for background agents
@@ -412,7 +406,7 @@ describe("renderAgentToolResult — background agent status indicators", () => {
     renderAgentToolResult(
       { ...backgroundResult, details: { ...backgroundResult.details, status: "running" } },
       { expanded: false },
-      noopTheme,
+      defaultTheme,
       SHOW_COST,
     );
 
@@ -481,7 +475,7 @@ describe("renderAgentToolCall — background agent icon", () => {
   });
 
   it("shows ▸ icon for foreground agents", () => {
-    renderAgentToolCall({ agent: "builder" }, noopTheme);
+    renderAgentToolCall({ agent: "builder" }, defaultTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("▸");
@@ -489,7 +483,7 @@ describe("renderAgentToolCall — background agent icon", () => {
   });
 
   it("shows ◆ icon for background agents (queued state)", () => {
-    renderAgentToolCall({ agent: "builder", run_in_background: true }, noopTheme);
+    renderAgentToolCall({ agent: "builder", run_in_background: true }, defaultTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("◆");
@@ -498,14 +492,14 @@ describe("renderAgentToolCall — background agent icon", () => {
   });
 
   it("shows ▸ icon when run_in_background is false", () => {
-    renderAgentToolCall({ agent: "builder", run_in_background: false }, noopTheme);
+    renderAgentToolCall({ agent: "builder", run_in_background: false }, defaultTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("▸");
   });
 
   it("shows model override when present", () => {
-    renderAgentToolCall({ agent: "builder", _modelOverride: "claude-3" }, noopTheme);
+    renderAgentToolCall({ agent: "builder", _modelOverride: "claude-3" }, defaultTheme);
 
     const allText = textInstances.map((t) => t.text).join("\n");
     expect(allText).toContain("(claude-3)");

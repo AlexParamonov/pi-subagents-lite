@@ -30,28 +30,80 @@ import {
   buildInvocationTags,
   buildStatsParts,
   fgPreservingNestedStyles,
+  formatToolDuration,
   getDisplayName,
   resolveAgentModelLabel,
   statusIcon,
 } from "./format.ts";
+import { plainText } from "./sanitize.ts";
 import { summarizeToolArgs } from "../utils.ts";
+import { overlayViewportRows } from "./overlay.ts";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;
-const MIN_VIEWPORT = 3;
-/** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
-export const VIEWPORT_HEIGHT_PCT = 70;
 /** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
 const STREAM_RENDER_DEBOUNCE_MS = 100;
+/** Redraw interval for the "Elapsed" readout of running tool calls. */
+const TOOL_TIMER_TICK_MS = 1000;
+
+/** Result lines shown under a collapsed tool call (the viewer is only ~3/5 of the terminal tall). */
+const COLLAPSED_RESULT_LINES = 3;
 
 /**
- * What a tool result contributes to rendering: only whether the call errored.
- * Result content never renders — the lookup exists solely to pick the call
- * line's status color.
+ * What a tool result contributes to rendering: whether the call errored (the
+ * call line's status color), how long it took, and its text (shown as plain
+ * text under the call: a short preview collapsed, everything expanded).
  */
 interface ToolResultStatus {
   isError: boolean;
+  /**
+   * Read straight off the toolResult message: only hosts >= pi 1.1 stamp it, so
+   * on older hosts timing comes solely from the events the viewer itself saw.
+   */
+  durationMs?: number;
+  content?: unknown;
+}
+
+/**
+ * Plain text of a tool result's content, safe to render. Tool output is untrusted
+ * bytes (a `curl` body, a binary `grep`), so it goes through {@link plainText}.
+ */
+function resultText(content: unknown): string {
+  const text = typeof content === "string" ? content : Array.isArray(content) ? extractText(content) : "";
+  return plainText(text);
+}
+
+/** Optional wiring for tool-call display: timing seeds and the global collapsed/expanded flag. */
+export interface ToolDisplayOptions {
+  /**
+   * Start time of an executing tool call, for calls already running when the
+   * viewer opened (their `tool_execution_start` was never seen). Omitted -> no timing for those.
+   */
+  getToolStartedAt?: (toolCallId: string) => number | undefined;
+  /** pi's global tool-output flag (`ctx.ui.getToolsExpanded`). Omitted -> always collapsed. */
+  isExpanded?: () => boolean;
+  /** Flip the global flag (`ctx.ui.setToolsExpanded(!…)`), so pi refreshes its own rows. Omitted -> key ignored. */
+  toggleExpanded?: () => void;
+}
+
+/** Optional wiring of the viewer to the agent it shows and to pi's keybindings. */
+export interface ConversationViewerOptions {
+  /** Abort the agent shown here. Omitted -> no stop affordance (e.g. read-only history). */
+  onStop?: () => void;
+  /** User keybindings from `ctx.ui.custom()`. Omitted -> hardcoded defaults. */
+  keybindings?: ViewerKeybindings;
+  /** Send a steering message to the agent. Omitted -> no compose affordance. */
+  onSteer?: (message: string) => void;
+  /** Tool timing seeds and pi's global collapsed/expanded flag. */
+  toolDisplay?: ToolDisplayOptions;
+}
+
+/** A settled tool call's rows: lines [start, end) of a message or of the content. */
+interface ToolBlock {
+  id: string;
+  start: number;
+  end: number;
 }
 
 export class ConversationViewer implements Component {
@@ -89,8 +141,33 @@ export class ConversationViewer implements Component {
   /** Debounce timer for streaming renders — avoids fighting the TUI's 16ms loop. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** Start time of tool calls executing right now, by toolCallId. Fed by `tool_execution_start`. */
+  private toolStartedAt = new Map<string, number>();
+  /** Duration of tool calls that ended before their toolResult message landed, by toolCallId. */
+  private toolFinishedMs = new Map<string, number>();
+  /** Redraws the "Elapsed" readout once a second while a tool call is running. */
+  private toolTimer: ReturnType<typeof setInterval> | undefined;
+
+  /** Collapsed/expanded state the cached lines were rendered for; re-read from pi on every render. */
+  private toolsExpanded = false;
+  /** Per-call state set by clicking a call; wins over the global flag until that flag flips (as in pi). */
+  private expandedByCall = new Map<string, boolean>();
+  /** Rendered tool blocks per message index, relative to the message's first line (parallel to messageCache). */
+  private messageBlocks = new Map<number, ToolBlock[]>();
+  /** Clickable (settled) tool blocks in `cachedContentLines` coordinates. */
+  private toolBlocks: ToolBlock[] = [];
+  /**
+   * Content area of the last rendered frame: the viewer row the content starts
+   * at, the first content line shown, and the number of rows. Mouse rows are
+   * relative to this component, so this is what maps a click to a `toolBlocks`
+   * line. Undefined until something has been rendered.
+   */
+  private clickOrigin: { topRow: number; firstLine: number; rows: number } | undefined;
   /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
   private thinkingVisible: boolean;
+  private readonly onStop?: () => void;
+  private readonly onSteer?: (message: string) => void;
+  private readonly toolDisplay: ToolDisplayOptions;
 
   constructor(
     private tui: TUI,
@@ -98,15 +175,15 @@ export class ConversationViewer implements Component {
     private record: AgentRecord,
     private theme: Theme,
     private done: (result: undefined) => void,
-    /** Abort the agent shown here. Omitted -> no stop affordance (e.g. read-only history). */
-    private onStop?: () => void,
-    /** User keybindings from `ctx.ui.custom()`. Omitted -> hardcoded defaults. */
-    keybindings?: ViewerKeybindings,
-    /** Send a steering message to the agent. Omitted -> no compose affordance. */
-    private onSteer?: (message: string) => void,
+    options: ConversationViewerOptions = {},
   ) {
+    this.onStop = options.onStop;
+    this.onSteer = options.onSteer;
+    this.toolDisplay = options.toolDisplay ?? {};
     this.thinkingVisible = !getHideThinkingBlock();
-    this.keys = createViewerKeys(keybindings);
+    this.keys = createViewerKeys(options.keybindings);
+    this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
+    this.seedRunningToolCalls();
     this.unsubscribe = session.subscribe((event) => {
       try {
         if (this.closed) return;
@@ -139,6 +216,17 @@ export class ConversationViewer implements Component {
           if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
             this.scheduleRender();
           }
+        } else if (event?.type === "tool_execution_start") {
+          this.toolStartedAt.set(event.toolCallId, Date.now());
+          this.refreshToolTimings([event.toolCallId]);
+        } else if (event?.type === "tool_execution_end") {
+          const startedAt = this.toolStartedAt.get(event.toolCallId);
+          this.toolStartedAt.delete(event.toolCallId);
+          // pi >= 1.4 reports the monotonic duration on the event; older typings lack the field.
+          const reportedMs = (event as { durationMs?: number }).durationMs;
+          const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
+          if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
+          this.refreshToolTimings([event.toolCallId]);
         } else if (event?.type === "message_end") {
           // Session-level end-of-message (pi swaps the final message object
           // into the last slot at "done") — same refresh as the boundaries.
@@ -165,6 +253,96 @@ export class ConversationViewer implements Component {
     }
     return this.streamingTextMd;
   }
+
+  /**
+   * Re-render the call lines of the given tool calls.
+   *
+   * The per-index message cache would otherwise freeze a call line at whatever
+   * "Elapsed" it first showed. Calls without a recorded start (the viewer
+   * opened mid-call) show no timing until their result lands.
+   */
+  private refreshToolTimings(toolCallIds: Iterable<string>): void {
+    const ids = new Set(toolCallIds);
+    const messages = this.session.messages ?? [];
+    messages.forEach((msg: any, index: number) => {
+      if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return;
+      if (msg.content.some((c: any) => c?.type === "toolCall" && ids.has(c.id))) {
+        this.messageCache.delete(index);
+      }
+    });
+    this.cachedContentLines = undefined;
+    this.syncToolTimer();
+    this.scheduleRender();
+  }
+
+  /** Keep the 1s "Elapsed" redraw running exactly while some call is executing. */
+  private syncToolTimer(): void {
+    if (this.toolStartedAt.size === 0) {
+      this.stopToolTimer();
+      return;
+    }
+    if (this.toolTimer !== undefined) return;
+    this.toolTimer = setInterval(() => {
+      if (this.closed || this.toolStartedAt.size === 0) {
+        this.stopToolTimer();
+        return;
+      }
+      this.refreshToolTimings(this.toolStartedAt.keys());
+    }, TOOL_TIMER_TICK_MS);
+  }
+
+  /** Pick up tool calls that are executing as the viewer opens: calls with no result yet that the owner knows the start of. */
+  private seedRunningToolCalls(): void {
+    const getToolStartedAt = this.toolDisplay.getToolStartedAt;
+    if (!getToolStartedAt) return;
+    const messages: any[] = this.session.messages ?? [];
+    const settled = new Set<string>();
+    for (const msg of messages) {
+      if (msg?.role === "toolResult" && msg.toolCallId) settled.add(msg.toolCallId);
+    }
+    for (const msg of messages) {
+      if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
+      for (const c of msg.content) {
+        if (c?.type !== "toolCall" || !c.id || settled.has(c.id)) continue;
+        const startedAt = getToolStartedAt(c.id);
+        if (startedAt !== undefined) this.toolStartedAt.set(c.id, startedAt);
+      }
+    }
+    if (this.toolStartedAt.size > 0) this.refreshToolTimings(this.toolStartedAt.keys());
+  }
+
+  private stopToolTimer(): void {
+    if (this.toolTimer !== undefined) {
+      clearInterval(this.toolTimer);
+      this.toolTimer = undefined;
+    }
+  }
+
+  /** Re-read pi's global flag; a flip (ours or anyone's) re-renders every call, since each caches its own lines. */
+  private syncToolsExpanded(): void {
+    const expanded = this.toolDisplay.isExpanded?.() ?? false;
+    if (expanded === this.toolsExpanded) return;
+    this.toolsExpanded = expanded;
+    this.expandedByCall.clear();
+    this.messageCache.clear();
+    this.cachedContentLines = undefined;
+  }
+
+  /** "Took 4.2s" for a settled call, "Elapsed 4.2s" for a running one, undefined when unknown. */
+  private toolTimingText(id: string | undefined, result: ToolResultStatus | undefined): string | undefined {
+    if (!id) return undefined;
+    const durationMs = result?.durationMs ?? this.toolFinishedMs.get(id);
+    if (durationMs !== undefined) {
+      const formatted = formatToolDuration(durationMs);
+      return formatted === undefined ? undefined : `Took ${formatted}`;
+    }
+    if (result) return undefined; // settled without a recorded duration
+    const startedAt = this.toolStartedAt.get(id);
+    if (startedAt === undefined) return undefined;
+    const formatted = formatToolDuration(Date.now() - startedAt);
+    return formatted === undefined ? undefined : `Elapsed ${formatted}`;
+  }
+
   private scheduleRender(): void {
     if (this.renderTimer !== undefined) return; // already scheduled
     this.renderTimer = setTimeout(() => {
@@ -210,7 +388,7 @@ export class ConversationViewer implements Component {
     if (this.lastInnerW > 0 && msg?.role === "assistant") {
       // No toolResults: the in-flight message's calls have no results yet
       // (they arrive as later messages) — render the calls as pending.
-      this.messageCache.set(index, this.renderMessage(msg, this.lastInnerW, new Map()));
+      this.cacheMessage(index, msg, this.lastInnerW, new Map());
     } else {
       // Nothing to rebuild against (no render yet, or a non-assistant end
       // event) — drop the entry and let the next full build handle it.
@@ -219,13 +397,27 @@ export class ConversationViewer implements Component {
     this.scheduleRender();
   }
 
-  /** Render one message's lines — shared by the full rebuild and the streaming refresh. */
-  private renderMessage(msg: any, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
+  /** Render a message and cache its lines together with its clickable tool blocks. */
+  private cacheMessage(index: number, msg: any, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
+    const blocks: ToolBlock[] = [];
+    const lines = this.renderMessage(msg, width, toolResults, blocks);
+    this.messageCache.set(index, lines);
+    this.messageBlocks.set(index, blocks);
+    return lines;
+  }
+
+  /** Render one message's lines, recording the tool blocks it paints; shared by the rebuild paths. */
+  private renderMessage(
+    msg: any,
+    width: number,
+    toolResults: Map<string, ToolResultStatus>,
+    blocks: ToolBlock[],
+  ): string[] {
     switch (msg.role) {
       case "user":
         return this.renderUserMessage(msg, width);
       case "assistant":
-        return this.renderAssistantMessage(msg, width, toolResults);
+        return this.renderAssistantMessage(msg, width, toolResults, blocks);
       case "toolResult":
         // Results never render: only the tool call line (with its status
         // background) represents the call in the viewer.
@@ -276,6 +468,15 @@ export class ConversationViewer implements Component {
     }
     if (this.stopArmed) this.stopArmed = false;
 
+    // pi's tool-output toggle (ctrl+o by default). The viewer has focus, so pi's
+    // own handler never sees the key; flip pi's global flag through its API so
+    // the chat behind the overlay updates too. render() picks up the new state.
+    if (this.keys.toggleExpand(data)) {
+      this.toolDisplay.toggleExpanded?.();
+      this.tui.requestRender();
+      return;
+    }
+
     if (data === "\x14") {
       this.thinkingVisible = !this.thinkingVisible;
       this.invalidate(); // Clear cache so messages re-render with new visibility
@@ -311,8 +512,26 @@ export class ConversationViewer implements Component {
    * chat behind the overlay instead.
    */
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-    if (this.closed || event.type !== "wheel" || !event.wheelDelta) return undefined;
+    if (this.closed) return undefined;
+    if (event.type === "click" && event.button === "left") return this.toggleCallAt(event.y);
+    if (event.type !== "wheel" || !event.wheelDelta) return undefined;
     this.scrollBy(event.wheelDelta);
+    return { handled: true };
+  }
+
+  /** Clicking a settled tool call expands/collapses just that call, like clicking a tool row in pi. */
+  private toggleCallAt(row: number): TuiMouseEventResult | undefined {
+    const origin = this.clickOrigin;
+    if (!origin) return undefined;
+    const contentRow = row - origin.topRow;
+    if (contentRow < 0 || contentRow >= origin.rows) return undefined;
+    const line = origin.firstLine + contentRow;
+    const block = this.toolBlocks.find((b) => line >= b.start && line < b.end);
+    if (!block) return undefined;
+
+    this.expandedByCall.set(block.id, !this.isCallExpanded(block.id));
+    this.messageCache.clear();
+    this.cachedContentLines = undefined;
     return { handled: true };
   }
 
@@ -325,7 +544,12 @@ export class ConversationViewer implements Component {
 
   render(width: number): string[] {
     if (this.closed) return []; // closing — framework may still call render after done()
-    if (width < 6) return []; // too narrow for any meaningful rendering
+    if (width < 6) {
+      // Too narrow for any meaningful rendering, so there is no frame to hit-test against.
+      this.clickOrigin = undefined;
+      return [];
+    }
+    this.syncToolsExpanded();
     const th = this.theme;
     const innerW = width - 4; // border + padding
     this.lastInnerW = innerW;
@@ -396,6 +620,9 @@ export class ConversationViewer implements Component {
 
     const visibleStart = Math.min(this.scrollOffset, maxScroll);
     const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
+    // Recorded from what is actually painted, so a click maps to the row under
+    // the pointer even when auto-scroll or streaming moved the window.
+    this.clickOrigin = { topRow: lines.length, firstLine: visibleStart, rows: viewportHeight };
 
     for (let i = 0; i < viewportHeight; i++) {
       lines.push(row(visible[i] ?? ""));
@@ -481,12 +708,14 @@ export class ConversationViewer implements Component {
   invalidate(): void {
     this.messageCache.clear();
     this.cachedContentLines = undefined;
+    this.clickOrigin = undefined; // no frame on screen, so the rows its blocks were mapped to are gone
     this.cacheMeta = { count: 0, width: 0, messagesRef: undefined };
     this.cachedNonStreamingCount = 0;
   }
 
   dispose(): void {
     this.closed = true;
+    this.stopToolTimer();
     this.invalidate();
     if (this.renderTimer !== undefined) {
       clearTimeout(this.renderTimer);
@@ -502,10 +731,8 @@ export class ConversationViewer implements Component {
   }
 
   private viewportHeight(): number {
-    // Cap mirrors the overlay's maxHeight -- otherwise the viewer would render
-    // more lines than the overlay shows and clip the footer.
-    const maxRows = Math.floor((this.tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
-    return Math.max(MIN_VIEWPORT, maxRows - this.chromeLines());
+    // The share cap matters here: rendering more rows than the overlay shows would clip the footer.
+    return overlayViewportRows(this.tui.terminal.rows, this.chromeLines());
   }
 
   private chromeLines(): number {
@@ -575,7 +802,12 @@ export class ConversationViewer implements Component {
     return [...this.wrapInBg("userMessageBg", inner, width), ""];
   }
 
-  private renderAssistantMessage(msg: any, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
+  private renderAssistantMessage(
+    msg: any,
+    width: number,
+    toolResults: Map<string, ToolResultStatus>,
+    blocks: ToolBlock[],
+  ): string[] {
     const th = this.theme;
     const lines: string[] = [];
     const textParts: string[] = [];
@@ -612,7 +844,10 @@ export class ConversationViewer implements Component {
     }
     // Tool calls
     for (const tc of toolCalls) {
+      const start = lines.length;
       lines.push(...this.renderToolCall(tc, width, toolResults));
+      // Like pi, only a call with a result can be toggled by clicking it.
+      if (tc.id && toolResults.has(tc.id)) blocks.push({ id: tc.id, start, end: lines.length });
       lines.push("");
     }
     return lines;
@@ -624,19 +859,78 @@ export class ConversationViewer implements Component {
     toolResults: Map<string, ToolResultStatus>,
   ): string[] {
     const th = this.theme;
-    const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args) : "";
-    const label = argsSummary ? `${tc.name}${argsSummary}` : tc.name;
-    // The result's content never renders; this lookup only picks the call
-    // line's status color — pending while it runs, success/error once settled.
+    const expanded = this.isCallExpanded(tc.id);
+    const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
+    // The call line's own text is model-produced tool data, so it gets the same strip as the result.
+    const label = plainText(argsSummary ? `${tc.name}${argsSummary}` : tc.name);
+    // Status color: pending while it runs, success/error once settled.
     const result = tc.id ? toolResults.get(tc.id) : undefined;
     const bg = result ? (result.isError ? "toolErrorBg" : "toolSuccessBg") : "toolPendingBg";
     const inner: string[] = [];
-    const toolLine = ` ${th.bold(label)} `;
+    const timing = this.toolTimingText(tc.id, result);
+    // Like pi's bash renderer: a muted "(timeout 300s)" after the command.
+    const timeout = tc.name === "bash" ? tc.args?.timeout : undefined;
+    const timeoutSuffix = typeof timeout === "number" && timeout > 0 ? th.fg("muted", ` (timeout ${timeout}s)`) : "";
+    // Collapsed: timing sits on the title line. Expanded: at the end, like pi's muted footer line.
+    // The timeout suffix already starts with a space, so a single one separates it from the timing.
+    const timingGap = timeoutSuffix ? " " : "  ";
+    const timingOnTitle = timing && !expanded ? `${timingGap}${th.fg("muted", timing)}` : "";
+    const toolLine = ` ${th.bold(label)}${timeoutSuffix}${timingOnTitle} `;
     for (const tl of wrapTextWithAnsi(toolLine, width - 2)) {
       const padNeeded = Math.max(0, width - visibleWidth(tl));
       inner.push(th.bg(bg, th.fg("toolTitle", `${tl}${" ".repeat(padNeeded)}`)));
     }
+    for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
+      const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
+      inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
+    }
+    if (timing && expanded) {
+      for (const line of ["", th.fg("muted", timing)]) {
+        inner.push(th.bg(bg, ` ${line}${" ".repeat(Math.max(0, width - 2 - visibleWidth(line)))} `));
+      }
+    }
     return this.wrapInBg(bg, inner, width);
+  }
+
+  /**
+   * A tool result as plain wrapped text (no per-tool renderers): the whole
+   * result when expanded, else COLLAPSED_RESULT_LINES plus a hint naming the
+   * toggle key. bash keeps the tail (its verdict is at the end), the rest
+   * keep the head.
+   */
+  private resultLines(
+    toolName: string,
+    result: ToolResultStatus | undefined,
+    width: number,
+    expanded: boolean,
+  ): string[] {
+    const text = resultText(result?.content);
+    if (!text) return [];
+    const all = wrapTextWithAnsi(text, width);
+    while (all.length > 0 && all[all.length - 1].trim() === "") all.pop();
+    if (expanded || all.length <= COLLAPSED_RESULT_LINES) return all;
+
+    const hidden = all.length - COLLAPSED_RESULT_LINES;
+    if (toolName === "bash") {
+      return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
+    }
+    return [...all.slice(0, COLLAPSED_RESULT_LINES), this.expandHintLine(`${hidden} more lines`)];
+  }
+
+  /** "... (N more lines, ctrl+o to expand)" colored like pi's keyHint. */
+  private expandHintLine(what: string): string {
+    const th = this.theme;
+    const key = this.keys.expandHint();
+    return (
+      th.fg("muted", `... (${what}${key ? "," : ""}`) +
+      (key ? ` ${th.fg("dim", key)}${th.fg("muted", " to expand")}` : "") +
+      th.fg("muted", ")")
+    );
+  }
+
+  /** A clicked call's own state, else pi's global flag. */
+  private isCallExpanded(id: string | undefined): boolean {
+    return (id !== undefined ? this.expandedByCall.get(id) : undefined) ?? this.toolsExpanded;
   }
 
   private buildContentLines(width: number): string[] {
@@ -647,6 +941,7 @@ export class ConversationViewer implements Component {
 
     if (messages.length === 0) {
       this.cachedContentLines = undefined;
+      this.toolBlocks = []; // no calls on screen, so nothing to hit
       const lines = [th.fg("dim", "(waiting for first message...)")];
       const streamingLines = this.buildStreamingLines(width);
       this.cachedNonStreamingCount = lines.length;
@@ -686,17 +981,17 @@ export class ConversationViewer implements Component {
     }
 
     const lines: string[] = [];
+    const toolBlocks: ToolBlock[] = [];
 
     for (let i = 0; i < messages.length; i++) {
-      const cached = this.messageCache.get(i);
-      if (cached) {
-        lines.push(...cached);
-      } else {
-        const msgLines = this.renderMessage(messages[i], width, toolResults);
-        this.messageCache.set(i, msgLines);
-        lines.push(...msgLines);
+      const base = lines.length;
+      const msgLines = this.messageCache.get(i) ?? this.cacheMessage(i, messages[i], width, toolResults);
+      lines.push(...msgLines);
+      for (const b of this.messageBlocks.get(i) ?? []) {
+        toolBlocks.push({ id: b.id, start: base + b.start, end: base + b.end });
       }
     }
+    this.toolBlocks = toolBlocks;
 
     const streamingLines = this.buildStreamingLines(width);
     this.cachedNonStreamingCount = lines.length;
