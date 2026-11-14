@@ -18,6 +18,7 @@ import {
   statusIcon,
 } from "./format.ts";
 import { getManager } from "../shell.ts";
+import { appendsStatusNote } from "../status-note.ts";
 
 // --- Stats rendering helpers ---
 
@@ -265,24 +266,21 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
-/** Note lines formatResultContent appends after the reply: the error note and the status note. */
-function isResultNote(line: string): boolean {
-  return line.startsWith("Error: ") || (line.startsWith("(") && line.endsWith(")"));
-}
+/** Status note appended to nudge content: notes never carry parentheses of their own. */
+const TRAILING_STATUS_NOTE = / \([^()]*\)\s*$/;
 
 /**
- * First line of the agent's own reply, taken from the nudge content emitIndividualNudge builds:
- * `<envelope>\n\n<reply>` followed by the notes formatResultContent appends last. A note can
- * therefore only be the first non-blank line when the reply itself is blank. A one-line reply
- * opening with "Error: " is content-identical to the error note and loses the row.
+ * First line of the agent's own reply, read back from the nudge content emitIndividualNudge builds:
+ * `<envelope>\n\n<reply>` plus the notes formatResultContent appends last. The status note has no
+ * separator of its own and is cut positionally; the error note keeps its own line, so a one-line
+ * reply opening with "Error: " is content-identical to it and loses the row.
  */
-function firstReplyLine(content: string): string {
-  const lines = content.split("\n");
+function firstReplyLine(content: string, statusNoteAppended: boolean): string {
+  const text = statusNoteAppended ? content.replace(TRAILING_STATUS_NOTE, "") : content;
+  const lines = text.split("\n");
   const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
-  const line = body.find((l) => l.trim());
-  if (!line) return "";
-  const reply = line.trim();
-  return isResultNote(reply) ? "" : reply;
+  const reply = body.find((l) => l.trim())?.trim() ?? "";
+  return reply.startsWith("Error: ") ? "" : reply;
 }
 
 /** Dim row pointing at a path the user can follow; empty when the details carry none. */
@@ -317,7 +315,7 @@ export function renderSubagentResult(
     const description = typeof d.description === "string" ? d.description : "";
     inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
 
-    const replyLine = expanded ? "" : firstReplyLine(text);
+    const replyLine = expanded ? "" : firstReplyLine(text, appendsStatusNote(d.status as string | undefined));
     if (replyLine) {
       inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
     }

@@ -85,6 +85,10 @@ vi.mock("../../src/ui/format.js", async (importOriginal) => {
 });
 
 // Import after mocks are set up
+import type { AgentLifecycle } from "../../src/types.js";
+import { SHORT_ID_LENGTH } from "../../src/types.js";
+import { formatResultContent } from "../../src/agents/tool-execution.js";
+import { makeAgentRecord } from "../fixtures.js";
 import {
   renderSubagentResult,
   renderAgentToolCall,
@@ -225,6 +229,22 @@ describe("renderSubagentResult — reply first line", () => {
     outputFile: "/tmp/pi-out.log",
   };
 
+  /** A settled agent's nudge as emitIndividualNudge sends it: envelope line over formatResultContent output. */
+  const nudge = (result: string, lifecycle: Partial<AgentLifecycle>, error?: string) => {
+    const record = makeAgentRecord({
+      result,
+      ...(error === undefined ? {} : { error }),
+      lifecycle: { startedAt: 1000, started: true, ...lifecycle },
+    });
+    const status = record.lifecycle.status;
+    return {
+      content:
+        `[Subagent "${record.display.type}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${status}]\n\n` +
+        formatResultContent(record),
+      details: { ...nudgeDetails, status },
+    };
+  };
+
   /** Rows the card built as width-truncated single rows. */
   const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText");
   /** The card's rendered lines, in order, blank rows included. */
@@ -259,18 +279,13 @@ describe("renderSubagentResult — reply first line", () => {
     expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Heading line" }]);
   });
 
-  it.each(["completed", "error", "stopped"])("shows the reply line for a %s agent", (status) => {
-    const notes: Record<string, string> = {
-      completed: "",
-      error: "\n\nError: spawn EACCES",
-      stopped: "\n (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
-    };
-
+  it.each([
+    ["completed", undefined, {}],
+    ["error", "spawn EACCES", {}],
+    ["stopped", undefined, { stoppedBy: "user" }],
+  ] as const)("shows the reply line for a %s agent", (status, error, lifecycle) => {
     renderSubagentResult(
-      {
-        content: `[Subagent "builder" a1b2c3d4 ${status}]\n\nStopping after two failed edits.${notes[status]}`,
-        details: { ...nudgeDetails, status },
-      },
+      nudge("Stopping after two failed edits.", { status, ...lifecycle }, error),
       { expanded: false },
       defaultTheme,
       SHOW_COST,
@@ -280,20 +295,54 @@ describe("renderSubagentResult — reply first line", () => {
   });
 
   it.each([
-    ["error note", "error", '[Subagent "builder" a1b2c3d4 error]\n\nError: spawn EACCES'],
-    [
-      "stop note",
-      "stopped",
-      '[Subagent "builder" a1b2c3d4 stopped]\n\n (STOPPED BY WATCHDOG — no activity for longer than the idle timeout)',
-    ],
-    ["envelope only", "completed", '[Subagent "builder" a1b2c3d4 completed]\n\n'],
-  ])("adds no row when the agent said nothing (%s)", (_label, status, content) => {
+    ["stopped", { stoppedBy: "user" }],
+    ["aborted", {}],
+    ["turn_limited", {}],
+  ] as const)("keeps the status note off a one-line reply (%s)", (status, lifecycle) => {
+    renderSubagentResult(nudge("Done.", { status, ...lifecycle }), { expanded: false }, defaultTheme, SHOW_COST);
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Done." }]);
+  });
+
+  it("keeps a reply that opens with a parenthetical", () => {
     renderSubagentResult(
-      { content, details: { ...nudgeDetails, status } },
+      nudge("(nothing to do)", { status: "completed" }),
       { expanded: false },
       defaultTheme,
       SHOW_COST,
     );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  (nothing to do)" }]);
+  });
+
+  it("keeps a prose parenthetical at the end of a one-line reply under a status note", () => {
+    renderSubagentResult(
+      nudge("Fixed the flake (see notes.md)", { status: "stopped", stoppedBy: "user" }),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Fixed the flake (see notes.md)" }]);
+  });
+
+  it("keeps a parenthetical in a completed one-line reply untouched", () => {
+    renderSubagentResult(
+      nudge("Fixed the flake (see notes.md)", { status: "completed" }),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Fixed the flake (see notes.md)" }]);
+  });
+
+  it.each([
+    ["error note", "error", "spawn EACCES", {}],
+    ["stop note", "stopped", undefined, { stoppedBy: "watchdog" }],
+    ["envelope only", "completed", undefined, {}],
+  ] as const)("adds no row when the agent said nothing (%s)", (_label, status, error, lifecycle) => {
+    renderSubagentResult(nudge("", { status, ...lifecycle }, error), { expanded: false }, defaultTheme, SHOW_COST);
 
     expect(truncatedRows()).toEqual([]);
   });

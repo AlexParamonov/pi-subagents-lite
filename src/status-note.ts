@@ -46,6 +46,14 @@ export function formatWatchdogSummary(lifecycle: AgentLifecycle): string | undef
   return detail.kind === "tool" ? `watchdog: ${detail.toolName} >${formatMs(detail.elapsedMs)}` : "watchdog: idle";
 }
 
+/**
+ * Whether formatResultContent's output ends with a status note. The note is glued onto the reply's
+ * last line (no separator), so a consumer that reads reply text back out of it must cut the tail.
+ */
+export function appendsStatusNote(status: string | undefined): boolean {
+  return status === "stopped" || (!!status && status in STATUS_NOTES);
+}
+
 export function getStatusNote(lifecycle: AgentLifecycle): string {
   const note =
     lifecycle.status === "stopped"
