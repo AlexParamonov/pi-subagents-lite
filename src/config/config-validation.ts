@@ -52,6 +52,7 @@ const STATUS_BAR: KeySpec = {
   schema: Type.Union([Type.Literal("full"), Type.Literal("compact")]),
   expected: '"full" | "compact"',
 };
+const TOOL_NAMES: KeySpec = { schema: Type.Array(Type.String()), expected: "array of tool names" };
 
 /** Runtime schema for every known agent key. Unknown keys are per-type model keys. */
 const AGENT_KEY_SPECS: Record<string, KeySpec> = {
@@ -93,6 +94,8 @@ const AGENT_KEY_SPECS: Record<string, KeySpec> = {
   statusBarFormat: STATUS_BAR,
   outputTranscript: BOOL,
   showAgentColors: BOOL,
+  compactToolCalls: BOOL,
+  ungroupedTools: TOOL_NAMES,
 };
 
 /** Legacy key normalized silently, never warned about. */

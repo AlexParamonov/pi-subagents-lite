@@ -82,7 +82,11 @@ export interface SubagentsConfig {
     modelThinkingPlacement?: ModelThinkingPlacement;
     /** Status bar format: 'full' (default) or 'compact'. */
     statusBarFormat?: "full" | "compact";
-    [agentType: string]: string | null | undefined | boolean | number;
+    /** Summarize eligible tool-call runs in the conversation viewer. Default: false. */
+    compactToolCalls?: boolean;
+    /** Tool names the conversation viewer never groups. Default: DEFAULT_UNGROUPED_TOOLS. */
+    ungroupedTools?: string[];
+    [agentType: string]: string | null | undefined | boolean | number | string[];
   };
   concurrency: {
     default: number;

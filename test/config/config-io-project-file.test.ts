@@ -143,6 +143,19 @@ describe("createConfigIO load — two-layer override model", () => {
     }
   });
 
+  it("warns about a compact viewer preference carried by the project file and ignores its value", () => {
+    writeGlobal({ agent: { ungroupedTools: ["global tool"] } });
+    writeProject({ agent: { ungroupedTools: ["project-only tool"] } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const loaded = createConfigIO(projectDir).load();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("ungroupedTools"));
+      expect(mergeLayers(loaded.global, loaded.project).agent!.ungroupedTools).toEqual(["global tool"]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("does not warn for a project file with only model and concurrency keys", () => {
     writeProject({
       agent: { default: "p", Explore: "p/x", defaultThinking: "high", defaultMaxTurns: 3 },
@@ -177,7 +190,16 @@ describe("mergeLayers — project over global, per key", () => {
   it("drops project agent keys that are not model keys", () => {
     const merged = mergeLayers(
       { agent: { default: "g" } },
-      { agent: { default: "p", graceTurns: 9, widgetMaxLines: 3, exposeDescriptions: true } },
+      {
+        agent: {
+          default: "p",
+          graceTurns: 9,
+          widgetMaxLines: 3,
+          exposeDescriptions: true,
+          compactToolCalls: true,
+          ungroupedTools: ["project-only tool"],
+        },
+      },
     );
 
     expect(merged.agent).toEqual({ default: "p" });
