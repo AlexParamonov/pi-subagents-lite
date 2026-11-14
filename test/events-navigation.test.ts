@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { KeyId } from "@earendil-works/pi-tui";
 import type { AgentConfig } from "../src/agents/types.js";
-import { asExtensionContext } from "./pi-boundaries.js";
+import type { AgentRecord } from "../src/types.js";
+import { makeAgentRecord } from "./fixtures.js";
+import { asAgentSession, asExtensionContext } from "./pi-boundaries.js";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => "/home/test/.pi/agent",
@@ -85,6 +87,19 @@ vi.mock("../src/ui/agent-widget.js", () => ({
   AgentWidget: class AgentWidget {},
 }));
 
+/** Options of every ConversationViewer the entry points construct. Their rendering is
+ * pinned in the viewer's own suite; here only what the composition root passes matters. */
+type ViewerArgs = ConstructorParameters<typeof import("../src/ui/conversation-viewer.js").ConversationViewer>;
+const viewerOptions: ViewerArgs[5][] = [];
+vi.mock("../src/ui/conversation-viewer.js", () => ({
+  ConversationViewer: class MockConversationViewer {
+    constructor(...args: ViewerArgs) {
+      viewerOptions.push(args[5]);
+    }
+    setModelDisplayStyle() {}
+  },
+}));
+
 vi.mock("../src/ui/result-viewer.js", () => ({
   ResultViewer: class ResultViewer {},
 }));
@@ -119,7 +134,7 @@ const mockWidget = {
   navActivate: vi.fn(),
   navUp: vi.fn(),
   navDown: vi.fn(),
-  navSelect: vi.fn(() => null),
+  navSelect: vi.fn<() => AgentRecord | null>(() => null),
   navDeactivate: vi.fn(),
   setViewerOpen: vi.fn(),
   highlightedIndex: vi.fn(() => 0),
@@ -129,6 +144,7 @@ const mockWidget = {
 
 const mockStore = {
   notifyToolsExpanded: vi.fn(),
+  agent: { compactToolCalls: false, ungroupedTools: [] as string[], modelDisplayStyle: "id" as const },
 };
 
 vi.mock("../src/shell.js", () => ({
@@ -159,6 +175,8 @@ describe("navigation key handler (createNavInputHandler)", () => {
     mockWidget.isNavActive.mockReturnValue(false);
     mockWidget.highlightedIndex.mockReturnValue(0);
     mockManager.listAgents.mockReturnValue([]);
+    mockStore.agent.compactToolCalls = false;
+    mockStore.agent.ungroupedTools = [];
     mockMatchesKey.mockReturnValue(false);
     mockIsKeyRelease.mockReturnValue(false);
     ctx = asExtensionContext({
@@ -290,6 +308,27 @@ describe("navigation key handler (createNavInputHandler)", () => {
       const result = handler("some_data");
       expect(result).toEqual({ consume: true });
       expect(mockWidget.navSelect).toHaveBeenCalled();
+    });
+
+    it("opens the viewer with the saved compact-tool-call preferences", async () => {
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "enter");
+      mockWidget.navSelect.mockReturnValueOnce(
+        makeAgentRecord({ execution: { session: asAgentSession({ messages: [], subscribe: () => () => {} }) } }),
+      );
+      mockStore.agent.compactToolCalls = true;
+      mockStore.agent.ungroupedTools = ["my_tool"];
+      const custom = vi.fn(
+        async (factory: (tui: unknown, theme: unknown, kb: unknown, done: () => void) => unknown) => {
+          factory({ terminal: { rows: 40, cols: 120 }, requestRender: vi.fn() }, {}, undefined, () => {});
+        },
+      );
+      const viewerCtx = asExtensionContext({ ui: { ...ctx.ui, custom, notify: vi.fn() } });
+      viewerOptions.length = 0;
+
+      createNavInputHandler(viewerCtx)("some_data");
+      await vi.runAllTimersAsync(); // openViewer awaits ctx.ui.custom
+
+      expect(viewerOptions).toEqual([expect.objectContaining({ compactToolCalls: true, ungroupedTools: ["my_tool"] })]);
     });
 
     it("deactivates on non-navigation key", () => {
