@@ -295,3 +295,15 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## A mock that answers differently from the library for blank input hides a boundary bug - 2026-11-14
 **What failed:** The compact run boundary asked `c.text` (truthy) while pi's `Markdown.render` returns no lines at all for blank text, so a whitespace-only text block split a run that paints nothing. The suite's mocked `Markdown` returned a line for blank text, so 28 green frames could not observe the difference.
 **Next time:** When a decision depends on whether something renders, copy the dependency's emptiness test into the mock (read its source for the blank case instead of inferring it from the mock's shape), then pin the degenerate input through the same public seam. Asking the same emptiness question at both sites keeps "does this paint?" one rule rather than two.
+
+## A frame parser must stay marker-aware when the test theme marks more colors - 2026-11-14
+**What failed:** Adding a foreground marker to the viewer test theme's existing background marker broke every exact-row assertion at once: the fixed-offset `line.slice(2, -2)` border strip cut into the marker wrapped around the border glyph, and the width mocks truncated any row whose raw length (markers included) passed the width, leaking color names into the parsed text.
+**Next time:** Put the marker *after* its text so the frame's border characters stay at the string edges, strip the border pair with a marker-aware pattern instead of offsets, and make every width mock measure and cut by visible width. To read the outermost color of a nested-painted row, take the last marker in it, since markers are suffixes.
+
+## A frame helper that trims trailing blanks cannot see content that ends in blanks - 2026-11-14
+**What failed:** The content-row helper drops trailing blank rows to hide the viewport's padding, which also dropped a call block's closing fill row and its separator, so an exact eight-row assertion read six and looked like a rendering bug.
+**Next time:** End such a transcript with a visible row so nothing meaningful is trimmed. Accept that a blank row at the very end of the content area is indistinguishable from viewport padding: assert "no trailing separator" where content follows the last compact row, not at the frame's bottom.
+
+## A transcript test must use the transitions the host really makes - 2026-11-14
+**What failed:** Inserting a tool-result message with `splice` in the middle of the messages array painted one message's rows twice: the viewer caches rendered lines per message index and its cache metadata resets only on array replacement or width change, so the old entry was re-attributed to the message that moved into its index.
+**Next time:** Drive live updates the way the host does - append, or replace the whole array (compaction) - because the per-index cache assumes append-only growth. A genuine mid-array insertion would be a cache bug to fix in the viewer, not a shape to write tests around.
