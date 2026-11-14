@@ -104,7 +104,7 @@ export interface ConversationViewerOptions {
   toolDisplay?: ToolDisplayOptions;
   /** Summarize runs of adjacent eligible calls; drop result bodies, padding and hidden thinking. */
   compactToolCalls?: boolean;
-  /** Tool names that keep their complete normal call block and split a run. Matched exactly, case-sensitively. */
+  /** Tool names that keep their normal call block, minus the result body, and split a run. Matched exactly, case-sensitively. */
   ungroupedTools?: readonly string[];
 }
 
@@ -924,8 +924,9 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * One call's complete normal block: fill bars, result, its own trailing blank row, click target
-   * included. `cached` supplies the block's own rows, so a cached message is not rendered again.
+   * One call's complete normal block: fill bars, result (never in compact mode), its own trailing
+   * blank row, click target included. `cached` supplies the block's own rows, so a cached message is
+   * not rendered again.
    */
   private appendCallBlock(
     tc: ToolCall,
@@ -950,9 +951,12 @@ export class ConversationViewer implements Component {
     const timing = this.toolTimingText(tc.id, result);
     // Collapsed: timing sits on the title line. Expanded: at the end, like pi's muted footer line.
     const inner = this.callRows(this.callTitleText(tc, expanded ? undefined : timing), bg, width);
-    for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
-      const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
-      inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
+    // Compact mode shows no result body for any call, an ungrouped one included.
+    if (!this.compactToolCalls) {
+      for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
+        const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
+        inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
+      }
     }
     if (timing && expanded) {
       for (const line of ["", th.fg("muted", timing)]) {

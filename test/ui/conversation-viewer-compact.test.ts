@@ -382,7 +382,7 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
   });
 
-  it("shows an excluded call with its result, and splits the run around it", () => {
+  it("shows an excluded call without its result body, and splits the run around it", () => {
     const viewer = openCompactView([
       callsOf(
         { id: "t1", name: "read" },
@@ -398,29 +398,34 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "toolSuccessBg", text: 'write("/notes.md", 5 chars)  Took 1.2s' },
-      { bg: "toolSuccessBg", text: "fixture-write-result" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
     ]);
   });
 
-  it.each([false, true])("renders excluded calls exactly as the ordinary viewer with tools expanded=%s", (expanded) => {
-    const flag = { expanded };
-    const transcript = [
-      callsOf(
-        { id: "t1", name: "write", args: { path: "/a.md", content: "hello" } },
-        { id: "t2", name: "bash", args: { command: "ls -la" } },
-      ),
-      resultOf("t1", { name: "write", text: "fixture-write-result" }),
-      resultOf("t2", { name: "bash", text: "fixture-bash-result" }),
-      textOf("end"),
-    ];
+  it.each([false, true])(
+    "renders excluded calls as the ordinary block minus the result body, expanded=%s",
+    (expanded) => {
+      const flag = { expanded };
+      const transcript = [
+        callsOf(
+          { id: "t1", name: "write", args: { path: "/a.md", content: "hello" } },
+          { id: "t2", name: "bash", args: { command: "ls -la" } },
+        ),
+        resultOf("t1", { name: "write", text: "fixture-write-result" }),
+        resultOf("t2", { name: "bash", text: "fixture-bash-result" }),
+        textOf("end"),
+      ];
 
-    expect(contentRows(openCompactView(transcript, { flag }))).toEqual(
-      contentRows(openCompactView(transcript, { compact: false, flag })),
-    );
-  });
+      const ordinary = contentRows(openCompactView(transcript, { compact: false, flag }));
+      const resultBodies = ordinary.filter((row) => row.text.startsWith("fixture-"));
+      expect(resultBodies).toHaveLength(2); // the ordinary viewer does show both results
+      expect(contentRows(openCompactView(transcript, { flag }))).toEqual(
+        ordinary.filter((row) => !row.text.startsWith("fixture-")),
+      );
+    },
+  );
 
   it("refreshes an excluded call's whole block when its result lands", () => {
     const messages = [callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hi" } }), textOf("end")];
@@ -437,7 +442,6 @@ describe("ConversationViewer compact tool calls", () => {
     expect(contentRows(viewer)).toEqual([
       { bg: "toolSuccessBg", text: "" },
       { bg: "toolSuccessBg", text: 'write("/a.md", 2 chars)  Took 0.5s' },
-      { bg: "toolSuccessBg", text: "fixture-write-result" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "", text: "" },
       { bg: "", text: "end" },
@@ -552,7 +556,9 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t2", { text: "fixture-second-result" }),
     ];
 
-    expect(contentRows(openCompactView(transcript))).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(openCompactView(transcript))).toEqual([
+      { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
+    ]);
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
       { bg: "toolSuccessBg", text: "read" },
       { bg: "", text: "" },
@@ -810,32 +816,37 @@ describe("ConversationViewer compact tool calls", () => {
     expect(flag.expanded).toBe(false); // a per-call choice leaves pi's flag alone
   });
 
-  it("opens an excluded call's result when it is clicked, exactly as in the ordinary viewer", () => {
-    const viewer = openCompactView([
-      callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hello" } }),
-      resultOf("t1", { name: "write", text: "line1\nline2\nline3\nline4\nline5" }),
-    ]);
-    const shown = () =>
+  it("keeps an excluded call's click on its arguments, with no result body anywhere", () => {
+    const long = "y".repeat(400);
+    const transcript = [
+      callsOf({ id: "t1", name: "bash", args: { command: `echo ${long}` } }),
+      resultOf("t1", { name: "bash", text: "line1\nline2\nline3\nline4\nline5" }),
+    ];
+    const shownOf = (viewer: ConversationViewer) =>
       contentRows(viewer)
         .map((row) => row.text)
-        .join(" ");
+        .join("");
 
-    expect(shown()).toContain("line3");
-    expect(shown()).toContain("2 more lines"); // the collapsed preview the normal viewer shows
-    expect(shown()).not.toContain("line5");
+    const ordinary = shownOf(openCompactView(transcript, { compact: false }));
+    expect(ordinary).toContain("line3"); // the collapsed preview the ordinary viewer shows
+    expect(ordinary).toContain("2 earlier lines"); // bash keeps the tail, so the hint counts what came before
 
-    const [writeRow] = rowsHolding(viewer, "write(");
-    expect(viewer.handleMouse(click(writeRow!))).toEqual({ handled: true });
+    const viewer = openCompactView(transcript);
+    expect(shownOf(viewer)).not.toContain("line3");
+    expect(shownOf(viewer)).not.toContain("more lines");
 
-    expect(shown()).toContain("line5");
-    expect(shown()).not.toContain("more lines");
+    const [bashRow] = rowsHolding(viewer, "echo");
+    expect(viewer.handleMouse(click(bashRow!))).toEqual({ handled: true });
+
+    expect(shownOf(viewer)).toContain(`echo ${long}`); // the click still opens the whole argument
+    expect(shownOf(viewer)).not.toContain("line5"); // and never shows the result
   });
 
-  it("keeps a clicked call's whole block when a later timing tick rebuilds the frame", () => {
+  it("keeps a clicked call's opened arguments when a later timing tick rebuilds the frame", () => {
     const long = "y".repeat(400);
     const viewer = openCompactView([
-      callsOf({ id: "t1", name: "write", args: { path: `/notes/${long}.md`, content: "hello" } }),
-      resultOf("t1", { name: "write", text: "line1\nline2\nline3\nline4\nline5" }),
+      callsOf({ id: "t1", name: "bash", args: { command: `echo ${long}` } }),
+      resultOf("t1", { name: "bash", text: "fixture-result-detail" }),
       callsOf({ id: "t2", name: "grep" }),
     ]);
     const shown = () =>
@@ -843,15 +854,15 @@ describe("ConversationViewer compact tool calls", () => {
         .map((row) => row.text)
         .join("");
 
-    expect(shown()).toContain("2 more lines");
-    const [writeRow] = rowsHolding(viewer, "write(");
-    expect(viewer.handleMouse(click(writeRow!))).toEqual({ handled: true });
-    expect(shown()).toContain("line5");
+    expect(shown()).not.toContain("fixture-result-detail");
+    const [bashRow] = rowsHolding(viewer, "echo");
+    expect(viewer.handleMouse(click(bashRow!))).toEqual({ handled: true });
+    expect(shown()).toContain(`echo ${long}`);
 
     emit({ type: "tool_execution_start", toolCallId: "t2" }); // the 1s elapsed tick of another call
 
-    expect(shown()).toContain("line5"); // the rebuild keeps the block the click opened
-    expect(shown()).not.toContain("more lines");
+    expect(shown()).toContain(`echo ${long}`); // the rebuild keeps the argument the click opened
+    expect(shown()).not.toContain("fixture-result-detail");
   });
 
   it("groups every call once the exclusion list is emptied", () => {
