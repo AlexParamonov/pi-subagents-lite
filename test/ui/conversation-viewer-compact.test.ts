@@ -818,10 +818,12 @@ describe("ConversationViewer compact tool calls", () => {
     const [firstCall] = rowsHolding(viewer, "echo");
     expect(viewer.handleMouse(click(firstCall!))).toEqual({ handled: true });
 
-    const texts = contentRows(viewer).map((row) => row.text);
+    const rows = contentRows(viewer);
+    const texts = rows.map((row) => row.text);
     expect(texts.join("")).toContain(`echo ${long}`); // the clicked call now shows its whole argument
     expect(texts.filter((text) => text.includes("ls"))).toHaveLength(1); // the other one stays collapsed
     expect(texts.join("")).not.toContain("fixture-result-detail");
+    expect(rows.filter((row) => row.bg === "toolSuccessBg" && row.text === "")).toEqual([]); // still no fill bar with its arguments open
     expect(flag.expanded).toBe(false); // a per-call choice leaves pi's flag alone
   });
 
