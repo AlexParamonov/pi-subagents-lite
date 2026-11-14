@@ -183,7 +183,7 @@ export class ConversationViewer implements Component {
     this.thinkingVisible = !getHideThinkingBlock();
     this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
-    this.seedRunningToolCalls(this.toolDisplay.getToolStartedAt);
+    this.seedRunningToolCalls();
     this.unsubscribe = session.subscribe((event) => {
       try {
         if (this.closed) return;
@@ -255,8 +255,7 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * Re-render the call lines of the given tool calls and keep the 1s redraw
-   * timer running exactly while some call is executing.
+   * Re-render the call lines of the given tool calls.
    *
    * The per-index message cache would otherwise freeze a call line at whatever
    * "Elapsed" it first showed. Calls without a recorded start (the viewer
@@ -272,23 +271,29 @@ export class ConversationViewer implements Component {
       }
     });
     this.cachedContentLines = undefined;
-
-    if (this.toolStartedAt.size > 0 && this.toolTimer === undefined) {
-      this.toolTimer = setInterval(() => {
-        if (this.closed || this.toolStartedAt.size === 0) {
-          this.stopToolTimer();
-          return;
-        }
-        this.refreshToolTimings(this.toolStartedAt.keys());
-      }, TOOL_TIMER_TICK_MS);
-    } else if (this.toolStartedAt.size === 0) {
-      this.stopToolTimer();
-    }
+    this.syncToolTimer();
     this.scheduleRender();
   }
 
+  /** Keep the 1s "Elapsed" redraw running exactly while some call is executing. */
+  private syncToolTimer(): void {
+    if (this.toolStartedAt.size === 0) {
+      this.stopToolTimer();
+      return;
+    }
+    if (this.toolTimer !== undefined) return;
+    this.toolTimer = setInterval(() => {
+      if (this.closed || this.toolStartedAt.size === 0) {
+        this.stopToolTimer();
+        return;
+      }
+      this.refreshToolTimings(this.toolStartedAt.keys());
+    }, TOOL_TIMER_TICK_MS);
+  }
+
   /** Pick up tool calls that are executing as the viewer opens: calls with no result yet that the owner knows the start of. */
-  private seedRunningToolCalls(getToolStartedAt: ((toolCallId: string) => number | undefined) | undefined): void {
+  private seedRunningToolCalls(): void {
+    const getToolStartedAt = this.toolDisplay.getToolStartedAt;
     if (!getToolStartedAt) return;
     const messages: any[] = this.session.messages ?? [];
     const settled = new Set<string>();
@@ -851,8 +856,7 @@ export class ConversationViewer implements Component {
     const th = this.theme;
     const expanded = this.isCallExpanded(tc.id);
     const argsSummary = tc.args ? summarizeToolArgs(tc.name, tc.args, { full: expanded }) : "";
-    // The call line is tool data as much as the result is: argument text is model-produced.
-    // Argument text is tool data too, so it gets the same strip as the result does.
+    // The call line's own text is model-produced tool data, so it gets the same strip as the result.
     const label = plainText(argsSummary ? `${tc.name}${argsSummary}` : tc.name);
     // Status color: pending while it runs, success/error once settled.
     const result = tc.id ? toolResults.get(tc.id) : undefined;

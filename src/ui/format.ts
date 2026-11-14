@@ -123,7 +123,7 @@ export function formatMs(ms: number): string {
 /** Keep sub-second calls distinguishable; format longer runs in seconds, minutes, or hours. */
 export function formatToolDuration(ms: number): string {
   const elapsedMs = Math.max(0, Math.round(ms));
-  if (elapsedMs < 1000) return `${Math.round(elapsedMs)}ms`;
+  if (elapsedMs < 1000) return `${elapsedMs}ms`;
 
   const seconds = elapsedMs / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
