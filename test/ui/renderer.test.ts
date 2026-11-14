@@ -115,7 +115,17 @@ describe("renderSubagentResult — completion visibility", () => {
   it.each([{ expanded: false }, { expanded: true }, {}])(
     "returns an empty component when hiding is enabled (%j)",
     (options) => {
-      const result = renderSubagentResult({ content: "Result" }, options, defaultTheme, SHOW_COST, "id", true);
+      const result = renderSubagentResult(
+        {
+          content: '[Subagent "builder" a1b2c3d4 completed]\n\nVendor fetch fails on the first attempt.',
+          details: { type: "builder", description: "Fix the flaky fetch test", status: "completed", turnCount: 3 },
+        },
+        options,
+        defaultTheme,
+        SHOW_COST,
+        "id",
+        true,
+      );
 
       expect(result.children).toHaveLength(0);
       expect(renderedRows).toHaveLength(0);
@@ -199,6 +209,211 @@ describe("renderSubagentResult — status icon", () => {
 
     const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain(icon);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  renderSubagentResult — reply first line on the collapsed card     */
+/* ------------------------------------------------------------------ */
+
+describe("renderSubagentResult — reply first line", () => {
+  const nudgeDetails = {
+    type: "builder",
+    description: "Fix the flaky fetch test",
+    status: "completed",
+    turnCount: 3,
+    outputFile: "/tmp/pi-out.log",
+  };
+
+  /** Rows the card built as width-truncated single rows. */
+  const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText");
+  /** The card's rendered lines, in order, blank rows included. */
+  const cardLines = () => renderedRows.flatMap((r) => (r.kind === "Spacer" ? [""] : r.text.split("\n")));
+
+  it("shows the reply's first line while tool output is collapsed", () => {
+    renderSubagentResult(
+      {
+        content:
+          '[Subagent "builder" a1b2c3d4 completed]\n\nVendor fetch fails on the first attempt.\n\nIt retries twice, then writes the log.',
+        details: nudgeDetails,
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Vendor fetch fails on the first attempt." }]);
+  });
+
+  it("skips the envelope line and the blank lines that follow it", () => {
+    renderSubagentResult(
+      {
+        content: '[Subagent "builder" a1b2c3d4 completed]\n\n\n   \n  Heading line\n\nBody sentence.',
+        details: nudgeDetails,
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Heading line" }]);
+  });
+
+  it.each(["completed", "error", "stopped"])("shows the reply line for a %s agent", (status) => {
+    const notes: Record<string, string> = {
+      completed: "",
+      error: "\n\nError: spawn EACCES",
+      stopped: "\n (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
+    };
+
+    renderSubagentResult(
+      {
+        content: `[Subagent "builder" a1b2c3d4 ${status}]\n\nStopping after two failed edits.${notes[status]}`,
+        details: { ...nudgeDetails, status },
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: "  Stopping after two failed edits." }]);
+  });
+
+  it.each([
+    ["error note", "error", '[Subagent "builder" a1b2c3d4 error]\n\nError: spawn EACCES'],
+    [
+      "stop note",
+      "stopped",
+      '[Subagent "builder" a1b2c3d4 stopped]\n\n (STOPPED BY WATCHDOG — no activity for longer than the idle timeout)',
+    ],
+    ["envelope only", "completed", '[Subagent "builder" a1b2c3d4 completed]\n\n'],
+  ])("adds no row when the agent said nothing (%s)", (_label, status, content) => {
+    renderSubagentResult(
+      { content, details: { ...nudgeDetails, status } },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([]);
+  });
+
+  it("adds no row for a reply line that reads exactly like the error note", () => {
+    renderSubagentResult(
+      {
+        content: '[Subagent "builder" a1b2c3d4 error]\n\nError: the fixtures are already red',
+        details: { ...nudgeDetails, status: "error" },
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([]);
+  });
+
+  it("hands a long first line to the width-truncating row component", () => {
+    const longLine = "Attempted ".repeat(40).trim();
+    renderSubagentResult(
+      {
+        content: `[Subagent "builder" a1b2c3d4 completed]\n\n${longLine}\n\nSecond paragraph.`,
+        details: nudgeDetails,
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([{ kind: "TruncatedText", text: `  ${longLine}` }]);
+  });
+
+  it("keeps the collapsed card unchanged when the agent said nothing", () => {
+    renderSubagentResult(
+      {
+        content: '[Subagent "builder" a1b2c3d4 completed]\n\n\n  ',
+        details: { ...nudgeDetails, status: "completed" },
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(cardLines()).toEqual([
+      "Subagent Result",
+      "",
+      "✓ Builder·5 uses·3 turns·1m0s",
+      "  Fix the flaky fetch test",
+      "  tail -f /tmp/pi-out.log",
+      "",
+      "",
+    ]);
+  });
+
+  it("puts the reply line between the description and the output file row", () => {
+    renderSubagentResult(
+      {
+        content: '[Subagent "builder" a1b2c3d4 completed]\n\nVendor fetch fails on the first attempt.\n\nDetails.',
+        details: { ...nudgeDetails, worktreePath: "/wt/feature" },
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(renderedRows).toEqual([
+      { kind: "Text", text: "Subagent Result" },
+      { kind: "Spacer", text: "" },
+      { kind: "Text", text: "✓ Builder·5 uses·3 turns·1m0s\n  Fix the flaky fetch test" },
+      { kind: "TruncatedText", text: "  Vendor fetch fails on the first attempt." },
+      { kind: "Text", text: "  tail -f /tmp/pi-out.log\n  worktree: /wt/feature" },
+      { kind: "Spacer", text: "" },
+      { kind: "Spacer", text: "" },
+    ]);
+  });
+
+  it("keeps the expanded card showing the whole reply with the envelope line", () => {
+    renderSubagentResult(
+      {
+        content: '[Subagent "builder" a1b2c3d4 completed]\n\nLine one.\n\nLine two.',
+        details: nudgeDetails,
+      },
+      { expanded: true },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(renderedRows).toEqual([
+      { kind: "Text", text: "Subagent Result" },
+      { kind: "Spacer", text: "" },
+      { kind: "Text", text: "✓ Builder·5 uses·3 turns·1m0s\n  Fix the flaky fetch test" },
+      { kind: "Text", text: "  tail -f /tmp/pi-out.log" },
+      { kind: "Spacer", text: "" },
+      { kind: "Text", text: '  [Subagent "builder" a1b2c3d4 completed]\n  \n  Line one.\n  \n  Line two.' },
+      { kind: "Spacer", text: "" },
+      { kind: "Spacer", text: "" },
+    ]);
+  });
+
+  it("keeps the fallback line unchanged for a nudge without stats", () => {
+    const { turnCount: _turnCount, ...detailsWithoutStats } = nudgeDetails;
+
+    renderSubagentResult(
+      {
+        content: '[Subagent "builder" a1b2c3d4 completed]\n\nLine one.\n\nLine two.',
+        details: detailsWithoutStats,
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(renderedRows).toEqual([
+      { kind: "Text", text: "Subagent Result" },
+      { kind: "Spacer", text: "" },
+      { kind: "Text", text: "✓ Builder\n  Fix the flaky fetch test\n  tail -f /tmp/pi-out.log" },
+      { kind: "Spacer", text: "" },
+      { kind: "Spacer", text: "" },
+    ]);
   });
 });
 

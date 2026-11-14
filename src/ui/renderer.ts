@@ -4,7 +4,7 @@
  * Extracted from index.ts to separate display concerns from extension wiring.
  */
 
-import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Markdown, Spacer, Text, TruncatedText } from "@earendil-works/pi-tui";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
 import type { SubagentMessageDetails } from "../agents/parent-message.ts";
@@ -265,6 +265,31 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
+/** Note lines formatResultContent appends after the reply: the error note and the status note. */
+function isResultNote(line: string): boolean {
+  return line.startsWith("Error: ") || (line.startsWith("(") && line.endsWith(")"));
+}
+
+/**
+ * First line of the agent's own reply, taken from the nudge content emitIndividualNudge builds:
+ * `<envelope>\n\n<reply>` followed by the notes formatResultContent appends last. A note can
+ * therefore only be the first non-blank line when the reply itself is blank. A one-line reply
+ * opening with "Error: " is content-identical to the error note and loses the row.
+ */
+function firstReplyLine(content: string): string {
+  const lines = content.split("\n");
+  const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
+  const line = body.find((l) => l.trim());
+  if (!line) return "";
+  const reply = line.trim();
+  return isResultNote(reply) ? "" : reply;
+}
+
+/** Dim row pointing at a path the user can follow; empty when the details carry none. */
+function pathRow(prefix: string, value: unknown, theme: Theme): string {
+  return typeof value === "string" && value ? `  ${theme.fg("dim", `${prefix}${value}`)}` : "";
+}
+
 /** Render a subagent-result message injected after background agent completion. */
 export function renderSubagentResult(
   message: { content?: string; details?: Record<string, unknown> },
@@ -290,14 +315,19 @@ export function renderSubagentResult(
     const namePart = agentNameLabel(d, theme, modelDisplayStyle);
     const statsLine = buildStatsLine(d, theme, showCost);
     const description = typeof d.description === "string" ? d.description : "";
-    let headerLine = `${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`;
-    if (typeof d.outputFile === "string" && d.outputFile) {
-      headerLine += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
+    inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
+
+    const replyLine = expanded ? "" : firstReplyLine(text);
+    if (replyLine) {
+      inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
     }
-    if (typeof d.worktreePath === "string" && d.worktreePath) {
-      headerLine += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
+
+    const pathLines = [pathRow("tail -f ", d.outputFile, theme), pathRow("worktree: ", d.worktreePath, theme)]
+      .filter(Boolean)
+      .join("\n");
+    if (pathLines) {
+      inner.addChild(new Text(pathLines, 0, 0));
     }
-    inner.addChild(new Text(headerLine, 0, 0));
 
     if (expanded && text) {
       inner.addChild(new Spacer(1));
@@ -338,11 +368,9 @@ function buildFallbackResultLine(
   }
   const desc = typeof d?.description === "string" ? d.description : "";
   if (desc) line += `\n  ${theme.fg("text", desc)}`;
-  if (typeof d?.outputFile === "string" && d.outputFile) {
-    line += `\n  ${theme.fg("dim", `tail -f ${d.outputFile}`)}`;
-  }
-  if (typeof d?.worktreePath === "string" && d.worktreePath) {
-    line += `\n  ${theme.fg("dim", `worktree: ${d.worktreePath}`)}`;
-  }
+  const pathLines = [pathRow("tail -f ", d?.outputFile, theme), pathRow("worktree: ", d?.worktreePath, theme)]
+    .filter(Boolean)
+    .join("\n");
+  if (pathLines) line += `\n${pathLines}`;
   return line;
 }
