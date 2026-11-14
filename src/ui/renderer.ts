@@ -83,6 +83,20 @@ export function cleanupInvalidations(): void {
 
 // --- Agent tool renderers ---
 
+/**
+ * The collapsed reply-preview row shared by the Agent result row and the card. `content` is
+ * formatResultContent output without any caller framing; the settled status in `d` lets stripStatusNote cut
+ * the glued note only where that status carries one. A settled `result` is trimmed and an appended note never
+ * opens the text, so the first line left is the reply. Undefined when there is none, leaving the caller's
+ * row set exactly as it was.
+ */
+function replyRow(content: string, d: Record<string, unknown>, theme: Theme, color: string): TruncatedText | undefined {
+  const line = stripStatusNote(content, d.status as string | undefined)
+    .split("\n")[0]
+    ?.trim();
+  return line ? new TruncatedText(`  ${theme.fg(color, line)}`, 0, 0) : undefined;
+}
+
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
 export function renderAgentToolCall(
   args: Record<string, unknown>,
@@ -194,10 +208,8 @@ export function renderAgentToolResult(
     const rows = new Container();
     rows.addChild(new Text(lines, 0, 0));
     if (!expanded) {
-      const replyLine = firstReplyLine(text, d.status as string | undefined);
-      if (replyLine) {
-        rows.addChild(new TruncatedText(`  ${theme.fg("toolOutput", replyLine)}`, 0, 0));
-      }
+      const reply = replyRow(text, d, theme, "toolOutput");
+      if (reply) rows.addChild(reply);
     }
     return rows;
   }
@@ -274,15 +286,6 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
-/**
- * First line of the agent's own reply in formatResultContent output. `status` is the settled status from the
- * caller's details: stripStatusNote cuts the glued note only when that status carries one. A settled `result`
- * is trimmed and an appended note never opens the text, so the first line left is the reply.
- */
-function firstReplyLine(content: string, status: string | undefined): string {
-  return stripStatusNote(content, status).split("\n")[0]?.trim() ?? "";
-}
-
 /** Drop the card's own framing: emitIndividualNudge puts `[Subagent "type" id status]` over a blank line first. */
 function withoutEnvelope(content: string): string {
   const lines = content.split("\n");
@@ -327,10 +330,8 @@ export function renderSubagentResult(
     inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
 
     if (!expanded) {
-      const replyLine = firstReplyLine(withoutEnvelope(text), d.status as string | undefined);
-      if (replyLine) {
-        inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
-      }
+      const reply = replyRow(withoutEnvelope(text), d, theme, "customMessageText");
+      if (reply) inner.addChild(reply);
     }
 
     const pathLines = pathRows(d, theme);
