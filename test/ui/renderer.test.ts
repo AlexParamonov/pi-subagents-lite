@@ -265,7 +265,7 @@ describe("renderSubagentResult — reply first line", () => {
     expect(truncatedRows()).toEqual(["  Vendor fetch fails on the first attempt."]);
   });
 
-  it("skips the envelope line and the blank lines that follow it", () => {
+  it("adds no row for text that does not open the line below the envelope separator", () => {
     renderSubagentResult(
       {
         content: '[Subagent "builder" a1b2c3d4 completed]\n\n\n   \n  Heading line\n\nBody sentence.',
@@ -276,7 +276,7 @@ describe("renderSubagentResult — reply first line", () => {
       SHOW_COST,
     );
 
-    expect(truncatedRows()).toEqual(["  Heading line"]);
+    expect(truncatedRows()).toEqual([]);
   });
 
   it.each([
@@ -337,26 +337,21 @@ describe("renderSubagentResult — reply first line", () => {
     expect(truncatedRows()).toEqual(["  Fixed the flake (see notes.md)"]);
   });
 
-  it("shows a genuine reply line that opens like the error note", () => {
+  it.each([
+    ["completed", undefined, {}],
+    ["error", "provider stream reset", {}],
+    ["stopped", undefined, { stoppedBy: "user" }],
+    ["aborted", undefined, {}],
+    ["turn_limited", undefined, {}],
+  ] as const)("keeps a reply line that opens like the error note (%s)", (status, error, lifecycle) => {
     renderSubagentResult(
-      nudge("Error: the fixture never ran, so the suite is still red.", { status: "error" }, "provider stream reset"),
+      nudge("Error: the fixture never ran, so the suite is still red.", { status, ...lifecycle }, error),
       { expanded: false },
       defaultTheme,
       SHOW_COST,
     );
 
     expect(truncatedRows()).toEqual(["  Error: the fixture never ran, so the suite is still red."]);
-  });
-
-  it("shows a completed reply line that opens like the error note", () => {
-    renderSubagentResult(
-      nudge("Error: cannot reproduce the failure.", { status: "completed" }),
-      { expanded: false },
-      defaultTheme,
-      SHOW_COST,
-    );
-
-    expect(truncatedRows()).toEqual(["  Error: cannot reproduce the failure."]);
   });
 
   it.each([
