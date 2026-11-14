@@ -255,7 +255,7 @@ export async function executeAgentTool(
   }
 
   // Foreground: record.execution.promise is already awaited by coordinator.spawn()
-  const details = buildAgentDetails(record, { includeStats: true });
+  const details = buildAgentDetails(record, { includeStats: true, includeStatus: true });
 
   if (record.lifecycle.status === "error") {
     throw new Error(`Agent failed: ${record.error || "unknown error"}`);
