@@ -697,7 +697,7 @@ describe("showSpawnOptionsMenu — compact conversation viewer", () => {
     const compact = items.find((i) => i.id === "compactToolCalls")!;
     expect(compact.currentValue).toBe("OFF");
     expect(compact.values).toEqual(["ON", "OFF"]);
-    expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe("write, edit, replace");
+    expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe("write, edit, replace, bash");
   });
 
   it("shows the stored values when both are configured", async () => {

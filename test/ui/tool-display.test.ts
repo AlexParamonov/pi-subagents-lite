@@ -59,7 +59,7 @@ describe("viewerPresentation", () => {
   it("keeps the normal viewer when nothing is configured", () => {
     expect(viewerPresentation(new ConfigStore(minimalIO()))).toEqual({
       compactToolCalls: false,
-      ungroupedTools: ["write", "edit", "replace"],
+      ungroupedTools: ["write", "edit", "replace", "bash"],
     });
   });
 
