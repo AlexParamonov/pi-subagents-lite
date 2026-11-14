@@ -31,10 +31,6 @@ const KEY_PREFIXES = new Map([
   ["shift", "S-"],
 ]);
 
-function compactKey(key: string): string {
-  return key.replace(/([a-z]+)\+/g, (modifier) => KEY_PREFIXES.get(modifier.slice(0, -1)) ?? modifier);
-}
-
 export interface ViewerKeys {
   scrollUp(data: string): boolean;
   scrollDown(data: string): boolean;
@@ -65,5 +61,5 @@ export function createViewerKeys(keybindings?: ViewerKeybindings): ViewerKeys {
 
 /** A key label from {@link ViewerKeys.expandHint} in the footer's notation: `ctrl+o` is `C-o`. */
 export function keyLabel(label: string): string {
-  return label.split("/").map(compactKey).join("/");
+  return label.replace(/([a-z]+)\+/g, (modifier) => KEY_PREFIXES.get(modifier.slice(0, -1)) ?? modifier);
 }
