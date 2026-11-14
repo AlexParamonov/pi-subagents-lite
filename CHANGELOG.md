@@ -9,18 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The conversation viewer omits tool timings under 0.1s.
-- The conversation viewer shows a `bash` call's `timeout` as a muted `(timeout 300s)` after the command, like pi.
-- The conversation viewer shows tool results as plain text under each call: the first 3 rows (the last 3 for `bash`) plus a `… (N more lines, ctrl+o to expand)` hint collapsed, everything expanded — pi's generic result rendering, held to the viewer's smaller window. It follows pi's global tool-output flag, and pi's `app.tools.expand` key (ctrl+o by default, honoring remaps) toggles that flag from inside the viewer, so the main chat's tool rows update too.
-- Clicking a finished tool call in the conversation viewer expands or collapses just that call, as in pi's chat; any flip of pi's global flag (its expand key, or the chat behind the overlay) resets every call. The hint names the bound key and is colored like pi's. Collapsed, the timing sits on the call line to save a row; expanded, it is a muted line under the result, where pi always puts it.
-- The conversation viewer's expanded view shows each tool call's whole command or argument instead of cutting it at 350 characters with `…`. A heredoc body stays out of the summary either way: it is the input the tool was handed, not what it did.
+- The conversation viewer shows `timeout`, tool results. It follows pi's global tool-output flag, and pi's `app.tools.expand` key (ctrl+o by default, honoring remaps). Expanded view shows each tool call's whole command or argument instead of cutting it at 350 characters with `…`. A heredoc body stays out of the summary either way.
 - Mouse interaction in the viewer (wheel scroll, click to expand) needs pi's fullscreen TUI: under `tuiMode: "regular"` the terminal reports no mouse events, so those gestures do nothing.
-
-### Fixed
-
-- Tool calls and their results are stripped of terminal control sequences (7-bit `ESC [` and 8-bit `CSI`), control characters and bidirectional formatting controls before the viewer renders them. Message and thinking text are not stripped, as in pi's own chat rendering.
-- The agent's result and error viewer strips the same control sequences from the text it paints. Its error text carries provider error bodies and child stderr, which reached the terminal intact.
-- The widget's `Ctrl+o` compact-mode sync follows pi's `app.tools.expand` binding instead of a hardcoded `ctrl+o`, so a remapped key keeps it in sync.
 
 ## [1.18.0] - 2026-11-03
 
