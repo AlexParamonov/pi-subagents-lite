@@ -495,8 +495,8 @@ export class ConversationViewer implements Component {
       case "assistant":
         return this.renderAssistantMessage(msg, width, toolResults, blocks);
       case "toolResult":
-        // Results never render: only the tool call line (with its status
-        // background) represents the call in the viewer.
+        // A standalone result message paints nothing: its text reaches the frame inside its call's
+        // block, and compact mode paints no such block content at all.
         return [];
       default:
         return [];
