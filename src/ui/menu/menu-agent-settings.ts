@@ -192,7 +192,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
         input.onEscape = () => done();
         return input;
       },
-      description: "Comma-separated tools kept on their own row, splitting a run. Blank groups every tool call.",
+      description: "Comma-separated tools shown in full, splitting a run. Blank groups every tool call.",
     },
     // --- Tools ---
     { id: SEPARATOR_ID, label: " ", currentValue: "" },

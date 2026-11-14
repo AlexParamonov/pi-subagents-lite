@@ -2,9 +2,13 @@
  * conversation-viewer-compact.test.ts — Compact tool-call presentation.
  *
  * Drives the viewer's public render seam with the marking theme below, so each
- * content row is asserted as (status background, text) — the exact painted
- * sequence, which pins grouping, summaries, padding and result bodies at once.
+ * content row is asserted as (background, text) — the exact painted sequence,
+ * which pins grouping, summaries, separators, padding and result bodies at once.
  */
+
+/* The marking theme below marks each row's colors with control characters, so the
+   helpers match them on purpose. */
+/* oxlint-disable no-control-regex */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { MarkdownTheme, TuiMouseEvent } from "@earendil-works/pi-tui";
@@ -19,10 +23,14 @@ const mockSubscribe = vi.fn<(listener: (event?: unknown) => void) => () => void>
 const mockRequestRender = vi.fn();
 
 vi.mock("@earendil-works/pi-tui", () => {
-  // Real ANSI is invisible to width; so is the test theme's \u0001<color>\u0001 row marker.
-  const visible = (s: string) =>
-    // oxlint-disable-next-line no-control-regex
-    s.replace(/\x1b\[[0-9;]*m/g, "").replace(/\u0001[^\u0001]*\u0001/g, "");
+  // Width is screen width: real ANSI and the marking theme's \u0001<bg>\u0001 and
+  // \u0002<fg>\u0002 row markers cost nothing, so every rule below segments a row the
+  // same way - including the wrap, which must never cut through a marker.
+  const SEGMENTS = /\u0001[^\u0001]*\u0001|\u0002[^\u0002]*\u0002|\x1b\[[0-9;]*m|[\s\S]/g;
+  const segmentsOf = (s: string) => s.match(SEGMENTS) ?? [];
+  /** A color marker is a multi-char segment; everything else is one screen cell. */
+  const cell = (seg: string) => seg.length === 1;
+  const visible = (s: string) => segmentsOf(s).filter(cell).join("");
   return {
     matchesKey: vi.fn((data: string, key: string) => {
       const map: Record<string, string[]> = {
@@ -80,21 +88,27 @@ vi.mock("@earendil-works/pi-tui", () => {
           .map(this._color);
       }
     },
-    truncateToWidth: vi.fn((s: string, w: number) => (visible(s).length > w ? s.slice(0, w - 3) + "..." : s)),
+    truncateToWidth: vi.fn((s: string, w: number) => (visible(s).length > w ? visible(s).slice(0, w - 3) + "..." : s)),
     visibleWidth: vi.fn((s: string) => visible(s).length),
     wrapTextWithAnsi: vi.fn((text: string, width: number) => {
-      const result: string[] = [];
+      const rows: string[] = [];
       for (const line of text.split("\n")) {
-        if (line.length <= width) result.push(line);
-        else {
-          let remaining = line;
-          while (remaining.length > 0) {
-            result.push(remaining.slice(0, width));
-            remaining = remaining.slice(width);
+        let row = "";
+        let used = 0;
+        for (const seg of segmentsOf(line)) {
+          if (cell(seg)) {
+            if (used === width) {
+              rows.push(row);
+              row = "";
+              used = 0;
+            }
+            used++;
           }
+          row += seg;
         }
+        rows.push(row);
       }
-      return result;
+      return rows;
     }),
   };
 });
@@ -110,11 +124,12 @@ import { expectNoTerminalControls } from "../fixtures.js";
 // --- Fixtures ---
 
 /**
- * Marks the background each row was painted with, so status color is observable.
- * The marker is a control character, so a frame-wide control check needs defaultTheme.
+ * Marks the background and the foreground token each row was painted with, so
+ * status fills and neutral styling are both observable. The markers are control
+ * characters, so a frame-wide control check needs defaultTheme.
  */
 const markingTheme: Theme = {
-  fg: (_color: string, text: string) => text,
+  fg: (color: string, text: string) => `${text}\u0002${color}\u0002`,
   bg: (color: string, text: string) => `\u0001${color}\u0001${text}`,
   bold: (text: string) => text,
   italic: (text: string) => text,
@@ -205,7 +220,7 @@ function openCompactView(messages: TestMessage[], view: CompactView = {}): Conve
   const tui = asTui({ terminal: { rows: view.rows ?? 40, cols: 120 }, requestRender: mockRequestRender });
   return new ConversationViewer(tui, session, record, view.plain ? defaultTheme : markingTheme, vi.fn(), {
     compactToolCalls: view.compact !== false,
-    ungroupedTools: view.ungrouped ?? ["write", "edit", "replace"],
+    ungroupedTools: view.ungrouped ?? ["write", "edit", "replace", "bash"],
     keybindings: view.keybindings,
     toolDisplay: { isExpanded: () => view.flag?.expanded ?? false, ...view.toolDisplay },
   });
@@ -217,23 +232,51 @@ interface PaintedRow {
   text: string;
 }
 
-/** Width on screen: ANSI and the test theme's color marker cost nothing there. */
+/** Width on screen: ANSI and the test theme's color markers cost nothing there. */
 function visibleWidthOf(line: string): number {
-  // oxlint-disable-next-line no-control-regex
-  return line.replace(/\x1b\[[0-9;]*m/g, "").replace(/\u0001[^\u0001]*\u0001/g, "").length;
+  return stripMarkers(line).length;
+}
+
+const BG_MARKER = /\u0001[^\u0001]*\u0001/g;
+const FG_MARKER = /\u0002[^\u0002]*\u0002/g;
+const BG_TOKEN = /\u0001([^\u0001]*)\u0001/;
+
+/** A line with the marking theme's color markers removed. */
+function stripMarkers(line: string): string {
+  return line
+    .replace(/\x1b\[[0-9;]*m/g, "")
+    .replace(BG_MARKER, "")
+    .replace(FG_MARKER, "");
+}
+
+/** The text between a frame line's borders, color markers left in place. */
+function frameContent(line: string): string {
+  return line.replace(/^\u2502(?:\u0002[^\u0002]*\u0002)? /, "").replace(/ \u2502(?:\u0002[^\u0002]*\u0002)?$/, "");
 }
 
 /** The content rows of one painted frame, without the viewport's trailing pad. */
 function contentRows(viewer: ConversationViewer, width = 80): PaintedRow[] {
   const lines = viewer.render(width);
   const separator = `\u2502 ${"\u2500".repeat(width - 4)} \u2502`;
-  const rows = lines.slice(lines.indexOf(separator) + 1, lines.lastIndexOf(separator)).map((line) => {
-    const inner = line.slice(2, line.length - 2);
-    const [, bg, text] = inner.split("\u0001");
-    return text === undefined ? { bg: "", text: inner.trim() } : { bg: bg!, text: text.trim() };
+  const clean = lines.map(stripMarkers);
+  const rows = lines.slice(clean.indexOf(separator) + 1, clean.lastIndexOf(separator)).map((line) => {
+    const content = frameContent(line);
+    const [, bg] = content.match(BG_TOKEN) ?? [];
+    return { bg: bg ?? "", text: stripMarkers(content).trim() };
   });
   while (rows.length > 0 && rows[rows.length - 1]!.text === "") rows.pop();
   return rows;
+}
+
+/** The foreground token the first row holding `needle` was painted with. */
+function paintedFg(viewer: ConversationViewer, needle: string, width = 80): string {
+  const line = viewer.render(width).find((l) => l.includes(needle));
+  expect(line, `no painted row holds ${needle}`).toBeDefined();
+  const content = frameContent(line!).replace(BG_MARKER, "");
+  const tokens = content.match(/\u0002([^\u0002]*)\u0002/g) ?? [];
+  // Markers are suffixes, so the outermost color's marker is the last one in the row.
+  const [, fg] = tokens[tokens.length - 1]?.match(/\u0002([^\u0002]*)\u0002/) ?? [];
+  return fg ?? "";
 }
 
 /** Frame rows holding `needle` — a locator for a click, not an assertion. */
@@ -273,21 +316,43 @@ describe("ConversationViewer compact tool calls", () => {
   it("summarizes consecutive eligible calls as one count-and-names row", () => {
     const viewer = openCompactView([callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" })]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
   });
 
   it("counts every call and lists unique names in first-seen order", () => {
-    const viewer = openCompactView([
-      callsOf(
-        { id: "t1", name: "read" },
-        { id: "t2", name: "read" },
-        { id: "t3", name: "grep" },
-        { id: "t4", name: "bash" },
-        { id: "t5", name: "read" },
-      ),
-    ]);
+    const viewer = openCompactView(
+      [
+        callsOf(
+          { id: "t1", name: "read" },
+          { id: "t2", name: "read" },
+          { id: "t3", name: "grep" },
+          { id: "t4", name: "bash" },
+          { id: "t5", name: "read" },
+        ),
+      ],
+      { ungrouped: [] },
+    );
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "5 tool calls (read, grep, bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "5 tool calls (read, grep, bash)" }]);
+  });
+
+  it("paints the summary in the default text color, with no status color and no timing", () => {
+    const transcript = [
+      callsOf({ id: "t1", name: "read", args: { path: "/a.md" } }, { id: "t2", name: "grep" }),
+      resultOf("t1", { durationMs: 1000, isError: true, text: "fixture-failure" }),
+      resultOf("t2", { durationMs: 200 }),
+    ];
+
+    const summarized = openCompactView(transcript);
+    expect(contentRows(summarized)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
+    expect(paintedFg(summarized, "2 tool calls")).toBe("text"); // the default text color, not a status one
+
+    // Shown one by one, the same calls carry their own status colors.
+    expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
+      { bg: "toolErrorBg", text: 'read("/a.md")  Took 1.0s' },
+      { bg: "", text: "" },
+      { bg: "toolSuccessBg", text: "grep  Took 0.2s" },
+    ]);
   });
 
   it("shows a lone eligible call as its own call row", () => {
@@ -296,7 +361,28 @@ describe("ConversationViewer compact tool calls", () => {
     expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: 'read("/notes.md")' }]);
   });
 
-  it("shows an excluded call on its own row and splits the run around it", () => {
+  it("keeps an excluded call whole between a summarized run and a compact call", () => {
+    const viewer = openCompactView([
+      callsOf(
+        { id: "t1", name: "read" },
+        { id: "t2", name: "read" },
+        { id: "t3", name: "grep" },
+        { id: "t4", name: "bash", args: { command: "ls -la" } },
+        { id: "t5", name: "read" },
+      ),
+    ]);
+
+    expect(contentRows(viewer)).toEqual([
+      { bg: "", text: "3 tool calls (read, grep)" },
+      { bg: "toolPendingBg", text: "" },
+      { bg: "toolPendingBg", text: 'bash("ls -la")' },
+      { bg: "toolPendingBg", text: "" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "read" },
+    ]);
+  });
+
+  it("shows an excluded call with its result, and splits the run around it", () => {
     const viewer = openCompactView([
       callsOf(
         { id: "t1", name: "read" },
@@ -305,28 +391,80 @@ describe("ConversationViewer compact tool calls", () => {
         { id: "t4", name: "read" },
         { id: "t5", name: "grep" },
       ),
+      resultOf("t3", { name: "write", durationMs: 1200, text: "fixture-write-result" }),
     ]);
 
     expect(contentRows(viewer)).toEqual([
-      { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
-      { bg: "toolPendingBg", text: 'write("/notes.md", 5 chars)' },
-      { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
+      { bg: "", text: "2 tool calls (read, grep)" },
+      { bg: "toolSuccessBg", text: "" },
+      { bg: "toolSuccessBg", text: 'write("/notes.md", 5 chars)  Took 1.2s' },
+      { bg: "toolSuccessBg", text: "fixture-write-result" },
+      { bg: "toolSuccessBg", text: "" },
+      { bg: "", text: "" },
+      { bg: "", text: "2 tool calls (read, grep)" },
+    ]);
+  });
+
+  it.each([false, true])("renders excluded calls exactly as the ordinary viewer with tools expanded=%s", (expanded) => {
+    const flag = { expanded };
+    const transcript = [
+      callsOf(
+        { id: "t1", name: "write", args: { path: "/a.md", content: "hello" } },
+        { id: "t2", name: "bash", args: { command: "ls -la" } },
+      ),
+      resultOf("t1", { name: "write", text: "fixture-write-result" }),
+      resultOf("t2", { name: "bash", text: "fixture-bash-result" }),
+      textOf("end"),
+    ];
+
+    expect(contentRows(openCompactView(transcript, { flag }))).toEqual(
+      contentRows(openCompactView(transcript, { compact: false, flag })),
+    );
+  });
+
+  it("refreshes an excluded call's whole block when its result lands", () => {
+    const messages = [callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hi" } }), textOf("end")];
+    const viewer = openCompactView(messages);
+    expect(contentRows(viewer)).toEqual([
+      { bg: "toolPendingBg", text: "" },
+      { bg: "toolPendingBg", text: 'write("/a.md", 2 chars)' },
+      { bg: "toolPendingBg", text: "" },
+      { bg: "", text: "" },
+      { bg: "", text: "end" },
+    ]);
+
+    messages.push(resultOf("t1", { name: "write", durationMs: 500, text: "fixture-write-result" }));
+    expect(contentRows(viewer)).toEqual([
+      { bg: "toolSuccessBg", text: "" },
+      { bg: "toolSuccessBg", text: 'write("/a.md", 2 chars)  Took 0.5s' },
+      { bg: "toolSuccessBg", text: "fixture-write-result" },
+      { bg: "toolSuccessBg", text: "" },
+      { bg: "", text: "" },
+      { bg: "", text: "end" },
     ]);
   });
 
   it("matches excluded names exactly, so a custom name stays and a differently cased one groups", () => {
-    const custom = openCompactView([callsOf({ id: "t1", name: "mcp__search" }, { id: "t2", name: "mcp__search" })], {
-      ungrouped: ["mcp__search"],
-    });
+    const custom = openCompactView(
+      [callsOf({ id: "t1", name: "mcp__search" }, { id: "t2", name: "mcp__search" }), textOf("end")],
+      { ungrouped: ["mcp__search"] },
+    );
     expect(contentRows(custom)).toEqual([
+      { bg: "toolPendingBg", text: "" },
       { bg: "toolPendingBg", text: "mcp__search" },
+      { bg: "toolPendingBg", text: "" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "" },
       { bg: "toolPendingBg", text: "mcp__search" },
+      { bg: "toolPendingBg", text: "" },
+      { bg: "", text: "" },
+      { bg: "", text: "end" },
     ]);
 
     const cased = openCompactView([callsOf({ id: "t1", name: "Read" }, { id: "t2", name: "Read" })], {
       ungrouped: ["read"],
     });
-    expect(contentRows(cased)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (Read)" }]);
+    expect(contentRows(cased)).toEqual([{ bg: "", text: "2 tool calls (Read)" }]);
   });
 
   it("groups consecutive calls from different turns", () => {
@@ -337,7 +475,7 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t2"),
     ]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolSuccessBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
   });
 
   it("does not group across visible assistant text", () => {
@@ -362,7 +500,7 @@ describe("ConversationViewer compact tool calls", () => {
       callsOf({ id: "t2", name: "grep" }),
     ]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
   });
 
   it("does not group across a user turn, whose own presentation is untouched", () => {
@@ -414,11 +552,10 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t2", { text: "fixture-second-result" }),
     ];
 
-    expect(contentRows(openCompactView(transcript))).toEqual([
-      { bg: "toolSuccessBg", text: "2 tool calls (read, grep)" },
-    ]);
+    expect(contentRows(openCompactView(transcript))).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
       { bg: "toolSuccessBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "toolSuccessBg", text: "grep" },
     ]);
   });
@@ -433,43 +570,85 @@ describe("ConversationViewer compact tool calls", () => {
         resultOf("t1", { durationMs: 4200, text: "fixture-result-detail" }),
         resultOf("t2", { durationMs: 100, isError: true, text: "fixture-failure-detail" }),
       ],
-      { flag: { expanded: true } },
+      { flag: { expanded: true }, ungrouped: [] },
     );
 
     expect(contentRows(viewer)).toEqual([
       { bg: "toolSuccessBg", text: 'write("/a.md", 5 chars)  Took 4.2s' },
+      { bg: "", text: "" },
       { bg: "toolErrorBg", text: 'write("/b.md", 5 chars)  Took 0.1s' },
     ]);
   });
 
   it("wraps a long call over several rows of its own color without passing the frame width", () => {
-    const viewer = openCompactView([callsOf({ id: "t1", name: "bash", args: { command: "x".repeat(120) } })]);
+    const viewer = openCompactView([callsOf({ id: "t1", name: "bash", args: { command: "x".repeat(120) } })], {
+      ungrouped: [],
+    });
 
     const rows = contentRows(viewer, 40);
     expect(rows.length).toBeGreaterThan(1);
-    expect(rows.every((row) => row.bg === "toolPendingBg")).toBe(true);
+    expect(rows.every((row) => row.bg === "toolPendingBg" && row.text !== "")).toBe(true);
     expect(rows.map((row) => row.text).join("")).toContain("x".repeat(120));
     expect(viewer.render(40).every((line) => visibleWidthOf(line) <= 40)).toBe(true);
   });
 
-  it("colors a run by failure first, then an unfinished call, then success, and never shows timing", () => {
-    const twoCalls = [callsOf({ id: "t1", name: "read", args: { path: "/a.md" } }, { id: "t2", name: "grep" })];
-    const summary = (results: TestMessage[]) => contentRows(openCompactView([...twoCalls, ...results]))[0]!;
+  it("wraps a long run summary inside the frame without losing the names", () => {
+    const viewer = openCompactView([
+      callsOf(
+        { id: "t1", name: "mcp_server_read_file" },
+        { id: "t2", name: "mcp_server_list_dir" },
+        { id: "t3", name: "read" },
+      ),
+    ]);
 
-    expect(summary([resultOf("t1", { durationMs: 1000 }), resultOf("t2", { durationMs: 200 })])).toEqual({
-      bg: "toolSuccessBg",
-      text: "2 tool calls (read, grep)",
-    });
-    expect(summary([resultOf("t1", { durationMs: 1000 }), resultOf("t2", { durationMs: 200, isError: true })])).toEqual(
-      {
-        bg: "toolErrorBg",
-        text: "2 tool calls (read, grep)",
-      },
+    const rows = contentRows(viewer, 40);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.every((row) => row.bg === "")).toBe(true);
+    // Wrapping may split the row anywhere, but it must not drop or garble a name.
+    expect(rows.map((row) => row.text).join("")).toBe("3 tool calls (mcp_server_read_file, mcp_server_list_dir, read)");
+    expect(viewer.render(40).every((line) => visibleWidthOf(line) <= 40)).toBe(true);
+  });
+
+  it("puts exactly one blank row between adjacent compact rows, and none at either end", () => {
+    const three = openCompactView(
+      [callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" }, { id: "t3", name: "find" })],
+      { flag: { expanded: true } },
     );
-    expect(summary([resultOf("t1", { durationMs: 1000 })])).toEqual({
-      bg: "toolPendingBg",
-      text: "2 tool calls (read, grep)",
-    });
+    expect(contentRows(three)).toEqual([
+      { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "grep" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "find" },
+    ]);
+
+    const beforeText = openCompactView(
+      [callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" }), textOf("answer")],
+      { flag: { expanded: true } },
+    );
+    expect(contentRows(beforeText)).toEqual([
+      { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "grep" },
+      { bg: "", text: "answer" },
+    ]);
+  });
+
+  it("counts a tool-result message as no separator of its own", () => {
+    const viewer = openCompactView(
+      [
+        callsOf({ id: "t1", name: "read" }),
+        resultOf("t1", { text: "fixture-result-detail" }),
+        callsOf({ id: "t2", name: "grep" }),
+      ],
+      { flag: { expanded: true } },
+    );
+
+    expect(contentRows(viewer)).toEqual([
+      { bg: "toolSuccessBg", text: "read" },
+      { bg: "", text: "" },
+      { bg: "toolPendingBg", text: "grep" },
+    ]);
   });
 
   it("shows no thinking at all while it is hidden, collapsed or expanded", () => {
@@ -508,7 +687,7 @@ describe("ConversationViewer compact tool calls", () => {
       callsOf({ id: "t2", name: "grep" }),
     ]);
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
 
     viewer.handleInput("\x14"); // reveal thinking: the run splits at the visible block
     expect(contentRows(viewer)).toEqual([
@@ -519,19 +698,19 @@ describe("ConversationViewer compact tool calls", () => {
     ]);
 
     viewer.handleInput("\x14"); // hide it again: the same two calls are one run
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
   });
 
   it("regroups as calls are appended and settle, without dropping or repeating one", () => {
     const messages = [callsOf({ id: "t1", name: "read" }), resultOf("t1")];
-    const viewer = openCompactView(messages);
+    const viewer = openCompactView(messages, { ungrouped: [] });
     expect(contentRows(viewer)).toEqual([{ bg: "toolSuccessBg", text: "read" }]);
 
     messages.push(callsOf({ id: "t2", name: "grep" }, { id: "t3", name: "bash" }));
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "3 tool calls (read, grep, bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "3 tool calls (read, grep, bash)" }]);
 
     messages.push(resultOf("t2"), resultOf("t3"));
-    expect(contentRows(viewer)).toEqual([{ bg: "toolSuccessBg", text: "3 tool calls (read, grep, bash)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "3 tool calls (read, grep, bash)" }]);
   });
 
   it("groups a call that arrives in the streaming message, whose object is replaced in place", () => {
@@ -544,7 +723,7 @@ describe("ConversationViewer compact tool calls", () => {
     messages[messages.length - 1] = grew;
     emit({ type: "message_end", message: grew });
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (read, grep)" }]);
   });
 
   it("leaves a collapsed summary untouched when it is clicked", () => {
@@ -553,7 +732,7 @@ describe("ConversationViewer compact tool calls", () => {
       resultOf("t1"),
       resultOf("t2"),
     ]);
-    const summary = { bg: "toolSuccessBg", text: "2 tool calls (read, grep)" };
+    const summary = { bg: "", text: "2 tool calls (read, grep)" };
     const [summaryRow] = rowsHolding(viewer, "2 tool calls");
 
     expect(contentRows(viewer)).toEqual([summary]);
@@ -570,8 +749,39 @@ describe("ConversationViewer compact tool calls", () => {
     expect(viewer.handleMouse(click(pendingRow!))).toBeUndefined();
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "toolPendingBg", text: "grep" },
     ]);
+  });
+
+  it("keeps clicking the right call when revealing thinking splits a run", () => {
+    vi.mocked(getHideThinkingBlock).mockReturnValue(true);
+    const long = "y".repeat(400);
+    const viewer = openCompactView(
+      [
+        callsOf({ id: "t1", name: "bash", args: { command: `echo ${long} ONE` } }),
+        resultOf("t1"),
+        thinkingOf("fixture-hidden-thought"),
+        callsOf({ id: "t2", name: "bash", args: { command: `ls ${long} TWO` } }),
+        resultOf("t2"),
+      ],
+      { ungrouped: [] },
+    );
+    const shown = () =>
+      contentRows(viewer)
+        .map((row) => row.text)
+        .join("");
+
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (bash)" }]);
+    expect(viewer.handleMouse(click(rowsHolding(viewer, "2 tool calls")[0]!))).toBeUndefined();
+
+    viewer.handleInput("\x14"); // reveal thinking: the run splits into two compact rows around the block
+    expect(shown()).toContain("fixture-hidden-thought");
+    const [secondCall] = rowsHolding(viewer, "ls ");
+    expect(viewer.handleMouse(click(secondCall!))).toEqual({ handled: true });
+
+    expect(shown()).toContain(`ls ${long} TWO`); // the call under the pointer opened its own arguments
+    expect(shown()).not.toContain(`echo ${long} ONE`);
   });
 
   it("expands only the clicked call's arguments, keeps pi's flag alone, and still shows no result", () => {
@@ -579,14 +789,13 @@ describe("ConversationViewer compact tool calls", () => {
     const flag = { expanded: false };
     const viewer = openCompactView(
       [
-        callsOf(
-          { id: "t1", name: "bash", args: { command: `echo ${long}` } },
-          { id: "t2", name: "bash", args: { command: `ls ${long}` } },
-        ),
+        callsOf({ id: "t1", name: "bash", args: { command: `echo ${long}` } }),
+        textOf("between"),
+        callsOf({ id: "t2", name: "bash", args: { command: `ls ${long}` } }),
         resultOf("t1", { text: "fixture-result-detail" }),
         resultOf("t2", { text: "fixture-other-result" }),
       ],
-      { flag, ungrouped: ["bash"] },
+      { flag, ungrouped: [] },
     );
     const collapsed = contentRows(viewer).map((row) => row.text);
     expect(collapsed.filter((text) => text.includes("echo"))).toHaveLength(1);
@@ -601,13 +810,34 @@ describe("ConversationViewer compact tool calls", () => {
     expect(flag.expanded).toBe(false); // a per-call choice leaves pi's flag alone
   });
 
+  it("opens an excluded call's result when it is clicked, exactly as in the ordinary viewer", () => {
+    const viewer = openCompactView([
+      callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hello" } }),
+      resultOf("t1", { name: "write", text: "line1\nline2\nline3\nline4\nline5" }),
+    ]);
+    const shown = () =>
+      contentRows(viewer)
+        .map((row) => row.text)
+        .join(" ");
+
+    expect(shown()).toContain("line3");
+    expect(shown()).toContain("2 more lines"); // the collapsed preview the normal viewer shows
+    expect(shown()).not.toContain("line5");
+
+    const [writeRow] = rowsHolding(viewer, "write(");
+    expect(viewer.handleMouse(click(writeRow!))).toEqual({ handled: true });
+
+    expect(shown()).toContain("line5");
+    expect(shown()).not.toContain("more lines");
+  });
+
   it("groups every call once the exclusion list is emptied", () => {
     const viewer = openCompactView(
       [callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hi" } }, { id: "t2", name: "edit" })],
       { ungrouped: [] },
     );
 
-    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (write, edit)" }]);
+    expect(contentRows(viewer)).toEqual([{ bg: "", text: "2 tool calls (write, edit)" }]);
   });
 
   it("maps a click to the frame it saw, after scrolling moved the grouped transcript", () => {
@@ -623,7 +853,7 @@ describe("ConversationViewer compact tool calls", () => {
         resultOf("t1"),
         resultOf("t2"),
       ],
-      { rows: 24, flag: { expanded: true } },
+      { rows: 24, flag: { expanded: true }, ungrouped: [] },
     );
     const scroll = (delta: number) => {
       viewer.handleMouse(wheel(delta));
@@ -693,6 +923,7 @@ describe("ConversationViewer compact tool calls", () => {
     expect(toggleExpanded).toHaveBeenCalledOnce(); // the host's own setter, so pi's chat follows too
     expect(contentRows(viewer)).toEqual([
       { bg: "toolSuccessBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "toolSuccessBg", text: "grep" },
     ]);
   });
@@ -709,9 +940,9 @@ describe("ConversationViewer compact tool calls", () => {
         resultOf("t1"),
         resultOf("t2"),
       ],
-      { flag },
+      { flag, ungrouped: [] },
     );
-    const summary = { bg: "toolSuccessBg", text: "2 tool calls (bash, grep)" };
+    const summary = { bg: "", text: "2 tool calls (bash, grep)" };
     expect(contentRows(viewer)).toEqual([summary]);
 
     flag.expanded = true;

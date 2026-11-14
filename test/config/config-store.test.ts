@@ -1026,10 +1026,10 @@ describe("AgentStatus settled limit resolution", () => {
 /* ------------------------------------------------------------------ */
 
 describe("ConfigStore compact conversation viewer preferences", () => {
-  it("defaults compact tool calls off and ungrouped tools to write, edit, replace", () => {
+  it("defaults compact tool calls off and ungrouped tools to write, edit, replace, bash", () => {
     const store = new ConfigStore(minimalIO());
     expect(store.agent.compactToolCalls).toBe(false);
-    expect(store.agent.ungroupedTools).toEqual(["write", "edit", "replace"]);
+    expect(store.agent.ungroupedTools).toEqual(["write", "edit", "replace", "bash"]);
   });
 
   it("reads an explicit empty ungrouped list as no exclusions, not as the defaults", () => {
@@ -1045,8 +1045,10 @@ describe("ConfigStore compact conversation viewer preferences", () => {
     expect(saves).toHaveLength(1);
     expect(saves[0].layer).toBe("global");
     expect(global().agent!.compactToolCalls).toBe(true);
+    expect(new ConfigStore(io).agent.compactToolCalls).toBe(true); // a fresh store, i.e. a restart
     store.mutate.agent.setCompactToolCalls(false);
     expect(global().agent!.compactToolCalls).toBe(false);
+    expect(new ConfigStore(io).agent.compactToolCalls).toBe(false);
   });
 
   it("setUngroupedTools persists the name list, an empty list included, and reload keeps it", () => {

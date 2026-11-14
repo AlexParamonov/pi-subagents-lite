@@ -104,7 +104,7 @@ export interface ConversationViewerOptions {
   toolDisplay?: ToolDisplayOptions;
   /** Summarize runs of adjacent eligible calls; drop result bodies, padding and hidden thinking. */
   compactToolCalls?: boolean;
-  /** Tool names that keep their own row and split a run. Matched exactly, case-sensitively. */
+  /** Tool names that keep their complete normal call block and split a run. Matched exactly, case-sensitively. */
   ungroupedTools?: readonly string[];
 }
 
@@ -125,10 +125,10 @@ interface ToolCall {
   args?: Record<string, unknown>;
 }
 
-/** One position of the compact layout: a message's non-call rows, one call, or a collapsed run. */
+/** One position of the compact layout: non-call rows, a normal or compact call, or a collapsed run. */
 type CompactEntry =
-  | { kind: "rows"; msgIndex: number }
-  | { kind: "call"; call: ToolCall }
+  | { kind: "rows"; rows: string[] }
+  | { kind: "normal-call" | "compact-call"; call: ToolCall }
   | { kind: "run"; calls: ToolCall[] };
 
 /** The message's tool calls, in the order the viewer paints them. */
@@ -144,14 +144,6 @@ function callsOfMessage(msg: any): ToolCall[] {
 /** The status background of one call. */
 function callBg(result: ToolResultStatus | undefined): ToolBg {
   return result ? (result.isError ? "toolErrorBg" : "toolSuccessBg") : "toolPendingBg";
-}
-
-/** One color for a whole run: a failed call wins, then an unfinished one, else success. */
-function runBg(calls: ToolCall[], toolResults: Map<string, ToolResultStatus>): ToolBg {
-  const results = calls.map((call) => (call.id ? toolResults.get(call.id) : undefined));
-  if (results.some((result) => result?.isError)) return "toolErrorBg";
-  if (results.some((result) => !result)) return "toolPendingBg";
-  return "toolSuccessBg";
 }
 
 export class ConversationViewer implements Component {
@@ -215,7 +207,7 @@ export class ConversationViewer implements Component {
   private thinkingVisible: boolean;
   /** Compact presentation, fixed at open: summarized call runs and no results, padding or hidden thinking. */
   private readonly compactToolCalls: boolean;
-  /** Tool names the compact layout keeps individually; each one also splits a run. */
+  /** Tool names the compact layout keeps whole; each one also splits a run. */
   private readonly ungroupedTools: ReadonlySet<string>;
   private readonly onStop?: () => void;
   private readonly onSteer?: (message: string) => void;
@@ -895,13 +887,24 @@ export class ConversationViewer implements Component {
     // Tool calls. In compact mode the assembly paints them per frame, never from this cache.
     if (this.compactToolCalls) return lines;
     for (const tc of callsOfMessage(msg)) {
-      const start = lines.length;
-      lines.push(...this.renderToolCall(tc, width, toolResults));
-      // Like pi, only a call with a result can be toggled by clicking it.
-      if (tc.id && toolResults.has(tc.id)) blocks.push({ id: tc.id, start, end: lines.length });
-      lines.push("");
+      this.appendCallBlock(tc, width, toolResults, lines, blocks);
     }
     return lines;
+  }
+
+  /** One call's complete normal block: fill bars, result, its own trailing blank row, click target included. */
+  private appendCallBlock(
+    tc: ToolCall,
+    width: number,
+    toolResults: Map<string, ToolResultStatus>,
+    lines: string[],
+    blocks: ToolBlock[],
+  ): void {
+    const start = lines.length;
+    lines.push(...this.renderToolCall(tc, width, toolResults));
+    // Like pi, only a call with a result can be toggled by clicking it.
+    if (tc.id && toolResults.has(tc.id)) blocks.push({ id: tc.id, start, end: lines.length });
+    lines.push("");
   }
 
   private renderToolCall(tc: ToolCall, width: number, toolResults: Map<string, ToolResultStatus>): string[] {
@@ -952,19 +955,24 @@ export class ConversationViewer implements Component {
   /**
    * Compact layout entries in display order: each message's non-call rows, then
    * its calls. Two or more consecutive eligible calls collapse into one run at
-   * the position of their first member; anything that paints non-call content,
+   * the position of their first member; a message that paints rows of its own,
    * and any excluded call, ends the open run. pi's expanded flag shows every
    * call itself, so no run forms at all.
    */
-  private compactEntries(messages: any[]): CompactEntry[] {
+  private compactEntries(messages: any[], width: number, toolResults: Map<string, ToolResultStatus>): CompactEntry[] {
     const entries: CompactEntry[] = [];
     let openRun: { kind: "run"; calls: ToolCall[] } | undefined;
     messages.forEach((msg: any, msgIndex: number) => {
-      entries.push({ kind: "rows", msgIndex });
-      if (this.paintsNonCallContent(msg)) openRun = undefined;
+      // In compact mode a cached message holds only its non-call rows, so those rows are
+      // the one answer to "does this message paint visible content?": blank text and
+      // blank turns paint nothing, so they do not end the open run.
+      const rows = this.messageCache.get(msgIndex) ?? this.cacheMessage(msgIndex, msg, width, toolResults);
+      entries.push({ kind: "rows", rows });
+      if (rows.length > 0) openRun = undefined;
       for (const call of callsOfMessage(msg)) {
-        if (this.toolsExpanded || this.ungroupedTools.has(call.name)) {
-          entries.push({ kind: "call", call });
+        const ungrouped = this.ungroupedTools.has(call.name);
+        if (this.toolsExpanded || ungrouped) {
+          entries.push({ kind: ungrouped ? "normal-call" : "compact-call", call });
           openRun = undefined;
         } else if (openRun) {
           openRun.calls.push(call);
@@ -976,25 +984,17 @@ export class ConversationViewer implements Component {
     });
     // A run of one is not a summary: it shows the call itself.
     return entries.map((entry) =>
-      entry.kind === "run" && entry.calls.length === 1 ? { kind: "call", call: entry.calls[0]! } : entry,
+      entry.kind === "run" && entry.calls.length === 1 ? { kind: "compact-call", call: entry.calls[0]! } : entry,
     );
   }
 
   /**
-   * True when a message paints rows other than calls, which bounds a compact run.
-   * Blank text paints no row (pi's Markdown skips it), so like a blank user turn it
-   * is not a boundary.
+   * Compact content rows and their click targets, straight from the transcript: never cached call rows.
+   *
+   * Exactly one blank row separates two adjacent compact items (a run summary or an individually shown
+   * eligible call). A message that paints nothing leaves them adjacent; visible content and an excluded
+   * call's own block carry their own spacing, so they take no compact separator.
    */
-  private paintsNonCallContent(msg: any): boolean {
-    if (msg?.role === "user") return userText(msg).trim() !== "";
-    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return false;
-    return msg.content.some(
-      (c: any) =>
-        (c?.type === "text" && c.text?.trim()) || (c?.type === "thinking" && c.thinking && this.thinkingVisible),
-    );
-  }
-
-  /** Compact content rows and their click targets, straight from the transcript: never cached call rows. */
   private appendCompactRows(
     messages: any[],
     width: number,
@@ -1002,26 +1002,53 @@ export class ConversationViewer implements Component {
     lines: string[],
     toolBlocks: ToolBlock[],
   ): void {
-    for (const entry of this.compactEntries(messages)) {
+    let afterCompactItem = false;
+    for (const entry of this.compactEntries(messages, width, toolResults)) {
       if (entry.kind === "rows") {
-        const cached = this.messageCache.get(entry.msgIndex);
-        lines.push(...(cached ?? this.cacheMessage(entry.msgIndex, messages[entry.msgIndex], width, toolResults)));
+        if (entry.rows.length > 0) afterCompactItem = false;
+        lines.push(...entry.rows);
         continue;
       }
-      if (entry.kind === "run") {
-        const names = plainText([...new Set(entry.calls.map((call) => call.name))].join(", "));
-        const text = ` ${this.theme.bold(`${entry.calls.length} tool calls (${names})`)} `;
-        lines.push(...this.callRows(text, runBg(entry.calls, toolResults), width));
+      if (entry.kind === "normal-call") {
+        // shortcut: the message cache holds non-call rows only, so this block - its whole result
+        // re-wrapped - is rebuilt by every frame that rebuilds. Measured on a 60-call transcript with
+        // 6MB of results: 20ms collapsed / 45ms expanded per rebuild, against 0.5-1.6ms from the cache.
+        // Upgrade by caching blocks per call id, keyed on width, expansion, timing and the result object.
+        this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks);
+        afterCompactItem = false;
         continue;
       }
-      const start = lines.length;
-      const call = entry.call;
-      const result = call.id ? toolResults.get(call.id) : undefined;
-      const timing = this.toolTimingText(call.id, result);
-      lines.push(...this.callRows(this.callTitleText(call, timing), callBg(result), width));
-      // Like pi, only a call with a result can be toggled by clicking it.
-      if (call.id && toolResults.has(call.id)) toolBlocks.push({ id: call.id, start, end: lines.length });
+      if (afterCompactItem) lines.push("");
+      if (entry.kind === "run") this.appendRunSummary(entry.calls, width, lines);
+      else this.appendCompactCall(entry.call, width, toolResults, lines, toolBlocks);
+      afterCompactItem = true;
     }
+  }
+
+  /**
+   * A run as one summary item in the default text color: its call count and names in first-seen
+   * order, wrapped at the same padding a call row uses.
+   */
+  private appendRunSummary(calls: ToolCall[], width: number, lines: string[]): void {
+    const names = plainText([...new Set(calls.map((call) => call.name))].join(", "));
+    const text = this.theme.fg("text", this.theme.bold(` ${calls.length} tool calls (${names}) `));
+    lines.push(...wrapTextWithAnsi(text, width - 2));
+  }
+
+  /** One eligible call as one status-colored row: no fill bars, no result, no padding of its own. */
+  private appendCompactCall(
+    call: ToolCall,
+    width: number,
+    toolResults: Map<string, ToolResultStatus>,
+    lines: string[],
+    toolBlocks: ToolBlock[],
+  ): void {
+    const start = lines.length;
+    const result = call.id ? toolResults.get(call.id) : undefined;
+    const timing = this.toolTimingText(call.id, result);
+    lines.push(...this.callRows(this.callTitleText(call, timing), callBg(result), width));
+    // Like pi, only a call with a result can be toggled by clicking it.
+    if (call.id && toolResults.has(call.id)) toolBlocks.push({ id: call.id, start, end: lines.length });
   }
 
   /**

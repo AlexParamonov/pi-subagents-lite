@@ -76,8 +76,22 @@ vi.mock("@earendil-works/pi-tui", () => ({
   visibleWidth: vi.fn((s: string) => s.length),
 }));
 
+vi.mock("../../../src/ui/conversation-viewer.js", () => ({
+  ConversationViewer: class MockConversationViewer {
+    constructor(...args: ViewerArgs) {
+      viewerOptions.push(args[5]);
+    }
+    setModelDisplayStyle() {}
+  },
+}));
+
 // Import AFTER mock setup
 import { showRunningAgentsMenu, buildAgentActionsList } from "../../../src/ui/menu/menu-running-agents.js";
+
+/** Options of the ConversationViewer this entry point builds. The viewer's own suite pins
+ * how it renders them; here only the hand-off from the saved preferences matters. */
+type ViewerArgs = ConstructorParameters<typeof import("../../../src/ui/conversation-viewer.js").ConversationViewer>;
+const viewerOptions: ViewerArgs[5][] = [];
 
 /** Nested-partial overrides the record factory merges over its base record. */
 interface RecordOverrides {
@@ -89,8 +103,8 @@ interface RecordOverrides {
   error?: string;
 }
 
-/** A session handle the menu only checks for truthiness; the real
- * ConversationViewer (never constructed here) would consume it. */
+/** A session handle the menu only checks for truthiness; the mocked
+ * ConversationViewer would consume it for real. */
 function makeMockSession(messages: { role: string; content: string }[]) {
   return asAgentSession({ messages, subscribe: vi.fn(() => () => {}) });
 }
@@ -640,6 +654,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
   beforeEach(() => {
     selectListCalls = [];
     vi.clearAllMocks();
+    viewerOptions.length = 0;
   });
 
   it("shows View conversation action for completed agent with session", () => {
@@ -743,6 +758,38 @@ describe("buildAgentActionsList — completed agent with session", () => {
 
     expect(capturedFactory).toBeDefined();
     expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), { overlay: true });
+  });
+
+  it("hands the saved viewer presentation to the ConversationViewer", async () => {
+    mockModules.mockConfig.agent.compactToolCalls = true;
+    mockModules.mockConfig.agent.ungroupedTools = ["my_tool"];
+    let capturedFactory: ComponentFactory | null = null;
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
+      result: "done",
+    });
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async (factory) => {
+          capturedFactory = factory;
+          return undefined;
+        }),
+      },
+    });
+
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await list.onSelect!({ value: "view-conversation", label: "View conversation" });
+    capturedFactory!({ terminal: { rows: 40 } }, defaultTheme, undefined, () => {});
+
+    expect(viewerOptions).toEqual([expect.objectContaining({ compactToolCalls: true, ungroupedTools: ["my_tool"] })]);
   });
 
   it("shows both View conversation and View result for completed agent with session and result", () => {
