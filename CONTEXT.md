@@ -56,6 +56,14 @@ _Avoid_: Default tools inheritance, tool fallback
 An extension bundled with the pi CLI itself (codemode, tool-search, mcp; llama.cpp excluded) that a Subagent session loads via pi's public SDK creators wrapped with pi's own names and `builtin`/`replaceable` flags, so settings-level extension selection applies inside the child loader unchanged. Selectable and deselectable by bare name in Agent type frontmatter `extensions`.
 _Avoid_: Core extension, internal extension, bundled tool
 
+**Compact tool calls**:
+Global **ConversationViewer overlay** preference (default off) that replaces each **Call run** with one count-and-names row, paints every other tool call as a single status-colored row without result body, fill bar or blank separator, and omits hidden thinking completely. Read when the viewer opens, from both entry points; pi's tool-output flag still selects summaries (collapsed) or individual calls (expanded).
+_Avoid_: Compact mode (that is the widget's own state), condensed view
+
+**Ungrouped tools**:
+Global comma-editable list of tool names the **Compact tool calls** presentation keeps on their own row; each one also ends the **Call run** around it. An absent key means `write`, `edit`, `replace`, an empty list groups every call. Names match exactly and case-sensitively, custom and MCP names included.
+_Avoid_: Excluded tools, tool categories, grouping allowlist
+
 ### Worktrees
 
 **Worktree**:
@@ -127,6 +135,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - **MessageAgent** continues any **Settled** **Subagent** with a live session, including one a human stopped: the model can restart a deliberately stopped agent
 - Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
 - A **Nudge** carries a **Subagent** result parent-ward; **MessageAgent** carries input the other way
+- **Compact tool calls** and **Ungrouped tools** live in the **Global config** only: a **Project config** cannot carry either, and clearing **Model override**s keeps both
 
 ### Navigation
 
@@ -151,3 +160,7 @@ _Avoid_: Re-sort, refresh
 **ConversationViewer overlay**:
 Live, scrollable view of an agent's conversation, streamed from session events. Opened from the running-agents menu; owns input while open (`Enter` steers, `s` stops).
 _Avoid_: ResultViewer, snapshot viewer
+
+**Call run**:
+Two or more consecutive eligible tool calls in the **ConversationViewer overlay**'s display order, counted across turns. Visible text, revealed thinking, or an **Ungrouped tools** name ends it; a run of one is not a run. Under **Compact tool calls** a run shows as one summary row carrying its count, unique names in first-seen order, and one status color: a failed call wins, then an unfinished one, else success.
+_Avoid_: Tool group, call cluster, merged calls

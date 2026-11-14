@@ -27,7 +27,7 @@ import {
 import type { AgentRecord } from "../../types.ts";
 import { SHORT_ID_LENGTH } from "../../types.ts";
 import { ConversationViewer } from "../conversation-viewer.ts";
-import { viewerToolDisplay } from "../tool-display.ts";
+import { viewerToolDisplay, viewerPresentation } from "../tool-display.ts";
 import { getDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
@@ -51,6 +51,7 @@ async function showConversationViewer(ctx: ExtensionCommandContext, record: Agen
         keybindings: kb,
         onSteer: (msg: string) => manager?.steer(record.id, msg),
         toolDisplay: viewerToolDisplay(ctx, manager, record.id),
+        ...viewerPresentation(getStore()),
       });
       viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
       return viewer;
