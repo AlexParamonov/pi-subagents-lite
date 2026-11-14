@@ -5,9 +5,10 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { MarkdownTheme, TUI, TuiMouseEvent } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../src/types.js";
-import type { Theme } from "../../src/ui/types.js";
 import type { ViewerKeybindings } from "../../src/ui/viewer-keys.js";
-import { asAgentSession } from "../pi-boundaries.js";
+import { asAgentSession, asTui } from "../pi-boundaries.js";
+import { expectNoTerminalControls } from "../fixtures.js";
+import { defaultTheme } from "../mock-utils.js";
 
 // --- Mocks ---
 
@@ -103,16 +104,13 @@ vi.mock("../../src/pi-settings.js", () => ({
 // --- Import after mocks ---
 
 import { getHideThinkingBlock } from "../../src/pi-settings.js";
-import { ConversationViewer, type ToolDisplayOptions } from "../../src/ui/conversation-viewer.js";
+import {
+  ConversationViewer,
+  type ConversationViewerOptions,
+  type ToolDisplayOptions,
+} from "../../src/ui/conversation-viewer.js";
 
 // --- Test helpers ---
-
-const noopTheme: Theme = {
-  fg: (_color: string, text: string) => text,
-  bg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
-  italic: (text: string) => text,
-};
 
 /** Minimal message shape the viewer renders: role, content blocks, tool-result metadata. */
 interface TestContentBlock {
@@ -174,17 +172,6 @@ function frameText(viewer: ConversationViewer, width = 80): string {
   return frameLines(viewer, width).join("\n");
 }
 
-/** The tool-output trust boundary: no terminal controls may reach the TUI. */
-function expectNoUnsafeControls(frame: string[]): void {
-  // oxlint-disable-next-line no-control-regex -- asserting no control character survives is the point
-  expect(frame.join("\n")).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\uFFF9-\uFFFB\p{Bidi_Control}]/u);
-}
-
-/** Assert a fake TUI at the boundary: the viewer reads only requestRender and terminal.rows. */
-function asTui<S extends object>(fake: S): TUI & S {
-  return fake as TUI & S;
-}
-
 function makeTui(rows = 40): TUI {
   return asTui({
     terminal: { rows, cols: 120 },
@@ -192,31 +179,18 @@ function makeTui(rows = 40): TUI {
   });
 }
 
-interface ViewerOptions {
+/** Test-only additions to the viewer's own options: the fake TUI's height and its close callback. */
+interface ViewerOptions extends ConversationViewerOptions {
   rows?: number;
   onClose?: () => void;
-  onStop?: () => void;
-  keybindings?: ViewerKeybindings;
-  onSteer?: (message: string) => void;
-  toolDisplay?: ToolDisplayOptions;
 }
 
 function openViewer(
   session: ReturnType<typeof makeMockSession>,
   record: AgentRecord,
-  options: ViewerOptions = {},
+  { rows, onClose, ...options }: ViewerOptions = {},
 ): ConversationViewer {
-  return new ConversationViewer(
-    makeTui(options.rows),
-    session,
-    record,
-    noopTheme,
-    options.onClose ?? vi.fn(),
-    options.onStop,
-    options.keybindings,
-    options.onSteer,
-    options.toolDisplay,
-  );
+  return new ConversationViewer(makeTui(rows), session, record, defaultTheme, onClose ?? vi.fn(), options);
 }
 
 // --- Tests ---
@@ -619,7 +593,7 @@ describe("ConversationViewer", () => {
       const viewer = openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: raw })], { flag: { expanded: true } });
       // Check the actual frame so a terminal control cannot be hidden by a text-only helper.
       const frame = viewer.render(80);
-      expectNoUnsafeControls(frame);
+      expectNoTerminalControls(frame);
       const shown = frame.join("\n");
       // What is left is the text around each sequence: removing one must not take its
       // neighbours with it, and must not leave the sequence's own parameters behind.
@@ -650,7 +624,7 @@ describe("ConversationViewer", () => {
       for (const expanded of [false, true]) {
         const viewer = openCallView(hostile.messages, { flag: { expanded } });
         const frame = viewer.render(80);
-        expectNoUnsafeControls(frame);
+        expectNoTerminalControls(frame);
         expect(frame.join("\n")).toContain("echo AB");
       }
     });

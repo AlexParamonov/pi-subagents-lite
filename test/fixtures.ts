@@ -5,7 +5,7 @@
  *   - shellMock: ../src/shell.js stubs (parameterized by hoisted fns)
  */
 
-import { vi, type Mock } from "vite-plus/test";
+import { vi, expect, type Mock } from "vite-plus/test";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -593,4 +593,14 @@ export function createFlatSkill(tmpDir: string, name: string, description: strin
   mkdirSync(skillsDir, { recursive: true });
   const content = `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}`;
   writeFileSync(join(skillsDir, `${name}.md`), content);
+}
+
+/**
+ * The text trust boundary: no terminal control sequence, control character or bidi
+ * control may survive into a painted frame. Assert on the frame as painted — a
+ * reader that strips styling can strip the leak it is checking for.
+ */
+export function expectNoTerminalControls(frame: string[]): void {
+  // oxlint-disable-next-line no-control-regex -- asserting no control character survives is the point
+  expect(frame.join("\n")).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\uFFF9-\uFFFB\p{Bidi_Control}]/u);
 }

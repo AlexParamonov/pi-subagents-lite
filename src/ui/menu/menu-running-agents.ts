@@ -29,7 +29,9 @@ import { SHORT_ID_LENGTH } from "../../types.ts";
 import { ConversationViewer } from "../conversation-viewer.ts";
 import { viewerToolDisplay } from "../tool-display.ts";
 import { getDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
+import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
+import { overlayViewportRows } from "../overlay.ts";
 import { getManager, getStore } from "../../shell.ts";
 import type { Theme } from "../types.ts";
 
@@ -44,17 +46,12 @@ async function showConversationViewer(ctx: ExtensionCommandContext, record: Agen
 
   await ctx.ui.custom<void>(
     (tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(
-        tui,
-        record.execution.session!,
-        record,
-        theme,
-        done,
-        () => manager?.abort(record.id, "user"),
-        kb,
-        (msg: string) => manager?.steer(record.id, msg),
-        viewerToolDisplay(ctx, manager, record.id),
-      );
+      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
+        onStop: () => manager?.abort(record.id, "user"),
+        keybindings: kb,
+        onSteer: (msg: string) => manager?.steer(record.id, msg),
+        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
+      });
       viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
       return viewer;
     },
@@ -69,11 +66,11 @@ async function showTextViewer(
   text: string,
 ): Promise<void> {
   const titleSuffix = kind === "result" ? record.id.slice(0, SHORT_ID_LENGTH) : "Error";
-  const textLines = text.split("\n");
+  // Error text carries provider bodies and child stderr, result text carries whatever the
+  // agent echoed back: neither may reach the terminal with a control sequence intact.
+  const textLines = text.split("\n").map((line) => plainText(line));
   const displayName = getDisplayName(record.display.type);
   const chromeLines = 5; // top border + title + sep + footer + bottom border
-  const MIN_VIEWPORT = 3;
-  const VIEWPORT_HEIGHT_PCT = 70;
   let scrollOffset = 0;
   let autoScroll = true;
 
@@ -81,10 +78,7 @@ async function showTextViewer(
     (tui, theme, _kb, done) => {
       const border = theme.fg("border", "│");
 
-      const viewportHeight = () => {
-        const maxRows = Math.floor((tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
-        return Math.max(MIN_VIEWPORT, maxRows - chromeLines);
-      };
+      const viewportHeight = () => overlayViewportRows(tui.terminal.rows, chromeLines);
 
       return {
         invalidate() {},

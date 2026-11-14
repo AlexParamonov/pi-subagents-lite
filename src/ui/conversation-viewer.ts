@@ -35,14 +35,13 @@ import {
   resolveAgentModelLabel,
   statusIcon,
 } from "./format.ts";
+import { plainText } from "./sanitize.ts";
 import { summarizeToolArgs } from "../utils.ts";
+import { overlayViewportRows } from "./overlay.ts";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
 
 /** Fixed chrome lines: top border + 2 header rows + 2 separators + footer + bottom border. */
 const CHROME_LINES_BASE = 7;
-const MIN_VIEWPORT = 3;
-/** Cap viewport height at this % of terminal rows so the bordered box fits without clipping. */
-export const VIEWPORT_HEIGHT_PCT = 70;
 /** Debounce interval for streaming renders — reduces CPU during fast token arrival. */
 const STREAM_RENDER_DEBOUNCE_MS = 100;
 /** Redraw interval for the "Elapsed" readout of running tool calls. */
@@ -67,44 +66,6 @@ interface ToolResultStatus {
 }
 
 /**
- * One terminal control sequence: CSI (`ESC [` parameters, intermediates and final
- * byte, or the 8-bit CSI introducing them directly), or a string sequence
- * (OSC/DCS/SOS/PMC/APC) ended by BEL or ST, or a lone `ESC`. Parameters cannot hold
- * a terminator and string sequences stop at the next `ESC`, BEL or ST, so text
- * after an unterminated sequence survives.
- *
- * Shaped like pi's own `stripAnsi`, which is what its `getTextOutput` runs over
- * tool output. Two library helpers were rejected: pi-tui's `stripTerminalSequences`
- * recognises only `m`, `G`, `K`, `H` and `J` as CSI terminators, so DEC private
- * modes (`ESC[?1049h` alternate screen, `ESC[?25l` hide cursor), `ESC[6n` (the
- * terminal's reply arrives on stdin, i.e. as typed input) and window manipulation
- * pass through it; `stripAnsi` itself is not exported from the package entry point.
- */
-const CONTROL_SEQUENCE =
-  // oxlint-disable-next-line no-control-regex -- matching control characters is the point
-  /\u001B(?:\[[0-?]*[ -/]*[@-~]|[PX^_][^\u0007\u001B\u009C]*(?:\u0007|\u001B\\|\u009C)|][^\u0007\u001B\u009C]*(?:\u0007|\u001B\\|\u009C))|\u009B[0-?]*[ -/]*[@-~]/g;
-
-/**
- * C0 except tab/LF, DEL, C1, Unicode bidi controls and interlinear annotation
- * controls. Carriage return is removed as a C0 control, as pi's `getTextOutput` does.
- * Leftover introducers and terminators the sequence pattern did not consume go
- * here, so no control character reaches the terminal whatever its encoding.
- * Every member is a single UTF-16 code unit, so surrogate pairs are never split.
- */
-// oxlint-disable-next-line no-control-regex -- removing control characters is the point
-const CONTROL_CHARACTER = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\p{Bidi_Control}\uFFF9-\uFFFB]/gu;
-
-/**
- * Text with terminal control sequences and control characters removed, in both the
- * 7-bit (`ESC [`) and the 8-bit (`CSI`) encodings, as pi's own `getTextOutput` does.
- * Tabs stay as they are: pi-tui counts a tab as three cells and expands it when it
- * writes the line, which is what pi's `replaceTabs` asks for.
- */
-function plainText(text: string): string {
-  return text.replace(CONTROL_SEQUENCE, "").replace(CONTROL_CHARACTER, "");
-}
-
-/**
  * Plain text of a tool result's content, safe to render. Tool output is untrusted
  * bytes (a `curl` body, a binary `grep`), so it goes through {@link plainText}.
  */
@@ -124,6 +85,18 @@ export interface ToolDisplayOptions {
   isExpanded?: () => boolean;
   /** Flip the global flag (`ctx.ui.setToolsExpanded(!…)`), so pi refreshes its own rows. Omitted -> key ignored. */
   toggleExpanded?: () => void;
+}
+
+/** Optional wiring of the viewer to the agent it shows and to pi's keybindings. */
+export interface ConversationViewerOptions {
+  /** Abort the agent shown here. Omitted -> no stop affordance (e.g. read-only history). */
+  onStop?: () => void;
+  /** User keybindings from `ctx.ui.custom()`. Omitted -> hardcoded defaults. */
+  keybindings?: ViewerKeybindings;
+  /** Send a steering message to the agent. Omitted -> no compose affordance. */
+  onSteer?: (message: string) => void;
+  /** Tool timing seeds and pi's global collapsed/expanded flag. */
+  toolDisplay?: ToolDisplayOptions;
 }
 
 /** A settled tool call's rows: lines [start, end) of a message or of the content. */
@@ -192,6 +165,9 @@ export class ConversationViewer implements Component {
   private clickOrigin: { topRow: number; firstLine: number; rows: number } | undefined;
   /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
   private thinkingVisible: boolean;
+  private readonly onStop?: () => void;
+  private readonly onSteer?: (message: string) => void;
+  private readonly toolDisplay: ToolDisplayOptions;
 
   constructor(
     private tui: TUI,
@@ -199,16 +175,13 @@ export class ConversationViewer implements Component {
     private record: AgentRecord,
     private theme: Theme,
     private done: (result: undefined) => void,
-    /** Abort the agent shown here. Omitted -> no stop affordance (e.g. read-only history). */
-    private onStop?: () => void,
-    /** User keybindings from `ctx.ui.custom()`. Omitted -> hardcoded defaults. */
-    keybindings?: ViewerKeybindings,
-    /** Send a steering message to the agent. Omitted -> no compose affordance. */
-    private onSteer?: (message: string) => void,
-    private toolDisplay: ToolDisplayOptions = {},
+    options: ConversationViewerOptions = {},
   ) {
+    this.onStop = options.onStop;
+    this.onSteer = options.onSteer;
+    this.toolDisplay = options.toolDisplay ?? {};
     this.thinkingVisible = !getHideThinkingBlock();
-    this.keys = createViewerKeys(keybindings);
+    this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
     this.seedRunningToolCalls(this.toolDisplay.getToolStartedAt);
     this.unsubscribe = session.subscribe((event) => {
@@ -748,10 +721,8 @@ export class ConversationViewer implements Component {
   }
 
   private viewportHeight(): number {
-    // Cap mirrors the overlay's maxHeight -- otherwise the viewer would render
-    // more lines than the overlay shows and clip the footer.
-    const maxRows = Math.floor((this.tui.terminal.rows * VIEWPORT_HEIGHT_PCT) / 100);
-    return Math.max(MIN_VIEWPORT, maxRows - this.chromeLines());
+    // The share cap matters here: rendering more rows than the overlay shows would clip the footer.
+    return overlayViewportRows(this.tui.terminal.rows, this.chromeLines());
   }
 
   private chromeLines(): number {

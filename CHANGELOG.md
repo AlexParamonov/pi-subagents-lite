@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The conversation viewer omits the expand-key hint when `app.tools.expand` is explicitly unbound.
 - Tool calls and their results are stripped of terminal control sequences (7-bit `ESC [` and 8-bit `CSI`), control characters and bidirectional formatting controls before the viewer renders them. Message and thinking text are not stripped, as in pi's own chat rendering.
+- The agent's result and error viewer strips the same control sequences from the text it paints. Its error text carries provider error bodies and child stderr, which reached the terminal intact.
 - The widget's `Ctrl+o` compact-mode sync follows pi's `app.tools.expand` binding instead of a hardcoded `ctrl+o`, so a remapped key keeps it in sync.
 
 ## [1.18.0] - 2026-11-03

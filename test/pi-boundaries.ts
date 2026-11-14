@@ -2,7 +2,7 @@
  * pi-boundaries.ts — Test-only boundaries with the pi SDK type surface.
  *
  * 1. Fake assertion — test fakes are partial objects, but pi's classes
- *    (AgentSession) and pi's context interfaces (ExtensionCommandContext)
+ *    (AgentSession, TUI) and pi's context interfaces (ExtensionCommandContext)
  *    carry private members and hundreds of required fields, so no structural
  *    fake can satisfy them. The `as*` helpers assert the real type at the
  *    single call boundary where a src function requires it, and intersect the
@@ -22,7 +22,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { SelectItem, SelectList } from "@earendil-works/pi-tui";
+import type { SelectItem, SelectList, TUI } from "@earendil-works/pi-tui";
 
 /** Assert a fake session against the real AgentSession at a call boundary. */
 export function asAgentSession<S extends object>(fake: S): AgentSession & S {
@@ -42,6 +42,11 @@ export function asExtensionContext<S extends object>(fake: S): ExtensionContext 
 /** Assert a partial command context against the real ExtensionCommandContext. */
 export function asCommandContext<S extends object>(fake: S): ExtensionCommandContext & S {
   return fake as ExtensionCommandContext & S;
+}
+
+/** Assert a fake terminal against the real TUI: components read requestRender and terminal rows/cols. */
+export function asTui<S extends object>(fake: S): TUI & S {
+  return fake as TUI & S;
 }
 
 /** The two private SelectList members menu tests need to assert on. */

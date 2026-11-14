@@ -109,17 +109,12 @@ async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Pr
     widget.setViewerOpen(true);
 
     await ctx.ui.custom<void>((tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(
-        tui,
-        record.execution.session!,
-        record,
-        theme,
-        done,
-        () => manager?.abort(record.id, "user"),
-        kb,
-        (msg: string) => manager?.steer(record.id, msg),
-        viewerToolDisplay(ctx, manager, record.id),
-      );
+      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
+        onStop: () => manager?.abort(record.id, "user"),
+        keybindings: kb,
+        onSteer: (msg: string) => manager?.steer(record.id, msg),
+        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
+      });
       viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
       return viewer;
     });

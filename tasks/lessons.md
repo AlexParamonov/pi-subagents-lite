@@ -271,3 +271,11 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## Subsecond tool durations retain precision - 2026-11-14
 **What failed:** One-decimal seconds made nonzero durations below 50ms look like `0.0s`, which obscured quick file operations.
 **Next time:** Preserve milliseconds below one second and test a short nonzero duration through the rendering seam plus the 999/1000ms boundary.
+
+## A test options interface mirroring a ctor tail belongs in code - 2026-11-14
+**What failed:** The viewer tests declared their own options interface and spread it into a nine-parameter positional constructor with four optional trailing arguments, so the test type had to be kept in step by hand and a caller could reorder arguments with nothing catching it.
+**Next time:** When a test-local options object only mirrors a constructor's optional tail, promote it to production as the `*Options` parameter this codebase already uses for UI components, and leave in tests only the fields that exist for the fake (terminal rows, the close callback) by extending that type.
+
+## A pure helper inside a wholesale-mocked module is undefined at runtime - 2026-11-14
+**What failed:** Putting the shared text sanitizer in `src/ui/format.ts` type-checked clean while `menu-mock-setup.ts` replaces that module with a four-export object, so every menu test that reached the helper died on an undefined import: 11 failures measured after moving the import, none from `vp check`.
+**Next time:** Give a dependency-free helper its own module when consumers' suites mock whole modules without spreading `importActual`, and confirm with the test run rather than the type check - a missing mock export is type-clean by construction. If it must live in the mocked module, add it to the mock as the real implementation, the way `formatMs` is passed through there.
