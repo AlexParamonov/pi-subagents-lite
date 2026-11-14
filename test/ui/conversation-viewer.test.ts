@@ -634,6 +634,23 @@ describe("ConversationViewer", () => {
       }
     });
 
+    it("renders no escape or control sequences from a hostile argument in a curated row", () => {
+      // Each curated tool reads its own argument keys, so each key is a carrier of its own.
+      const hostile = "A\u009b?1049hB \u001b]0;window-title\u0007 done";
+      const rows: Array<[string, Record<string, unknown>]> = [
+        ["read", { path: hostile }],
+        ["bash", { command: hostile, timeout: "3\u009b?1049h0" }],
+        ["grep", { pattern: hostile, path: hostile, glob: hostile, limit: "5\u001b]0;t\u00077" }],
+        ["write", { path: hostile, content: hostile }],
+      ];
+      for (const [name, args] of rows) {
+        const frame = openCallView([callsOf({ id: "t1", name, args })]).render(80);
+        expectNoTerminalControls(frame);
+        expect(frame.join("\n")).toContain("AB"); // the words stay, the sequences do not
+        expect(frame.join("\n")).not.toContain("window-title");
+      }
+    });
+
     it("keeps the text after an unterminated escape sequence", () => {
       const shown = frameText(
         openCallView([callsOf({ id: "t1" }), resultOf("t1", { text: "before \u001b]0;never-ended after" })]),

@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vite-plus/test";
 import { homedir } from "node:os";
 import type { Theme } from "../../src/ui/types.js";
+import { expectNoTerminalControls } from "../fixtures.js";
 import { formatCallLine } from "../../src/ui/pi-call-line.js";
 
 const theme: Theme = {
@@ -112,5 +113,46 @@ describe("pi call line", () => {
     expect(line("bash", { command: "sleep 1", timeout: 30 }, "Took 1.0s")).toBe(
       "[toolTitle:*$ sleep 1*][muted: (timeout 30s)] [muted:Took 1.0s]",
     );
+  });
+
+  it("keeps the timing two spaces from a shell command that has no timeout suffix", () => {
+    expect(line("bash", { command: "ls -la" }, "Took 1.0s")).toBe("[toolTitle:*$ ls -la*]  [muted:Took 1.0s]");
+    expect(line("powershell", { command: "Get-ChildItem" }, "Took 1.0s")).toBe(
+      "[toolTitle:*PS> Get-ChildItem*]  [muted:Took 1.0s]",
+    );
+  });
+
+  // Tool arguments are model- and MCP-produced text. Every position a row shows is a carrier, so
+  // each one is pinned: the ABC below is what the hostile string is once its sequences are gone.
+  it("strips terminal controls from every argument position a row shows", () => {
+    const hostile = "A\u009b?1049hB\u001b]0;title\u0007C";
+    const counted = "5\u001b]0;t\u00077";
+
+    expect(line("read", { path: hostile })).toBe("[toolTitle:*read*] [accent:ABC]");
+    expect(line("write", { path: hostile, content: "one\ntwo" })).toBe(
+      "[toolTitle:*write*] [accent:ABC][muted: (2 lines)]",
+    );
+    expect(line("edit", { path: hostile, oldText: "a", newText: "b" })).toBe(
+      "[toolTitle:*edit*] [accent:ABC][muted: (1 edit)]",
+    );
+    expect(line("ls", { path: hostile, limit: counted })).toBe("[toolTitle:*ls*] [accent:ABC][toolOutput: (limit 57)]");
+    expect(line("grep", { pattern: hostile, path: hostile, glob: hostile, limit: counted })).toBe(
+      "[toolTitle:*grep*] [accent:/ABC/][toolOutput: in ABC][toolOutput: (ABC)][toolOutput: limit 57]",
+    );
+    expect(line("find", { pattern: hostile, path: hostile, limit: counted })).toBe(
+      "[toolTitle:*find*] [accent:ABC][toolOutput: in ABC][toolOutput: (limit 57)]",
+    );
+    expect(line("bash", { command: hostile, timeout: counted })).toBe("[toolTitle:*$ ABC*][muted: (timeout 57s)]");
+    // JSON.stringify escapes C0 but hands the 8-bit CSI on to plainText untouched, so the generic
+    // row is pinned with that form: pi's own `key=${JSON.stringify(value)}` stays visible around it.
+    expect(line("uniq\u009b31mtool", { "pa\u009b?1049hth": "A\u009b?1049hB" })).toBe(
+      '[toolTitle:*uniqtool*] [muted:path="AB"]',
+    );
+
+    expectNoTerminalControls([
+      line("bash", { command: hostile, timeout: counted }),
+      line("grep", { pattern: hostile, path: hostile, glob: hostile, limit: counted }),
+      line("uniq\u009b31mtool", { "pa\u009b?1049hth": hostile }),
+    ]);
   });
 });

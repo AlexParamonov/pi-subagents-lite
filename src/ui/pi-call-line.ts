@@ -49,8 +49,9 @@ function shellLine(args: CallArgs, prompt: string, theme: Theme, timer: string):
   const display = command === null ? invalidArg(theme) : command ? command : theme.fg("toolOutput", "...");
   const timeout = args?.timeout;
   const suffix = timeout ? muted(` (timeout ${shown(timeout)}s)`, theme) : "";
-  // pi's suffix already carries its own leading space, so the timing needs only one more.
-  return theme.fg("toolTitle", theme.bold(`${prompt} ${display}`)) + suffix + (timer ? ` ${timer}` : "");
+  // pi's suffix already carries its own leading space, so only it needs a single space before the timing.
+  const timingGap = suffix ? " " : "  ";
+  return theme.fg("toolTitle", theme.bold(`${prompt} ${display}`)) + suffix + (timer ? `${timingGap}${timer}` : "");
 }
 
 function readLine(args: CallArgs, theme: Theme): string {
