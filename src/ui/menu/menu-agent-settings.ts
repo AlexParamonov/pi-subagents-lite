@@ -170,7 +170,8 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Compact tool calls",
       currentValue: store.agent.compactToolCalls ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Summarize runs of adjacent tool calls in the conversation viewer. Applies when the viewer opens.",
+      description:
+        "Summarize runs of adjacent tool calls in the conversation viewer. Applies when the viewer opens; ON also lists the Ungrouped tools row.",
     },
     {
       id: "ungroupedTools",
