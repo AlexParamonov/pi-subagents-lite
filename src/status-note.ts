@@ -46,16 +46,7 @@ export function formatWatchdogSummary(lifecycle: AgentLifecycle): string | undef
   return detail.kind === "tool" ? `watchdog: ${detail.toolName} >${formatMs(detail.elapsedMs)}` : "watchdog: idle";
 }
 
-/**
- * Whether formatResultContent's output ends with a status note. Mirrors getStatusNote's branch:
- * stopped always notes, other statuses only when STATUS_NOTES has one. The note is glued onto the
- * reply's last line (no separator), so a consumer that reads reply text back out of it must cut the tail.
- */
-export function appendsStatusNote(status: string | undefined): boolean {
-  // Own-property check: details.status comes from stored messages, so inherited keys must not match.
-  return status === "stopped" || (!!status && Object.prototype.hasOwnProperty.call(STATUS_NOTES, status));
-}
-
+/** The note tail getStatusNote appends, e.g. ` (STOPPED BY YOU before completion…)`. Empty when the status carries no note. */
 export function getStatusNote(lifecycle: AgentLifecycle): string {
   const note =
     lifecycle.status === "stopped"
@@ -63,4 +54,20 @@ export function getStatusNote(lifecycle: AgentLifecycle): string {
         (formatStopReason(lifecycle) ?? stopNote(lifecycle))
       : STATUS_NOTES[lifecycle.status];
   return note ? ` (${note})` : "";
+}
+
+/** The shape getStatusNote glues on: a leading space and parentheses, and notes carry no parentheses of their own. */
+const TRAILING_STATUS_NOTE = / \([^()]*\)\s*$/;
+
+/**
+ * Inverse of getStatusNote: remove its note from text it was appended to. The note is glued onto the last
+ * line with no separator of its own, so a consumer reading reply text back out of composed content must cut
+ * the tail — and may only do so when a note was actually appended, or prose like "(see notes.md)" is lost.
+ */
+export function stripStatusNote(content: string, status: string | undefined): string {
+  // Mirrors getStatusNote's branch, keep them in sync when a status gains or loses a note: stopped always
+  // notes, others only when STATUS_NOTES has one. Own-property check: status comes from stored messages,
+  // where inherited keys such as "toString" must not match.
+  const hasNote = status === "stopped" || (!!status && Object.prototype.hasOwnProperty.call(STATUS_NOTES, status));
+  return hasNote ? content.replace(TRAILING_STATUS_NOTE, "") : content;
 }

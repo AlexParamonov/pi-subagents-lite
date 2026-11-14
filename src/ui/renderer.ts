@@ -18,7 +18,7 @@ import {
   statusIcon,
 } from "./format.ts";
 import { getManager } from "../shell.ts";
-import { appendsStatusNote } from "../status-note.ts";
+import { stripStatusNote } from "../status-note.ts";
 
 // --- Stats rendering helpers ---
 
@@ -266,18 +266,14 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
-/** Status note appended to nudge content: notes never carry parentheses of their own. */
-const TRAILING_STATUS_NOTE = / \([^()]*\)\s*$/;
-
 /**
  * First line of the agent's own reply, read back from the nudge content emitIndividualNudge builds:
- * `<envelope>\n\n<reply>` plus the notes formatResultContent appends last. The status note has no
- * separator of its own and is cut positionally; the error note keeps its own line, so a one-line
- * reply opening with "Error: " is content-identical to it and loses the row.
+ * `<envelope>\n\n<reply>` plus the notes formatResultContent appends last. stripStatusNote removes the
+ * glued status note; the error note keeps its own line, so a one-line reply opening with "Error: " is
+ * content-identical to it and loses the row.
  */
 function firstReplyLine(content: string, status: string | undefined): string {
-  const text = appendsStatusNote(status) ? content.replace(TRAILING_STATUS_NOTE, "") : content;
-  const lines = text.split("\n");
+  const lines = stripStatusNote(content, status).split("\n");
   const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
   const reply = body.find((l) => l.trim())?.trim() ?? "";
   return reply.startsWith("Error: ") ? "" : reply;
