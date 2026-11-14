@@ -1010,6 +1010,10 @@ export class ConversationViewer implements Component {
         continue;
       }
       if (entry.kind === "normal-call") {
+        // shortcut: the message cache holds non-call rows only, so this block - its whole result
+        // re-wrapped - is rebuilt by every frame that rebuilds. Measured on a 60-call transcript with
+        // 6MB of results: 20ms collapsed / 45ms expanded per rebuild, against 0.5-1.6ms from the cache.
+        // Upgrade by caching blocks per call id, keyed on width, expansion, timing and the result object.
         this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks);
         afterCompactItem = false;
         continue;
@@ -1021,7 +1025,10 @@ export class ConversationViewer implements Component {
     }
   }
 
-  /** A run as one summary row in the default text color: its call count and names in first-seen order. */
+  /**
+   * A run as one summary item in the default text color: its call count and names in first-seen
+   * order, wrapped at the same padding a call row uses.
+   */
   private appendRunSummary(calls: ToolCall[], width: number, lines: string[]): void {
     const names = plainText([...new Set(calls.map((call) => call.name))].join(", "));
     const text = this.theme.fg("text", this.theme.bold(` ${calls.length} tool calls (${names}) `));
