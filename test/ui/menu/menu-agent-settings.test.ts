@@ -679,3 +679,95 @@ describe("showSpawnOptionsMenu — expose agent descriptions", () => {
     expect(mockModules.mockConfig.agent.exposeDescriptions).toBe(false);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Compact conversation viewer preferences                            */
+/* ------------------------------------------------------------------ */
+
+describe("showSpawnOptionsMenu — compact conversation viewer", () => {
+  beforeEach(resetMenuState);
+
+  const rows = async (ctx: ReturnType<typeof createMockCtx>) => {
+    await showSpawnOptionsMenu(ctx);
+    return settingsListCalls[0].items;
+  };
+
+  it("shows compact tool calls OFF with the default ungrouped names", async () => {
+    const items = await rows(createMockCtx());
+    const compact = items.find((i) => i.id === "compactToolCalls")!;
+    expect(compact.currentValue).toBe("OFF");
+    expect(compact.values).toEqual(["ON", "OFF"]);
+    expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe("write, edit, replace");
+  });
+
+  it("shows the stored values when both are configured", async () => {
+    mockModules.mockConfig.agent.compactToolCalls = true;
+    mockModules.mockConfig.agent.ungroupedTools = [];
+    const items = await rows(createMockCtx());
+    expect(items.find((i) => i.id === "compactToolCalls")!.currentValue).toBe("ON");
+    expect(items.find((i) => i.id === "ungroupedTools")!.currentValue).toBe("");
+  });
+
+  it("persists the compact toggle via the mutator and notifies", async () => {
+    const ctx = createMockCtx();
+    await rows(ctx);
+    settingsListCalls[0].onChange("compactToolCalls", "ON");
+    expect(mockModules.mockConfig.agent.compactToolCalls).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Compact tool calls"), "info");
+    settingsListCalls[0].onChange("compactToolCalls", "OFF");
+    expect(mockModules.mockConfig.agent.compactToolCalls).toBe(false);
+  });
+
+  it("prefills the ungrouped editor with the stored names", async () => {
+    mockModules.mockConfig.agent.ungroupedTools = ["read", "my_custom_tool"];
+    const items = await rows(createMockCtx());
+    const row = items.find((i) => i.id === "ungroupedTools")!;
+    const done = vi.fn();
+    row.submenu!(row.currentValue, done);
+    expect(inputInstances).toHaveLength(1);
+    expect(inputInstances[0].value).toBe("read, my_custom_tool");
+  });
+
+  it("splits the submitted value on commas, trimming and dropping empty names", async () => {
+    const ctx = createMockCtx();
+    const items = await rows(ctx);
+    const row = items.find((i) => i.id === "ungroupedTools")!;
+    const done = vi.fn();
+    row.submenu!(row.currentValue, done);
+
+    inputInstances[0].onSubmit!(" write, edit,, replace, ");
+
+    expect(mockModules.mockConfig.agent.ungroupedTools).toEqual(["write", "edit", "replace"]);
+    expect(mockModules.mockConfig.agent.compactToolCalls).toBeFalsy(); // editing names is not enabling compact
+    expect(done).toHaveBeenCalledWith("write, edit, replace");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("write, edit, replace"), "info");
+  });
+
+  it("saves no exclusions at all when Enter submits blank input", async () => {
+    mockModules.mockConfig.agent.ungroupedTools = ["write"];
+    const ctx = createMockCtx();
+    const items = await rows(ctx);
+    const row = items.find((i) => i.id === "ungroupedTools")!;
+    const done = vi.fn();
+    row.submenu!(row.currentValue, done);
+
+    inputInstances[0].onSubmit!("   ");
+
+    expect(mockModules.mockConfig.agent.ungroupedTools).toEqual([]);
+    expect(done).toHaveBeenCalledWith("");
+  });
+
+  it("keeps the stored names when Escape cancels the editor", async () => {
+    mockModules.mockConfig.agent.ungroupedTools = ["write", "keep-me"];
+    const ctx = createMockCtx();
+    const items = await rows(ctx);
+    const row = items.find((i) => i.id === "ungroupedTools")!;
+    const done = vi.fn();
+    row.submenu!(row.currentValue, done);
+
+    inputInstances[0].onEscape!();
+
+    expect(mockModules.mockConfig.agent.ungroupedTools).toEqual(["write", "keep-me"]);
+    expect(done).toHaveBeenCalledWith();
+  });
+});
