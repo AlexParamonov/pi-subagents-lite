@@ -104,7 +104,7 @@ export interface ConversationViewerOptions {
   toolDisplay?: ToolDisplayOptions;
   /** Summarize runs of adjacent eligible calls, show no tool result body and omit hidden thinking. Omitted means on, as the preference does. */
   compactToolCalls?: boolean;
-  /** Tool names that keep their normal call block, minus the result body, and split a run. Matched exactly, case-sensitively. */
+  /** Tool names that keep their normal call block, minus the result body, and split a run. Matched exactly, case-sensitively. Omitted means no exclusions: the caller passes the stored list. */
   ungroupedTools?: readonly string[];
 }
 
