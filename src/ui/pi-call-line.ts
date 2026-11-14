@@ -54,7 +54,7 @@ function shellLine(args: CallArgs, prompt: string, theme: Theme, timer: string):
 }
 
 function readLine(args: CallArgs, theme: Theme): string {
-  const path = pathText(argText(args?.file_path ?? args?.path), theme);
+  const path = pathText(args?.file_path ?? args?.path, theme);
   const range = formatReadLineRange(args?.offset, args?.limit);
   return `${toolWord("read", theme)} ${path}${range ? theme.fg("warning", range) : ""}`;
 }
@@ -63,7 +63,7 @@ function readLine(args: CallArgs, theme: Theme): string {
 function writeLine(args: CallArgs, theme: Theme): string {
   const content = argText(args?.content);
   const lines = content ? contentLines(content) : undefined;
-  return `${toolWord("write", theme)} ${pathText(argText(args?.file_path ?? args?.path), theme)}${
+  return `${toolWord("write", theme)} ${pathText(args?.file_path ?? args?.path, theme)}${
     lines === undefined ? "" : counted(lines, "line", theme)
   }`;
 }
@@ -82,7 +82,7 @@ function isTextPair(edit: unknown): boolean {
 
 function editLine(args: CallArgs, theme: Theme): string {
   const edits = editCount(args);
-  return `${toolWord("edit", theme)} ${pathText(argText(args?.file_path ?? args?.path), theme)}${
+  return `${toolWord("edit", theme)} ${pathText(args?.file_path ?? args?.path, theme)}${
     edits === undefined ? "" : counted(edits, "edit", theme)
   }`;
 }
@@ -124,7 +124,7 @@ function searchPath(value: unknown, theme: Theme): string {
 
 function lsLine(args: CallArgs, theme: Theme): string {
   const limit = args?.limit;
-  const path = pathText(argText(args?.path), theme, ".");
+  const path = pathText(args?.path, theme, ".");
   return `${toolWord("ls", theme)} ${path}${limit === undefined ? "" : theme.fg("toolOutput", ` (limit ${shown(limit)})`)}`;
 }
 
@@ -180,7 +180,8 @@ function invalidArg(theme: Theme): string {
 }
 
 /** pi's `renderToolPath` without the hyperlink: accent path, `...` when absent, invalid when not a string. */
-function pathText(raw: string | null, theme: Theme, emptyFallback?: string): string {
+function pathText(path: unknown, theme: Theme, emptyFallback?: string): string {
+  const raw = argText(path);
   if (raw === null) return invalidArg(theme);
   const value = raw || emptyFallback;
   if (!value) return theme.fg("toolOutput", "...");
