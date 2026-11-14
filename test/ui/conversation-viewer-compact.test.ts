@@ -325,6 +325,8 @@ function wheel(delta: number): TuiMouseEvent {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // resetAllMocks restores mockSubscribe's implementation but not the listener it captured.
+  emit = () => {};
 });
 
 describe("ConversationViewer compact tool calls", () => {
