@@ -980,12 +980,17 @@ export class ConversationViewer implements Component {
     );
   }
 
-  /** True when a message paints content other than calls, which bounds a compact run. */
+  /**
+   * True when a message paints rows other than calls, which bounds a compact run.
+   * Blank text paints no row (pi's Markdown skips it), so like a blank user turn it
+   * is not a boundary.
+   */
   private paintsNonCallContent(msg: any): boolean {
     if (msg?.role === "user") return userText(msg).trim() !== "";
     if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return false;
     return msg.content.some(
-      (c: any) => (c?.type === "text" && c.text) || (c?.type === "thinking" && c.thinking && this.thinkingVisible),
+      (c: any) =>
+        (c?.type === "text" && c.text?.trim()) || (c?.type === "thinking" && c.thinking && this.thinkingVisible),
     );
   }
 

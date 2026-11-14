@@ -71,6 +71,9 @@ vi.mock("@earendil-works/pi-tui", () => {
         this._text = text;
       }
       render(width: number): string[] {
+        // pi's Markdown paints nothing for blank text, so a blank block cannot be a
+        // run boundary; the mock has to agree or the viewer's boundary rule is untestable.
+        if (this._text.trim() === "") return [];
         return this._text
           .split("\n")
           .map((line) => (line.length > width ? line.slice(0, width) : line))
@@ -350,6 +353,16 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "grep" },
     ]);
+  });
+
+  it("groups across a blank text block, because it paints no row at all", () => {
+    const viewer = openCompactView([
+      callsOf({ id: "t1", name: "read" }),
+      textOf("\n"),
+      callsOf({ id: "t2", name: "grep" }),
+    ]);
+
+    expect(contentRows(viewer)).toEqual([{ bg: "toolPendingBg", text: "2 tool calls (read, grep)" }]);
   });
 
   it("does not group across a user turn, whose own presentation is untouched", () => {
