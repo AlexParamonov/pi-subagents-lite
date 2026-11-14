@@ -374,6 +374,7 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "3 tool calls (read, grep)" },
+      { bg: "", text: "" },
       { bg: "toolPendingBg", text: "" },
       { bg: "toolPendingBg", text: 'bash("ls -la")' },
       { bg: "toolPendingBg", text: "" },
@@ -396,6 +397,7 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "2 tool calls (read, grep)" },
+      { bg: "", text: "" },
       { bg: "toolSuccessBg", text: "" },
       { bg: "toolSuccessBg", text: 'write("/notes.md", 5 chars)  Took 1.2s' },
       { bg: "toolSuccessBg", text: "" },
@@ -491,6 +493,7 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "", text: "fixture-visible-answer" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "grep" },
@@ -516,6 +519,7 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "userMessageBg", text: "" },
       { bg: "userMessageBg", text: "fixture-user-turn" },
       { bg: "userMessageBg", text: "" },
@@ -615,7 +619,7 @@ describe("ConversationViewer compact tool calls", () => {
     expect(viewer.render(40).every((line) => visibleWidthOf(line) <= 40)).toBe(true);
   });
 
-  it("puts exactly one blank row between adjacent compact rows, and none at either end", () => {
+  it("gives a compact row the viewer's usual blank row after it, not a separator of its own", () => {
     const three = openCompactView(
       [callsOf({ id: "t1", name: "read" }, { id: "t2", name: "grep" }, { id: "t3", name: "find" })],
       { flag: { expanded: true } },
@@ -636,6 +640,7 @@ describe("ConversationViewer compact tool calls", () => {
       { bg: "toolPendingBg", text: "read" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "grep" },
+      { bg: "", text: "" },
       { bg: "", text: "answer" },
     ]);
   });
@@ -663,10 +668,12 @@ describe("ConversationViewer compact tool calls", () => {
 
     expect(contentRows(openCompactView(transcript))).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "", text: "answer" },
     ]);
     expect(contentRows(openCompactView(transcript, { flag: { expanded: true } }))).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "", text: "answer" },
     ]);
   });
@@ -681,6 +688,7 @@ describe("ConversationViewer compact tool calls", () => {
     viewer.handleInput("\x14");
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "", text: "fixture-live-thought" },
     ]);
   });
@@ -698,6 +706,7 @@ describe("ConversationViewer compact tool calls", () => {
     viewer.handleInput("\x14"); // reveal thinking: the run splits at the visible block
     expect(contentRows(viewer)).toEqual([
       { bg: "toolPendingBg", text: "read" },
+      { bg: "", text: "" },
       { bg: "", text: "fixture-hidden-thought" },
       { bg: "", text: "" },
       { bg: "toolPendingBg", text: "grep" },

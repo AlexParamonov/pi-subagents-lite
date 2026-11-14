@@ -102,7 +102,7 @@ export interface ConversationViewerOptions {
   onSteer?: (message: string) => void;
   /** Tool timing seeds and pi's global collapsed/expanded flag. */
   toolDisplay?: ToolDisplayOptions;
-  /** Summarize runs of adjacent eligible calls; drop result bodies, padding and hidden thinking. */
+  /** Summarize runs of adjacent eligible calls, show no tool result body and omit hidden thinking. */
   compactToolCalls?: boolean;
   /** Tool names that keep their normal call block, minus the result body, and split a run. Matched exactly, case-sensitively. */
   ungroupedTools?: readonly string[];
@@ -219,7 +219,7 @@ export class ConversationViewer implements Component {
   private clickOrigin: { topRow: number; firstLine: number; rows: number } | undefined;
   /** Thinking visibility: starts with pi's setting, toggled locally with ctrl+T. */
   private thinkingVisible: boolean;
-  /** Compact presentation, fixed at open: summarized call runs and no results, padding or hidden thinking. */
+  /** Compact presentation, fixed at open: summarized call runs, no result bodies and no hidden thinking. */
   private readonly compactToolCalls: boolean;
   /** Tool names the compact layout keeps whole; each one also splits a run. */
   private readonly ungroupedTools: ReadonlySet<string>;
@@ -1035,9 +1035,9 @@ export class ConversationViewer implements Component {
    * Compact content rows and their click targets. Grouping comes straight from the transcript, never
    * from cached rows; a call the layout keeps whole paints the block cached with its own message.
    *
-   * Exactly one blank row separates two adjacent compact items (a run summary or an individually shown
-   * eligible call). A message that paints nothing leaves them adjacent; visible content and an excluded
-   * call's own block carry their own spacing, so they take no compact separator.
+   * Every compact display item ends with the blank row a normal call block already ends with, so the
+   * spacing around a summary and between two displayed calls is the viewer's usual one. Visible
+   * content and an excluded call's block carry their own spacing and get nothing added around them.
    */
   private appendCompactRows(
     messages: any[],
@@ -1046,23 +1046,19 @@ export class ConversationViewer implements Component {
     lines: string[],
     toolBlocks: ToolBlock[],
   ): void {
-    let afterCompactItem = false;
     for (const entry of this.compactEntries(messages, width, toolResults)) {
       if (entry.kind === "rows") {
-        if (entry.rows.length > 0) afterCompactItem = false;
         lines.push(...entry.rows);
         continue;
       }
       if (entry.kind === "normal-call") {
         // A missing block means the message grew in place since it was cached, so render this one.
         this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks, entry.cachedBlock);
-        afterCompactItem = false;
         continue;
       }
-      if (afterCompactItem) lines.push("");
       if (entry.kind === "run") this.appendRunSummary(entry.calls, width, lines);
       else this.appendCompactCall(entry.call, width, toolResults, lines, toolBlocks);
-      afterCompactItem = true;
+      lines.push("");
     }
   }
 
