@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-15
+
 ### Added
 
 - Compact conversation viewer (`/agents` > Settings > Agent behavior): **Compact tool calls** (on by default; switch it off for the ordinary viewer) summarizes each run of consecutive eligible tool calls, across turns, into one `N tools (name, name, …)` row on the pending background, and shows every other eligible call on a single status-colored row with no fill bar. While compact mode is on no tool result body is shown for any call, so a fresh install shows none until it is switched off, and every summary and displayed call row keeps the viewer's usual blank spacing row. **Ungrouped tools** (default `write, edit, replace, bash, codemode, Agent, StopAgent, MessageAgent`) names the tools that keep their normal call block minus the result body and split a run, and is listed only while compact is on.
