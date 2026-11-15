@@ -960,6 +960,42 @@ describe("ConversationViewer compact tool calls", () => {
     expect(shown()).not.toContain("fixture-result-detail");
   });
 
+  it("shows live codemode calls: grouped, excluded, and each failure's reason when expanded", () => {
+    const flag = { expanded: false };
+    const viewer = openCompactView([callsOf({ id: "code", name: "codemode", args: { code: "return 1" } })], {
+      flag,
+      ungrouped: ["write"],
+    });
+
+    emit({
+      type: "tool_execution_update",
+      toolCallId: "code",
+      toolName: "codemode",
+      partialResult: {
+        details: {
+          calls: [
+            { name: "read", args: '{"path":"grouped-only"}', status: "ok" },
+            { name: "grep", args: '{"pattern":"grouped-only"}', status: "running" },
+            { name: "write", args: '{"path":"excluded-only"}', status: "running" },
+            // pi truncates the preview it stores, so this call's args are no longer parseable JSON.
+            { name: "write", args: '{"path":"excluded-cut', status: "error", error: "fixture-nested-failure" },
+          ],
+        },
+      },
+    });
+
+    const visible = () => viewer.render(80).map(stripMarkers).join("\n");
+    expect(visible()).toContain("read");
+    expect(visible()).toContain("grep");
+    expect(visible()).toContain("excluded-only");
+    expect(visible()).toContain("excluded-cut");
+    expect(visible()).not.toContain("grouped-only");
+    expect(visible()).not.toContain("fixture-nested-failure");
+
+    flag.expanded = true;
+    expect(visible()).toContain("fixture-nested-failure");
+  });
+
   it("groups every call once the exclusion list is emptied", () => {
     const viewer = openCompactView(
       [callsOf({ id: "t1", name: "write", args: { path: "/a.md", content: "hi" } }, { id: "t2", name: "edit" })],

@@ -36,7 +36,7 @@ import {
   statusIcon,
 } from "./format.ts";
 import { plainText } from "./sanitize.ts";
-import { formatCallLine } from "./pi-call-line.ts";
+import { formatCallLine, nestedCallLine } from "./pi-call-line.ts";
 import { overlayViewportRows } from "./overlay.ts";
 import { createViewerKeys, keyLabel, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.ts";
 
@@ -57,6 +57,7 @@ const COLLAPSED_RESULT_LINES = 3;
  */
 interface ToolResultStatus {
   isError: boolean;
+  details?: unknown;
   /**
    * Read straight off the toolResult message: only hosts >= pi 1.1 stamp it, so
    * on older hosts timing comes solely from the events the viewer itself saw.
@@ -123,6 +124,63 @@ interface ToolCall {
   id?: string;
   name: string;
   args?: Record<string, unknown>;
+}
+
+type CodemodeCallStatus = "running" | "ok" | "error" | "cancelled";
+
+interface CodemodeCall {
+  name: string;
+  args: string;
+  status: CodemodeCallStatus;
+  durationMs?: number;
+  error?: string;
+}
+
+function codemodeCallsFrom(details: unknown): CodemodeCall[] {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return [];
+  const calls = (details as { calls?: unknown }).calls;
+  if (!Array.isArray(calls)) return [];
+
+  return calls.flatMap((value): CodemodeCall[] => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+    const call = value as Record<string, unknown>;
+    const status = call.status;
+    if (
+      typeof call.name !== "string" ||
+      (status !== "running" && status !== "ok" && status !== "error" && status !== "cancelled")
+    ) {
+      return [];
+    }
+    return [
+      {
+        name: plainText(call.name).replace(/\s+/g, " "),
+        args: typeof call.args === "string" ? plainText(call.args).replace(/\s+/g, " ") : "",
+        status,
+        ...(typeof call.durationMs === "number" && Number.isFinite(call.durationMs) && call.durationMs >= 0
+          ? { durationMs: call.durationMs }
+          : {}),
+        ...(typeof call.error === "string" && call.error ? { error: plainText(call.error) } : {}),
+      },
+    ];
+  });
+}
+
+function codemodeStatusIcon(status: CodemodeCallStatus, theme: Theme): string {
+  switch (status) {
+    case "running":
+      return theme.fg("warning", "…");
+    case "ok":
+      return theme.fg("success", "✓");
+    case "error":
+      return theme.fg("error", "✗");
+    case "cancelled":
+      return theme.fg("muted", "⊘");
+  }
+}
+
+function codemodeDuration(ms: number | undefined): string {
+  if (ms === undefined) return "";
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
 /**
@@ -201,6 +259,8 @@ export class ConversationViewer implements Component {
   private toolStartedAt = new Map<string, number>();
   /** Duration of tool calls that ended before their toolResult message landed, by toolCallId. */
   private toolFinishedMs = new Map<string, number>();
+  /** Validated nested calls from a running codemode call, until its result enters the transcript. */
+  private toolPartialCalls = new Map<string, CodemodeCall[]>();
   /** Redraws the "Elapsed" readout once a second while a tool call is running. */
   private toolTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -278,7 +338,13 @@ export class ConversationViewer implements Component {
           }
         } else if (event?.type === "tool_execution_start") {
           this.toolStartedAt.set(event.toolCallId, Date.now());
-          this.refreshToolTimings([event.toolCallId]);
+          if (event.toolName === "codemode") this.toolPartialCalls.delete(event.toolCallId);
+          this.refreshToolCalls([event.toolCallId]);
+        } else if (event?.type === "tool_execution_update") {
+          if (event.toolName === "codemode") {
+            this.toolPartialCalls.set(event.toolCallId, codemodeCallsFrom(event.partialResult?.details));
+            this.refreshToolCalls([event.toolCallId]);
+          }
         } else if (event?.type === "tool_execution_end") {
           const startedAt = this.toolStartedAt.get(event.toolCallId);
           this.toolStartedAt.delete(event.toolCallId);
@@ -286,8 +352,9 @@ export class ConversationViewer implements Component {
           const reportedMs = (event as { durationMs?: number }).durationMs;
           const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
           if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
-          this.refreshToolTimings([event.toolCallId]);
+          this.refreshToolCalls([event.toolCallId]);
         } else if (event?.type === "message_end") {
+          if (event.message.role === "toolResult") this.toolPartialCalls.delete(event.message.toolCallId);
           // Session-level end-of-message (pi swaps the final message object
           // into the last slot at "done") — same refresh as the boundaries.
           this.refreshStreamingMessage();
@@ -321,7 +388,7 @@ export class ConversationViewer implements Component {
    * "Elapsed" it first showed. Calls without a recorded start (the viewer
    * opened mid-call) show no timing until their result lands.
    */
-  private refreshToolTimings(toolCallIds: Iterable<string>): void {
+  private refreshToolCalls(toolCallIds: Iterable<string>): void {
     const ids = new Set(toolCallIds);
     const messages = this.session.messages ?? [];
     messages.forEach((msg: any, index: number) => {
@@ -347,7 +414,7 @@ export class ConversationViewer implements Component {
         this.stopToolTimer();
         return;
       }
-      this.refreshToolTimings(this.toolStartedAt.keys());
+      this.refreshToolCalls(this.toolStartedAt.keys());
     }, TOOL_TIMER_TICK_MS);
   }
 
@@ -368,7 +435,7 @@ export class ConversationViewer implements Component {
         if (startedAt !== undefined) this.toolStartedAt.set(c.id, startedAt);
       }
     }
-    if (this.toolStartedAt.size > 0) this.refreshToolTimings(this.toolStartedAt.keys());
+    if (this.toolStartedAt.size > 0) this.refreshToolCalls(this.toolStartedAt.keys());
   }
 
   private stopToolTimer(): void {
@@ -949,6 +1016,10 @@ export class ConversationViewer implements Component {
     const timing = this.toolTimingText(tc.id, result);
     // Collapsed: timing sits on the title line. Expanded: at the end, like pi's muted footer line.
     const inner = this.callRows(this.callTitleText(tc, expanded ? undefined : timing), bg, width);
+    if (tc.name === "codemode") {
+      const calls = result ? codemodeCallsFrom(result.details) : tc.id ? (this.toolPartialCalls.get(tc.id) ?? []) : [];
+      if (calls.length > 0) this.appendCodemodeCalls(calls, width, bg, expanded, inner);
+    }
     // Compact mode shows no result body for any call, an ungrouped one included.
     if (!this.compactToolCalls) {
       for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
@@ -962,6 +1033,58 @@ export class ConversationViewer implements Component {
       }
     }
     return this.wrapInBg(bg, inner, width);
+  }
+
+  private appendCodemodeCalls(
+    calls: CodemodeCall[],
+    width: number,
+    parentBg: ToolBg,
+    expanded: boolean,
+    lines: string[],
+  ): void {
+    let run: CodemodeCall[] = [];
+    const appendRun = () => {
+      if (run.length === 1) this.appendCodemodeCall(run[0]!, width, parentBg, expanded, lines);
+      else if (run.length > 1) {
+        const state = (
+          [
+            ["error", "failed"],
+            ["cancelled", "cancelled"],
+            ["running", "running"],
+          ] as const
+        )
+          .flatMap(([status, label]) => {
+            const count = run.filter((call) => call.status === status).length;
+            return count === 0 ? [] : [`${count} ${label}`];
+          })
+          .join(", ");
+        lines.push(...this.callRows(this.runSummaryText(run, state), "toolPendingBg", width));
+      }
+      run = [];
+    };
+
+    for (const call of calls) {
+      if (this.compactToolCalls && !expanded && !this.ungroupedTools.has(call.name)) {
+        run.push(call);
+      } else {
+        appendRun();
+        this.appendCodemodeCall(call, width, parentBg, expanded, lines);
+      }
+    }
+    appendRun();
+  }
+
+  private appendCodemodeCall(call: CodemodeCall, width: number, bg: ToolBg, expanded: boolean, lines: string[]): void {
+    const duration = codemodeDuration(call.durationMs);
+    const detail = nestedCallLine(call.name, call.args, this.theme, expanded);
+    // Row padding (2) plus the status icon and its space (2); the duration keeps its own space.
+    const room = width - 4 - (duration ? visibleWidth(duration) + 1 : 0);
+    const row = `${codemodeStatusIcon(call.status, this.theme)} ${expanded ? detail : truncateToWidth(detail, room)}`;
+    lines.push(...this.callRows(duration ? `${row} ${this.theme.fg("dim", duration)}` : row, bg, width));
+    // Why a nested call failed belongs to its row, and only the reader who asked for detail sees it.
+    if (expanded && call.error) {
+      lines.push(...this.callRows(this.theme.fg("error", `  ${call.error}`), bg, width));
+    }
   }
 
   /** The call row's own text: pi's call line, then the timing, padded for the fill bar. */
@@ -996,12 +1119,12 @@ export class ConversationViewer implements Component {
       entries.push({ kind: "rows", rows: cached.rows });
       if (cached.rows.length > 0) openRun = undefined;
       for (const [position, call] of callsOfMessage(msg).entries()) {
-        const ungrouped = this.ungroupedTools.has(call.name);
-        if (this.toolsExpanded || ungrouped) {
+        const keepWhole = call.name === "codemode" || this.ungroupedTools.has(call.name);
+        if (this.toolsExpanded || keepWhole) {
           entries.push({
-            kind: ungrouped ? "normal-call" : "compact-call",
+            kind: keepWhole ? "normal-call" : "compact-call",
             call,
-            cachedBlock: ungrouped ? cached.calls[position] : undefined,
+            cachedBlock: keepWhole ? cached.calls[position] : undefined,
           });
           openRun = undefined;
         } else if (openRun) {
@@ -1043,20 +1166,21 @@ export class ConversationViewer implements Component {
         this.appendCallBlock(entry.call, width, toolResults, lines, toolBlocks, entry.cachedBlock);
         continue;
       }
-      if (entry.kind === "run") this.appendRunSummary(entry.calls, width, lines);
-      else this.appendCompactCall(entry.call, width, toolResults, lines, toolBlocks);
+      if (entry.kind === "run") {
+        lines.push(...this.callRows(this.runSummaryText(entry.calls), "toolPendingBg", width));
+      } else this.appendCompactCall(entry.call, width, toolResults, lines, toolBlocks);
       lines.push("");
     }
   }
 
   /**
-   * A run as one summary row on the pending background: its call count and names in first-seen order,
-   * wrapped and colored exactly like a pending call row, and with no timing of its own.
+   * A run of calls as one summary row: count and names in first-seen order, no status icon and no
+   * timing of its own, since one row cannot carry the colors of the calls it collapsed. `state` names
+   * what a reader could not otherwise see - calls that failed, were cancelled or are still running.
    */
-  private appendRunSummary(calls: ToolCall[], width: number, lines: string[]): void {
+  private runSummaryText(calls: readonly { name: string }[], state = ""): string {
     const names = plainText([...new Set(calls.map((call) => call.name))].join(", "));
-    const text = this.theme.bold(` ${calls.length} tools (${names}) `);
-    lines.push(...this.callRows(text, "toolPendingBg", width));
+    return this.theme.bold(` ${calls.length} tools (${names})${state ? ` · ${state}` : ""} `);
   }
 
   /** One eligible call as one status-colored row: no fill bars, no result, no padding of its own. */

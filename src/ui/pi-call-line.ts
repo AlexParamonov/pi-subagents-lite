@@ -22,13 +22,14 @@ const SHELL_PROMPTS = new Map([
 ]);
 
 /** The tools pi presents by name, each with its own one-row call line. */
-const CURATED_LINES: Map<string, (args: CallArgs, theme: Theme) => string> = new Map([
+const CURATED_LINES: Map<string, (args: CallArgs, theme: Theme, expanded: boolean) => string> = new Map([
   ["read", readLine],
   ["write", writeLine],
   ["edit", editLine],
   ["grep", grepLine],
   ["find", findLine],
   ["ls", lsLine],
+  ["codemode", codemodeLine],
 ]);
 
 /**
@@ -41,7 +42,31 @@ export function formatCallLine(name: string, args: CallArgs, theme: Theme, expan
   if (prompt !== undefined) return shellLine(args, prompt, theme, timer);
 
   const curated = CURATED_LINES.get(name);
-  return (curated ? curated(args, theme) : genericLine(name, args, theme, expanded)) + (timer ? `  ${timer}` : "");
+  return (
+    (curated ? curated(args, theme, expanded) : genericLine(name, args, theme, expanded)) + (timer ? `  ${timer}` : "")
+  );
+}
+
+/**
+ * A nested `codemode` call's row, in the same form pi gives the same tool at the top level. The tool
+ * details carry only `previewArgs`' JSON preview, truncated for display, so a long call no longer
+ * parses and keeps that preview text as it is.
+ */
+export function nestedCallLine(name: string, preview: string, theme: Theme, expanded: boolean): string {
+  const args = parsePreview(preview);
+  if (args) return formatCallLine(name, args, theme, expanded);
+  return preview ? `${toolWord(plainText(name), theme)} ${muted(preview, theme)}` : toolWord(plainText(name), theme);
+}
+
+/** The arg preview as an argument object; nothing when truncation cut the JSON in the middle. */
+function parsePreview(preview: string): CallArgs {
+  if (!preview) return {};
+  try {
+    const parsed: unknown = JSON.parse(preview);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as CallArgs) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function shellLine(args: CallArgs, prompt: string, theme: Theme, timer: string): string {
@@ -127,6 +152,19 @@ function lsLine(args: CallArgs, theme: Theme): string {
   const limit = args?.limit;
   const path = pathText(args?.path, theme, ".");
   return `${toolWord("ls", theme)} ${path}${limit === undefined ? "" : theme.fg("toolOutput", ` (limit ${shown(limit)})`)}`;
+}
+
+/**
+ * A codemode script is code, so it never goes through the `key=value` preview that would JSON-escape
+ * it. Collapsed, the nested-call trace under the row says what the script did; expanded shows the
+ * script itself. Nothing here guesses at which line of the script stands for the whole thing.
+ */
+function codemodeLine(args: CallArgs, theme: Theme, expanded: boolean): string {
+  const head = toolWord("codemode", theme);
+  const code = argText(args?.code);
+  if (code === null) return `${head} ${invalidArg(theme)}`;
+  const script = code.replace(/\r/g, "").replace(/\s+$/g, "");
+  return expanded && script ? `${head}\n${muted(script, theme)}` : head;
 }
 
 /** pi's trimTrailingEmptyLines, so the count is the content a reader would see. */
