@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The compact conversation viewer collapses a `codemode` call to its nested tool rows instead of an escaped `code=...` argument, and shows the script itself when expanded. Those rows use the same form as the top-level rows (`read package.json:1-12`, `$ rm -f file`), consecutive eligible calls group into the same summary row the viewer uses elsewhere, counting the calls that failed or were cancelled, excluded calls stay individually visible with Pi-style status icons, expanding reveals why a nested call failed, and the trace updates live while the script runs.
+
 ## [1.19.0] - 2026-11-15
 
 ### Added
