@@ -644,23 +644,41 @@ describe("executeAgentTool — foreground error result", () => {
 describe("executeAgentTool — foreground result details", () => {
   let ctx: ExtensionContext;
 
+  const stoppedReply = "Stopping after two failed edits.\n\nTwo files left untouched.";
+
   beforeEach(() => {
     vi.clearAllMocks();
     ctx = fakeCtx();
-  });
-
-  it("carries the settled status so the collapsed row can strip the appended status note", async () => {
     mockGetRecord.mockReturnValue(
       makeAgentRecord({
-        result: "Stopping after two failed edits.",
+        result: stoppedReply,
         lifecycle: { status: "stopped", stoppedBy: "user", startedAt: 1000, completedAt: 2000, started: true },
-        execution: { promise: Promise.resolve("Stopping after two failed edits.") },
+        execution: { promise: Promise.resolve(stoppedReply) },
       }),
     );
+  });
 
+  it("carries the reply's opening line as the preview the collapsed row reads", async () => {
     const { details } = await executeAgentTool("tc-fg-details", makeParams(), undefined, undefined, ctx);
 
-    expect(details?.status).toBe("stopped");
+    expect(details?.replyPreview).toBe("Stopping after two failed edits.");
+  });
+
+  it("carries no settled status, output file or stop reason, because no reader needs them", async () => {
+    const { details } = await executeAgentTool("tc-fg-details", makeParams(), undefined, undefined, ctx);
+
+    expect(details).not.toHaveProperty("status");
+    expect(details).not.toHaveProperty("outputFile");
+    expect(details).not.toHaveProperty("stopReason");
+  });
+
+  it("hands the model the reply with the status note glued on, unchanged", async () => {
+    const { content } = await executeAgentTool("tc-fg-text", makeParams(), undefined, undefined, ctx);
+
+    expect(content[0].text).toBe(
+      "Stopping after two failed edits.\n\nTwo files left untouched." +
+        " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
+    );
   });
 });
 

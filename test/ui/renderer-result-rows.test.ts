@@ -23,7 +23,7 @@ function rows(result: string, lifecycle: Partial<AgentLifecycle>, expanded = fal
   const component = renderAgentToolResult(
     {
       content: [{ type: "text", text: formatResultContent(record) }],
-      details: buildAgentDetails(record, { includeStats: true, includeStatus: true }),
+      details: buildAgentDetails(record, { includeStats: true }),
     },
     { expanded },
     defaultTheme,

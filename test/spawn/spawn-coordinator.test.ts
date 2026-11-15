@@ -431,6 +431,30 @@ describe("SpawnCoordinator", () => {
       const content = mockPi.sendMessage.mock.calls[0][0].content as string;
       expect(content).toBe('[Subagent "builder" agent-0 completed]\n\ndone');
     });
+
+    it("keeps the nudge text byte for byte for a note-bearing stop", async () => {
+      const coordinator = new SpawnCoordinator(manager);
+
+      const result = await coordinator.spawn(mockPiApi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+      result.record.lifecycle.status = "stopped";
+      result.record.lifecycle.stoppedBy = "user";
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      const content = mockPi.sendMessage.mock.calls[0][0].content as string;
+      expect(content).toBe(
+        '[Subagent "builder" agent-0 stopped]\n\ndone' +
+          " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
+      );
+    });
   });
 
   describe("onAgentComplete", () => {

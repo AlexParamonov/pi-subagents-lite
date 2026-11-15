@@ -18,7 +18,6 @@ import {
   statusIcon,
 } from "./format.ts";
 import { getManager } from "../shell.ts";
-import { stripStatusNote } from "../status-note.ts";
 
 // --- Stats rendering helpers ---
 
@@ -91,13 +90,12 @@ function indentedBody(text: string): string {
     .join("\n");
 }
 
-/** The collapsed reply-preview row, shared by the Agent result row and the card. The status note is cut by
- * settled status because a trimmed `result` always opens the text; undefined when no reply text is left. */
-function replyRow(content: string, d: Record<string, unknown>, theme: Theme): TruncatedText | undefined {
-  const line = stripStatusNote(content, d.status as string | undefined)
-    .split("\n")[0]
-    ?.trim();
-  return line ? new TruncatedText(`  ${theme.fg("toolOutput", line)}`, 0, 0) : undefined;
+/** The collapsed reply-preview row, rendered from the field the producer wrote. Undefined for a message
+ * stored before the field existed, and for an agent that said nothing. */
+function replyRow(d: Record<string, unknown>, theme: Theme): TruncatedText | undefined {
+  const preview = d.replyPreview;
+  if (typeof preview !== "string" || !preview) return undefined;
+  return new TruncatedText(`  ${theme.fg("toolOutput", preview)}`, 0, 0);
 }
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
@@ -206,7 +204,7 @@ export function renderAgentToolResult(
     const rows = new Container();
     rows.addChild(new Text(lines, 0, 0));
     if (!expanded) {
-      const reply = replyRow(text, d, theme);
+      const reply = replyRow(d, theme);
       if (reply) rows.addChild(reply);
     }
     return rows;
@@ -284,12 +282,6 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
-/** Drop the card's own framing: emitIndividualNudge puts `[Subagent "type" id status]` over a blank line first. */
-function withoutEnvelope(content: string): string {
-  const lines = content.split("\n");
-  return lines[0]?.startsWith("[Subagent ") ? lines.slice(2).join("\n") : content;
-}
-
 /** The card's dim path rows in order, omitting whatever the details don't carry. */
 function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string {
   const outputFile = d?.outputFile;
@@ -328,7 +320,7 @@ export function renderSubagentResult(
     inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
 
     if (!expanded) {
-      const reply = replyRow(withoutEnvelope(text), d, theme);
+      const reply = replyRow(d, theme);
       if (reply) inner.addChild(reply);
     }
 
