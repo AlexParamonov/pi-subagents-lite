@@ -67,23 +67,14 @@ describe("buildAgentDetails", () => {
 
   // --- Baseline: no options (minimal) ---
 
-  it("returns only type and description when no options given", () => {
-    const record = makeRecord();
+  it("carries type, description and the reply preview, and no stats or status fields", () => {
+    const record = makeRecord({ result: "Fixed the flaky fetch test.\n\nRetries are capped now." });
     const details = buildAgentDetails(record);
 
     expect(details.type).toBe("builder");
     expect(details.description).toBe("Build something");
-    // Should NOT include stats or status fields
-    expect(details.turnCount).toBeUndefined();
-    expect(details.status).toBeUndefined();
-    expect(details.input).toBeUndefined();
-    expect(details.output).toBeUndefined();
-  });
-
-  it("returns only two keys when no options given", () => {
-    const record = makeRecord();
-    const details = buildAgentDetails(record);
-    expect(Object.keys(details)).toEqual(["type", "description"]);
+    // The exact key set is the absence check for every stats and status field.
+    expect(Object.keys(details)).toEqual(["type", "description", "replyPreview"]);
   });
 
   // --- includeStats ---
