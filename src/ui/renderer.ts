@@ -83,18 +83,21 @@ export function cleanupInvalidations(): void {
 
 // --- Agent tool renderers ---
 
-/**
- * The collapsed reply-preview row shared by the Agent result row and the card. `content` is
- * formatResultContent output without any caller framing; the settled status in `d` lets stripStatusNote cut
- * the glued note only where that status carries one. A settled `result` is trimmed and an appended note never
- * opens the text, so the first line left is the reply. Undefined when there is none, leaving the caller's
- * row set exactly as it was.
- */
-function replyRow(content: string, d: Record<string, unknown>, theme: Theme, color: string): TruncatedText | undefined {
+/** The expanded reply body, indented to sit under the row that heads it. Shared by both result surfaces. */
+function indentedBody(text: string): string {
+  return text
+    .split("\n")
+    .map((l) => `  ${l}`)
+    .join("\n");
+}
+
+/** The collapsed reply-preview row, shared by the Agent result row and the card. The status note is cut by
+ * settled status because a trimmed `result` always opens the text; undefined when no reply text is left. */
+function replyRow(content: string, d: Record<string, unknown>, theme: Theme): TruncatedText | undefined {
   const line = stripStatusNote(content, d.status as string | undefined)
     .split("\n")[0]
     ?.trim();
-  return line ? new TruncatedText(`  ${theme.fg(color, line)}`, 0, 0) : undefined;
+  return line ? new TruncatedText(`  ${theme.fg("toolOutput", line)}`, 0, 0) : undefined;
 }
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
@@ -198,17 +201,12 @@ export function renderAgentToolResult(
     const modelPart = tag ? `${theme.fg("dim", tag)}·` : "";
     let lines = `  ${modelPart}${statsLine}\n  ${theme.fg("text", desc)}`;
     if (expanded && text) {
-      lines +=
-        "\n" +
-        text
-          .split("\n")
-          .map((l) => `  ${l}`)
-          .join("\n");
+      lines += `\n${indentedBody(text)}`;
     }
     const rows = new Container();
     rows.addChild(new Text(lines, 0, 0));
     if (!expanded) {
-      const reply = replyRow(text, d, theme, "toolOutput");
+      const reply = replyRow(text, d, theme);
       if (reply) rows.addChild(reply);
     }
     return rows;
@@ -330,7 +328,7 @@ export function renderSubagentResult(
     inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
 
     if (!expanded) {
-      const reply = replyRow(withoutEnvelope(text), d, theme, "customMessageText");
+      const reply = replyRow(withoutEnvelope(text), d, theme);
       if (reply) inner.addChild(reply);
     }
 
@@ -341,16 +339,7 @@ export function renderSubagentResult(
 
     if (expanded && text) {
       inner.addChild(new Spacer(1));
-      inner.addChild(
-        new Text(
-          text
-            .split("\n")
-            .map((l) => `  ${l}`)
-            .join("\n"),
-          0,
-          0,
-        ),
-      );
+      inner.addChild(new Text(indentedBody(text), 0, 0));
     }
   } else {
     inner.addChild(new Text(buildFallbackResultLine(d, theme, modelDisplayStyle), 0, 0));
