@@ -4,7 +4,7 @@
  * Extracted from index.ts to separate display concerns from extension wiring.
  */
 
-import { Box, Container, Markdown, Spacer, Text, TruncatedText } from "@earendil-works/pi-tui";
+import { Box, Container, Markdown, Spacer, Text, TruncatedText, type Component } from "@earendil-works/pi-tui";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
 import type { SubagentMessageDetails } from "../agents/parent-message.ts";
@@ -82,6 +82,20 @@ export function cleanupInvalidations(): void {
 }
 
 // --- Agent tool renderers ---
+
+/**
+ * The collapsed reply-preview row shared by the Agent result row and the card. `content` is
+ * formatResultContent output without any caller framing; the settled status in `d` lets stripStatusNote cut
+ * the glued note only where that status carries one. A settled `result` is trimmed and an appended note never
+ * opens the text, so the first line left is the reply. Undefined when there is none, leaving the caller's
+ * row set exactly as it was.
+ */
+function replyRow(content: string, d: Record<string, unknown>, theme: Theme, color: string): TruncatedText | undefined {
+  const line = stripStatusNote(content, d.status as string | undefined)
+    .split("\n")[0]
+    ?.trim();
+  return line ? new TruncatedText(`  ${theme.fg(color, line)}`, 0, 0) : undefined;
+}
 
 /** Render the Agent tool call line (e.g., "▸ Agent (model)"). */
 export function renderAgentToolCall(
@@ -171,7 +185,7 @@ export function renderAgentToolResult(
   showCost: boolean,
   modelDisplayStyle: "id" | "name" = "id",
   _context?: { state?: Record<string, unknown>; executionStarted?: boolean },
-): Text {
+): Component {
   const { expanded } = options;
   const text = result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
   const d = result.details;
@@ -191,7 +205,13 @@ export function renderAgentToolResult(
           .map((l) => `  ${l}`)
           .join("\n");
     }
-    return new Text(lines, 0, 0);
+    const rows = new Container();
+    rows.addChild(new Text(lines, 0, 0));
+    if (!expanded) {
+      const reply = replyRow(text, d, theme, "toolOutput");
+      if (reply) rows.addChild(reply);
+    }
+    return rows;
   }
 
   // Background agents — description only (icon + status are in the call line)
@@ -266,17 +286,10 @@ export function renderSubagentMessage(
 
 // --- Message renderer — subagent-result ---
 
-/**
- * First line of the agent's own reply, read back from the nudge content emitIndividualNudge builds:
- * `<envelope>\n\n<reply>` plus the notes formatResultContent appends last. stripStatusNote removes the
- * glued status note. The reply opens the line below the envelope's blank separator because runTurnLoop
- * trims `result`, and an appended note never opens there, so no deeper line is ever the reply.
- */
-function firstReplyLine(content: string, status: string | undefined): string {
-  const lines = stripStatusNote(content, status).split("\n");
-  const body = lines[0]?.startsWith("[Subagent ") ? lines.slice(1) : lines;
-  const line = body[0]?.trim() ? body[0] : body[1];
-  return line?.trim() ?? "";
+/** Drop the card's own framing: emitIndividualNudge puts `[Subagent "type" id status]` over a blank line first. */
+function withoutEnvelope(content: string): string {
+  const lines = content.split("\n");
+  return lines[0]?.startsWith("[Subagent ") ? lines.slice(2).join("\n") : content;
 }
 
 /** The card's dim path rows in order, omitting whatever the details don't carry. */
@@ -317,10 +330,8 @@ export function renderSubagentResult(
     inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
 
     if (!expanded) {
-      const replyLine = firstReplyLine(text, d.status as string | undefined);
-      if (replyLine) {
-        inner.addChild(new TruncatedText(`  ${theme.fg("customMessageText", replyLine)}`, 0, 0));
-      }
+      const reply = replyRow(withoutEnvelope(text), d, theme, "customMessageText");
+      if (reply) inner.addChild(reply);
     }
 
     const pathLines = pathRows(d, theme);

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { fakeCtx, makeResolvablePromise } from "../fixtures.js";
+import { fakeCtx, makeResolvablePromise, makeAgentRecord } from "../fixtures.js";
 import { asExtensionContext } from "../pi-boundaries.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SpawnIntent } from "../../src/spawn/spawn-coordinator.js";
@@ -638,6 +638,29 @@ describe("executeAgentTool — foreground error result", () => {
     await expect(
       executeAgentTool("tc-err", makeParams({ agent: "feature-reviewer" }), undefined, undefined, ctx),
     ).rejects.toThrow(/feature-reviewer.*anthropic\/claude-sonnet-4.*model failed to load/);
+  });
+});
+
+describe("executeAgentTool — foreground result details", () => {
+  let ctx: ExtensionContext;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = fakeCtx();
+  });
+
+  it("carries the settled status so the collapsed row can strip the appended status note", async () => {
+    mockGetRecord.mockReturnValue(
+      makeAgentRecord({
+        result: "Stopping after two failed edits.",
+        lifecycle: { status: "stopped", stoppedBy: "user", startedAt: 1000, completedAt: 2000, started: true },
+        execution: { promise: Promise.resolve("Stopping after two failed edits.") },
+      }),
+    );
+
+    const { details } = await executeAgentTool("tc-fg-details", makeParams(), undefined, undefined, ctx);
+
+    expect(details?.status).toBe("stopped");
   });
 });
 

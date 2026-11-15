@@ -87,7 +87,7 @@ vi.mock("../../src/ui/format.js", async (importOriginal) => {
 // Import after mocks are set up
 import type { AgentLifecycle } from "../../src/types.js";
 import { SHORT_ID_LENGTH } from "../../src/types.js";
-import { formatResultContent } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails, formatResultContent } from "../../src/agents/tool-execution.js";
 import { makeAgentRecord } from "../fixtures.js";
 import {
   renderSubagentResult,
@@ -104,6 +104,9 @@ import { getManager } from "../../src/shell.js";
 /* ------------------------------------------------------------------ */
 
 const SHOW_COST = false;
+
+/** Text of the rows the renderer built as width-truncated single rows, i.e. the collapsed reply preview rows. */
+const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText").map((r) => r.text);
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */
@@ -245,8 +248,6 @@ describe("renderSubagentResult — reply first line", () => {
     };
   };
 
-  /** Text of the rows the card built as width-truncated single rows, i.e. the reply preview rows. */
-  const truncatedRows = () => renderedRows.filter((r) => r.kind === "TruncatedText").map((r) => r.text);
   /** The card's rendered lines, in order, blank rows included. */
   const cardLines = () => renderedRows.flatMap((r) => (r.kind === "Spacer" ? [""] : r.text.split("\n")));
 
@@ -487,6 +488,151 @@ describe("renderSubagentResult — reply first line", () => {
       { kind: "Text", text: "✓ Builder\n  Fix the flaky fetch test\n  tail -f /tmp/pi-out.log" },
       { kind: "Spacer", text: "" },
       { kind: "Spacer", text: "" },
+    ]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  renderAgentToolResult — reply first line on the collapsed row     */
+/* ------------------------------------------------------------------ */
+
+describe("renderAgentToolResult — reply first line", () => {
+  /** A settled foreground Agent call's tool result, built the way executeAgentTool builds it. */
+  const foreground = (result: string, lifecycle: Partial<AgentLifecycle>) => {
+    const record = makeAgentRecord({
+      result,
+      display: { description: "Fix the flaky fetch test" },
+      lifecycle: { startedAt: 1000, completedAt: 61000, started: true, ...lifecycle },
+      stats: { toolUses: 5, turnCount: 3 },
+    });
+    return {
+      content: [{ type: "text", text: formatResultContent(record) }],
+      details: buildAgentDetails(record, { includeStats: true, includeStatus: true }),
+    };
+  };
+
+  it("shows the reply's first line after the stats and description rows while collapsed", () => {
+    renderAgentToolResult(
+      foreground("Vendor fetch fails on the first attempt.\n\nIt retries twice, then writes the log.", {
+        status: "completed",
+      }),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(renderedRows).toEqual([
+      { kind: "Text", text: "  5 uses·3 turns·1m0s\n  Fix the flaky fetch test" },
+      { kind: "TruncatedText", text: "  Vendor fetch fails on the first attempt." },
+    ]);
+  });
+
+  it.each([
+    ["stopped", { stoppedBy: "user" }],
+    ["aborted", {}],
+    ["turn_limited", {}],
+  ] as const)("keeps the status note off a one-line reply (%s)", (status, lifecycle) => {
+    renderAgentToolResult(foreground("Done.", { status, ...lifecycle }), { expanded: false }, defaultTheme, SHOW_COST);
+
+    expect(truncatedRows()).toEqual(["  Done."]);
+  });
+
+  it("adds no row when the agent produced no reply text", () => {
+    renderAgentToolResult(foreground("", { status: "completed" }), { expanded: false }, defaultTheme, SHOW_COST);
+
+    expect(renderedRows).toEqual([{ kind: "Text", text: "  5 uses·3 turns·1m0s\n  Fix the flaky fetch test" }]);
+  });
+
+  it("keeps a foreground reply whose first line opens like the card's envelope line", () => {
+    renderAgentToolResult(
+      foreground('[Subagent "builder" a1b2c3d4 completed]\n\nThat message was not mine.', { status: "completed" }),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual(['  [Subagent "builder" a1b2c3d4 completed]']);
+  });
+
+  it("hands a long first line to the width-truncating row component", () => {
+    const longLine = "Attempted ".repeat(40).trim();
+
+    renderAgentToolResult(
+      foreground(`${longLine}\n\nSecond paragraph.`, { status: "completed" }),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual([`  ${longLine}`]);
+  });
+
+  it("adds no row when the settled text is only the status note", () => {
+    renderAgentToolResult(foreground("", { status: "turn_limited" }), { expanded: false }, defaultTheme, SHOW_COST);
+
+    expect(renderedRows).toEqual([{ kind: "Text", text: "  5 uses·3 turns·1m0s\n  Fix the flaky fetch test" }]);
+  });
+
+  it("previews the same line on the card and on the foreground row for one settled reply", () => {
+    const record = makeAgentRecord({
+      result: "Vendor fetch fails on the first attempt.\n\nIt retries twice.",
+      display: { description: "Fix the flaky fetch test" },
+      lifecycle: { status: "stopped", stoppedBy: "user", startedAt: 1000, completedAt: 61000, started: true },
+      stats: { toolUses: 5, turnCount: 3 },
+    });
+    const content = formatResultContent(record);
+    const details = buildAgentDetails(record, { includeStats: true, includeStatus: true });
+
+    renderAgentToolResult(
+      { content: [{ type: "text", text: content }], details },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+    const foregroundRows = truncatedRows();
+    renderedRows.length = 0;
+
+    renderSubagentResult(
+      {
+        content: `[Subagent "builder" ${record.id.slice(0, SHORT_ID_LENGTH)} stopped]\n\n${content}`,
+        details,
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(truncatedRows()).toEqual(["  Vendor fetch fails on the first attempt."]);
+    expect(foregroundRows).toEqual(truncatedRows());
+  });
+
+  it("adds no reply line to a background spawn's result row", () => {
+    renderAgentToolResult(
+      {
+        content: [{ type: "text", text: "[Agent running] Success! You delegated to an agent." }],
+        details: { type: "builder", description: "Fix vendor approach", agentId: "agent-abc-123", status: "running" },
+      },
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(renderedRows).toEqual([{ kind: "Text", text: "  Fix vendor approach" }]);
+  });
+
+  it("keeps the expanded result showing the whole reply body after the description, with no preview row", () => {
+    renderAgentToolResult(
+      foreground("Line one.\n\nLine two.", { status: "completed" }),
+      { expanded: true },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    expect(renderedRows).toEqual([
+      {
+        kind: "Text",
+        text: "  5 uses·3 turns·1m0s\n  Fix the flaky fetch test\n  Line one.\n  \n  Line two.",
+      },
     ]);
   });
 });
