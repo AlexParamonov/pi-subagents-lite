@@ -93,9 +93,9 @@ async function resolveWorktree(
 }
 
 /**
- * Build a details record from an AgentRecord. Always includes type and
- * description; includeStatus adds status/outputFile/stopReason, includeStats
- * adds turn/token/cost/context/compaction/model fields.
+ * Build a details record from an AgentRecord. Always includes type, description
+ * and the reply's opening line for the collapsed result rows; includeStatus adds
+ * status/outputFile/stopReason, includeStats adds turn/token/cost/context/compaction/model fields.
  */
 export function buildAgentDetails(
   record: AgentRecord,
@@ -105,6 +105,11 @@ export function buildAgentDetails(
     type: record.display.type,
     description: record.display.description,
   };
+
+  const openingLine = record.result?.split("\n").find((line) => line.trim());
+  if (openingLine) {
+    details.replyPreview = openingLine.trim();
+  }
 
   if (record.display.worktreePath) {
     details.worktreePath = record.display.worktreePath;
@@ -255,7 +260,7 @@ export async function executeAgentTool(
   }
 
   // Foreground: record.execution.promise is already awaited by coordinator.spawn()
-  const details = buildAgentDetails(record, { includeStats: true, includeStatus: true });
+  const details = buildAgentDetails(record, { includeStats: true });
 
   if (record.lifecycle.status === "error") {
     throw new Error(`Agent failed: ${record.error || "unknown error"}`);

@@ -299,4 +299,64 @@ describe("buildAgentDetails", () => {
 
     expect(details.worktreePath).toBeUndefined();
   });
+
+  // --- replyPreview: the collapsed result surfaces read this field, never the composed text ---
+
+  it("carries the reply's opening line", () => {
+    const record = makeRecord({
+      result: "Vendor fetch fails on the first attempt.\n\nIt retries twice, then writes the log.",
+    });
+
+    expect(buildAgentDetails(record).replyPreview).toBe("Vendor fetch fails on the first attempt.");
+  });
+
+  it("carries the first text line of a reply that opens with blank lines", () => {
+    const record = makeRecord({ result: "\n   \n  Fixed the flake.\n\nDone." });
+
+    expect(buildAgentDetails(record).replyPreview).toBe("Fixed the flake.");
+  });
+
+  it.each(["", "   \n\t\n  "])("carries no preview for the blank reply %j", (result) => {
+    expect(buildAgentDetails(makeRecord({ result })).replyPreview).toBeUndefined();
+  });
+
+  it("carries no preview when the record has no reply", () => {
+    expect(buildAgentDetails(makeRecord({ result: undefined })).replyPreview).toBeUndefined();
+  });
+
+  it("carries no preview when only the appended error note would be readable", () => {
+    const record = makeRecord({
+      result: "",
+      error: "model failed to load",
+      lifecycle: { status: "error", startedAt: 1000, started: true },
+    });
+
+    expect(buildAgentDetails(record).replyPreview).toBeUndefined();
+  });
+
+  it.each(["Error: the fixture never ran.", "(nothing to do)", '  [Subagent "builder" a1b2c3d4 completed]'])(
+    "carries the reply line even when it reads like framing (%s)",
+    (result) => {
+      expect(buildAgentDetails(makeRecord({ result })).replyPreview).toBe(result.trim());
+    },
+  );
+
+  it.each([
+    ["stopped", { stoppedBy: "user" }],
+    ["aborted", {}],
+    ["turn_limited", {}],
+  ] as const)("carries the reply line and not the status note under the %s status", (status, lifecycle) => {
+    const record = makeRecord({
+      result: "Done.",
+      lifecycle: { status, startedAt: 1000, completedAt: 2000, started: true, ...lifecycle },
+    });
+
+    expect(buildAgentDetails(record, { includeStats: true, includeStatus: true }).replyPreview).toBe("Done.");
+  });
+
+  it("holds one line, never reply text beyond it", () => {
+    const record = makeRecord({ result: "Line one.\nLine two.\nLine three." });
+
+    expect(buildAgentDetails(record).replyPreview).toBe("Line one.");
+  });
 });
