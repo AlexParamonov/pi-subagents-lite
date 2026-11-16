@@ -196,7 +196,7 @@ describe("createProcFsProbe", () => {
     addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
     addProcess(201, 200, ["sleep"]);
     rmSync(join(root, "200", "environ"));
-    mkdirSync(join(root, "200", "environ")); // a directory, so the read fails as it does under a restrictive ptrace_scope
+    mkdirSync(join(root, "200", "environ")); // a directory, so the read fails as it does for a non-dumpable process
     const running = probe();
 
     expect(await running.runningPrograms("mine")).toEqual([]);
