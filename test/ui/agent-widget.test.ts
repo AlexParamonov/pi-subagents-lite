@@ -630,7 +630,7 @@ describe("widget bash program sampling", () => {
     expect(line).not.toContain("(");
   });
 
-  it("forgets the sample when the bash call ends, so the next call starts unknown", async () => {
+  it("keeps a finished call's programs off the call that replaced it", async () => {
     vi.useFakeTimers();
     try {
       const host = mountBash({ programs: ["sleep"] });

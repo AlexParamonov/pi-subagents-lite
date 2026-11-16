@@ -13,8 +13,9 @@ import { basename } from "node:path";
  * reports the first other program on each branch.
  *
  * Two cases report no programs instead of failing, both because no shell can be tied to a session: no
- * shell of that session is alive any more; or a shell's /proc/<pid>/environ cannot be read, which is
- * denied for a process that made itself non-dumpable or changed uid.
+ * shell of that session is alive any more (it finished, or a security module hid its /proc entry); or
+ * a shell's /proc/<pid>/environ cannot be read, as a security module or a process that made itself
+ * non-dumpable or changed uid can cause.
  */
 
 export interface ProcessProbe {

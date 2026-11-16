@@ -175,7 +175,7 @@ function buildItems(
       currentValue: store.agent.widgetShowBashPrograms ? "ON" : "OFF",
       values: ["ON", "OFF"],
       description:
-        "Name the programs a running bash call started (running: sleep ×10, cat) instead of running command…. Linux only; samples /proc at most once a second per agent, only while a bash call runs and the widget is visible.",
+        "Name the programs a running bash call started (running: sleep ×10, cat) instead of running command…. Linux only; reads /proc at most once a second per agent, and again when the running bash calls change, only while a bash call runs and the widget is visible.",
     },
     {
       id: "modelDisplayStyle",

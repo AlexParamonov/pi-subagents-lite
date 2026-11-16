@@ -689,7 +689,7 @@ export class AgentWidget {
       .map((key) => this.manager.getToolStartedAt(agent.id, key))
       .filter((at): at is number => at !== undefined);
     return {
-      programs: this.sampleBashPrograms(agent, bashKeys.join("\n")),
+      programs: this.sampleBashPrograms(agent, JSON.stringify(bashKeys)),
       elapsedMs: started.length > 0 ? Date.now() - Math.min(...started) : undefined,
     };
   }
@@ -711,9 +711,9 @@ export class AgentWidget {
     // same reason sampleContextPercent checks before calling one.
     const sessionId = agent.execution.session?.sessionManager.getSessionId?.();
     if (!sessionId) return current?.programs;
-    // Stamping the slot is what keeps samples from overlapping, per agent: a repaint while a sample is
-    // in flight sees a fresh stamp and keeps showing the previous programs. A failed read leaves that
-    // stamp and those programs, so a denied /proc read retries once a second.
+    // Stamping the slot is what keeps samples from overlapping: a repaint while a sample is in flight
+    // sees a fresh stamp and keeps showing the programs of that call set. A failed read leaves that
+    // stamp and those programs, so a denied /proc read is retried once a second.
     this.bashSamples.set(agent, { at: Date.now(), callKey, programs: current?.programs ?? [] });
     void probe.runningPrograms(sessionId).then(
       (programs) => this.bashSamples.set(agent, { at: Date.now(), callKey, programs }),
