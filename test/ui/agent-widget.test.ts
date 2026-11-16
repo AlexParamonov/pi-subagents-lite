@@ -510,6 +510,8 @@ describe("widget bash program sampling", () => {
     failing?: boolean;
     /** `null` means this platform has no probe, so it must stay distinct from "not given". */
     probe?: ProcessProbe | null;
+    /** Leave the setting alone, the way a caller that never synced the store does. */
+    unset?: boolean;
     tools?: [string, string][];
     sessionManager?: Record<string, unknown>;
   }
@@ -528,7 +530,7 @@ describe("widget bash program sampling", () => {
     manager.getToolStartedAt = () => Date.now() - 3_600_000;
     const view: LiveView = { activeTools: new Map(options.tools ?? [["c1", "bash"]]), responseText: "" };
     const widget = new AgentWidget(manager, () => view, probe);
-    widget.setShowBashPrograms(options.enabled ?? true);
+    if (!options.unset) widget.setShowBashPrograms(options.enabled ?? true);
     return {
       view,
       manager,
@@ -541,9 +543,22 @@ describe("widget bash program sampling", () => {
   it.each([
     { name: "the setting is off", options: { enabled: false } satisfies Host, age: false },
     { name: "this platform has no probe", options: { probe: null } satisfies Host, age: false },
+    { name: "nobody has set the setting", options: { unset: true } satisfies Host, age: false },
     { name: "no bash call is running", options: { tools: [["r1", "read"]] } satisfies Host, age: false },
     // The age comes from the watchdog's own clock, so a session that cannot name itself still has one.
     { name: "the session cannot say which session it is", options: { sessionManager: {} } satisfies Host, age: true },
+    // pi owns the session object; an unexpected shape may cost this part of the line, not the widget.
+    {
+      name: "the session throws when asked which session it is",
+      options: {
+        sessionManager: {
+          getSessionId: () => {
+            throw new Error("unexpected session");
+          },
+        },
+      } satisfies Host,
+      age: true,
+    },
   ])("takes no sample when $name", async ({ options, age }) => {
     const host = mountBash({ programs: ["sleep"], ...options });
 
@@ -586,26 +601,75 @@ describe("widget bash program sampling", () => {
     }
   });
 
+  it("keeps sampling after the clock steps backwards", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash();
+      host.activity();
+      await host.settled();
+
+      vi.setSystemTime(Date.now() - 5 * 60_000); // an NTP step, or a resumed VM syncing its clock
+      vi.advanceTimersByTime(1_100);
+      host.activity();
+
+      expect(host.sessions).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("starts a later call without the programs of the call it replaced", async () => {
     const host = mountBash();
     host.activity();
     await host.settled();
     expect(host.activity()).toContain("sleep");
 
-    // No repaint has to happen in between: a new call is a different question to ask /proc.
+    // One call ends and another takes its place: the same count, a different question to ask /proc,
+    // and no repaint in between.
+    host.view.activeTools.delete("c1");
     host.view.activeTools.set("c2", "bash");
     expect(host.activity()).not.toContain("sleep");
   });
 
-  it("drops a sample that lands after its bash call ended", async () => {
-    const host = mountBash();
+  it("takes one sample for a set of calls, whichever order they arrived in", async () => {
+    const host = mountBash({ tools: [] });
+    host.view.activeTools.set("c1", "bash");
+    host.view.activeTools.set("c2", "bash");
     host.activity();
-
-    host.view.activeTools.delete("c1");
-    host.view.activeTools.set("r1", "read");
     await host.settled();
 
-    expect(host.activity()).not.toContain("sleep");
+    // The same two calls, listed in the other order: the same question, so the same answer serves.
+    host.view.activeTools = new Map([
+      ["c2", "bash"],
+      ["c1", "bash"],
+    ]);
+    host.activity();
+
+    expect(host.sessions).toHaveLength(1);
+    expect(host.activity()).toContain("sleep");
+  });
+
+  it("ignores a sample that lands after its calls were replaced", async () => {
+    // A walk the kernel has not answered yet, so the calls can move on underneath it.
+    const walks: { resolve: (programs: string[]) => void }[] = [];
+    const probe: ProcessProbe = { runningPrograms: () => new Promise((resolve) => walks.push({ resolve })) };
+    const host = mountBash({ probe });
+
+    host.activity();
+    host.view.activeTools.set("c2", "bash");
+    host.activity();
+    expect(walks).toHaveLength(2);
+
+    walks[0]?.resolve(["stale"]);
+    await Promise.resolve();
+    expect(host.activity()).not.toContain("stale");
+    // The late result must not take over the slot the current calls stamped, or the next repaint
+    // finds a mismatch and walks /proc all over again.
+    expect(walks).toHaveLength(2);
+
+    walks[1]?.resolve(["make"]);
+    await Promise.resolve();
+    expect(host.activity()).toContain("make");
   });
 
   it("keeps a denied read out of the line and asks again after the window", async () => {

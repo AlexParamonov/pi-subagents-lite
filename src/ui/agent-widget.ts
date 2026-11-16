@@ -703,20 +703,34 @@ export class AgentWidget {
     if (!probe) return undefined;
     // A sample belongs to the calls that were running when it was taken, so the tool-call ids identify
     // it: a later call must not paint the programs of the call it replaced.
+    const now = Date.now();
     const cached = this.bashSamples.get(agent);
-    const current = cached && cached.callKey === callKey ? cached : undefined;
-    if (current && Date.now() - current.at < BASH_SAMPLE_MAX_AGE_MS) return current.programs;
+    // `now >= at` again because a clock stepped backwards would make every sample look fresh.
+    const current = cached && cached.callKey === callKey && now >= cached.at ? cached : undefined;
+    if (current && now - current.at < BASH_SAMPLE_MAX_AGE_MS) return current.programs;
     // The session is absent until it is created and released when the agent is removed, so the id is
-    // read per sample rather than remembered. Older/custom session managers may lack the method, the
-    // same reason sampleContextPercent checks before calling one.
-    const sessionId = agent.execution.session?.sessionManager.getSessionId?.();
+    // read per sample rather than remembered. pi owns this object, so it is read the way
+    // sampleContextPercent reads its own foreign calls: a shape we do not recognise costs this part
+    // of the line, never the widget.
+    let sessionId: string | undefined;
+    try {
+      sessionId = agent.execution.session?.sessionManager.getSessionId();
+    } catch {
+      return current?.programs;
+    }
     if (!sessionId) return current?.programs;
     // Stamping the slot is what keeps samples from overlapping: a repaint while a sample is in flight
     // sees a fresh stamp and keeps showing the programs of that call set. A failed read leaves that
     // stamp and those programs, so a denied /proc read is retried once a second.
-    this.bashSamples.set(agent, { at: Date.now(), callKey, programs: current?.programs ?? [] });
+    this.bashSamples.set(agent, { at: now, callKey, programs: current?.programs ?? [] });
     void probe.runningPrograms(sessionId).then(
-      (programs) => this.bashSamples.set(agent, { at: Date.now(), callKey, programs }),
+      (programs) => {
+        // A result for calls that stopped running must not replace the slot the current calls
+        // stamped, or the next repaint starts a walk all over again.
+        if (this.bashSamples.get(agent)?.callKey === callKey) {
+          this.bashSamples.set(agent, { at: Date.now(), callKey, programs });
+        }
+      },
       () => {},
     );
     return current?.programs;
