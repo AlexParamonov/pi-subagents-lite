@@ -83,11 +83,13 @@ describe("createProcFsProbe", () => {
       expected: ["sleep", "cat"],
     },
     {
-      name: "wrappers looked through in every stage of a pipeline",
+      name: "looks through wrappers in each process-tree branch",
       roots: [
         shell(n("bash -c x", n("timeout 20 foo", n("foo")), n("nice -n 5 env A=1 baz", n("env A=1 baz", n("baz"))))),
+        shell(n("tokf", n("sleep"))),
+        shell(n("rtk", n("git"))),
       ],
-      expected: ["foo", "baz"],
+      expected: ["foo", "baz", "sleep", "git"],
     },
     {
       name: "a wrapper that has not started its program yet",

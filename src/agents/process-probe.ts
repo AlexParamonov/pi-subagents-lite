@@ -33,7 +33,7 @@ const SHELL_NAMES = new Set(["bash", "sh", "dash", "ash", "zsh", "ksh", "mksh", 
  * rather than them. One with no child yet (still starting up) is reported itself. Shell builtins
  * (`command`, `exec`) and the `time` keyword are absent: they never appear as a process.
  */
-const WRAPPER_NAMES = new Set(["timeout", "env", "nice", "nohup", "stdbuf", "setsid", "ionice"]);
+const WRAPPER_NAMES = new Set(["timeout", "env", "nice", "nohup", "stdbuf", "setsid", "ionice", "tokf", "rtk"]);
 
 /** argv0 basename from raw /proc/<pid>/cmdline contents; a leading "-" (login shell) is dropped. Empty for zombies. */
 function parseProgramName(cmdline: string): string {
