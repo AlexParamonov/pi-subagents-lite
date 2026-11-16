@@ -136,7 +136,6 @@ export class AgentWidget {
   private hasAnimatedRows = false;
   private contextSamples = new WeakMap<AgentRecord, ContextSample>();
   private bashSamples = new WeakMap<AgentRecord, BashSample>();
-  private bashProbeInFlight = false;
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -673,8 +672,13 @@ export class AgentWidget {
     }
   }
 
-  /** The `bash` part of the activity line: sampled programs and the age of the oldest running call. */
+  /**
+   * The `bash` part of the activity line: the programs the call started and the age of the oldest
+   * running call. Undefined with the setting off, so a disabled setting leaves the activity line
+   * exactly as it read before this feature.
+   */
   private bashActivity(agent: AgentRecord, activeTools: Map<string, string>): BashActivity | undefined {
+    if (!this.showBashPrograms) return undefined;
     const bashKeys = [...activeTools.entries()].filter(([, name]) => name === "bash").map(([key]) => key);
     if (bashKeys.length === 0) return undefined;
     const started = bashKeys
@@ -689,23 +693,19 @@ export class AgentWidget {
   /** Programs the agent's `bash` calls started, sampled at most once a second while the widget repaints. */
   private sampleBashPrograms(agent: AgentRecord): string[] | undefined {
     const probe = this.bashProbe;
-    if (!probe || !this.showBashPrograms) return undefined;
+    if (!probe) return undefined;
     const cached = this.bashSamples.get(agent);
     if (cached && Date.now() - cached.at < BASH_SAMPLE_MAX_AGE_MS) return cached.programs;
     // A continuation replaces the session object, so the id is re-read per sample.
     const sessionId = agent.execution.session?.sessionManager.getSessionId?.();
-    if (!sessionId || this.bashProbeInFlight) return cached?.programs;
-    this.bashProbeInFlight = true;
-    probe.runningPrograms(sessionId).then(
-      (programs) => {
-        this.bashProbeInFlight = false;
-        this.bashSamples.set(agent, { at: Date.now(), programs });
-      },
-      () => {
-        this.bashProbeInFlight = false;
-        // A failed read counts as a sample, so the retry stays inside the age window.
-        this.bashSamples.set(agent, { at: Date.now(), programs: [] });
-      },
+    if (!sessionId) return cached?.programs;
+    // Stamping the slot is what keeps samples from overlapping, per agent: a repaint while a
+    // sample is in flight sees a fresh stamp and keeps showing the previous programs. A failed
+    // read leaves that stamp and those programs, so a denied /proc read retries once a second.
+    this.bashSamples.set(agent, { at: Date.now(), programs: cached?.programs ?? [] });
+    void probe.runningPrograms(sessionId).then(
+      (programs) => this.bashSamples.set(agent, { at: Date.now(), programs }),
+      () => {},
     );
     return cached?.programs;
   }

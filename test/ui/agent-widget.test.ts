@@ -411,12 +411,17 @@ describe("getLiveView callback", () => {
         ],
       ]);
       const widget = new AgentWidget(manager, (id: string) => views.get(id));
+      widget.setShowBashPrograms(true);
       manager.listAgents = () => [makeRunningAgent("a1")];
 
       expect(renderWidgetLines(widget)[2]).toMatch(/running 2 commands\u2026\]/);
 
       startedAt = 88_000;
       expect(renderWidgetLines(widget)[2]).toContain("running 2 commands (12s)");
+
+      // Off is the shipped default, and it must read exactly as before this feature.
+      widget.setShowBashPrograms(false);
+      expect(renderWidgetLines(widget)[2]).toMatch(/running 2 commands\u2026\]/);
     } finally {
       vi.useRealTimers();
     }
