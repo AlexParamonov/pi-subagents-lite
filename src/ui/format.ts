@@ -241,31 +241,34 @@ export interface BashActivity {
 
 export function describeActivity(activeTools: Map<string, string>, responseText?: string, bash?: BashActivity): string {
   if (activeTools.size > 0) {
-    // Grouped by the translated label, so tools sharing one label ("searching") still count together;
-    // `bashActive` keeps the sampled programs off any other tool that ever takes this label.
-    const bashActive = [...activeTools.values()].includes("bash");
-    const groups = new Map<string, number>();
+    // Grouped by the translated label, so tools sharing one label ("searching") still count together.
+    // Each group remembers whether a `bash` call contributed to it, which is what decides where the
+    // sampled programs and the elapsed time go: a label alone cannot tell bash from another tool.
+    const groups = new Map<string, { count: number; bash: boolean }>();
     for (const toolName of activeTools.values()) {
       const action = TOOL_DISPLAY[toolName] ?? toolName;
-      groups.set(action, (groups.get(action) ?? 0) + 1);
+      const group = groups.get(action) ?? { count: 0, bash: false };
+      group.count += 1;
+      group.bash = group.bash || toolName === "bash";
+      groups.set(action, group);
     }
 
     // Elapsed time of the oldest running bash call; hidden below a second so it doesn't flicker in.
     const elapsed = bash?.elapsedMs !== undefined && bash.elapsedMs >= 1000 ? ` (${formatMs(bash.elapsedMs)})` : "";
     const programs = bash?.programs;
     const parts: string[] = [];
-    for (const [action, count] of groups) {
-      if (bashActive && action === TOOL_DISPLAY.bash) {
+    for (const [action, group] of groups) {
+      if (group.bash) {
         parts.push(
           // The programs already say what is running; a count adds nothing.
           programs && programs.length > 0
             ? `running: ${formatPrograms(programs)}${elapsed}`
-            : count > 1
-              ? `running ${count} commands${elapsed}`
+            : group.count > 1
+              ? `running ${group.count} commands${elapsed}`
               : `${action}${elapsed}`,
         );
-      } else if (count > 1) {
-        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
+      } else if (group.count > 1) {
+        parts.push(`${action} ${group.count} ${action === "searching" ? "patterns" : "files"}`);
       } else {
         parts.push(action);
       }
