@@ -474,8 +474,10 @@ export class ConfigStore {
         this.setAgentLayerEntry("widgetShowThinking", enabled, "global");
         this.syncWidgetStatsVisibility();
       },
-      // Read when a bash call starts, so there is no widget state to sync.
-      setShowBashPrograms: (enabled: boolean) => this.setAgentLayerEntry("widgetShowBashPrograms", enabled, "global"),
+      setShowBashPrograms: (enabled: boolean): void => {
+        this.setAgentLayerEntry("widgetShowBashPrograms", enabled, "global");
+        this.syncWidgetSettings();
+      },
       setNavHint: (enabled: boolean): void => {
         this.setAgentLayerEntry("widgetNavHint", enabled, "global");
         this.syncWidgetSettings();
@@ -764,6 +766,7 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
 
     w.setNavHint(a.widgetNavHint);
+    w.setShowBashPrograms(a.widgetShowBashPrograms);
     w.setFinishedRetentionMinutes(a.finishedRetentionMinutes);
     w.setModelDisplayStyle(a.modelDisplayStyle);
     w.setStatusBarFormat(a.statusBarFormat);

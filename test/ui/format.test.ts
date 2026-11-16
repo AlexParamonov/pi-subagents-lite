@@ -15,7 +15,6 @@ import {
   formatToolDuration,
   getDisplayName,
   buildMetadataLineParts,
-  bashElapsedMs,
   describeActivity,
   formatPrograms,
   statusIcon,
@@ -395,13 +394,14 @@ describe("describeActivity", () => {
 
   it("lists the programs a bash call is running", () => {
     const tools = new Map([["bash_1", "bash"]]);
-    expect(describeActivity(tools, undefined, ["sleep", "cat"])).toBe("running: sleep, cat\u2026");
+    expect(describeActivity(tools, undefined, { programs: ["sleep", "cat"] })).toBe("running: sleep, cat\u2026");
   });
 
   it("keeps the generic label when no programs are known", () => {
     const tools = new Map([["bash_1", "bash"]]);
-    expect(describeActivity(tools, undefined, [])).toBe("running command\u2026");
+    expect(describeActivity(tools, undefined, { programs: [] })).toBe("running command\u2026");
     expect(describeActivity(tools)).toBe("running command\u2026");
+    expect(describeActivity(tools, undefined, {})).toBe("running command\u2026");
   });
 
   it("counts parallel bash calls as commands while no programs are known", () => {
@@ -410,7 +410,7 @@ describe("describeActivity", () => {
       ["bash_2", "bash"],
     ]);
     expect(describeActivity(tools)).toBe("running 2 commands\u2026");
-    expect(describeActivity(tools, undefined, [])).toBe("running 2 commands\u2026");
+    expect(describeActivity(tools, undefined, { programs: [] })).toBe("running 2 commands\u2026");
   });
 
   it("shows programs once for parallel bash calls and next to other tools", () => {
@@ -419,15 +419,19 @@ describe("describeActivity", () => {
       ["bash_1", "bash"],
       ["bash_2", "bash"],
     ]);
-    expect(describeActivity(tools, undefined, ["make"])).toBe("reading, running: make\u2026");
+    expect(describeActivity(tools, undefined, { programs: ["make"] })).toBe("reading, running: make\u2026");
   });
 
   it("appends the bash call's elapsed time once it passes a second", () => {
     const tools = new Map([["bash_1", "bash"]]);
-    expect(describeActivity(tools, undefined, ["sleep"], 12_000)).toBe("running: sleep (12s)\u2026");
-    expect(describeActivity(tools, undefined, [], 65_000)).toBe("running command (1m 5s)\u2026");
-    expect(describeActivity(tools, undefined, undefined, 999)).toBe("running command\u2026");
-    expect(describeActivity(tools, undefined, undefined, undefined)).toBe("running command\u2026");
+    expect(describeActivity(tools, undefined, { programs: ["sleep"], elapsedMs: 12_000 })).toBe(
+      "running: sleep (12s)\u2026",
+    );
+    expect(describeActivity(tools, undefined, { programs: [], elapsedMs: 65_000 })).toBe(
+      "running command (1m 5s)\u2026",
+    );
+    expect(describeActivity(tools, undefined, { elapsedMs: 999 })).toBe("running command\u2026");
+    expect(describeActivity(tools, undefined, {})).toBe("running command\u2026");
   });
 
   it("puts the elapsed time on the bash part only, also for parallel calls", () => {
@@ -436,13 +440,13 @@ describe("describeActivity", () => {
       ["bash_1", "bash"],
       ["bash_2", "bash"],
     ]);
-    expect(describeActivity(tools, undefined, undefined, 3000)).toBe("reading, running 2 commands (3s)\u2026");
+    expect(describeActivity(tools, undefined, { elapsedMs: 3000 })).toBe("reading, running 2 commands (3s)\u2026");
   });
 
   it("ignores programs when no bash call is active", () => {
     const tools = new Map([["read_1", "read"]]);
-    expect(describeActivity(tools, undefined, ["make"])).toBe("reading\u2026");
-    expect(describeActivity(new Map(), "hi", ["make"])).toBe("hi");
+    expect(describeActivity(tools, undefined, { programs: ["make"] })).toBe("reading\u2026");
+    expect(describeActivity(new Map(), "hi", { programs: ["make"] })).toBe("hi");
   });
 });
 
@@ -631,32 +635,5 @@ describe("formatToolDuration", () => {
     expect(formatToolDuration(90_000)).toBe("1m 30s");
     expect(formatToolDuration(7_384_000)).toBe("2h 3m 4s");
     expect(formatToolDuration(-5)).toBeUndefined();
-  });
-});
-
-describe("bashElapsedMs", () => {
-  const tools = new Map([
-    ["read_r", "read"],
-    ["bash_a", "bash"],
-    ["bash_b", "bash"],
-  ]);
-
-  it("measures from the oldest running bash call", () => {
-    const startedAt = new Map([
-      ["read_r", 100],
-      ["bash_a", 5000],
-      ["bash_b", 2000],
-    ]);
-    expect(bashElapsedMs(tools, startedAt, 9000)).toBe(7000);
-  });
-
-  it("is undefined without a bash call or a known start", () => {
-    expect(bashElapsedMs(new Map([["read_r", "read"]]), new Map([["read_r", 1]]), 9000)).toBeUndefined();
-    expect(bashElapsedMs(tools, undefined, 9000)).toBeUndefined();
-    expect(bashElapsedMs(tools, new Map(), 9000)).toBeUndefined();
-  });
-
-  it("never goes negative", () => {
-    expect(bashElapsedMs(tools, new Map([["bash_a", 9500]]), 9000)).toBe(0);
   });
 });

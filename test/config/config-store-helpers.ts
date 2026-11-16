@@ -86,6 +86,9 @@ export function widgetStub(): { w: AgentWidget; calls: string[] } {
     setNavHint: (e: boolean) => {
       calls.push(`setNavHint:${e}`);
     },
+    setShowBashPrograms: (e: boolean) => {
+      calls.push(`setShowBashPrograms:${e}`);
+    },
     setFinishedRetentionMinutes: (n: number) => {
       calls.push(`setFinishedRetentionMinutes:${n}`);
     },

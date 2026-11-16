@@ -10,16 +10,18 @@ import type { AgentRecord, AgentLifecycle } from "../types.ts";
 import type { Theme } from "./types.ts";
 import type { ModelThinkingPlacement } from "../config/types.ts";
 import { formatCost, getSessionContextPercent } from "../agents/usage.ts";
+import { createProcessProbe } from "../agents/process-probe.ts";
+import type { ProcessProbe } from "../agents/process-probe.ts";
 import {
   applyAgentColor,
   buildStatsParts,
   getDisplayName,
-  bashElapsedMs,
   describeActivity,
   buildModelThinkingTag,
   resolveAgentModelThinking,
   buildMetadataLineParts,
   statusIcon,
+  type BashActivity,
   type StatsVisibility,
 } from "./format.ts";
 import { agentColorAnsi } from "../agent-color.ts";
@@ -43,6 +45,9 @@ const WIDGET_REFRESH_INTERVAL = 80;
 
 /** Context statistics need not be recomputed for every spinner frame. */
 const CONTEXT_SAMPLE_MAX_AGE_MS = 500;
+
+/** A running bash call's process list is sampled at most this often (ms). */
+const BASH_SAMPLE_MAX_AGE_MS = 1000;
 
 /** Navigation freeze window: roster order is deferred while the user is actively navigating. */
 const NAV_FREEZE_MS = 2000;
@@ -85,6 +90,12 @@ interface ContextSample {
   percent: number | null;
 }
 
+/** Last process sample for one agent, and when it was taken. */
+interface BashSample {
+  at: number;
+  programs: string[];
+}
+
 // ---- Re-exports from format.ts (backward compatibility) ----
 export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.ts";
 export type { LiveView as AgentActivity } from "../types.ts";
@@ -124,6 +135,8 @@ export class AgentWidget {
   private lastWidgetLines: string[] | undefined;
   private hasAnimatedRows = false;
   private contextSamples = new WeakMap<AgentRecord, ContextSample>();
+  private bashSamples = new WeakMap<AgentRecord, BashSample>();
+  private bashProbeInFlight = false;
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -139,6 +152,9 @@ export class AgentWidget {
   private maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2);
 
   private navHint = true;
+
+  /** Whether the activity line may name the programs a running `bash` call started. */
+  private showBashPrograms = false;
 
   private statusBarFormat: "full" | "compact" = "full";
 
@@ -176,6 +192,8 @@ export class AgentWidget {
   constructor(
     private manager: AgentManager,
     private getLiveView: (id: string) => LiveView | undefined,
+    /** Where the activity line learns what a `bash` call is running; null where the platform has no probe. */
+    private bashProbe: ProcessProbe | null = createProcessProbe() ?? null,
   ) {}
 
   setShowCost(enabled: boolean) {
@@ -211,6 +229,10 @@ export class AgentWidget {
 
   setNavHint(enabled: boolean) {
     this.navHint = enabled;
+  }
+
+  setShowBashPrograms(enabled: boolean) {
+    this.showBashPrograms = enabled;
   }
 
   setStatusBarFormat(format: "full" | "compact") {
@@ -499,6 +521,7 @@ export class AgentWidget {
       this.lastStatusText = undefined;
       this.lastWidgetLines = undefined;
       this.contextSamples = new WeakMap();
+      this.bashSamples = new WeakMap();
     }
   }
 
@@ -650,6 +673,43 @@ export class AgentWidget {
     }
   }
 
+  /** The `bash` part of the activity line: sampled programs and the age of the oldest running call. */
+  private bashActivity(agent: AgentRecord, activeTools: Map<string, string>): BashActivity | undefined {
+    const bashKeys = [...activeTools.entries()].filter(([, name]) => name === "bash").map(([key]) => key);
+    if (bashKeys.length === 0) return undefined;
+    const started = bashKeys
+      .map((key) => this.manager.getToolStartedAt(agent.id, key))
+      .filter((at): at is number => at !== undefined);
+    return {
+      programs: this.sampleBashPrograms(agent),
+      elapsedMs: started.length > 0 ? Date.now() - Math.min(...started) : undefined,
+    };
+  }
+
+  /** Programs the agent's `bash` calls started, sampled at most once a second while the widget repaints. */
+  private sampleBashPrograms(agent: AgentRecord): string[] | undefined {
+    const probe = this.bashProbe;
+    if (!probe || !this.showBashPrograms) return undefined;
+    const cached = this.bashSamples.get(agent);
+    if (cached && Date.now() - cached.at < BASH_SAMPLE_MAX_AGE_MS) return cached.programs;
+    // A continuation replaces the session object, so the id is re-read per sample.
+    const sessionId = agent.execution.session?.sessionManager.getSessionId?.();
+    if (!sessionId || this.bashProbeInFlight) return cached?.programs;
+    this.bashProbeInFlight = true;
+    probe.runningPrograms(sessionId).then(
+      (programs) => {
+        this.bashProbeInFlight = false;
+        this.bashSamples.set(agent, { at: Date.now(), programs });
+      },
+      () => {
+        this.bashProbeInFlight = false;
+        // A failed read counts as a sample, so the retry stays inside the age window.
+        this.bashSamples.set(agent, { at: Date.now(), programs: [] });
+      },
+    );
+    return cached?.programs;
+  }
+
   private buildStatsLine(agent: AgentRecord, theme: Theme): string {
     const parts = buildStatsParts(
       {
@@ -715,12 +775,7 @@ export class AgentWidget {
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg
-        ? describeActivity(
-            bg.activeTools,
-            bg.responseText,
-            bg.bashPrograms,
-            bashElapsedMs(bg.activeTools, bg.toolStartedAt, Date.now()),
-          )
+        ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools))
         : "thinking…";
       const coloredFrame = this.coloredFrame(frame, a.display.type || undefined, theme);
 
@@ -1140,5 +1195,6 @@ export class AgentWidget {
     this.lastStatusText = undefined;
     this.lastWidgetLines = undefined;
     this.contextSamples = new WeakMap();
+    this.bashSamples = new WeakMap();
   }
 }

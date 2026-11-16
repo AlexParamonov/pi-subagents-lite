@@ -301,6 +301,22 @@ describe("ConfigStore widgetShowBashPrograms", () => {
     expect(store.agent.widgetShowBashPrograms).toBe(true);
     expect(store.agentConfigSnapshot().Explore).toBeUndefined();
   });
+
+  it("syncs to the widget on change and on reload", () => {
+    const { io, global } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.widget.setShowBashPrograms(true);
+    expect(calls).toContain("setShowBashPrograms:true");
+
+    calls.length = 0;
+    global().agent = { widgetShowBashPrograms: false };
+    store.reload();
+    expect(calls).toContain("setShowBashPrograms:false");
+  });
 });
 
 /* ------------------------------------------------------------------ */

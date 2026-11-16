@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
+import type { ProcessProbe } from "../../src/agents/process-probe.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
 import {
@@ -390,18 +391,21 @@ describe("getLiveView callback", () => {
     expect(metadataLine).not.toContain("thinking…");
   });
 
-  it("shows how long the oldest bash call has been running", () => {
+  it("shows how long the oldest bash call has been running, once past a second", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(100_000);
       const manager = makeMockManager([]);
+      let startedAt = 99_500;
+      manager.getToolStartedAt = (_agentId, toolCallId) => (toolCallId === "c1" ? startedAt : 99_900);
       const views = new Map<string, LiveView>([
         [
           "a1",
           {
-            activeTools: new Map([["bash_c1", "bash"]]),
-            toolStartedAt: new Map([["bash_c1", 88_000]]),
-            bashPrograms: ["sleep"],
+            activeTools: new Map([
+              ["c2", "bash"],
+              ["c1", "bash"],
+            ]),
             responseText: "",
           },
         ],
@@ -409,7 +413,10 @@ describe("getLiveView callback", () => {
       const widget = new AgentWidget(manager, (id: string) => views.get(id));
       manager.listAgents = () => [makeRunningAgent("a1")];
 
-      expect(renderWidgetLines(widget)[2]).toContain("running: sleep (12s)");
+      expect(renderWidgetLines(widget)[2]).toMatch(/running 2 commands\u2026\]/);
+
+      startedAt = 88_000;
+      expect(renderWidgetLines(widget)[2]).toContain("running 2 commands (12s)");
     } finally {
       vi.useRealTimers();
     }
@@ -465,6 +472,153 @@ describe("getLiveView callback", () => {
     expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(lines[2]).toContain("Here is my response");
     expect(lines[2]).not.toContain("thinking…");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Bash program sampling (widget-side)                                */
+/* ------------------------------------------------------------------ */
+
+describe("widget bash program sampling", () => {
+  /** Fake probe: `sessions` is the session id of every sample, `settled()` drains the widget's handler. */
+  function makeProbe(programs: string[], failing = false) {
+    const sessions: string[] = [];
+    let pending: Promise<string[]> = Promise.resolve([]);
+    const probe: ProcessProbe = {
+      runningPrograms: (sessionId) => {
+        sessions.push(sessionId);
+        pending = failing ? Promise.reject(new Error("EACCES")) : Promise.resolve(programs);
+        return pending;
+      },
+    };
+    return { probe, sessions, settled: () => pending.catch(() => {}) };
+  }
+
+  /** One running agent with an active `bash` call, painted through the render seam. */
+  function mountBash(
+    options: {
+      programs?: string[];
+      enabled?: boolean;
+      failing?: boolean;
+      sessionManager?: Record<string, unknown>;
+    } = {},
+  ) {
+    const probe = makeProbe(options.programs ?? [], options.failing ?? false);
+    const manager = makeMockManager([]);
+    const agent = makeRunningAgent("a1");
+    agent.execution.session = asAgentSession({
+      sessionManager: options.sessionManager ?? { getSessionId: () => "child-1" },
+    });
+    manager.listAgents = () => [agent];
+    const view: LiveView = { activeTools: new Map([["c1", "bash"]]), responseText: "" };
+    const widget = new AgentWidget(manager, () => view, probe.probe);
+    widget.setShowBashPrograms(options.enabled ?? true);
+    return {
+      view,
+      sessions: probe.sessions,
+      settled: probe.settled,
+      activity: () => renderWidgetLines(widget)[2] ?? "",
+    };
+  }
+
+  it("names the sampled programs on the activity line", async () => {
+    const host = mountBash({ programs: ["sleep", "sleep", "cat"] });
+
+    expect(host.activity()).toContain("running command\u2026");
+    await host.settled();
+
+    expect(host.sessions).toEqual(["child-1"]);
+    expect(host.activity()).toContain("running: sleep \u00d72, cat");
+  });
+
+  it("stays generic and never samples while the setting is off", async () => {
+    const host = mountBash({ programs: ["sleep"], enabled: false });
+
+    host.activity();
+    await host.settled();
+
+    expect(host.sessions).toEqual([]);
+    expect(host.activity()).toContain("running command\u2026");
+  });
+
+  it("never samples while no bash call is active", async () => {
+    const host = mountBash({ programs: ["sleep"] });
+    host.view.activeTools.delete("c1");
+    host.view.activeTools.set("r1", "read");
+
+    host.activity();
+    await host.settled();
+
+    expect(host.sessions).toEqual([]);
+    expect(host.activity()).toContain("reading\u2026");
+  });
+
+  it("samples once per second however often the widget repaints", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash({ programs: ["sleep"] });
+
+      host.activity();
+      host.activity();
+      host.activity();
+      expect(host.sessions).toHaveLength(1);
+
+      await host.settled();
+      vi.advanceTimersByTime(1_100);
+      host.activity();
+      expect(host.sessions).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the previous sample on screen while the next one is in flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash({ programs: ["sleep"] });
+      host.activity();
+      await host.settled();
+
+      vi.advanceTimersByTime(1_100);
+
+      expect(host.activity()).toContain("running: sleep");
+      expect(host.sessions).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never paints programs that arrived after the bash call ended", async () => {
+    const host = mountBash({ programs: ["sleep"] });
+    host.activity();
+
+    host.view.activeTools.delete("c1");
+    host.view.activeTools.set("r1", "read");
+    await host.settled();
+
+    expect(host.activity()).toContain("reading\u2026");
+    expect(host.activity()).not.toContain("sleep");
+  });
+
+  it("keeps a failing probe generic without sampling again within the window", async () => {
+    const host = mountBash({ failing: true });
+
+    host.activity();
+    await host.settled();
+    host.activity();
+
+    expect(host.sessions).toHaveLength(1);
+    expect(host.activity()).toContain("running command\u2026");
+  });
+
+  it("leaves a session without a session id unsampled", async () => {
+    const host = mountBash({ programs: ["sleep"], sessionManager: {} });
+
+    host.activity();
+    await host.settled();
+
+    expect(host.sessions).toEqual([]);
+    expect(host.activity()).toContain("running command\u2026");
   });
 });
 

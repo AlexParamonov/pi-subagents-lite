@@ -27,8 +27,7 @@ vi.mock("../../src/utils.js", () => ({
 }));
 
 // Hoist mock pi so shell mock can return it
-const { mockPi, mockGetPiInstance, storeAgent } = vi.hoisted(() => ({
-  storeAgent: { widgetShowBashPrograms: true },
+const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
   mockPi: {
     sendMessage: vi.fn(),
     sendUserMessage: vi.fn(),
@@ -47,11 +46,9 @@ vi.mock("../../src/shell.js", () => ({
   getPiInstance: () => mockGetPiInstance(),
   getSessionCtx: () => ({ isIdle: () => true }),
   getWidget: () => null,
-  getStore: () => ({ agent: storeAgent }),
 }));
 
-import { BASH_PROBE_INTERVAL_MS, SpawnCoordinator } from "../../src/spawn/spawn-coordinator.js";
-import type { ProcessProbe } from "../../src/agents/process-probe.js";
+import { SpawnCoordinator } from "../../src/spawn/spawn-coordinator.js";
 
 function makeMockManager(opts: { pendingGate?: boolean } = {}): AgentManager & MockManager {
   const records = new Map<string, AgentRecord>();
@@ -1026,22 +1023,20 @@ describe("SpawnCoordinator", () => {
   });
 });
 
-describe("SpawnCoordinator — bash process probing", () => {
+describe("SpawnCoordinator — live view tool tracking", () => {
   let manager: AgentManager & MockManager;
   let ctx: ExtensionContext;
-  let runningPrograms: ReturnType<typeof vi.fn<ProcessProbe["runningPrograms"]>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    storeAgent.widgetShowBashPrograms = true;
     manager = makeMockManager();
     ctx = makeMockCtx();
     mockGetPiInstance.mockReturnValue(mockPiApi);
-    runningPrograms = vi.fn<ProcessProbe["runningPrograms"]>(async () => ["sleep", "cat"]);
   });
 
-  async function spawnWithProbe(probe: ProcessProbe | null = { runningPrograms }) {
-    const coordinator = new SpawnCoordinator(manager, probe);
+  /** Spawn, then hand back the live view and the activity bridge the manager was given. */
+  async function spawnWithLiveView() {
+    const coordinator = new SpawnCoordinator(manager);
     const result = await coordinator.spawn(mockPiApi, ctx, {
       type: "builder",
       prompt: "task",
@@ -1049,170 +1044,48 @@ describe("SpawnCoordinator — bash process probing", () => {
       graceTurns: 6,
       runInBackground: true,
     });
-    const options = manager.getSpawnCalls()[0].options;
-    return { coordinator, view: coordinator.liveView(result.agentId)!, options };
+    return { view: coordinator.liveView(result.agentId)!, options: manager.getSpawnCalls()[0].options };
   }
 
-  it("samples the session's processes while a bash call runs and publishes them on the live view", async () => {
-    const { view, options } = await spawnWithProbe();
+  it("keeps parallel calls that start in the same millisecond apart and removes each by its own id", async () => {
+    const { view, options } = await spawnWithLiveView();
 
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    expect(view.bashPrograms).toBeUndefined();
-
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-
-    expect(runningPrograms).toHaveBeenCalledWith("child-1");
-    expect(view.bashPrograms).toEqual(["sleep", "cat"]);
-  });
-
-  it("follows changes and clears the list when nothing is running", async () => {
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-    runningPrograms.mockResolvedValue([]);
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-
-    expect(view.bashPrograms).toBeUndefined();
-  });
-
-  it("stops sampling and clears the list when the last bash call ends", async () => {
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-
-    options.onToolActivity!({ type: "end", toolName: "bash", toolCallId: "c1" });
-    expect(view.bashPrograms).toBeUndefined();
-
-    runningPrograms.mockClear();
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 3);
-    expect(runningPrograms).not.toHaveBeenCalled();
-  });
-
-  it("keeps sampling until every concurrent bash call has ended, with one poller", async () => {
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c2", sessionId: "child-1" });
-
-    options.onToolActivity!({ type: "end", toolName: "bash", toolCallId: "c1" });
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-    expect(runningPrograms).toHaveBeenCalledTimes(1);
-    expect(view.bashPrograms).toEqual(["sleep", "cat"]);
-
-    options.onToolActivity!({ type: "end", toolName: "bash", toolCallId: "c2" });
-    expect(view.bashPrograms).toBeUndefined();
-  });
-
-  it("tracks parallel calls that start in the same millisecond separately", async () => {
-    const { view, options } = await spawnWithProbe();
     options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "c1" });
     options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "c2" });
-    expect(view.activeTools.size).toBe(2);
+    expect([...view.activeTools]).toEqual([
+      ["c1", "read"],
+      ["c2", "read"],
+    ]);
 
     options.onToolActivity!({ type: "end", toolName: "read", toolCallId: "c2" });
-    expect([...view.activeTools.keys()]).toEqual(["read_c1"]);
+    expect([...view.activeTools]).toEqual([["c1", "read"]]);
   });
 
-  it("records when each tool call started and forgets it when the call ends", async () => {
-    vi.setSystemTime(10_000);
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    vi.setSystemTime(14_000);
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c2", sessionId: "child-1" });
+  it("removes the oldest entry of that tool when the end event carries no call id", async () => {
+    const { view, options } = await spawnWithLiveView();
 
-    expect(view.toolStartedAt).toEqual(
-      new Map([
-        ["bash_c1", 10_000],
-        ["bash_c2", 14_000],
-      ]),
-    );
-
-    options.onToolActivity!({ type: "end", toolName: "bash", toolCallId: "c1" });
-    expect([...view.toolStartedAt!.keys()]).toEqual(["bash_c2"]);
-  });
-
-  it("does not sample for other tools or for bash starts without a session id", async () => {
-    const { options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "c1", sessionId: "child-1" });
+    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1" });
+    options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "r1" });
     options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c2" });
 
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 2);
-    expect(runningPrograms).not.toHaveBeenCalled();
+    options.onToolActivity!({ type: "end", toolName: "bash" });
+
+    expect([...view.activeTools]).toEqual([
+      ["r1", "read"],
+      ["c2", "bash"],
+    ]);
   });
 
-  it("never samples while the Bash programs setting is off, so the line stays `running command…`", async () => {
-    storeAgent.widgetShowBashPrograms = false;
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
+  it("keeps calls without a call id apart by start time and drops the oldest of them", async () => {
+    const { view, options } = await spawnWithLiveView();
 
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 2);
-    expect(runningPrograms).not.toHaveBeenCalled();
-    expect(view.bashPrograms).toBeUndefined();
-  });
+    options.onToolActivity!({ type: "start", toolName: "bash" });
+    vi.advanceTimersByTime(1);
+    options.onToolActivity!({ type: "start", toolName: "bash" });
+    const [, newer] = [...view.activeTools.keys()];
 
-  it("falls back silently when the platform has no probe", async () => {
-    const { view, options } = await spawnWithProbe(null);
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 2);
-    expect(view.bashPrograms).toBeUndefined();
-  });
+    options.onToolActivity!({ type: "end", toolName: "bash" });
 
-  it("treats a failing probe as unknown and keeps going", async () => {
-    runningPrograms.mockRejectedValueOnce(new Error("EACCES")).mockResolvedValue(["make"]);
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-    expect(view.bashPrograms).toBeUndefined();
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-    expect(view.bashPrograms).toEqual(["make"]);
-  });
-
-  it("does not overlap probes when one is slow", async () => {
-    let release!: (programs: string[]) => void;
-    runningPrograms.mockImplementation(() => new Promise<string[]>((resolve) => (release = resolve)));
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 3);
-    expect(runningPrograms).toHaveBeenCalledTimes(1);
-
-    release(["slow"]);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(view.bashPrograms).toEqual(["slow"]);
-  });
-
-  it("drops a result that arrives after the bash call ended", async () => {
-    let release!: (programs: string[]) => void;
-    runningPrograms.mockImplementation(() => new Promise<string[]>((resolve) => (release = resolve)));
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-
-    options.onToolActivity!({ type: "end", toolName: "bash", toolCallId: "c1" });
-    release(["late"]);
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(view.bashPrograms).toBeUndefined();
-  });
-
-  it("stops its own timer when the end event never arrives but the call is gone", async () => {
-    const { view, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-    view.activeTools.clear();
-
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS);
-    runningPrograms.mockClear();
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 3);
-    expect(runningPrograms).not.toHaveBeenCalled();
-  });
-
-  it("stops every poller on dispose", async () => {
-    const { coordinator, options } = await spawnWithProbe();
-    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1", sessionId: "child-1" });
-
-    coordinator.dispose();
-    await vi.advanceTimersByTimeAsync(BASH_PROBE_INTERVAL_MS * 3);
-    expect(runningPrograms).not.toHaveBeenCalled();
+    expect([...view.activeTools.keys()]).toEqual([newer]);
   });
 });
