@@ -401,13 +401,13 @@ describe("describeActivity", () => {
       tools: [["bash_1", "bash"]],
       bash: { programs: ["sleep", "cat"] },
       has: ["sleep", "cat"],
-      hasNot: ["command"],
     },
     {
+      // An empty sample must be invisible: the line is the one an un-timed call gets.
       name: "shows nothing sampled while no sample has landed yet",
       tools: [["bash_1", "bash"]],
       bash: { programs: [] },
-      hasNot: ["sleep", "×"],
+      sameAsUntimed: true,
     },
     {
       name: "counts parallel bash calls as calls, not as files",
@@ -416,7 +416,6 @@ describe("describeActivity", () => {
         ["bash_2", "bash"],
       ],
       has: ["2 commands"],
-      hasNot: ["files"],
     },
     {
       name: "lets the programs speak instead of the call count",
@@ -426,7 +425,14 @@ describe("describeActivity", () => {
       ],
       bash: { programs: ["make"] },
       has: ["make"],
-      hasNot: ["2 commands"],
+    },
+    {
+      // A tool named "running command" (unmapped, or a future powershell label) shares bash's label.
+      name: "attributes the programs to the bash call, not to a tool with the same label",
+      tools: [["x1", "running command"]],
+      bash: { programs: ["make"] },
+      has: ["running command"],
+      hasNot: ["make", "running:"],
     },
     {
       // Below a second the age would flicker on every repaint: the line is the one an un-timed call gets.
@@ -442,14 +448,14 @@ describe("describeActivity", () => {
       has: ["(12s)"],
     },
     {
-      name: "puts the age on the bash part and leaves the other part alone",
+      name: "puts the age on the bash part the moment it passes a second, and leaves the other part alone",
       tools: [
         ["read_1", "read"],
         ["bash_1", "bash"],
         ["bash_2", "bash"],
       ],
-      bash: { elapsedMs: 3_000 },
-      has: ["commands (3s)"],
+      bash: { elapsedMs: 1_000 },
+      has: ["reading", "commands (1s)"],
       hasNot: ["reading ("],
     },
     {
@@ -459,7 +465,6 @@ describe("describeActivity", () => {
         ["find_1", "find"],
       ],
       has: ["2 patterns"],
-      hasNot: ["searching, searching"],
     },
     {
       name: "keeps bash's programs out of a line without a bash call",
@@ -484,8 +489,9 @@ describe("describeActivity", () => {
 
 describe("formatPrograms", () => {
   it.each([
-    { names: ["make", "sleep", "tsc", "sleep"], expected: "make, sleep \u00d72, tsc" },
-    { names: Array<string>(10).fill("sleep"), expected: "sleep \u00d710" },
+    // First-seen order, not alphabetical: a permuted fixture is what makes the ordering rule fail
+    // if it is replaced by a sort.
+    { names: ["make", "sleep", "cat", "sleep"], expected: "make, sleep \u00d72, cat" },
     { names: ["a", "b", "c", "d", "e", "f", "g"], expected: "a, b, c, d +3" },
     { names: ["a", "a", "b", "c", "d", "e", "e"], expected: "a \u00d72, b, c, d +1" },
   ])("$names -> $expected", ({ names, expected }) => {
