@@ -162,7 +162,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - The `Workflow` tool's `path` param (default: parent session cwd) reaches the run only as the `working_dir` prompt var in prompt text (`${working_dir}`), never in node params or context messages
 - A **Workflow file**'s prompt material lives server-side (`prompt_key` files); the extension never ships prompt content
 - A **Workflow** run is tracked in the agent record store, kind-tagged: **AgentStatus** lists it, `StopAgent` and Esc on a foreground run call the API stop endpoint
-- A **Workflow** run has no **Watchdog**, **Model override**, **Thinking level**, or **Worktree**; among **Settled** statuses, `failed` maps to error
+- A **Workflow** run has no **Watchdog**, **Model override**, **Thinking level**, or **Worktree**; among **Settled** statuses, `failed` and `interrupted` map to error, `interrupted` keeping its reason
 - The `Workflow` tool's task text obeys the endpoint's 10,000-byte create limit, enforced before sending
 - A **Workflow** run renders node lifecycle events as status lines and progress chunks as streamed text; thinking deltas are never displayed
 
