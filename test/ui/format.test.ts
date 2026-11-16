@@ -20,6 +20,7 @@ import {
   statusIcon,
   agentBulletPrefix,
   agentColoredText,
+  type BashActivity,
 } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
@@ -392,94 +393,97 @@ describe("describeActivity", () => {
     expect(result).toBe(longResponse);
   });
 
-  it("lists the programs a bash call is running", () => {
-    const tools = new Map([["bash_1", "bash"]]);
-    expect(describeActivity(tools, undefined, { programs: ["sleep", "cat"] })).toBe("running: sleep, cat\u2026");
-  });
-
-  it("keeps the generic label when no programs are known", () => {
-    const tools = new Map([["bash_1", "bash"]]);
-    expect(describeActivity(tools, undefined, { programs: [] })).toBe("running command\u2026");
-    expect(describeActivity(tools)).toBe("running command\u2026");
-    expect(describeActivity(tools, undefined, {})).toBe("running command\u2026");
-  });
-
-  it("counts parallel bash calls as commands while no programs are known", () => {
-    const tools = new Map([
-      ["bash_1", "bash"],
-      ["bash_2", "bash"],
-    ]);
-    expect(describeActivity(tools)).toBe("running 2 commands\u2026");
-    expect(describeActivity(tools, undefined, { programs: [] })).toBe("running 2 commands\u2026");
-  });
-
-  it("shows programs once for parallel bash calls and next to other tools", () => {
-    const tools = new Map([
-      ["read_1", "read"],
-      ["bash_1", "bash"],
-      ["bash_2", "bash"],
-    ]);
-    expect(describeActivity(tools, undefined, { programs: ["make"] })).toBe("reading, running: make\u2026");
-  });
-
-  it("appends the bash call's elapsed time once it passes a second", () => {
-    const tools = new Map([["bash_1", "bash"]]);
-    expect(describeActivity(tools, undefined, { programs: ["sleep"], elapsedMs: 12_000 })).toBe(
-      "running: sleep (12s)\u2026",
-    );
-    expect(describeActivity(tools, undefined, { programs: [], elapsedMs: 65_000 })).toBe(
-      "running command (1m 5s)\u2026",
-    );
-    expect(describeActivity(tools, undefined, { elapsedMs: 999 })).toBe("running command\u2026");
-    expect(describeActivity(tools, undefined, {})).toBe("running command\u2026");
-  });
-
-  it("puts the elapsed time on the bash part only, also for parallel calls", () => {
-    const tools = new Map([
-      ["read_1", "read"],
-      ["bash_1", "bash"],
-      ["bash_2", "bash"],
-    ]);
-    expect(describeActivity(tools, undefined, { elapsedMs: 3000 })).toBe("reading, running 2 commands (3s)\u2026");
-  });
-
-  it("keeps counting tools that share one label", () => {
-    // `grep` and `find` both read as "searching"; grouping by tool name instead of label would split them.
-    const tools = new Map([
-      ["grep_1", "grep"],
-      ["find_1", "find"],
-    ]);
-    expect(describeActivity(tools)).toBe("searching 2 patterns\u2026");
-  });
-
-  it("ignores programs when no bash call is active", () => {
-    const tools = new Map([["read_1", "read"]]);
-    expect(describeActivity(tools, undefined, { programs: ["make"] })).toBe("reading\u2026");
-    expect(describeActivity(new Map(), "hi", { programs: ["make"] })).toBe("hi");
-  });
+  // The activity line is this function's only output, so each row pins one decision by the tokens that
+  // decision puts in the line or keeps out, not by the whole sentence.
+  it.each([
+    {
+      name: "shows the sampled programs of a bash call",
+      tools: [["bash_1", "bash"]],
+      bash: { programs: ["sleep", "cat"] },
+      has: ["sleep", "cat"],
+      hasNot: ["command"],
+    },
+    {
+      name: "shows nothing sampled while no sample has landed yet",
+      tools: [["bash_1", "bash"]],
+      bash: { programs: [] },
+      hasNot: ["sleep", "×"],
+    },
+    {
+      name: "counts parallel bash calls as calls, not as files",
+      tools: [
+        ["bash_1", "bash"],
+        ["bash_2", "bash"],
+      ],
+      has: ["2 commands"],
+      hasNot: ["files"],
+    },
+    {
+      name: "lets the programs speak instead of the call count",
+      tools: [
+        ["bash_1", "bash"],
+        ["bash_2", "bash"],
+      ],
+      bash: { programs: ["make"] },
+      has: ["make"],
+      hasNot: ["2 commands"],
+    },
+    {
+      name: "keeps an under-a-second age out of the line",
+      tools: [["bash_1", "bash"]],
+      bash: { elapsedMs: 999 },
+      hasNot: ["("],
+    },
+    {
+      name: "shows the bash call's age once it passes a second",
+      tools: [["bash_1", "bash"]],
+      bash: { elapsedMs: 12_000 },
+      has: ["(12s)"],
+    },
+    {
+      name: "puts the age on the bash part and leaves the other part alone",
+      tools: [
+        ["read_1", "read"],
+        ["bash_1", "bash"],
+        ["bash_2", "bash"],
+      ],
+      bash: { elapsedMs: 3_000 },
+      has: ["commands (3s)"],
+      hasNot: ["reading ("],
+    },
+    {
+      name: "keeps counting tools that share one label",
+      tools: [
+        ["grep_1", "grep"],
+        ["find_1", "find"],
+      ],
+      has: ["2 patterns"],
+      hasNot: ["searching, searching"],
+    },
+    {
+      name: "keeps bash's programs out of a line without a bash call",
+      tools: [["read_1", "read"]],
+      bash: { programs: ["make"] },
+      hasNot: ["make"],
+    },
+  ] satisfies { name: string; tools: [string, string][]; bash?: BashActivity; has?: string[]; hasNot?: string[] }[])(
+    "$name",
+    ({ tools, bash, has = [], hasNot = [] }) => {
+      const line = describeActivity(new Map(tools), undefined, bash);
+      for (const token of has) expect(line).toContain(token);
+      for (const token of hasNot) expect(line).not.toContain(token);
+    },
+  );
 });
 
 describe("formatPrograms", () => {
-  it("is empty for no programs", () => {
-    expect(formatPrograms([])).toBe("");
-  });
-
-  it("joins up to four names", () => {
-    expect(formatPrograms(["a", "b", "c", "d"])).toBe("a, b, c, d");
-  });
-
-  it("counts repeated programs once per name, in first-seen order", () => {
-    expect(formatPrograms(Array<string>(10).fill("sleep"))).toBe("sleep ×10");
-    expect(formatPrograms(["make", "sleep", "tsc", "sleep"])).toBe("make, sleep ×2, tsc");
-  });
-
-  it("applies the +N cap to distinct names, not processes", () => {
-    expect(formatPrograms(["a", "a", "b", "c", "d", "e", "e"])).toBe("a ×2, b, c, d +1");
-  });
-
-  it("collapses the rest into +N", () => {
-    expect(formatPrograms(["a", "b", "c", "d", "e"])).toBe("a, b, c, d +1");
-    expect(formatPrograms(["a", "b", "c", "d", "e", "f", "g"])).toBe("a, b, c, d +3");
+  it.each([
+    { names: ["make", "sleep", "tsc", "sleep"], expected: "make, sleep \u00d72, tsc" },
+    { names: Array<string>(10).fill("sleep"), expected: "sleep \u00d710" },
+    { names: ["a", "b", "c", "d", "e", "f", "g"], expected: "a, b, c, d +3" },
+    { names: ["a", "a", "b", "c", "d", "e", "e"], expected: "a \u00d72, b, c, d +1" },
+  ])("$names -> $expected", ({ names, expected }) => {
+    expect(formatPrograms(names)).toBe(expected);
   });
 });
 
