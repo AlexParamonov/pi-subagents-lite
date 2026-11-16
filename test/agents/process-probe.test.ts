@@ -3,7 +3,7 @@
  * Everything is driven through the probe's own port over a fake /proc, so the kernel file formats
  * (cmdline, environ, task/<tid>/children) are exercised by the answers they produce, not directly.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
@@ -34,32 +34,29 @@ afterAll(() => rmSync(fileRoot, { recursive: true, force: true }));
 let trees = 0;
 
 /**
- * Write `roots` the way the kernel serves it — pids from 200 in tree order, one children file per
- * parent — then hand back the probe for it. The probe is built before `spoil` ruins a file, so a
+ * Write `roots` the way the kernel serves it — pids from 200 in tree order, an environ and a children
+ * file for every process (an empty listing for a childless one, as /proc serves) — then hand back the
+ * probe for it. The probe is built before `spoil` ruins a file, so a
  * spoiled read is one that failed mid-run rather than a kernel that never had the file.
  */ function probeFor(roots: Node[], spoil?: (root: string) => void): ProcessProbe {
   const root = join(fileRoot, String(trees++));
   const nul = (line: string) => (line === "" ? "" : `${line.split(" ").join("\0")}\0`);
   mkdirSync(join(root, String(PI_PID), "task", String(PI_PID)), { recursive: true });
   let next = 200;
-  const write = (node: Node, isRoot: boolean): number => {
+  const write = (node: Node): number => {
     const pid = next++;
     mkdirSync(join(root, String(pid)));
     writeFileSync(cmdPath(root, pid), nul(node.argv));
-    // The probe reads environ only to decide whether a shell of pi's is one of this session's.
-    if (isRoot) writeFileSync(envPath(root, pid), nul((node.env ?? []).join(" ")));
-    const kids = node.kids.map((kid) => write(kid, false));
-    // A leaf's children file is never opened: the probe asks only about shells and wrappers.
-    if (kids.length > 0) {
-      mkdirSync(join(root, String(pid), "task", String(pid)), { recursive: true });
-      writeFileSync(kidsPath(root, pid), kids.map((kid) => `${kid} `).join(""));
-    }
+    writeFileSync(envPath(root, pid), nul((node.env ?? []).join(" ")));
+    const kids = node.kids.map(write);
+    mkdirSync(join(root, String(pid), "task", String(pid)), { recursive: true });
+    writeFileSync(kidsPath(root, pid), kids.map((kid) => `${kid} `).join(""));
     return pid;
   };
   writeFileSync(
     kidsPath(root, PI_PID),
     roots
-      .map((node) => write(node, true))
+      .map(write)
       .map((pid) => `${pid} `)
       .join(""),
   );
@@ -139,7 +136,7 @@ describe("createProcFsProbe", () => {
       expected: [],
     },
     {
-      name: "a zombie child, whose cmdline is empty",
+      name: "a child that exited after its pid was listed, so its cmdline reads empty",
       roots: [shell(n("bash", n(""), n("sleep")))],
       expected: ["sleep"],
     },
@@ -160,6 +157,25 @@ describe("createProcFsProbe", () => {
       roots: [shell(n("bash", n("sleep")))],
       spoil: (root) => rmSync(join(root, String(PI_PID), "task"), { recursive: true }),
       expected: [],
+    },
+    {
+      // The kernel lists siblings in whatever order it likes; the line must not reshuffle with it.
+      name: "children files that list the newest child first",
+      roots: [shell(n("bash", n("curl"), n("jq"))), shell(n("bash", n("make"), n("tsc")))],
+      spoil: (root) => {
+        for (const pid of [PI_PID, 200, 203]) {
+          const file = kidsPath(root, pid);
+          const list = readFileSync(file, "utf8").trim().split(" ").filter(Boolean);
+          writeFileSync(
+            file,
+            list
+              .reverse()
+              .map((kid) => `${kid} `)
+              .join(""),
+          );
+        }
+      },
+      expected: ["curl", "jq", "make", "tsc"],
     },
     {
       // The kernel documents children as unreliable while children exit concurrently, so an entry can
@@ -188,6 +204,11 @@ describe("createProcFsProbe", () => {
 
     expect(createProcFsProbe(root, PI_PID)).toBeUndefined();
     expect(createProcFsProbe(join(root, "missing"), PI_PID)).toBeUndefined();
+  });
+
+  it("gives no probe to a platform with no /proc", () => {
+    expect(createProcessProbe("darwin")).toBeUndefined();
+    expect(createProcessProbe("win32")).toBeUndefined();
   });
 
   it("reports nothing for an unknown session on a real /proc", async () => {

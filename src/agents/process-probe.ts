@@ -12,10 +12,12 @@ import { basename } from "node:path";
  * through shell processes (subshells, `$(…)`, `&` groups) and wrapper programs (`timeout foo`), and
  * reports the first other program on each branch.
  *
- * Two cases report no programs instead of failing, both because no shell can be tied to a session: no
- * shell of that session is alive any more (it finished, or a security module hid its /proc entry); or
- * a shell's /proc/<pid>/environ cannot be read, as a security module or a process that made itself
- * non-dumpable or changed uid can cause.
+ * Several reads can come back empty where a program is running, and each one costs names, never an
+ * error: no shell of the session is listed any more (it finished, or a security module hid its /proc
+ * entry); a shell's /proc/<pid>/environ cannot be read, as a security module or a process that made
+ * itself non-dumpable or changed uid can cause; a shell carries no PI_SESSION_ID at all, which a
+ * custom bash tool or a spawnHook can arrange; and a process whose cmdline cannot be read is treated
+ * as gone, so its whole branch goes unreported - a zombie or a pid already recycled.
  */
 
 export interface ProcessProbe {
