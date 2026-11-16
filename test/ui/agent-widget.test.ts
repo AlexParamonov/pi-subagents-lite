@@ -417,14 +417,16 @@ describe("getLiveView callback", () => {
       manager.listAgents = () => [makeRunningAgent("a1")];
 
       // Below a second the age would flicker on every repaint.
-      expect(renderWidgetLines(widget)[2]).not.toContain("(");
+      const untimed = renderWidgetLines(widget)[2];
 
       startedAt = 88_000;
-      expect(renderWidgetLines(widget)[2]).toContain("(12s)");
+      const timed = renderWidgetLines(widget)[2];
+      expect(timed).not.toBe(untimed);
+      expect(timed).toContain("(12s)");
 
       // Off is the shipped default: the call is still reported, without anything sampled or timed.
       widget.setShowBashPrograms(false);
-      expect(renderWidgetLines(widget)[2]).not.toContain("(");
+      expect(renderWidgetLines(widget)[2]).toBe(untimed);
     } finally {
       vi.useRealTimers();
     }
@@ -551,7 +553,7 @@ describe("widget bash program sampling", () => {
     expect(host.sessions).toEqual([]);
     expect(host.activity()).not.toContain("sleep");
     // A parenthesised age in the line can only come from this feature's clock reading.
-    expect(host.activity().includes("(")).toBe(age);
+    expect(/\(\d/.test(host.activity())).toBe(age);
   });
 
   it("names the programs of the sampled session", async () => {

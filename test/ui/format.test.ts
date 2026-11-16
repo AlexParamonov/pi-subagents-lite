@@ -429,10 +429,11 @@ describe("describeActivity", () => {
       hasNot: ["2 commands"],
     },
     {
+      // Below a second the age would flicker on every repaint: the line is the one an un-timed call gets.
       name: "keeps an under-a-second age out of the line",
       tools: [["bash_1", "bash"]],
       bash: { elapsedMs: 999 },
-      hasNot: ["("],
+      sameAsUntimed: true,
     },
     {
       name: "shows the bash call's age once it passes a second",
@@ -466,14 +467,19 @@ describe("describeActivity", () => {
       bash: { programs: ["make"] },
       hasNot: ["make"],
     },
-  ] satisfies { name: string; tools: [string, string][]; bash?: BashActivity; has?: string[]; hasNot?: string[] }[])(
-    "$name",
-    ({ tools, bash, has = [], hasNot = [] }) => {
-      const line = describeActivity(new Map(tools), undefined, bash);
-      for (const token of has) expect(line).toContain(token);
-      for (const token of hasNot) expect(line).not.toContain(token);
-    },
-  );
+  ] satisfies {
+    name: string;
+    tools: [string, string][];
+    bash?: BashActivity;
+    has?: string[];
+    hasNot?: string[];
+    sameAsUntimed?: boolean;
+  }[])("$name", ({ tools, bash, has = [], hasNot = [], sameAsUntimed }) => {
+    const line = describeActivity(new Map(tools), undefined, bash);
+    for (const token of has) expect(line).toContain(token);
+    for (const token of hasNot) expect(line).not.toContain(token);
+    if (sameAsUntimed) expect(line).toBe(describeActivity(new Map(tools)));
+  });
 });
 
 describe("formatPrograms", () => {
