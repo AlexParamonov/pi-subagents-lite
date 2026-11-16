@@ -678,9 +678,14 @@ export class AgentWidget {
    * exactly as it read before this feature.
    */
   private bashActivity(agent: AgentRecord, activeTools: Map<string, string>): BashActivity | undefined {
-    if (!this.showBashPrograms) return undefined;
     const bashKeys = [...activeTools.entries()].filter(([, name]) => name === "bash").map(([key]) => key);
-    if (bashKeys.length === 0) return undefined;
+    if (bashKeys.length === 0) {
+      // No running bash call: drop the sample so the next call cannot paint this one's programs.
+      this.bashSamples.delete(agent);
+      return undefined;
+    }
+    // Off, or no probe on this platform: the activity line stays exactly as it read before this feature.
+    if (!this.showBashPrograms || !this.bashProbe) return undefined;
     const started = bashKeys
       .map((key) => this.manager.getToolStartedAt(agent.id, key))
       .filter((at): at is number => at !== undefined);
@@ -696,7 +701,8 @@ export class AgentWidget {
     if (!probe) return undefined;
     const cached = this.bashSamples.get(agent);
     if (cached && Date.now() - cached.at < BASH_SAMPLE_MAX_AGE_MS) return cached.programs;
-    // A continuation replaces the session object, so the id is re-read per sample.
+    // The session is absent until it is created and released when the agent is removed, so the id is
+    // read per sample rather than remembered.
     const sessionId = agent.execution.session?.sessionManager.getSessionId?.();
     if (!sessionId) return cached?.programs;
     // Stamping the slot is what keeps samples from overlapping, per agent: a repaint while a

@@ -212,6 +212,17 @@ describe("createProcFsProbe", () => {
     expect(await probe().runningPrograms("mine")).toEqual(["sleep"]);
   });
 
+  it("reports nothing instead of looping when a children file names an ancestor", async () => {
+    // The kernel documents this file as unreliable while children exit concurrently, so a wrong entry
+    // can name an ancestor. The walk must end, and shells report nothing.
+    addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
+    addProcess(201, 200, ["sh", "-c", "x"]);
+    const running = probe();
+    writeFileSync(join(root, "201", "task", "201", "children"), "200 ");
+
+    expect(await running.runningPrograms("mine")).toEqual([]);
+  });
+
   it("reports a program whose own children file cannot be read", async () => {
     addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
     addProcess(201, 200, ["pnpm", "test"]);

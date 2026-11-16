@@ -451,6 +451,10 @@ describe("describeActivity", () => {
 });
 
 describe("formatPrograms", () => {
+  it("is empty for no programs", () => {
+    expect(formatPrograms([])).toBe("");
+  });
+
   it("joins up to four names", () => {
     expect(formatPrograms(["a", "b", "c", "d"])).toBe("a, b, c, d");
   });

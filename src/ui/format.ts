@@ -240,24 +240,28 @@ export interface BashActivity {
 }
 
 export function describeActivity(activeTools: Map<string, string>, responseText?: string, bash?: BashActivity): string {
-  const programs = bash?.programs;
   if (activeTools.size > 0) {
+    // Grouped by tool name, not by the translated label: only `bash` has the sampled programs.
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {
-      const action = TOOL_DISPLAY[toolName] ?? toolName;
-      groups.set(action, (groups.get(action) ?? 0) + 1);
+      groups.set(toolName, (groups.get(toolName) ?? 0) + 1);
     }
 
+    // Elapsed time of the oldest running bash call; hidden below a second so it doesn't flicker in.
     const elapsed = bash?.elapsedMs !== undefined && bash.elapsedMs >= 1000 ? ` (${formatMs(bash.elapsedMs)})` : "";
+    const programs = bash?.programs;
     const parts: string[] = [];
-    for (const [action, count] of groups) {
-      if (action === TOOL_DISPLAY.bash && programs && programs.length > 0) {
-        // The programs already say what is running; a count adds nothing.
-        parts.push(`running: ${formatPrograms(programs)}${elapsed}`);
-      } else if (count > 1 && action === TOOL_DISPLAY.bash) {
-        parts.push(`running ${count} commands${elapsed}`);
-      } else if (action === TOOL_DISPLAY.bash) {
-        parts.push(`${action}${elapsed}`);
+    for (const [toolName, count] of groups) {
+      const action = TOOL_DISPLAY[toolName] ?? toolName;
+      if (toolName === "bash") {
+        parts.push(
+          // The programs already say what is running; a count adds nothing.
+          programs && programs.length > 0
+            ? `running: ${formatPrograms(programs)}${elapsed}`
+            : count > 1
+              ? `running ${count} commands${elapsed}`
+              : `${action}${elapsed}`,
+        );
       } else if (count > 1) {
         parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
       } else {

@@ -505,10 +505,13 @@ describe("widget bash program sampling", () => {
       programs?: string[];
       enabled?: boolean;
       failing?: boolean;
+      probe?: ProcessProbe | null;
       sessionManager?: Record<string, unknown>;
     } = {},
   ) {
-    const probe = makeProbe(options.programs ?? [], options.failing ?? false);
+    const fake = makeProbe(options.programs ?? [], options.failing ?? false);
+    // `probe: null` means "this platform has no probe", so undefined and null must stay distinct.
+    const probe = options.probe === undefined ? fake.probe : options.probe;
     const manager = makeMockManager([]);
     const agent = makeRunningAgent("a1");
     agent.execution.session = asAgentSession({
@@ -516,12 +519,14 @@ describe("widget bash program sampling", () => {
     });
     manager.listAgents = () => [agent];
     const view: LiveView = { activeTools: new Map([["c1", "bash"]]), responseText: "" };
-    const widget = new AgentWidget(manager, () => view, probe.probe);
+    const widget = new AgentWidget(manager, () => view, probe);
     widget.setShowBashPrograms(options.enabled ?? true);
     return {
       view,
-      sessions: probe.sessions,
-      settled: probe.settled,
+      widget,
+      manager,
+      sessions: fake.sessions,
+      settled: fake.settled,
       activity: () => renderWidgetLines(widget)[2] ?? "",
     };
   }
@@ -614,6 +619,51 @@ describe("widget bash program sampling", () => {
 
     expect(host.sessions).toHaveLength(1);
     expect(host.activity()).toContain("running command\u2026");
+  });
+
+  it("keeps the platform without a probe on the untouched line", () => {
+    const host = mountBash({ probe: null });
+    host.manager.getToolStartedAt = () => 0;
+
+    const line = host.activity();
+    expect(line).toContain("running command\u2026");
+    expect(line).not.toContain("(");
+  });
+
+  it("forgets the sample when the bash call ends, so the next call starts unknown", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash({ programs: ["sleep"] });
+      host.activity();
+      await host.settled();
+      expect(host.activity()).toContain("running: sleep");
+
+      host.view.activeTools.delete("c1");
+      host.activity();
+
+      host.view.activeTools.set("c2", "bash");
+      expect(host.activity()).toContain("running command\u2026");
+      expect(host.activity()).not.toContain("sleep");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("samples again after a failed read once the window passes", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash({ failing: true });
+      host.activity();
+      await host.settled();
+      expect(host.sessions).toHaveLength(1);
+
+      vi.advanceTimersByTime(1_100);
+      host.activity();
+      await host.settled();
+      expect(host.sessions).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("leaves a session without a session id unsampled", async () => {
