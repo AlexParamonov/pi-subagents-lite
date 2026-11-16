@@ -1,34 +1,27 @@
 /**
  * process-probe.test.ts — /proc-based discovery of the programs a subagent's bash call is running.
- * Drives the public probe against a fake /proc tree.
+ * Drives the public probe against a fake /proc tree of children files.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import type { ProcessProbe } from "../../src/agents/process-probe.js";
 import {
   createProcessProbe,
   createProcFsProbe,
   parseChildPids,
-  parseParentPid,
   parseProgramName,
 } from "../../src/agents/process-probe.js";
 
 const PI_PID = 100;
 
-describe("parseParentPid", () => {
-  it("reads the parent pid after the comm field", () => {
-    expect(parseParentPid("123 (bash) S 100 123 123 0 -1")).toBe(100);
-  });
-
-  it("survives spaces and parentheses in comm", () => {
-    expect(parseParentPid("123 (my (odd) proc) S 77 123 123 0 -1")).toBe(77);
-  });
-
-  it("returns undefined for malformed input", () => {
-    expect(parseParentPid("garbage")).toBeUndefined();
-  });
-});
+/** A fake /proc that lacks children files has no probe; tests need one to drive. */
+function probeAt(procRoot: string, ownPid = PI_PID): ProcessProbe {
+  const probe = createProcFsProbe(procRoot, ownPid);
+  if (!probe) throw new Error(`probe unavailable for ${procRoot}`);
+  return probe;
+}
 
 describe("parseProgramName", () => {
   it("takes the basename of argv0", () => {
@@ -54,13 +47,9 @@ describe("parseChildPids", () => {
   });
 });
 
-// The same fake process tree is served two ways: with the kernel's per-thread children files,
-// and without them (CONFIG_PROC_CHILDREN off), where the probe falls back to reading every stat.
-describe.each([
-  ["children files", true],
-  ["process table fallback", false],
-])("createProcFsProbe (%s)", (_mode, withChildrenFiles) => {
+describe("createProcFsProbe", () => {
   let root: string;
+  /** pid -> ppid of the fake tree, the source of the children files. */
   let processes: Map<number, number>;
 
   beforeEach(() => {
@@ -72,35 +61,27 @@ describe.each([
     rmSync(root, { recursive: true, force: true });
   });
 
-  /** Write /proc/<pid>/task/<pid>/children for pi and every added process. */
-  function writeChildrenFiles(): void {
-    const kids = new Map<number, number[]>();
-    for (const [pid, ppid] of processes) kids.set(ppid, [...(kids.get(ppid) ?? []), pid]);
-    for (const pid of new Set([PI_PID, ...processes.keys()])) {
-      mkdirSync(join(root, String(pid), "task", String(pid)), { recursive: true });
-      writeFileSync(
-        join(root, String(pid), "task", String(pid), "children"),
-        (kids.get(pid) ?? []).map((kid) => `${kid} `).join(""),
-      );
-    }
-  }
-
   function addProcess(pid: number, ppid: number, argv: string[], env: string[] = []): void {
     processes.set(pid, ppid);
     const dir = join(root, String(pid));
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "stat"), `${pid} (${argv[0] ?? "x"}) S ${ppid} ${pid} ${pid} 0 -1`);
     writeFileSync(join(dir, "cmdline"), argv.length > 0 ? `${argv.join("\0")}\0` : "");
     writeFileSync(join(dir, "environ"), env.length > 0 ? `${env.join("\0")}\0` : "");
   }
 
-  const probe = () => {
-    if (withChildrenFiles) writeChildrenFiles();
-    return createProcFsProbe(root, PI_PID);
-  };
+  /** The tree as the kernel serves it: one children file per process, in its own task directory. */
+  function probe(): ProcessProbe {
+    const kids = new Map<number, number[]>();
+    for (const [pid, ppid] of processes) kids.set(ppid, [...(kids.get(ppid) ?? []), pid]);
+    for (const pid of new Set([PI_PID, ...processes.keys()])) {
+      const dir = join(root, String(pid), "task", String(pid));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "children"), (kids.get(pid) ?? []).map((kid) => `${kid} `).join(""));
+    }
+    return probeAt(root);
+  }
 
   it("lists the programs of a pipeline inside a subshell, dropping the shells", async () => {
-    addProcess(PI_PID, 1, ["pi"]);
     addProcess(200, PI_PID, ["/bin/bash", "-c", "x"], ["PI_SESSION_ID=mine"]);
     addProcess(201, 200, ["bash", "-c", "x"]); // ( … ) subshell
     addProcess(202, 201, ["sleep", "5"]);
@@ -202,26 +183,60 @@ describe.each([
     expect(await probe().runningPrograms("mine")).toEqual(["sleep"]);
   });
 
-  it("skips processes whose files vanished or are unreadable", async () => {
+  it("skips a process whose cmdline vanished before it was read", async () => {
     addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
     addProcess(201, 200, ["sleep"]);
+    const running = probe();
     rmSync(join(root, "201", "cmdline"));
-    mkdirSync(join(root, "202"), { recursive: true }); // no stat at all
 
-    expect(await probe().runningPrograms("mine")).toEqual([]);
+    expect(await running.runningPrograms("mine")).toEqual([]);
   });
 
-  it("returns nothing when /proc does not exist", async () => {
-    expect(await createProcFsProbe(join(root, "missing"), PI_PID).runningPrograms("mine")).toEqual([]);
+  it("reports nothing when the kernel denies reading the shell's environ", async () => {
+    addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
+    addProcess(201, 200, ["sleep"]);
+    rmSync(join(root, "200", "environ"));
+    mkdirSync(join(root, "200", "environ")); // a directory, so the read fails as it does under a restrictive ptrace_scope
+    const running = probe();
+
+    expect(await running.runningPrograms("mine")).toEqual([]);
+  });
+
+  it("reports only processes listed in a children file, never one found by scanning proc", async () => {
+    addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
+    addProcess(201, 200, ["sleep"]);
+    mkdirSync(join(root, "500"), { recursive: true });
+    writeFileSync(join(root, "500", "cmdline"), "bash\0");
+    writeFileSync(join(root, "500", "environ"), "PI_SESSION_ID=mine\0");
+
+    expect(await probe().runningPrograms("mine")).toEqual(["sleep"]);
+  });
+
+  it("reports a program whose own children file cannot be read", async () => {
+    addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
+    addProcess(201, 200, ["pnpm", "test"]);
+    const running = probe();
+    rmSync(join(root, "201", "task"), { recursive: true, force: true });
+
+    expect(await running.runningPrograms("mine")).toEqual(["pnpm"]);
+  });
+
+  it("returns nothing once pi's own children file stops being readable", async () => {
+    addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
+    addProcess(201, 200, ["sleep"]);
+    const running = probe();
+    rmSync(join(root, String(PI_PID), "task"), { recursive: true, force: true });
+
+    expect(await running.runningPrograms("mine")).toEqual([]);
   });
 
   it("finds this very test process's children on a real /proc", async () => {
     if (process.platform !== "linux") return;
-    expect(await createProcFsProbe().runningPrograms(`no-such-session-${process.pid}`)).toEqual([]);
+    expect(await probeAt("/proc", process.pid).runningPrograms(`no-such-session-${process.pid}`)).toEqual([]);
   });
 });
 
-describe("createProcFsProbe — reading only the processes it needs", () => {
+describe("createProcFsProbe without children files", () => {
   let root: string;
 
   beforeEach(() => {
@@ -232,48 +247,15 @@ describe("createProcFsProbe — reading only the processes it needs", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  function addProcess(pid: number, argv: string[], env: string[], threads: Record<number, number[]>): void {
-    const dir = join(root, String(pid));
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "cmdline"), `${argv.join("\0")}\0`);
-    writeFileSync(join(dir, "environ"), env.length > 0 ? `${env.join("\0")}\0` : "");
-    for (const [tid, kids] of Object.entries(threads)) {
-      mkdirSync(join(dir, "task", tid), { recursive: true });
-      writeFileSync(join(dir, "task", tid, "children"), kids.map((kid) => `${kid} `).join(""));
-    }
-  }
+  it("is absent when the own task children file is missing", () => {
+    mkdirSync(join(root, String(PI_PID), "task", String(PI_PID)), { recursive: true });
+    writeFileSync(join(root, String(PI_PID), "cmdline"), "pi\0");
 
-  it("follows children files without reading any process's stat", async () => {
-    addProcess(PI_PID, ["pi"], [], { [PI_PID]: [200] });
-    addProcess(200, ["bash"], ["PI_SESSION_ID=mine"], { 200: [201] });
-    addProcess(201, ["sleep", "5"], [], { 201: [] });
-    // Parented to pi by its stat but absent from every children file: a full-table scan would find it.
-    mkdirSync(join(root, "500"));
-    writeFileSync(join(root, "500", "stat"), `500 (bash) S ${PI_PID} 500 500 0 -1`);
-    writeFileSync(join(root, "500", "cmdline"), "bash\0");
-    writeFileSync(join(root, "500", "environ"), "PI_SESSION_ID=mine\0");
-
-    expect(await createProcFsProbe(root, PI_PID).runningPrograms("mine")).toEqual(["sleep"]);
+    expect(createProcFsProbe(root, PI_PID)).toBeUndefined();
   });
 
-  it("collects children forked by any thread of the parent", async () => {
-    addProcess(PI_PID, ["pi"], [], { [PI_PID]: [200], 101: [210] });
-    addProcess(200, ["bash"], ["PI_SESSION_ID=mine"], { 200: [201] });
-    addProcess(201, ["make"], [], { 201: [] });
-    addProcess(210, ["bash"], ["PI_SESSION_ID=mine"], { 210: [211] });
-    addProcess(211, ["tsc"], [], { 211: [] });
-
-    expect(await createProcFsProbe(root, PI_PID).runningPrograms("mine")).toEqual(["make", "tsc"]);
-  });
-
-  it("does not look at the children of a program it reports", async () => {
-    addProcess(PI_PID, ["pi"], [], { [PI_PID]: [200] });
-    addProcess(200, ["bash"], ["PI_SESSION_ID=mine"], { 200: [201] });
-    // 201's task dir is missing: reading its children would be a wasted (and here failing) read.
-    mkdirSync(join(root, "201"));
-    writeFileSync(join(root, "201", "cmdline"), "pnpm\0test\0");
-
-    expect(await createProcFsProbe(root, PI_PID).runningPrograms("mine")).toEqual(["pnpm"]);
+  it("is absent when the proc root does not exist", () => {
+    expect(createProcFsProbe(join(root, "missing"), PI_PID)).toBeUndefined();
   });
 });
 

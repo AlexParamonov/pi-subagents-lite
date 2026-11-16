@@ -1,23 +1,20 @@
-import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 /**
- * process-probe.ts — what a subagent's `bash` tool call is running right now.
+ * process-probe.ts — what a subagent's `bash` tool call is running right now. Linux only (/proc).
  *
- * pi spawns each bash call as a direct child of the pi process and exposes the
- * calling session's id to it as PI_SESSION_ID. Every subagent has its own
- * session, so the shell belonging to one subagent is the child of this process
- * whose environment carries that id. From that shell we walk down through
- * shell processes (subshells, `$(…)`, `&` groups) and wrapper programs
- * (`timeout foo`, `env X=1 foo`, …) and report the first other program on
- * each branch — no parsing of the command string.
+ * pi spawns each bash call as a direct child of its own process and exposes the calling session's id to
+ * it, so the shells of one session are the children of this process whose environ carries PI_SESSION_ID.
+ * Children come from the parent's own task file /proc/<pid>/task/<pid>/children, never from a scan of
+ * the process table, and the command string is never parsed. From such a shell the walk descends
+ * through shell processes (subshells, `$(…)`, `&` groups) and wrapper programs (`timeout foo`), and
+ * reports the first other program on each branch.
  *
- * Cost: children come from /proc/<pid>/task/<tid>/children, so a sample reads
- * only the few processes under pi. Kernels built without CONFIG_PROC_CHILDREN
- * lack that file; there the whole process table is read (stat of every pid).
- *
- * Linux only (/proc). Elsewhere createProcessProbe() returns undefined and the
- * widget keeps its generic "running command…" label.
+ * Two cases report no programs instead of failing, both because no shell can be tied to a session: pi
+ * runs with bash's exposeSessionEnvironment off, so PI_SESSION_ID is absent from the child's
+ * environment; or the kernel denies /proc/<pid>/environ reads, as a restrictive yama ptrace_scope does.
  */
 
 export interface ProcessProbe {
@@ -30,56 +27,15 @@ const SHELL_NAMES = new Set(["bash", "sh", "dash", "ash", "zsh", "ksh", "mksh", 
 
 /**
  * Programs that only launch another program: the walk reports what they run (`timeout 5 foo` → foo)
- * rather than them. A wrapper with no child yet (still starting up) is reported itself.
+ * rather than them. One with no child yet (still starting up) is reported itself. Shell builtins
+ * (`command`, `exec`) and the `time` keyword are absent: they never appear as a process.
  */
-const WRAPPER_NAMES = new Set([
-  "timeout",
-  "env",
-  "nice",
-  "nohup",
-  "stdbuf",
-  "setsid",
-  "ionice",
-  "time",
-  "command",
-  "exec",
-]);
-
-type ChildLookup = (pid: number) => Promise<number[]>;
-
-interface ProcEntry {
-  pid: number;
-  ppid: number;
-}
-
-/** Parent pid from /proc/<pid>/stat. The comm field may contain spaces and parentheses, so parse after the last ")". */
-export function parseParentPid(stat: string): number | undefined {
-  const rest = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-  const ppid = Number(rest[1]);
-  return Number.isInteger(ppid) ? ppid : undefined;
-}
+const WRAPPER_NAMES = new Set(["timeout", "env", "nice", "nohup", "stdbuf", "setsid", "ionice"]);
 
 /** argv0 basename from raw /proc/<pid>/cmdline contents; a leading "-" (login shell) is dropped. Empty for zombies. */
 export function parseProgramName(cmdline: string): string {
   const argv0 = cmdline.split("\0")[0] ?? "";
   return basename(argv0).replace(/^-/, "");
-}
-
-async function readProcessTable(procRoot: string): Promise<ProcEntry[]> {
-  const names = await readdir(procRoot).catch(() => [] as string[]);
-  const entries = await Promise.all(
-    names
-      .filter((name) => /^\d+$/.test(name))
-      .map(async (name): Promise<ProcEntry | undefined> => {
-        try {
-          const ppid = parseParentPid(await readFile(`${procRoot}/${name}/stat`, "utf8"));
-          return ppid === undefined ? undefined : { pid: Number(name), ppid };
-        } catch {
-          return undefined; // exited between readdir and read
-        }
-      }),
-  );
-  return entries.filter((entry): entry is ProcEntry => entry !== undefined);
 }
 
 /** Pids listed in a /proc/<pid>/task/<tid>/children file (space separated). */
@@ -91,55 +47,30 @@ export function parseChildPids(children: string): number[] {
     .filter((pid) => Number.isInteger(pid));
 }
 
-/** Child lookup that reads /proc/<pid>/task/<tid>/children, or undefined when the kernel does not provide it. */
-async function createChildrenFileLookup(procRoot: string, ownPid: number): Promise<ChildLookup | undefined> {
-  // The main thread's file always exists for a live process; if it cannot be read the kernel lacks the feature.
-  const supported = await readFile(`${procRoot}/${ownPid}/task/${ownPid}/children`, "utf8").then(
-    () => true,
-    () => false,
-  );
-  if (!supported) return undefined;
-  // A child belongs to the thread that forked it, so every thread of the parent is read.
-  return async (pid) => {
-    const tids = await readdir(`${procRoot}/${pid}/task`).catch(() => [] as string[]);
-    const lists = await Promise.all(
-      tids.map((tid) =>
-        readFile(`${procRoot}/${pid}/task/${tid}/children`, "utf8").then(parseChildPids, () => [] as number[]),
-      ),
-    );
-    return lists.flat();
-  };
-}
+/**
+ * The probe reading `procRoot` for the process `ownPid`, or undefined when this kernel has no children
+ * files (CONFIG_PROC_CHILDREN). Kernel support cannot change while pi runs, so it is settled here.
+ */
+export function createProcFsProbe(procRoot = "/proc", ownPid = process.pid): ProcessProbe | undefined {
+  if (!existsSync(`${procRoot}/${ownPid}/task/${ownPid}/children`)) return undefined;
 
-/** Child lookup built from one read of the whole process table: the fallback without children files. */
-async function createProcessTableLookup(procRoot: string): Promise<ChildLookup> {
-  const children = new Map<number, number[]>();
-  for (const { pid, ppid } of await readProcessTable(procRoot)) {
-    const siblings = children.get(ppid);
-    if (siblings) siblings.push(pid);
-    else children.set(ppid, [pid]);
-  }
-  return async (pid) => children.get(pid) ?? [];
-}
+  // shortcut: reads only the parent's own task children file, so a child forked by a worker thread of a
+  // looked-through parent is missed; pi forks its shells from its main thread, and the all-thread union
+  // measured identical. Upgrade to a task/* scan if a looked-through parent can fork from a worker thread.
+  const childrenOf = (pid: number): Promise<number[]> =>
+    readFile(`${procRoot}/${pid}/task/${pid}/children`, "utf8").then(parseChildPids, () => [] as number[]);
 
-export function createProcFsProbe(procRoot = "/proc", ownPid = process.pid): ProcessProbe {
-  const programName = async (pid: number): Promise<string> =>
+  const programName = (pid: number): Promise<string> =>
     readFile(`${procRoot}/${pid}/cmdline`, "utf8").then(parseProgramName, () => "");
 
-  const hasSessionId = async (pid: number, sessionId: string): Promise<boolean> =>
+  const hasSessionId = (pid: number, sessionId: string): Promise<boolean> =>
     readFile(`${procRoot}/${pid}/environ`, "utf8").then(
       (environ) => environ.split("\0").includes(`PI_SESSION_ID=${sessionId}`),
       () => false,
     );
 
-  // Whether children files exist is a property of the kernel: decide once, on the first sample.
-  let childrenFileSupport: Promise<ChildLookup | undefined> | undefined;
-
   return {
     async runningPrograms(sessionId) {
-      childrenFileSupport ??= createChildrenFileLookup(procRoot, ownPid);
-      const childrenOf = (await childrenFileSupport) ?? (await createProcessTableLookup(procRoot));
-
       const candidates = await childrenOf(ownPid);
       const matches = await Promise.all(candidates.map((pid) => hasSessionId(pid, sessionId)));
       const roots = candidates.filter((_, i) => matches[i]).sort((a, b) => a - b);
@@ -148,9 +79,8 @@ export function createProcFsProbe(procRoot = "/proc", ownPid = process.pid): Pro
       const visit = async (pid: number): Promise<void> => {
         const name = await programName(pid);
         if (name === "") return;
-        // Shells are looked through; any other process is the program itself, either a direct child of a
-        // shell or the shell's own process after bash exec'd its last command. A wrapper is looked through
-        // unless it has nothing to look at yet, and only then are its children needed.
+        // A shell reported by its own name is bash after it exec'd its last command. A wrapper is
+        // reported only while it has no child to look through.
         const lookThrough = SHELL_NAMES.has(name) || WRAPPER_NAMES.has(name);
         const kids = lookThrough ? [...(await childrenOf(pid))].sort((a, b) => a - b) : [];
         if (lookThrough && (SHELL_NAMES.has(name) || kids.length > 0)) {
