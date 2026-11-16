@@ -1022,3 +1022,70 @@ describe("SpawnCoordinator", () => {
     });
   });
 });
+
+describe("SpawnCoordinator — live view tool tracking", () => {
+  let manager: AgentManager & MockManager;
+  let ctx: ExtensionContext;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    manager = makeMockManager();
+    ctx = makeMockCtx();
+    mockGetPiInstance.mockReturnValue(mockPiApi);
+  });
+
+  /** Spawn, then hand back the live view and the activity bridge the manager was given. */
+  async function spawnWithLiveView() {
+    const coordinator = new SpawnCoordinator(manager);
+    const result = await coordinator.spawn(mockPiApi, ctx, {
+      type: "builder",
+      prompt: "task",
+      description: "Test",
+      graceTurns: 6,
+      runInBackground: true,
+    });
+    return { view: coordinator.liveView(result.agentId)!, options: manager.getSpawnCalls()[0].options };
+  }
+
+  it("keeps parallel calls that start in the same millisecond apart and removes each by its own id", async () => {
+    const { view, options } = await spawnWithLiveView();
+
+    options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "c1" });
+    options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "c2" });
+    expect([...view.activeTools]).toEqual([
+      ["c1", "read"],
+      ["c2", "read"],
+    ]);
+
+    options.onToolActivity!({ type: "end", toolName: "read", toolCallId: "c2" });
+    expect([...view.activeTools]).toEqual([["c1", "read"]]);
+  });
+
+  it("removes the oldest entry of that tool when the end event carries no call id", async () => {
+    const { view, options } = await spawnWithLiveView();
+
+    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c1" });
+    options.onToolActivity!({ type: "start", toolName: "read", toolCallId: "r1" });
+    options.onToolActivity!({ type: "start", toolName: "bash", toolCallId: "c2" });
+
+    options.onToolActivity!({ type: "end", toolName: "bash" });
+
+    expect([...view.activeTools]).toEqual([
+      ["r1", "read"],
+      ["c2", "bash"],
+    ]);
+  });
+
+  it("keeps calls without a call id apart by start time and drops the oldest of them", async () => {
+    const { view, options } = await spawnWithLiveView();
+
+    options.onToolActivity!({ type: "start", toolName: "bash" });
+    vi.advanceTimersByTime(1);
+    options.onToolActivity!({ type: "start", toolName: "bash" });
+    const [, newer] = [...view.activeTools.keys()];
+
+    options.onToolActivity!({ type: "end", toolName: "bash" });
+
+    expect([...view.activeTools.keys()]).toEqual([newer]);
+  });
+});

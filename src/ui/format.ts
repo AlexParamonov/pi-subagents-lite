@@ -215,18 +215,60 @@ const TOOL_DISPLAY: Record<string, string> = {
   find: "searching",
 };
 
-export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+/** Most programs listed for a running bash call; the rest collapse into "+N". */
+const MAX_LISTED_PROGRAMS = 4;
+
+/**
+ * "sleep ×10, make, tsc +2" — one process per entry in, distinct names out (in first-seen order)
+ * with a ×count when more than one runs; the first MAX_LISTED_PROGRAMS names, then how many more names.
+ */
+export function formatPrograms(programs: readonly string[]): string {
+  const counts = new Map<string, number>();
+  for (const name of programs) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const entries = [...counts].map(([name, count]) => (count > 1 ? `${name} ×${count}` : name));
+  const shown = entries.slice(0, MAX_LISTED_PROGRAMS).join(", ");
+  const hidden = entries.length - MAX_LISTED_PROGRAMS;
+  return hidden > 0 ? `${shown} +${hidden}` : shown;
+}
+
+/** What the widget knows about the `bash` calls behind a "running command" activity part. */
+export interface BashActivity {
+  /** Programs the call has started; absent when unknown, empty when nothing is spawned yet. */
+  programs?: readonly string[];
+  /** Age of the oldest running call (ms); hidden below a second so it doesn't flicker in. */
+  elapsedMs?: number;
+}
+
+export function describeActivity(activeTools: Map<string, string>, responseText?: string, bash?: BashActivity): string {
   if (activeTools.size > 0) {
-    const groups = new Map<string, number>();
+    // Grouped by the translated label, so tools sharing one label ("searching") still count together.
+    // Each group remembers whether a `bash` call contributed to it, which is what decides where the
+    // sampled programs and the elapsed time go: a label alone cannot tell bash from another tool.
+    const groups = new Map<string, { count: number; bash: boolean }>();
     for (const toolName of activeTools.values()) {
       const action = TOOL_DISPLAY[toolName] ?? toolName;
-      groups.set(action, (groups.get(action) ?? 0) + 1);
+      const group = groups.get(action) ?? { count: 0, bash: false };
+      group.count += 1;
+      group.bash = group.bash || toolName === "bash";
+      groups.set(action, group);
     }
 
+    // Elapsed time of the oldest running bash call; hidden below a second so it doesn't flicker in.
+    const elapsed = bash?.elapsedMs !== undefined && bash.elapsedMs >= 1000 ? ` (${formatMs(bash.elapsedMs)})` : "";
+    const programs = bash?.programs;
     const parts: string[] = [];
-    for (const [action, count] of groups) {
-      if (count > 1) {
-        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
+    for (const [action, group] of groups) {
+      if (group.bash) {
+        parts.push(
+          // The programs already say what is running; a count adds nothing.
+          programs && programs.length > 0
+            ? `running: ${formatPrograms(programs)}${elapsed}`
+            : group.count > 1
+              ? `running ${group.count} commands${elapsed}`
+              : `${action}${elapsed}`,
+        );
+      } else if (group.count > 1) {
+        parts.push(`${action} ${group.count} ${action === "searching" ? "patterns" : "files"}`);
       } else {
         parts.push(action);
       }

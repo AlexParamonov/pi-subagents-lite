@@ -6,6 +6,8 @@
  * registers the widget factory on the UI context; invoking that factory's
  * render() returns the produced lines. When no agents exist, update()
  * unregisters the widget instead of rendering, and the helper returns [].
+ * One UI context is kept per widget, as production does: a fresh context on
+ * every render would drop the widget's per-agent sample caches.
  */
 
 import type { Theme } from "../../src/ui/types.js";
@@ -59,7 +61,13 @@ export function makeRunningAgent(id: string, opts?: AgentFactoryOpts): AgentReco
       settled: false,
       settlementCount: 0,
       session: opts?.withSession
-        ? (asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }) as never)
+        ? (asAgentSession({
+            model: { id: "haiku", name: "Haiku" },
+            thinkingLevel: "medium",
+            // A session that cannot say which session it is makes the bash sampling path bail out
+            // through its catch, which would hide a real fixture mistake behind a generic line.
+            sessionManager: { getSessionId: () => `session-${id}` },
+          }) as never)
         : undefined,
     },
     stats: {
@@ -92,7 +100,13 @@ export function makeFinishedAgent(id: string, opts?: AgentFactoryOpts): AgentRec
       settled: false,
       settlementCount: 0,
       session: opts?.withSession
-        ? (asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }) as never)
+        ? (asAgentSession({
+            model: { id: "haiku", name: "Haiku" },
+            thinkingLevel: "medium",
+            // A session that cannot say which session it is makes the bash sampling path bail out
+            // through its catch, which would hide a real fixture mistake behind a generic line.
+            sessionManager: { getSessionId: () => `session-${id}` },
+          }) as never)
         : undefined,
     },
     stats: {
@@ -133,6 +147,7 @@ export function makeMockManager(agents: AgentRecord[], totalAgentCost = 0, total
     listAgents: () => agents,
     getTotalAgentCost: () => totalAgentCost,
     getTotalAgentCount: () => totalAgentCount,
+    getToolStartedAt: (_agentId: string, _toolCallId: string): number | undefined => undefined,
   };
   // The stub implements only what AgentWidget reads (listAgents, cost/count
   // totals). AgentManager has private members, so the single `as` cast
@@ -145,21 +160,29 @@ export function makeMockManager(agents: AgentRecord[], totalAgentCost = 0, total
 /** Render the widget through its public update() -> setWidget -> render() seam.
  * Accepts a custom TUI (e.g. narrow terminal widths) or theme.
  */
+const widgetHosts = new WeakMap<AgentWidget, { ctx: UICtx; factory?: WidgetContent }>();
+
+type WidgetContent = NonNullable<Parameters<UICtx["setWidget"]>[1]>;
+
 export function renderWidgetLines(
   widget: AgentWidget,
   tui: MockTUI = makeMockTUI(),
   theme: Theme = makeMockTheme(),
 ): string[] {
-  // The setWidget content factory, captured from the public UICtx seam.
-  type WidgetContent = NonNullable<Parameters<UICtx["setWidget"]>[1]>;
-  let factory: WidgetContent | undefined;
-  const ctx: UICtx = {
-    setWidget: (_key, content) => {
-      factory = content;
-    },
-    setStatus: () => {},
-  };
-  widget.setUICtx(ctx);
+  let host = widgetHosts.get(widget);
+  if (!host) {
+    const created: { ctx: UICtx; factory?: WidgetContent } = {
+      ctx: {
+        setStatus: () => {},
+        setWidget: (_key, content) => {
+          created.factory = content ?? undefined;
+        },
+      },
+    };
+    widgetHosts.set(widget, created);
+    host = created;
+    widget.setUICtx(host.ctx);
+  }
   widget.update();
-  return factory ? factory(tui, theme).render() : [];
+  return host.factory ? host.factory(tui, theme).render() : [];
 }

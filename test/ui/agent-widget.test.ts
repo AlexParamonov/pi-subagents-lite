@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { agentConfigMock } from "../agent-types-mock.js";
 import type { AgentManager } from "../../src/agents/agent-manager.js";
+import type { ProcessProbe } from "../../src/agents/process-probe.js";
 import type { LiveView, AgentRecord } from "../../src/types.js";
 import { AgentWidget, formatMs } from "../../src/ui/agent-widget.js";
 import {
@@ -390,6 +391,47 @@ describe("getLiveView callback", () => {
     expect(metadataLine).not.toContain("thinking…");
   });
 
+  it("shows how long the oldest bash call has been running, once past a second", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(100_000);
+      const manager = makeMockManager([]);
+      let startedAt = 99_500;
+      manager.getToolStartedAt = (_agentId, toolCallId) => (toolCallId === "c1" ? startedAt : 99_900);
+      const views = new Map<string, LiveView>([
+        [
+          "a1",
+          {
+            activeTools: new Map([
+              ["c2", "bash"],
+              ["c1", "bash"],
+            ]),
+            responseText: "",
+          },
+        ],
+      ]);
+      // A probe that finds nothing: the age comes from the watchdog clock, not from /proc.
+      const noPrograms: ProcessProbe = { runningPrograms: () => Promise.resolve([]) };
+      const widget = new AgentWidget(manager, (id: string) => views.get(id), noPrograms);
+      widget.setShowBashPrograms(true);
+      manager.listAgents = () => [makeRunningAgent("a1")];
+
+      // Below a second the age would flicker on every repaint.
+      const untimed = renderWidgetLines(widget)[2];
+
+      startedAt = 88_000;
+      const timed = renderWidgetLines(widget)[2];
+      expect(timed).not.toBe(untimed);
+      expect(timed).toContain("(12s)");
+
+      // Off is the shipped default: the call is still reported, without anything sampled or timed.
+      widget.setShowBashPrograms(false);
+      expect(renderWidgetLines(widget)[2]).toBe(untimed);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns undefined for unknown agent", () => {
     const manager = makeMockManager([]);
     const liveViews = new Map<string, LiveView>();
@@ -440,6 +482,219 @@ describe("getLiveView callback", () => {
     expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(lines[2]).toContain("Here is my response");
     expect(lines[2]).not.toContain("thinking…");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Bash program sampling (widget-side)                                */
+/* ------------------------------------------------------------------ */
+
+describe("widget bash program sampling", () => {
+  /** Fake probe: `sessions` gets one entry per sample taken, `settled()` drains the widget's handler. */
+  function makeProbe(programs: string[], failing = false) {
+    const sessions: string[] = [];
+    let pending: Promise<string[]> = Promise.resolve([]);
+    const probe: ProcessProbe = {
+      runningPrograms: (sessionId) => {
+        sessions.push(sessionId);
+        pending = failing ? Promise.reject(new Error("EACCES")) : Promise.resolve(programs);
+        return pending;
+      },
+    };
+    return { probe, sessions, settled: () => pending.catch(() => {}) };
+  }
+
+  interface Host {
+    programs?: string[];
+    enabled?: boolean;
+    failing?: boolean;
+    /** `null` means this platform has no probe, so it must stay distinct from "not given". */
+    probe?: ProcessProbe | null;
+    /** Leave the setting alone, the way a caller that never synced the store does. */
+    unset?: boolean;
+    tools?: [string, string][];
+    sessionManager?: Record<string, unknown>;
+  }
+
+  /** One running agent, painted through the render seam, with a bash call running by default. */
+  function mountBash(options: Host = {}) {
+    const fake = makeProbe(options.programs ?? ["sleep"], options.failing ?? false);
+    const probe = options.probe === undefined ? fake.probe : options.probe;
+    const manager = makeMockManager([]);
+    const agent = makeRunningAgent("a1");
+    agent.execution.session = asAgentSession({
+      sessionManager: options.sessionManager ?? { getSessionId: () => "child-1" },
+    });
+    manager.listAgents = () => [agent];
+    // A call that started an hour ago: an elapsed time in the line can only come from this feature.
+    manager.getToolStartedAt = () => Date.now() - 3_600_000;
+    const view: LiveView = { activeTools: new Map(options.tools ?? [["c1", "bash"]]), responseText: "" };
+    const widget = new AgentWidget(manager, () => view, probe);
+    if (!options.unset) widget.setShowBashPrograms(options.enabled ?? true);
+    return {
+      view,
+      manager,
+      sessions: fake.sessions,
+      settled: fake.settled,
+      activity: () => renderWidgetLines(widget)[2] ?? "",
+    };
+  }
+
+  it.each([
+    { name: "the setting is off", options: { enabled: false } satisfies Host, age: false },
+    { name: "this platform has no probe", options: { probe: null } satisfies Host, age: false },
+    { name: "nobody has set the setting", options: { unset: true } satisfies Host, age: false },
+    { name: "no bash call is running", options: { tools: [["r1", "read"]] } satisfies Host, age: false },
+    // The age comes from the watchdog's own clock, so a session that cannot name itself still has one.
+    { name: "the session cannot say which session it is", options: { sessionManager: {} } satisfies Host, age: true },
+  ])("takes no sample when $name", async ({ options, age }) => {
+    const host = mountBash({ programs: ["sleep"], ...options });
+
+    host.activity();
+    await host.settled();
+
+    expect(host.sessions).toEqual([]);
+    expect(host.activity()).not.toContain("sleep");
+    // A parenthesised age in the line can only come from this feature's clock reading.
+    expect(/\(\d/.test(host.activity())).toBe(age);
+  });
+
+  it("keeps the activity line when the session throws on being asked which session it is", () => {
+    const host = mountBash({
+      sessionManager: {
+        getSessionId: () => {
+          throw new Error("unexpected session");
+        },
+      },
+    });
+
+    const line = host.activity();
+
+    expect(host.sessions).toEqual([]);
+    // Not an empty render: the call and its age are still there, only the programs are missing.
+    expect(line).not.toBe("");
+    expect(/\(\d/.test(line)).toBe(true);
+    expect(line).not.toContain("sleep");
+  });
+
+  it("names the programs of the sampled session", async () => {
+    const host = mountBash({ programs: ["sleep", "sleep", "cat"] });
+
+    host.activity();
+    await host.settled();
+
+    expect(host.sessions).toEqual(["child-1"]);
+    expect(host.activity()).toContain("sleep");
+    expect(host.activity()).toContain("\u00d72");
+    expect(host.activity()).toContain("cat");
+  });
+
+  it("samples once a second however often the widget repaints, and keeps the last programs meanwhile", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash();
+      host.activity();
+      host.activity();
+      await host.settled();
+      expect(host.sessions).toHaveLength(1);
+
+      vi.advanceTimersByTime(1_100);
+      const line = host.activity();
+      expect(host.sessions).toHaveLength(2); // a second sample is in flight
+      expect(line).toContain("sleep"); // the first one is still what the line says
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps sampling after the clock steps backwards", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash();
+      host.activity();
+      await host.settled();
+
+      vi.setSystemTime(Date.now() - 5 * 60_000); // an NTP step, or a resumed VM syncing its clock
+      vi.advanceTimersByTime(1_100);
+      host.activity();
+
+      expect(host.sessions).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts a later call without the programs of the call it replaced", async () => {
+    const host = mountBash();
+    host.activity();
+    await host.settled();
+    expect(host.activity()).toContain("sleep");
+
+    // One call ends and another takes its place: the same count, a different question to ask /proc,
+    // and no repaint in between.
+    host.view.activeTools.delete("c1");
+    host.view.activeTools.set("c2", "bash");
+    expect(host.activity()).not.toContain("sleep");
+  });
+
+  it("takes one sample for a set of calls, whichever order they arrived in", async () => {
+    const host = mountBash({ tools: [] });
+    host.view.activeTools.set("c1", "bash");
+    host.view.activeTools.set("c2", "bash");
+    host.activity();
+    await host.settled();
+
+    // The same two calls, listed in the other order: the same question, so the same answer serves.
+    host.view.activeTools = new Map([
+      ["c2", "bash"],
+      ["c1", "bash"],
+    ]);
+    host.activity();
+
+    expect(host.sessions).toHaveLength(1);
+    expect(host.activity()).toContain("sleep");
+  });
+
+  it("ignores a sample that lands after its calls were replaced", async () => {
+    // A walk the kernel has not answered yet, so the calls can move on underneath it.
+    const walks: { resolve: (programs: string[]) => void }[] = [];
+    const probe: ProcessProbe = { runningPrograms: () => new Promise((resolve) => walks.push({ resolve })) };
+    const host = mountBash({ probe });
+
+    host.activity();
+    host.view.activeTools.set("c2", "bash");
+    host.activity();
+    expect(walks).toHaveLength(2);
+
+    walks[0]?.resolve(["stale"]);
+    await Promise.resolve();
+    expect(host.activity()).not.toContain("stale");
+    // The late result must not take over the slot the current calls stamped, or the next repaint
+    // finds a mismatch and walks /proc all over again.
+    expect(walks).toHaveLength(2);
+
+    walks[1]?.resolve(["make"]);
+    await Promise.resolve();
+    expect(host.activity()).toContain("make");
+  });
+
+  it("keeps a denied read out of the line and asks again after the window", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash({ failing: true });
+      host.activity();
+      await host.settled();
+      host.activity();
+      expect(host.sessions).toHaveLength(1);
+      expect(host.activity()).not.toContain("sleep");
+
+      vi.advanceTimersByTime(1_100);
+      host.activity();
+      await host.settled();
+      expect(host.sessions).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

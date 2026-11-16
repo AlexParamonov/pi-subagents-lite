@@ -39,6 +39,7 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     setMaxLines: (n: number) => void;
     setMaxLinesCompact: (n: number) => void;
     setNavHint: (e: boolean) => void;
+    setShowBashPrograms: (e: boolean) => void;
     setFinishedRetentionMinutes: (n: number) => void;
     setCompactMode: (c: boolean) => void;
     setStatsVisibility: (v: StatsVisibility) => void;
@@ -63,6 +64,9 @@ function widgetStub(): { w: AgentWidget; calls: string[] } {
     },
     setNavHint: (e) => {
       calls.push(`setNavHint:${e}`);
+    },
+    setShowBashPrograms: (e) => {
+      calls.push(`setShowBashPrograms:${e}`);
     },
     setFinishedRetentionMinutes: (n) => {
       calls.push(`setFinishedRetentionMinutes:${n}`);

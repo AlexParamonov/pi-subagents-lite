@@ -201,6 +201,24 @@ describe("showWidgetSettingsMenu — flat SettingsList", () => {
     expect(mockModules.mockConfig.agent.widgetShowThinking).toBe(false);
   });
 
+  it("lists Show bash programs right below Show thinking, off by default", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    const items = settingsListCalls[0].items;
+    const at = items.findIndex((i) => i.id === "showThinking");
+    expect(items[at + 1]).toMatchObject({ id: "showBashPrograms", label: "Show bash programs", currentValue: "OFF" });
+  });
+
+  it("showBashPrograms onChange toggles store", async () => {
+    const ctx = createMockCtx();
+    await showWidgetSettingsMenu(ctx);
+    settingsListCalls[0].onChange("showBashPrograms", "ON");
+    expect(mockModules.mockConfig.agent.widgetShowBashPrograms).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Show bash programs ON", "info");
+    settingsListCalls[0].onChange("showBashPrograms", "OFF");
+    expect(mockModules.mockConfig.agent.widgetShowBashPrograms).toBe(false);
+  });
+
   it("navHint onChange toggles store", async () => {
     mockModules.mockConfig.agent.widgetNavHint = true;
     const ctx = createMockCtx();

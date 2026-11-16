@@ -67,10 +67,7 @@ export class SpawnCoordinator {
    */
   async spawn(pi: ExtensionAPI, ctx: ExtensionContext, intent: SpawnIntent): Promise<SpawnResult> {
     // Create live view BEFORE spawn so callbacks can close over it
-    const liveView: LiveView = {
-      activeTools: new Map(),
-      responseText: "",
-    };
+    const liveView: LiveView = { activeTools: new Map(), responseText: "" };
     const liveViewCallbacks = this.createLiveViewCallbacks(liveView);
 
     // SpawnConfig fields pass through unchanged; only the intent-only fields
@@ -217,8 +214,12 @@ export class SpawnCoordinator {
     return {
       onToolActivity: (activity: ToolActivity) => {
         if (activity.type === "start") {
-          view.activeTools.set(`${activity.toolName}_${Date.now()}`, activity.toolName);
+          // Parallel tool calls can start within the same millisecond, so the call id keeps their keys distinct.
+          view.activeTools.set(activity.toolCallId ?? `${activity.toolName}_${Date.now()}`, activity.toolName);
+        } else if (activity.toolCallId) {
+          view.activeTools.delete(activity.toolCallId);
         } else {
+          // Synthetic end events (e.g. extension-error) carry no call id: clear the oldest call of that tool.
           for (const [key, name] of view.activeTools) {
             if (name === activity.toolName) {
               view.activeTools.delete(key);

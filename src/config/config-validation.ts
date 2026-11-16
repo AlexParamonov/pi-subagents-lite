@@ -94,6 +94,7 @@ const AGENT_KEY_SPECS: Record<string, KeySpec> = {
   statusBarFormat: STATUS_BAR,
   outputTranscript: BOOL,
   showAgentColors: BOOL,
+  widgetShowBashPrograms: BOOL,
   compactToolCalls: BOOL,
   ungroupedTools: TOOL_NAMES,
 };

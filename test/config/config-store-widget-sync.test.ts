@@ -272,6 +272,54 @@ describe("ConfigStore clearAllModelOverrides preserves widget-sync non-model set
 });
 
 /* ------------------------------------------------------------------ */
+/*  widgetShowBashPrograms                                                   */
+/* ------------------------------------------------------------------ */
+
+describe("ConfigStore widgetShowBashPrograms", () => {
+  it("defaults to off", () => {
+    expect(new ConfigStore(minimalIO()).agent.widgetShowBashPrograms).toBe(false);
+    expect(new ConfigStore(minimalIO()).agentConfigSnapshot().widgetShowBashPrograms).toBe(false);
+  });
+
+  it("persists to the global layer and survives a restart", () => {
+    const { io, saves, global } = memIO();
+    const store = new ConfigStore(io);
+    store.mutate.widget.setShowBashPrograms(true);
+    expect(store.agent.widgetShowBashPrograms).toBe(true);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].layer).toBe("global");
+    expect(global().agent!.widgetShowBashPrograms).toBe(true);
+    expect(new ConfigStore(io).agent.widgetShowBashPrograms).toBe(true);
+    store.mutate.widget.setShowBashPrograms(false);
+    expect(new ConfigStore(io).agent.widgetShowBashPrograms).toBe(false);
+  });
+
+  it("survives clearAllModelOverrides", () => {
+    const { io } = memIO({ global: { agent: { default: "g", Explore: "g/explore", widgetShowBashPrograms: true } } });
+    const store = new ConfigStore(io);
+    store.mutate.agent.clearAllModelOverrides();
+    expect(store.agent.widgetShowBashPrograms).toBe(true);
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+  });
+
+  it("syncs to the widget on change and on reload", () => {
+    const { io, global } = memIO();
+    const { w, calls } = widgetStub();
+    const store = new ConfigStore(io);
+    store.setDeps({ widget: w });
+    calls.length = 0;
+
+    store.mutate.widget.setShowBashPrograms(true);
+    expect(calls).toContain("setShowBashPrograms:true");
+
+    calls.length = 0;
+    global().agent = { widgetShowBashPrograms: false };
+    store.reload();
+    expect(calls).toContain("setShowBashPrograms:false");
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  showAgentColors                                                    */
 /* ------------------------------------------------------------------ */
 

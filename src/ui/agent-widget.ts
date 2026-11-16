@@ -10,6 +10,8 @@ import type { AgentRecord, AgentLifecycle } from "../types.ts";
 import type { Theme } from "./types.ts";
 import type { ModelThinkingPlacement } from "../config/types.ts";
 import { formatCost, getSessionContextPercent } from "../agents/usage.ts";
+import { createProcessProbe } from "../agents/process-probe.ts";
+import type { ProcessProbe } from "../agents/process-probe.ts";
 import {
   applyAgentColor,
   buildStatsParts,
@@ -19,6 +21,7 @@ import {
   resolveAgentModelThinking,
   buildMetadataLineParts,
   statusIcon,
+  type BashActivity,
   type StatsVisibility,
 } from "./format.ts";
 import { agentColorAnsi } from "../agent-color.ts";
@@ -42,6 +45,9 @@ const WIDGET_REFRESH_INTERVAL = 80;
 
 /** Context statistics need not be recomputed for every spinner frame. */
 const CONTEXT_SAMPLE_MAX_AGE_MS = 500;
+
+/** A running bash call's process list is sampled at most this often (ms). */
+const BASH_SAMPLE_MAX_AGE_MS = 1000;
 
 /** Navigation freeze window: roster order is deferred while the user is actively navigating. */
 const NAV_FREEZE_MS = 2000;
@@ -84,6 +90,13 @@ interface ContextSample {
   percent: number | null;
 }
 
+/** Last process sample for one agent: when it was taken, which calls it describes, what it found. */
+interface BashSample {
+  at: number;
+  callKey: string;
+  programs: string[];
+}
+
 // ---- Re-exports from format.ts (backward compatibility) ----
 export { formatMs, buildStatsParts, getDisplayName, type StatsVisibility } from "./format.ts";
 export type { LiveView as AgentActivity } from "../types.ts";
@@ -123,6 +136,7 @@ export class AgentWidget {
   private lastWidgetLines: string[] | undefined;
   private hasAnimatedRows = false;
   private contextSamples = new WeakMap<AgentRecord, ContextSample>();
+  private bashSamples = new WeakMap<AgentRecord, BashSample>();
 
   /** Whether to use compact mode (1-line per agent). */
   private compactMode = false;
@@ -138,6 +152,9 @@ export class AgentWidget {
   private maxLinesCompact = Math.floor(DEFAULT_MAX_WIDGET_LINES / 2);
 
   private navHint = true;
+
+  /** Whether the activity line may name the programs a running `bash` call started. */
+  private showBashPrograms = false;
 
   private statusBarFormat: "full" | "compact" = "full";
 
@@ -175,6 +192,8 @@ export class AgentWidget {
   constructor(
     private manager: AgentManager,
     private getLiveView: (id: string) => LiveView | undefined,
+    /** Where the activity line learns what a `bash` call is running; null where the platform has no probe. */
+    private bashProbe: ProcessProbe | null = createProcessProbe() ?? null,
   ) {}
 
   setShowCost(enabled: boolean) {
@@ -210,6 +229,10 @@ export class AgentWidget {
 
   setNavHint(enabled: boolean) {
     this.navHint = enabled;
+  }
+
+  setShowBashPrograms(enabled: boolean) {
+    this.showBashPrograms = enabled;
   }
 
   setStatusBarFormat(format: "full" | "compact") {
@@ -498,6 +521,7 @@ export class AgentWidget {
       this.lastStatusText = undefined;
       this.lastWidgetLines = undefined;
       this.contextSamples = new WeakMap();
+      this.bashSamples = new WeakMap();
     }
   }
 
@@ -649,6 +673,69 @@ export class AgentWidget {
     }
   }
 
+  /**
+   * The `bash` part of the activity line: the programs the call started and the age of the oldest
+   * running call. Undefined with the setting off or without a probe, so the activity line stays as it
+   * read before this feature.
+   */
+  private bashActivity(agent: AgentRecord, activeTools: Map<string, string>): BashActivity | undefined {
+    if (!this.showBashPrograms || !this.bashProbe) return undefined;
+    const bashKeys = [...activeTools.entries()]
+      .filter(([, name]) => name === "bash")
+      .map(([key]) => key)
+      .sort();
+    if (bashKeys.length === 0) return undefined;
+    const started = bashKeys
+      .map((key) => this.manager.getToolStartedAt(agent.id, key))
+      .filter((at): at is number => at !== undefined);
+    return {
+      programs: this.sampleBashPrograms(agent, JSON.stringify(bashKeys)),
+      elapsedMs: started.length > 0 ? Date.now() - Math.min(...started) : undefined,
+    };
+  }
+
+  /**
+   * Programs the `bash` calls named by `callKey` started, sampled at most once a second while the
+   * widget repaints.
+   */
+  private sampleBashPrograms(agent: AgentRecord, callKey: string): string[] | undefined {
+    const probe = this.bashProbe;
+    if (!probe) return undefined;
+    // A sample belongs to the calls that were running when it was taken, so the tool-call ids identify
+    // it: a later call must not paint the programs of the call it replaced.
+    const now = Date.now();
+    const cached = this.bashSamples.get(agent);
+    // `now >= at` again because a clock stepped backwards would make every sample look fresh.
+    const current = cached && cached.callKey === callKey && now >= cached.at ? cached : undefined;
+    if (current && now - current.at < BASH_SAMPLE_MAX_AGE_MS) return current.programs;
+    // The session is absent until it is created and released when the agent is removed, so the id is
+    // read per sample rather than remembered. pi owns this object, so it is read the way
+    // sampleContextPercent reads its own foreign calls: a shape we do not recognise costs this part
+    // of the line, never the widget.
+    let sessionId: string | undefined;
+    try {
+      sessionId = agent.execution.session?.sessionManager.getSessionId();
+    } catch {
+      return current?.programs;
+    }
+    if (!sessionId) return current?.programs;
+    // Stamping the slot is what keeps samples from overlapping: a repaint while a sample is in flight
+    // sees a fresh stamp and keeps showing the programs of that call set. A failed read leaves that
+    // stamp and those programs, so a denied /proc read is retried once a second.
+    this.bashSamples.set(agent, { at: now, callKey, programs: current?.programs ?? [] });
+    void probe.runningPrograms(sessionId).then(
+      (programs) => {
+        // A result for calls that stopped running must not replace the slot the current calls
+        // stamped, or the next repaint starts a walk all over again.
+        if (this.bashSamples.get(agent)?.callKey === callKey) {
+          this.bashSamples.set(agent, { at: Date.now(), callKey, programs });
+        }
+      },
+      () => {},
+    );
+    return current?.programs;
+  }
+
   private buildStatsLine(agent: AgentRecord, theme: Theme): string {
     const parts = buildStatsParts(
       {
@@ -713,7 +800,9 @@ export class AgentWidget {
       const name = getDisplayName(a.display.type);
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
-      const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
+      const activity = bg
+        ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools))
+        : "thinking…";
       const coloredFrame = this.coloredFrame(frame, a.display.type || undefined, theme);
 
       if (this.isCompact()) {
@@ -1132,5 +1221,6 @@ export class AgentWidget {
     this.lastStatusText = undefined;
     this.lastWidgetLines = undefined;
     this.contextSamples = new WeakMap();
+    this.bashSamples = new WeakMap();
   }
 }

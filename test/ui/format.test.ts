@@ -16,9 +16,11 @@ import {
   getDisplayName,
   buildMetadataLineParts,
   describeActivity,
+  formatPrograms,
   statusIcon,
   agentBulletPrefix,
   agentColoredText,
+  type BashActivity,
 } from "../../src/ui/format.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentConfig } from "../../src/agents/types.js";
@@ -389,6 +391,111 @@ describe("describeActivity", () => {
     const result = describeActivity(new Map(), longResponse);
     expect(result.length).toBe(100);
     expect(result).toBe(longResponse);
+  });
+
+  // The activity line is this function's only output, so each row pins one decision by the tokens that
+  // decision puts in the line or keeps out, not by the whole sentence.
+  it.each([
+    {
+      name: "shows the sampled programs of a bash call",
+      tools: [["bash_1", "bash"]],
+      bash: { programs: ["sleep", "cat"] },
+      has: ["sleep", "cat"],
+    },
+    {
+      // An empty sample must be invisible: the line is the one an un-timed call gets.
+      name: "shows nothing sampled while no sample has landed yet",
+      tools: [["bash_1", "bash"]],
+      bash: { programs: [] },
+      sameAsUntimed: true,
+    },
+    {
+      name: "counts parallel bash calls as calls, not as files",
+      tools: [
+        ["bash_1", "bash"],
+        ["bash_2", "bash"],
+      ],
+      has: ["2 commands"],
+    },
+    {
+      name: "lets the programs speak instead of the call count",
+      tools: [
+        ["bash_1", "bash"],
+        ["bash_2", "bash"],
+      ],
+      bash: { programs: ["make"] },
+      has: ["make"],
+    },
+    {
+      // A tool named "running command" (unmapped, or a future powershell label) shares bash's label.
+      name: "attributes the programs to the bash call, not to a tool with the same label",
+      tools: [["x1", "running command"]],
+      bash: { programs: ["make"] },
+      has: ["running command"],
+      hasNot: ["make", "running:"],
+    },
+    {
+      // Below a second the age would flicker on every repaint: the line is the one an un-timed call gets.
+      name: "keeps an under-a-second age out of the line",
+      tools: [["bash_1", "bash"]],
+      bash: { elapsedMs: 999 },
+      sameAsUntimed: true,
+    },
+    {
+      name: "shows the bash call's age once it passes a second",
+      tools: [["bash_1", "bash"]],
+      bash: { elapsedMs: 12_000 },
+      has: ["(12s)"],
+    },
+    {
+      name: "puts the age on the bash part the moment it passes a second, and leaves the other part alone",
+      tools: [
+        ["read_1", "read"],
+        ["bash_1", "bash"],
+        ["bash_2", "bash"],
+      ],
+      bash: { elapsedMs: 1_000 },
+      has: ["reading", "commands (1s)"],
+      hasNot: ["reading ("],
+    },
+    {
+      name: "keeps counting tools that share one label",
+      tools: [
+        ["grep_1", "grep"],
+        ["find_1", "find"],
+      ],
+      has: ["2 patterns"],
+    },
+    {
+      name: "keeps bash's programs out of a line without a bash call",
+      tools: [["read_1", "read"]],
+      bash: { programs: ["make"] },
+      hasNot: ["make"],
+    },
+  ] satisfies {
+    name: string;
+    tools: [string, string][];
+    bash?: BashActivity;
+    has?: string[];
+    hasNot?: string[];
+    sameAsUntimed?: boolean;
+  }[])("$name", ({ tools, bash, has = [], hasNot = [], sameAsUntimed }) => {
+    const line = describeActivity(new Map(tools), undefined, bash);
+    for (const token of has) expect(line).toContain(token);
+    for (const token of hasNot) expect(line).not.toContain(token);
+    if (sameAsUntimed) expect(line).toBe(describeActivity(new Map(tools)));
+  });
+});
+
+describe("formatPrograms", () => {
+  it.each([
+    // First-seen order, not alphabetical: a permuted fixture is what makes the ordering rule fail
+    // if it is replaced by a sort.
+    { names: ["make", "sleep", "cat", "sleep"], expected: "make, sleep \u00d72, cat" },
+    { names: ["a", "b", "c", "d", "e", "f", "g"], expected: "a, b, c, d +3" },
+    { names: ["a", "a", "b", "c", "d", "e", "e"], expected: "a \u00d72, b, c, d +1" },
+  ])("$names -> $expected", ({ names, expected }) => {
+    expect(formatPrograms(names)).toBe(expected);
   });
 });
 

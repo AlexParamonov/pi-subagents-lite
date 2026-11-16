@@ -301,6 +301,7 @@ vi.mock("../src/shell.js", async () => {
         widgetShowThinking: a.widgetShowThinking !== false,
         widgetNavHint: a.widgetNavHint !== false,
         exposeDescriptions: a.exposeDescriptions === true,
+        widgetShowBashPrograms: a.widgetShowBashPrograms === true,
         compactToolCalls: a.compactToolCalls !== false,
         ungroupedTools: a.ungroupedTools ?? DEFAULT_UNGROUPED_TOOLS,
       };
@@ -542,6 +543,9 @@ vi.mock("../src/shell.js", async () => {
         },
         setShowThinking(enabled: boolean) {
           mockModules.mockConfig.agent.widgetShowThinking = enabled;
+        },
+        setShowBashPrograms(enabled: boolean) {
+          mockModules.mockConfig.agent.widgetShowBashPrograms = enabled;
         },
         setNavHint(enabled: boolean) {
           mockModules.mockConfig.agent.widgetNavHint = enabled;

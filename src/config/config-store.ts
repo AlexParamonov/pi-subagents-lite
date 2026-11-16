@@ -141,6 +141,8 @@ export interface ResolvedAgentSettings {
   readonly outputTranscript: boolean;
   /** Whether agent colors (spinner, status icons, picker bullets) are enabled. Default: true. */
   readonly showAgentColors: boolean;
+  /** Whether the widget names the programs a running `bash` call started (Linux `/proc` sampling). Default: false. */
+  readonly widgetShowBashPrograms: boolean;
   /** Whether the conversation viewer groups eligible tool calls into summaries. An absent setting means on. */
   readonly compactToolCalls: boolean;
   /** Tool names the viewer renders individually and never groups. An absent setting means DEFAULT_UNGROUPED_TOOLS. */
@@ -244,6 +246,7 @@ export class ConfigStore {
       idleTimeoutMinutes: a.idleTimeoutMinutes ?? DEFAULT_WATCHDOG_TIMEOUT_MINUTES,
       outputTranscript: a.outputTranscript === true,
       showAgentColors: a.showAgentColors !== false,
+      widgetShowBashPrograms: a.widgetShowBashPrograms === true,
       compactToolCalls: a.compactToolCalls !== false,
       // Absent means the built-in exclusions; a stored [] means none.
       ungroupedTools: a.ungroupedTools ?? DEFAULT_UNGROUPED_TOOLS,
@@ -470,6 +473,10 @@ export class ConfigStore {
       setShowThinking: (enabled: boolean): void => {
         this.setAgentLayerEntry("widgetShowThinking", enabled, "global");
         this.syncWidgetStatsVisibility();
+      },
+      setShowBashPrograms: (enabled: boolean): void => {
+        this.setAgentLayerEntry("widgetShowBashPrograms", enabled, "global");
+        this.syncWidgetSettings();
       },
       setNavHint: (enabled: boolean): void => {
         this.setAgentLayerEntry("widgetNavHint", enabled, "global");
@@ -759,6 +766,7 @@ export class ConfigStore {
     w.setMaxLinesCompact(a.widgetMaxLinesCompact);
 
     w.setNavHint(a.widgetNavHint);
+    w.setShowBashPrograms(a.widgetShowBashPrograms);
     w.setFinishedRetentionMinutes(a.finishedRetentionMinutes);
     w.setModelDisplayStyle(a.modelDisplayStyle);
     w.setStatusBarFormat(a.statusBarFormat);

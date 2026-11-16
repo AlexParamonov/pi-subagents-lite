@@ -69,6 +69,8 @@ export interface SubagentsConfig {
     outputTranscript?: boolean;
     /** When true, agent colors (spinner, status icons, picker bullets) are enabled. Default: true. */
     showAgentColors?: boolean;
+    /** Name the programs a running `bash` call started in the widget. Default: false. */
+    widgetShowBashPrograms?: boolean;
 
     /** When > 0, thinking deltas stream to output file during message_update events. Default: 0 (disabled). */
     outputThinkingBufferSize?: number;

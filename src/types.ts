@@ -22,7 +22,8 @@ export interface ToolActivity {
 
 /** Widget live-view state: per-agent transient display data, fed by tool/stream callbacks. */
 export interface LiveView {
-  activeTools: Map<string, string>; // keyed by toolName_timestamp
+  /** Active tool calls, keyed by tool call id (`toolName_timestamp` without one); the value is the tool name. */
+  activeTools: Map<string, string>;
   responseText: string;
 }
 
