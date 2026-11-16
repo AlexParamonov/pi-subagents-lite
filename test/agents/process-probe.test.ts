@@ -212,13 +212,16 @@ describe("createProcFsProbe", () => {
     expect(await probe().runningPrograms("mine")).toEqual(["sleep"]);
   });
 
-  it("reports nothing instead of looping when a children file names an ancestor", async () => {
-    // The kernel documents this file as unreliable while children exit concurrently, so a wrong entry
-    // can name an ancestor. The walk must end, and shells report nothing.
+  it("reports nothing instead of fanning out when children files name each other", async () => {
+    // The kernel documents this file as unreliable while children exit concurrently, so entries can
+    // name an ancestor or a sibling. Visiting each pid once ends the sample; anything else and one
+    // repaint costs an exponential sweep.
     addProcess(200, PI_PID, ["bash"], ["PI_SESSION_ID=mine"]);
     addProcess(201, 200, ["sh", "-c", "x"]);
+    addProcess(202, 200, ["bash", "-c", "y"]);
     const running = probe();
-    writeFileSync(join(root, "201", "task", "201", "children"), "200 ");
+    writeFileSync(join(root, "201", "task", "201", "children"), "200 202 ");
+    writeFileSync(join(root, "202", "task", "202", "children"), "200 201 ");
 
     expect(await running.runningPrograms("mine")).toEqual([]);
   });

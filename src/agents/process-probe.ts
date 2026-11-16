@@ -13,17 +13,14 @@ import { basename } from "node:path";
  * reports the first other program on each branch.
  *
  * Two cases report no programs instead of failing, both because no shell can be tied to a session: no
- * shell of that session is alive any more; or the kernel denies /proc/<pid>/environ reads, as a
- * restrictive yama ptrace_scope does.
+ * shell of that session is alive any more; or a shell's /proc/<pid>/environ cannot be read, which is
+ * denied for a process that made itself non-dumpable or changed uid.
  */
 
 export interface ProcessProbe {
   /** argv0 basenames of the programs currently running under the session's bash calls, one entry per process (repeats kept), in process-tree order. */
   runningPrograms(sessionId: string): Promise<string[]>;
 }
-
-/** Deepest process the walk descends to, so a wrong children entry naming an ancestor cannot loop. */
-const MAX_DEPTH = 32;
 
 /** Program names treated as transparent: the walk descends through them instead of reporting them. */
 const SHELL_NAMES = new Set(["bash", "sh", "dash", "ash", "zsh", "ksh", "mksh", "fish"]);
@@ -79,10 +76,13 @@ export function createProcFsProbe(procRoot = "/proc", ownPid = process.pid): Pro
       const roots = candidates.filter((_, i) => matches[i]).sort((a, b) => a - b);
 
       const found: string[] = [];
-      const visit = async (pid: number, depth: number): Promise<void> => {
-        // The kernel documents the children file as unreliable while children exit concurrently, so a
-        // wrong entry naming an ancestor is possible; the depth cap keeps one sample bounded.
-        if (depth > MAX_DEPTH) return;
+      // The kernel documents the children file as unreliable while children exit concurrently, so a
+      // wrong entry can name an ancestor or repeat a sibling. Visiting each pid once per sample keeps
+      // the walk bounded by the process count instead of fanning out exponentially.
+      const visited = new Set<number>();
+      const visit = async (pid: number): Promise<void> => {
+        if (visited.has(pid)) return;
+        visited.add(pid);
         const name = await programName(pid);
         if (name === "") return;
         // A shell reported by its own name is bash after it exec'd its last command. A wrapper is
@@ -90,12 +90,12 @@ export function createProcFsProbe(procRoot = "/proc", ownPid = process.pid): Pro
         const lookThrough = SHELL_NAMES.has(name) || WRAPPER_NAMES.has(name);
         const kids = lookThrough ? [...(await childrenOf(pid))].sort((a, b) => a - b) : [];
         if (lookThrough && (SHELL_NAMES.has(name) || kids.length > 0)) {
-          for (const child of kids) await visit(child, depth + 1);
+          for (const child of kids) await visit(child);
           return;
         }
         found.push(name);
       };
-      for (const root of roots) await visit(root, 0);
+      for (const root of roots) await visit(root);
 
       return found;
     },

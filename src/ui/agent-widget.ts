@@ -90,9 +90,10 @@ interface ContextSample {
   percent: number | null;
 }
 
-/** Last process sample for one agent, and when it was taken. */
+/** Last process sample for one agent: when it was taken, which calls it describes, what it found. */
 interface BashSample {
   at: number;
+  callKey: string;
   programs: string[];
 }
 
@@ -674,46 +675,51 @@ export class AgentWidget {
 
   /**
    * The `bash` part of the activity line: the programs the call started and the age of the oldest
-   * running call. Undefined with the setting off, so a disabled setting leaves the activity line
-   * exactly as it read before this feature.
+   * running call. Undefined with the setting off or without a probe, so the activity line stays as it
+   * read before this feature.
    */
   private bashActivity(agent: AgentRecord, activeTools: Map<string, string>): BashActivity | undefined {
-    const bashKeys = [...activeTools.entries()].filter(([, name]) => name === "bash").map(([key]) => key);
-    if (bashKeys.length === 0) {
-      // No running bash call: drop the sample so the next call cannot paint this one's programs.
-      this.bashSamples.delete(agent);
-      return undefined;
-    }
-    // Off, or no probe on this platform: the activity line stays exactly as it read before this feature.
     if (!this.showBashPrograms || !this.bashProbe) return undefined;
+    const bashKeys = [...activeTools.entries()]
+      .filter(([, name]) => name === "bash")
+      .map(([key]) => key)
+      .sort();
+    if (bashKeys.length === 0) return undefined;
     const started = bashKeys
       .map((key) => this.manager.getToolStartedAt(agent.id, key))
       .filter((at): at is number => at !== undefined);
     return {
-      programs: this.sampleBashPrograms(agent),
+      programs: this.sampleBashPrograms(agent, bashKeys.join("\n")),
       elapsedMs: started.length > 0 ? Date.now() - Math.min(...started) : undefined,
     };
   }
 
-  /** Programs the agent's `bash` calls started, sampled at most once a second while the widget repaints. */
-  private sampleBashPrograms(agent: AgentRecord): string[] | undefined {
+  /**
+   * Programs the `bash` calls named by `callKey` started, sampled at most once a second while the
+   * widget repaints.
+   */
+  private sampleBashPrograms(agent: AgentRecord, callKey: string): string[] | undefined {
     const probe = this.bashProbe;
     if (!probe) return undefined;
+    // A sample belongs to the calls that were running when it was taken, so the tool-call ids identify
+    // it: a later call must not paint the programs of the call it replaced.
     const cached = this.bashSamples.get(agent);
-    if (cached && Date.now() - cached.at < BASH_SAMPLE_MAX_AGE_MS) return cached.programs;
+    const current = cached && cached.callKey === callKey ? cached : undefined;
+    if (current && Date.now() - current.at < BASH_SAMPLE_MAX_AGE_MS) return current.programs;
     // The session is absent until it is created and released when the agent is removed, so the id is
-    // read per sample rather than remembered.
+    // read per sample rather than remembered. Older/custom session managers may lack the method, the
+    // same reason sampleContextPercent checks before calling one.
     const sessionId = agent.execution.session?.sessionManager.getSessionId?.();
-    if (!sessionId) return cached?.programs;
-    // Stamping the slot is what keeps samples from overlapping, per agent: a repaint while a
-    // sample is in flight sees a fresh stamp and keeps showing the previous programs. A failed
-    // read leaves that stamp and those programs, so a denied /proc read retries once a second.
-    this.bashSamples.set(agent, { at: Date.now(), programs: cached?.programs ?? [] });
+    if (!sessionId) return current?.programs;
+    // Stamping the slot is what keeps samples from overlapping, per agent: a repaint while a sample is
+    // in flight sees a fresh stamp and keeps showing the previous programs. A failed read leaves that
+    // stamp and those programs, so a denied /proc read retries once a second.
+    this.bashSamples.set(agent, { at: Date.now(), callKey, programs: current?.programs ?? [] });
     void probe.runningPrograms(sessionId).then(
-      (programs) => this.bashSamples.set(agent, { at: Date.now(), programs }),
+      (programs) => this.bashSamples.set(agent, { at: Date.now(), callKey, programs }),
       () => {},
     );
-    return cached?.programs;
+    return current?.programs;
   }
 
   private buildStatsLine(agent: AgentRecord, theme: Theme): string {

@@ -649,6 +649,25 @@ describe("widget bash program sampling", () => {
     }
   });
 
+  it("starts a later call without the programs of the call it replaced", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = mountBash({ programs: ["sleep"] });
+      host.activity();
+      await host.settled();
+      expect(host.activity()).toContain("running: sleep");
+
+      // A repaint does not have to happen in between: the second call is already a different call.
+      host.view.activeTools.clear();
+      host.view.activeTools.set("c2", "bash");
+      const line = host.activity();
+      expect(line).toContain("running command\u2026");
+      expect(line).not.toContain("sleep");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("samples again after a failed read once the window passes", async () => {
     vi.useFakeTimers();
     try {

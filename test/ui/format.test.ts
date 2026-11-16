@@ -443,6 +443,15 @@ describe("describeActivity", () => {
     expect(describeActivity(tools, undefined, { elapsedMs: 3000 })).toBe("reading, running 2 commands (3s)\u2026");
   });
 
+  it("keeps counting tools that share one label", () => {
+    // `grep` and `find` both read as "searching"; grouping by tool name instead of label would split them.
+    const tools = new Map([
+      ["grep_1", "grep"],
+      ["find_1", "find"],
+    ]);
+    expect(describeActivity(tools)).toBe("searching 2 patterns\u2026");
+  });
+
   it("ignores programs when no bash call is active", () => {
     const tools = new Map([["read_1", "read"]]);
     expect(describeActivity(tools, undefined, { programs: ["make"] })).toBe("reading\u2026");

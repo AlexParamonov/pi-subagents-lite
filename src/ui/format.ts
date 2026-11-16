@@ -241,19 +241,21 @@ export interface BashActivity {
 
 export function describeActivity(activeTools: Map<string, string>, responseText?: string, bash?: BashActivity): string {
   if (activeTools.size > 0) {
-    // Grouped by tool name, not by the translated label: only `bash` has the sampled programs.
+    // Grouped by the translated label, so tools sharing one label ("searching") still count together;
+    // `bashActive` keeps the sampled programs off any other tool that ever takes this label.
+    const bashActive = [...activeTools.values()].includes("bash");
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {
-      groups.set(toolName, (groups.get(toolName) ?? 0) + 1);
+      const action = TOOL_DISPLAY[toolName] ?? toolName;
+      groups.set(action, (groups.get(action) ?? 0) + 1);
     }
 
     // Elapsed time of the oldest running bash call; hidden below a second so it doesn't flicker in.
     const elapsed = bash?.elapsedMs !== undefined && bash.elapsedMs >= 1000 ? ` (${formatMs(bash.elapsedMs)})` : "";
     const programs = bash?.programs;
     const parts: string[] = [];
-    for (const [toolName, count] of groups) {
-      const action = TOOL_DISPLAY[toolName] ?? toolName;
-      if (toolName === "bash") {
+    for (const [action, count] of groups) {
+      if (bashActive && action === TOOL_DISPLAY.bash) {
         parts.push(
           // The programs already say what is running; a count adds nothing.
           programs && programs.length > 0
