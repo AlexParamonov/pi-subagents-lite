@@ -183,12 +183,10 @@ describe("createProcFsProbe", () => {
       name: "nothing instead of an endless sweep when children files name each other",
       roots: [shell(n("bash", n("bash -c x"), n("bash -c y")))],
       spoil: (root) => {
-        // These shells are leaves, so the fixture gave them no children file; the kernel race does.
         for (const [pid, list] of [
           [201, "200 202 "],
           [202, "200 201 "],
         ] as const) {
-          mkdirSync(join(root, String(pid), "task", String(pid)), { recursive: true });
           writeFileSync(kidsPath(root, pid), list);
         }
       },

@@ -547,18 +547,6 @@ describe("widget bash program sampling", () => {
     { name: "no bash call is running", options: { tools: [["r1", "read"]] } satisfies Host, age: false },
     // The age comes from the watchdog's own clock, so a session that cannot name itself still has one.
     { name: "the session cannot say which session it is", options: { sessionManager: {} } satisfies Host, age: true },
-    // pi owns the session object; an unexpected shape may cost this part of the line, not the widget.
-    {
-      name: "the session throws when asked which session it is",
-      options: {
-        sessionManager: {
-          getSessionId: () => {
-            throw new Error("unexpected session");
-          },
-        },
-      } satisfies Host,
-      age: true,
-    },
   ])("takes no sample when $name", async ({ options, age }) => {
     const host = mountBash({ programs: ["sleep"], ...options });
 
@@ -569,6 +557,24 @@ describe("widget bash program sampling", () => {
     expect(host.activity()).not.toContain("sleep");
     // A parenthesised age in the line can only come from this feature's clock reading.
     expect(/\(\d/.test(host.activity())).toBe(age);
+  });
+
+  it("keeps the activity line when the session throws on being asked which session it is", () => {
+    const host = mountBash({
+      sessionManager: {
+        getSessionId: () => {
+          throw new Error("unexpected session");
+        },
+      },
+    });
+
+    const line = host.activity();
+
+    expect(host.sessions).toEqual([]);
+    // Not an empty render: the call and its age are still there, only the programs are missing.
+    expect(line).not.toBe("");
+    expect(/\(\d/.test(line)).toBe(true);
+    expect(line).not.toContain("sleep");
   });
 
   it("names the programs of the sampled session", async () => {

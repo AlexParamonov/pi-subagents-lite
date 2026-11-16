@@ -61,7 +61,13 @@ export function makeRunningAgent(id: string, opts?: AgentFactoryOpts): AgentReco
       settled: false,
       settlementCount: 0,
       session: opts?.withSession
-        ? (asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }) as never)
+        ? (asAgentSession({
+            model: { id: "haiku", name: "Haiku" },
+            thinkingLevel: "medium",
+            // A session that cannot say which session it is makes the bash sampling path bail out
+            // through its catch, which would hide a real fixture mistake behind a generic line.
+            sessionManager: { getSessionId: () => `session-${id}` },
+          }) as never)
         : undefined,
     },
     stats: {
@@ -94,7 +100,13 @@ export function makeFinishedAgent(id: string, opts?: AgentFactoryOpts): AgentRec
       settled: false,
       settlementCount: 0,
       session: opts?.withSession
-        ? (asAgentSession({ model: { id: "haiku", name: "Haiku" }, thinkingLevel: "medium" }) as never)
+        ? (asAgentSession({
+            model: { id: "haiku", name: "Haiku" },
+            thinkingLevel: "medium",
+            // A session that cannot say which session it is makes the bash sampling path bail out
+            // through its catch, which would hide a real fixture mistake behind a generic line.
+            sessionManager: { getSessionId: () => `session-${id}` },
+          }) as never)
         : undefined,
     },
     stats: {
