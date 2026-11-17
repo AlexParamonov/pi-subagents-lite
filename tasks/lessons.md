@@ -457,3 +457,11 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## Streaming boundaries need producer-shaped fixtures
 **What failed:** The SSE loop's plain-map fixtures encoded successfully while the real producer emitted a struct with no JSON encoder, so live progress crashed before reaching the client.
 **Next time:** Exercise the producer's actual event type through the transport boundary before trusting recorded wire fixtures or declaring a server revision compatible.
+
+## Extension acceptance seams - 2026-11-17
+**What failed:** Recreating a Pi session to test an extension coupled every behavior test to tool registration and obscured individual failures.
+**Next time:** Test registration, execution and rendering through the tool captured by the existing extension API fixture; reserve a real Pi runtime for the separate live smoke.
+
+## Acceptance pins: the contract, not the plan's knobs
+**What failed:** An acceptance suite pinned plan-level numbers (an exhaustion count, the line position of a rendered value), and an endpoint factory folded an explicit `result: null` into a delivered answer with `??`. The first kind fails a correct implementation; the second lets a wrong one pass the empty-result-slot tests.
+**Next time:** Pin the spec's decision (delivered vs empty slot, "reconciled more than once and still reconciling") and leave tuning numbers to the implementation's own tests. In a fixture factory, test optional values with `=== undefined`, never `??` - a falsy value under test is exactly what `??` erases.
