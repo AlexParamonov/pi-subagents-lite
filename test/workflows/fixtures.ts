@@ -7,7 +7,8 @@
  * milestone it needs. GET answers the fixed key set for every run state, so an empty result
  * slot is `result: null` here exactly as it is on the wire. `fakeWorkflowFetch` serves the same
  * contract without a socket, for tests that push frames one at a time or run on fake timers.
- * `lifecycle`, `textFrame` and `nodeProgress` build the wire frames the endpoint replays.
+ * `lifecycle`, `textFrame`, `nodeProgress` and `crlf` build the wire frames the endpoint replays;
+ * `stopOutcome` answers the stop with the ack the run's log really justifies.
  */
 
 import { createServer, type ServerResponse } from "node:http";
@@ -51,6 +52,12 @@ export interface EndpointOptions {
   holdCreate?: boolean;
   rejection?: { status: number; message: string };
   stopRejection?: { status: number; message: string };
+  /**
+   * Honest stop acknowledgement. `already_finished` (the default is `stopped`) means the log
+   * already holds a terminal event, so the run keeps its own terminal state from GET instead of
+   * the killed-run footprint a `stopped` ack leaves behind.
+   */
+  stopOutcome?: "stopped" | "already_finished";
   redirect?: string;
   loseCreateResponse?: boolean;
 }
@@ -85,6 +92,11 @@ export function lifecycle(event: string, node: string, detail: object = {}): str
 /** A raw text chunk on the unnamed channel: no event name, no id, never persisted. */
 export function textFrame(text: string): string {
   return `data: ${text}\n\n`;
+}
+
+/** Reframe a built frame with CRLF line endings, which the endpoint also sends. */
+export function crlf(frame: string): string {
+  return frame.replaceAll("\n", "\r\n");
 }
 
 /** A `node_progress` frame carrying the real producer's field set. */
@@ -187,8 +199,11 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       if (options.stopRejection) {
         json(res, options.stopRejection.status, { error: options.stopRejection.message });
       } else {
-        stopped = true;
-        json(res, 200, { status: "stopped" });
+        const ack = options.stopOutcome ?? "stopped";
+        // Only a live kill leaves the terminated footprint; an already-finished run's own
+        // terminal state is whatever GET derives from the log.
+        if (ack === "stopped") stopped = true;
+        json(res, 200, { status: ack });
         finishStream();
       }
       stopReceived.resolve();

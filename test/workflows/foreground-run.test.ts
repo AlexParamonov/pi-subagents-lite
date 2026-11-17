@@ -4,10 +4,12 @@
  * Every test enters at a caller-visible seam - a registered tool (`Workflow`, `AgentStatus`,
  * `StopAgent`, `MessageAgent`), the `/agents` command's real menu components, or a session
  * listener - and the Workflow endpoint is the real HTTP protocol on a loopback socket (or
- * `fakeWorkflowFetch` where a test pushes frames itself or fake timers must own the clock). Nothing from `src/` is imported or
- * mocked, so a passing test means the definition on disk reached the endpoint and the endpoint's
- * answer reached the transcript. Wire-format parsing details belong to the protocol-fixture seam;
- * the in-runtime fetch/SSE proof belongs to the wave's live tmux gate.
+ * `fakeWorkflowFetch` where a test pushes frames itself or fake timers must own the clock).
+ * Nothing from `src/` is imported or mocked, so a passing test means the definition on disk
+ * reached the endpoint and the endpoint's answer reached the transcript. The SSE framing the
+ * server really sends (multi-line `data:` fields, CRLF, chunk splits) is covered here; the
+ * exhaustive recorded-body catalogue belongs to the protocol-fixture seam and the in-runtime
+ * fetch/SSE proof to the wave's live tmux gate.
  */
 
 import { rmSync } from "node:fs";
@@ -35,6 +37,7 @@ import {
   FAKED_URL,
   DEFAULT_STREAM,
   DISPATCH,
+  crlf,
   lifecycle,
   nodeProgress,
   TERMINAL,
@@ -266,6 +269,17 @@ function rendered(component: unknown): string {
   if (typeof component.render !== "function") return "";
   const lines: unknown = component.render(240);
   return Array.isArray(lines) ? lines.filter((line): line is string => typeof line === "string").join("\n") : "";
+}
+
+/** Any terminal control character: C0 except the layout's own newline and tab, plus DEL and C1. */
+function hasTerminalControl(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if ((code < 0x20 && code !== 0x0a && code !== 0x09) || code === 0x7f || (code >= 0x80 && code <= 0x9f)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Wait for a rendered snapshot satisfying `seen`, and return it; fails by name if the run ends first. */
@@ -618,6 +632,81 @@ describe("foreground workflow execution", () => {
     }
     remote.releaseStream();
     expect(text(await pending)).toContain("The declared output");
+  });
+
+  it("reconstructs events whose data spans multiple lines", async () => {
+    // The endpoint frames raw text one `data:` line per payload line, so a payload carrying a
+    // newline arrives split. Rejoining it wrongly loses the tail, fuses the lines, or drops the
+    // event whose JSON no longer parses.
+    const frames =
+      lifecycle("node_dispatched", "analysis") +
+      'event: node_progress\ndata: {"node_id":"analysis","step":"tool_call",\ndata:  "detail":{"tool":"read","args":{"path":"src/index.ts"}}}\n\n' +
+      "data: First half of the answer\ndata: and its second half\n\n" +
+      TERMINAL;
+    const remote = await server({ streams: [frames] });
+    install(remote);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const views: string[] = [];
+    const state: Record<string, unknown> = {};
+
+    const result = await run(tool, args, undefined, (update) =>
+      views.push(resultView(tool, update, args, undefined, state)),
+    );
+
+    expect(text(result)).toContain("The declared output");
+    const all = views.join("\n");
+    // Named event: the rejoined payload parsed, so its tool-activity line is on screen.
+    expect(all).toContain("read");
+    // Unnamed chunk: one joined contribution, with no framing text or empty field leaking in.
+    expect(all).toMatch(/First half of the answer\s+and its second half/);
+    expect(all).not.toContain("data:");
+    expect(all).not.toContain("undefined");
+  });
+
+  it("reads CRLF-framed events split across chunk boundaries", async () => {
+    const chunk = crlf(textFrame("Progress on the run"));
+    // The CR ends one chunk and the LF starts the next: a parser that treats a lone CR as a line
+    // boundary sees a phantom blank line and loses the frame's terminator.
+    const cut = chunk.lastIndexOf("\r");
+    let push: (frame: string) => void = () => {
+      throw new Error("workflow stream did not open");
+    };
+    const remote = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(crlf(DISPATCH));
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    vi.stubGlobal("fetch", remote.fetch);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const views: string[] = [];
+    const state: Record<string, unknown> = {};
+
+    const pending = run(tool, args, undefined, (update) =>
+      views.push(resultView(tool, update, args, undefined, state)),
+    );
+    try {
+      // A CRLF-framed named event parsed: the node's status line is on screen.
+      await viewMatching(views, (view) => view.includes("analysis"), "the CRLF-framed dispatch rendered", pending);
+      push(chunk.slice(0, cut));
+      push(chunk.slice(cut) + crlf(TERMINAL));
+
+      const live = await viewMatching(
+        views,
+        (view) => view.includes("Progress on the run"),
+        "the CRLF-framed text chunk rendered",
+        pending,
+      );
+      expect(live).not.toContain("\r");
+      expect(text(await pending)).toContain("The declared output");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rebuilds the live view after a nonterminal disconnect", async () => {
@@ -1209,6 +1298,39 @@ describe("workflow cancellation and shutdown", () => {
     expect(stoppedView).toContain("Inspecting the repository");
   });
 
+  it("settles an already-finished stop from GET rather than a stopped label", async () => {
+    // The stop reaches the endpoint after the run's terminal event was journaled, so the ack is
+    // `already_finished` and only GET carries the terminal state: the live connection never
+    // delivered that event, and only an acknowledged `stopped` outranks GET (US-18).
+    const remote = await server({
+      holdStream: true,
+      stopOutcome: "already_finished",
+      streams: [DEFAULT_STREAM],
+      states: [readState({ status: "failed", error: "Runner lost its lease" })],
+    });
+    install(remote);
+    const capture = await start();
+    const abort = new AbortController();
+    const pending = outcome(executable(capture), { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.streamOpened, pending, "the stream opened");
+
+    abort.abort();
+    await remote.stopReceived;
+    await pending;
+
+    expect(await (await fetch(`${remote.url}/api/workflows/${REMOTE_ID}`)).json()).toMatchObject({
+      status: "failed",
+      error: "Runner lost its lease",
+    });
+    expect(stopRequests(remote)).toHaveLength(1);
+
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toContain("audit");
+    // failed maps to error (US-18): neither the killed-run label nor an invented completion.
+    expect(text(status)).toMatch(/error/i);
+    expect(text(status)).not.toMatch(/stopped|running/i);
+  });
+
   it("reports an honest unknown outcome when the stop request fails", async () => {
     const remote = await server({ holdStream: true, stopRejection: { status: 503, message: "Stop unavailable" } });
     install(remote);
@@ -1522,6 +1644,35 @@ describe("workflow call display", () => {
     expect(views.some((view) => view.includes("Visible progress"))).toBe(true);
     expect(views.some((view) => view.includes("Visible answer"))).toBe(true);
     expect(views.join("\n")).not.toContain(escape);
+  });
+
+  it("renders a server error without terminal control sequences", async () => {
+    // An OSC sequence, not the DEC private mode the result-path test uses: each carrier has to
+    // reach the sanitizer on the error path too.
+    const sequence = "\u001b]0;injected title\u0007";
+    const remote = await server({
+      rejection: { status: 422, message: `Remote validation failed ${sequence} keep this part` },
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, remote.url);
+    install(remote);
+    const tool = executable(await start());
+    expect(tool.renderResult, "Workflow must render its result").toBeTypeOf("function");
+    const args = { workflow: "audit", prompt: "Review changes" };
+
+    const result = await run(tool, args);
+    const view = resultView(tool, result, args, undefined, {});
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("keep this part");
+    expect(view).toContain("keep this part");
+    // C0 controls other than the layout's own whitespace, and the C1 forms, must not survive.
+    for (const surface of [text(result), view]) {
+      expect(surface).not.toContain(sequence);
+      for (const line of surface.split("\n")) {
+        expect(hasTerminalControl(line), `no terminal control character may reach the error view: ${line}`).toBe(false);
+      }
+    }
   });
 
   it("does not invent optional call arguments", async () => {
