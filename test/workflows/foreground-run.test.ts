@@ -1,8 +1,9 @@
 /**
  * foreground-run.test.ts — the Workflow tool, end to end, through the seam the main agent uses.
  *
- * Every test enters at a registered tool (`Workflow`, `AgentStatus`, `StopAgent`, `MessageAgent`) or
- * a session listener, and the Workflow endpoint is the real HTTP protocol on a loopback socket (or
+ * Every test enters at a caller-visible seam - a registered tool (`Workflow`, `AgentStatus`,
+ * `StopAgent`, `MessageAgent`), the `/agents` command's real menu components, or a session
+ * listener - and the Workflow endpoint is the real HTTP protocol on a loopback socket (or
  * `fakeWorkflowFetch` where fake timers must own the clock). Nothing from `src/` is imported or
  * mocked, so a passing test means the definition on disk reached the endpoint and the endpoint's
  * answer reached the transcript. Wire-format parsing details belong to the protocol-fixture seam;
@@ -20,10 +21,12 @@ import {
   type MockExtensionAPI,
   type RegisteredTool,
 } from "../fixtures.js";
+import { asCommandContext, asUiCustom } from "../pi-boundaries.js";
 import { defaultTheme, defaultUi } from "../mock-utils.js";
 import {
   configure,
   deferred,
+  DEFAULT_RESULT,
   endpoint,
   fakeWorkflowFetch,
   jsonResponse,
@@ -191,6 +194,53 @@ async function shutdownSession(capture: MockExtensionAPI): Promise<void> {
   ctx = undefined;
 }
 
+/** A menu component as the tests drive it: real pi-tui components, rendered to text. */
+interface MenuComponent {
+  render(width: number): unknown;
+  handleInput?(data: string): void;
+}
+
+/**
+ * Open the `/agents` command's running-agents list through the real menu components.
+ * `ui.custom` is captured, so navigation is real key input on real components:
+ * Enter on the main menu opens Running agents (its first entry).
+ */
+async function openRunningAgents(capture: MockExtensionAPI): Promise<MenuComponent> {
+  const command = capture.commands.find((entry) => entry.name === "agents");
+  expect(command, "the extension must register the agents menu command").toBeDefined();
+  const menus: MenuComponent[] = [];
+  const menuCtx = fakeCtx({
+    cwd: ws.project,
+    ui: {
+      ...defaultUi,
+      custom: asUiCustom(
+        async (factory: unknown) =>
+          new Promise<undefined>((resolve) => {
+            const build = factory as (
+              tui: unknown,
+              theme: unknown,
+              kb: unknown,
+              done: (value: undefined) => void,
+            ) => unknown;
+            menus.push(build({ terminal: { rows: 24 } }, defaultTheme, {}, resolve) as MenuComponent);
+          }),
+      ),
+    },
+  });
+  const open = command!.handler("", asCommandContext(menuCtx));
+  void open.catch(() => {});
+
+  await vi.waitFor(() => expect(menus, "the agents command must open its main menu").toHaveLength(1));
+  menus[0].handleInput?.("\r");
+  await vi.waitFor(() =>
+    expect(menus, "the main menu's first entry must open the running-agents list").toHaveLength(2),
+  );
+  // The shared menu's own title: proof the navigation landed on the run list, not on a
+  // re-rendered main menu.
+  expect(rendered(menus[1])).toContain("Running Agents");
+  return menus[1];
+}
+
 function selectionDescription(api: MockExtensionAPI): string {
   const property = workflowTool(api)?.parameters.properties.workflow as { description?: string } | undefined;
   return property?.description ?? "";
@@ -290,6 +340,28 @@ describe("foreground workflow execution", () => {
         prompt_vars: { branch: "stable", working_dir: "/srv/checkout" },
       },
     });
+  });
+
+  it("runs against the built-in local endpoint when no endpoint is configured", async () => {
+    // The fetch fake stands in for the socket: asserting the built-in default must never
+    // reach a real anagen-x listening on localhost:4001.
+    const remote = fakeWorkflowFetch({
+      stream: (push, close) => {
+        push(DEFAULT_STREAM);
+        close();
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    vi.stubGlobal("fetch", remote.fetch);
+    const tool = executable(await start());
+
+    const result = await run(tool);
+
+    expect(text(result)).toContain("The declared output");
+    const create = remote.requests().find((request) => request.method === "POST");
+    expect(create?.url).toBe("http://localhost:4001/api/workflows");
+    expect(create?.authorization).toBeUndefined();
   });
 
   it("returns a no-output note for an empty completed result slot", async () => {
@@ -571,6 +643,15 @@ describe("workflow selection", () => {
     expect(description).not.toContain("Shared audit");
   });
 
+  it("prefers the shared definition over the global one", async () => {
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow("audit", "Global audit"));
+    write(join(ws.project, ".agents", "workflows", "audit.yml"), workflow("audit", "Shared audit"));
+    const description = selectionDescription(await start());
+
+    expect(description).toContain("Shared audit");
+    expect(description).not.toContain("Global audit");
+  });
+
   it("omits project and shared workflows from an untrusted project's selection", async () => {
     write(join(ws.agentDir, "workflows", "global.yaml"), workflow("global-review", "Safe global workflow"));
     write(join(ws.project, ".agents", "workflows", "shared.yml"), workflow("shared-review", "Shared workflow"));
@@ -669,6 +750,22 @@ describe("workflow selection", () => {
     await start(true, warnings);
 
     expect(warnings.join("\n")).toContain("bad-workflow.yaml");
+  });
+
+  it("warns about every workflow file it skips for an invalid name", async () => {
+    const dir = join(ws.agentDir, "workflows");
+    write(join(dir, "missing.yaml"), "description: Missing a name\nnodes: []\nedges: []\n");
+    write(join(dir, "empty.yaml"), 'name: ""\ndescription: Empty name\n');
+    write(join(dir, "number.yaml"), "name: 42\ndescription: Numeric name\n");
+    const warnings: string[] = [];
+
+    await start(true, warnings);
+
+    // US-33: a skipped file is announced by name, never dropped in silence.
+    const messages = warnings.join("\n");
+    expect(messages).toContain("missing.yaml");
+    expect(messages).toContain("empty.yaml");
+    expect(messages).toContain("number.yaml");
   });
 
   it("keeps valid workflows selectable when other files are invalid", async () => {
@@ -994,18 +1091,59 @@ describe("workflow cancellation and shutdown", () => {
   });
 
   it("ends local monitoring on shutdown without stopping the remote run", async () => {
-    const remote = await server({ holdStream: true });
-    install(remote);
+    let push: (frame: string) => void = () => {
+      throw new Error("workflow stream did not open");
+    };
+    const remote = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH);
+      },
+      read: () => jsonResponse(200, readState({ status: "running" })),
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
     const capture = await start();
     const tool = executable(capture);
-    const pending = outcome(tool);
-    await beforeEnd(remote.streamOpened, pending, "the stream opened");
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const state: Record<string, unknown> = {};
+    const views: string[] = [];
+    const shown = deferred<void>();
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.stubGlobal("fetch", remote.fetch);
+    try {
+      const pending = run(tool, args, undefined, (update) => {
+        views.push(resultView(tool, update, args, undefined, state));
+        if (views.length === 1) shown.resolve();
+      }).then(
+        (result) => text(result),
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      );
+      await beforeEnd(shown.promise, pending, "the first live view rendered");
 
-    await shutdownSession(capture);
-    const result = await pending;
+      await shutdownSession(capture);
+      const report = await pending;
+      const atShutdown = remote.requests();
+      const viewsAtShutdown = views.length;
 
-    expect(result.text).toMatch(/shutdown|session/i);
-    expect(stopRequests(remote)).toEqual([]);
+      // US-30: observation is over. A pushed frame and minutes of retry time change nothing,
+      // and the remote run is left alone.
+      try {
+        push("data: text after shutdown\n\n");
+      } catch {
+        /* the connection was already closed locally - nothing can arrive either */
+      }
+      await vi.advanceTimersByTimeAsync(300_000);
+
+      expect(report).toMatch(/shutdown|session/i);
+      expect(remote.requests()).toEqual(atShutdown);
+      expect(views).toHaveLength(viewsAtShutdown);
+      expect(views.join("\n")).not.toContain("text after shutdown");
+      expect(atShutdown.filter((request) => request.url.endsWith("/stop"))).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -1048,6 +1186,46 @@ describe("workflow runs on the shared management surfaces", () => {
     expect(result.isError).toBe(true);
     expect(result.text).not.toMatch(/\bsent\b/i);
     expect(result.text).toMatch(/workflow|steer|unsupported|not support/i);
+  });
+
+  it("offers a workflow run no menu action it cannot perform", async () => {
+    const remote = await server({ holdStream: true });
+    install(remote);
+    const capture = await start();
+    const pending = outcome(executable(capture));
+    await beforeEnd(remote.streamOpened, pending, "the stream opened");
+    const list = await openRunningAgents(capture);
+
+    list.handleInput?.("\r");
+    const actions = rendered(list);
+    const rows = actions
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    remote.releaseStream();
+    await pending;
+
+    // The run row (id and all) is gone: what is rendered is the action set, not the run list.
+    expect(rows.some((row) => /[0-9a-f]{8}/.test(row))).toBe(false);
+    // US-29: nothing can be steered and no Pi transcript exists, so neither is offered.
+    expect(rows.some((row) => /(?:^|\s)Stop$/.test(row))).toBe(true);
+    expect(actions).not.toMatch(/steer/i);
+    expect(actions).not.toMatch(/view (snapshot|conversation|result|error)/i);
+  });
+
+  it("shows the workflow run as a workflow in the running-agents menu", async () => {
+    const remote = await server({ holdStream: true });
+    install(remote);
+    const capture = await start();
+    const pending = outcome(executable(capture));
+    await beforeEnd(remote.streamOpened, pending, "the stream opened");
+
+    const rows = rendered(await openRunningAgents(capture));
+    remote.releaseStream();
+    await pending;
+
+    expect(rows).toContain("audit");
+    expect(rows).toMatch(/workflow/i);
   });
 
   it("promises no completion notification for a workflow run", async () => {

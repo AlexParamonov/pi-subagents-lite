@@ -65,7 +65,8 @@ export interface TestEndpoint {
   close(): Promise<void>;
 }
 
-const DEFAULT_RESULT = {
+/** The declared output the test endpoint returns for a completed run unless told otherwise. */
+export const DEFAULT_RESULT = {
   text: "The declared output",
   usage: { input_tokens: 31 },
   termination_reason: "final_answer",
@@ -198,6 +199,8 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
  */
 export interface FetchFake {
   fetch: typeof fetch;
+  /** Every request the client made, in order, with the full URL it targeted. */
+  requests(): Array<{ method: string; url: string; authorization: string | undefined }>;
   /** How many `GET /api/workflows/:id` reads have been served. */
   reads(): number;
 }
@@ -211,10 +214,12 @@ export interface FetchFakeOptions {
 
 export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
   const encoder = new TextEncoder();
+  const requests: Array<{ method: string; url: string; authorization: string | undefined }> = [];
   let reads = 0;
   const fetchFake: typeof fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    requests.push({ method, url, authorization: headerValue(init?.headers, "authorization") });
     if (method === "POST" && url.endsWith("/api/workflows")) {
       return jsonResponse(201, { workflow_id: REMOTE_ID, task_id: REMOTE_ID });
     }
@@ -237,7 +242,15 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
     }
     throw new Error(`Unexpected workflow test request: ${method} ${url}`);
   };
-  return { fetch: fetchFake, reads: () => reads };
+  return { fetch: fetchFake, requests: () => [...requests], reads: () => reads };
+}
+
+function headerValue(headers: HeadersInit | undefined, name: string): string | undefined {
+  if (!headers) return undefined;
+  if (headers instanceof Headers) return headers.get(name) ?? undefined;
+  if (Array.isArray(headers)) return headers.find(([key]) => key.toLowerCase() === name)?.[1];
+  const record = headers as Record<string, string>;
+  return record[name] ?? record[name.toLowerCase()];
 }
 
 export function jsonResponse(status: number, body: unknown): Response {
