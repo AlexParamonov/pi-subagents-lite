@@ -6,10 +6,9 @@
  * listener - and the Workflow endpoint is the real HTTP protocol on a loopback socket (or
  * `fakeWorkflowFetch` where a test pushes frames itself or fake timers must own the clock).
  * Nothing from `src/` is imported or mocked, so a passing test means the definition on disk
- * reached the endpoint and the endpoint's answer reached the transcript. The SSE framing the
- * server really sends (multi-line `data:` fields, CRLF, chunk splits) is covered here; the
- * exhaustive recorded-body catalogue belongs to the protocol-fixture seam and the in-runtime
- * fetch/SSE proof to the wave's live tmux gate.
+ * reached the endpoint and the endpoint's answer reached the transcript. The protocol bodies and
+ * SSE frames this suite replays are captured from the workflow API (`recorded/`); the in-runtime
+ * fetch/SSE proof belongs to the wave's live tmux gate.
  */
 
 import { rmSync } from "node:fs";
@@ -26,22 +25,36 @@ import {
 import { asCommandContext, asUiCustom } from "../pi-boundaries.js";
 import { defaultTheme, defaultUi } from "../mock-utils.js";
 import {
+  COMPLETED_RUN,
   configure,
+  CHUNK_MULTILINE,
+  CONTROL_FRAMES,
   deferred,
   DEFAULT_RESULT,
   endpoint,
+  errorBody,
   fakeWorkflowFetch,
+  FAILED_RUN,
   jsonResponse,
   readState,
+  RECORDED,
+  recordedResponse,
+  recordedRead,
   REMOTE_ID,
+  REPLAY_COMPLETED_STREAM,
+  REPLAY_DECLARED_STREAM,
+  REPLAY_FAILED_STREAM,
+  PING,
+  RECONNECT,
   FAKED_URL,
   DEFAULT_STREAM,
   DISPATCH,
   crlf,
   lifecycle,
-  nodeProgress,
+  progressFrame,
   TERMINAL,
   textFrame,
+  THINKING_MULTILINE,
   workspace,
   write,
   workflow,
@@ -168,8 +181,16 @@ function createRequest(remote: TestEndpoint) {
 
 function stopRequests(remote: TestEndpoint) {
   return remote.requests.filter(
-    (entry) => entry.method === "POST" && entry.path === `/api/workflows/${REMOTE_ID}/stop`,
+    (entry) => entry.method === "POST" && entry.path === `/api/workflows/${remote.run}/stop`,
   );
+}
+
+function readRequests(remote: TestEndpoint) {
+  return remote.requests.filter((entry) => entry.method === "GET" && entry.path === `/api/workflows/${remote.run}`);
+}
+
+function streamRequests(remote: TestEndpoint) {
+  return remote.requests.filter((entry) => entry.method === "GET" && entry.path.endsWith("/stream"));
 }
 
 /**
@@ -409,17 +430,17 @@ describe("foreground workflow execution", () => {
   });
 
   it("returns a no-output note for an empty completed result slot", async () => {
-    const nodeResult =
-      'id: 2\nevent: node_complete\ndata: {"node_id":"other","result":{"status":"ok","value":{"text":"Wrong node output"}}}\n\n';
-    const remote = await server({ result: null, streams: [DEFAULT_STREAM + nodeResult + TERMINAL] });
+    // A completed node's own result is on the wire; it is not the run's output, and GET's
+    // result slot is empty.
+    const remote = await server({ result: null, streams: [DEFAULT_STREAM + lifecycle("node_complete", "other")] });
     install(remote);
     const tool = executable(await start());
 
     const result = await run(tool);
 
     expect(text(result)).toMatch(/no.*output/i);
-    expect(text(result)).not.toContain("Inspecting the repository");
-    expect(text(result)).not.toContain("Wrong node output");
+    expect(text(result)).not.toContain(RECORDED.chunkText);
+    expect(text(result)).not.toContain(RECORDED.nodeResult);
   });
 
   for (const reason of ["max_iterations", null] as const) {
@@ -512,7 +533,7 @@ describe("foreground workflow execution", () => {
       lifecycle("node_dispatched", "analysis") +
       lifecycle("node_complete", "analysis") +
       lifecycle("node_dispatched", "report") +
-      lifecycle("node_failed", "report", { error: "validator rejected the diff" }) +
+      lifecycle("node_failed", "report") +
       lifecycle("node_dispatched", "review");
     const remote = await server({ streams: [frames], holdStream: true });
     install(remote);
@@ -584,7 +605,7 @@ describe("foreground workflow execution", () => {
       );
       expect(accumulated).not.toContain(tail);
 
-      push(nodeProgress("analysis", "llm_response", { text: fullTurn }));
+      push(progressFrame("full-turn", fullTurn));
       // The full turn arrives whole, and replaces the streamed text rather than doubling it.
       await viewMatching(views, (view) => view.includes(tail), "the full turn's text is on screen", pending);
       for (const snapshot of views) {
@@ -600,14 +621,14 @@ describe("foreground workflow execution", () => {
 
   it("renders deduplicated live updates without thinking", async () => {
     const frames =
-      lifecycle("node_dispatched", "analysis") +
-      "event: thinking_delta\ndata: hidden named reasoning\n\n" +
-      nodeProgress("analysis", "llm_delta", { kind: "thinking", fragment: "hidden batched reasoning" }) +
+      DISPATCH +
+      THINKING_MULTILINE +
+      progressFrame("thinking-delta", "hidden batched reasoning") +
       textFrame("Visible progress") +
-      nodeProgress("analysis", "llm_response", { text: "Visible progress", chunk: true }) +
-      nodeProgress("analysis", "llm_delta", { kind: "text", fragment: "Visible progress" }) +
-      nodeProgress("analysis", "llm_response", { text: "Visible progress" }) +
-      nodeProgress("analysis", "tool_call", { tool: "read", args: { path: "src/index.ts" } });
+      progressFrame("relay-chunk", "Visible progress") +
+      progressFrame("text-delta", "Visible progress") +
+      progressFrame("full-turn", "Visible progress") +
+      progressFrame("tool-call", "read");
     const remote = await server({ streams: [frames], holdStream: true });
     install(remote);
     const tool = executable(await start());
@@ -627,7 +648,7 @@ describe("foreground workflow execution", () => {
     expect(view).toContain("analysis");
     for (const snapshot of views) {
       expect(snapshot.split("Visible progress").length - 1).toBeLessThanOrEqual(1);
-      expect(snapshot).not.toContain("hidden named reasoning");
+      expect(snapshot).not.toContain(RECORDED.thinkingText);
       expect(snapshot).not.toContain("hidden batched reasoning");
     }
     remote.releaseStream();
@@ -639,9 +660,12 @@ describe("foreground workflow execution", () => {
     // newline arrives split. Rejoining it wrongly loses the tail, fuses the lines, or drops the
     // event whose JSON no longer parses.
     const frames =
-      lifecycle("node_dispatched", "analysis") +
+      DISPATCH +
+      CHUNK_MULTILINE +
+      THINKING_MULTILINE +
+      // An intermediary may split a JSON payload across `data:` lines: joined with a newline the
+      // payload is still valid JSON, so the event must survive and keep its tool line.
       'event: node_progress\ndata: {"node_id":"analysis","step":"tool_call",\ndata:  "detail":{"tool":"read","args":{"path":"src/index.ts"}}}\n\n' +
-      "data: First half of the answer\ndata: and its second half\n\n" +
       TERMINAL;
     const remote = await server({ streams: [frames] });
     install(remote);
@@ -654,17 +678,21 @@ describe("foreground workflow execution", () => {
       views.push(resultView(tool, update, args, undefined, state)),
     );
 
-    expect(text(result)).toContain("The declared output");
+    expect(text(result)).toContain(RECORDED.answer);
     const all = views.join("\n");
-    // Named event: the rejoined payload parsed, so its tool-activity line is on screen.
+    // Named event split across lines: the rejoined payload parsed, so its tool line is on screen.
     expect(all).toContain("read");
-    // Unnamed chunk: one joined contribution, with no framing text or empty field leaking in.
-    expect(all).toMatch(/First half of the answer\s+and its second half/);
+    // Unnamed chunk: both captured lines, in order, with no framing text or empty field leaking in.
+    expect(all).toContain(RECORDED.chunkText);
+    expect(all).toContain(RECORDED.chunkTail);
     expect(all).not.toContain("data:");
+    expect(all).not.toContain(RECORDED.thinkingText);
     expect(all).not.toContain("undefined");
   });
 
   it("reads CRLF-framed events split across chunk boundaries", async () => {
+    // CRLF is an intermediary's framing, not this server's: the producer normalizes CR and CRLF
+    // to LF before writing a chunk.
     const chunk = crlf(textFrame("Progress on the run"));
     // The CR ends one chunk and the LF starts the next: a parser that treats a lone CR as a line
     // boundary sees a phantom blank line and loses the frame's terminator.
@@ -711,10 +739,7 @@ describe("foreground workflow execution", () => {
 
   it("rebuilds the live view after a nonterminal disconnect", async () => {
     const remote = await server({
-      streams: [
-        'id: 1\nevent: node_dispatched\ndata: {"node_id":"analysis"}\n\ndata: old-only text\n\n',
-        'id: 1\nevent: node_dispatched\ndata: {"node_id":"analysis"}\n\ndata: new-only text\n\n' + TERMINAL,
-      ],
+      streams: [DISPATCH + textFrame("old-only text"), DISPATCH + textFrame("new-only text") + TERMINAL],
       states: [
         readState({ status: "running" }),
         readState({
@@ -739,7 +764,7 @@ describe("foreground workflow execution", () => {
     expect(views.some((view) => view.includes("old-only text"))).toBe(true);
     expect(views.some((view) => view.includes("new-only text") && !view.includes("old-only text"))).toBe(true);
     expect(views.join("\n")).not.toContain("never-seen");
-    const streams = remote.requests.filter((request) => request.path.endsWith("/stream"));
+    const streams = streamRequests(remote);
     expect(streams).toHaveLength(2);
     expect(streams.map((request) => request.lastEventId)).toEqual([undefined, undefined]);
   });
@@ -781,10 +806,213 @@ describe("foreground workflow execution", () => {
 
     expect(text(result).split("Authoritative answer")).toHaveLength(2);
     expect(text(status).split("audit")).toHaveLength(2);
-    expect(remote.requests.filter((request) => request.path.endsWith("/stream"))).toHaveLength(2);
-    expect(
-      remote.requests.filter((request) => request.method === "GET" && request.path === `/api/workflows/${REMOTE_ID}`),
-    ).toHaveLength(2);
+    expect(streamRequests(remote)).toHaveLength(2);
+    expect(readRequests(remote)).toHaveLength(2);
+  });
+});
+
+describe("workflow run answered by captured endpoint responses", () => {
+  // Every stream and body in this block is a captured response served verbatim (no `result:`,
+  // `states:` or `rejection:` construction), so a pass means the client read the bytes the
+  // workflow API really answers with. `recorded/PROVENANCE.md` says where each came from. A
+  // captured body keeps the run id it was captured under, which need not be the id the endpoint
+  // handed this run: the client keys on its own create response and reads a body for
+  // `status`/`result`/`error` only (ADR-0013), so the mismatch must never be noticed.
+
+  it("returns the declared output the endpoint recorded for the run", async () => {
+    const remote = await server({
+      streams: [REPLAY_DECLARED_STREAM],
+      reads: [recordedResponse("read-completed-declared")],
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await run(tool);
+
+    expect(text(result)).toContain(RECORDED.answer);
+    // The captured result carries usage and private reasoning: neither belongs in the answer.
+    expect(text(result)).not.toContain("input_tokens");
+    expect(text(result)).not.toContain("output_tokens");
+    expect(text(result)).not.toContain("private chain of thought");
+  });
+
+  it("takes its answer from GET, not the captured terminal frame's copy", async () => {
+    // The captured live connection ends with `workflow_engine_finished` whose `result` is the
+    // retired marker, while GET answers the declared output: only the GET value may be the answer.
+    const remote = await server({
+      streams: [DEFAULT_STREAM],
+      reads: [recordedResponse("read-completed-declared")],
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await run(tool);
+
+    expect(text(result)).toContain(RECORDED.answer);
+    expect(result.isError ?? false).toBe(false);
+  });
+
+  it("answers the captured no-output run with a no-output note", async () => {
+    // The captured body carries the fixed key set with `"result": null` next to a completed
+    // status, plus a whole journal the client must not read as output.
+    const remote = await server({
+      run: COMPLETED_RUN,
+      streams: [REPLAY_COMPLETED_STREAM],
+      reads: [recordedResponse("read-completed-empty-result")],
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await run(tool);
+
+    expect(text(result)).toMatch(/no.*output/i);
+    expect(text(result)).not.toContain(RECORDED.nodeResult);
+    expect(text(result)).not.toContain(RECORDED.answer);
+  });
+
+  it("raises the terminal-result pre-check on the captured marker body", async () => {
+    // What a completed run really answers at the capture revision: the marker, not the output.
+    const remote = await server({
+      run: COMPLETED_RUN,
+      streams: [REPLAY_COMPLETED_STREAM],
+      reads: [recordedResponse("read-completed-marker")],
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await outcome(tool);
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain(remote.url);
+    expect(result.text).toMatch(/result|output/i);
+    expect(result.text).not.toContain(RECORDED.nodeResult);
+  });
+
+  it("reports a captured failed run across every line of its reason", async () => {
+    // The captured terminal frame names the reason `reason`, not `error`, and the GET reason
+    // spans two lines.
+    const remote = await server({
+      streams: [REPLAY_FAILED_STREAM],
+      reads: [recordedResponse("read-failed")],
+      run: FAILED_RUN,
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await outcome(tool);
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain(RECORDED.failureLine);
+    expect(result.text).toContain(RECORDED.failureTail);
+  });
+
+  it("reports the captured interrupted run as interrupted, never as an answer", async () => {
+    // The replayed journal ends in `workflow_engine_finished` while GET says `interrupted`: the
+    // close and the in-stream terminal event settle nothing, only the GET answer decides.
+    const remote = await server({
+      run: COMPLETED_RUN,
+      streams: [REPLAY_COMPLETED_STREAM],
+      reads: [recordedResponse("read-interrupted")],
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await outcome(tool);
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/interrupt/i);
+    expect(result.text).not.toContain(RECORDED.answer);
+  });
+
+  it("reports the captured journal-less known run as interrupted, never as missing", async () => {
+    // The no-404 startup window: a known task whose journal has not been written answers 200 with
+    // `interrupted` and an empty `events` array.
+    const remote = await server({
+      streams: [CONTROL_FRAMES],
+      reads: [recordedResponse("read-known-no-log")],
+    });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await outcome(tool);
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/interrupt/i);
+    expect(result.text).not.toMatch(/not found|unknown workflow/i);
+  });
+
+  it("keeps a captured running answer from settling the run", async () => {
+    // `running` is not a terminal state, so the captured close plus the captured running answer
+    // must reopen the stream and keep watching rather than returning a result or a label.
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    const capture = await start();
+    const tool = executable(capture);
+    const remote = fakeWorkflowFetch({
+      stream: (push, close) => {
+        push(RECONNECT);
+        close();
+      },
+      read: () => recordedRead("read-running"),
+    });
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.stubGlobal("fetch", remote.fetch);
+    try {
+      let settled = false;
+      const pending = outcome(tool).then((finished) => {
+        settled = true;
+        return finished;
+      });
+      const opened = remote.requests().filter((request) => request.url.endsWith("/stream")).length;
+      await vi.advanceTimersByTimeAsync(90_000);
+      const status = await run(executable(capture, "AgentStatus"), {});
+
+      expect(settled, "a captured running answer must not settle the run").toBe(false);
+      expect(remote.reads()).toBeGreaterThanOrEqual(1);
+      expect(remote.requests().filter((request) => request.url.endsWith("/stream")).length).toBeGreaterThan(opened);
+      expect(text(status)).toContain("audit");
+      expect(text(status)).toMatch(/running/i);
+      expect(text(status)).not.toMatch(/completed|failed|stopped/i);
+
+      await shutdownSession(capture);
+      expect((await pending).text).toMatch(/shutdown|session/i);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  for (const name of ["create-missing-prompt", "create-prompt-too-long", "create-config-not-object"]) {
+    it(`surfaces the captured ${name.replace("create-", "")} rejection as the server states it`, async () => {
+      const remote = await server({ rejection: recordedResponse(name) });
+      install(remote);
+      const tool = executable(await start());
+
+      const result = await outcome(tool);
+
+      const stated = JSON.parse(recordedResponse(name).body) as { error: string };
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain(stated.error);
+      expect(result.text).toContain(remote.url);
+    });
+  }
+
+  it("names the endpoint for the captured unauthorized read without exposing the key", async () => {
+    const key = "example-private-key";
+    const logs = captureConsole();
+    const remote = await server({ reads: [recordedResponse("read-unauthorized")] });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, remote.url, key);
+    const tool = executable(await start());
+
+    const result = await outcome(tool);
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Unauthorized");
+    expect(result.text).toContain(remote.url);
+    expect(result.text).not.toContain(key);
+    expect(logs.join("\n")).not.toContain(key);
+    expect(createRequest(remote).authorization).toBe(`Bearer ${key}`);
   });
 });
 
@@ -1108,7 +1336,9 @@ describe("workflow endpoint and input errors", () => {
     it(`surfaces a ${status} server rejection without leaking its key`, async () => {
       const key = "example-private-key";
       const logs = captureConsole();
-      const remote = await server({ rejection: { status, message: `Remote validation failed; credential ${key}` } });
+      const remote = await server({
+        rejection: { status, body: errorBody(`Remote validation failed; credential ${key}`) },
+      });
       write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
       configure(ws, remote.url, key);
       const tool = executable(await start());
@@ -1331,8 +1561,10 @@ describe("workflow cancellation and shutdown", () => {
     expect(text(status)).not.toMatch(/stopped|running/i);
   });
 
-  it("reports an honest unknown outcome when the stop request fails", async () => {
-    const remote = await server({ holdStream: true, stopRejection: { status: 503, message: "Stop unavailable" } });
+  it("reports an honest unknown outcome when the endpoint refuses the stop", async () => {
+    // The captured refusal is the endpoint's own 404 body: a stop the endpoint did not
+    // acknowledge says nothing about the run.
+    const remote = await server({ holdStream: true, stopRejection: recordedResponse("stop-unknown") });
     install(remote);
     const capture = await start();
     const tool = executable(capture);
@@ -1550,9 +1782,9 @@ describe("workflow monitoring degradation", () => {
       // window's length is what makes a ping or a text chunk resetting it observable: such
       // a reset leaves the deadline unreached and the call hanging until its timeout.
       await vi.advanceTimersByTimeAsync(30_000);
-      push("event: ping\n\ndata: first text chunk\n\n");
+      push(`${PING}${textFrame("first text chunk")}`);
       await vi.advanceTimersByTimeAsync(30_000);
-      push("event: ping\n\ndata: second text chunk\n\n");
+      push(`${PING}${textFrame("second text chunk")}`);
       await vi.advanceTimersByTimeAsync(30_000);
       const result = await pending;
 
@@ -1570,7 +1802,7 @@ describe("workflow monitoring degradation", () => {
     const tool = executable(capture);
     const remote = fakeWorkflowFetch({
       stream: (push, close) => {
-        push('event: reconnect\ndata: {"reason":"server_shutdown"}\n\n');
+        push(RECONNECT);
         close();
       },
       read: () => jsonResponse(503, { error: "Temporarily unavailable" }),
@@ -1621,10 +1853,7 @@ describe("workflow call display", () => {
 
   it("renders server text without terminal control sequences", async () => {
     const escape = "\u001b[?25l";
-    const frames =
-      'id: 1\nevent: node_dispatched\ndata: {"node_id":"analysis"}\n\n' +
-      `data: Visible progress ${escape} safe suffix\n\n` +
-      TERMINAL;
+    const frames = DISPATCH + textFrame(`Visible progress ${escape} safe suffix`) + TERMINAL;
     const remote = await server({
       streams: [frames],
       result: { text: `Visible answer ${escape} safe suffix`, usage: {}, termination_reason: "final_answer" },
@@ -1651,7 +1880,7 @@ describe("workflow call display", () => {
     // reach the sanitizer on the error path too.
     const sequence = "\u001b]0;injected title\u0007";
     const remote = await server({
-      rejection: { status: 422, message: `Remote validation failed ${sequence} keep this part` },
+      rejection: { status: 422, body: errorBody(`Remote validation failed ${sequence} keep this part`) },
     });
     write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
     configure(ws, remote.url);

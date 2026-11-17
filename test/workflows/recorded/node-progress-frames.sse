@@ -1,0 +1,36 @@
+id: 1
+event: node_progress
+data: {"timestamp":1700000000001,"strategy":"react_local","step":"llm_response","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"usage":{"input_tokens":31,"output_tokens":7},"text":"Inspecting the repository and reporting three findings."},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 2
+event: node_progress
+data: {"timestamp":1700000000002,"strategy":"react_local","step":"llm_response","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"chunk":true,"text":"Inspecting the re"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 3
+event: node_progress
+data: {"timestamp":1700000000003,"strategy":"react_local","step":"llm_delta","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"kind":"text","fragment":"Inspecting the repository and reporting thr"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 4
+event: node_progress
+data: {"timestamp":1700000000004,"strategy":"react_local","step":"llm_delta","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"kind":"thinking","fragment":"Hidden batched reasoning"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 5
+event: node_progress
+data: {"timestamp":1700000000005,"strategy":"react_local","step":"tool_call","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"args":{"path":"src/index.ts"},"tool":"read_file"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 6
+event: node_progress
+data: {"timestamp":1700000000006,"strategy":"react_local","step":"tool_result","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"result":{"bytes":4096},"tool":"read_file"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 7
+event: node_progress
+data: {"timestamp":1700000000007,"strategy":"react_local","step":"llm_completed","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"usage":{"input_tokens":31,"output_tokens":7},"model":"producer-model"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 8
+event: node_progress
+data: {"timestamp":1700000000008,"strategy":"react_local","step":"assistant_turn","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"text":"Let me read the file","tool_calls":[{"name":"read_file"}]},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 9
+event: node_progress
+data: {"timestamp":1700000000009,"strategy":"react_local","step":"steering_intervention","task_id":"wf-capture-declared","correlation_id":"corr-1","detail":{"reason":"cap_reached"},"workflow_id":"wf-capture-declared","node_id":"analysis"}
+

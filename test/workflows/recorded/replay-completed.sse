@@ -1,0 +1,28 @@
+id: 1
+event: workflow_started
+data: {"nodes":{},"description":"Inspect a repository","strategy":"react_local","edges":[],"entry_node":"analysis","task_id":"wf-capture-completed","workflow_id":"wf-capture-completed"}
+
+id: 2
+event: node_dispatched
+data: {"started_at":1700000001000,"task_id":"wf-capture-completed","user_message":"Review changes","correlation_id":"corr-1","workflow_id":"wf-capture-completed","node_id":"analysis"}
+
+id: 3
+event: node_complete
+data: {"result":{"status":"ok","value":{"text":"Inspected 12 files"}},"task_id":"wf-capture-completed","correlation_id":"corr-1","duration_ms":1200,"workflow_id":"wf-capture-completed","node_id":"analysis"}
+
+id: 4
+event: edge_evaluated
+data: {"loop":false,"condition_result":true,"edge":{"to":"report","from":"analysis"},"to_node":"report","task_id":"wf-capture-completed","from_node":"analysis","workflow_id":"wf-capture-completed"}
+
+id: 5
+event: node_dispatched
+data: {"started_at":1700000003000,"task_id":"wf-capture-completed","user_message":"Review changes","correlation_id":"corr-1","workflow_id":"wf-capture-completed","node_id":"report"}
+
+id: 6
+event: node_complete
+data: {"result":{"status":"ok","value":{"text":"Report written"}},"task_id":"wf-capture-completed","correlation_id":"corr-1","duration_ms":1200,"workflow_id":"wf-capture-completed","node_id":"report"}
+
+id: 7
+event: workflow_engine_finished
+data: {"result":{"status":"completed"},"task_id":"wf-capture-completed","correlation_id":"corr-1","workflow_id":"wf-capture-completed"}
+

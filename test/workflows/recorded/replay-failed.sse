@@ -1,0 +1,16 @@
+id: 1
+event: workflow_started
+data: {"nodes":{},"description":"Inspect a repository","strategy":"react_local","edges":[],"entry_node":"analysis","task_id":"wf-capture-failed","workflow_id":"wf-capture-failed"}
+
+id: 2
+event: node_dispatched
+data: {"started_at":1700000001000,"task_id":"wf-capture-failed","user_message":"Review changes","correlation_id":"corr-1","workflow_id":"wf-capture-failed","node_id":"analysis"}
+
+id: 3
+event: node_failed
+data: {"error":"validator rejected the diff\nsecond line of the failure","reason":"validator rejected the diff\nsecond line of the failure","task_id":"wf-capture-failed","correlation_id":"corr-1","duration_ms":800,"workflow_id":"wf-capture-failed","attempts":1,"node_id":"analysis"}
+
+id: 4
+event: workflow_failed
+data: {"reason":"node analysis failed: validator rejected the diff\nsecond line of the failure","task_id":"wf-capture-failed","correlation_id":"corr-1","workflow_id":"wf-capture-failed"}
+

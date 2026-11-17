@@ -1,0 +1,15 @@
+{
+  "create-config-not-object": 422,
+  "create-missing-prompt": 422,
+  "create-prompt-too-long": 422,
+  "read-completed-declared": 200,
+  "read-completed-empty-result": 200,
+  "read-completed-marker": 200,
+  "read-failed": 200,
+  "read-interrupted": 200,
+  "read-known-no-log": 200,
+  "read-running": 200,
+  "read-unauthorized": 401,
+  "stop-already-finished": 200,
+  "stop-unknown": 404
+}
