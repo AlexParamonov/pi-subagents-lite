@@ -222,6 +222,17 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     getStore().notifyToolsExpanded(false);
   });
 
+  // Same as /agents → "Clear done", on every successful compaction of this (main) session,
+  // manual or automatic. Child sessions never reach here: their extension load returns early
+  // in index.ts and registers no listeners, so a subagent's own compaction can't trigger it.
+  pi.on("session_compact", () => {
+    const currentManager = getManager();
+    if (!currentManager) return;
+    for (const record of currentManager.listAgents()) {
+      if (record.lifecycle.status === "completed") currentManager.clear(record.id);
+    }
+  });
+
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
     const currentManager = getManager();
     if (currentManager) {
