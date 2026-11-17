@@ -4,7 +4,7 @@
  * Every test enters at a caller-visible seam - a registered tool (`Workflow`, `AgentStatus`,
  * `StopAgent`, `MessageAgent`), the `/agents` command's real menu components, or a session
  * listener - and the Workflow endpoint is the real HTTP protocol on a loopback socket (or
- * `fakeWorkflowFetch` where fake timers must own the clock). Nothing from `src/` is imported or
+ * `fakeWorkflowFetch` where a test pushes frames itself or fake timers must own the clock). Nothing from `src/` is imported or
  * mocked, so a passing test means the definition on disk reached the endpoint and the endpoint's
  * answer reached the transcript. Wire-format parsing details belong to the protocol-fixture seam;
  * the in-runtime fetch/SSE proof belongs to the wave's live tmux gate.
@@ -35,7 +35,10 @@ import {
   FAKED_URL,
   DEFAULT_STREAM,
   DISPATCH,
+  lifecycle,
+  nodeProgress,
   TERMINAL,
+  textFrame,
   workspace,
   write,
   workflow,
@@ -194,6 +197,18 @@ async function shutdownSession(capture: MockExtensionAPI): Promise<void> {
   ctx = undefined;
 }
 
+/** Every line the extension writes to the console while the test runs. */
+function captureConsole(): string[] {
+  const lines: string[] = [];
+  const record = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  for (const level of ["log", "info", "debug", "warn", "error"] as const) {
+    vi.spyOn(console, level).mockImplementation(record);
+  }
+  return lines;
+}
+
 /** A menu component as the tests drive it: real pi-tui components, rendered to text. */
 interface MenuComponent {
   render(width: number): unknown;
@@ -251,6 +266,21 @@ function rendered(component: unknown): string {
   if (typeof component.render !== "function") return "";
   const lines: unknown = component.render(240);
   return Array.isArray(lines) ? lines.filter((line): line is string => typeof line === "string").join("\n") : "";
+}
+
+/** Wait for a rendered snapshot satisfying `seen`, and return it; fails by name if the run ends first. */
+async function viewMatching(
+  views: string[],
+  seen: (view: string) => boolean,
+  what: string,
+  ended: Promise<unknown>,
+): Promise<string> {
+  await beforeEnd(
+    vi.waitFor(() => expect(views.some(seen), `no view matched: ${what}`).toBe(true)),
+    ended,
+    `a view where ${what}`,
+  );
+  return views.find(seen)!;
 }
 
 function resultView(
@@ -463,26 +493,107 @@ describe("foreground workflow execution", () => {
     });
   }
 
-  it("renders deduplicated live updates without thinking", async () => {
-    const node = {
-      workflow_id: REMOTE_ID,
-      task_id: REMOTE_ID,
-      node_id: "analysis",
-      strategy: "react_local",
-      correlation_id: "turn-1",
-      timestamp: 1700000000000,
-    };
-    const progress = (step: string, detail: object) =>
-      `event: node_progress\ndata: ${JSON.stringify({ ...node, step, detail })}\n\n`;
+  it("renders one status line per node lifecycle event", async () => {
     const frames =
-      'id: 1\nevent: node_dispatched\ndata: {"node_id":"analysis"}\n\n' +
+      lifecycle("node_dispatched", "analysis") +
+      lifecycle("node_complete", "analysis") +
+      lifecycle("node_dispatched", "report") +
+      lifecycle("node_failed", "report", { error: "validator rejected the diff" }) +
+      lifecycle("node_dispatched", "review");
+    const remote = await server({ streams: [frames], holdStream: true });
+    install(remote);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const views: string[] = [];
+    const state: Record<string, unknown> = {};
+
+    const pending = run(tool, args, undefined, (update) => {
+      views.push(resultView(tool, update, args, undefined, state));
+    });
+
+    // No text or activity frame is in this stream: every node name on screen came from a
+    // lifecycle event, and each node carries its own state.
+    const live = await viewMatching(
+      views,
+      (view) => ["analysis", "report", "review"].every((node) => view.includes(node)),
+      "each of the three nodes has a status line",
+      pending,
+    );
+    const lineFor = (node: string): string => {
+      const line = live.split("\n").find((entry) => entry.includes(node));
+      expect(line, `the live view must show a status line for the ${node} node`).toBeDefined();
+      return line!;
+    };
+    expect(lineFor("analysis")).toMatch(/complete|finish|done|✓/i);
+    expect(lineFor("report")).toMatch(/fail|error|✗/i);
+    // Still in flight: the state belongs to the node, so it is not drawn as settled.
+    expect(lineFor("review")).toMatch(/dispatch|start|running|pending|active|in progress|▶|…/i);
+    expect(lineFor("review")).not.toMatch(/complete|finish|done|fail|error|✓|✗/i);
+
+    remote.releaseStream();
+    expect(text(await pending)).toContain("The declared output");
+  });
+
+  it("accumulates streamed chunks and replaces them with the node's full turn", async () => {
+    const tail = "and reporting three findings.";
+    const fullTurn = `Reading the changed files ${tail}`;
+    let push: (frame: string) => void = () => {
+      throw new Error("workflow stream did not open");
+    };
+    const remote = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH + textFrame("Reading the "));
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    vi.stubGlobal("fetch", remote.fetch);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const views: string[] = [];
+    const state: Record<string, unknown> = {};
+
+    const pending = run(tool, args, undefined, (update) =>
+      views.push(resultView(tool, update, args, undefined, state)),
+    );
+    try {
+      await viewMatching(views, (view) => view.includes("Reading the"), "the first chunk is on screen", pending);
+      push(textFrame("changed files "));
+      // A later chunk is not lost: the view grows instead of restarting.
+      const accumulated = await viewMatching(
+        views,
+        (view) => /Reading\s+the\s+changed\s+files/.test(view),
+        "both chunks are on screen in order",
+        pending,
+      );
+      expect(accumulated).not.toContain(tail);
+
+      push(nodeProgress("analysis", "llm_response", { text: fullTurn }));
+      // The full turn arrives whole, and replaces the streamed text rather than doubling it.
+      await viewMatching(views, (view) => view.includes(tail), "the full turn's text is on screen", pending);
+      for (const snapshot of views) {
+        expect(snapshot.split("changed").length - 1).toBeLessThanOrEqual(1);
+      }
+
+      push(TERMINAL);
+      expect(text(await pending)).toContain("The declared output");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("renders deduplicated live updates without thinking", async () => {
+    const frames =
+      lifecycle("node_dispatched", "analysis") +
       "event: thinking_delta\ndata: hidden named reasoning\n\n" +
-      progress("llm_delta", { kind: "thinking", fragment: "hidden batched reasoning" }) +
-      "data: Visible progress\n\n" +
-      progress("llm_response", { text: "Visible progress", chunk: true }) +
-      progress("llm_delta", { kind: "text", fragment: "Visible progress" }) +
-      progress("llm_response", { text: "Visible progress" }) +
-      progress("tool_call", { tool: "read", args: { path: "src/index.ts" } });
+      nodeProgress("analysis", "llm_delta", { kind: "thinking", fragment: "hidden batched reasoning" }) +
+      textFrame("Visible progress") +
+      nodeProgress("analysis", "llm_response", { text: "Visible progress", chunk: true }) +
+      nodeProgress("analysis", "llm_delta", { kind: "text", fragment: "Visible progress" }) +
+      nodeProgress("analysis", "llm_response", { text: "Visible progress" }) +
+      nodeProgress("analysis", "tool_call", { tool: "read", args: { path: "src/index.ts" } });
     const remote = await server({ streams: [frames], holdStream: true });
     install(remote);
     const tool = executable(await start());
@@ -650,6 +761,34 @@ describe("workflow selection", () => {
 
     expect(description).toContain("Shared audit");
     expect(description).not.toContain("Global audit");
+  });
+
+  it("sends only the winning file when definitions collide by name", async () => {
+    const remote = await server();
+    configure(ws, remote.url);
+    write(
+      join(ws.agentDir, "workflows", "audit.yaml"),
+      `${workflow("audit", "Global audit", "global-node")}owner: global\n`,
+    );
+    write(
+      join(ws.project, ".agents", "workflows", "audit.yml"),
+      `${workflow("audit", "Shared audit", "shared-node")}owner: shared\n`,
+    );
+    const tool = executable(await start());
+
+    await run(tool, { workflow: "audit", prompt: "Review changes" });
+
+    // US-2 replaces the whole file: the losing definition contributes no node, no entry point,
+    // and not even a key the winner omits.
+    expect(JSON.parse(createRequest(remote).body).workflow_config).toEqual({
+      name: "audit",
+      description: "Shared audit",
+      nodes: [{ id: "shared-node", params: { task_description: "{{task_description}}" } }],
+      edges: [],
+      entry_node: "shared-node",
+      owner: "shared",
+      prompt_vars: { working_dir: ws.project },
+    });
   });
 
   it("omits project and shared workflows from an untrusted project's selection", async () => {
@@ -879,6 +1018,7 @@ describe("workflow endpoint and input errors", () => {
   for (const status of [422, 404, 503]) {
     it(`surfaces a ${status} server rejection without leaking its key`, async () => {
       const key = "example-private-key";
+      const logs = captureConsole();
       const remote = await server({ rejection: { status, message: `Remote validation failed; credential ${key}` } });
       write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
       configure(ws, remote.url, key);
@@ -888,7 +1028,9 @@ describe("workflow endpoint and input errors", () => {
 
       expect(result.isError).toBe(true);
       expect(result.text).toContain("Remote validation failed");
+      // US-8/US-35: the key stays out of the transcript and out of the logs alike.
       expect(result.text).not.toContain(key);
+      expect(logs.join("\n")).not.toContain(key);
       expect(createRequest(remote).authorization).toBe(`Bearer ${key}`);
     });
   }
@@ -934,6 +1076,7 @@ describe("workflow endpoint and input errors", () => {
   }
 
   it("does not send credentials across an endpoint redirect", async () => {
+    const logs = captureConsole();
     const other = await server();
     const remote = await server({ redirect: `${other.url}/api/workflows` });
     write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
@@ -944,6 +1087,7 @@ describe("workflow endpoint and input errors", () => {
 
     expect(result.isError).toBe(true);
     expect(result.text).not.toContain("redirect-key");
+    expect(logs.join("\n")).not.toContain("redirect-key");
     expect(other.requests).toEqual([]);
   });
 

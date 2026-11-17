@@ -6,7 +6,8 @@
  * `holdStream`/`holdCreate` and the release handles replace sleeping: a test waits on the
  * milestone it needs. GET answers the fixed key set for every run state, so an empty result
  * slot is `result: null` here exactly as it is on the wire. `fakeWorkflowFetch` serves the same
- * contract without a socket, for the tests that run on fake timers.
+ * contract without a socket, for tests that push frames one at a time or run on fake timers.
+ * `lifecycle`, `textFrame` and `nodeProgress` build the wire frames the endpoint replays.
  */
 
 import { createServer, type ServerResponse } from "node:http";
@@ -73,8 +74,32 @@ export const DEFAULT_RESULT = {
 };
 export const DISPATCH = `id: 1\nevent: node_dispatched\ndata: {"node_id":"analysis","workflow_id":"${REMOTE_ID}","task_id":"${REMOTE_ID}","ts":1700000000000}\n\n`;
 export const DEFAULT_STREAM =
-  DISPATCH + "event: thinking_delta\ndata: private chain of thought\n\n" + "data: Inspecting the repository\n\n";
+  DISPATCH + "event: thinking_delta\ndata: private chain of thought\n\n" + textFrame("Inspecting the repository");
 export const TERMINAL = `id: 2\nevent: workflow_engine_finished\ndata: {"workflow_id":"${REMOTE_ID}","ts":1700000001000}\n\n`;
+
+/** A persisted node lifecycle frame, as the endpoint replays it. */
+export function lifecycle(event: string, node: string, detail: object = {}): string {
+  return `id: 1\nevent: ${event}\ndata: ${JSON.stringify({ node_id: node, workflow_id: REMOTE_ID, ts: 1700000000000, ...detail })}\n\n`;
+}
+
+/** A raw text chunk on the unnamed channel: no event name, no id, never persisted. */
+export function textFrame(text: string): string {
+  return `data: ${text}\n\n`;
+}
+
+/** A `node_progress` frame carrying the real producer's field set. */
+export function nodeProgress(node: string, step: string, detail: object): string {
+  return `event: node_progress\ndata: ${JSON.stringify({
+    workflow_id: REMOTE_ID,
+    task_id: REMOTE_ID,
+    node_id: node,
+    strategy: "react_local",
+    correlation_id: "turn-1",
+    timestamp: 1700000000000,
+    step,
+    detail,
+  })}\n\n`;
+}
 
 export function deferred<T>() {
   let resolve!: (value: T) => void;
