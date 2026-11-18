@@ -163,6 +163,11 @@ function run(
   return tool.execute("workflow-call", params, signal, onUpdate, ctx!);
 }
 
+/** Advance the fake clock in steps: each step yields, so the loop's own stream and read promises settle between timers. */
+async function pump(steps: number, msEach: number): Promise<void> {
+  for (let index = 0; index < steps; index += 1) await vi.advanceTimersByTimeAsync(msEach);
+}
+
 async function outcome(tool: ExecutableTool, params?: Record<string, unknown>, signal?: AbortSignal) {
   try {
     const result = await run(tool, params, signal);
@@ -310,11 +315,19 @@ async function viewMatching(
   what: string,
   ended: Promise<unknown>,
 ): Promise<string> {
-  await beforeEnd(
-    vi.waitFor(() => expect(views.some(seen), `no view matched: ${what}`).toBe(true)),
-    ended,
-    `a view where ${what}`,
-  );
+  if (!views.some(seen)) {
+    try {
+      await beforeEnd(
+        vi.waitFor(() => expect(views.some(seen), `no view matched: ${what}`).toBe(true), { interval: 1 }),
+        ended,
+        `a view where ${what}`,
+      );
+    } catch (error) {
+      // The run can end in the same tick the view was recorded, and the recorded views are
+      // history: only a view that never rendered is a failure.
+      if (!views.some(seen)) throw error;
+    }
+  }
   return views.find(seen)!;
 }
 
@@ -964,7 +977,7 @@ describe("workflow run answered by captured endpoint responses", () => {
         return finished;
       });
       const opened = remote.requests().filter((request) => request.url.endsWith("/stream")).length;
-      await vi.advanceTimersByTimeAsync(90_000);
+      await pump(9, 10_000);
       const status = await run(executable(capture, "AgentStatus"), {});
 
       expect(settled, "a captured running answer must not settle the run").toBe(false);
@@ -1812,7 +1825,10 @@ describe("workflow monitoring degradation", () => {
     try {
       const pending = outcome(tool);
 
-      await vi.advanceTimersByTimeAsync(90_000);
+      // Five failed observations cost 5 x READ_TIMEOUT_MS plus the growing backoff, so the clock
+      // has to reach past that; a single advance of the same total never lets the loop's own
+      // stream and read promises resolve between the timers.
+      await pump(16, 20_000);
       const result = await pending;
       const readsAtReturn = remote.reads();
       const status = await run(executable(capture, "AgentStatus"), {});

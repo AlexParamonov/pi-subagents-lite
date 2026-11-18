@@ -287,7 +287,7 @@ describe("tool registration", () => {
 
   it("registers a result renderer on the tools that report one status line", () => {
     const withRenderResult = api.tools.filter((t) => t.renderResult).map((t) => t.name);
-    expect(withRenderResult).toEqual(["Agent", "StopAgent", "MessageAgent"]);
+    expect(withRenderResult).toEqual(["Agent", "Workflow", "StopAgent", "MessageAgent"]);
   });
 
   it("registers MessageAgent with no prompt snippet or guidelines and exactly its two required params", () => {

@@ -86,11 +86,23 @@ function newestWorkflowParameterDescription(): string {
   return property?.description ?? "";
 }
 
-/** Call the tool through the registration the main agent sees; the run path is a later slice. */
-function runTool(params: Record<string, unknown>): Promise<unknown> {
+/** Call the tool through the registration the main agent sees. */
+function runTool(params: Record<string, unknown>): Promise<AgentToolResult<Record<string, unknown>>> {
   const tool = workflowRegistrations().at(-1);
   expect(tool, "the Workflow tool must be registered").toBeDefined();
   return tool!.execute("workflow-call", params, undefined, undefined, ctx!);
+}
+
+function text(result: AgentToolResult<Record<string, unknown>>): string {
+  return result.content.map((part) => (part.type === "text" ? (part.text ?? "") : "")).join("\n");
+}
+
+/** An endpoint the test owns, so a reached run path fails here instead of on a real network. */
+function endpointAt(url: string): void {
+  write(
+    join(agentDir, "subagents-lite.json"),
+    JSON.stringify({ workflows: { endpoints: { test: { url } }, defaultEndpoint: "test" } }),
+  );
 }
 
 describe("Workflow call line", () => {
@@ -105,13 +117,22 @@ describe("Workflow call line", () => {
 
 describe("Workflow schema refresh", () => {
   it("lists a workflow added after the session started once a call rescans", async () => {
+    endpointAt("http://127.0.0.1:1/api/workflows");
     await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
     write(join(agentDir, "workflows", "release.yml"), workflowFile("release-review", "Review a release"));
 
-    await expect(runTool({ workflow: "release-review", prompt: "Review the release" })).rejects.toThrow(
-      /not implemented/i,
-    );
+    // The call gets past the listing now, so what proves the rescan is the run it reached: the
+    // configured endpoint answered nothing, and the refused URL is the test's own.
+    vi.stubGlobal("fetch", () => Promise.reject(new TypeError("connect ECONNREFUSED")));
+    let result: AgentToolResult<Record<string, unknown>>;
+    try {
+      result = await runTool({ workflow: "release-review", prompt: "Review the release" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
 
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("http://127.0.0.1:1/api/workflows");
     expect(newestWorkflowParameterDescription()).toContain("release-review: Review a release");
   });
 
