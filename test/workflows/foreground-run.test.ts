@@ -1825,9 +1825,9 @@ describe("workflow monitoring degradation", () => {
     try {
       const pending = outcome(tool);
 
-      // Five failed observations cost 5 x READ_TIMEOUT_MS plus the growing backoff, so the clock
-      // has to reach past that; a single advance of the same total never lets the loop's own
-      // stream and read promises resolve between the timers.
+      // Stepped, not one jump: while the loop is awaiting the real fs/fetch promises of a round
+      // no timer is pending, so a single advance moves the whole budget past the run without
+      // firing anything. Five failed reads plus their capped backoff is what the total must clear.
       await pump(16, 20_000);
       const result = await pending;
       const readsAtReturn = remote.reads();
