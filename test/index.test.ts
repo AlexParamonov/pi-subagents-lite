@@ -274,12 +274,12 @@ describe("message renderer registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tool registration", () => {
-  it("registers Agent, StopAgent, MessageAgent, and AgentStatus tools", () => {
+  it("registers Agent, Workflow, StopAgent, MessageAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
-    expect(names).toEqual(["Agent", "StopAgent", "MessageAgent", "AgentStatus"]);
+    expect(names).toEqual(["Agent", "Workflow", "StopAgent", "MessageAgent", "AgentStatus"]);
   });
 
-  it("registers every tool with the dot description", () => {
+  it("registers the subagent tools with the dot description", () => {
     for (const toolName of ["Agent", "StopAgent", "MessageAgent", "AgentStatus"]) {
       expect(findTool(api, toolName)!.description).toBe(".");
     }

@@ -1,0 +1,126 @@
+/**
+ * workflow-tool.test.ts — The `Workflow` tool's own surface: the call line while arguments are
+ * still streaming, and the schema re-registration a listing change requires.
+ */
+
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { renderWorkflowCall } from "../../src/workflows/workflow-tool.js";
+import {
+  createMockExtensionAPI,
+  fakeCtx,
+  loadExtension,
+  type MockExtensionAPI,
+  type RegisteredTool,
+} from "../fixtures.js";
+import { defaultTheme } from "../mock-utils.js";
+
+/** A graph-schema Workflow file, small enough to read in a test failure. */
+function workflowFile(name: string, description: string): string {
+  return `name: ${name}\ndescription: ${description}\nnodes:\n  - id: analysis\nedges: []\nentry_node: analysis\n`;
+}
+
+interface ExecutableTool extends RegisteredTool {
+  execute(
+    toolCallId: string,
+    params: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+    onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined,
+    context: ExtensionContext,
+  ): Promise<AgentToolResult<Record<string, unknown>>>;
+}
+
+let root: string;
+let agentDir: string;
+let project: string;
+let api: MockExtensionAPI | undefined;
+let ctx: ExtensionContext | undefined;
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), "workflow-tool-"));
+  agentDir = join(root, "agent");
+  project = join(root, "project");
+  mkdirSync(agentDir, { recursive: true });
+  mkdirSync(project, { recursive: true });
+  api = undefined;
+  ctx = undefined;
+  vi.resetModules();
+  vi.doMock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
+    getAgentDir: () => agentDir,
+  }));
+});
+
+afterEach(async () => {
+  const shutdown = api?.listeners.find((listener) => listener.event === "session_shutdown");
+  if (shutdown && ctx) await shutdown.handler({ type: "session_shutdown", reason: "quit" }, ctx);
+  vi.doUnmock("@earendil-works/pi-coding-agent");
+  rmSync(root, { recursive: true, force: true });
+});
+
+function write(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+}
+
+/** Load the extension and run its session start, which scans the Workflow folders. */
+async function startSession(files: Record<string, string>): Promise<void> {
+  for (const [name, content] of Object.entries(files)) write(join(agentDir, "workflows", name), content);
+  api = createMockExtensionAPI();
+  ctx = fakeCtx({ cwd: project, isProjectTrusted: () => true });
+  await loadExtension(api.api);
+  const listener = api.listeners.find((entry) => entry.event === "session_start");
+  expect(listener, "the extension must handle session start").toBeDefined();
+  await listener!.handler({ type: "session_start", reason: "startup" }, ctx);
+}
+
+function workflowRegistrations(): ExecutableTool[] {
+  return (api?.tools.filter((tool) => tool.name === "Workflow") ?? []) as ExecutableTool[];
+}
+
+function newestWorkflowParameterDescription(): string {
+  const property = workflowRegistrations().at(-1)?.parameters.properties.workflow as { description?: string };
+  return property?.description ?? "";
+}
+
+/** Call the tool through the registration the main agent sees; the run path is a later slice. */
+function runTool(params: Record<string, unknown>): Promise<unknown> {
+  const tool = workflowRegistrations().at(-1);
+  expect(tool, "the Workflow tool must be registered").toBeDefined();
+  return tool!.execute("workflow-call", params, undefined, undefined, ctx!);
+}
+
+describe("Workflow call line", () => {
+  it("shows no placeholder for the workflow name while arguments stream", () => {
+    const rows = renderWorkflowCall({ prompt: "Review changes" }, defaultTheme)
+      .render(240)
+      .map((row) => row.trimEnd());
+
+    expect(rows).toEqual(["Workflow", "  prompt=Review changes"]);
+  });
+});
+
+describe("Workflow schema refresh", () => {
+  it("lists a workflow added after the session started once a call rescans", async () => {
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
+    write(join(agentDir, "workflows", "release.yml"), workflowFile("release-review", "Review a release"));
+
+    await expect(runTool({ workflow: "release-review", prompt: "Review the release" })).rejects.toThrow(
+      /not implemented/i,
+    );
+
+    expect(newestWorkflowParameterDescription()).toContain("release-review: Review a release");
+  });
+
+  it("re-registers nothing when a rescan found no new workflow", async () => {
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
+    const registrations = workflowRegistrations().length;
+
+    await expect(runTool({ workflow: "audti", prompt: "Review changes" })).rejects.toThrow(/Unknown workflow/i);
+
+    expect(workflowRegistrations()).toHaveLength(registrations);
+  });
+});

@@ -14,6 +14,7 @@ import {
 } from "./ui/renderer.ts";
 import { showAgentsMainMenu } from "./ui/menu/menus.ts";
 import { getStore } from "./shell.ts";
+import { registerWorkflowTool } from "./workflows/workflow-tool.ts";
 import type { SubagentParentContext } from "./agents/subagent-context.ts";
 
 // Provider-side json_schema enforcement; "prefer" falls back gracefully on
@@ -121,6 +122,7 @@ export function registerAgentTool(pi: ExtensionAPI): void {
 
 export function registerTools(pi: ExtensionAPI): void {
   registerAgentTool(pi);
+  registerWorkflowTool(pi);
 
   const stopAgentTool = {
     name: "StopAgent",
