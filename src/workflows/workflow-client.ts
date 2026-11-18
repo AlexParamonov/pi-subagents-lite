@@ -112,14 +112,15 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     } catch (reason) {
       return { ok: false, kind: "transport", reason: failureReason(reason) };
     } finally {
-      opened.finish();
+      opened.close();
     }
   }
 
   /**
-   * One request with the endpoint's key, no cross-origin redirect, and a deadline that runs until
-   * the caller is done with the response: `finish()` ends it. A stream keeps it long enough to
-   * open, then bounds the connection with the silence window instead.
+   * One request with the endpoint's key and no cross-origin redirect, with two handles: `finish()`
+   * ends the connect deadline, which a stream outlives; `close()` ends the request, and the caller
+   * must call it once it is done with the body, or the endpoint keeps streaming to a socket nobody
+   * reads. A stream bounds itself with the silence window instead of the deadline.
    */
   async function open(
     method: "GET" | "POST",
@@ -128,7 +129,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     signal?: AbortSignal,
     deadlineMs = REQUEST_DEADLINE_MS,
   ): Promise<
-    | { ok: true; response: Response; finish: () => void }
+    | { ok: true; response: Response; finish: () => void; close: () => void }
     | { ok: false; kind: "cancelled" | "transport"; reason: string }
   > {
     const controller = new AbortController();
@@ -148,24 +149,28 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         ...(body ? { body } : {}),
       });
       established = true;
-      return { ok: true, response, finish: finish };
+      return { ok: true, response, finish, close };
     } catch (reason) {
       return { ok: false, kind: signal?.aborted ? "cancelled" : "transport", reason: failureReason(reason) };
     } finally {
-      if (!established) finish();
+      if (!established) close();
     }
 
     function finish(): void {
       clearTimeout(deadline);
+    }
+
+    function close(): void {
+      finish();
       signal?.removeEventListener("abort", abort);
       // A stream the caller walked away from is the one thing that must not stay open remotely.
-      if (!established) controller.abort(new Error("the request is over"));
+      controller.abort(new Error("the request is over"));
     }
   }
 
   /** The endpoint's own words for a rejection, or the text it answered with. */
   function rejection(body: string): string {
-    const text = parseError(body) ?? truncate(body);
+    const text = truncate(parseError(body) ?? body);
     return text === "" ? "no reason given" : text;
   }
 
@@ -272,7 +277,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     };
     const connection = new StreamView();
     view.signal?.addEventListener("abort", abort, { once: true });
-    void readStream(workflowId, view, connection, controller.signal, arm, reconcile);
+    void readStream(workflowId, view, connection, controller.signal, arm, reconcile).catch((reason) => {
+      // A read task that died on its own must neither leave the wait unresolved nor die quietly.
+      console.warn(`[pi-subagents-lite] ${fault("stopped following its own connection", failureReason(reason))}`);
+      reconcile();
+    });
     await waiting;
     if (timer !== undefined) clearTimeout(timer);
     view.signal?.removeEventListener("abort", abort);
@@ -292,37 +301,53 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       return;
     }
     try {
-      if (!opened.response.ok || !opened.response.body) {
-        void opened.response.body?.cancel().catch(() => {});
-        reconcile();
-        return;
-      }
       // The connect deadline ends here; from now on the lifecycle silence window bounds the run.
       opened.finish();
-      arm();
-      const parser = new SseParser();
-      const decoder = new TextDecoder();
-      for await (const chunk of opened.response.body) {
-        let changed = false;
-        let lifecycle = false;
-        let ending = false;
-        for (const frame of parser.push(decoder.decode(chunk, { stream: true }))) {
-          const effect = connection.apply(frame);
-          changed ||= effect.changed;
-          lifecycle ||= effect.lifecycle;
-          ending ||= effect.reconcile;
+      if (opened.response.ok && opened.response.body) {
+        arm();
+        const parser = new SseParser();
+        for await (const text of streamed(opened.response.body)) {
+          let changed = false;
+          let lifecycle = false;
+          let ending = false;
+          for (const frame of parser.push(text)) {
+            const effect = connection.apply(frame);
+            changed ||= effect.changed;
+            lifecycle ||= effect.lifecycle;
+            ending ||= effect.reconcile;
+          }
+          if (lifecycle) arm();
+          // A wait that has ended belongs to a caller that is gone: nothing more reaches it.
+          if (changed && !signal.aborted) view.onUpdate(connection.snapshot());
+          if (ending) break;
         }
-        if (lifecycle) arm();
-        if (changed) view.onUpdate(connection.snapshot());
-        if (ending) break;
+      }
+    } finally {
+      // Reconnect or settle, the connection this wait used is over either way.
+      opened.close();
+      reconcile();
+    }
+  }
+
+  /**
+   * The connection's text, transport only: a read that breaks or is cancelled ends the iteration
+   * quietly, because a connection that broke says nothing about the run's state (ADR-0013). The
+   * decoder and the caller's renderer run outside here, so their bugs are not mistaken for one.
+   */
+  async function* streamed(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const next = await reader.read();
+        if (next.done) return;
+        yield decoder.decode(next.value, { stream: true });
       }
     } catch {
-      // A connection that broke, was cancelled, or was cut short says nothing about the run's
-      // state (ADR-0013); the caller's GET decides.
+      return;
     } finally {
-      opened.finish();
+      reader.releaseLock();
     }
-    reconcile();
   }
 
   /** GET, read for `status`, `result` and `error` only: its `events` array is not a source. */

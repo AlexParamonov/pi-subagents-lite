@@ -13,6 +13,7 @@ import {
   CONTROL_FRAMES,
   COMPLETED_RUN,
   crlf,
+  deferred,
   DEFAULT_RESULT,
   DISPATCH,
   endpoint,
@@ -27,6 +28,7 @@ import {
   readState,
   recordedResponse,
   RECORDED,
+  RECONNECT,
   REMOTE_ID,
   REPLAY_COMPLETED_STREAM,
   REPLAY_FAILED_STREAM,
@@ -50,6 +52,7 @@ afterEach(async () => {
   for (const server of servers) await server.close();
   servers = [];
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 async function remote(options: EndpointOptions = {}): Promise<TestEndpoint> {
@@ -557,6 +560,32 @@ describe("monitor reconcile", () => {
     expect(socket.reads()).toBe(1);
   });
 
+  it("reads GET when the endpoint ages the connection out", async () => {
+    // No close and no further frames: the connection stays open, so only the `reconnect` frame
+    // itself can send the client to GET - neither EOF nor the silence window is in play.
+    let push: (frame: string) => void = () => {
+      throw new Error("the stream did not open");
+    };
+    const socket = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH);
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    const w = watcher();
+
+    const settled = run.monitor(REMOTE_ID, w.view);
+    await vi.waitFor(() => expect(w.snapshots.length).toBeGreaterThan(0));
+    expect(socket.reads()).toBe(0);
+
+    push(RECONNECT);
+
+    await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+    expect(socket.reads()).toBe(1);
+  });
+
   it("hands the wait back as unknown while the endpoint cannot be read, and keeps reading", async () => {
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     const socket = fakeWorkflowFetch({
@@ -670,6 +699,126 @@ describe("monitor reconcile", () => {
     await expect(settled).resolves.toEqual({ status: "aborted" });
     expect(server.requests.filter((entry) => entry.method !== "GET")).toEqual([]);
     expect(readRequests(server)).toEqual([]);
+  });
+
+  it("closes the connection the endpoint is still pushing to when the caller cancels", async () => {
+    // Only the server can see this: a client that stops reading may keep the socket open, and the
+    // endpoint goes on streaming a run nobody is watching.
+    const server = await remote({ streams: [DISPATCH], holdStream: true });
+    const run = await client(server.url);
+    const abort = new AbortController();
+    const w = watcher(abort.signal);
+
+    const settled = run.monitor(server.run, w.view);
+    await server.streamOpened;
+    await w.until(() => w.snapshots.length > 0, settled, "the dispatch reaches the display");
+    expect(server.streamSocketsOpen()).toBe(1);
+
+    abort.abort();
+
+    await expect(settled).resolves.toEqual({ status: "aborted" });
+    await vi.waitFor(() => expect(server.streamSocketsOpen()).toBe(0));
+  });
+
+  it("aborts a connection it replaces, and the one it settles on", async () => {
+    const connecting: AbortSignal[] = [];
+    const socket = fakeWorkflowFetch({
+      // Never closed: every connection the endpoint is given stays open on its side.
+      stream: (send) => {
+        send(DISPATCH + TERMINAL);
+      },
+      read: (reads) => jsonResponse(200, readState(reads === 1 ? { status: "running" } : { result: DEFAULT_RESULT })),
+    });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/stream") && init?.signal) connecting.push(init.signal);
+      return socket.fetch(input as string, init);
+    });
+    const run = await client(FAKED_URL);
+
+    await expect(run.monitor(REMOTE_ID, watcher().view)).resolves.toEqual({
+      status: "completed",
+      result: DEFAULT_RESULT,
+    });
+
+    expect(connecting).toHaveLength(2);
+    expect(connecting.map((signal) => signal.aborted)).toEqual([true, true]);
+  });
+
+  it("publishes nothing to a caller that already has its outcome", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    let push: (frame: string) => void = () => {
+      throw new Error("the stream did not open");
+    };
+    const socket = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH);
+      },
+      read: () => jsonResponse(200, readState()),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    const abort = new AbortController();
+    const w = watcher(abort.signal);
+
+    const settled = run.monitor(REMOTE_ID, w.view);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.snapshots.length).toBeGreaterThan(0);
+
+    abort.abort();
+    await expect(settled).resolves.toEqual({ status: "aborted" });
+
+    // The endpoint has not noticed the cancel yet, and keeps pushing.
+    push(textFrame("text that arrives after the caller cancelled"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.snapshots).toHaveLength(1);
+  });
+
+  it("keeps following the run when the display wiring dies, and says so once", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const socket = fakeWorkflowFetch({
+      stream: (send) => {
+        send(DISPATCH);
+        send(RECONNECT);
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+
+    const outcome = await run.monitor(REMOTE_ID, {
+      onUpdate: () => {
+        throw new Error("the renderer died");
+      },
+    });
+
+    expect(outcome).toEqual({ status: "completed", result: DEFAULT_RESULT });
+    expect(warnings.mock.calls.flat().join(" ")).toContain('"local"');
+    warnings.mockRestore();
+  });
+
+  it("does not read a stream whose caller cancelled while it was opening", async () => {
+    const opening = deferred<void>();
+    const connecting: AbortSignal[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.endsWith("/stream")) return jsonResponse(404, { error: "Workflow not found" });
+      if (init?.signal) connecting.push(init.signal);
+      await opening.promise;
+      return new Response(lifecycle("workflow_started", "analysis"), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    const abort = new AbortController();
+    const w = watcher(abort.signal);
+
+    const settled = (await client(FAKED_URL)).monitor(REMOTE_ID, w.view);
+    await vi.waitFor(() => expect(connecting).toHaveLength(1));
+    abort.abort();
+    opening.resolve();
+
+    await expect(settled).resolves.toEqual({ status: "aborted" });
+    expect(w.snapshots).toEqual([]);
+    expect(connecting[0]?.aborted).toBe(true);
   });
 });
 
