@@ -291,6 +291,8 @@ export interface TestEndpoint {
   streamConnections: number;
   /** How many SSE connections this endpoint still has open on its side. */
   streamSocketsOpen(): number;
+  /** Resolves when this endpoint sees a stream socket it had open go away. */
+  streamSocketClosed(): Promise<void>;
   streamOpened: Promise<void>;
   createReceived: Promise<void>;
   stopReceived: Promise<void>;
@@ -327,6 +329,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   // "One connection at a time" and "a walked-away connection is closed" are only testable from the
   // server's side: the client can keep a socket it will never read again.
   const streamSockets = new Set<Socket>();
+  const socketClosed = deferred<void>();
   const finishStream = () => {
     streamReleased = true;
     releaseStream.resolve();
@@ -407,7 +410,11 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       json(res, 404, { error: "Workflow not found" });
     }
   });
-  server.on("connection", (socket) => socket.on("close", () => streamSockets.delete(socket)));
+  server.on("connection", (socket) =>
+    socket.on("close", () => {
+      if (streamSockets.delete(socket)) socketClosed.resolve();
+    }),
+  );
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   const endpoint: TestEndpoint = {
@@ -416,6 +423,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
     requests,
     streamConnections: 0,
     streamSocketsOpen: () => streamSockets.size,
+    streamSocketClosed: () => socketClosed.promise,
     streamOpened: streamOpened.promise,
     createReceived: createReceived.promise,
     stopReceived: stopReceived.promise,

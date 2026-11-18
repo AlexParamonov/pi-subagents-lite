@@ -717,7 +717,8 @@ describe("monitor reconcile", () => {
     abort.abort();
 
     await expect(settled).resolves.toEqual({ status: "aborted" });
-    await vi.waitFor(() => expect(server.streamSocketsOpen()).toBe(0));
+    // Event-driven, not polled: the endpoint's own close notification is the witness.
+    await server.streamSocketClosed();
   });
 
   it("aborts a connection it replaces, and the one it settles on", async () => {
@@ -774,6 +775,29 @@ describe("monitor reconcile", () => {
     expect(w.snapshots).toHaveLength(1);
   });
 
+  it("sends no Last-Event-Id on any request it makes", async () => {
+    // Every connection replays the whole journal: an id from a live connection is not a journal
+    // position, so resuming would re-deliver seen frames and skip missed ones (ADR-0013).
+    const server = await remote({ holdStream: true });
+    const run = await client(server.url);
+
+    await run.create(request());
+    const watching = run.monitor(server.run, watcher().view);
+    await server.streamOpened;
+    await run.stop(server.run);
+    await watching;
+
+    expect(new Set(server.requests.map((entry) => entry.path))).toEqual(
+      new Set([
+        "/api/workflows",
+        `/api/workflows/${server.run}/stream`,
+        `/api/workflows/${server.run}`,
+        `/api/workflows/${server.run}/stop`,
+      ]),
+    );
+    expect(server.requests.map((entry) => entry.lastEventId)).toEqual(server.requests.map(() => undefined));
+  });
+
   it("keeps following the run when the display wiring dies, and says so once", async () => {
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     const socket = fakeWorkflowFetch({
@@ -792,6 +816,7 @@ describe("monitor reconcile", () => {
     });
 
     expect(outcome).toEqual({ status: "completed", result: DEFAULT_RESULT });
+    expect(warnings.mock.calls).toHaveLength(1);
     expect(warnings.mock.calls.flat().join(" ")).toContain('"local"');
     warnings.mockRestore();
   });
@@ -844,7 +869,14 @@ describe("terminal result", () => {
     expect(outcome).toEqual({ status: "completed", result: value });
   });
 
-  for (const value of [0, false, { nested: null, values: [1, false] }] as const) {
+  // `status` is a key a producer node may legitimately store: only the bare single-key marker is
+  // the retired completion marker, so a declared output carrying it must still be delivered.
+  for (const value of [
+    0,
+    false,
+    { nested: null, values: [1, false] },
+    { status: "completed", text: "Declared output" },
+  ] as const) {
     it(`treats ${JSON.stringify(value)} as a delivered result`, async () => {
       expect(await outcomeFor(value)).toEqual({ status: "completed", result: value });
     });
