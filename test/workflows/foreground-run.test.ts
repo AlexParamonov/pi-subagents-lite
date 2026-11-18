@@ -1408,16 +1408,27 @@ describe("workflow endpoint and input errors", () => {
   });
 
   it("identifies unreachable endpoints for troubleshooting", async () => {
-    const remote = await server();
-    await remote.close();
-    install(remote);
+    const dead = await server();
+    const live = await server();
+    await dead.close();
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    write(
+      join(ws.agentDir, "subagents-lite.json"),
+      JSON.stringify({
+        workflows: { endpoints: { local: { url: dead.url }, release: { url: live.url } }, defaultEndpoint: "local" },
+      }),
+    );
     const tool = executable(await start());
 
     const result = await outcome(tool);
 
     expect(result.isError).toBe(true);
-    expect(result.text).toContain(remote.url);
-    expect(result.text).toContain("local");
+    expect(result.text).toContain(dead.url);
+    // US-21: the fix is a key choice, so the keys the configuration offers are named - and none of
+    // them is contacted on its own.
+    expect(result.text).toMatch(/configured endpoints/i);
+    expect(result.text).toContain("release");
+    expect(live.requests).toEqual([]);
   });
 
   for (const status of [422, 404, 503]) {

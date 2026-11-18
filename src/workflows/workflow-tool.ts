@@ -71,7 +71,8 @@ export async function executeWorkflowTool(
   if (resolution.listingChanged) registerWorkflowTool(getPiInstance());
   if (resolution.kind === "not-found") throw new Error(unknownWorkflowMessage(name, resolution.available));
 
-  const endpoint = resolveWorkflowEndpoint(getStore().workflows, resolution.definition.endpoint);
+  const workflows = getStore().workflows;
+  const endpoint = resolveWorkflowEndpoint(workflows, resolution.definition.endpoint);
   if (!endpoint.ok) throw new Error(endpoint.error);
 
   const manager = getManager();
@@ -88,7 +89,7 @@ export async function executeWorkflowTool(
       signal,
       onUpdate,
     },
-    { manager, client: createWorkflowClient(endpoint.endpoint) },
+    { manager, client: createWorkflowClient(endpoint.endpoint, { endpointNames: Object.keys(workflows.endpoints) }) },
   );
 }
 

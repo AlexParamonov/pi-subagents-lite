@@ -224,14 +224,33 @@ describe("create", () => {
     expect(createRequests(server)).toHaveLength(1);
   });
 
-  it("names the endpoint and its configured key when nothing answers", async () => {
+  it("names the endpoint, its URL and every configured key when nothing answers", async () => {
     const server = await remote();
     await server.close();
+    const { createWorkflowClient } = await import("../../src/workflows/workflow-client.js");
 
-    const run = await (await client(server.url)).create(request());
+    const run = await createWorkflowClient(
+      { name: "local", url: server.url },
+      { endpointNames: ["local", "release"] },
+    ).create(request());
 
     expect(error(run)).toContain(server.url);
     expect(error(run)).toContain("local");
+    expect(error(run)).toMatch(/configured endpoints/i);
+    expect(error(run)).toContain("release");
+  });
+
+  it("leaves a rejection the server's own words, without the key list", async () => {
+    const server = await remote({ rejection: { status: 422, body: errorBody("Remote validation failed") } });
+    const { createWorkflowClient } = await import("../../src/workflows/workflow-client.js");
+
+    const run = await createWorkflowClient(
+      { name: "local", url: server.url },
+      { endpointNames: ["local", "release"] },
+    ).create(request());
+
+    expect(error(run)).toContain("Remote validation failed");
+    expect(error(run)).not.toMatch(/configured endpoints/i);
   });
 
   it("refuses a cross-origin redirect rather than re-sending the key", async () => {

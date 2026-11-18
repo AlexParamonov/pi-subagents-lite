@@ -44,6 +44,8 @@ const MAX_REPORTED_TEXT = 300;
 
 export interface WorkflowClientOptions {
   fetch?: typeof fetch;
+  /** Every endpoint key the configuration offers, named when this endpoint never answers (US-21). */
+  endpointNames?: string[];
 }
 
 /** How a caller follows a run: display snapshots for the caller to paint, and a cancel signal. */
@@ -181,11 +183,15 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 
       const sent = await answer("POST", "/api/workflows", JSON.stringify(runBody(request)));
       if (!sent.ok) {
+        // Nothing answered, so the reader's question is which endpoint to send to. A rejection came
+        // from the endpoint the run was sent to, and carries the server's own words alone.
+        const names = options.endpointNames ?? [];
+        const keys = names.length === 0 ? "" : ` Configured endpoints: ${names.join(", ")}.`;
         return {
           ok: false,
           error: fault(
             "has an unknown outcome",
-            `${sent.reason}. The run may still be running remotely; it was not retried.`,
+            `${sent.reason}. The run may still be running remotely; it was not retried.${keys}`,
           ),
         };
       }
