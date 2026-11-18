@@ -504,6 +504,14 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** Three events must send the client to GET: silence, EOF, and the server's max-duration `reconnect` frame. The only test feeding the captured `reconnect` frame used an endpoint that closes the response right after it, so EOF fired the same read. Deleting `"reconnect"` from the reconcile set left the whole suite green: a healthy run would then sit frozen for the full silence window with no test noticing.
 **Next time:** To pin a trigger, remove the other triggers from the scenario: keep the connection open so EOF cannot happen and keep the window open so silence cannot happen, then assert the read count. Mutation the claim before believing the green.
 
+## A narrowing condition needs its near-miss value - 2026-11-19
+**What failed:** A guard fires only for a payload that is *exactly* one shape, and the suite had values that matched it and values far from it, but nothing sitting on the safe side of the line. Relaxing the condition to "carries the distinguishing key" kept all 48 tests green, while the real-world effect is refusing a legitimate answer and telling the user their endpoint does not deliver results. The same gap made a test named "says so once" pass with ten warnings, and left one AC ("no request carries `Last-Event-Id`") pinned by a single incidental assertion.
+**Next time:** For every condition that *narrows* a check, put a value on each side of the line in the same table: the marker, and a declared output that carries the marker's key plus one more. Where a test name contains a count, assert the count. Then mutation the narrowing clause alone and require a failure that names the contract.
+
+## Witness the event, do not poll for it - 2026-11-19
+**What failed:** A test asserted a socket had closed by polling a counter with `vi.waitFor` at its default 1s timeout. It passed alone and on most runs, then failed once at 1056 ms while the suite was loaded - a flake with no cause in the code under test.
+**Next time:** Where the assertion is "the other side noticed", let the test endpoint expose the event (`socket.on("close")` resolved into a deferred the test awaits). It is faster, it removes the timeout you would otherwise have to guess, and it fails the same way when the behaviour is missing. Raise the poll timeout only when no event exists to await.
+
 ## Fake timers leak into the next test - 2026-11-19
 **What failed:** A suite with two `vi.useFakeTimers()` tests stayed green while a later test that waits a real one-second reconnect timed out at 5s, and passed in isolation. Nothing in the file restored real timers.
 **Next time:** `vi.useRealTimers()` in the file's `afterEach`, not only in the test that faked. A test that passes alone and times out in the file is an ordering dependency in the file, not a slow test: do not raise the timeout.
