@@ -489,6 +489,10 @@ describe("monitor display", () => {
     await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
 
     expect(texts(snapshots)).toEqual(["old-only text", "new-only text"]);
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: "new-only text" },
+    ]);
     expect(JSON.stringify(snapshots)).not.toContain("never-seen");
     expect(streamRequests(server)).toHaveLength(2);
     expect(streamRequests(server).map((entry) => entry.lastEventId)).toEqual([undefined, undefined]);
@@ -521,18 +525,31 @@ describe("monitor reconcile", () => {
     expect(readRequests(server)).toHaveLength(1);
   });
 
-  it("settles once however often the terminal frame is delivered", async () => {
+  it("settles once and shows one status line per node however often the frames are delivered", async () => {
+    // One journal, delivered twice: the terminal frame arrives live on the first connection, GET
+    // answers `running`, and the next connection replays the whole journal, terminal included.
+    const journal = DISPATCH + textFrame("Visible progress") + TERMINAL;
     const server = await remote({
-      streams: [TERMINAL, TERMINAL],
+      streams: [journal, journal],
       states: [readState({ status: "running" }), readState({ result: DEFAULT_RESULT })],
     });
     const run = await client(server.url);
 
-    const outcome = await run.monitor(server.run, watcher().view);
+    const { snapshots, settled } = follow(run, server);
 
-    expect(outcome).toEqual({ status: "completed", result: DEFAULT_RESULT });
+    await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
     expect(streamRequests(server)).toHaveLength(2);
     expect(readRequests(server)).toHaveLength(2);
+    // A replayed frame rebuilds the lines of its own connection; none of them is a second one.
+    for (const snapshot of snapshots) {
+      expect(snapshot.filter((item) => item.type === "node-status")).toEqual([
+        { type: "node-status", node: "analysis", status: "dispatched" },
+      ]);
+    }
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: "Visible progress" },
+    ]);
   });
 
   it("reads GET after the lifecycle silence window, whatever else arrived", async () => {
