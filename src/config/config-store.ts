@@ -267,6 +267,11 @@ export class ConfigStore {
     };
   }
 
+  /** Effective Workflow endpoints: named targets merged project-over-global, plus the default. */
+  get workflows(): SubagentsConfig["workflows"] {
+    return this.config.workflows;
+  }
+
   get sessionDefaultModel(): string | null {
     return this.sessionOverrides.default ?? null;
   }

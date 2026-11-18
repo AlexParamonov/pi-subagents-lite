@@ -20,7 +20,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { fileURLToPath } from "node:url";
 
 interface Request {
@@ -80,9 +80,16 @@ export function recordedRead(name: string): Response {
   return new Response(body, { status, headers: { "content-type": "application/json" } });
 }
 
-/** Split a captured stream into its frames: SSE frames are separated by a blank line. */
+/**
+ * Split a captured stream into its frames. Each entry keeps the blank line that terminates it:
+ * tests concatenate these to build a stream, and a frame without its terminator fuses into the
+ * next frame's `data:` line instead of arriving as the bytes the server sent.
+ */
 export function framesOf(stream: string): string[] {
-  return stream.split("\n\n").filter((frame) => frame !== "");
+  return stream
+    .split("\n\n")
+    .filter((frame) => frame !== "")
+    .map((frame) => `${frame}\n\n`);
 }
 
 /** The first frame of `stream` carrying `event: <event>`. */
@@ -280,6 +287,12 @@ export interface TestEndpoint {
   /** The run id this endpoint hands out for a created run. */
   run: string;
   requests: Request[];
+  /** How many SSE connections the client opened. */
+  streamConnections: number;
+  /** How many SSE connections this endpoint still has open on its side. */
+  streamSocketsOpen(): number;
+  /** Resolves when this endpoint sees a stream socket it had open go away. */
+  streamSocketClosed(): Promise<void>;
   streamOpened: Promise<void>;
   createReceived: Promise<void>;
   stopReceived: Promise<void>;
@@ -313,6 +326,10 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   let stopped = false;
   let streamReleased = !options.holdStream;
   let closed = false;
+  // "One connection at a time" and "a walked-away connection is closed" are only testable from the
+  // server's side: the client can keep a socket it will never read again.
+  const streamSockets = new Set<Socket>();
+  const socketClosed = deferred<void>();
   const finishStream = () => {
     streamReleased = true;
     releaseStream.resolve();
@@ -349,6 +366,8 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
         json(res, 201, { workflow_id: run, task_id: run });
       }
     } else if (req.method === "GET" && path === `/api/workflows/${run}/stream`) {
+      endpoint.streamConnections += 1;
+      if (res.socket) streamSockets.add(res.socket);
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(options.streams?.[streamIndex++] ?? DEFAULT_STREAM);
       streamOpened.resolve();
@@ -391,12 +410,20 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       json(res, 404, { error: "Workflow not found" });
     }
   });
+  server.on("connection", (socket) =>
+    socket.on("close", () => {
+      if (streamSockets.delete(socket)) socketClosed.resolve();
+    }),
+  );
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
-  return {
+  const endpoint: TestEndpoint = {
     url: `http://127.0.0.1:${port}`,
     run,
     requests,
+    streamConnections: 0,
+    streamSocketsOpen: () => streamSockets.size,
+    streamSocketClosed: () => socketClosed.promise,
     streamOpened: streamOpened.promise,
     createReceived: createReceived.promise,
     stopReceived: stopReceived.promise,
@@ -411,6 +438,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     },
   };
+  return endpoint;
 }
 
 /**
