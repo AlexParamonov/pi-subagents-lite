@@ -1614,7 +1614,8 @@ describe("workflow cancellation and shutdown", () => {
     });
     write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
     configure(ws, FAKED_URL);
-    const capture = await start();
+    const notices: string[] = [];
+    const capture = await start(true, notices);
     const tool = executable(capture);
     const args = { workflow: "audit", prompt: "Review changes" };
     const state: Record<string, unknown> = {};
@@ -1647,6 +1648,10 @@ describe("workflow cancellation and shutdown", () => {
       await vi.advanceTimersByTimeAsync(300_000);
 
       expect(report).toMatch(/shutdown|session/i);
+      // A reload ends this session's observation and sends nothing: a notice that calls the run a
+      // killed agent is a false claim about the remote side, and the record does not outlive it.
+      expect(notices.join("\n")).toMatch(/left running remotely/i);
+      expect(notices.join("\n")).not.toMatch(/killed/i);
       expect(remote.requests()).toEqual(atShutdown);
       expect(views).toHaveLength(viewsAtShutdown);
       expect(views.join("\n")).not.toContain("text after shutdown");
@@ -1679,6 +1684,10 @@ describe("workflow runs on the shared management surfaces", () => {
     expect(text(status)).toMatch(/stopped/i);
     expect(text(status)).not.toMatch(/\berror\b/i);
     expect(result.text).toMatch(/stopp|abort|interrupt|cancel/i);
+
+    // Settled, and still not an agent: the run is named as what it is.
+    const again = await outcome(executable(capture, "StopAgent"), { agent_id: id });
+    expect(again.text).toMatch(/workflow run \w+ is already stopped/i);
   });
 
   it("refuses to message a workflow run", async () => {

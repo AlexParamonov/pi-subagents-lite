@@ -330,9 +330,8 @@ export async function executeStopAgentTool(
   const record = resolveAgent(params.agent_id, () => `Running agents: ${formatRunningAgents()}`);
 
   if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
-    return successResult(
-      `Agent ${shortId(record)} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
-    );
+    const name = record.workflow ? `Workflow run ${shortId(record)}` : `Agent ${shortId(record)}`;
+    return successResult(`${name} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`);
   }
 
   if (manager.abort(record.id, "agent")) {
