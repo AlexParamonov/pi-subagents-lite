@@ -42,12 +42,29 @@ export interface RunTunables {
 
 export interface AgentRecord {
   id: string;
+  /**
+   * Present only on a Workflow run record, and its presence is the kind tag: a run has no
+   * session, no watchdog, no model slot and no usage accounting. The facts are frozen at create.
+   */
+  workflow?: WorkflowRunInfo;
   result?: string;
   error?: string;
   lifecycle: AgentLifecycle;
   display: AgentDisplayInfo;
   execution: AgentExecutionState;
   stats: AgentAccumulatedStats;
+}
+
+/** One remote Workflow run, as the record has to remember it. */
+export interface WorkflowRunInfo {
+  /** Workflow file name, as the agent selected it. */
+  name: string;
+  /** Configured endpoint name the run was sent to. */
+  endpoint: string;
+  /** The endpoint's URL, frozen with the run so an error names the server it actually used. */
+  url: string;
+  /** The server's own run id (`workflow_id`). */
+  remoteId: string;
 }
 
 export interface EnvInfo {
@@ -101,6 +118,13 @@ export interface CompactionInfo {
 // --- Sub-object interfaces for decomposed AgentRecord ---
 
 export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
+
+/**
+ * The states a Workflow run settles in (US-18): GET's `completed`, GET's failure (`failed` and
+ * `interrupted` both map here with their reason), and an acknowledged remote stop. A run whose
+ * state is unknown never settles — it stays running.
+ */
+export type WorkflowSettlementStatus = Extract<AgentStatus, "completed" | "error" | "stopped">;
 
 /** Who initiated an agent stop: "user" via UI menu, "agent" via StopAgent tool, or "watchdog" (stuck-agent detection). */
 export type StopInitiator = "user" | "agent" | "watchdog";
@@ -202,11 +226,17 @@ export interface AgentExecutionState {
    */
   liveView?: LiveView;
   /**
-   * Coordinator-supplied live-view bridge (tool activity + streamed text),
-   * captured at spawn and re-wired on continuation. Without it the widget
-   * would show a static "thinking…" while a continued agent runs.
+   * Coordinator-supplied live-view bridge (tool activity + streamed text), captured at spawn and
+   * re-wired on continuation. Without it the widget would show a static "thinking…" while a
+   * continued agent runs.
    */
   liveViewCallbacks?: Pick<RunCallbacks, "onToolActivity" | "onTextDelta">;
+  /**
+   * How a Workflow run's execution ends when the manager asks: "stop" requests the remote stop,
+   * "shutdown" ends this session's observation only. It never settles the record synchronously —
+   * a remote run's status follows the endpoint's answer.
+   */
+  endWorkflowRun?: (reason: "stop" | "shutdown") => void;
 }
 
 /**

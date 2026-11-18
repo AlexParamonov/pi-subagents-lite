@@ -18,6 +18,8 @@ import {
   type StopInitiator,
   type WatchdogStopDetail,
   type SpawnConfig,
+  type WorkflowRunInfo,
+  type WorkflowSettlementStatus,
 } from "../types.ts";
 import type { SubagentType } from "./types.ts";
 import { getAgentConfig } from "./agent-types.ts";
@@ -75,6 +77,17 @@ interface SpawnArgs {
   type: SubagentType;
   prompt: string;
   options: SpawnOptions;
+}
+
+/** What a Workflow run's record is made of: the frozen run, and how its own execution ends. */
+export interface WorkflowRunRegistration {
+  workflow: WorkflowRunInfo;
+  /** Row/widget headline for the run. */
+  description: string;
+  toolCallId?: string;
+  /** Foreground call's abort signal: Esc reaches the record's stop path, like ADR-0005. */
+  signal?: AbortSignal;
+  onEnd: (reason: "stop" | "shutdown") => void;
 }
 
 export interface SpawnOptions extends SpawnConfig, RunCallbacks {
@@ -575,6 +588,8 @@ export class AgentManager {
   async steer(id: string, message: string): Promise<boolean> {
     const record = this.agents.get(id);
     if (!record) return false;
+    // A Workflow run has no session to steer and nothing to buffer into (US-29).
+    if (record.workflow) return false;
 
     if (record.lifecycle.status === "running") {
       if (!record.execution.session) {
@@ -660,6 +675,50 @@ export class AgentManager {
   }
 
   /**
+   * Register a remote Workflow run: the same gate-carrying record a subagent gets, with the local
+   * machinery left out (no session, watchdog, model slot or usage). The run's own execution owns
+   * observation and answers for the remote side through `onEnd`.
+   */
+  registerWorkflowRun(args: WorkflowRunRegistration): AgentRecord {
+    const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
+    const record: AgentRecord = {
+      id,
+      workflow: args.workflow,
+      lifecycle: { status: "running", startedAt: Date.now(), started: true },
+      display: { type: args.workflow.name, description: args.description, toolCallId: args.toolCallId },
+      execution: { settled: true, settlementCount: 0, endWorkflowRun: args.onEnd },
+      stats: { lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 }, toolUses: 0, compactionCount: 0 },
+    };
+    this.agents.set(id, record);
+    record.execution.promise = this.createCompletionGate(id);
+    if (args.signal) {
+      const handler = () => this.abort(id, "user");
+      args.signal.addEventListener("abort", handler, { once: true });
+      this.parentBindings.set(record, { signal: args.signal, handler });
+    }
+    this.onStart?.(record);
+    return record;
+  }
+
+  /**
+   * Settle a Workflow run once: status, the one formatted text, the gate, one notification. A
+   * second path (a stop ack racing the observation loop) finds the record terminal and changes
+   * nothing, so no run is ever reported twice.
+   */
+  settleWorkflowRun(record: AgentRecord, status: WorkflowSettlementStatus, text: string): boolean {
+    if (isTerminalStatus(record.lifecycle.status)) return false;
+    record.lifecycle.status = status;
+    record.lifecycle.completedAt = Date.now();
+    if (status === "error") record.error = text;
+    else record.result = text;
+    record.execution.settlementCount++;
+    this.detachParentBinding(record);
+    this.openGate(record.id, text);
+    this.notifyComplete(record);
+    return true;
+  }
+
+  /**
    * Records addressed by a tool-supplied id: the exact key when present, else
    * every retained record whose id starts with it (ADR-0010). A blank prefix is
    * a prefix of every id, so it matches nothing. getRecord() stays exact-match
@@ -697,6 +756,13 @@ export class AgentManager {
 
   /** Abort the session or remove the agent from the queue. Returns false if not running/queued. */
   private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
+    if (record.workflow) {
+      // A remote run is never stopped by an assignment: the endpoint answers, and its answer (or
+      // the lack of one) decides the record's status. Callers still learn the request went out.
+      if (record.lifecycle.status !== "running") return false;
+      record.execution.endWorkflowRun?.("stop");
+      return true;
+    }
     const wasQueued = record.lifecycle.status === "queued";
     if (wasQueued) {
       this.queue = this.queue.filter((q) => q.id !== record.id);
@@ -773,6 +839,12 @@ export class AgentManager {
     clearInterval(this.watchdogInterval);
     this.queue = [];
     for (const record of this.agents.values()) {
+      if (record.workflow) {
+        // US-30: the session ends its own observation and never stops the remote run.
+        record.execution.endWorkflowRun?.("shutdown");
+        this.detachParentBinding(record);
+        continue;
+      }
       // Queued subagents never start: fail them honestly so the waiting tool
       // call resumes with an explicit error instead of hanging (US-9).
       if (record.lifecycle.status === "queued") {
