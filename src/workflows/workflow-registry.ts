@@ -70,7 +70,7 @@ export async function resolveWorkflow(name: string, warn: WorkflowWarning): Prom
   return { kind: "not-found", available: [...listing.keys()], listingChanged };
 }
 
-/** The definition of a listed name, re-read now; nothing when its file is gone or renamed. */
+/** The definition of a listed name, re-read now; folder precedence itself is recomputed only by a scan. */
 async function readListedFile(name: string): Promise<WorkflowDefinitionFile | undefined> {
   const entry = listing.get(name);
   if (!entry) return undefined;
