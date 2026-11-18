@@ -399,6 +399,8 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   /** GET's terminal state, with GET's payload. The retired marker is refused, never answered. */
   function terminal(run: { status: TerminalStatus; result: unknown; error: string | null }): WorkflowOutcome {
     if (run.status !== "completed") return { status: run.status, error: run.error };
+    // GET always carries the key (recorded/PROVENANCE.md); a missing one still means "no output",
+    // never an undefined reaching the caller.
     const result = run.result === undefined ? null : run.result;
     const marker = record(result);
     if (marker && Object.keys(marker).length === 1 && marker.status === "completed") {
