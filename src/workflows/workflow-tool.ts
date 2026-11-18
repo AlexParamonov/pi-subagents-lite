@@ -72,7 +72,7 @@ export function renderWorkflowCall(args: Record<string, unknown>, theme: Theme):
   const rows = [theme.fg("toolTitle", theme.bold(`Workflow${name ? ` ${name}` : ""}`))];
   for (const key of SUPPLIED_PARAMETERS) {
     const value = args[key];
-    if (value === undefined) continue;
+    if (value == null) continue;
     rows.push(`  ${theme.fg("muted", `${key}=${argText(value)}`)}`);
   }
   return new Text(rows.join("\n"), 0, 0);
@@ -88,6 +88,8 @@ function unknownWorkflowMessage(name: string, available: string[]): string {
   return `Unknown workflow "${name}". Available workflows: ${available.join(", ")}.`;
 }
 
+/** Pi renders the call while the arguments stream, so an argument that is not there yet shows nothing. */
 function argText(value: unknown): string {
-  return plainText(typeof value === "string" ? value : String(value));
+  if (typeof value === "string") return plainText(value);
+  return typeof value === "boolean" ? String(value) : "";
 }
