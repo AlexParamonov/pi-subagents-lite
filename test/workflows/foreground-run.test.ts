@@ -498,18 +498,20 @@ describe("foreground workflow execution", () => {
     expect(text(result)).toMatch(/termination|reason|provenance/i);
   });
 
-  it("preserves nested nulls in a non-ReAct result", async () => {
-    const value = { nested: null, values: [1, false] };
-    const remote = await server({ result: value });
-    install(remote);
-    const tool = executable(await start());
+  for (const [label, value] of [
+    ["object", { nested: null, values: [1, false] }],
+    ["array", [{ text: "first" }, null] as unknown[]],
+  ] as const) {
+    it(`keeps a non-ReAct ${label} result as the JSON it is, nulls and all`, async () => {
+      const remote = await server({ result: value });
+      install(remote);
+      const tool = executable(await start());
 
-    const result = await run(tool);
+      const result = await run(tool);
 
-    const json = text(result).match(/\{[\s\S]*\}/);
-    expect(json).not.toBeNull();
-    expect(JSON.parse(json![0])).toEqual(value);
-  });
+      expect(JSON.parse(text(result))).toEqual(value);
+    });
+  }
 
   for (const value of [0, false] as const) {
     it(`treats ${String(value)} as a delivered result`, async () => {

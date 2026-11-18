@@ -40,6 +40,15 @@ describe("the answer a completed run delivers", () => {
     expect(formatTerminalResult(result)).toBe("A partial answer.\n\nTermination reason: null");
   });
 
+  it("echoes a termination reason the wire delivered as a value, not a word", () => {
+    expect(formatTerminalResult({ text: "A partial answer.", termination_reason: { cap: "turns" } })).toBe(
+      'A partial answer.\n\nTermination reason: {"cap":"turns"}',
+    );
+    expect(formatTerminalResult({ text: "A partial answer.", termination_reason: 42 })).toBe(
+      "A partial answer.\n\nTermination reason: 42",
+    );
+  });
+
   it("strips terminal control sequences from the server's answer", () => {
     const result = { text: "Visible answer \u001b[?25l safe suffix", termination_reason: "final_answer" };
 
@@ -52,6 +61,10 @@ describe("a result from another kind of producer", () => {
     const result = { nested: null, values: [1, false], summary: "kept" };
 
     expect(JSON.parse(formatTerminalResult(result))).toEqual(result);
+  });
+
+  it("is the array itself, nulls inside it kept as data", () => {
+    expect(formatTerminalResult([{ text: "first" }, null, false])).toBe('[{"text":"first"},null,false]');
   });
 
   it("keeps a scalar answer as the JSON it is", () => {
