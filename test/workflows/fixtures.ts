@@ -119,7 +119,7 @@ export const RECORDED = {
   /** Text a tool-activity or spend step carries: agent-internal, never the run's answer. */
   internalText: "Let me read the file",
   spendModel: "producer-model",
-  steeringReason: "cap_reached",
+  steeringReason: "repeated_tool_call",
   nodeResult: "Inspected 12 files",
   /** The declared output the captured completed run delivers, and the failure it can carry. */
   answer: "The declared output",
