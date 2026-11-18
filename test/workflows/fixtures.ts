@@ -80,9 +80,16 @@ export function recordedRead(name: string): Response {
   return new Response(body, { status, headers: { "content-type": "application/json" } });
 }
 
-/** Split a captured stream into its frames: SSE frames are separated by a blank line. */
+/**
+ * Split a captured stream into its frames. Each entry keeps the blank line that terminates it:
+ * tests concatenate these to build a stream, and a frame without its terminator fuses into the
+ * next frame's `data:` line instead of arriving as the bytes the server sent.
+ */
 export function framesOf(stream: string): string[] {
-  return stream.split("\n\n").filter((frame) => frame !== "");
+  return stream
+    .split("\n\n")
+    .filter((frame) => frame !== "")
+    .map((frame) => `${frame}\n\n`);
 }
 
 /** The first frame of `stream` carrying `event: <event>`. */
