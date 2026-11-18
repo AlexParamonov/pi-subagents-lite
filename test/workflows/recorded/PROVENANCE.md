@@ -10,8 +10,9 @@ replayed:
   client handles that shape; it is not evidence that any server delivered it.
 
 Only `read-completed-declared.body` and the `workflow_engine_finished` payload inside
-`replay-declared.sse` are contract-derived. Every other byte here came off a socket. Where a capture
-was impossible, the row below says so and names the source the value came from.
+`replay-declared.sse` are contract-derived. Every other `.sse` and `.body` byte here came off a
+socket. Where a capture was impossible, the row below says so and names the source the value came
+from.
 
 ## Capture provenance
 
@@ -34,7 +35,7 @@ was impossible, the row below says so and names the source the value came from.
   (`tasks/workflows/waves/1-foreground-run/arch-resolution.md`). The other files are still the
   capture above.
 
-| File | Captured from |
+| File | Where the bytes come from |
 | --- | --- |
 | `live-stream.sse` | one live connection: multi-line `data:` chunk, multi-line `thinking_delta`, live `node_dispatched`/`node_complete`/`workflow_engine_finished` |
 | `control-frames.sse` | `Keepalive.format(:ping)` and the max-duration `reconnect` event the loop writes |
