@@ -6,6 +6,7 @@
  * over. Text is tracked per channel and one channel is shown, never concatenated across channels.
  */
 
+import { field, parseRecord, record } from "./payload.ts";
 import type { SseFrame } from "./sse.ts";
 
 /** Status a node lifecycle frame reports. */
@@ -74,7 +75,7 @@ export class StreamView {
   private source: string | null = null;
 
   apply(frame: SseFrame): FrameEffect {
-    const payload = parse(frame.data);
+    const payload = parseRecord(frame.data);
     const named = frame.event !== null ? field(payload, "node_id") : undefined;
     if (named !== undefined) this.source = named;
     const node = named ?? this.source;
@@ -119,7 +120,7 @@ export class StreamView {
 }
 
 function applyProgress(lines: NodeLines, payload: Record<string, unknown> | null): boolean {
-  const detail = objectField(payload, "detail");
+  const detail = record(payload?.detail);
   const tool = field(detail, "tool");
   if (tool !== undefined) return lines.showActivity(tool);
   const text = field(detail, "text");
@@ -131,24 +132,4 @@ function applyProgress(lines: NodeLines, payload: Record<string, unknown> | null
     return fragment === undefined ? false : lines.append("delta", fragment);
   }
   return false;
-}
-
-function parse(data: string): Record<string, unknown> | null {
-  try {
-    return objectField({ payload: JSON.parse(data) }, "payload");
-  } catch {
-    return null;
-  }
-}
-
-function objectField(payload: Record<string, unknown> | null, key: string): Record<string, unknown> | null {
-  const value = payload?.[key];
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function field(payload: Record<string, unknown> | null, key: string): string | undefined {
-  const value = payload?.[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
 }

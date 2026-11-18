@@ -7,6 +7,7 @@
  */
 
 import { plainText } from "../ui/sanitize.ts";
+import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
 import { StreamView } from "./stream-view.ts";
 import type { WorkflowDisplayItem } from "./stream-view.ts";
@@ -353,7 +354,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         error: fault("refused the state read", `HTTP ${polled.status}: ${rejection(polled.body)}`),
       };
     }
-    const body = parse(polled.body);
+    const body = parseRecord(polled.body);
     const status = RUN_STATUSES.find((known) => known === body?.status);
     if (!body || !status) {
       return {
@@ -374,7 +375,8 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   function terminal(run: { status: TerminalStatus; result: unknown; error: string | null }): WorkflowOutcome {
     if (run.status !== "completed") return { status: run.status, error: run.error };
     const result = run.result === undefined ? null : run.result;
-    if (isRecord(result) && Object.keys(result).length === 1 && result.status === "completed") {
+    const marker = record(result);
+    if (marker && Object.keys(marker).length === 1 && marker.status === "completed") {
       return {
         status: "error",
         error: fault(
@@ -396,17 +398,8 @@ type RunStatus = (typeof RUN_STATUSES)[number];
 type TerminalStatus = Exclude<RunStatus, "running">;
 
 function stopStatus(body: string): "stopped" | "already_finished" | "interrupted" | null {
-  const status = parse(body)?.status;
+  const status = parseRecord(body)?.status;
   return status === "stopped" || status === "already_finished" || status === "interrupted" ? status : null;
-}
-
-function parse(body: string): Record<string, unknown> | null {
-  try {
-    const value: unknown = JSON.parse(body);
-    return isRecord(value) ? value : null;
-  } catch {
-    return null;
-  }
 }
 
 function truncate(text: string): string {
@@ -430,16 +423,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 function runIds(body: string): { workflowId: string; taskId: string } | null {
-  const ids = parse(body);
-  const workflowId = ids?.workflow_id;
-  if (typeof workflowId !== "string" || workflowId === "") return null;
-  const taskId = ids?.task_id;
-  return { workflowId, taskId: typeof taskId === "string" ? taskId : "" };
+  const ids = parseRecord(body);
+  const workflowId = field(ids, "workflow_id");
+  return workflowId === undefined ? null : { workflowId, taskId: field(ids, "task_id") ?? "" };
 }
 
 function parseError(body: string): string | null {
-  const error = parse(body)?.error;
-  return typeof error === "string" && error !== "" ? error : null;
+  return field(parseRecord(body), "error") ?? null;
 }
 
 function promptProblem(prompt: string): string | null {
@@ -458,11 +448,7 @@ function runBody(request: WorkflowRunRequest): { prompt: string; workflow_config
     prompt: request.prompt,
     workflow_config: {
       ...config,
-      prompt_vars: { ...(isRecord(vars) ? vars : {}), working_dir: request.workingDir },
+      prompt_vars: { ...record(vars), working_dir: request.workingDir },
     },
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
