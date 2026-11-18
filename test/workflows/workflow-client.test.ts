@@ -21,6 +21,8 @@ import {
   endpoint,
   errorBody,
   FAILED_RUN,
+  frameOf,
+  framesOf,
   PING,
   FAKED_URL,
   fakeWorkflowFetch,
@@ -644,7 +646,9 @@ describe("monitor reconcile", () => {
 
   it("takes a failed run's message from GET, never the frame's reason", async () => {
     // The captured journal ends in a `workflow_failed` frame whose text is `reason`, not `error`;
-    // only what GET answers for `error` reaches the caller.
+    // only what GET answers for `error` reaches the caller. This endpoint closes the connection as
+    // soon as it has answered, so the read below may come from that close: the frame as a trigger
+    // is the test after this one.
     const server = await remote({
       run: FAILED_RUN,
       streams: [REPLAY_FAILED_STREAM],
@@ -655,6 +659,40 @@ describe("monitor reconcile", () => {
     const outcome = await run.monitor(FAILED_RUN, watcher().view);
 
     expect(outcome).toEqual({ status: "failed", error: "Runner lost its lease" });
+  });
+
+  it("reads GET on the workflow_failed frame while the connection is still open", async () => {
+    // This fake never closes the connection, so EOF never happens: the frame itself is what sends
+    // the client to GET. The captured frame carries `reason`; the answer is a string no captured
+    // frame carries, so the outcome also says which field was used.
+    const failed = frameOf(REPLAY_FAILED_STREAM, "workflow_failed");
+    let push: (frame: string) => void = () => {
+      throw new Error("the stream did not open");
+    };
+    const socket = fakeWorkflowFetch({
+      run: FAILED_RUN,
+      stream: (send) => {
+        push = send;
+        send(
+          framesOf(REPLAY_FAILED_STREAM)
+            .filter((frame) => frame !== failed)
+            .join(""),
+        );
+      },
+      read: () => jsonResponse(200, readState({ status: "failed", error: "Runner lost its lease" })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    const w = watcher();
+
+    const settled = run.monitor(FAILED_RUN, w.view);
+    await vi.waitFor(() => expect(w.snapshots.length).toBeGreaterThan(0));
+    expect(socket.reads()).toBe(0);
+
+    push(failed);
+
+    await vi.waitFor(() => expect(socket.reads()).toBe(1));
+    await expect(settled).resolves.toEqual({ status: "failed", error: "Runner lost its lease" });
+    expect(socket.reads()).toBe(1);
   });
 
   it("reports the failed run across every line of the reason the endpoint recorded", async () => {
