@@ -7,8 +7,9 @@
  * `fakeWorkflowFetch` where a test pushes frames itself or fake timers must own the clock).
  * Nothing from `src/` is imported or mocked, so a passing test means the definition on disk
  * reached the endpoint and the endpoint's answer reached the transcript. The protocol bodies and
- * SSE frames this suite replays are captured from the workflow API (`recorded/`); the in-runtime
- * fetch/SSE proof belongs to the wave's live tmux gate.
+ * SSE frames this suite replays are recorded from the workflow API (`recorded/`), apart from the
+ * contract-derived declared-output payload `recorded/PROVENANCE.md` names; the in-runtime fetch/SSE
+ * proof belongs to the wave's live tmux gate.
  */
 
 import { rmSync } from "node:fs";
@@ -29,6 +30,7 @@ import {
   configure,
   CHUNK_MULTILINE,
   CONTROL_FRAMES,
+  declaredOutputRead,
   deferred,
   DEFAULT_RESULT,
   endpoint,
@@ -843,18 +845,21 @@ describe("foreground workflow execution", () => {
   });
 });
 
-describe("workflow run answered by captured endpoint responses", () => {
-  // Every stream and body in this block is a captured response served verbatim (no `result:`,
-  // `states:` or `rejection:` construction), so a pass means the client read the bytes the
-  // workflow API really answers with. `recorded/PROVENANCE.md` says where each came from. A
-  // captured body keeps the run id it was captured under, which need not be the id the endpoint
-  // handed this run: the client keys on its own create response and reads a body for
-  // `status`/`result`/`error` only (ADR-0013), so the mismatch must never be noticed.
+describe("workflow run answered by recorded endpoint bytes", () => {
+  // Every stream and body in this block is served verbatim out of `recorded/` (no `result:`,
+  // `states:` or `rejection:` construction), so a pass means the client read the bytes as the
+  // workflow API answers them. `recorded/PROVENANCE.md` says which of them are captured and which
+  // are the contract-derived declared-output payload. A recorded body keeps the run id it was taken
+  // under, which need not be the id the endpoint handed this run: the client keys on its own create
+  // response and reads a body for `status`/`result`/`error` only (ADR-0013), so the mismatch must
+  // never be noticed.
 
-  it("returns the declared output the endpoint recorded for the run", async () => {
+  it("returns the declared output the ratified contract puts in GET's result slot", async () => {
+    // `declaredOutputRead()` is contract-derived, not captured: no server delivers this body yet, so
+    // this pins what the client makes of the shape, never that a server produced it.
     const remote = await server({
       streams: [REPLAY_DECLARED_STREAM],
-      reads: [recordedResponse("read-completed-declared")],
+      reads: [declaredOutputRead()],
     });
     install(remote);
     const tool = executable(await start());
@@ -862,18 +867,19 @@ describe("workflow run answered by captured endpoint responses", () => {
     const result = await run(tool);
 
     expect(text(result)).toContain(RECORDED.answer);
-    // The captured result carries usage and private reasoning: neither belongs in the answer.
+    // The declared output carries usage and private reasoning: neither belongs in the answer.
     expect(text(result)).not.toContain("input_tokens");
     expect(text(result)).not.toContain("output_tokens");
     expect(text(result)).not.toContain("private chain of thought");
   });
 
-  it("takes its answer from GET, not the captured terminal frame's copy", async () => {
+  it("takes its answer from GET, not the terminal frame's copy", async () => {
     // The captured live connection ends with `workflow_engine_finished` whose `result` is the
-    // retired marker, while GET answers the declared output: only the GET value may be the answer.
+    // retired marker, while GET answers with the contract-derived declared output: only the GET
+    // value may be the answer.
     const remote = await server({
       streams: [DEFAULT_STREAM],
-      reads: [recordedResponse("read-completed-declared")],
+      reads: [declaredOutputRead()],
     });
     install(remote);
     const tool = executable(await start());

@@ -1,9 +1,10 @@
 /**
  * workflow-client.test.ts — The WorkflowClient: one endpoint's HTTP protocol.
  *
- * Everything enters at the client and leaves through a real loopback socket serving the captured
+ * Everything enters at the client and leaves through a real loopback socket serving the recorded
  * bytes (`recorded/`, see `fixtures.ts`), so a pass means the request the endpoint documents
- * arrived and the bytes it answered became the caller's result. Only the timing tests replace the
+ * arrived and the bytes it answered became the caller's result. `recorded/PROVENANCE.md` names the
+ * one body there that is contract-derived rather than captured. Only the timing tests replace the
  * socket, because they run on fake timers.
  */
 
@@ -13,6 +14,7 @@ import {
   CONTROL_FRAMES,
   COMPLETED_RUN,
   crlf,
+  declaredOutputRead,
   deferred,
   DEFAULT_RESULT,
   DISPATCH,
@@ -497,11 +499,11 @@ describe("monitor display", () => {
 
 describe("monitor reconcile", () => {
   it("takes its answer from GET rather than the terminal frame's copy", async () => {
-    // The captured live connection ends with a terminal frame whose `result` is the retired
-    // marker; GET answers the declared output.
+    // The captured live connection ends with a terminal frame whose `result` is the retired marker;
+    // the GET answer is the ratified declared-output shape, which no server delivers yet.
     const server = await remote({
       streams: [DISPATCH + TERMINAL],
-      reads: [recordedResponse("read-completed-declared")],
+      reads: [declaredOutputRead()],
     });
     const run = await client(server.url);
 

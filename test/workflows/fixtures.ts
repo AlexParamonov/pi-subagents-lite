@@ -3,12 +3,13 @@
  * (create, SSE follow, GET reconcile, stop) on a loopback socket, plus the file and config
  * workspace the extension scans.
  *
- * Every protocol body and SSE frame comes out of `recorded/`: bytes captured from the anagen-x
- * workflow API (see `recorded/PROVENANCE.md`). `lifecycle` and `progressFrame` select a captured
- * frame and rename only the node it names; `textFrame` and `crlf` build the two framings a
- * capture cannot give on demand (an arbitrary single line, and CRLF, which the server itself
- * normalizes to LF but an intermediary may send). A test that needs a value the capture does not
- * contain adds a capture, it does not invent a frame.
+ * Every protocol body and SSE frame comes out of `recorded/`: bytes the anagen-x workflow API wrote,
+ * apart from the contract-derived declared-output payload `recorded/PROVENANCE.md` names. `lifecycle`
+ * and `progressFrame` select a recorded frame and rename only the node it names; the progress frames
+ * come from a hand-driven broadcast over the real writer, not from a run. `textFrame` and `crlf` build
+ * the two framings a capture cannot give on demand (an arbitrary single line, and CRLF, which the
+ * server itself normalizes to LF but an intermediary may send). A test that needs a value the capture
+ * does not contain adds a capture, it does not invent a frame.
  *
  * `holdStream`/`holdCreate` and the release handles replace sleeping: a test waits on the
  * milestone it needs. GET answers the captured fixed key set for every run state, so an empty
@@ -62,13 +63,32 @@ const capturedStatuses: Record<string, number> = JSON.parse(
   readFileSync(join(capturedDir, "responses.json"), "utf8"),
 ) as Record<string, number>;
 
-/** The captured bytes of one SSE stream or frame sequence. */
+/** `recorded/PROVENANCE.md` names these as contract-derived payload, not bytes a server wrote. */
+const CONTRACT_DERIVED_FILES = ["read-completed-declared.body", "replay-declared.sse"];
+
+/** The recorded bytes of one SSE stream or frame sequence. */
 export function recorded(name: string): string {
   return readFileSync(join(capturedDir, name), "utf8");
 }
 
-/** The captured status and body of one HTTP response. */
+/** The recorded status and body of one HTTP response. */
 export function recordedResponse(name: string): RecordedResponse {
+  if (CONTRACT_DERIVED_FILES.includes(`${name}.body`)) {
+    throw new Error(`${name} is contract-derived, not captured: use declaredOutputRead() (recorded/PROVENANCE.md)`);
+  }
+  return recordedStatusAndBody(name);
+}
+
+/**
+ * The `GET /api/workflows/:id` answer carrying a declared output. `read-completed-declared.body` is
+ * contract-derived, so a test built on it pins how the client handles the ratified shape and never
+ * that a server delivered one.
+ */
+export function declaredOutputRead(): RecordedResponse {
+  return recordedStatusAndBody("read-completed-declared");
+}
+
+function recordedStatusAndBody(name: string): RecordedResponse {
   const status = capturedStatuses[name];
   if (status === undefined) throw new Error(`responses.json records no status for ${name}`);
   return { status, body: recorded(`${name}.body`) };
@@ -105,7 +125,10 @@ const REPLAY_COMPLETED = recorded("replay-completed.sse");
 const REPLAY_FAILED = recorded("replay-failed.sse");
 const REPLAY_DECLARED = recorded("replay-declared.sse");
 
-/** The values the captured payloads carry, so a test asserts on what the server really sent. */
+/**
+ * The values the recorded payloads carry, so a test asserts on what the endpoint really sent.
+ * `answer` is the contract-derived one, pinned to that origin by the guard below.
+ */
 export const RECORDED = {
   chunkText: "Inspecting the repository",
   chunkTail: "Reporting three findings after a blank line",
@@ -121,21 +144,34 @@ export const RECORDED = {
   spendModel: "producer-model",
   steeringReason: "repeated_tool_call",
   nodeResult: "Inspected 12 files",
-  /** The declared output the captured completed run delivers, and the failure it can carry. */
+  /** The ratified declared-output answer (contract-derived, `recorded/PROVENANCE.md`). */
   answer: "The declared output",
   failureLine: "validator rejected the diff",
   failureTail: "second line of the failure",
 } as const;
 
-// Nothing may be asserted that the server never sent: every value above has to appear in the
-// captured bytes, or a test would be checking a string this API does not produce.
-const corpus = readdirSync(capturedDir)
-  .filter((file) => file.endsWith(".sse") || file.endsWith(".body"))
-  .map((file) => readFileSync(join(capturedDir, file), "utf8"))
-  .join("\n");
+// Nothing may be asserted that the recorded bytes do not carry, and a value only a contract-derived
+// file carries has to be declared below so no test reads it as captured server output. A capture of a
+// real declared output lands it in a captured file, which fails this pin: update it and
+// `recorded/PROVENANCE.md` together.
+const CONTRACT_ONLY_VALUES = ["answer"];
+
+function bytesOf(files: string[]): string {
+  return files.map((file) => readFileSync(join(capturedDir, file), "utf8")).join("\n");
+}
+
+const recordedFiles = readdirSync(capturedDir).filter((file) => file.endsWith(".sse") || file.endsWith(".body"));
+const capturedBytes = bytesOf(recordedFiles.filter((file) => !CONTRACT_DERIVED_FILES.includes(file)));
+const contractBytes = bytesOf(CONTRACT_DERIVED_FILES);
 
 for (const [name, value] of Object.entries(RECORDED)) {
-  if (!corpus.includes(value)) throw new Error(`RECORDED.${name} is not present in the captured bytes`);
+  const origin = capturedBytes.includes(value)
+    ? "captured bytes"
+    : contractBytes.includes(value)
+      ? "contract-derived bytes"
+      : "no recorded file";
+  const expected = CONTRACT_ONLY_VALUES.includes(name) ? "contract-derived bytes" : "captured bytes";
+  if (origin !== expected) throw new Error(`RECORDED.${name} came from ${origin}, expected ${expected}`);
 }
 
 /** One live connection: multi-line chunk, multi-line thinking, live lifecycle and terminal frames. */
@@ -161,7 +197,7 @@ export const PING = framesOf(CONTROL_FRAMES)[0]!;
 export const RECONNECT = framesOf(CONTROL_FRAMES)[1]!;
 /** The captured journal replay of a run whose terminal result is the retired marker. */
 export const REPLAY_COMPLETED_STREAM = REPLAY_COMPLETED;
-/** The captured journal replay of a run that delivers its declared output. */
+/** Journal replay framing around a seeded declared-output payload: the payload is contract-derived. */
 export const REPLAY_DECLARED_STREAM = REPLAY_DECLARED;
 /** The captured journal replay of a failed run. */
 export const REPLAY_FAILED_STREAM = REPLAY_FAILED;
@@ -263,7 +299,7 @@ export interface EndpointOptions {
   run?: string;
   result?: unknown;
   states?: ReadState[];
-  /** Captured `GET /api/workflows/:id` answers, served in order, the last one repeating. */
+  /** Recorded `GET /api/workflows/:id` answers, served in order, the last one repeating. */
   reads?: RecordedResponse[];
   streams?: string[];
   holdStream?: boolean;
