@@ -28,7 +28,7 @@ import type { AgentRecord } from "../../types.ts";
 import { SHORT_ID_LENGTH } from "../../types.ts";
 import { ConversationViewer } from "../conversation-viewer.ts";
 import { viewerToolDisplay, viewerPresentation } from "../tool-display.ts";
-import { getDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
+import { getDisplayName, recordDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
 import { overlayViewportRows } from "../overlay.ts";
@@ -70,7 +70,7 @@ async function showTextViewer(
   // Error text carries provider bodies and child stderr, result text carries whatever the
   // agent echoed back: neither may reach the terminal with a control sequence intact.
   const textLines = text.split("\n").map((line) => plainText(line));
-  const displayName = getDisplayName(record.display.type);
+  const displayName = recordDisplayName(record, getDisplayName(record.display.type));
   const chromeLines = 5; // top border + title + sep + footer + bottom border
   let scrollOffset = 0;
   let autoScroll = true;
@@ -189,7 +189,9 @@ export function buildAgentActionsList(
     items.push({ value: "view-error", label: "View error" });
   }
   if (isRunning) {
-    items.push({ value: "steer", label: "Steer" });
+    // US-29: a workflow run has no session to steer — it takes input when it is created and nothing
+    // after. Stopping it is offered because the endpoint does answer a stop.
+    if (!record.workflow) items.push({ value: "steer", label: "Steer" });
     items.push({ value: "stop", label: "Stop" });
   } else {
     items.push({ value: "clear", label: "Clear" });
@@ -225,7 +227,8 @@ export function buildAgentActionsList(
       setActive(input);
     } else if (item.value === "stop") {
       getManager()?.abort(record.id, "user");
-      ctx.ui.notify(`Stopped ${shortId}`, "info");
+      // A remote run's stop is the endpoint's answer, which arrives after the menu closes.
+      ctx.ui.notify(record.workflow ? `Stop requested for ${shortId}` : `Stopped ${shortId}`, "info");
       onClose();
     } else if (item.value === "clear") {
       getManager()?.clear(record.id);
@@ -274,7 +277,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         const bullet = agentBulletPrefix(record.display.type);
         return {
           value: record.id,
-          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${record.display.type}  ${record.lifecycle.status}  ${duration}${suffix}${ago}`,
+          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${recordDisplayName(record, record.display.type)}  ${record.lifecycle.status}  ${duration}${suffix}${ago}`,
         };
       });
       if (running.length > 0) {
@@ -306,7 +309,9 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         for (const r of running) {
           getManager()?.abort(r.id, "user");
         }
-        ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
+        // Honest for the mixed case: a workflow run's stop is only requested here.
+        const wording = running.some((r) => r.workflow) ? "Stop requested for" : "Stopped";
+        ctx.ui.notify(`${wording} ${running.length} running agent(s)`, "info");
         done(undefined);
         return;
       }

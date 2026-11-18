@@ -16,6 +16,7 @@ import {
   applyAgentColor,
   buildStatsParts,
   getDisplayName,
+  recordDisplayName,
   describeActivity,
   buildModelThinkingTag,
   resolveAgentModelThinking,
@@ -587,7 +588,7 @@ export class AgentWidget {
   }
 
   private renderFinishedLine(a: AgentRecord, theme: Theme, _w: number): string {
-    const name = getDisplayName(a.display.type);
+    const name = recordDisplayName(a, getDisplayName(a.display.type));
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme, a.display.type || undefined);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -797,7 +798,7 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of running) {
-      const name = getDisplayName(a.display.type);
+      const name = recordDisplayName(a, getDisplayName(a.display.type));
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
       const activity = bg
@@ -1033,7 +1034,7 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of queued) {
-      const name = getDisplayName(a.display.type);
+      const name = recordDisplayName(a, getDisplayName(a.display.type));
       const desc = a.display.description;
       const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), metadataLines: [] });

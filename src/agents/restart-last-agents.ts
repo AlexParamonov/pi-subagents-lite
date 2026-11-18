@@ -177,10 +177,12 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
     return { restarted: [], skipped: [] };
   }
 
+  // Agent-kind records only: a Workflow run is neither matched by a replayed Agent call nor
+  // restartable as one.
   const running = new Set(
     manager
       .listAgents()
-      .filter((a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued")
+      .filter((a) => !a.workflow && (a.lifecycle.status === "running" || a.lifecycle.status === "queued"))
       .map((a) => `${a.display.type}::${a.display.description}`),
   );
 
