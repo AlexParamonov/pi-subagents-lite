@@ -523,3 +523,19 @@ Drive real keyboard input through the component returned by ui.custom before del
 ## Fake timers leak into the next test - 2026-11-19
 **What failed:** A suite with two `vi.useFakeTimers()` tests stayed green while a later test that waits a real one-second reconnect timed out at 5s, and passed in isolation. Nothing in the file restored real timers.
 **Next time:** `vi.useRealTimers()` in the file's `afterEach`, not only in the test that faked. A test that passes alone and times out in the file is an ordering dependency in the file, not a slow test: do not raise the timeout.
+
+## A kind-aware display name is a wording change in every surface - 2026-11-18
+**What failed:** One `recordDisplayName(record)` helper replaced both `getDisplayName(record.display.type)` and the raw `record.display.type` that three surfaces print, and 41 tests in three files went red: `AgentStatus`'s list, the `/agents` menu row and `MessageAgent`'s "Known agents:" line name a record by its **raw** type (`ddd333ee (builder) completed`), while the widget, the conversation viewer and the text viewer name it through `getDisplayName` (`Builder`). Unifying them silently renamed settled agents.
+**Next time:** Before routing a label through a new helper, read what each call site printed before and pass it in: `recordDisplayName(record, name)` overrides only the new kind. A row that would otherwise read "Agent" for something with no agent config behind it is the whole justification for the helper - nothing else is.
+
+## A hand-listed module mock dies when the module grows an export - 2026-11-18
+**What failed:** Adding one export to `src/ui/format.ts` threw `No "recordDisplayName" export is defined on the "../src/ui/format.js" mock` in 40 tests across two menu suites, because `test/menu-mock-setup.ts` returns four hand-picked keys instead of the module.
+**Next time:** A module mock that exists to stub two functions must spread the real module (`const actual = await vi.importActual(...); return { ...actual, stubbed: vi.fn() }`). When a new export appears anywhere in a mocked module, expect the failure in the mock, not in the behaviour.
+
+## The fake clock jumps over work that has not scheduled a timer - 2026-11-18
+**What failed:** `await vi.advanceTimersByTimeAsync(90_000)` was meant to carry a run through five failed reads. It advanced the clock to the target without firing anything, because at that instant the loop was still awaiting real promises (the definition's `fs.readFile`, the fake's `fetch`) and had no timer pending; the timer it armed afterwards fell *after* the target, so no read ever happened. The same test also asked for exhaustion of five failed observations inside 90s of fake time, which costs 5 x the read window plus the growing backoff - a budget that could never have been enough even with perfect interleaving.
+**Next time:** When a loop mixes fake timers with real I/O promises, advance in steps (`for (…) await vi.advanceTimersByTimeAsync(step)`): each step yields, and a timer the yielded work arms still falls inside a later step. Size the budget from the implementation's own constants, and never shrink an assertion to fit the clock.
+
+## A recorded view is history, a racing poll is not - 2026-11-18
+**What failed:** `viewMatching()` raced a `vi.waitFor` poll against the run finishing, so a view recorded in the same tick the run settled was reported as "workflow finished before the view rendered" - only under full-suite load, which made it look like a lost repaint. The recorded array still held the view.
+**Next time:** Where the evidence is an appended history, test the history: check it before waiting and again in the `catch`, and fail only on a view that never appeared. A partial and the settled result can also render the same text, so an assertion on a "live" view is satisfied by the final snapshot too - pin live-only content by what must be *absent* later, not by waiting.
