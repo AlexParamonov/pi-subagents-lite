@@ -7,7 +7,7 @@ capture was impossible, the row below says so and names the source the value cam
 ## Capture provenance
 
 - Producer: anagen-x at `fbd34207` (`main`, which contains `5dff0214`).
-- Captured 2026-11-19. This revision is fixture provenance only: it is not a supported-revision
+- Captured 2026-11-18. This revision is fixture provenance only: it is not a supported-revision
   floor, and nothing in this feature records or gates on a server revision
   (`tasks/workflows/waves/1-foreground-run/arch-resolution.md`).
 - HTTP: the real `AnagenX.Web.WorkflowApi.Router` on a real Cowboy socket, Bearer key
@@ -22,7 +22,7 @@ capture was impossible, the row below says so and names the source the value cam
   Bearer key configured, the workflow API on port 4001) carrying the `node_progress`
   serialization fix. No revision is recorded or gated for it
   (`tasks/workflows/waves/1-foreground-run/arch-resolution.md`). The other files are still the
-  2026-11-19 capture above.
+  2026-11-18 capture above, taken the same day and earlier.
 
 | File | Captured from |
 | --- | --- |
@@ -54,6 +54,11 @@ capture was impossible, the row below says so and names the source the value cam
   is the rule that fired (`reason: repeated_tool_call`). The cap state `cap_reached` is only ever
   *suppressed* — it goes to telemetry and never reaches a progress frame, so it is not a value
   this surface produces.
+- The **order** of the frames in `node-progress-frames.sse` is the recorder's, not a run's. The
+  recorder drove `broadcast_progress/3` once per step in the order it chose, which is why both
+  `llm_response` shapes sit after that turn's `tool_result` and `steering_intervention` — a
+  sequence no single model turn produces. Each frame is real producer output for its own step; the
+  sequence is not a run transcript, and it says nothing about the order a producer emits steps in.
 - `workflow_failed` carries `reason`, not `error`; `node_failed` carries both.
 - The failure reason crosses lines: it is embedded as JSON escapes on named frames, while raw
   text frames are framed one `data:` line per payload line (`data:` with no trailing space for
