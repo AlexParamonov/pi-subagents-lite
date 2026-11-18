@@ -802,6 +802,18 @@ describe("foreground workflow execution", () => {
     expect(text(completed)).toMatch(/completed/i);
   });
 
+  it("keeps the provenance beside an answer the producer left empty", async () => {
+    const remote = await server({
+      states: [readState({ result: { text: "", usage: { input_tokens: 5 }, termination_reason: "terminal_tool" } })],
+    });
+    install(remote);
+
+    const result = await run(executable(await start()));
+
+    expect(text(result)).toContain("no output");
+    expect(text(result)).toContain("Termination reason: terminal_tool");
+  });
+
   it("uses GET rather than a repeated terminal frame as the result", async () => {
     const remote = await server({
       streams: [TERMINAL, TERMINAL],

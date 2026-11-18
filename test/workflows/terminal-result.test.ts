@@ -77,4 +77,18 @@ describe("a completed run with nothing in the result slot", () => {
       "The workflow run completed with no output.",
     );
   });
+
+  // The producer really emits this shape: `react_local`'s terminal-tool path completes with an
+  // empty text, so an empty answer is a delivered value and its provenance is the only meaning left.
+  it("keeps the provenance beside an answer the producer left empty", () => {
+    expect(formatTerminalResult({ text: "", usage: { input_tokens: 5 }, termination_reason: "terminal_tool" })).toBe(
+      "The workflow run completed with no output.\n\nTermination reason: terminal_tool",
+    );
+  });
+
+  it("keeps the provenance when an empty answer carries no reason either", () => {
+    expect(formatTerminalResult({ text: "" })).toBe(
+      "The workflow run completed with no output.\n\nTermination reason: absent",
+    );
+  });
 });

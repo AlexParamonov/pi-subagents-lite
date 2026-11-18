@@ -28,10 +28,11 @@ export function formatTerminalResult(result: unknown): string {
   const body = record(result);
   const text = body && Object.keys(body).every((key) => REACT_KEYS.has(key)) ? body.text : undefined;
   if (typeof text !== "string") return plainText(unchanged(result));
-  if (text === "") return NO_OUTPUT;
-  const answer = plainText(text);
+  // Computed before the empty answer, because an empty `text` is a delivered value and the reason is
+  // then the only provenance the reader gets: a terminal-tool or cap run completes with "".
   const reason = body?.termination_reason;
-  return reason === NATURAL_ANSWER ? answer : `${answer}\n\n${plainText(`Termination reason: ${shown(reason)}`)}`;
+  const note = reason === NATURAL_ANSWER ? "" : `\n\n${plainText(`Termination reason: ${shown(reason)}`)}`;
+  return (text === "" ? NO_OUTPUT : plainText(text)) + note;
 }
 
 function unchanged(value: unknown): string {
