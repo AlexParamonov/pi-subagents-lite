@@ -18,12 +18,17 @@ capture was impossible, the row below says so and names the source the value cam
   `AnagenX.Web.WorkflowApi.SSE.Loop` driven with the project's own writer for the ephemeral,
   progress and control frames. The replay captures taken through the socket and through the
   loop agree byte for byte, so chunked transport adds nothing to the frame bytes.
+- `node-progress-frames.sse` was re-recorded 2026-11-18 from a booted anagen-x dev node (no
+  Bearer key configured, the workflow API on port 4001) carrying the `node_progress`
+  serialization fix. No revision is recorded or gated for it
+  (`tasks/workflows/waves/1-foreground-run/arch-resolution.md`). The other files are still the
+  2026-11-19 capture above.
 
 | File | Captured from |
 | --- | --- |
 | `live-stream.sse` | one live connection: multi-line `data:` chunk, multi-line `thinking_delta`, live `node_dispatched`/`node_complete`/`workflow_engine_finished` |
 | `control-frames.sse` | `Keepalive.format(:ping)` and the max-duration `reconnect` event the loop writes |
-| `node-progress-frames.sse` | each `node_progress` step built by `AgentLoop.Boundary.ProgressBroadcaster` and framed by `SSE.Loop` |
+| `node-progress-frames.sse` | one live connection fed by `AgentLoop.Boundary.ProgressBroadcaster.broadcast_progress/3` (real `%AgentLoop.Core.NodeProgressEvent{}` per step), closed by the run's `workflow_engine_finished` frame |
 | `replay-completed.sse`, `replay-declared.sse`, `replay-failed.sse` | journal replay of a completed, a declared-output and a failed run |
 | `read-*.body` | `GET /api/workflows/:id` for each run state, and the `401` answer to a wrong Bearer key |
 | `stop-*.body` | `POST /api/workflows/:id/stop`, including the `404` `{"error":"Workflow not found"}` the API gives for an unknown id on any route |
@@ -35,8 +40,20 @@ capture was impossible, the row below says so and names the source the value cam
   broadcast payload), while a replayed lifecycle frame does not (`WorkflowLog.read/2` splits
   them out). The same event therefore arrives in two shapes on one client, and both are in
   this corpus.
-- `id:` is on every durable frame, live and replayed — including `node_progress`, which the
-  live loop frames as a lifecycle event. Chunks and thinking deltas carry none.
+- `id:` is on every durable frame, live and replayed. Chunks, thinking deltas and
+  `node_progress` carry none: they are ephemeral, never journaled, never replayed, and a
+  progress frame takes no lifecycle id, so the live id counter is untouched by it.
+- A `node_progress` frame's `data:` carries exactly `node_id`, `step` (the producer's step atom
+  as a string), `detail` (omitted when the producer sent none) and `ts` (the event's own
+  timestamp). `workflow_id`, `task_id`, `strategy` and `correlation_id` are not on this surface:
+  the stream is already scoped to one workflow. Which JSON keys sit in `detail` is the producer's
+  per-step choice (`SessionExecutor`), and the server canonicalizes that value for encoding only
+  (`Graph.Core.WorkflowEvent.serialize_value/1`) — it never reshapes it.
+- JSON object key order is the encoder's, so a re-recording is field-stable, not byte-stable.
+- The `steering_intervention` frame here is `SessionExecutor`'s turn-steering step, whose `detail`
+  is the rule that fired (`reason: repeated_tool_call`). The cap state `cap_reached` is only ever
+  *suppressed* — it goes to telemetry and never reaches a progress frame, so it is not a value
+  this surface produces.
 - `workflow_failed` carries `reason`, not `error`; `node_failed` carries both.
 - The failure reason crosses lines: it is embedded as JSON escapes on named frames, while raw
   text frames are framed one `data:` line per payload line (`data:` with no trailing space for
@@ -53,13 +70,6 @@ capture was impossible, the row below says so and names the source the value cam
 
 ## Still blocked on the unshipped server change
 
-- `node_progress` frames: at the capture revision the loop raises
-  `Protocol.UndefinedError` (no `Jason.Encoder` for `AgentLoop.Core.NodeProgressEvent`) and the
-  connection dies with zero frames delivered — reproduced while recording. The frames in
-  `node-progress-frames.sse` are therefore the producer's real field set and step payloads
-  (`Map.from_struct/1` of the received event, `SSE.Format.format_lifecycle_event/3`, the live
-  id counter) and assume the pending fix derives `Jason.Encoder` over those fields. Re-record
-  this file when the server slice lands.
 - `read-completed-declared.body`: the terminal `result` **value** is the ratified
   declared-output contract (anagen-x `tasks/workflow-terminal-result/spec.md` @ `63492f50`);
   its encoding is the server's own. At the capture revision a completed run answers the retired
@@ -75,5 +85,16 @@ Seed journals with `Graph.Core.WorkflowEvent` factories through
 each route over HTTP. For the ephemeral, progress and control frames, call
 `AnagenX.Web.WorkflowApi.SSE.Loop.run/4` with the loop's own writer, deliver chunks through the
 `StreamRegistry` lookup the executors use, and broadcast lifecycle and progress events with the
-producer's own factories. Pass explicit `ts:` values so captures stay byte-stable; the
-`node_progress` timestamp comes from the producer's clock and will not be.
+producer's own factories. Pass explicit `ts:` values so captures stay field-stable; a
+`node_progress` timestamp broadcast through `ProgressBroadcaster.broadcast_node_progress/2` comes
+from the producer's clock and will not be.
+
+For `node-progress-frames.sse` the recorded path was: `MIX_ENV=dev mix run` a node (which boots
+`AnagenX.TaskManager`, `AnagenX.PubSub`, the SSE registries and the API endpoint), register the
+run id with `AnagenX.TaskManager.create_task/4` so `/stream` answers before any journal line
+exists, open one `GET /api/workflows/:id/stream` connection and wait until the loop process is a
+subscriber of `workflows:<id>`, then broadcast each step with
+`ProgressBroadcaster.broadcast_progress/3` over `NodeProgressEvent.new/2` (explicit timestamp)
+and close the run with `Graph.Core.WorkflowEvent.workflow_engine_finished/4 |> to_map/1` minus
+`:event` — the message `WorkflowRunner.broadcast_event/3` sends. With no journaled line the
+connection's first lifecycle id is 1, and the progress frames before it left the counter free.
