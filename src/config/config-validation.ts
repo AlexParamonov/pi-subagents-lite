@@ -9,7 +9,7 @@
  */
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
-import type { RawConfig } from "./config-io.ts";
+import type { RawConfig, RawWorkflowEndpoint } from "./config-io.ts";
 import { PARENT_THINKING_CHOICE } from "../models/thinking-resolution.ts";
 
 /** One known key's runtime rule plus its human-readable expected shape. */
@@ -170,6 +170,11 @@ export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
     if (Object.keys(concurrency).length > 0) cleaned.concurrency = concurrency;
   }
 
+  if (raw.workflows !== undefined) {
+    const workflows = cleanWorkflowsSection(raw.workflows, filePath);
+    if (Object.keys(workflows).length > 0) cleaned.workflows = workflows;
+  }
+
   return cleaned;
 }
 
@@ -187,6 +192,53 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
     else warnIncompatible(filePath, `agent.${key}`, value, spec.expected);
   }
   return kept;
+}
+
+/**
+ * Keep valid workflow settings: named endpoints with a usable URL and an optional string key,
+ * plus a non-empty default endpoint name.
+ */
+function cleanWorkflowsSection(workflows: unknown, filePath: string): NonNullable<RawConfig["workflows"]> {
+  const kept: NonNullable<RawConfig["workflows"]> = {};
+  if (!isPlainObject(workflows)) {
+    warnIncompatible(filePath, "workflows", workflows, EXPECTED_OBJECT);
+    return kept;
+  }
+  const endpoints = cleanWorkflowEndpoints(workflows.endpoints, filePath);
+  if (endpoints) kept.endpoints = endpoints;
+  const name = workflows.defaultEndpoint;
+  if (name !== undefined) {
+    if (typeof name === "string" && name !== "") kept.defaultEndpoint = name;
+    else warnIncompatible(filePath, "workflows.defaultEndpoint", name, "non-empty string");
+  }
+  return kept;
+}
+
+function cleanWorkflowEndpoints(endpoints: unknown, filePath: string): Record<string, RawWorkflowEndpoint> | undefined {
+  if (endpoints === undefined) return undefined;
+  if (!isPlainObject(endpoints)) {
+    warnIncompatible(filePath, "workflows.endpoints", endpoints, EXPECTED_OBJECT);
+    return undefined;
+  }
+  const kept: Record<string, RawWorkflowEndpoint> = {};
+  for (const [name, entry] of Object.entries(endpoints)) {
+    const keyPath = `workflows.endpoints.${name}`;
+    if (!isPlainObject(entry)) {
+      warnIncompatible(filePath, keyPath, entry, EXPECTED_OBJECT);
+      continue;
+    }
+    if (typeof entry.url !== "string" || entry.url === "") {
+      warnIncompatible(filePath, `${keyPath}.url`, entry.url, "string");
+      continue;
+    }
+    const endpoint: RawWorkflowEndpoint = { url: entry.url };
+    if (entry.apiKey !== undefined) {
+      if (typeof entry.apiKey === "string") endpoint.apiKey = entry.apiKey;
+      else warnIncompatible(filePath, `${keyPath}.apiKey`, entry.apiKey, "string");
+    }
+    kept[name] = endpoint;
+  }
+  return Object.keys(kept).length > 0 ? kept : undefined;
 }
 
 /**

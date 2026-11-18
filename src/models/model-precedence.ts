@@ -95,6 +95,11 @@ export interface SubagentsConfig {
     providers?: Record<string, number>;
     models?: Record<string, number>;
   };
+  /** Workflow endpoints: named targets plus the default name, resolved per run (US-6). */
+  workflows: {
+    endpoints: Record<string, { url: string; apiKey?: string }>;
+    defaultEndpoint: string;
+  };
 }
 
 /**

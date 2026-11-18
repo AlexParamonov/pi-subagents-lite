@@ -5,9 +5,10 @@
  * Loaded at session_start; saved on every /agents menu mutation.
  *
  * Two layers (ADR-0008): the global file ~/.pi/agent/subagents-lite.json and a
- * trusted project's .pi/subagents-lite.json. The project layer may carry only
- * model and concurrency keys; the effective config merges project over global
- * over built-in defaults. Each file stores only its own keys; the merged
+ * trusted project's .pi/subagents-lite.json. The project layer may carry model
+ * keys, concurrency keys, and a Workflow endpoint's URL — never its key, its
+ * name, or the default endpoint (US-6). The effective config merges project over
+ * global over built-in defaults. Each file stores only its own keys; the merged
  * config is never written back. Unknown project keys are ignored with a
  * warning (and preserved for write-back); a malformed project file is never
  * overwritten. See docs/adr/0008-project-config-as-override-layer.md.
@@ -47,6 +48,12 @@ export const VALID_SYSTEM_PROMPT_MODES = new Set<string>(["replace", "inherit", 
 
 /** Default concurrency config — used for resets. */
 export const DEFAULT_CONCURRENCY: SubagentsConfig["concurrency"] = { default: 4 };
+
+/** The Workflow endpoint a user who configured nothing gets: a local anagen-x. */
+export const DEFAULT_WORKFLOW_ENDPOINT = "anagen-x.local";
+export const DEFAULT_WORKFLOW_ENDPOINTS: SubagentsConfig["workflows"]["endpoints"] = {
+  [DEFAULT_WORKFLOW_ENDPOINT]: { url: "http://localhost:4001" },
+};
 
 /** Default agent settings — merged into loaded config so callers get a complete shape. */
 export const DEFAULT_AGENT: SubagentsConfig["agent"] = {
@@ -110,10 +117,23 @@ export interface RawConcurrency {
   models?: Record<string, number>;
 }
 
+/** One named Workflow endpoint as stored: where to reach it, and the key to send if any. */
+export interface RawWorkflowEndpoint {
+  url: string;
+  apiKey?: string;
+}
+
+/** Raw workflows section as stored in a config file. */
+export interface RawWorkflows {
+  endpoints?: Record<string, RawWorkflowEndpoint>;
+  defaultEndpoint?: string;
+}
+
 /** Raw config file contents: only the keys that file carries. */
 export interface RawConfig {
   agent?: Record<string, unknown>;
   concurrency?: RawConcurrency;
+  workflows?: RawWorkflows;
 }
 
 /** Result of a load: the two raw layers plus the project layer's status. */
@@ -205,8 +225,9 @@ export function loadConfig(): SubagentsConfig {
 /**
  * Merge the two raw layers into one raw config: project keys win, absent keys
  * inherit from global. Project agent keys that are not model keys are dropped
- * (they were warned about at load). Concurrency merges per entry: default
- * wins, providers/models combine. Pure — no I/O.
+ * (they were warned about at load). Concurrency merges per entry: default wins,
+ * providers/models combine. Workflows merge per endpoint and only the URL may be
+ * overridden. Pure — no I/O.
  */
 export function mergeLayers(global: RawConfig, project: RawConfig | null): RawConfig {
   const agent = { ...global.agent };
@@ -215,7 +236,29 @@ export function mergeLayers(global: RawConfig, project: RawConfig | null): RawCo
       if (isProjectAllowedAgentKey(key)) agent[key] = value;
     }
   }
-  return { agent, concurrency: mergeRawConcurrency(global.concurrency, project?.concurrency) };
+  const merged: RawConfig = {
+    agent,
+    concurrency: mergeRawConcurrency(global.concurrency, project?.concurrency),
+  };
+  if (global.workflows || project?.workflows)
+    merged.workflows = mergeRawWorkflows(global.workflows, project?.workflows);
+  return merged;
+}
+
+/**
+ * Merge the workflow layers. A trusted project may override only the URL of an endpoint the
+ * global file names: endpoint names, keys and the default stay global (US-6, ADR-0008 as amended).
+ */
+function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflows | undefined): RawWorkflows {
+  const endpoints = { ...global?.endpoints };
+  for (const [name, entry] of Object.entries(project?.endpoints ?? {})) {
+    const inherited = endpoints[name];
+    if (!inherited) continue;
+    endpoints[name] = { ...inherited, url: entry.url };
+  }
+  const merged: RawWorkflows = { endpoints };
+  if (global?.defaultEndpoint !== undefined) merged.defaultEndpoint = global.defaultEndpoint;
+  return merged;
 }
 
 /**
@@ -253,6 +296,10 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
   return {
     agent,
     concurrency,
+    workflows: {
+      endpoints: { ...DEFAULT_WORKFLOW_ENDPOINTS, ...raw.workflows?.endpoints },
+      defaultEndpoint: raw.workflows?.defaultEndpoint || DEFAULT_WORKFLOW_ENDPOINT,
+    },
   };
 }
 
@@ -294,6 +341,10 @@ function readProjectRaw(projectPath: string): ProjectRead {
   }
   if (raw.concurrency?.models !== undefined && !isPlainObject(raw.concurrency.models)) {
     return malformedSection(projectPath, "concurrency.models");
+  }
+  if (raw.workflows !== undefined && !isPlainObject(raw.workflows)) return malformedSection(projectPath, "workflows");
+  if (raw.workflows?.endpoints !== undefined && !isPlainObject(raw.workflows.endpoints)) {
+    return malformedSection(projectPath, "workflows.endpoints");
   }
   // Per-value validation first so dropped keys warn once (type error), not
   // twice (type error plus unknown-key). Unknown keys are computed on the
