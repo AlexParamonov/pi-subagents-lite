@@ -843,6 +843,48 @@ describe("foreground workflow execution", () => {
     expect(streamRequests(remote)).toHaveLength(2);
     expect(readRequests(remote)).toHaveLength(2);
   });
+
+  it("shows one status line per node however often the journal is replayed", async () => {
+    // The next connection replays the journal from the start and carries what the run did after the
+    // first one ended: the call paints that connection's snapshot whole, never the lines it has
+    // seen so far.
+    const dispatch = lifecycle("node_dispatched", "analysis");
+    const remote = await server({
+      streams: [
+        `${dispatch}${textFrame("Visible progress")}${TERMINAL}`,
+        `${dispatch}${lifecycle("node_complete", "analysis")}${textFrame("Visible progress")}${TERMINAL}`,
+      ],
+      states: [readState({ status: "running" }), readState({ result: DEFAULT_RESULT })],
+    });
+    install(remote);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const views: string[] = [];
+    const state: Record<string, unknown> = {};
+
+    const result = await run(tool, args, undefined, (update) =>
+      views.push(resultView(tool, update, args, undefined, state)),
+    );
+    views.push(resultView(tool, result, args, undefined, state));
+
+    expect(streamRequests(remote)).toHaveLength(2);
+    expect(readRequests(remote)).toHaveLength(2);
+    // The node names no other row: the only row naming it is its one status line.
+    const statusRows = (view: string): string[] => view.split("\n").filter((row) => row.includes("analysis"));
+    for (const view of views) {
+      expect(statusRows(view), "the view shows one status line for the node").toHaveLength(1);
+      expect(view.split("Visible progress").length - 1, "the view shows the node's text once").toBe(1);
+    }
+    expect(statusRows(views[0]!)).toEqual(["  \u25b6 analysis dispatched"]);
+    expect(views.at(-1)!.split("\n")).toEqual([
+      "  \u2713 analysis completed",
+      "    Visible progress",
+      "  The declared output",
+    ]);
+    // The replayed lifecycle frame carries the node's stored result: it is not the run's answer.
+    expect(views.join("\n")).not.toContain(RECORDED.nodeResult);
+    expect(text(result)).toContain("The declared output");
+  });
 });
 
 describe("workflow run answered by recorded endpoint bytes", () => {

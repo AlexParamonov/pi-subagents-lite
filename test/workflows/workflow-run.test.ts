@@ -356,4 +356,36 @@ describe("the live view", () => {
   it("keeps a control sequence out of every line", () => {
     expect(progressLines([{ type: "text", node: null, text: "ok \u001b[?25l here" }])).toEqual(["  ok  here"]);
   });
+
+  it("paints each connection's whole view rather than the lines it has seen so far", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const shown = showPublished();
+
+    const pending = run(client, manager, { onUpdate: shown.publish });
+    const first = await started(client);
+    first.onUpdate([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
+    ]);
+    // The wait ends without an outcome, so the next one belongs to the same run and receives the
+    // journal replayed from the start, with the status this node reached since.
+    client.settleMonitor({ status: "degraded", error: "The state is unknown after 5 observations." });
+    await pending;
+    await vi.waitFor(() => expect(client.views).toHaveLength(2));
+    client.views[1]!.onUpdate([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
+    ]);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await vi.waitFor(() => expect(manager.listAgents()[0]!.lifecycle.status).toBe("completed"));
+
+    for (const view of shown.views) {
+      expect(
+        view.split("\n").filter((line) => line.includes("analysis")),
+        "the published view shows one status line for the node",
+      ).toHaveLength(1);
+    }
+    expect(shown.views.at(-1)).toBe("\u2713 analysis completed\n  Inspecting the repository\nThe declared output");
+  });
 });
