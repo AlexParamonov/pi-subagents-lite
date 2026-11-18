@@ -1028,12 +1028,16 @@ describe("workflow run answered by recorded endpoint bytes", () => {
     configure(ws, FAKED_URL);
     const capture = await start();
     const tool = executable(capture);
+    const firstRead = deferred<void>();
     const remote = fakeWorkflowFetch({
       stream: (push, close) => {
         push(RECONNECT);
         close();
       },
-      read: () => recordedRead("read-running"),
+      read: () => {
+        firstRead.resolve();
+        return recordedRead("read-running");
+      },
     });
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     vi.stubGlobal("fetch", remote.fetch);
@@ -1043,6 +1047,8 @@ describe("workflow run answered by recorded endpoint bytes", () => {
         settled = true;
         return finished;
       });
+      await beforeEnd(firstRead.promise, pending, "the first state read");
+      await vi.advanceTimersByTimeAsync(0);
       const opened = remote.requests().filter((request) => request.url.endsWith("/stream")).length;
       await pump(9, 10_000);
       const status = await run(executable(capture, "AgentStatus"), {});
@@ -1889,21 +1895,27 @@ describe("workflow monitoring degradation", () => {
     configure(ws, FAKED_URL);
     const capture = await start();
     const tool = executable(capture);
+    const firstRead = deferred<void>();
     const remote = fakeWorkflowFetch({
       stream: (push, close) => {
         push(RECONNECT);
         close();
       },
-      read: () => jsonResponse(503, { error: "Temporarily unavailable" }),
+      read: () => {
+        firstRead.resolve();
+        return jsonResponse(503, { error: "Temporarily unavailable" });
+      },
     });
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     vi.stubGlobal("fetch", remote.fetch);
     try {
       const pending = outcome(tool);
+      await beforeEnd(firstRead.promise, pending, "the first state read");
+      await vi.advanceTimersByTimeAsync(0);
 
-      // Stepped, not one jump: while the loop is awaiting the real fs/fetch promises of a round
-      // no timer is pending, so a single advance moves the whole budget past the run without
-      // firing anything. Five failed reads plus their capped backoff is what the total must clear.
+      // File discovery and fetch/body parsing are async work outside the fake clock. Wait for the
+      // first GET, drain its continuations, then step the retry timers; five failed reads plus the
+      // capped backoff is what the total must clear.
       await pump(16, 20_000);
       const result = await pending;
       const readsAtReturn = remote.reads();
