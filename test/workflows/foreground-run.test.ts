@@ -290,11 +290,18 @@ function selectionDescription(api: MockExtensionAPI): string {
   return property?.description ?? "";
 }
 
-function rendered(component: unknown): string {
-  if (typeof component !== "object" || component === null || !("render" in component)) return "";
-  if (typeof component.render !== "function") return "";
+/** The component's rows, without the trailing padding pi-tui pads every rendered line out to. */
+function renderedRows(component: unknown): string[] {
+  if (typeof component !== "object" || component === null || !("render" in component)) return [];
+  if (typeof component.render !== "function") return [];
   const lines: unknown = component.render(240);
-  return Array.isArray(lines) ? lines.filter((line): line is string => typeof line === "string").join("\n") : "";
+  return Array.isArray(lines)
+    ? lines.filter((line): line is string => typeof line === "string").map((line) => line.trimEnd())
+    : [];
+}
+
+function rendered(component: unknown): string {
+  return renderedRows(component).join("\n");
 }
 
 /** Any terminal control character: C0 except the layout's own newline and tab, plus DEL and C1. */
@@ -1872,7 +1879,7 @@ describe("workflow monitoring degradation", () => {
 });
 
 describe("workflow call display", () => {
-  it("shows the supplied call arguments without truncating the prompt", async () => {
+  it("renders the whole call as the supplied parameters, in schema order, with nothing added", async () => {
     write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
     const tool = workflowTool(await start());
     const prompt = "Investigate all relevant changes. ".repeat(5);
@@ -1880,12 +1887,14 @@ describe("workflow call display", () => {
       { workflow: "audit", prompt, path: "/srv/project", run_in_background: false },
       defaultTheme,
     );
-    const line = rendered(call);
 
-    expect(line).toContain("audit");
-    expect(line).toContain(prompt);
-    expect(line).toContain("/srv/project");
-    expect(line).toContain("false");
+    expect(renderedRows(call)).toEqual([
+      "Workflow audit",
+      // pi-tui pads each row to the full width, so the prompt's own trailing space is padding here.
+      `  prompt=${prompt.trimEnd()}`,
+      "  path=/srv/project",
+      "  run_in_background=false",
+    ]);
   });
 
   it("renders server text without terminal control sequences", async () => {
@@ -1944,11 +1953,8 @@ describe("workflow call display", () => {
   it("does not invent optional call arguments", async () => {
     write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
     const tool = workflowTool(await start());
-    const callLine = rendered(tool?.renderCall?.({ workflow: "audit", prompt: "Review changes" }, defaultTheme));
+    const call = tool?.renderCall?.({ workflow: "audit", prompt: "Review changes" }, defaultTheme);
 
-    expect(callLine).toContain("audit");
-    expect(callLine).toContain("Review changes");
-    expect(callLine).not.toContain("run_in_background");
-    expect(callLine).not.toContain(ws.project);
+    expect(renderedRows(call)).toEqual(["Workflow audit", "  prompt=Review changes"]);
   });
 });
