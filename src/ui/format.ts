@@ -195,8 +195,8 @@ export function getDisplayName(type: SubagentType, fallback = "Agent"): string {
  * config stands behind it, so the agent naming would call every run "Agent". Every other record
  * keeps the name the surface already used for it, passed in as `name`.
  */
-export function recordDisplayName(a: AgentRecord, name: string): string {
-  return a.workflow ? `${a.workflow.name} workflow` : name;
+export function recordDisplayName(record: AgentRecord, name: string): string {
+  return record.workflow ? `${record.workflow.name} workflow` : name;
 }
 
 /** Colored bullet prefix for agent names in pickers/menus.
