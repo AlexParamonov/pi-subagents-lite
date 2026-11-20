@@ -75,24 +75,27 @@ export class StreamView {
   private source: string | null = null;
 
   apply(frame: SseFrame): FrameEffect {
-    const payload = parseRecord(frame.data);
-    const named = frame.event !== null ? field(payload, "node_id") : undefined;
+    const { event, data } = frame;
+    // Only a named frame carries a payload to read fields from: a raw frame's `data:` is text to
+    // show, and a chunk that happens to look like JSON must not name a node.
+    const payload = event === null ? null : parseRecord(data);
+    const named = field(payload, "node_id");
     if (named !== undefined) this.source = named;
     const node = named ?? this.source;
     const lines = this.linesFor(node);
-    const lifecycle = frame.event !== null ? LIFECYCLE[frame.event] : undefined;
+    const lifecycle = event === null ? undefined : LIFECYCLE[event];
     const effect: FrameEffect = {
       lifecycle: lifecycle !== undefined,
-      reconcile: frame.event !== null && RECONCILE.has(frame.event),
+      reconcile: event !== null && RECONCILE.has(event),
       changed: false,
     };
 
-    if (lifecycle !== undefined && frame.event !== null) {
+    if (lifecycle !== undefined) {
       lines.status = lifecycle;
       effect.changed = true;
-    } else if (frame.event === null) {
-      effect.changed = lines.append("raw", frame.data);
-    } else if (frame.event === "node_progress") {
+    } else if (event === null) {
+      effect.changed = lines.append("raw", data);
+    } else if (event === "node_progress") {
       effect.changed = applyProgress(lines, payload);
     }
     return effect;
