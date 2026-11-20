@@ -6,6 +6,7 @@
  * never read. Every failure comes back as a domain result, never as an HTTP or transport exception.
  */
 
+import { errorMessage } from "../utils.ts";
 import { plainText } from "../ui/sanitize.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
@@ -100,10 +101,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     return report(`Workflow endpoint "${endpoint.name}" (${base}) ${what}: ${detail}`);
   }
 
+  /** Why a request or a read task died: the message, plus the cause's when the transport nested one. */
   function failureReason(reason: unknown): string {
-    if (!(reason instanceof Error)) return String(reason);
+    if (!(reason instanceof Error)) return errorMessage(reason);
     const cause = reason.cause;
-    return cause instanceof Error ? `${reason.message}: ${cause.message}` : reason.message;
+    return cause instanceof Error ? `${errorMessage(reason)}: ${errorMessage(cause)}` : errorMessage(reason);
   }
 
   async function answer(method: "GET" | "POST", path: string, body?: string, signal?: AbortSignal): Promise<Answer> {
@@ -206,7 +208,6 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 
     async monitor(workflowId, view): Promise<WorkflowOutcome> {
       let failedReads = 0;
-      let lastFailure = "the run was never read";
       while (!view.signal?.aborted) {
         await push(workflowId, view);
         if (view.signal?.aborted) return { status: "aborted" };
@@ -216,12 +217,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         if (run.kind === "rejected") return { status: "error", error: run.error };
         if (run.kind === "unreachable") {
           failedReads += 1;
-          lastFailure = run.error;
           if (failedReads >= FAILED_READS_BEFORE_DEGRADED) {
             return {
               status: "degraded",
               error: report(
-                `${lastFailure}. The state is unknown after ${failedReads} observations: the run is still remote, ` +
+                `${run.error}. The state is unknown after ${failedReads} observations: the run is still remote, ` +
                   "nothing was stopped, and observation was handed back.",
               ),
             };
