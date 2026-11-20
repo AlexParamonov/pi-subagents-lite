@@ -285,6 +285,24 @@ function rendered(component: unknown): string {
   return renderedRows(component).join("\n");
 }
 
+/**
+ * The live view of a run, painted the way the tool call paints it. Every snapshot of one run shares
+ * `args` and one render state: partial renders must reuse it, or the rows an earlier update
+ * delivered are not the rows the call shows.
+ */
+function liveViews(tool: ExecutableTool, args: Record<string, unknown>) {
+  const views: string[] = [];
+  const state: Record<string, unknown> = {};
+  return {
+    views,
+    paint(update: WorkflowResult): string {
+      const view = resultView(tool, update, args, { state });
+      views.push(view);
+      return view;
+    },
+  };
+}
+
 /** Any terminal control character: C0 except the layout's own newline and tab, plus DEL and C1. */
 function hasTerminalControl(text: string): boolean {
   for (let index = 0; index < text.length; index += 1) {
@@ -323,8 +341,7 @@ function resultView(
   tool: ExecutableTool,
   result: WorkflowResult,
   args: Record<string, unknown>,
-  invalidate: () => void = () => {},
-  state: Record<string, unknown> = {},
+  { invalidate = () => {}, state = {} }: { invalidate?: () => void; state?: Record<string, unknown> } = {},
 ): string {
   const options = { expanded: true, isPartial: true };
   const context = {
@@ -525,7 +542,7 @@ describe("foreground workflow execution", () => {
       const args = { workflow: "audit", prompt: "Review changes" };
 
       const result = await run(tool, args);
-      const settled = resultView(tool, result, args, undefined, {});
+      const settled = resultView(tool, result, args);
       const listed = await run(executable(capture, "AgentStatus"), {});
 
       expect(result.isError).toBe(true);
@@ -552,12 +569,9 @@ describe("foreground workflow execution", () => {
     install(remote);
     const tool = executable(await start());
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const pending = run(tool, args, undefined, (update) => {
-      views.push(resultView(tool, update, args, undefined, state));
-    });
+    const pending = run(tool, args, undefined, paint);
 
     // No text or activity frame is in this stream: every node name on screen came from a
     // lifecycle event, and each node carries its own state.
@@ -600,12 +614,9 @@ describe("foreground workflow execution", () => {
     vi.stubGlobal("fetch", remote.fetch);
     const tool = executable(await start());
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const pending = run(tool, args, undefined, (update) =>
-      views.push(resultView(tool, update, args, undefined, state)),
-    );
+    const pending = run(tool, args, undefined, paint);
     try {
       await viewMatching(views, (view) => view.includes("Reading the"), "the first chunk is on screen", pending);
       push(textFrame("changed files "));
@@ -648,12 +659,10 @@ describe("foreground workflow execution", () => {
     expect(tool.renderResult, "Workflow must render its live result").toBeTypeOf("function");
     const args = { workflow: "audit", prompt: "Review changes" };
     const live = deferred<string>();
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
     const pending = run(tool, args, undefined, (update) => {
-      const view = resultView(tool, update, args, undefined, state);
-      views.push(view);
+      const view = paint(update);
       if (view.includes("Visible progress") && view.includes("read")) live.resolve(view);
     });
     await beforeEnd(live.promise, pending, "its live update rendered");
@@ -684,12 +693,9 @@ describe("foreground workflow execution", () => {
     install(remote);
     const tool = executable(await start());
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const result = await run(tool, args, undefined, (update) =>
-      views.push(resultView(tool, update, args, undefined, state)),
-    );
+    const result = await run(tool, args, undefined, paint);
 
     expect(text(result)).toContain(RECORDED.answer);
     const all = views.join("\n");
@@ -725,12 +731,9 @@ describe("foreground workflow execution", () => {
     vi.stubGlobal("fetch", remote.fetch);
     const tool = executable(await start());
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const pending = run(tool, args, undefined, (update) =>
-      views.push(resultView(tool, update, args, undefined, state)),
-    );
+    const pending = run(tool, args, undefined, paint);
     try {
       // A CRLF-framed named event parsed: the node's status line is on screen.
       await viewMatching(views, (view) => view.includes("analysis"), "the CRLF-framed dispatch rendered", pending);
@@ -766,12 +769,9 @@ describe("foreground workflow execution", () => {
     const tool = executable(await start());
     expect(tool.renderResult, "Workflow must render its live result").toBeTypeOf("function");
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const result = await run(tool, args, undefined, (update) =>
-      views.push(resultView(tool, update, args, undefined, state)),
-    );
+    const result = await run(tool, args, undefined, paint);
 
     expect(text(result)).toContain("Final answer");
     expect(views.some((view) => view.includes("old-only text"))).toBe(true);
@@ -850,13 +850,10 @@ describe("foreground workflow execution", () => {
     install(remote);
     const tool = executable(await start());
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const result = await run(tool, args, undefined, (update) =>
-      views.push(resultView(tool, update, args, undefined, state)),
-    );
-    views.push(resultView(tool, result, args, undefined, state));
+    const result = await run(tool, args, undefined, paint);
+    paint(result);
 
     expect(streamRequests(remote)).toHaveLength(2);
     expect(readRequests(remote)).toHaveLength(2);
@@ -1567,15 +1564,12 @@ describe("workflow cancellation and shutdown", () => {
     let lastUpdate: WorkflowResult | undefined;
     function paint(update: WorkflowResult): string {
       lastUpdate = update;
-      const view = resultView(
-        tool,
-        update,
-        args,
-        () => {
+      const view = resultView(tool, update, args, {
+        state,
+        invalidate: () => {
           if (lastUpdate) paint(lastUpdate);
         },
-        state,
-      );
+      });
       if (interruptRequested && /stopped/i.test(view)) invalidated.resolve(view);
       return view;
     }
@@ -1683,14 +1677,13 @@ describe("workflow cancellation and shutdown", () => {
     const capture = await start(true, notices);
     const tool = executable(capture);
     const args = { workflow: "audit", prompt: "Review changes" };
-    const state: Record<string, unknown> = {};
-    const views: string[] = [];
+    const { views, paint } = liveViews(tool, args);
     const shown = deferred<void>();
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     vi.stubGlobal("fetch", remote.fetch);
     try {
       const pending = run(tool, args, undefined, (update) => {
-        views.push(resultView(tool, update, args, undefined, state));
+        paint(update);
         if (views.length === 1) shown.resolve();
       }).then(
         (result) => text(result),
@@ -1839,7 +1832,7 @@ describe("workflow monitoring degradation", () => {
     const tool = executable(capture);
     expect(tool.renderResult, "Workflow must render its live result").toBeTypeOf("function");
     const args = { workflow: "audit", prompt: "Review changes" };
-    const state: Record<string, unknown> = {};
+    const { paint } = liveViews(tool, args);
     const dispatched = deferred<void>();
     let push: (frame: string) => void = () => {
       throw new Error("workflow stream did not open");
@@ -1861,7 +1854,7 @@ describe("workflow monitoring degradation", () => {
     vi.stubGlobal("fetch", remote.fetch);
     try {
       const pending = run(tool, args, undefined, (update) => {
-        if (resultView(tool, update, args, undefined, state).includes("analysis")) dispatched.resolve();
+        if (paint(update).includes("analysis")) dispatched.resolve();
       });
       await beforeEnd(dispatched.promise, pending, "node dispatch rendered");
 
@@ -1960,13 +1953,10 @@ describe("workflow call display", () => {
     const tool = executable(await start());
     expect(tool.renderResult, "Workflow must render its result").toBeTypeOf("function");
     const args = { workflow: "audit", prompt: "Review changes" };
-    const views: string[] = [];
-    const state: Record<string, unknown> = {};
+    const { views, paint } = liveViews(tool, args);
 
-    const result = await run(tool, args, undefined, (update) =>
-      views.push(resultView(tool, update, args, undefined, state)),
-    );
-    views.push(resultView(tool, result, args, undefined, state));
+    const result = await run(tool, args, undefined, paint);
+    paint(result);
 
     expect(views.some((view) => view.includes("Visible progress"))).toBe(true);
     expect(views.some((view) => view.includes("Visible answer"))).toBe(true);
@@ -1986,7 +1976,7 @@ describe("workflow call display", () => {
     const args = { workflow: "audit", prompt: "Review changes" };
 
     const result = await run(tool, args);
-    const view = resultView(tool, result, args, undefined, {});
+    const view = resultView(tool, result, args);
 
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("keep this part");
