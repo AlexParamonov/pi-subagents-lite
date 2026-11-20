@@ -152,9 +152,10 @@ async function server(options?: EndpointOptions): Promise<TestEndpoint> {
   return instance;
 }
 
-function install(remote: TestEndpoint): void {
+/** The default workflow file on disk plus the config that sends a run to this endpoint. */
+function install(remote: TestEndpoint, apiKey?: string): void {
   write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-  configure(ws, remote.url);
+  configure(ws, remote.url, apiKey);
 }
 
 function text(result: WorkflowResult): string {
@@ -345,8 +346,7 @@ function resultView(
 describe("foreground workflow execution", () => {
   it("returns the server's terminal answer for the selected definition", async () => {
     const remote = await server();
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    configure(ws, remote.url, "example-key");
+    install(remote, "example-key");
     const tool = executable(await start());
 
     const result = await run(tool, { workflow: "audit", prompt: "Review the repository" });
@@ -1078,8 +1078,7 @@ describe("workflow run answered by recorded endpoint bytes", () => {
     const key = "example-private-key";
     const logs = captureConsole();
     const remote = await server({ reads: [recordedResponse("read-unauthorized")] });
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    configure(ws, remote.url, key);
+    install(remote, key);
     const tool = executable(await start());
 
     const result = await outcome(tool);
@@ -1208,8 +1207,7 @@ describe("workflow selection", () => {
 
   it("discovers a workflow added after the session started", async () => {
     const remote = await server();
-    configure(ws, remote.url);
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    install(remote);
     const capture = await start();
     const tool = executable(capture);
     write(
@@ -1322,8 +1320,7 @@ describe("workflow endpoint and input errors", () => {
     it(`applies a project URL override only when trusted (${trusted})`, async () => {
       const globalEndpoint = await server();
       const projectEndpoint = await server();
-      write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-      configure(ws, globalEndpoint.url, "global-key");
+      install(globalEndpoint, "global-key");
       write(
         join(ws.project, ".pi", "subagents-lite.json"),
         JSON.stringify({ workflows: { endpoints: { local: { url: projectEndpoint.url, apiKey: "project-key" } } } }),
@@ -1342,8 +1339,7 @@ describe("workflow endpoint and input errors", () => {
 
   it("lists available workflow names after a miss", async () => {
     const remote = await server();
-    configure(ws, remote.url);
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    install(remote);
     write(join(ws.agentDir, "workflows", "release.yml"), workflow("release-review", "Review a release"));
     const tool = executable(await start());
 
@@ -1427,8 +1423,7 @@ describe("workflow endpoint and input errors", () => {
       const remote = await server({
         rejection: { status, body: errorBody(`Remote validation failed; credential ${key}`) },
       });
-      write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-      configure(ws, remote.url, key);
+      install(remote, key);
       const tool = executable(await start());
 
       const result = await outcome(tool);
@@ -1486,8 +1481,7 @@ describe("workflow endpoint and input errors", () => {
     const logs = captureConsole();
     const other = await server();
     const remote = await server({ redirect: `${other.url}/api/workflows` });
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    configure(ws, remote.url, "redirect-key");
+    install(remote, "redirect-key");
     const tool = executable(await start());
 
     const result = await outcome(tool);
@@ -1986,8 +1980,6 @@ describe("workflow call display", () => {
     const remote = await server({
       rejection: { status: 422, body: errorBody(`Remote validation failed ${sequence} keep this part`) },
     });
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    configure(ws, remote.url);
     install(remote);
     const tool = executable(await start());
     expect(tool.renderResult, "Workflow must render its result").toBeTypeOf("function");
