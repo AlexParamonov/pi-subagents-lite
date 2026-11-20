@@ -131,13 +131,15 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     path: string,
     body?: string,
     signal?: AbortSignal,
-    deadlineMs = REQUEST_DEADLINE_MS,
   ): Promise<
     | { ok: true; response: Response; finish: () => void; close: () => void }
     | { ok: false; kind: "cancelled" | "transport"; reason: string }
   > {
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(new Error(`timed out after ${deadlineMs}ms`)), deadlineMs);
+    const deadline = setTimeout(
+      () => controller.abort(new Error(`timed out after ${REQUEST_DEADLINE_MS}ms`)),
+      REQUEST_DEADLINE_MS,
+    );
     const abort = () => controller.abort(new Error("cancelled"));
     signal?.addEventListener("abort", abort, { once: true });
     let established = false;
