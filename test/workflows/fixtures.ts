@@ -525,6 +525,8 @@ export interface FetchFakeOptions {
   stream(push: (frame: string) => void, close: () => void): void;
   /** Answer `GET /api/workflows/:id`; called with the 1-based read number. */
   read(reads: number): Response;
+  /** Answer `POST /api/workflows/:id/stop`; the acknowledged stop unless the test says otherwise. */
+  stop?(): Response;
 }
 
 export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
@@ -556,6 +558,9 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
       reads += 1;
       return options.read(reads);
     }
+    if (method === "POST" && url.endsWith(`/api/workflows/${run}/stop`)) {
+      return options.stop?.() ?? jsonResponse(200, stopAck("stopped", run));
+    }
     throw new Error(`Unexpected workflow test request: ${method} ${url}`);
   };
   return { fetch: fetchFake, requests: () => [...requests], reads: () => reads };
@@ -578,7 +583,7 @@ export function readState(overrides: Partial<ReadState> = {}): ReadState {
 }
 
 /** The stop acknowledgement: the captured ack answers with the run id next to the status. */
-function stopAck(status: string, run: string): Record<string, unknown> {
+export function stopAck(status: string, run: string): Record<string, unknown> {
   return { status, workflow_id: run };
 }
 
