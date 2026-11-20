@@ -159,6 +159,17 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * The endpoint table as data: assignment writes through a `__proto__` setter and `in` finds
+ * `Object.prototype`, so a configured endpoint name is built from entries and read with `Object.hasOwn`.
+ * Shared by validation, the layer merge and anything else that keys a table by an endpoint name.
+ */
+export function workflowEndpointTable(
+  entries: Iterable<[string, RawWorkflowEndpoint]>,
+): Record<string, RawWorkflowEndpoint> {
+  return Object.fromEntries(entries);
+}
+
 /** Expected-shape label for JSON-object sections. */
 const EXPECTED_OBJECT = "object";
 
@@ -275,12 +286,12 @@ function cleanWorkflowEndpoints(
     warnIncompatible(filePath, "workflows.endpoints", endpoints, EXPECTED_OBJECT);
     return undefined;
   }
-  const kept: Record<string, RawWorkflowEndpoint> = {};
+  const kept: Array<[string, RawWorkflowEndpoint]> = [];
   for (const [name, entry] of Object.entries(endpoints)) {
     const keyPath = `workflows.endpoints.${name}`;
     if (!isPlainObject(entry)) {
       warnUnusableForLayer(filePath, keyPath, entry, EXPECTED_OBJECT, layer);
-      kept[name] = {};
+      kept.push([name, {}]);
       continue;
     }
     const endpoint: RawWorkflowEndpoint = {};
@@ -296,9 +307,9 @@ function cleanWorkflowEndpoints(
       if (typeof entry.apiKey === "string") endpoint.apiKey = entry.apiKey;
       else warnIncompatible(filePath, `${keyPath}.apiKey`, entry.apiKey, "string");
     }
-    kept[name] = endpoint;
+    kept.push([name, endpoint]);
   }
-  return Object.keys(kept).length > 0 ? kept : undefined;
+  return kept.length > 0 ? workflowEndpointTable(kept) : undefined;
 }
 
 /**

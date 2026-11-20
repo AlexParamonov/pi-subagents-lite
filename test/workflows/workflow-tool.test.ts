@@ -19,8 +19,9 @@ import {
 import { defaultTheme } from "../mock-utils.js";
 
 /** A graph-schema Workflow file, small enough to read in a test failure. */
-function workflowFile(name: string, description: string): string {
-  return `name: ${name}\ndescription: ${description}\nnodes:\n  - id: analysis\nedges: []\nentry_node: analysis\n`;
+function workflowFile(name: string, description: string, endpoint?: string): string {
+  const target = endpoint ? `endpoint: ${endpoint}\n` : "";
+  return `name: ${name}\ndescription: ${description}\n${target}nodes:\n  - id: analysis\nedges: []\nentry_node: analysis\n`;
 }
 
 interface ExecutableTool extends RegisteredTool {
@@ -182,6 +183,19 @@ describe("Workflow endpoint", () => {
 
     expect(refusal).toBe("");
     expect(sent).toEqual([{ url: "http://127.0.0.1:1/api/workflows", authorization: "Bearer global-key" }]);
+  });
+
+  // The name a project invented is not an endpoint the global file named, and `Object.prototype` carries
+  // `constructor`, so neither the merge nor the resolver may treat it as one (ADR-0008, US-34).
+  it("refuses a Workflow file whose endpoint name only Object.prototype carries, sending nothing", async () => {
+    endpointAt("http://127.0.0.1:1");
+    projectEndpoints({ constructor: { url: "http://127.0.0.1:2" } });
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository", "constructor") });
+
+    const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
+
+    expect(refusal).toContain('"constructor" is not configured');
+    expect(sent).toEqual([]);
   });
 
   it("refuses the unusable URL a trusted project's entry declares instead of inheriting the global one", async () => {

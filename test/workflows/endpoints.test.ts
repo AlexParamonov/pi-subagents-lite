@@ -53,6 +53,34 @@ describe("resolveWorkflowEndpoint", () => {
     expect((resolution as { error: string }).error).toContain("release");
   });
 
+  // An endpoint name is data. `Object.prototype` carries `constructor`, `__proto__` and `toString`, so
+  // reading the table by name alone finds an entry for a name no file ever configured (US-34: the name
+  // the operator is told about must be the one that is really configured).
+  for (const name of ["constructor", "__proto__", "toString"]) {
+    it(`refuses the name ${name} that only Object.prototype carries, as not configured`, () => {
+      const resolution = resolveWorkflowEndpoint(CONFIGURED, name);
+
+      expect(resolution.ok).toBe(false);
+      expect((resolution as { error: string }).error).toContain(`"${name}" is not configured`);
+      expect((resolution as { error: string }).error).not.toContain("declares no usable URL");
+    });
+  }
+
+  it("resolves an endpoint whose own name is __proto__", () => {
+    const table = { endpoints: {}, defaultEndpoint: "__proto__" } as SubagentsConfig["workflows"];
+    Object.defineProperty(table.endpoints, "__proto__", {
+      value: { url: "http://proto.invalid:4001" },
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+
+    expect(resolveWorkflowEndpoint(table)).toEqual({
+      ok: true,
+      endpoint: { name: "__proto__", url: "http://proto.invalid:4001" },
+    });
+  });
+
   it("names an endpoint key that is not a name at all", () => {
     const resolution = resolveWorkflowEndpoint(CONFIGURED, 42);
 

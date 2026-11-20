@@ -4,7 +4,8 @@
  * The Workflow file's own `endpoint` key wins, otherwise the configured default. An unknown name, an
  * entry that declares no usable URL and a URL that is not http(s) each refuse the call and name the
  * offender: the config layers keep what was written, and only here is usability decided, so a
- * configured target is never answered by another endpoint.
+ * configured target is never answered by another endpoint. A name is looked up by own key only, so a
+ * name `Object.prototype` carries (`constructor`, `__proto__`) is an unconfigured name, not an entry.
  */
 
 import type { SubagentsConfig } from "../models/model-precedence.ts";
@@ -27,7 +28,7 @@ export function resolveWorkflowEndpoint(
   const requested = defaulted ? workflows.defaultEndpoint : fileEndpoint;
   if (typeof requested !== "string") return refused(`${shown(requested)} is not an endpoint name`, configured);
 
-  const entry = workflows.endpoints[requested];
+  const entry = Object.hasOwn(workflows.endpoints, requested) ? workflows.endpoints[requested] : undefined;
   if (!entry) {
     return refused(
       `${shown(requested)} ${defaulted ? "is the configured default but is not configured" : "is not configured"}`,

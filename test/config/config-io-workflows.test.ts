@@ -48,6 +48,15 @@ function writeProject(config: unknown): void {
   writeFileSync(join(projectDir, "subagents-lite.json"), JSON.stringify(config));
 }
 
+/** File bytes as the operator writes them - what a JS object literal cannot carry as data (`__proto__`). */
+function writeGlobalRaw(text: string): void {
+  writeFileSync(GLOBAL_CONFIG_PATH, text);
+}
+
+function writeProjectRaw(text: string): void {
+  writeFileSync(join(projectDir, "subagents-lite.json"), text);
+}
+
 /** Load one config, keeping what it warned about and the layer the store would run on. */
 function warnedLoad(io: ConfigIO): { warnings: string; merged: RawConfig } {
   let layers: ReturnType<ConfigIO["load"]> | undefined;
@@ -196,6 +205,56 @@ describe("validateProjectLayer — what a project layer may decide", () => {
 
     expect(warnings).toContain("workflows.defaultEndpoint");
     expect(warnings).not.toContain("another endpoint");
+  });
+});
+
+// An endpoint name is data: `Object.prototype` already carries `constructor`, `toString` and
+// `__proto__`, so neither membership nor assignment may be decided by the prototype chain - otherwise a
+// project names an endpoint the global file never named, and the tool posts to the URL it invented.
+describe("endpoint names are data, not prototype keys", () => {
+  it("reads an endpoint the global file names __proto__ as the configured target it is", () => {
+    writeGlobalRaw(
+      '{"workflows":{"endpoints":{"__proto__":{"url":"http://proto.invalid:4001"}},"defaultEndpoint":"__proto__"}}',
+    );
+
+    const { merged } = warnedLoad(createConfigIO());
+
+    expect(Object.keys(merged.workflows!.endpoints!)).toContain("__proto__");
+    expect(resolveWorkflowEndpoint(mergeDefaults(merged).workflows)).toEqual({
+      ok: true,
+      endpoint: { name: "__proto__", url: "http://proto.invalid:4001" },
+    });
+  });
+
+  it("applies a project url under the name __proto__ instead of setting the table's prototype", () => {
+    writeGlobalRaw('{"workflows":{"endpoints":{"__proto__":{"url":"http://proto.invalid:4001","apiKey":"k"}}}}');
+    writeProjectRaw('{"workflows":{"endpoints":{"__proto__":{"url":"http://project.invalid:4001"}}}}');
+
+    const { merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(Object.keys(merged.workflows!.endpoints!)).toContain("__proto__");
+    expect(merged.workflows!.endpoints!["__proto__"]).toEqual({ url: "http://project.invalid:4001", apiKey: "k" });
+  });
+
+  it("ignores an endpoint name the project invented that Object.prototype also carries", () => {
+    writeGlobal({ workflows: { endpoints: { release: { url: "https://release.invalid:4001" } } } });
+    writeProject({ workflows: { endpoints: { constructor: { url: "http://project.invalid:4001" } } } });
+
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toContain("workflows.endpoints.constructor");
+    expect(Object.hasOwn(merged.workflows!.endpoints!, "constructor")).toBe(false);
+  });
+
+  it("refuses a run naming an endpoint only Object.prototype carries, as not configured", () => {
+    writeGlobal({ workflows: { endpoints: { release: { url: "https://release.invalid:4001" } } } });
+    writeProject({ workflows: { endpoints: { constructor: { url: "http://project.invalid:4001" } } } });
+
+    const { merged } = warnedLoad(createConfigIO(projectDir));
+    const resolution = resolveWorkflowEndpoint(mergeDefaults(merged).workflows, "constructor");
+
+    expect(resolution.ok).toBe(false);
+    expect((resolution as { error: string }).error).toContain('"constructor" is not configured');
   });
 });
 

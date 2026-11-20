@@ -19,7 +19,7 @@ import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { SubagentsConfig } from "../models/model-precedence.ts";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.ts";
-import { isPlainObject, validateProjectLayer, validateRawLayer } from "./config-validation.ts";
+import { isPlainObject, validateProjectLayer, validateRawLayer, workflowEndpointTable } from "./config-validation.ts";
 
 /** File name of the config in both the global agent dir and a project's .pi dir. */
 const CONFIG_FILE_NAME = "subagents-lite.json";
@@ -203,7 +203,7 @@ function projectWorkflowOverrides(
   const ignored: string[] = [];
   for (const [name, entry] of Object.entries(project?.endpoints ?? {})) {
     const keyPath = `workflows.endpoints.${name}`;
-    if (!(name in (global?.endpoints ?? {}))) {
+    if (!global?.endpoints || !Object.hasOwn(global.endpoints, name)) {
       ignored.push(keyPath);
       continue;
     }
@@ -320,11 +320,14 @@ export function mergeLayers(global: RawConfig, project: RawConfig | null): RawCo
  * What it drops is named by `ignoredProjectKeys`, which warns about it once at load.
  */
 function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflows | undefined): RawWorkflows {
-  const endpoints = { ...global?.endpoints };
-  for (const { name, url } of projectWorkflowOverrides(global, project).urls) {
-    endpoints[name] = { ...endpoints[name], url };
-  }
-  const merged: RawWorkflows = { endpoints };
+  const { urls } = projectWorkflowOverrides(global, project);
+  const overridden = urls.map(({ name, url }): [string, RawWorkflowEndpoint] => [
+    name,
+    { ...global?.endpoints?.[name], url },
+  ]);
+  const merged: RawWorkflows = {
+    endpoints: workflowEndpointTable([...Object.entries(global?.endpoints ?? {}), ...overridden]),
+  };
   if (global?.defaultEndpoint !== undefined) merged.defaultEndpoint = global.defaultEndpoint;
   return merged;
 }
