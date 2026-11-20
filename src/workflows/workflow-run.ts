@@ -11,7 +11,7 @@
 import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "../agents/agent-manager.ts";
 import type { AgentRecord, WorkflowRunInfo, WorkflowSettlementStatus } from "../types.ts";
-import { plainText } from "../ui/sanitize.ts";
+import { createPublicText } from "./public-text.ts";
 import { formatTerminalResult } from "./terminal-result.ts";
 import { progressLines } from "./stream-view.ts";
 import type { WorkflowDisplayItem } from "./stream-view.ts";
@@ -49,6 +49,9 @@ export async function runWorkflowForeground(
   ports: WorkflowRunPorts,
 ): Promise<AgentToolResult<Record<string, unknown>>> {
   const { manager, client } = ports;
+  // Every string this run publishes - notes, progress lines, settlement text - crosses the one
+  // boundary that makes endpoint text safe (US-35).
+  const published = createPublicText(args.endpoint.apiKey);
 
   if (args.signal?.aborted) {
     return failure("The workflow run was cancelled before it was sent; nothing reached the endpoint.");
@@ -64,7 +67,7 @@ export async function runWorkflowForeground(
   let handBack!: (text: string) => void;
   // A hand-back returns the call while the record stays running; the gate is the settlement.
   const handed = new Promise<string>((resolve) => {
-    handBack = resolve;
+    handBack = (note) => resolve(published.shown(note));
   });
 
   const created = await client.create({
@@ -122,7 +125,7 @@ export async function runWorkflowForeground(
           return;
         }
         if (!ack.ok) {
-          handBack(plainText(`Stop failed: ${ack.error} The run's state is unknown; it is still remote.`));
+          handBack(`Stop failed: ${ack.error} The run's state is unknown; it is still remote.`);
         }
         observation = new AbortController();
         continue;
@@ -151,16 +154,17 @@ export async function runWorkflowForeground(
     if (settled) return;
     settled = true;
     if (!record) return;
-    manager.settleWorkflowRun(record, status, text);
+    const outcome = published.shown(text);
+    manager.settleWorkflowRun(record, status, outcome);
     // The settled view keeps the partial one: what this connection delivered is not undone by the
     // outcome, and the row is repainted through the registered invalidation.
-    publish(text);
+    publish(outcome);
   }
 
   /** A snapshot that arrives after this call's own outcome belongs to a wait nobody is reading. */
   function publishProgress(items: readonly WorkflowDisplayItem[]): void {
     if (settled) return;
-    lines = progressLines(items);
+    lines = progressLines(items).map((line) => published.shown(line));
     publish();
   }
 
@@ -169,6 +173,11 @@ export async function runWorkflowForeground(
       content: outcomeText === undefined ? [] : [{ type: "text", text: outcomeText }],
       details: { agentId, progress: lines },
     });
+  }
+
+  /** A run that never became a record: the endpoint refused it, or the call was already cancelled. */
+  function failure(text: string): AgentToolResult<Record<string, unknown>> {
+    return { content: [{ type: "text", text: published.shown(text) }], details: {}, isError: true };
   }
 }
 
@@ -205,10 +214,5 @@ function settlementOf(outcome: Exclude<WorkflowOutcome, { status: "degraded" }>)
 }
 
 function reasonOf(error: string | null): string {
-  return error ? plainText(error) : "the endpoint gave no reason";
-}
-
-/** A run that never became a record: the endpoint refused it, or the call was already cancelled. */
-function failure(text: string): AgentToolResult<Record<string, unknown>> {
-  return { content: [{ type: "text", text: plainText(text) }], details: {}, isError: true };
+  return error ?? "the endpoint gave no reason";
 }

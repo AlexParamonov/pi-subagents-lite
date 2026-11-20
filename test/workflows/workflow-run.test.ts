@@ -19,6 +19,8 @@ import type {
 import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
 
 const ENDPOINT: WorkflowEndpoint = { name: "local", url: "http://127.0.0.1:4100" };
+const KEY = "sekrit-endpoint-value";
+const WITH_KEY: WorkflowEndpoint = { ...ENDPOINT, apiKey: KEY };
 const REMOTE_ID = "wf-remote-1";
 const DECLARED = { text: "The declared output", termination_reason: "final_answer", usage: {} };
 
@@ -191,6 +193,74 @@ describe("a foreground run's record and result", () => {
     expect(record.lifecycle.status).toBe("error");
     expect(record.error).toBe("Workflow run failed: validator rejected the diff");
     expect(record.result).toBeUndefined();
+  });
+
+  it("keeps the endpoint's key out of the reason a failed run answers and records", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager, { endpoint: WITH_KEY });
+    await started(client);
+    client.settleMonitor({ status: "failed", error: `Node died holding ${KEY}` });
+
+    const result = await pending;
+
+    expect(text(result)).toContain("Node died holding [redacted]");
+    expect(text(result)).not.toContain(KEY);
+    expect(manager.listAgents()[0].error).not.toContain(KEY);
+  });
+
+  it("keeps the endpoint's key out of the terminal result it answers and records", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager, { endpoint: WITH_KEY });
+    await started(client);
+    client.settleMonitor({
+      status: "completed",
+      result: { text: `echo of ${KEY}`, termination_reason: "final_answer" },
+    });
+
+    const result = await pending;
+
+    expect(text(result)).toBe("echo of [redacted]");
+    expect(manager.listAgents()[0].result).toBe("echo of [redacted]");
+  });
+
+  it("keeps the endpoint's key out of the progress lines it publishes", async () => {
+    const client = fakeClient();
+    const shown = showPublished();
+
+    const pending = run(client, new AgentManager(), { endpoint: WITH_KEY, onUpdate: shown.publish });
+    const view = await started(client);
+    view.onUpdate([{ type: "text", node: "analysis", text: `echo of ${KEY}` }]);
+    client.settleMonitor({ status: "completed", result: null });
+
+    await pending;
+
+    expect(shown.views.join("\n")).toContain("echo of [redacted]");
+    expect(shown.views.join("\n")).not.toContain(KEY);
+  });
+
+  it("keeps the endpoint's key out of the note an unreadable read hands back", async () => {
+    const client = fakeClient();
+
+    const pending = run(client, new AgentManager(), { endpoint: WITH_KEY });
+    await started(client);
+    client.settleMonitor({ status: "degraded", error: `Read refused while holding ${KEY}` });
+
+    const result = await pending;
+
+    expect(text(result)).toBe("Read refused while holding [redacted]");
+  });
+
+  it("keeps the endpoint's key out of the refusal a rejected create answers with", async () => {
+    const client = fakeClient({ create: { ok: false, error: `Rejected: ${KEY} is not allowed` } });
+
+    const result = await run(client, new AgentManager(), { endpoint: WITH_KEY });
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe("Rejected: [redacted] is not allowed");
   });
 
   it("settles an interrupted run as an error record keeping the endpoint's reason", async () => {

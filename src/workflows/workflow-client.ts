@@ -6,8 +6,8 @@
  * never read. Every failure comes back as a domain result, never as an HTTP or transport exception.
  */
 
-import { errorMessage, truncateWithEllipsis } from "../utils.ts";
-import { plainText } from "../ui/sanitize.ts";
+import { errorMessage } from "../utils.ts";
+import { createPublicText } from "./public-text.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
 import { StreamView } from "./stream-view.ts";
@@ -37,9 +37,6 @@ const READ_BACKOFF_START_MS = 2_000;
 const READ_BACKOFF_CAP_MS = 30_000;
 /** Failed reads after which a foreground wait is handed back as degraded. */
 const FAILED_READS_BEFORE_DEGRADED = 5;
-/** Longest server text a caller is shown; a proxy's HTML page is not a diagnosis. */
-const MAX_REPORTED_TEXT = 300;
-const truncate = (text: string): string => truncateWithEllipsis(text, MAX_REPORTED_TEXT);
 
 export interface WorkflowClientOptions {
   fetch?: typeof fetch;
@@ -89,18 +86,15 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   const transport = options.fetch ?? fetch;
   const key = endpoint.apiKey;
   const base = endpoint.url.replace(/\/+$/, "");
+  const published = createPublicText(key);
 
   function url(path: string): string {
     return `${base}${path}`;
   }
 
-  /** Server- or transport-supplied text, made safe to print and free of the endpoint's key. */
-  function report(text: string): string {
-    return plainText(key ? text.split(key).join("[redacted]") : text).trim();
-  }
-
+  /** A failure named by the endpoint it happened against, in text safe to publish. */
   function fault(what: string, detail: string): string {
-    return report(`Workflow endpoint "${endpoint.name}" (${base}) ${what}: ${detail}`);
+    return published.shown(`Workflow endpoint "${endpoint.name}" (${base}) ${what}: ${detail}`).trim();
   }
 
   /** Why a request or a read task died: the message, plus the cause's when the transport nested one. */
@@ -178,14 +172,14 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 
   /** The endpoint's own words for a rejection, or the text it answered with. */
   function rejection(body: string): string {
-    const text = truncate(parseError(body) ?? body);
-    return text === "" ? "no reason given" : text;
+    const stated = published.bounded(parseError(body) ?? body);
+    return stated === "" ? "no reason given" : stated;
   }
 
   return {
     async create(request): Promise<WorkflowCreate> {
       const invalid = promptProblem(request.prompt);
-      if (invalid) return { ok: false, error: report(`Workflow run was not sent: ${invalid}`) };
+      if (invalid) return { ok: false, error: published.shown(`Workflow run was not sent: ${invalid}`) };
 
       const sent = await answer("POST", "/api/workflows", JSON.stringify(runBody(request)));
       if (!sent.ok) {
@@ -223,7 +217,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
           if (failedReads >= FAILED_READS_BEFORE_DEGRADED) {
             return {
               status: "degraded",
-              error: report(
+              error: published.shown(
                 `${run.error}. The state is unknown after ${failedReads} observations: the run is still remote, ` +
                   "nothing was stopped, and observation was handed back.",
               ),
@@ -254,7 +248,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       if (!status) {
         return {
           ok: false,
-          error: fault("answered the stop request unreadably", `no stop status in ${truncate(sent.body)}`),
+          error: fault("answered the stop request unreadably", `no stop status in ${published.bounded(sent.body)}`),
         };
       }
       return { ok: true, status };
@@ -393,7 +387,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     if (!body || !status) {
       return {
         kind: "unreachable",
-        error: fault("answered the state read unreadably", `no run status in ${truncate(polled.body)}`),
+        error: fault("answered the state read unreadably", `no run status in ${published.bounded(polled.body)}`),
       };
     }
     if (status === "running") return { kind: "running" };
@@ -405,9 +399,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     };
   }
 
-  /** GET's terminal state, with GET's payload. The retired marker is refused, never answered. */
+  /** GET's terminal state, with GET's payload in publishable text. The marker is refused, never answered. */
   function terminal(run: { status: TerminalStatus; result: unknown; error: string | null }): WorkflowOutcome {
-    if (run.status !== "completed") return { status: run.status, error: run.error };
+    if (run.status !== "completed") {
+      return { status: run.status, error: run.error === null ? null : published.shown(run.error) };
+    }
     // GET always carries the key (recorded/PROVENANCE.md); a missing one still means "no output",
     // never an undefined reaching the caller.
     const result = run.result === undefined ? null : run.result;

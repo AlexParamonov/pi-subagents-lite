@@ -214,6 +214,16 @@ describe("create", () => {
     expect(error(run).endsWith("\u2026")).toBe(true);
   });
 
+  it("keeps a key the reported text would cut in half from surviving as a fragment", async () => {
+    const key = "example-private-key";
+    const server = await remote({ rejection: { status: 502, body: errorBody(`${"x".repeat(290)}${key}`) } });
+
+    const run = await (await client(server.url, key)).create(request());
+
+    expect(error(run)).toContain("[redacted]");
+    expect(error(run)).not.toContain("example-pr");
+  });
+
   it("reports server text of exactly the cap whole, with no ellipsis", async () => {
     const page = `<html>${"x".repeat(294)}`;
     const server = await remote({ rejection: { status: 502, body: page } });
@@ -722,6 +732,22 @@ describe("monitor reconcile", () => {
     await vi.waitFor(() => expect(socket.reads()).toBe(1));
     await expect(settled).resolves.toEqual({ status: "failed", error: "Runner lost its lease" });
     expect(socket.reads()).toBe(1);
+  });
+
+  it("keeps an echoed key out of the failure reason GET carries", async () => {
+    // GET's own `error` is server text too: the run settled remotely, and what it said must not
+    // reach the caller carrying the credential the endpoint authenticates with (US-35).
+    const key = "example-private-key";
+    const server = await remote({
+      run: FAILED_RUN,
+      streams: [CONTROL_FRAMES],
+      states: [readState({ status: "failed", error: `Node died holding ${key}` })],
+    });
+    const run = await client(server.url, key);
+
+    const outcome = await run.monitor(FAILED_RUN, watcher().view);
+
+    expect(outcome).toEqual({ status: "failed", error: "Node died holding [redacted]" });
   });
 
   it("reports the failed run across every line of the reason the endpoint recorded", async () => {

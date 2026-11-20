@@ -974,6 +974,27 @@ describe("workflow run answered by recorded endpoint bytes", () => {
     expect(result.text).toContain(RECORDED.failureTail);
   });
 
+  it("keeps the configured key out of the reason a failed run answers with", async () => {
+    // US-35: the failure reason is GET's own text, so it reaches the call, the record and the log
+    // with the endpoint's credential removed.
+    const key = "example-private-key";
+    const logs = captureConsole();
+    const remote = await server({
+      streams: [CONTROL_FRAMES],
+      states: [readState({ status: "failed", error: `analysis died holding ${key}` })],
+    });
+    install(remote, key);
+    const tool = executable(await start());
+
+    const result = await outcome(tool);
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("analysis died holding [redacted]");
+    expect(result.text).not.toContain(key);
+    expect(logs.join("\n")).not.toContain(key);
+    expect(createRequest(remote).authorization).toBe(`Bearer ${key}`);
+  });
+
   it("reports the captured interrupted run as interrupted, never as an answer", async () => {
     // The replayed journal ends in `workflow_engine_finished` while GET says `interrupted`: the
     // close and the in-stream terminal event settle nothing, only the GET answer decides.
