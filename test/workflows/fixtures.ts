@@ -477,6 +477,38 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   return endpoint;
 }
 
+/** The requests this endpoint served for one of the client's four operations. */
+export function createRequests(server: TestEndpoint): TestEndpoint["requests"] {
+  return server.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/workflows");
+}
+
+export function readRequests(server: TestEndpoint): TestEndpoint["requests"] {
+  return server.requests.filter((entry) => entry.method === "GET" && entry.path === `/api/workflows/${server.run}`);
+}
+
+export function streamRequests(server: TestEndpoint): TestEndpoint["requests"] {
+  return server.requests.filter((entry) => entry.method === "GET" && entry.path.endsWith("/stream"));
+}
+
+export function stopRequests(server: TestEndpoint): TestEndpoint["requests"] {
+  return server.requests.filter(
+    (entry) => entry.method === "POST" && entry.path === `/api/workflows/${server.run}/stop`,
+  );
+}
+
+/**
+ * Await a remote milestone, but fail with a named reason if the run ends first: without this a
+ * broken settle path shows up as a bare test timeout.
+ */
+export async function beforeEnd(milestone: Promise<unknown>, ended: Promise<unknown>, what: string): Promise<void> {
+  await Promise.race([
+    milestone,
+    ended.then(() => {
+      throw new Error(`the run ended before ${what}`);
+    }),
+  ]);
+}
+
 /**
  * A `fetch` fake for the timing tests, where fake timers must not govern the
  * transport's own timers: the client code under test stays real, only the

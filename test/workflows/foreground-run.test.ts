@@ -26,10 +26,12 @@ import {
 import { asCommandContext, asUiCustom } from "../pi-boundaries.js";
 import { defaultTheme, defaultUi } from "../mock-utils.js";
 import {
+  beforeEnd,
   COMPLETED_RUN,
   configure,
   CHUNK_MULTILINE,
   CONTROL_FRAMES,
+  createRequests,
   declaredOutputRead,
   deferred,
   DEFAULT_RESULT,
@@ -38,6 +40,7 @@ import {
   fakeWorkflowFetch,
   FAILED_RUN,
   jsonResponse,
+  readRequests,
   readState,
   RECORDED,
   recordedResponse,
@@ -46,6 +49,8 @@ import {
   REPLAY_COMPLETED_STREAM,
   REPLAY_DECLARED_STREAM,
   REPLAY_FAILED_STREAM,
+  stopRequests,
+  streamRequests,
   PING,
   RECONNECT,
   FAKED_URL,
@@ -181,36 +186,9 @@ async function outcome(tool: ExecutableTool, params?: Record<string, unknown>, s
 }
 
 function createRequest(remote: TestEndpoint) {
-  const request = remote.requests.find((entry) => entry.method === "POST" && entry.path === "/api/workflows");
+  const [request] = createRequests(remote);
   expect(request, "the endpoint must receive the selected workflow").toBeDefined();
   return request!;
-}
-
-function stopRequests(remote: TestEndpoint) {
-  return remote.requests.filter(
-    (entry) => entry.method === "POST" && entry.path === `/api/workflows/${remote.run}/stop`,
-  );
-}
-
-function readRequests(remote: TestEndpoint) {
-  return remote.requests.filter((entry) => entry.method === "GET" && entry.path === `/api/workflows/${remote.run}`);
-}
-
-function streamRequests(remote: TestEndpoint) {
-  return remote.requests.filter((entry) => entry.method === "GET" && entry.path.endsWith("/stream"));
-}
-
-/**
- * Await a remote milestone, but fail with a named reason if the run ends first:
- * without this a broken settle path shows up as a bare test timeout.
- */
-async function beforeEnd(milestone: Promise<unknown>, ended: Promise<unknown>, what: string): Promise<void> {
-  await Promise.race([
-    milestone,
-    ended.then(() => {
-      throw new Error(`workflow finished before ${what}`);
-    }),
-  ]);
 }
 
 /** The run id AgentStatus prints — the handle the main agent passes to StopAgent. */
@@ -1529,9 +1507,7 @@ describe("workflow endpoint and input errors", () => {
 
     expect(result.isError).toBe(true);
     expect(result.text).toMatch(/unknown|possibly|may still/i);
-    expect(remote.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/workflows")).toHaveLength(
-      1,
-    );
+    expect(createRequests(remote)).toHaveLength(1);
   });
 });
 
@@ -1578,9 +1554,7 @@ describe("workflow cancellation and shutdown", () => {
     await remote.stopReceived;
     await pending;
 
-    expect(remote.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/workflows")).toHaveLength(
-      1,
-    );
+    expect(createRequests(remote)).toHaveLength(1);
     expect(stopRequests(remote)).toHaveLength(1);
   });
 

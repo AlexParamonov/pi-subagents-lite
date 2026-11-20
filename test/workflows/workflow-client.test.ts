@@ -10,9 +10,11 @@
 
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+  beforeEnd,
   CHUNK_MULTILINE,
   CONTROL_FRAMES,
   COMPLETED_RUN,
+  createRequests,
   crlf,
   declaredOutputRead,
   deferred,
@@ -29,6 +31,7 @@ import {
   jsonResponse,
   lifecycle,
   progressFrame,
+  readRequests,
   readState,
   recordedResponse,
   RECORDED,
@@ -36,6 +39,8 @@ import {
   REMOTE_ID,
   REPLAY_COMPLETED_STREAM,
   REPLAY_FAILED_STREAM,
+  stopRequests,
+  streamRequests,
   TERMINAL,
   textFrame,
   THINKING_MULTILINE,
@@ -83,18 +88,6 @@ const DEFINITION = {
 
 function request(prompt = "Review the repository", workingDir = "/srv/checkout") {
   return { prompt, definition: DEFINITION, workingDir };
-}
-
-function createRequests(server: TestEndpoint) {
-  return server.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/workflows");
-}
-
-function streamRequests(server: TestEndpoint) {
-  return server.requests.filter((entry) => entry.method === "GET" && entry.path.endsWith("/stream"));
-}
-
-function readRequests(server: TestEndpoint) {
-  return server.requests.filter((entry) => entry.method === "GET" && entry.path === `/api/workflows/${server.run}`);
 }
 
 function createBody(server: TestEndpoint): Record<string, unknown> {
@@ -309,15 +302,6 @@ function watcher(signal?: AbortSignal): Watcher {
         `a view where ${what}`,
       ),
   };
-}
-
-async function beforeEnd(milestone: Promise<unknown>, settled: Promise<unknown>, what: string): Promise<void> {
-  await Promise.race([
-    milestone,
-    settled.then(() => {
-      throw new Error(`the run settled before ${what}`);
-    }),
-  ]);
 }
 
 function texts(snapshots: WorkflowDisplayItem[][]): string[] {
@@ -998,7 +982,7 @@ describe("stop", () => {
     const stop = await run.stop(server.run);
 
     expect(stop).toEqual({ ok: true, status: "stopped" });
-    const [request] = server.requests.filter((entry) => entry.method === "POST" && entry.path.endsWith("/stop"));
+    const [request] = stopRequests(server);
     expect(request?.authorization).toBe("Bearer example-key");
   });
 
