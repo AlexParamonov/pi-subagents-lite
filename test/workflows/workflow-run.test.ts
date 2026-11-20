@@ -39,6 +39,8 @@ interface FakeClient extends WorkflowClient {
   settleMonitor(outcome: WorkflowOutcome): void;
   /** Hand over the held create answer. */
   releaseCreate(create?: WorkflowCreate): void;
+  /** Change what the endpoint answers a stop request with. */
+  answerStop(stop: WorkflowStop): void;
 }
 
 interface FakeOptions {
@@ -53,6 +55,7 @@ function fakeClient(options: FakeOptions = {}): FakeClient {
   const views: WorkflowView[] = [];
   const waiters = new Set<(outcome: WorkflowOutcome) => void>();
   let heldCreate: ((create: WorkflowCreate) => void) | undefined;
+  let stopAnswer = options.stop ?? { ok: true, status: "stopped" };
   const client: FakeClient = {
     creates,
     views,
@@ -87,9 +90,12 @@ function fakeClient(options: FakeOptions = {}): FakeClient {
         view.signal?.addEventListener("abort", () => answer({ status: "aborted" }), { once: true });
       });
     },
+    answerStop(stop) {
+      stopAnswer = stop;
+    },
     async stop() {
       client.stops += 1;
-      return options.stop ?? { ok: true, status: "stopped" };
+      return stopAnswer;
     },
     settleMonitor(outcome) {
       waiters.values().next().value?.(outcome);
@@ -446,6 +452,34 @@ describe("stopping a foreground run", () => {
     await Promise.resolve();
 
     expect(client.stops).toBe(0);
+  });
+
+  it("ignores an interrupt that arrives after a failed stop handed the call back", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient({ stop: { ok: false, error: "The endpoint refused the stop request." } });
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { signal: abort.signal });
+    await started(client);
+    const record = manager.listAgents()[0]!;
+
+    expect(manager.abort(record.id, "user"), "the stop request reaches the endpoint").toBe(true);
+    const result = await pending;
+
+    expect(text(result)).toMatch(/stop failed/i);
+    expect(client.stops).toBe(1);
+
+    abort.abort();
+    await vi.waitFor(() => expect(client.views).toHaveLength(2));
+
+    expect(client.stops, "a run the call handed back is no longer the caller's to stop").toBe(1);
+    expect(record.lifecycle.status).toBe("running");
+
+    client.answerStop({ ok: true, status: "stopped" });
+    expect(manager.abort(record.id, "user"), "an explicit retry still reaches the endpoint").toBe(true);
+    await vi.waitFor(() => expect(record.lifecycle.status).toBe("stopped"));
+
+    expect(client.stops).toBe(2);
   });
 
   it("ignores an interrupt that arrives after the run was handed back", async () => {

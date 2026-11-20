@@ -49,6 +49,7 @@ import {
   REPLAY_COMPLETED_STREAM,
   REPLAY_DECLARED_STREAM,
   REPLAY_FAILED_STREAM,
+  stopAck,
   stopRequests,
   streamRequests,
   PING,
@@ -1994,6 +1995,60 @@ describe("workflow monitoring degradation", () => {
       expect(text(status)).toContain("audit");
       expect(text(status)).toMatch(/running/i);
       expect(text(status)).not.toMatch(/stopped/i);
+    } finally {
+      await shutdownSession(capture);
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves a run handed back on a refused stop alone when the parent interrupt arrives later", async () => {
+    // US-27 then US-19/US-30: the stop the endpoint refused hands the call back with the run still
+    // remote, and the interrupt of that same call afterwards is not a second stop request.
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const streamOpened = deferred<void>();
+    let acknowledged = false;
+    const remote = fakeWorkflowFetch({
+      stream: () => streamOpened.resolve(),
+      read: () => jsonResponse(200, readState({ status: "running" })),
+      stop: () =>
+        acknowledged
+          ? jsonResponse(200, stopAck("stopped", REMOTE_ID))
+          : jsonResponse(503, errorBody("Service Unavailable")),
+    });
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.stubGlobal("fetch", remote.fetch);
+    const stops = () => remote.requests().filter((request) => request.url.endsWith("/stop"));
+    try {
+      const pending = run(tool, undefined, abort.signal);
+      await beforeEnd(streamOpened.promise, pending, "the run's stream connection");
+      const id = listedRunId(await run(executable(capture, "AgentStatus"), {}));
+
+      const requested = await outcome(executable(capture, "StopAgent"), { agent_id: id });
+      await pump(4, 5_000);
+      const returned = await pending;
+
+      expect(requested.isError ?? false).toBe(false);
+      expect(text(returned)).toMatch(/stop failed/i);
+      expect(text(returned)).toMatch(/unknown/i);
+      expect(stops(), "the refused stop was asked for once").toHaveLength(1);
+
+      abort.abort();
+      await pump(4, 20_000);
+
+      expect(stops(), "a run the call handed back is no longer the caller's to stop").toHaveLength(1);
+      expect(text(await run(executable(capture, "AgentStatus"), {}))).toMatch(/running/i);
+
+      acknowledged = true;
+      await outcome(executable(capture, "StopAgent"), { agent_id: id });
+      await pump(4, 20_000);
+
+      expect(stops(), "the explicit stop retry still reaches the endpoint").toHaveLength(2);
+      expect(text(await run(executable(capture, "AgentStatus"), {}))).toMatch(/stopped/i);
     } finally {
       await shutdownSession(capture);
       vi.useRealTimers();

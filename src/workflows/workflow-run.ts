@@ -64,10 +64,10 @@ export async function runWorkflowForeground(
   let lines: string[] = [];
   let record: AgentRecord | undefined;
   let observation = new AbortController();
-  let handBack!: (text: string) => void;
+  let handBackNote!: (note: string) => void;
   // A hand-back returns the call while the record stays running; the gate is the settlement.
   const handed = new Promise<string>((resolve) => {
-    handBack = (note) => resolve(published.shown(note));
+    handBackNote = resolve;
   });
 
   const created = await client.create({
@@ -132,9 +132,6 @@ export async function runWorkflowForeground(
       }
 
       if (outcome.status === "degraded") {
-        // The caller has the note and stopped waiting: a later parent interrupt belongs to another
-        // decision and must not stop a run this call already handed back (US-19, US-30).
-        manager.detachParentInterrupt(agentId);
         handBack(outcome.error);
         continue;
       }
@@ -159,6 +156,15 @@ export async function runWorkflowForeground(
     // The settled view keeps the partial one: what this connection delivered is not undone by the
     // outcome, and the row is repainted through the registered invalidation.
     publish(outcome);
+  }
+
+  /**
+   * Give the call back with the note that explains it: this caller stops watching, so the parent's
+   * interrupt stops reaching the run too (US-19, US-30). Any later stop is an explicit new request.
+   */
+  function handBack(note: string): void {
+    manager.detachParentInterrupt(agentId);
+    handBackNote(published.shown(note));
   }
 
   /** A snapshot that arrives after this call's own outcome belongs to a wait nobody is reading. */
