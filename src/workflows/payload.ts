@@ -1,8 +1,9 @@
 /**
- * payload.ts — reading the JSON a Workflow endpoint answers with.
+ * payload.ts — reading an object this extension did not author: a Workflow endpoint's JSON body, a
+ * parsed Workflow file.
  *
- * A body that is not a JSON object is `null` and a field that is not a usable string is
- * `undefined`: neither shape is ever a throw, so a caller never has to guard the wire.
+ * A body that is not an object is `null` and a field that is not a usable string is `undefined`:
+ * neither shape is ever a throw, so a caller never has to guard the wire.
  */
 
 export function parseRecord(body: string): Record<string, unknown> | null {

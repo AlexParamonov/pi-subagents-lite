@@ -7,6 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parse } from "yaml";
+import { record } from "./payload.ts";
 
 /** One Workflow file as the listing holds it: metadata only, never the definition (US-32). */
 export interface WorkflowListingEntry {
@@ -103,7 +104,7 @@ function parseWorkflowFile(
     return undefined;
   }
 
-  const document = isRecord(parsed) ? parsed : undefined;
+  const document = record(parsed);
   const rawName = document?.name;
   if (!document || typeof rawName !== "string" || rawName.trim() === "") {
     warn(skipMessage(filePath, "has no non-empty string name"));
@@ -127,8 +128,4 @@ function skipMessage(filePath: string, reason: string): string {
 /** YAML and OS error messages carry a code frame or a stack; only their first line reads well in a notice. */
 function firstLine(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).split("\n")[0].trim();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
