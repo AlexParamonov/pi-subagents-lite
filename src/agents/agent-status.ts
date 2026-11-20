@@ -13,11 +13,12 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SubagentAgentManager } from "./subagent-context.ts";
 import type { AgentRecord } from "../types.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
+import { recordDisplayName } from "../ui/format.ts";
 import { getManager, getStore } from "../shell.ts";
 
 function formatAgent(record: AgentRecord): string {
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  return `${shortId} (${record.display.type}) ${record.lifecycle.status}`;
+  return `${shortId} (${recordDisplayName(record, record.display.type)}) ${record.lifecycle.status}`;
 }
 
 /** In-progress agents are always shown; every other status is settled (issue constraints). */
@@ -71,9 +72,7 @@ export async function executeAgentStatusTool(
   if (!manager) throw new Error("Agent manager is unavailable");
   const agents = manager.listAgents();
 
-  const nudge = receivesCompletionNotifications
-    ? "Don't poll — you'll receive notifications when agents complete."
-    : "Don't poll — completion notifications are delivered to the parent agent.";
+  const nudge = notificationLine(agents, receivesCompletionNotifications);
 
   if (agents.length === 0) {
     return {
@@ -85,4 +84,18 @@ export async function executeAgentStatusTool(
   return {
     content: [{ type: "text", text: `${listText}\n\n${nudge}` }],
   };
+}
+
+/**
+ * What the session really does when the list settles. A Workflow run answers inside the tool call
+ * that started it (wave 2 is what brings a Nudge for one), so a list of nothing else is never
+ * promised a notification.
+ */
+function notificationLine(agents: AgentRecord[], receivesCompletionNotifications: boolean): string {
+  if (agents.length > 0 && agents.every((record) => record.workflow)) {
+    return "Don't poll \u2014 a workflow run returns its result in the tool call that started it.";
+  }
+  return receivesCompletionNotifications
+    ? "Don't poll \u2014 you'll receive notifications when agents complete."
+    : "Don't poll \u2014 completion notifications are delivered to the parent agent.";
 }

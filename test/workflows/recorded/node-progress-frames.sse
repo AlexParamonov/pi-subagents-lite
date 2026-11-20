@@ -1,0 +1,31 @@
+event: node_progress
+data: {"step":"llm_delta","node_id":"analysis","ts":1700000000001,"detail":{"fragment":"Hidden batched reasoning","kind":"thinking"}}
+
+event: node_progress
+data: {"step":"llm_delta","node_id":"analysis","ts":1700000000002,"detail":{"fragment":"Inspecting the repository and reporting thr","kind":"text"}}
+
+event: node_progress
+data: {"step":"llm_completed","node_id":"analysis","ts":1700000000003,"detail":{"model":"producer-model","usage":{"completion_tokens":7,"prompt_tokens":31,"total_tokens":38}}}
+
+event: node_progress
+data: {"step":"assistant_turn","node_id":"analysis","ts":1700000000004,"detail":{"text":"Let me read the file","tool_calls":[{"arguments":{"path":"src/index.ts"},"name":"read_file"}]}}
+
+event: node_progress
+data: {"step":"tool_call","node_id":"analysis","ts":1700000000005,"detail":{"args":{"path":"src/index.ts"},"tool":"read_file"}}
+
+event: node_progress
+data: {"step":"tool_result","node_id":"analysis","ts":1700000000006,"detail":{"result":{"bytes":4096},"tool":"read_file"}}
+
+event: node_progress
+data: {"step":"steering_intervention","node_id":"analysis","ts":1700000000007,"detail":{"reason":"repeated_tool_call"}}
+
+event: node_progress
+data: {"step":"llm_response","node_id":"analysis","ts":1700000000008,"detail":{"chunk":true,"text":"Inspecting the re"}}
+
+event: node_progress
+data: {"step":"llm_response","node_id":"analysis","ts":1700000000009,"detail":{"text":"Inspecting the repository and reporting three findings.","usage":{"completion_tokens":7,"prompt_tokens":31,"total_tokens":38}}}
+
+id: 1
+event: workflow_engine_finished
+data: {"result":{"termination_reason":"final_answer","text":"Inspecting the repository and reporting three findings.","usage":{"completion_tokens":7,"prompt_tokens":31,"total_tokens":38}},"correlation_id":"corr-1","node_id":"analysis","task_id":"wf-capture-declared","workflow_id":"wf-capture-declared","ts":1700000001000}
+

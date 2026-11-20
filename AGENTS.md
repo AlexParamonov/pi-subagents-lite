@@ -24,6 +24,7 @@ Pi source code in ../pi
 - When a run reuses a session's transcript, scope history-scanning to messages added during this run.
 - Pin tool-argument keys against the dependency's actual tool schema, not local assumptions.
 - For layout/order changes, assert the exact full item array and separator count, not membership.
+- `Text.render()` pads every row out to the render width: trim each row before comparing rendered rows to an exact array.
 - File-content test fixtures: malformed input as raw text, not a stringified value.
 - Rendering tests: drive the public seam, not private methods.
 - For a class with private members, mock at the real class's call boundary with one intersection cast.

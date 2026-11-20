@@ -211,10 +211,10 @@ vi.mock("../src/ui/format.js", async () => {
   // in row labels instead of a hand-copied shape.
   const actual = await vi.importActual<typeof import("../src/ui/format.js")>("../src/ui/format.js");
   return {
+    ...actual,
     getDisplayName: vi.fn((t: string) => t),
     agentBulletPrefix: vi.fn(() => ""),
     agentColoredText: vi.fn((text: string) => text),
-    formatMs: actual.formatMs,
   };
 });
 

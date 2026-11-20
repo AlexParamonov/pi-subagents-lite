@@ -90,7 +90,7 @@ const MAX_COMMAND_DISPLAY_LENGTH = 350;
 const MAX_DEFAULT_STRING_DISPLAY_LENGTH = 350;
 
 /** Cut s to max chars, appending the ellipsis character (U+2026) when truncated. */
-function truncateWithEllipsis(s: string, max: number): string {
+export function truncateWithEllipsis(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
 

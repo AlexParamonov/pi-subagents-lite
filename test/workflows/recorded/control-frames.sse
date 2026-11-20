@@ -1,0 +1,5 @@
+event: ping
+
+event: reconnect
+data: {"reason":"max_duration"}
+

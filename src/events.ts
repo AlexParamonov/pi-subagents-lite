@@ -13,6 +13,9 @@ import { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
 import { toolCallListener } from "./agents/tool-execution.ts";
 import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.ts";
 import { registerAgentTool } from "./registration.ts";
+import { registerWorkflowTool } from "./workflows/workflow-tool.ts";
+import { setWorkflowScanDirs, scanWorkflows } from "./workflows/workflow-registry.ts";
+import { workflowWarningSink } from "./workflows/workflow-notices.ts";
 import {
   getManager,
   getWidget,
@@ -81,6 +84,18 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
   const merged = await scanAndMerge({ disableDefaultAgents: disableDefaults });
 
   registerAgents(merged, { disableDefaultAgents: disableDefaults });
+}
+
+/** Trust-gated Workflow scan plus the schema that lists what was found. */
+async function scanAndRegisterWorkflows(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  const trusted = ctx.isProjectTrusted();
+  setWorkflowScanDirs({
+    global: path.join(getAgentDir(), "workflows"),
+    shared: trusted ? path.join(ctx.cwd, ".agents", "workflows") : "",
+    project: trusted ? path.join(ctx.cwd, ".pi", "workflows") : "",
+  });
+  await scanWorkflows(workflowWarningSink(ctx));
+  registerWorkflowTool(pi);
 }
 
 export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
@@ -214,6 +229,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    await scanAndRegisterWorkflows(pi, ctx);
     // ctrl+o syncs compact mode with tool expansion (push-based, no polling)
     if (ctx.hasUI && !unregisterTerminalInput) {
       unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));
@@ -228,7 +244,14 @@ export function setupEventListeners(pi: ExtensionAPI): void {
       const records = currentManager.listAgents();
       const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
-        ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
+        // Only local work is killed by a reload. A remote run keeps executing, and its record goes
+        // with the reload too, so this is the only place its user would hear about it.
+        const killed = active.filter((r) => !r.workflow).length;
+        const detached = active.length - killed;
+        const claims: string[] = [];
+        if (killed > 0) claims.push(`${killed} agent(s) killed by reload`);
+        if (detached > 0) claims.push(`${detached} workflow run(s) left running remotely: nothing was stopped`);
+        ctx.ui.notify(claims.join(". "), "warning");
       }
     }
     // Dispose coordinator, store, widget, then manager

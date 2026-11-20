@@ -1,0 +1,16 @@
+id: 1
+event: workflow_started
+data: {"nodes":{},"description":"Inspect a repository","strategy":"react_local","edges":[],"entry_node":"analysis","task_id":"wf-capture-declared","workflow_id":"wf-capture-declared"}
+
+id: 2
+event: node_dispatched
+data: {"started_at":1700000001000,"task_id":"wf-capture-declared","user_message":"Review changes","correlation_id":"corr-1","workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 3
+event: node_complete
+data: {"result":{"status":"ok","value":{"text":"Inspected 12 files"}},"task_id":"wf-capture-declared","correlation_id":"corr-1","duration_ms":1200,"workflow_id":"wf-capture-declared","node_id":"analysis"}
+
+id: 4
+event: workflow_engine_finished
+data: {"result":{"text":"The declared output","usage":{"input_tokens":31,"output_tokens":7},"thinking":"private chain of thought","termination_reason":"final_answer"},"task_id":"wf-capture-declared","correlation_id":"corr-1","workflow_id":"wf-capture-declared"}
+
