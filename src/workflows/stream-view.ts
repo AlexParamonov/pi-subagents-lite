@@ -1,11 +1,13 @@
 /**
- * stream-view.ts — One SSE connection's display state.
+ * stream-view.ts — One SSE connection's display state, and the lines it shows.
  *
  * Each connection rebuilds this from the frames that connection delivers (ADR-0013: the server
  * replays its whole log per connection and this client never resumes by id), so nothing carries
  * over. Text is tracked per channel and one channel is shown, never concatenated across channels.
+ * `StreamView` tracks what a connection delivered; `progressLines` spells it for the tool call.
  */
 
+import { plainText } from "../ui/sanitize.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import type { SseFrame } from "./sse.ts";
 
@@ -135,4 +137,26 @@ function applyProgress(lines: NodeLines, payload: Record<string, unknown> | null
     return fragment === undefined ? false : lines.append("delta", fragment);
   }
   return false;
+}
+
+/** The mark and word each node lifecycle state is shown with. */
+const NODE_STATUS: Record<WorkflowNodeStatus, { mark: string; word: string }> = {
+  dispatched: { mark: "\u25b6", word: "dispatched" },
+  retry: { mark: "\u25b6", word: "retrying" },
+  completed: { mark: "\u2713", word: "completed" },
+  failed: { mark: "\u2717", word: "failed" },
+};
+
+function lineFor(item: WorkflowDisplayItem): string {
+  const node = item.node === null ? "" : `${item.node} `;
+  if (item.type === "node-status") {
+    const status = NODE_STATUS[item.status];
+    return `${status.mark} ${node}${status.word}`;
+  }
+  return item.type === "activity" ? `  ${node}tool ${item.activity}` : `  ${item.text}`;
+}
+
+/** The lines a tool call shows for one connection's display state, control sequences removed. */
+export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
+  return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
 }

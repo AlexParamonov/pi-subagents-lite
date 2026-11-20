@@ -9,10 +9,9 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AgentManager } from "../../src/agents/agent-manager.js";
-import { progressLines, runWorkflowForeground, type WorkflowRunArgs } from "../../src/workflows/workflow-run.js";
+import { runWorkflowForeground, type WorkflowRunArgs } from "../../src/workflows/workflow-run.js";
 import type {
   WorkflowClient,
-  WorkflowDisplayItem,
   WorkflowOutcome,
   WorkflowStop,
   WorkflowView,
@@ -344,28 +343,6 @@ describe("stopping a foreground run", () => {
 });
 
 describe("the live view", () => {
-  it("shows one status line per node, one tool line, and the streamed text", () => {
-    const items: WorkflowDisplayItem[] = [
-      { type: "node-status", node: "analysis", status: "dispatched" },
-      { type: "activity", node: "analysis", activity: "read_file" },
-      { type: "text", node: "analysis", text: "Inspecting the repository" },
-      { type: "node-status", node: "report", status: "failed" },
-      { type: "text", node: null, text: "and a chunk naming no node" },
-    ];
-
-    expect(progressLines(items)).toEqual([
-      "\u25b6 analysis dispatched",
-      "  analysis tool read_file",
-      "  Inspecting the repository",
-      "\u2717 report failed",
-      "  and a chunk naming no node",
-    ]);
-  });
-
-  it("keeps a control sequence out of every line", () => {
-    expect(progressLines([{ type: "text", node: null, text: "ok \u001b[?25l here" }])).toEqual(["  ok  here"]);
-  });
-
   it("paints each connection's whole view rather than the lines it has seen so far", async () => {
     const manager = new AgentManager();
     const client = fakeClient();

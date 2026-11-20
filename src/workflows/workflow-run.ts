@@ -12,8 +12,10 @@ import type { AgentManager } from "../agents/agent-manager.ts";
 import type { WorkflowSettlementStatus } from "../types.ts";
 import { plainText } from "../ui/sanitize.ts";
 import { formatTerminalResult } from "./terminal-result.ts";
+import { progressLines } from "./stream-view.ts";
+import type { WorkflowDisplayItem } from "./stream-view.ts";
 import type { WorkflowEndpoint } from "./endpoints.ts";
-import type { WorkflowClient, WorkflowDisplayItem, WorkflowNodeStatus, WorkflowOutcome } from "./workflow-client.ts";
+import type { WorkflowClient, WorkflowOutcome } from "./workflow-client.ts";
 
 /** What a run needs to be sent, and where its updates go. */
 export interface WorkflowRunArgs {
@@ -147,27 +149,7 @@ export async function runWorkflowForeground(
   }
 }
 
-/** The lines the call's result view shows for one connection's display state. */
-export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
-  return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
-}
-
-const NODE_STATUS: Record<WorkflowNodeStatus, { mark: string; word: string }> = {
-  dispatched: { mark: "\u25b6", word: "dispatched" },
-  retry: { mark: "\u25b6", word: "retrying" },
-  completed: { mark: "\u2713", word: "completed" },
-  failed: { mark: "\u2717", word: "failed" },
-};
-
-function lineFor(item: WorkflowDisplayItem): string {
-  const node = item.node === null ? "" : `${item.node} `;
-  if (item.type === "node-status") {
-    const status = NODE_STATUS[item.status];
-    return `${status.mark} ${node}${status.word}`;
-  }
-  return item.type === "activity" ? `  ${node}tool ${item.activity}` : `  ${item.text}`;
-}
-
+/** What a followed outcome leaves the record: the status it settles in and the one text it answers with. */
 function settlementOf(outcome: Exclude<WorkflowOutcome, { status: "degraded" }>): [WorkflowSettlementStatus, string] {
   switch (outcome.status) {
     case "completed":
