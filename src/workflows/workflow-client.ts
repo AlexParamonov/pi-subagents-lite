@@ -65,10 +65,13 @@ export type WorkflowOutcome =
   | { status: "degraded"; error: string }
   | { status: "error"; error: string };
 
+/** The three answers the endpoint gives to a stop request. */
+const STOP_STATUSES = ["stopped", "already_finished", "interrupted"] as const;
+
+type StopStatus = (typeof STOP_STATUSES)[number];
+
 /** The endpoint's three-way stop acknowledgement, or the reason it did not acknowledge. */
-export type WorkflowStop =
-  | { ok: true; status: "stopped" | "already_finished" | "interrupted" }
-  | { ok: false; error: string };
+export type WorkflowStop = { ok: true; status: StopStatus } | { ok: false; error: string };
 
 export interface WorkflowClient {
   create(request: WorkflowRunRequest): Promise<WorkflowCreate>;
@@ -429,9 +432,8 @@ type RunStatus = (typeof RUN_STATUSES)[number];
 /** The states GET settles a run in; `running` is never one of them. */
 type TerminalStatus = Exclude<RunStatus, "running">;
 
-function stopStatus(body: string): "stopped" | "already_finished" | "interrupted" | null {
-  const status = parseRecord(body)?.status;
-  return status === "stopped" || status === "already_finished" || status === "interrupted" ? status : null;
+function stopStatus(body: string): StopStatus | null {
+  return STOP_STATUSES.find((known) => known === parseRecord(body)?.status) ?? null;
 }
 
 function truncate(text: string): string {
