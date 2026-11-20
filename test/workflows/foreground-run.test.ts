@@ -1071,21 +1071,51 @@ describe("workflow run answered by recorded endpoint bytes", () => {
     });
   }
 
-  it("names the endpoint for the captured unauthorized read without exposing the key", async () => {
+  it("keeps a run whose state read is refused running, and names the endpoint without the key", async () => {
+    // A refused read carries no run status, so it hands the call back as unknown (US-19) instead of
+    // settling the run: StopAgent still reaches the endpoint afterwards.
     const key = "example-private-key";
     const logs = captureConsole();
-    const remote = await server({ reads: [recordedResponse("read-unauthorized")] });
-    install(remote, key);
-    const tool = executable(await start());
+    const firstRead = deferred<void>();
+    const remote = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => {
+        firstRead.resolve();
+        return recordedRead("read-unauthorized");
+      },
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL, key);
+    const capture = await start();
+    const tool = executable(capture);
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.stubGlobal("fetch", remote.fetch);
+    try {
+      const pending = outcome(tool);
+      await beforeEnd(firstRead.promise, pending, "the first state read");
+      await pump(16, 20_000);
+      const result = await pending;
 
-    const result = await outcome(tool);
+      expect(result.isError).toBe(false);
+      expect(result.text).toContain("Unauthorized");
+      expect(result.text).toContain(FAKED_URL);
+      expect(result.text).not.toContain(key);
+      expect(logs.join("\n")).not.toContain(key);
+      expect(remote.requests()[0]!.authorization).toBe(`Bearer ${key}`);
 
-    expect(result.isError).toBe(true);
-    expect(result.text).toContain("Unauthorized");
-    expect(result.text).toContain(remote.url);
-    expect(result.text).not.toContain(key);
-    expect(logs.join("\n")).not.toContain(key);
-    expect(createRequest(remote).authorization).toBe(`Bearer ${key}`);
+      const status = await run(executable(capture, "AgentStatus"), {});
+      expect(text(status)).toContain("audit");
+      expect(text(status)).toMatch(/running/i);
+      expect(text(status)).not.toMatch(/stopped|\berror\b/i);
+
+      const stopped = await outcome(executable(capture, "StopAgent"), { agent_id: listedRunId(status) });
+      expect(stopped.isError).toBe(false);
+      expect(remote.requests().filter((request) => request.url.endsWith("/stop"))).toHaveLength(1);
+    } finally {
+      await shutdownSession(capture);
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });
 

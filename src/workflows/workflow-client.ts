@@ -56,8 +56,9 @@ export interface WorkflowView {
 
 /**
  * How a followed run ended. `completed`/`failed`/`interrupted` are GET's own states with GET's own
- * payload; `aborted` is a local cancel; `degraded` means the endpoint stopped answering the read
- * while the run stayed remote, and the caller keeps the record and re-enters `monitor` to go on.
+ * payload; `aborted` is a local cancel; `degraded` means the endpoint stopped answering the read —
+ * unreachable, refusing, or unreadable — while the run stayed remote, and the caller keeps the
+ * record and re-enters `monitor` to go on. Only a GET state settles a run (ADR-0013).
  */
 export type WorkflowOutcome =
   | { status: "completed"; result: unknown }
@@ -217,7 +218,6 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 
         const run = await read(workflowId, view.signal);
         if (run.kind === "cancelled") return { status: "aborted" };
-        if (run.kind === "rejected") return { status: "error", error: run.error };
         if (run.kind === "unreachable") {
           failedReads += 1;
           if (failedReads >= FAILED_READS_BEFORE_DEGRADED) {
@@ -366,7 +366,6 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   ): Promise<
     | { kind: "cancelled" }
     | { kind: "unreachable"; error: string }
-    | { kind: "rejected"; error: string }
     | { kind: "running" }
     | { kind: "terminal"; status: TerminalStatus; result: unknown; error: string | null }
   > {
@@ -383,8 +382,9 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       };
     }
     if (polled.status < 200 || polled.status >= 300) {
+      // A refusal carries no run status either: it is a read that failed, never a state the run is in.
       return {
-        kind: "rejected",
+        kind: "unreachable",
         error: fault("refused the state read", `HTTP ${polled.status}: ${rejection(polled.body)}`),
       };
     }

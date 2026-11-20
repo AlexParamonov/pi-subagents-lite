@@ -33,6 +33,7 @@ import {
   progressFrame,
   readRequests,
   readState,
+  recordedRead,
   recordedResponse,
   RECORDED,
   RECONNECT,
@@ -652,15 +653,23 @@ describe("monitor reconcile", () => {
     await expect(resumed).resolves.toEqual({ status: "aborted" });
   });
 
-  it("names the endpoint for a read it refuses, without the key", async () => {
+  it("hands a refused read back as an unknown state, naming the endpoint and never the key", async () => {
+    // A refused read carries no run status, so it is an observation failure like a 5xx: it ends the
+    // wait as unknown rather than settling anything (ADR-0013).
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     const key = "example-private-key";
-    const server = await remote({ reads: [recordedResponse("read-unauthorized")] });
-    const run = await client(server.url, key);
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => recordedRead("read-unauthorized"),
+    });
+    const run = await client(FAKED_URL, key, socket.fetch);
 
-    const outcome = await run.monitor(server.run, watcher().view);
+    const waiting = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(90_000);
+    const outcome = await waiting;
 
-    expect(outcome).toEqual({ status: "error", error: expect.stringContaining("Unauthorized") });
-    expect((outcome as { error: string }).error).toContain(server.url);
+    expect(outcome).toEqual({ status: "degraded", error: expect.stringContaining("Unauthorized") });
+    expect((outcome as { error: string }).error).toContain(FAKED_URL);
     expect((outcome as { error: string }).error).not.toContain(key);
   });
 
