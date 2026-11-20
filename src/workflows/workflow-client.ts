@@ -6,7 +6,7 @@
  * never read. Every failure comes back as a domain result, never as an HTTP or transport exception.
  */
 
-import { errorMessage } from "../utils.ts";
+import { errorMessage, truncateWithEllipsis } from "../utils.ts";
 import { plainText } from "../ui/sanitize.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
@@ -39,6 +39,7 @@ const READ_BACKOFF_CAP_MS = 30_000;
 const FAILED_READS_BEFORE_DEGRADED = 5;
 /** Longest server text a caller is shown; a proxy's HTML page is not a diagnosis. */
 const MAX_REPORTED_TEXT = 300;
+const truncate = (text: string): string => truncateWithEllipsis(text, MAX_REPORTED_TEXT);
 
 export interface WorkflowClientOptions {
   fetch?: typeof fetch;
@@ -434,10 +435,6 @@ type TerminalStatus = Exclude<RunStatus, "running">;
 
 function stopStatus(body: string): StopStatus | null {
   return STOP_STATUSES.find((known) => known === parseRecord(body)?.status) ?? null;
-}
-
-function truncate(text: string): string {
-  return text.length > MAX_REPORTED_TEXT ? `${text.slice(0, MAX_REPORTED_TEXT)}…` : text;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

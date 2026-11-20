@@ -202,6 +202,27 @@ describe("create", () => {
     expect(error(run)).not.toContain(key);
   });
 
+  it("caps reported server text, so a proxy's page cannot fill the row", async () => {
+    const filler = "The upstream endpoint is unavailable. ";
+    const server = await remote({ rejection: { status: 502, body: `<html>${filler.repeat(12)}TAIL</html>` } });
+
+    const run = await (await client(server.url)).create(request());
+
+    expect(error(run)).toContain(`HTTP 502: <html>${filler.repeat(7)}`);
+    expect(error(run)).not.toContain("TAIL");
+    expect(error(run).endsWith("\u2026")).toBe(true);
+  });
+
+  it("reports server text of exactly the cap whole, with no ellipsis", async () => {
+    const page = `<html>${"x".repeat(294)}`;
+    const server = await remote({ rejection: { status: 502, body: page } });
+
+    const run = await (await client(server.url)).create(request());
+
+    expect(error(run)).toContain(page);
+    expect(error(run)).not.toContain("\u2026");
+  });
+
   it("reports a create whose response never arrived as an unknown outcome, sent once", async () => {
     const server = await remote({ loseCreateResponse: true });
 
