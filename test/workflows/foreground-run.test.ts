@@ -643,6 +643,70 @@ describe("foreground workflow execution", () => {
     }
   });
 
+  it("shows every turn a node streams before it answers", async () => {
+    const streamedChunk = "Reading the diff first";
+    const closedTurn = "Reading the changed files, then three findings.";
+    const nextTurn = "Writing the report.";
+    let push: (frame: string) => void = () => {
+      throw new Error("workflow stream did not open");
+    };
+    const remote = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH + textFrame(streamedChunk));
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    vi.stubGlobal("fetch", remote.fetch);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const { views, paint } = liveViews(tool, args);
+
+    const pending = run(tool, args, undefined, paint);
+    try {
+      const streamed = await viewMatching(
+        views,
+        (view) => view.includes(streamedChunk),
+        "the streamed chunk is on screen",
+        pending,
+      );
+      expect(streamed).not.toContain(closedTurn);
+
+      // The producer closes a tool-invoking turn with its full text, then the run goes on: the text
+      // it replaces is that turn's chunks, not the whole node's.
+      push(progressFrame("assistant-turn", closedTurn) + progressFrame("tool-call"));
+      const closed = await viewMatching(
+        views,
+        (view) => view.includes(closedTurn) && view.includes(RECORDED.toolName),
+        "the closed turn and its tool call are on screen",
+        pending,
+      );
+      expect(closed).not.toContain(streamedChunk);
+      expect(closed).not.toContain(nextTurn);
+
+      push(progressFrame("text-delta", nextTurn));
+      const later = await viewMatching(
+        views,
+        (view) => view.includes(nextTurn),
+        "the turn after the tool is on screen",
+        pending,
+      );
+      // Neither turn is replaced by the next one, and none of them shows twice in one view.
+      expect(later).toContain(closedTurn);
+      for (const snapshot of views) {
+        expect(snapshot.split(nextTurn).length - 1).toBeLessThanOrEqual(1);
+        expect(snapshot.split(closedTurn).length - 1).toBeLessThanOrEqual(1);
+      }
+
+      push(TERMINAL);
+      expect(text(await pending)).toContain("The declared output");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders deduplicated live updates without thinking", async () => {
     const frames =
       DISPATCH +

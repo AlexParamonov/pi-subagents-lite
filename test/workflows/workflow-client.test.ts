@@ -33,6 +33,7 @@ import {
   progressFrame,
   readRequests,
   readState,
+  recorded,
   recordedRead,
   recordedResponse,
   RECORDED,
@@ -351,6 +352,11 @@ function texts(snapshots: WorkflowDisplayItem[][]): string[] {
   return snapshots.flatMap((snapshot) => snapshot.flatMap((item) => (item.type === "text" ? [item.text] : [])));
 }
 
+/** The streamed-text lines one snapshot shows, in the order it lists them. */
+function textLines(snapshot: readonly WorkflowDisplayItem[]): string[] {
+  return snapshot.flatMap((item) => (item.type === "text" ? [item.text] : []));
+}
+
 /** Run the monitor over a stream the test controls; `settled` carries the outcome. */
 function follow(run: Awaited<ReturnType<typeof client>>, server: TestEndpoint, signal?: AbortSignal) {
   const watch = watcher(signal);
@@ -466,6 +472,190 @@ describe("monitor display", () => {
       "Reading the ",
       "Reading the changed files ",
       "Reading the changed files and reporting three findings.",
+    ]);
+  });
+
+  it("shows the turn that follows a node's tool turn", async () => {
+    // `SessionExecutor` closes a tool-invoking turn with one `assistant_turn` frame carrying its
+    // text, and the turn after it streams on the same node: the boundary ends one turn's text.
+    const secondTurn = "Three findings, one of them the parser";
+    const frames =
+      DISPATCH +
+      textFrame(RECORDED.internalText) +
+      progressFrame("assistant-turn") +
+      progressFrame("tool-call") +
+      progressFrame("text-delta", secondTurn);
+    const server = await remote({ streams: [frames], holdStream: true });
+    const run = await client(server.url);
+
+    const { snapshots, settled, until } = follow(run, server);
+    await until((s) => textLines(s).length === 2, settled, "both turns of the node are on screen");
+    server.releaseStream();
+    await settled;
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: RECORDED.toolName },
+      { type: "text", node: "analysis", text: RECORDED.internalText },
+      { type: "text", node: "analysis", text: secondTurn },
+    ]);
+  });
+
+  it("shows text that arrives after a turn's full text", async () => {
+    const frames =
+      DISPATCH + progressFrame("full-turn", "Reading the diff") + textFrame("The repository has three findings.");
+    const server = await remote({ streams: [frames], holdStream: true });
+    const run = await client(server.url);
+
+    const { snapshots, settled, until } = follow(run, server);
+    await until((s) => textLines(s).length === 2, settled, "the text after the full turn is on screen");
+    server.releaseStream();
+    await settled;
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: "Reading the diff" },
+      { type: "text", node: "analysis", text: "The repository has three findings." },
+    ]);
+  });
+
+  it("replaces only the turn a full-turn frame closes", async () => {
+    const closedTurn = "Reading the changed files, then three findings.";
+    const nextTurn = "Writing the report.";
+    let push: (frame: string) => void = () => {
+      throw new Error("the stream did not open");
+    };
+    const socket = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH + textFrame("Reading the diff "));
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+
+    const watch = watcher();
+    const settled = run.monitor(REMOTE_ID, watch.view);
+    await vi.waitFor(() => expect(textLines(watch.snapshots.at(-1)!)).toEqual(["Reading the diff "]));
+
+    push(textFrame("then the tests "));
+    await vi.waitFor(() => expect(texts(watch.snapshots)).toContain("Reading the diff then the tests "));
+
+    push(progressFrame("assistant-turn", closedTurn));
+    push(progressFrame("text-delta", nextTurn));
+    push(TERMINAL);
+    await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+
+    // The boundary rewrote the turn its chunks belonged to, and left the turn after it its own text.
+    expect(textLines(watch.snapshots.at(-1)!)).toEqual([closedTurn, nextTurn]);
+  });
+
+  it("shows nothing new for a full turn that only repeats the turn's chunks", async () => {
+    const turn = "Reading the diff, then three findings.";
+    let push: (frame: string) => void = () => {
+      throw new Error("the stream did not open");
+    };
+    const socket = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+
+    const watch = watcher();
+    const settled = run.monitor(REMOTE_ID, watch.view);
+    push(DISPATCH + textFrame(turn));
+    await vi.waitFor(() => expect(textLines(watch.snapshots.at(-1)!)).toEqual([turn]));
+
+    // The boundary frame carries the text the chunks already delivered, and the push channel may
+    // hand the same frame over again: neither is a new line, and neither is the same line twice.
+    push(progressFrame("full-turn", turn));
+    push(progressFrame("tool-call"));
+    await vi.waitFor(() =>
+      expect(
+        watch.snapshots.at(-1)!.some((item) => item.type === "activity"),
+        "the tool line arrived",
+      ).toBe(true),
+    );
+    expect(watch.snapshots).toHaveLength(2);
+
+    push(progressFrame("full-turn", turn) + lifecycle("node_complete", "analysis"));
+    await vi.waitFor(() =>
+      expect(
+        watch.snapshots.at(-1)!.some((item) => item.type === "node-status" && item.status === "completed"),
+        "the completion arrived",
+      ).toBe(true),
+    );
+    expect(watch.snapshots).toHaveLength(3);
+
+    push(TERMINAL);
+    await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+    expect(textLines(watch.snapshots.at(-1)!)).toEqual([turn]);
+  });
+
+  it("starts a node's text over when the endpoint dispatches it again", async () => {
+    // A second dispatch is a new attempt: what the previous one streamed is not this attempt's
+    // prefix, and the two attempts' chunks must not fuse into one turn.
+    const frames = DISPATCH + textFrame("Reading the ") + DISPATCH + textFrame("Reading the release notes ");
+    const server = await remote({ streams: [frames], holdStream: true });
+    const run = await client(server.url);
+
+    const { snapshots, settled, until } = follow(run, server);
+    await until((s) => textLines(s).includes("Reading the release notes "), settled, "the new attempt streams");
+    server.releaseStream();
+    await settled;
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: "Reading the release notes " },
+    ]);
+  });
+
+  it("keeps each node's turns with the node the frame names", async () => {
+    const secondTurn = "Three findings stand";
+    const frames =
+      DISPATCH +
+      textFrame("Reading the diff") +
+      progressFrame("assistant-turn") +
+      lifecycle("node_dispatched", "report") +
+      textFrame("Drafting the summary") +
+      progressFrame("text-delta", secondTurn, "analysis");
+    const server = await remote({ streams: [frames], holdStream: true });
+    const run = await client(server.url);
+
+    const { snapshots, settled, until } = follow(run, server);
+    await until(
+      (s) => textLines(s).includes(secondTurn) && textLines(s).includes("Drafting the summary"),
+      settled,
+      "each node shows its own turns",
+    );
+    server.releaseStream();
+    await settled;
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: RECORDED.internalText },
+      { type: "text", node: "analysis", text: secondTurn },
+      { type: "node-status", node: "report", status: "dispatched" },
+      { type: "text", node: "report", text: "Drafting the summary" },
+    ]);
+  });
+
+  it("reads the captured progress frames as the turns the producer emitted", async () => {
+    // The captured steps in the recorder's own order (recorded/PROVENANCE.md): the batched delta the
+    // spend step follows, the `assistant_turn` that closes that turn, the tool steps, then the next
+    // turn's chunk and its full text. Thinking, spend and steering steps show nothing.
+    const server = await remote({ streams: [recorded("node-progress-frames.sse")] });
+    const run = await client(server.url);
+
+    const { snapshots, settled } = follow(run, server);
+    await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "activity", node: "analysis", activity: RECORDED.toolName },
+      { type: "text", node: "analysis", text: RECORDED.internalText },
+      { type: "text", node: "analysis", text: RECORDED.fullTurnText },
     ]);
   });
 

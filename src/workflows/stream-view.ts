@@ -3,8 +3,9 @@
  *
  * Each connection rebuilds this from the frames that connection delivers (ADR-0013: the server
  * replays its whole log per connection and this client never resumes by id), so nothing carries
- * over. Text is tracked per channel and one channel is shown, never concatenated across channels.
- * `StreamView` tracks what a connection delivered; `progressLines` spells it for the tool call.
+ * over. Text is tracked per node, attempt and turn: one channel of a turn is shown, never
+ * concatenated, and a full-turn frame closes the turn it arrives on. `progressLines` spells the
+ * state for the tool call.
  */
 
 import { plainText } from "../ui/sanitize.ts";
@@ -39,18 +40,66 @@ const RECONCILE = new Set(["workflow_engine_finished", "workflow_failed", "recon
 
 type Channel = "raw" | "relay" | "delta";
 
-/** One node's lines. Streamed text is kept per channel; the full turn replaces all of them. */
+/**
+ * The text one turn of one node attempt delivered. The unnamed chunk, the marked relay chunk and
+ * the coalesced delta batch carry the same text at different granularity, so exactly one channel is
+ * shown and none of them is ever joined with another.
+ */
+class TurnText {
+  /** The turn's full text, set by the frame that closes the turn; null while it is still arriving. */
+  full: string | null = null;
+  private readonly channels: Record<Channel, string> = { raw: "", relay: "", delta: "" };
+
+  append(channel: Channel, text: string): void {
+    this.channels[channel] += text;
+  }
+
+  get text(): string {
+    if (this.full !== null) return this.full;
+    return this.channels.raw || this.channels.relay || this.channels.delta;
+  }
+}
+
+/** One node's lines: its status, the tools it used, and one text line per turn of this attempt. */
 class NodeLines {
   status: WorkflowNodeStatus | undefined;
   readonly activity: string[] = [];
-  private readonly channels: Record<Channel | "fullTurn", string> = { raw: "", relay: "", delta: "", fullTurn: "" };
+  private readonly closed: string[] = [];
+  private turn = new TurnText();
 
-  append(channel: Channel, text: string): boolean {
-    return this.store(channel, this.channels[channel] + text);
+  /** Every turn with text to show, oldest first: the closed ones, then the one still arriving. */
+  get texts(): string[] {
+    const shown = [...this.closed];
+    if (this.turn.text !== "") shown.push(this.turn.text);
+    return shown;
   }
 
+  append(channel: Channel, text: string): boolean {
+    if (text === "") return false;
+    return this.apply(() => {
+      if (this.turn.full !== null) this.closeTurn();
+      this.turn.append(channel, text);
+    });
+  }
+
+  /**
+   * A full-turn frame is its own turn's boundary: its text replaces whatever the chunks of that turn
+   * contributed, and whatever arrives next belongs to the following turn.
+   */
   fullTurn(text: string): boolean {
-    return this.store("fullTurn", text);
+    if (this.turn.full === text) return false;
+    return this.apply(() => {
+      // A second full-turn frame with other text is the next turn's: a run that streams no chunks
+      // emits one per turn with nothing between them.
+      if (this.turn.full !== null) this.closeTurn();
+      this.turn.full = text;
+    });
+  }
+
+  /** A node dispatched again is a new attempt: what the last one streamed is not this one's prefix. */
+  beginAttempt(): void {
+    this.closed.length = 0;
+    this.turn = new TurnText();
   }
 
   showActivity(activity: string): boolean {
@@ -59,15 +108,20 @@ class NodeLines {
     return true;
   }
 
-  get text(): string {
-    return this.channels.fullTurn || this.channels.raw || this.channels.relay || this.channels.delta;
+  private closeTurn(): void {
+    if (this.turn.text !== "") this.closed.push(this.turn.text);
+    this.turn = new TurnText();
   }
 
-  private store(channel: Channel | "fullTurn", text: string): boolean {
-    if (text === this.channels[channel]) return false;
-    this.channels[channel] = text;
-    return true;
+  private apply(update: () => void): boolean {
+    const before = this.texts;
+    update();
+    return !sameLines(before, this.texts);
   }
+}
+
+function sameLines(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((line, index) => line === b[index]);
 }
 
 export class StreamView {
@@ -93,6 +147,7 @@ export class StreamView {
     };
 
     if (lifecycle !== undefined) {
+      if (lifecycle === "dispatched" || lifecycle === "retry") lines.beginAttempt();
       lines.status = lifecycle;
       effect.changed = true;
     } else if (event === null) {
@@ -109,7 +164,7 @@ export class StreamView {
       const lines = this.lines.get(node)!;
       if (lines.status) items.push({ type: "node-status", node, status: lines.status });
       for (const activity of lines.activity) items.push({ type: "activity", node, activity });
-      if (lines.text !== "") items.push({ type: "text", node, text: lines.text });
+      for (const text of lines.texts) items.push({ type: "text", node, text });
     }
     return items;
   }
@@ -124,19 +179,27 @@ export class StreamView {
   }
 }
 
+/**
+ * The producer's steps that carry a whole turn's text: `assistant_turn` for a turn that went on to
+ * call a tool, `llm_response` for one that did not. A `llm_response` marked `chunk: true` is one
+ * chunk of the turn still arriving, not a boundary.
+ */
+const FULL_TURN_STEPS = new Set(["assistant_turn", "llm_response"]);
+
 function applyProgress(lines: NodeLines, payload: Record<string, unknown> | null): boolean {
+  const step = field(payload, "step");
   const detail = record(payload?.detail);
   const tool = field(detail, "tool");
   if (tool !== undefined) return lines.showActivity(tool);
   const text = field(detail, "text");
-  if (field(payload, "step") === "llm_response" && text !== undefined) {
-    return detail?.chunk === true ? lines.append("relay", text) : lines.fullTurn(text);
-  }
-  if (field(payload, "step") === "llm_delta" && field(detail, "kind") === "text") {
+  if (step === "llm_delta") {
     const fragment = field(detail, "fragment");
-    return fragment === undefined ? false : lines.append("delta", fragment);
+    return field(detail, "kind") === "text" && fragment !== undefined ? lines.append("delta", fragment) : false;
   }
-  return false;
+  if (step === "llm_response" && detail?.chunk === true) {
+    return text === undefined ? false : lines.append("relay", text);
+  }
+  return text !== undefined && step !== undefined && FULL_TURN_STEPS.has(step) ? lines.fullTurn(text) : false;
 }
 
 /** The mark and word each node lifecycle state is shown with. */
