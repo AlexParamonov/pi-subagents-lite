@@ -7,12 +7,15 @@
  * one loud warning per bad value names the file, key, got, expected,
  * and fix hint. A Workflow endpoint target is the exception: an unusable URL
  * is kept so the run naming that endpoint is refused instead of being sent to
- * another endpoint (US-34), and that refusal is promised only by the layer
- * whose value decides the target. Never migrates fork shapes or throws.
+ * another endpoint (US-34), and that refusal is promised only where the layer's
+ * value decides the target. `projectWorkflowRule` is that decision for a project
+ * file, and the layer merge and the load warning read it too. Diagnostics go to
+ * a sink the caller supplies, so a read that must stay silent gets silence.
+ * Never migrates fork shapes or throws.
  */
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
-import type { RawConfig, RawWorkflowEndpoint } from "./config-io.ts";
+import type { RawConfig, RawWorkflowEndpoint, RawWorkflows } from "./config-io.ts";
 import { PARENT_THINKING_CHOICE } from "../models/thinking-resolution.ts";
 
 /** One known key's runtime rule plus its human-readable expected shape. */
@@ -122,36 +125,89 @@ function formatIncompatibleWarning(filePath: string, keyPath: string, value: unk
 }
 
 /** Emit one loud warning for a dropped value. Pure formatting stays in formatIncompatibleWarning. */
-function warnIncompatible(filePath: string, keyPath: string, value: unknown, expected: string): void {
-  console.warn(formatIncompatibleWarning(filePath, keyPath, value, expected));
+function warnIncompatible(reader: LayerReader, keyPath: string, value: unknown, expected: string): void {
+  reader.warn(formatIncompatibleWarning(reader.filePath, keyPath, value, expected));
 }
 
 /**
  * Warning for a Workflow endpoint setting whose value is kept: the target stays configured so every
  * run naming it is refused, rather than falling back to another endpoint (US-34).
  */
-function warnUnusableTarget(filePath: string, keyPath: string, value: unknown, expected: string): void {
-  console.warn(
-    `${formatIncompatibleWarning(filePath, keyPath, value, expected)} ` +
+function warnUnusableTarget(reader: LayerReader, keyPath: string, value: unknown, expected: string): void {
+  reader.warn(
+    `${formatIncompatibleWarning(reader.filePath, keyPath, value, expected)} ` +
       "It stays configured, so a run naming this endpoint is refused instead of sent to another endpoint.",
   );
 }
 
 /**
- * Which file a layer came from. Only the global layer configures an endpoint or its default; a project
- * layer overrides one endpoint's URL and nothing else, so the same bad value means something different
- * in each (ADR-0008).
+ * Where a read's diagnostics go. A read that reports prints them; the bootstrap read hands in a sink that
+ * hears nothing, so one config file is spoken about by exactly one load per startup.
  */
-export type ConfigLayer = "global" | "project";
+export type WarningSink = (message: string) => void;
+
+/** The sink a read uses when its caller did not say otherwise: print. */
+function printWarning(message: string): void {
+  console.warn(message);
+}
+
+/** One file a read is validating, and where its diagnostics go. */
+interface LayerReader {
+  filePath: string;
+  warn: WarningSink;
+}
 
 /**
- * Warn about a Workflow value this layer cannot turn into a usable target. A global value is what a run
- * is refused against; a project value the layer cannot set is ignored, so only the global warning may
- * promise a refusal (ADR-0008).
+ * What a project's `workflows` section is allowed to change, decided against the global layer's
+ * declarations: only the `url` of an endpoint the global file names (US-6, ADR-0008).
  */
-function warnUnusableForLayer(filePath: string, keyPath: string, value: unknown, expected: string, layer: ConfigLayer) {
-  if (layer === "global") warnUnusableTarget(filePath, keyPath, value, expected);
-  else warnIncompatible(filePath, keyPath, value, expected);
+export interface ProjectWorkflowRule {
+  /** The endpoint urls this layer decides - what the effective merge applies. */
+  urls: Array<{ name: string; url: unknown }>;
+  /** A name this layer may set whose entry is not an object: nothing is declared, so the global entry inherits. */
+  malformedEntries: Array<{ name: string; value: unknown }>;
+  /** Every other setting the section carries, as the file spells it: no effect, named by the load warning. */
+  ignored: string[];
+}
+
+/**
+ * Decide a project's Workflow settings against what the global file declares. One walk of the section as
+ * the file wrote it, and the one answer three consumers read: the merge applies `urls`, this file's
+ * validation warns only at the paths the layer owns, and the load names `ignored`. Membership is an own
+ * key, so a name `Object.prototype` carries is not one the global file named.
+ */
+export function projectWorkflowRule(global: RawWorkflows | undefined, project: unknown): ProjectWorkflowRule {
+  const rule: ProjectWorkflowRule = { urls: [], malformedEntries: [], ignored: [] };
+  if (!isPlainObject(project)) return rule;
+  for (const [key, value] of Object.entries(project)) {
+    if (key === "endpoints") collectProjectEndpoints(rule, global?.endpoints, value);
+    else rule.ignored.push(`workflows.${key}`);
+  }
+  return rule;
+}
+
+function collectProjectEndpoints(
+  rule: ProjectWorkflowRule,
+  declared: Record<string, RawWorkflowEndpoint> | undefined,
+  endpoints: unknown,
+): void {
+  if (!isPlainObject(endpoints)) return;
+  for (const [name, entry] of Object.entries(endpoints)) {
+    const keyPath = `workflows.endpoints.${name}`;
+    if (!declared || !Object.hasOwn(declared, name)) {
+      // The entry is inert as a whole, so its own keys are not listed a second time.
+      rule.ignored.push(keyPath);
+      continue;
+    }
+    if (!isPlainObject(entry)) {
+      rule.malformedEntries.push({ name, value: entry });
+      continue;
+    }
+    for (const [field, value] of Object.entries(entry)) {
+      if (field === "url") rule.urls.push({ name, url: value });
+      else rule.ignored.push(`${keyPath}.${field}`);
+    }
+  }
 }
 
 /** Plain-object guard, shared with config-io for its project malformed checks. */
@@ -187,46 +243,66 @@ function isValidValue(spec: KeySpec, value: unknown): boolean {
 }
 
 /**
- * Validate one global file layer, dropping invalid values from the result.
- * Pure except for one console.warn per dropped value. Never throws on
- * bad input: unknown shapes fall back to empty sections.
+ * Validate one global file layer, dropping invalid values from the result. The global file owns its whole
+ * `workflows` section, so every value there is one a run can be refused against (US-34). `declaredBelow`
+ * names the endpoints a lower layer already declares (the built-in table), which this file's default may
+ * name without warning. Pure except for the diagnostics it hands to `warn`. Never throws on bad input:
+ * unknown shapes fall back to empty sections.
  */
-export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
-  return validateLayer(raw, filePath, "global");
+export function validateRawLayer(
+  raw: unknown,
+  filePath: string,
+  warn: WarningSink = printWarning,
+  declaredBelow: readonly string[] = [],
+): RawConfig {
+  const reader: LayerReader = { filePath, warn };
+  return validateSections(raw, reader, (workflows) => cleanGlobalWorkflows(workflows, reader, declaredBelow));
 }
 
 /**
- * Validate one trusted project's override layer. Model, concurrency and an endpoint's URL are its own;
- * a Workflow value it cannot set is dropped or ignored, and no warning promises a refusal it cannot
- * cause (ADR-0008).
+ * Validate one trusted project's override layer against the global layer's declarations. Only the `url` of
+ * an endpoint the global file names can take effect, so that is the only Workflow value this file's
+ * warnings speak of; everything else the section carries keeps its bytes in the layer and is named by the
+ * load warning (`projectWorkflowRule`, ADR-0008).
  */
-export function validateProjectLayer(raw: unknown, filePath: string): RawConfig {
-  return validateLayer(raw, filePath, "project");
+export function validateProjectLayer(
+  raw: unknown,
+  filePath: string,
+  global: RawWorkflows | undefined,
+  warn: WarningSink = printWarning,
+): RawConfig {
+  const reader: LayerReader = { filePath, warn };
+  return validateSections(raw, reader, (workflows) =>
+    cleanProjectWorkflows(workflows, projectWorkflowRule(global, workflows), reader),
+  );
 }
 
-function validateLayer(raw: unknown, filePath: string, layer: ConfigLayer): RawConfig {
+/** One layer's `workflows` section, cleaned the way the layer that wrote it can be cleaned. */
+type WorkflowCleaner = (workflows: unknown) => RawWorkflows;
+
+function validateSections(raw: unknown, reader: LayerReader, cleanWorkflows: WorkflowCleaner): RawConfig {
   const cleaned: RawConfig = {};
   if (!isPlainObject(raw)) {
-    warnIncompatible(filePath, "(config)", raw, EXPECTED_OBJECT);
+    warnIncompatible(reader, "(config)", raw, EXPECTED_OBJECT);
     return cleaned;
   }
 
   if (raw.agent !== undefined) {
     if (!isPlainObject(raw.agent)) {
-      warnIncompatible(filePath, "agent", raw.agent, EXPECTED_OBJECT);
+      warnIncompatible(reader, "agent", raw.agent, EXPECTED_OBJECT);
     } else {
-      const agent = cleanAgentEntries(raw.agent, filePath);
+      const agent = cleanAgentEntries(raw.agent, reader);
       if (Object.keys(agent).length > 0) cleaned.agent = agent;
     }
   }
 
   if (raw.concurrency !== undefined) {
-    const concurrency = cleanConcurrencySection(raw.concurrency, filePath);
+    const concurrency = cleanConcurrencySection(raw.concurrency, reader);
     if (Object.keys(concurrency).length > 0) cleaned.concurrency = concurrency;
   }
 
   if (raw.workflows !== undefined) {
-    const workflows = cleanWorkflowsSection(raw.workflows, filePath, layer);
+    const workflows = cleanWorkflows(raw.workflows);
     if (Object.keys(workflows).length > 0) cleaned.workflows = workflows;
   }
 
@@ -237,75 +313,105 @@ function validateLayer(raw: unknown, filePath: string, layer: ConfigLayer): RawC
  * Keep valid agent entries, warn and drop the rest. Unknown keys are
  * per-type model keys; legacy keys in SILENTLY_DROPPED_KEYS vanish quietly.
  */
-function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Record<string, unknown> {
+function cleanAgentEntries(agent: Record<string, unknown>, reader: LayerReader): Record<string, unknown> {
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(agent)) {
     if (SILENTLY_DROPPED_KEYS.has(key)) continue;
     if (value === undefined) continue;
     const spec = AGENT_KEY_SPECS[key] ?? MODEL_KEY;
     if (isValidValue(spec, value)) kept[key] = value;
-    else warnIncompatible(filePath, `agent.${key}`, value, spec.expected);
+    else warnIncompatible(reader, `agent.${key}`, value, spec.expected);
   }
   return kept;
 }
 
 /**
- * Keep valid workflow settings. An endpoint entry keeps its name whatever its URL holds, and so does an
- * unusable default name: dropping either would let another target answer for a configuration that named
- * one (US-34). The refusal warning is made only where the layer's value decides the run's target.
+ * The global file's workflow settings: an endpoint entry keeps its name whatever its URL holds, and so does
+ * an unusable default name, because dropping either would let another target answer for a configuration
+ * that named one (US-34). Here - and only here - the value is what a run is refused against, so here the
+ * warning says so.
  */
-function cleanWorkflowsSection(
-  workflows: unknown,
-  filePath: string,
-  layer: ConfigLayer,
-): NonNullable<RawConfig["workflows"]> {
-  const kept: NonNullable<RawConfig["workflows"]> = {};
+function cleanGlobalWorkflows(workflows: unknown, reader: LayerReader, declaredBelow: readonly string[]): RawWorkflows {
+  const kept: RawWorkflows = {};
   if (!isPlainObject(workflows)) {
-    warnIncompatible(filePath, "workflows", workflows, EXPECTED_OBJECT);
+    warnIncompatible(reader, "workflows", workflows, EXPECTED_OBJECT);
     return kept;
   }
-  const endpoints = cleanWorkflowEndpoints(workflows.endpoints, filePath, layer);
+  const endpoints = cleanGlobalWorkflowEndpoints(workflows.endpoints, reader);
   if (endpoints) kept.endpoints = endpoints;
   const name = workflows.defaultEndpoint;
   if (name !== undefined) {
     if (typeof name !== "string" || name === "") {
-      warnUnusableForLayer(filePath, "workflows.defaultEndpoint", name, "non-empty endpoint name", layer);
+      warnUnusableTarget(reader, "workflows.defaultEndpoint", name, "non-empty endpoint name");
+    } else if (!canAnswerForADefault(name, endpoints, declaredBelow)) {
+      warnUnusableTarget(reader, "workflows.defaultEndpoint", name, "an endpoint this file declares");
     }
     kept.defaultEndpoint = name;
   }
   return kept;
 }
 
-function cleanWorkflowEndpoints(
+/**
+ * Whether this name can answer for a run: one this file declares, or one a lower layer declares and
+ * nothing here replaces.
+ */
+function canAnswerForADefault(
+  name: string,
+  endpoints: Record<string, RawWorkflowEndpoint> | undefined,
+  declaredBelow: readonly string[],
+): boolean {
+  return (endpoints != null && Object.hasOwn(endpoints, name)) || declaredBelow.includes(name);
+}
+
+/**
+ * The project's section as the file wrote it: `projectWorkflowRule` decides what takes effect, so an inert
+ * setting stays in the layer (a later save writes the layer back) and is named by the load warning. Only a
+ * value at a path this layer owns is warned about here: a url it declares is the target a run is refused
+ * against, an entry that is not an object declares nothing and inherits.
+ */
+function cleanProjectWorkflows(workflows: unknown, rule: ProjectWorkflowRule, reader: LayerReader): RawWorkflows {
+  if (!isPlainObject(workflows)) {
+    warnIncompatible(reader, "workflows", workflows, EXPECTED_OBJECT);
+    return {};
+  }
+  for (const { name, url } of rule.urls) {
+    if (typeof url !== "string" || url === "") {
+      warnUnusableTarget(reader, `workflows.endpoints.${name}.url`, url, "non-empty URL string");
+    }
+  }
+  for (const { name, value } of rule.malformedEntries) {
+    warnIncompatible(reader, `workflows.endpoints.${name}`, value, EXPECTED_OBJECT);
+  }
+  const kept = { ...workflows };
+  if (kept.endpoints !== undefined && !isPlainObject(kept.endpoints)) delete kept.endpoints;
+  return kept as RawWorkflows;
+}
+
+function cleanGlobalWorkflowEndpoints(
   endpoints: unknown,
-  filePath: string,
-  layer: ConfigLayer,
+  reader: LayerReader,
 ): Record<string, RawWorkflowEndpoint> | undefined {
   if (endpoints === undefined) return undefined;
   if (!isPlainObject(endpoints)) {
-    warnIncompatible(filePath, "workflows.endpoints", endpoints, EXPECTED_OBJECT);
+    warnIncompatible(reader, "workflows.endpoints", endpoints, EXPECTED_OBJECT);
     return undefined;
   }
   const kept: Array<[string, RawWorkflowEndpoint]> = [];
   for (const [name, entry] of Object.entries(endpoints)) {
     const keyPath = `workflows.endpoints.${name}`;
     if (!isPlainObject(entry)) {
-      warnUnusableForLayer(filePath, keyPath, entry, EXPECTED_OBJECT, layer);
+      warnUnusableTarget(reader, keyPath, entry, EXPECTED_OBJECT);
       kept.push([name, {}]);
       continue;
     }
     const endpoint: RawWorkflowEndpoint = {};
-    if ("url" in entry) {
-      endpoint.url = entry.url;
-      if (typeof entry.url !== "string" || entry.url === "") {
-        warnUnusableTarget(filePath, `${keyPath}.url`, entry.url, "non-empty URL string");
-      }
-    } else if (layer === "global") {
-      warnUnusableTarget(filePath, `${keyPath}.url`, entry.url, "non-empty URL string");
+    if ("url" in entry) endpoint.url = entry.url;
+    if (typeof entry.url !== "string" || entry.url === "") {
+      warnUnusableTarget(reader, `${keyPath}.url`, entry.url, "non-empty URL string");
     }
     if (entry.apiKey !== undefined) {
       if (typeof entry.apiKey === "string") endpoint.apiKey = entry.apiKey;
-      else warnIncompatible(filePath, `${keyPath}.apiKey`, entry.apiKey, "string");
+      else warnIncompatible(reader, `${keyPath}.apiKey`, entry.apiKey, "string");
     }
     kept.push([name, endpoint]);
   }
@@ -316,27 +422,27 @@ function cleanWorkflowEndpoints(
  * Keep valid concurrency entries, warn and drop the rest. Plain typeof
  * checks: every value here is a bare number, so TypeBox adds nothing.
  */
-function cleanConcurrencySection(concurrency: unknown, filePath: string): NonNullable<RawConfig["concurrency"]> {
+function cleanConcurrencySection(concurrency: unknown, reader: LayerReader): NonNullable<RawConfig["concurrency"]> {
   const kept: NonNullable<RawConfig["concurrency"]> = {};
   if (!isPlainObject(concurrency)) {
-    warnIncompatible(filePath, "concurrency", concurrency, EXPECTED_OBJECT);
+    warnIncompatible(reader, "concurrency", concurrency, EXPECTED_OBJECT);
     return kept;
   }
   if (concurrency.default !== undefined) {
     if (typeof concurrency.default === "number") kept.default = concurrency.default;
-    else warnIncompatible(filePath, "concurrency.default", concurrency.default, NUM.expected);
+    else warnIncompatible(reader, "concurrency.default", concurrency.default, NUM.expected);
   }
   for (const section of ["providers", "models"] as const) {
     const entries = concurrency[section];
     if (entries === undefined) continue;
     if (!isPlainObject(entries)) {
-      warnIncompatible(filePath, `concurrency.${section}`, entries, EXPECTED_OBJECT);
+      warnIncompatible(reader, `concurrency.${section}`, entries, EXPECTED_OBJECT);
       continue;
     }
     const keptEntries: Record<string, number> = {};
     for (const [key, value] of Object.entries(entries)) {
       if (typeof value === "number") keptEntries[key] = value;
-      else warnIncompatible(filePath, `concurrency.${section}.${key}`, value, NUM.expected);
+      else warnIncompatible(reader, `concurrency.${section}.${key}`, value, NUM.expected);
     }
     if (Object.keys(keptEntries).length > 0) kept[section] = keptEntries;
   }

@@ -24,6 +24,7 @@ const { validateRawLayer, validateProjectLayer } = await import("../../src/confi
 const { ConfigStore } = await import("../../src/config/config-store.js");
 const { resolveWorkflowEndpoint } = await import("../../src/workflows/endpoints.js");
 const { memIO } = await import("./config-store-helpers.js");
+import type { RawWorkflows } from "../../src/config/config-io.js";
 
 let projectDir: string;
 
@@ -174,37 +175,64 @@ describe("validateRawLayer — workflows", () => {
 // A project layer decides one thing: the URL of an endpoint the global file names. So the promise a
 // warning makes has to match the layer - a value the project declares is the target a run is refused
 // against, a value it cannot set is ignored (ADR-0008).
+// The global file's declarations are what decides whether a project's Workflow setting can take effect,
+// so the project's own validation is asked against them (ADR-0008): a url under a name the global file
+// names is the target a run is refused against, and everything else the section carries is named once by
+// the load warning instead of by a value warning here.
+const GLOBAL_RELEASE: RawWorkflows = { endpoints: { release: { url: "https://release.invalid:4001" } } };
+
 describe("validateProjectLayer — what a project layer may decide", () => {
   it("says nothing about an entry that declares no url, because the global url is inherited", () => {
     const project = { workflows: { endpoints: { release: {} } } };
 
-    expect(validateProjectLayer(project, "/p.json").workflows).toEqual({ endpoints: { release: {} } });
-    expect(warned(() => validateProjectLayer(project, "/p.json"))).toBe("");
+    expect(validateProjectLayer(project, "/p.json", GLOBAL_RELEASE).workflows).toEqual({
+      endpoints: { release: {} },
+    });
+    expect(warned(() => validateProjectLayer(project, "/p.json", GLOBAL_RELEASE))).toBe("");
   });
 
   it("keeps the refusal warning for a url the project itself declares", () => {
     const warnings = warned(() =>
-      validateProjectLayer({ workflows: { endpoints: { release: { url: "" } } } }, "/p.json"),
+      validateProjectLayer({ workflows: { endpoints: { release: { url: "" } } } }, "/p.json", GLOBAL_RELEASE),
     );
 
     expect(warnings).toContain("workflows.endpoints.release.url");
     expect(warnings).toContain("another endpoint");
   });
 
-  it("warns that an entry which is not an object is dropped instead of refused", () => {
+  it("warns that an entry which is not an object inherits instead of being refused", () => {
     const project = { workflows: { endpoints: { release: "http://typoed-out:4001" } } } as unknown as RawConfig;
 
-    expect(validateProjectLayer(project, "/p.json").workflows).toEqual({ endpoints: { release: {} } });
-    const warnings = warned(() => validateProjectLayer(project, "/p.json"));
+    const warnings = warned(() => validateProjectLayer(project, "/p.json", GLOBAL_RELEASE));
+
     expect(warnings).toContain("workflows.endpoints.release");
     expect(warnings).not.toContain("another endpoint");
+    const validated = validateProjectLayer(project, "/p.json", GLOBAL_RELEASE);
+    expect(mergeLayers({ workflows: GLOBAL_RELEASE }, validated).workflows).toEqual(GLOBAL_RELEASE);
   });
 
-  it("warns that a default the project sets is not what the run uses", () => {
-    const warnings = warned(() => validateProjectLayer({ workflows: { defaultEndpoint: 4001 } }, "/p.json"));
+  it("says nothing about a setting the project layer cannot set, because the load names it", () => {
+    const carried: unknown[] = [
+      { workflows: { defaultEndpoint: 4001 } },
+      { workflows: { defaultEndpoint: "release" } },
+      { workflows: { defualtEndpoint: "release" } },
+      { workflows: { endpoints: { staging: { url: null } } } },
+      { workflows: { endpoints: { staging: null } } },
+      { workflows: { endpoints: { release: { apiKey: "project-key", urll: "http://typo.invalid:4001" } } } },
+    ];
 
-    expect(warnings).toContain("workflows.defaultEndpoint");
-    expect(warnings).not.toContain("another endpoint");
+    for (const project of carried) {
+      expect(warned(() => validateProjectLayer(project, "/p.json", GLOBAL_RELEASE))).toBe("");
+    }
+  });
+
+  it("keeps the project's own Workflow bytes in its layer, inert or not", () => {
+    const carried = { endpoints: { release: { apiKey: "project-key", urll: "http://typo.invalid:4001" } } };
+
+    expect(
+      validateProjectLayer({ workflows: { endpoints: carried, defaultEndpoint: "release" } }, "/p.json", GLOBAL_RELEASE)
+        .workflows,
+    ).toEqual({ endpoints: carried, defaultEndpoint: "release" });
   });
 });
 
@@ -378,6 +406,7 @@ describe("a configured target that cannot be used", () => {
     const project = validateProjectLayer(
       { workflows: { endpoints: { "anagen-x.local": { url: "not a url" } } } },
       "/p.json",
+      ENDPOINTS.workflows,
     );
 
     const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows);
@@ -412,16 +441,14 @@ describe("a configured target that cannot be used", () => {
   });
 
   it("reaches the global target a trusted project's entry leaves undeclared", () => {
-    const global = validateRawLayer(
-      {
-        workflows: {
-          endpoints: { release: { url: "https://release.invalid:4001", apiKey: "global-key" } },
-          defaultEndpoint: "release",
-        },
+    const globalLayer = {
+      workflows: {
+        endpoints: { release: { url: "https://release.invalid:4001", apiKey: "global-key" } },
+        defaultEndpoint: "release",
       },
-      "/g.json",
-    );
-    const project = validateProjectLayer({ workflows: { endpoints: { release: {} } } }, "/p.json");
+    };
+    const global = validateRawLayer(globalLayer, "/g.json");
+    const project = validateProjectLayer({ workflows: { endpoints: { release: {} } } }, "/p.json", global.workflows);
 
     expect(resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows)).toEqual({
       ok: true,
@@ -551,21 +578,67 @@ describe("createConfigIO — warning about a Workflow setting the project layer 
     expect(merged.workflows?.endpoints?.["anagen-x.local"].url).toBe("http://internal:4001");
   });
 
-  it("does not repeat an ignored-key warning for a value the loader already refused", () => {
-    const carried: unknown[] = [
-      { workflows: { endpoints: { "anagen-x.local": { apiKey: 7 } } } },
-      { workflows: { endpoints: { "anagen-x.local": "http://typoed-out:4001" } } },
-      { workflows: { defaultEndpoint: 4001 } },
+  // One diagnostic per setting that cannot take effect: the same decision about what may take effect is
+  // what decides which warning names it, so a path is never reported twice and never missed because a
+  // cleaner dropped the key before the warning could see it.
+  it("names every inert or unusable project setting exactly once", () => {
+    const carried: Array<{ project: unknown; path: string }> = [
+      {
+        project: { workflows: { endpoints: { "anagen-x.local": { apiKey: 7 } } } },
+        path: "workflows.endpoints.anagen-x.local.apiKey",
+      },
+      {
+        project: { workflows: { endpoints: { "anagen-x.local": "http://typoed-out:4001" } } },
+        path: "workflows.endpoints.anagen-x.local",
+      },
+      { project: { workflows: { defaultEndpoint: 4001 } }, path: "workflows.defaultEndpoint" },
+      { project: { workflows: { defualtEndpoint: "release" } }, path: "workflows.defualtEndpoint" },
+      {
+        project: { workflows: { endpoints: { "anagen-x.local": { urll: "http://typo.invalid:4001" } } } },
+        path: "workflows.endpoints.anagen-x.local.urll",
+      },
+      { project: { workflows: { endpoints: { staging: { url: null } } } }, path: "workflows.endpoints.staging" },
     ];
-    for (const project of carried) {
+    for (const { project, path } of carried) {
       writeGlobal(ENDPOINTS);
       writeProject(project);
 
       const warnings = warningsOf(() => createConfigIO(projectDir).load());
 
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain("Incompatible value");
+      expect(warnings[0]).toContain(path);
     }
+  });
+
+  // The review's double report: an entry whose name the global file does not name is inert as a whole,
+  // so it is named once and is promised no refusal it cannot cause.
+  it("names an entry the global file does not name once, whatever that entry carries", () => {
+    for (const entry of [{ url: null }, null, {}, { url: "https://staging.invalid:4001", apiKey: "k" }]) {
+      writeGlobal(ENDPOINTS);
+      writeProject({ workflows: { endpoints: { staging: entry } } });
+
+      const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+      expect(warnings.split("\n")).toHaveLength(1);
+      expect(warnings).toContain("workflows.endpoints.staging");
+      expect(warnings).not.toContain("It stays configured");
+      expect(merged.workflows).toEqual(ENDPOINTS.workflows);
+    }
+  });
+
+  // The layer the store saves back is the layer it loaded, so an inert setting is ignored and named, not
+  // silently erased from the operator's file by the next project save.
+  it("keeps an inert project setting in the layer so a later save writes it back", () => {
+    const carried = {
+      endpoints: { "anagen-x.local": { apiKey: "project-key", urll: "http://typo.invalid:4001" } },
+      defaultEndpoint: "release",
+    };
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: carried });
+
+    const loaded = createConfigIO(projectDir).load();
+
+    expect(loaded.project?.workflows).toEqual(carried);
   });
 
   it("warns once per load even where the store merges the layers again", () => {
@@ -659,4 +732,40 @@ describe("ConfigStore — the effective workflows section", () => {
       });
     });
   }
+});
+
+describe("validateRawLayer — a default naming no declared endpoint", () => {
+  const endpoints = { dev: { url: "https://dev.invalid:4001" } };
+
+  function withDefault(defaultEndpoint: unknown): unknown {
+    return { workflows: { endpoints, defaultEndpoint } };
+  }
+
+  it("warns once and keeps the value for a global default the file never declares", () => {
+    const messages = warningsOf(() => validateRawLayer(withDefault("ghost"), "/g.json"));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('"workflows.defaultEndpoint"');
+    expect(messages[0]).toContain("refused");
+    expect(validateRawLayer(withDefault("ghost"), "/g.json").workflows?.defaultEndpoint).toBe("ghost");
+  });
+
+  it("says nothing for the built-in name, which the effective config always declares", () => {
+    writeGlobal(withDefault("anagen-x.local"));
+    expect(warned(() => createConfigIO().load())).toBe("");
+  });
+
+  it("says nothing when the file declares the endpoint the default names", () => {
+    writeGlobal(withDefault("dev"));
+    expect(warned(() => createConfigIO().load())).toBe("");
+  });
+
+  it("refuses a run for it, naming what is configured", () => {
+    const effective = mergeDefaults(validateRawLayer(withDefault("ghost"), "/g.json"));
+    expect(resolveWorkflowEndpoint(effective.workflows)).toEqual({
+      ok: false,
+      error:
+        'Workflow endpoint "ghost" is the configured default but is not configured. ' +
+        "Configured endpoints: anagen-x.local, dev.",
+    });
+  });
 });
