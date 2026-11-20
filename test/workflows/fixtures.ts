@@ -323,8 +323,6 @@ export interface TestEndpoint {
   /** The run id this endpoint hands out for a created run. */
   run: string;
   requests: Request[];
-  /** How many SSE connections the client opened. */
-  streamConnections: number;
   /** How many SSE connections this endpoint still has open on its side. */
   streamSocketsOpen(): number;
   /** Resolves when this endpoint sees a stream socket it had open go away. */
@@ -402,7 +400,6 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
         json(res, 201, { workflow_id: run, task_id: run });
       }
     } else if (req.method === "GET" && path === `/api/workflows/${run}/stream`) {
-      endpoint.streamConnections += 1;
       if (res.socket) streamSockets.add(res.socket);
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(options.streams?.[streamIndex++] ?? DEFAULT_STREAM);
@@ -457,7 +454,6 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
     url: `http://127.0.0.1:${port}`,
     run,
     requests,
-    streamConnections: 0,
     streamSocketsOpen: () => streamSockets.size,
     streamSocketClosed: () => socketClosed.promise,
     streamOpened: streamOpened.promise,
