@@ -59,9 +59,11 @@ export interface AgentRecord {
 export interface WorkflowRunInfo {
   /** Workflow file name, as the agent selected it. */
   name: string;
-  /** Configured endpoint name the run was sent to. */
+  /** Configured endpoint name the run went to. No message names it today: an error carries the
+   * endpoint its own client was built with, not the record's copy. */
   endpoint: string;
-  /** The endpoint's URL, frozen with the run so an error names the server it actually used. */
+  /** The endpoint's URL, frozen at create: endpoints are re-read per call, so this is what still
+   * says which server the run went to after they change. */
   url: string;
   /** The server's own run id (`workflow_id`). */
   remoteId: string;
