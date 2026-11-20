@@ -24,6 +24,9 @@ const DECLARED = { text: "The declared output", termination_reason: "final_answe
 
 type Result = AgentToolResult<Record<string, unknown>>;
 
+/** The create answer the endpoint gives: the run's remote id, or the reason it refused. */
+type WorkflowCreate = Awaited<ReturnType<WorkflowClient["create"]>>;
+
 /** A client whose every answer the test hands over by hand. */
 interface FakeClient extends WorkflowClient {
   creates: { prompt: string; definition: Record<string, unknown>; workingDir: string }[];
@@ -32,10 +35,14 @@ interface FakeClient extends WorkflowClient {
   stops: number;
   /** Settle the oldest waiting monitor with its outcome; a monitor waits until this or a cancel. */
   settleMonitor(outcome: WorkflowOutcome): void;
+  /** Hand over the held create answer. */
+  releaseCreate(create?: WorkflowCreate): void;
 }
 
 interface FakeOptions {
   create?: { ok: true; workflowId: string; taskId: string } | { ok: false; error: string };
+  /** Hold the create answer until `releaseCreate`, so a shutdown can overtake it. */
+  holdCreate?: boolean;
   stop?: WorkflowStop;
 }
 
@@ -43,13 +50,22 @@ function fakeClient(options: FakeOptions = {}): FakeClient {
   const creates: FakeClient["creates"] = [];
   const views: WorkflowView[] = [];
   const waiters = new Set<(outcome: WorkflowOutcome) => void>();
+  let heldCreate: ((create: WorkflowCreate) => void) | undefined;
   const client: FakeClient = {
     creates,
     views,
     stops: 0,
     async create(request) {
       creates.push({ prompt: request.prompt, definition: request.definition, workingDir: request.workingDir });
-      return options.create ?? { ok: true, workflowId: REMOTE_ID, taskId: REMOTE_ID };
+      if (!options.holdCreate) return options.create ?? { ok: true, workflowId: REMOTE_ID, taskId: REMOTE_ID };
+      return new Promise<WorkflowCreate>((resolve) => {
+        heldCreate = resolve;
+      });
+    },
+    releaseCreate(create = { ok: true, workflowId: REMOTE_ID, taskId: REMOTE_ID }) {
+      const answer = heldCreate;
+      heldCreate = undefined;
+      answer?.(create);
     },
     monitor(_id, view) {
       views.push(view);
@@ -248,6 +264,27 @@ describe("a foreground run's record and result", () => {
     expect(client.stops).toBe(1);
     expect(text(result)).toMatch(/stopp/i);
   });
+
+  it("registers, watches and stops nothing when the session ends while create is in flight", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient({ holdCreate: true });
+    const shown = showPublished();
+
+    const pending = run(client, manager, { onUpdate: shown.publish });
+    await vi.waitFor(() => expect(client.creates).toHaveLength(1));
+
+    await manager.dispose();
+    client.releaseCreate();
+
+    const result = await pending;
+
+    expect(text(result)).toMatch(/shut ?down|session/i);
+    expect(result.details.agentId, "a run the session never owned left no record behind").toBeUndefined();
+    expect(manager.listAgents()).toEqual([]);
+    expect(client.views, "a run the session never owned is never observed").toEqual([]);
+    expect(client.stops, "US-30: shutdown never stops the remote run").toBe(0);
+    expect(shown.views, "nothing is published into a session that is gone").toEqual([]);
+  });
 });
 
 describe("stopping a foreground run", () => {
@@ -339,6 +376,23 @@ describe("stopping a foreground run", () => {
     await Promise.resolve();
 
     expect(client.stops).toBe(0);
+  });
+
+  it("ignores an interrupt that arrives after the run was handed back", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { signal: abort.signal });
+    await started(client);
+    client.settleMonitor({ status: "degraded", error: "The state is unknown after 5 observations." });
+    await pending;
+
+    abort.abort();
+    await vi.waitFor(() => expect(client.views).toHaveLength(2));
+
+    expect(client.stops, "a run the call handed back is no longer the caller's to stop").toBe(0);
+    expect(manager.listAgents()[0]!.lifecycle.status).toBe("running");
   });
 });
 

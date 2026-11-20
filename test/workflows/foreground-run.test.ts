@@ -1579,6 +1579,26 @@ describe("workflow cancellation and shutdown", () => {
     expect(stopRequests(remote)).toHaveLength(1);
   });
 
+  it("leaves a run whose create answer arrived after shutdown unwatched and unstopped", async () => {
+    const remote = await server({ holdCreate: true, holdStream: true });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+
+    const pending = run(tool);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    await shutdownSession(capture);
+    remote.releaseCreate();
+    const result = await pending;
+
+    // US-30: the late answer registers no record, opens no follow, and stops nothing remotely.
+    expect(text(result)).toMatch(/shut ?down|session/i);
+    expect(result.details.agentId, "the run left no record behind").toBeUndefined();
+    expect(stopRequests(remote)).toHaveLength(0);
+    expect(streamRequests(remote), "a run nobody owns is never followed").toHaveLength(0);
+  });
+
   it("keeps an acknowledged stop despite the remote terminated footprint", async () => {
     const remote = await server({ holdStream: true });
     install(remote);
@@ -1855,6 +1875,47 @@ describe("workflow runs on the shared management surfaces", () => {
 });
 
 describe("workflow monitoring degradation", () => {
+  it("leaves a handed-back run alone when the parent interrupt arrives later", async () => {
+    // US-19/US-30: the call handed the run back; an interrupt of that call afterwards is not a stop
+    // request, and the record keeps watching.
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const firstRead = deferred<void>();
+    const remote = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => {
+        firstRead.resolve();
+        return jsonResponse(503, { error: "Temporarily unavailable" });
+      },
+    });
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.stubGlobal("fetch", remote.fetch);
+    const stops = () => remote.requests().filter((request) => request.url.endsWith("/stop"));
+    try {
+      const pending = run(tool, undefined, abort.signal);
+      await beforeEnd(firstRead.promise, pending, "the first state read");
+      await pump(16, 20_000);
+
+      const result = await pending;
+      abort.abort();
+      await pump(4, 20_000);
+
+      expect(result.isError ?? false).toBe(false);
+      expect(stops(), "a run the call handed back is no longer the caller's to stop").toEqual([]);
+      const status = await run(executable(capture, "AgentStatus"), {});
+      expect(text(status)).toContain("audit");
+      expect(text(status)).toMatch(/running/i);
+      expect(text(status)).not.toMatch(/stopped/i);
+    } finally {
+      await shutdownSession(capture);
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reconciles after lifecycle silence despite pings and streamed text", async () => {
     write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
     configure(ws, FAKED_URL);
