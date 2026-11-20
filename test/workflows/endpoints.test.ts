@@ -10,7 +10,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
 import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 
-function settings(endpoints: SubagentsConfig["workflows"]["endpoints"], defaultEndpoint: string) {
+function settings(
+  endpoints: SubagentsConfig["workflows"]["endpoints"],
+  defaultEndpoint: SubagentsConfig["workflows"]["defaultEndpoint"],
+) {
   return { endpoints, defaultEndpoint };
 }
 
@@ -66,11 +69,35 @@ describe("resolveWorkflowEndpoint", () => {
 
   for (const url of ["not a valid URL", "", "localhost:4001", "ftp://host:4001"]) {
     it(`refuses the endpoint whose url is ${JSON.stringify(url)}`, () => {
-      const resolution = resolveWorkflowEndpoint(settings({ broken: { url } }, "broken"));
+      const resolution = resolveWorkflowEndpoint(settings({ broken: { url } }, "broken"), "broken");
 
       expect(resolution.ok).toBe(false);
       expect((resolution as { error: string }).error).toContain("broken");
       expect((resolution as { error: string }).error).toContain(url);
+    });
+  }
+
+  // A configured target with nothing usable to send to: another endpoint answering instead is a
+  // run on the wrong server (US-34), so the unusable entry has to survive to here.
+  for (const url of [undefined, null, 4001, { href: "http://h:1" }]) {
+    it(`refuses the endpoint whose url is ${JSON.stringify(url)} rather than picking another target`, () => {
+      const resolution = resolveWorkflowEndpoint(settings({ broken: { url } }, "broken"), "broken");
+
+      expect(resolution.ok).toBe(false);
+      expect((resolution as { error: string }).error).toContain("broken");
+    });
+  }
+
+  // A default that names no usable target: falling back to the built-in target would run the workflow
+  // against a server nobody chose (US-34).
+  for (const name of [4001, "", ["local"]]) {
+    it(`refuses the configured default ${JSON.stringify(name)} rather than picking another target`, () => {
+      const resolution = resolveWorkflowEndpoint(
+        settings({ "anagen-x.local": { url: "http://localhost:4001" } }, name),
+      );
+
+      expect(resolution.ok).toBe(false);
+      expect((resolution as { error: string }).error).toContain(String(name));
     });
   }
 });

@@ -21,6 +21,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 const { createConfigIO, mergeLayers, mergeDefaults } = await import("../../src/config/config-io.js");
 const { validateRawLayer } = await import("../../src/config/config-validation.js");
 const { ConfigStore } = await import("../../src/config/config-store.js");
+const { resolveWorkflowEndpoint } = await import("../../src/workflows/endpoints.js");
 const { memIO } = await import("./config-store-helpers.js");
 
 let projectDir: string;
@@ -74,16 +75,40 @@ describe("validateRawLayer — workflows", () => {
     }
   });
 
-  it("drops an endpoint whose url is missing or not a string, and names it", () => {
+  it("keeps a named endpoint whose url is unusable, and names it", () => {
     const warnings = warned(() =>
       validateRawLayer(
-        { workflows: { endpoints: { good: { url: "http://h:1" }, keyless: {}, numeric: { url: 4001 } } } },
+        {
+          workflows: {
+            endpoints: { good: { url: "http://h:1" }, keyless: {}, blank: { url: "" }, numeric: { url: 4001 } },
+          },
+        },
         "/g.json",
       ),
     );
 
+    // US-34: dropping the entry would hand the name to another target, so only the value is
+    // refused - later, by the run that names it - and the entry itself stays.
+    expect(
+      validateRawLayer(
+        { workflows: { endpoints: { keyless: {}, blank: { url: "" }, numeric: { url: 4001 } } } },
+        "/g.json",
+      ).workflows,
+    ).toEqual({
+      endpoints: { keyless: {}, blank: { url: "" }, numeric: { url: 4001 } },
+    });
     expect(warnings).toContain("workflows.endpoints.keyless");
     expect(warnings).toContain("workflows.endpoints.numeric");
+    expect(warnings).toContain("workflows.endpoints.blank");
+  });
+
+  it("drops an endpoint that is not an object at all, keeping its name refused", () => {
+    const warnings = warned(() => validateRawLayer({ workflows: { endpoints: { odd: "http://h:1" } } }, "/g.json"));
+
+    expect(validateRawLayer({ workflows: { endpoints: { odd: "http://h:1" } } }, "/g.json").workflows).toEqual({
+      endpoints: { odd: {} },
+    });
+    expect(warnings).toContain("workflows.endpoints.odd");
   });
 
   it("keeps an endpoint whose key is the wrong shape and drops just the key", () => {
@@ -99,11 +124,20 @@ describe("validateRawLayer — workflows", () => {
       { workflows: "nope" },
       { workflows: { endpoints: "nope" } },
       { workflows: { endpoints: [1] } },
-      { workflows: { defaultEndpoint: 4001 } },
-      { workflows: { defaultEndpoint: "" } },
     ];
     for (const bad of cases) {
       expect(validateRawLayer(bad, "/g.json").workflows).toBeUndefined();
+    }
+  });
+
+  it("keeps a defaultEndpoint that is not a name, so the run is refused rather than defaulted", () => {
+    for (const name of [4001, ""]) {
+      const warnings = warned(() => validateRawLayer({ workflows: { defaultEndpoint: name } }, "/g.json"));
+
+      expect(validateRawLayer({ workflows: { defaultEndpoint: name } }, "/g.json").workflows).toEqual({
+        defaultEndpoint: name,
+      });
+      expect(warnings).toContain("workflows.defaultEndpoint");
     }
   });
 });
@@ -128,6 +162,12 @@ describe("mergeLayers — a project layer may override a url only", () => {
     expect(merged.workflows).toEqual(ENDPOINTS.workflows);
   });
 
+  it("lets an unusable project url override the global one instead of inheriting it", () => {
+    const merged = mergeLayers(ENDPOINTS, { workflows: { endpoints: { "anagen-x.local": { url: "" } } } });
+
+    expect(merged.workflows?.endpoints?.["anagen-x.local"]).toEqual({ url: "", apiKey: "global-key" });
+  });
+
   it("with no project section the global one passes through", () => {
     expect(mergeLayers(ENDPOINTS, null).workflows).toEqual(ENDPOINTS.workflows);
     expect(mergeLayers({}, {}).workflows).toBeUndefined();
@@ -142,7 +182,7 @@ describe("mergeDefaults — the built-in local endpoint", () => {
     });
   });
 
-  it("lets a configured entry and default win over the built-ins", () => {
+  it("takes a configured entry and default over the built-ins", () => {
     const config = mergeDefaults({
       workflows: { endpoints: { "anagen-x.local": { url: "http://localhost:5000" } }, defaultEndpoint: "other" },
     });
@@ -151,6 +191,42 @@ describe("mergeDefaults — the built-in local endpoint", () => {
       endpoints: { "anagen-x.local": { url: "http://localhost:5000" } },
       defaultEndpoint: "other",
     });
+  });
+
+  it("bakes a built-in target only under a name nothing configured", () => {
+    const configured = mergeDefaults({ workflows: { endpoints: { "anagen-x.local": { url: "" } } } });
+
+    expect(configured.workflows).toEqual({
+      endpoints: { "anagen-x.local": { url: "" } },
+      defaultEndpoint: "anagen-x.local",
+    });
+    expect(mergeDefaults({ workflows: { defaultEndpoint: "" } }).workflows?.defaultEndpoint).toBe("");
+  });
+});
+
+describe("a configured target that cannot be used", () => {
+  it("is refused through the whole load path instead of falling back to the built-in target", () => {
+    // The probe from the review: configuring the built-in name with an empty URL used to answer with
+    // success against http://localhost:4001 (US-34's no-fallback rule).
+    const validated = validateRawLayer({ workflows: { endpoints: { "anagen-x.local": { url: "" } } } }, "/g.json");
+
+    const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(validated, null)).workflows);
+
+    expect(resolution.ok).toBe(false);
+    expect((resolution as { error: string }).error).toContain("anagen-x.local");
+  });
+
+  it("stays refused when a trusted project's override is the broken one", () => {
+    const global = validateRawLayer(ENDPOINTS, "/g.json");
+    const project = validateRawLayer(
+      { workflows: { endpoints: { "anagen-x.local": { url: "not a url" } } } },
+      "/p.json",
+    );
+
+    const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows);
+
+    expect(resolution.ok).toBe(false);
+    expect((resolution as { error: string }).error).toContain("not a url");
   });
 });
 
@@ -208,6 +284,19 @@ describe("ConfigStore — the effective workflows section", () => {
 
     expect(store.workflows.endpoints.local).toEqual({ url: "http://p:2", apiKey: "k" });
     expect(store.workflows.defaultEndpoint).toBe("local");
+  });
+
+  it("reports an unusable configured target, not the built-in one", () => {
+    const { io } = memIO({
+      global: { workflows: { endpoints: { "anagen-x.local": { url: "" } } } },
+      project: null,
+      projectStatus: "absent",
+    });
+
+    expect(new ConfigStore(io).workflows).toEqual({
+      endpoints: { "anagen-x.local": { url: "" } },
+      defaultEndpoint: "anagen-x.local",
+    });
   });
 
   for (const target of ["global", "project", "all"] as const) {

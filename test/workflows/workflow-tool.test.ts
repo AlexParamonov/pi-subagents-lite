@@ -105,6 +105,31 @@ function endpointAt(url: string): void {
   );
 }
 
+describe("Workflow endpoint", () => {
+  it("refuses the configured endpoint whose URL is unusable, sending nothing", async () => {
+    // US-34: a broken target is not the same as no target. The built-in name is the one a dropped
+    // entry could quietly restore, so this is the configuration that must never reach the endpoint.
+    write(
+      join(agentDir, "subagents-lite.json"),
+      JSON.stringify({ workflows: { endpoints: { "anagen-x.local": { url: "" } } } }),
+    );
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      asked.push(String(input instanceof Request ? input.url : input));
+      return new Response("{}", { status: 200 });
+    });
+
+    try {
+      await expect(runTool({ workflow: "audit", prompt: "Review changes" })).rejects.toThrow(/anagen-x\.local/i);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(asked).toEqual([]);
+  });
+});
+
 describe("Workflow call line", () => {
   it("shows no placeholder for the workflow name while arguments stream", () => {
     const rows = renderWorkflowCall({ prompt: "Review changes" }, defaultTheme)

@@ -5,7 +5,9 @@
  * warning text). Each invalid value is dropped from the effective config so
  * built-in defaults apply, valid keys are kept, file bytes are untouched,
  * and one loud warning per bad value names the file, key, got, expected,
- * and fix hint. Never migrates fork shapes or throws.
+ * and fix hint. A Workflow endpoint target is the exception: an unusable URL
+ * is kept so the run naming that endpoint is refused instead of being sent to
+ * another endpoint (US-34). Never migrates fork shapes or throws.
  */
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
@@ -123,6 +125,17 @@ function warnIncompatible(filePath: string, keyPath: string, value: unknown, exp
   console.warn(formatIncompatibleWarning(filePath, keyPath, value, expected));
 }
 
+/**
+ * Warning for a Workflow endpoint setting whose value is kept: the target stays configured so every
+ * run naming it is refused, rather than falling back to another endpoint (US-34).
+ */
+function warnUnusableTarget(filePath: string, keyPath: string, value: unknown, expected: string): void {
+  console.warn(
+    `${formatIncompatibleWarning(filePath, keyPath, value, expected)} ` +
+      "It stays configured, so a run naming this endpoint is refused instead of sent to another endpoint.",
+  );
+}
+
 /** Plain-object guard, shared with config-io for its project malformed checks. */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -195,8 +208,9 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
 }
 
 /**
- * Keep valid workflow settings: named endpoints with a usable URL and an optional string key,
- * plus a non-empty default endpoint name.
+ * Keep valid workflow settings. An endpoint entry keeps its name whatever its URL holds, and so does
+ * an unusable default name: dropping either would let another target answer for a configuration that
+ * named one (US-34).
  */
 function cleanWorkflowsSection(workflows: unknown, filePath: string): NonNullable<RawConfig["workflows"]> {
   const kept: NonNullable<RawConfig["workflows"]> = {};
@@ -208,8 +222,10 @@ function cleanWorkflowsSection(workflows: unknown, filePath: string): NonNullabl
   if (endpoints) kept.endpoints = endpoints;
   const name = workflows.defaultEndpoint;
   if (name !== undefined) {
-    if (typeof name === "string" && name !== "") kept.defaultEndpoint = name;
-    else warnIncompatible(filePath, "workflows.defaultEndpoint", name, "non-empty string");
+    if (typeof name !== "string" || name === "") {
+      warnUnusableTarget(filePath, "workflows.defaultEndpoint", name, "non-empty endpoint name");
+    }
+    kept.defaultEndpoint = name;
   }
   return kept;
 }
@@ -224,14 +240,15 @@ function cleanWorkflowEndpoints(endpoints: unknown, filePath: string): Record<st
   for (const [name, entry] of Object.entries(endpoints)) {
     const keyPath = `workflows.endpoints.${name}`;
     if (!isPlainObject(entry)) {
-      warnIncompatible(filePath, keyPath, entry, EXPECTED_OBJECT);
+      warnUnusableTarget(filePath, keyPath, entry, EXPECTED_OBJECT);
+      kept[name] = {};
       continue;
     }
+    const endpoint: RawWorkflowEndpoint = {};
+    if ("url" in entry) endpoint.url = entry.url;
     if (typeof entry.url !== "string" || entry.url === "") {
-      warnIncompatible(filePath, `${keyPath}.url`, entry.url, "string");
-      continue;
+      warnUnusableTarget(filePath, `${keyPath}.url`, entry.url, "non-empty URL string");
     }
-    const endpoint: RawWorkflowEndpoint = { url: entry.url };
     if (entry.apiKey !== undefined) {
       if (typeof entry.apiKey === "string") endpoint.apiKey = entry.apiKey;
       else warnIncompatible(filePath, `${keyPath}.apiKey`, entry.apiKey, "string");

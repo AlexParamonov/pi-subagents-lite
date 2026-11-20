@@ -95,10 +95,14 @@ export interface SubagentsConfig {
     providers?: Record<string, number>;
     models?: Record<string, number>;
   };
-  /** Workflow endpoints: named targets plus the default name, resolved per run (US-6). */
+  /**
+   * Workflow endpoints, resolved per run (US-6). The URL and the default name are what the files
+   * declared: an unusable one stays so the run that names it is refused rather than sent to another
+   * target (US-34). `workflows/endpoints.ts` is what decides usability.
+   */
   workflows: {
-    endpoints: Record<string, { url: string; apiKey?: string }>;
-    defaultEndpoint: string;
+    endpoints: Record<string, { url?: unknown; apiKey?: string }>;
+    defaultEndpoint: unknown;
   };
 }
 

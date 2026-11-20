@@ -1,9 +1,10 @@
 /**
  * endpoints.ts — Which Workflow endpoint a run is sent to (US-6, US-7, US-34).
  *
- * The Workflow file's own `endpoint` key wins, otherwise the configured default. A name that is
- * not configured and a URL that is not usable are errors naming the offender: nothing here falls
- * back to another endpoint, because the cost of a silent fallback is a run on the wrong server.
+ * The Workflow file's own `endpoint` key wins, otherwise the configured default. An unknown name, an
+ * entry that declares no usable URL and a URL that is not http(s) each refuse the call and name the
+ * offender: the config layers keep what was written, and only here is usability decided, so a
+ * configured target is never answered by another endpoint.
  */
 
 import type { SubagentsConfig } from "../models/model-precedence.ts";
@@ -32,6 +33,9 @@ export function resolveWorkflowEndpoint(
       `${shown(requested)} ${defaulted ? "is the configured default but is not configured" : "is not configured"}`,
       configured,
     );
+  }
+  if (typeof entry.url !== "string") {
+    return refused(`${shown(requested)} declares no usable URL`, configured);
   }
   if (!isHttpUrl(entry.url)) return refused(`${shown(requested)} has an unusable URL ${shown(entry.url)}`, configured);
   return { ok: true, endpoint: { name: requested, url: entry.url, ...(entry.apiKey ? { apiKey: entry.apiKey } : {}) } };

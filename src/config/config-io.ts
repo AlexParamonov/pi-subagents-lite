@@ -117,16 +117,20 @@ export interface RawConcurrency {
   models?: Record<string, number>;
 }
 
-/** One named Workflow endpoint as stored: where to reach it, and the key to send if any. */
+/**
+ * One named Workflow endpoint as stored. `url` is whatever the file declared, usable or not: a
+ * configured target keeps its name so the run that selects it is refused instead of being sent to
+ * another endpoint (US-34).
+ */
 export interface RawWorkflowEndpoint {
-  url: string;
+  url?: unknown;
   apiKey?: string;
 }
 
 /** Raw workflows section as stored in a config file. */
 export interface RawWorkflows {
   endpoints?: Record<string, RawWorkflowEndpoint>;
-  defaultEndpoint?: string;
+  defaultEndpoint?: unknown;
 }
 
 /** Raw config file contents: only the keys that file carries. */
@@ -248,6 +252,8 @@ export function mergeLayers(global: RawConfig, project: RawConfig | null): RawCo
 /**
  * Merge the workflow layers. A trusted project may override only the URL of an endpoint the
  * global file names: endpoint names, keys and the default stay global (US-6, ADR-0008 as amended).
+ * The project's URL wins even when it is not usable - inheriting the global URL back would send a
+ * run whose project config named a broken target to the target the project replaced (US-34).
  */
 function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflows | undefined): RawWorkflows {
   const endpoints = { ...global?.endpoints };
@@ -297,8 +303,10 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
     agent,
     concurrency,
     workflows: {
+      // A name the files configured keeps its own entry, usable or not: the built-ins are only for
+      // a name nobody configured (US-34).
       endpoints: { ...DEFAULT_WORKFLOW_ENDPOINTS, ...raw.workflows?.endpoints },
-      defaultEndpoint: raw.workflows?.defaultEndpoint || DEFAULT_WORKFLOW_ENDPOINT,
+      defaultEndpoint: raw.workflows?.defaultEndpoint ?? DEFAULT_WORKFLOW_ENDPOINT,
     },
   };
 }
