@@ -234,6 +234,21 @@ describe("create", () => {
     expect(error(run)).not.toContain("\u2026");
   });
 
+  it("keeps the transport's own words publish-safe when nothing answers", async () => {
+    // What the transport echoes about the exchange crosses the same rule as what the endpoint says:
+    // a header it names must not carry the credential, and no escape sequence reaches the row.
+    const key = "example-private-key";
+    const transport = (async () => {
+      throw new Error(`fetch failed with header "authorization: Bearer ${key}"\u001B[31m`);
+    }) as unknown as typeof fetch;
+
+    const run = await (await client(FAKED_URL, key, transport)).create(request());
+
+    expect(error(run)).toContain('authorization: Bearer [redacted]"');
+    expect(error(run)).not.toContain(key);
+    expect(error(run)).not.toContain("\u001B");
+  });
+
   it("reports a create whose response never arrived as an unknown outcome, sent once", async () => {
     const server = await remote({ loseCreateResponse: true });
 
