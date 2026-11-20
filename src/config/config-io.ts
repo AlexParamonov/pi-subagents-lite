@@ -9,9 +9,10 @@
  * keys, concurrency keys, and a Workflow endpoint's URL — never its key, its
  * name, or the default endpoint (US-6). The effective config merges project over
  * global over built-in defaults. Each file stores only its own keys; the merged
- * config is never written back. Unknown project keys are ignored with a
- * warning (and preserved for write-back); a malformed project file is never
- * overwritten. See docs/adr/0008-project-config-as-override-layer.md.
+ * config is never written back. Every project key that cannot take effect is
+ * ignored with one load-time warning naming it (and preserved for write-back);
+ * a malformed project file is never overwritten.
+ * See docs/adr/0008-project-config-as-override-layer.md.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -162,8 +163,71 @@ export function isProjectAllowedAgentKey(key: string): boolean {
   return MODEL_FAMILY_KEYS.has(key) || !CONFIG_AGENT_NON_MODEL_KEYS.includes(key);
 }
 
+/** Appended only when a Workflow key is listed, so an agent-only warning keeps the wording it has had. */
+const WORKFLOW_KEYS_ARE_GLOBAL =
+  "A project may override only the url of an endpoint the global file names: an endpoint's key, " +
+  "its name and the default endpoint are global settings.";
+
+/** A project layer's settings that the effective config cannot use, spelled as the file spells them. */
+interface IgnoredProjectKeys {
+  /** Agent keys by bare name, as the long-standing warning has always listed them. */
+  agentKeys: string[];
+  /** Dotted Workflow paths, e.g. `workflows.endpoints.release.apiKey`. */
+  workflowKeys: string[];
+}
+
+/**
+ * One warning naming every project key with no effect, never a value. True when it warned, which is
+ * how the loader keeps it to one per load rather than one per merge that happens to drop the key.
+ */
+function warnIgnoredProjectKeys(projectPath: string, ignored: IgnoredProjectKeys): boolean {
+  const listed = [...ignored.agentKeys, ...ignored.workflowKeys];
+  if (listed.length === 0) return false;
+  const explanation = ignored.workflowKeys.length > 0 ? ` ${WORKFLOW_KEYS_ARE_GLOBAL}` : "";
+  console.warn(
+    `[subagents] Ignoring unknown keys in project config ${projectPath}: ${listed.join(", ")}${explanation}`,
+  );
+  return true;
+}
+
+/**
+ * What a project's `workflows` section actually decides: the url of an endpoint the global file names.
+ * `urls` is what the merge applies, `ignored` every other setting the section carries, so the merge and
+ * the load warning are one rule (ADR-0008).
+ */
+function projectWorkflowOverrides(
+  global: RawWorkflows | undefined,
+  project: RawWorkflows | undefined,
+): { urls: Array<{ name: string; url: unknown }>; ignored: string[] } {
+  const urls: Array<{ name: string; url: unknown }> = [];
+  const ignored: string[] = [];
+  for (const [name, entry] of Object.entries(project?.endpoints ?? {})) {
+    const keyPath = `workflows.endpoints.${name}`;
+    if (!(name in (global?.endpoints ?? {}))) {
+      ignored.push(keyPath);
+      continue;
+    }
+    if (!isPlainObject(entry)) continue;
+    if (entry.apiKey !== undefined) ignored.push(`${keyPath}.apiKey`);
+    if ("url" in entry) urls.push({ name, url: entry.url });
+  }
+  const defaultEndpoint = project?.defaultEndpoint;
+  if (typeof defaultEndpoint === "string" && defaultEndpoint !== "") ignored.push("workflows.defaultEndpoint");
+  return { urls, ignored };
+}
+
+/**
+ * Project settings the effective config cannot use. One rule with `mergeLayers`, which applies exactly
+ * the keys this leaves out (ADR-0008). Reads the validated layers, so a value the loader already called
+ * incompatible is named once, not twice.
+ */
+function ignoredProjectKeys(global: RawConfig, project: RawConfig): IgnoredProjectKeys {
+  const agentKeys = Object.keys(project.agent ?? {}).filter((key) => !isProjectAllowedAgentKey(key));
+  return { agentKeys, workflowKeys: projectWorkflowOverrides(global.workflows, project.workflows).ignored };
+}
+
 /** Read + validate the project file. null = absent, "malformed" = invalid. */
-type ProjectRead = { raw: RawConfig; unknownKeys: string[] } | "malformed" | null;
+type ProjectRead = RawConfig | "malformed" | null;
 
 /**
  * Create a ConfigIO. With a trusted project's `.pi` directory the project file
@@ -175,7 +239,7 @@ export function createConfigIO(projectDir?: string): ConfigIO {
   const projectPath = projectDir ? path.join(projectDir, CONFIG_FILE_NAME) : null;
   let projectStatus: ProjectLayerStatus = projectDir ? "absent" : "untrusted";
   let projectRaw: RawConfig | null = null;
-  let unknownKeysWarned = false;
+  let ignoredKeysWarned = false;
 
   return {
     load: () => {
@@ -189,13 +253,10 @@ export function createConfigIO(projectDir?: string): ConfigIO {
           projectRaw = null;
           projectStatus = "malformed";
         } else {
-          projectRaw = read.raw;
+          projectRaw = read;
           projectStatus = "loaded";
-          if (read.unknownKeys.length > 0 && !unknownKeysWarned) {
-            unknownKeysWarned = true;
-            console.warn(
-              `[subagents] Ignoring unknown keys in project config ${projectPath}: ${read.unknownKeys.join(", ")}`,
-            );
+          if (!ignoredKeysWarned && warnIgnoredProjectKeys(projectPath, ignoredProjectKeys(global, read))) {
+            ignoredKeysWarned = true;
           }
         }
       } else {
@@ -228,10 +289,11 @@ export function loadConfig(): SubagentsConfig {
 
 /**
  * Merge the two raw layers into one raw config: project keys win, absent keys
- * inherit from global. Project agent keys that are not model keys are dropped
- * (they were warned about at load). Concurrency merges per entry: default wins,
- * providers/models combine. Workflows merge per endpoint and only the URL may be
- * overridden. Pure — no I/O.
+ * inherit from global. Project keys the layer cannot set are dropped here and
+ * named once by the load warning (`ignoredProjectKeys`). Concurrency merges per
+ * entry: default wins, providers/models combine. Workflows merge per endpoint and
+ * only the URL may be overridden. Pure — no I/O, and no warning of its own: the
+ * store merges again after every mutation, and only a load may report.
  */
 export function mergeLayers(global: RawConfig, project: RawConfig | null): RawConfig {
   const agent = { ...global.agent };
@@ -255,13 +317,12 @@ export function mergeLayers(global: RawConfig, project: RawConfig | null): RawCo
  * project declares wins even when it is not usable - inheriting the global URL back would answer for
  * the target the project replaced (US-34) - while a URL it does not declare inherits (ADR-0008:
  * inheritance is absence, so an unsupported key never erases the value the global file configured).
+ * What it drops is named by `ignoredProjectKeys`, which warns about it once at load.
  */
 function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflows | undefined): RawWorkflows {
   const endpoints = { ...global?.endpoints };
-  for (const [name, entry] of Object.entries(project?.endpoints ?? {})) {
-    const inherited = endpoints[name];
-    if (!inherited || !isPlainObject(entry) || !("url" in entry)) continue;
-    endpoints[name] = { ...inherited, url: entry.url };
+  for (const { name, url } of projectWorkflowOverrides(global, project).urls) {
+    endpoints[name] = { ...endpoints[name], url };
   }
   const merged: RawWorkflows = { endpoints };
   if (global?.defaultEndpoint !== undefined) merged.defaultEndpoint = global.defaultEndpoint;
@@ -356,12 +417,9 @@ function readProjectRaw(projectPath: string): ProjectRead {
   if (raw.workflows?.endpoints !== undefined && !isPlainObject(raw.workflows.endpoints)) {
     return malformedSection(projectPath, "workflows.endpoints");
   }
-  // Per-value validation first so dropped keys warn once (type error), not
-  // twice (type error plus unknown-key). Unknown keys are computed on the
-  // cleaned layer; the file bytes stay untouched.
-  const cleaned = validateProjectLayer(raw, projectPath);
-  const unknownKeys = Object.keys(cleaned.agent ?? {}).filter((key) => !isProjectAllowedAgentKey(key));
-  return { raw: cleaned, unknownKeys };
+  // Per-value validation first: ignoredProjectKeys names keys, so it runs on the cleaned layer - a
+  // value already reported as incompatible must be named once, not twice. File bytes stay untouched.
+  return validateProjectLayer(raw, projectPath);
 }
 
 function malformedSection(projectPath: string, section: string): "malformed" {

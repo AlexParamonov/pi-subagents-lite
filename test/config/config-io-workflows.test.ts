@@ -58,10 +58,15 @@ function warnedLoad(io: ConfigIO): { warnings: string; merged: RawConfig } {
 }
 
 function warned(action: () => unknown): string {
+  return warningsOf(action).join("\n");
+}
+
+/** Every console.warn message the action printed, in order. */
+function warningsOf(action: () => unknown): string[] {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   try {
     action();
-    return warn.mock.calls.map((call) => String(call[0])).join("\n");
+    return warn.mock.calls.map((call) => String(call[0]));
   } finally {
     warn.mockRestore();
   }
@@ -386,8 +391,8 @@ describe("createConfigIO — the workflows section on disk", () => {
 
     const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
 
-    expect(warnings).toBe("");
     expect(merged.workflows).toEqual(ENDPOINTS.workflows);
+    expect(warnings).toContain("workflows.endpoints.anagen-x.local.apiKey");
   });
 
   it("never reads a project layer without a project dir", () => {
@@ -416,6 +421,106 @@ describe("createConfigIO — the workflows section on disk", () => {
     expect((JSON.parse(readFileSync(GLOBAL_CONFIG_PATH, "utf-8")) as { workflows?: unknown }).workflows).toEqual(
       ENDPOINTS.workflows,
     );
+  });
+});
+
+// ADR-0008: a project layer may set model keys, concurrency keys and one endpoint's url. Every other
+// setting it carries has no effect, and "no effect" is only honest when the load says so - the same
+// warning an ignored agent key already gets.
+describe("createConfigIO — warning about a Workflow setting the project layer cannot set", () => {
+  it("warns that a project-only endpoint name is ignored", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: { endpoints: { staging: { url: "https://staging.invalid:4001" } } } });
+
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toContain("workflows.endpoints.staging");
+    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
+  });
+
+  it("warns that a defaultEndpoint the project sets is ignored", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: { defaultEndpoint: "staging" } });
+
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toContain("workflows.defaultEndpoint");
+    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
+  });
+
+  // The probe from the review: a key, a name and a default, all supplied by the project, all inert.
+  it("names all three ignored Workflow settings in one warning", () => {
+    writeGlobal({ workflows: { endpoints: { release: { url: "https://release.invalid:4001" } } } });
+    writeProject({
+      workflows: {
+        endpoints: { release: { apiKey: "project-key" }, staging: { url: "https://staging.invalid:4001" } },
+        defaultEndpoint: "staging",
+      },
+    });
+
+    const warnings = warningsOf(() => createConfigIO(projectDir).load());
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("workflows.endpoints.release.apiKey");
+    expect(warnings[0]).toContain("workflows.endpoints.staging");
+    expect(warnings[0]).toContain("workflows.defaultEndpoint");
+    expect(warnings[0]).toContain("only the url of an endpoint");
+    // A setting is named; its value is not, so no credential reaches the log.
+    expect(warnings[0]).not.toContain("project-key");
+  });
+
+  it("says nothing about a url the project is allowed to override", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: { endpoints: { "anagen-x.local": { url: "http://internal:4001" } } } });
+
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toBe("");
+    expect(merged.workflows?.endpoints?.["anagen-x.local"].url).toBe("http://internal:4001");
+  });
+
+  it("names only the apiKey of an entry whose url it applies", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({
+      workflows: { endpoints: { "anagen-x.local": { url: "http://internal:4001", apiKey: "project-key" } } },
+    });
+
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toContain("workflows.endpoints.anagen-x.local.apiKey");
+    expect(warnings).not.toContain("workflows.endpoints.anagen-x.local.url");
+    expect(merged.workflows?.endpoints?.["anagen-x.local"].url).toBe("http://internal:4001");
+  });
+
+  it("does not repeat an ignored-key warning for a value the loader already refused", () => {
+    const carried: unknown[] = [
+      { workflows: { endpoints: { "anagen-x.local": { apiKey: 7 } } } },
+      { workflows: { endpoints: { "anagen-x.local": "http://typoed-out:4001" } } },
+      { workflows: { defaultEndpoint: 4001 } },
+    ];
+    for (const project of carried) {
+      writeGlobal(ENDPOINTS);
+      writeProject(project);
+
+      const warnings = warningsOf(() => createConfigIO(projectDir).load());
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("Incompatible value");
+    }
+  });
+
+  it("warns once per load even where the store merges the layers again", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: { endpoints: { staging: { url: "https://staging.invalid:4001" } } } });
+    const io = createConfigIO(projectDir);
+
+    const warnings = warningsOf(() => {
+      const store = new ConfigStore(io);
+      store.mutate.agent.clearAllModelOverrides("project");
+      store.reload();
+    });
+
+    expect(warnings.filter((message) => message.includes("Ignoring unknown keys"))).toHaveLength(1);
   });
 });
 
