@@ -708,6 +708,51 @@ describe("foreground workflow execution", () => {
     }
   });
 
+  it("shows both turns when a buffered run delivers the same text twice", async () => {
+    // The same producer sequence with no chunks at all, rendered by the real call renderer: the two
+    // delivered turns are two rows, whatever their wording.
+    const turn = "Checking the parser";
+    let push: (frame: string) => void = () => {
+      throw new Error("workflow stream did not open");
+    };
+    const remote = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(
+          DISPATCH +
+            progressFrame("spend") +
+            progressFrame("assistant-turn", turn) +
+            progressFrame("tool-call") +
+            progressFrame("tool-result") +
+            progressFrame("spend") +
+            progressFrame("assistant-turn", turn),
+        );
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+    configure(ws, FAKED_URL);
+    vi.stubGlobal("fetch", remote.fetch);
+    const tool = executable(await start());
+    const args = { workflow: "audit", prompt: "Review changes" };
+    const { views, paint } = liveViews(tool, args);
+    const rows = (view: string): number => view.split(turn).length - 1;
+
+    const pending = run(tool, args, undefined, paint);
+    try {
+      const both = await viewMatching(views, (view) => rows(view) === 2, "both delivered turns are on screen", pending);
+      expect(both).toContain(RECORDED.toolName);
+      for (const snapshot of views) {
+        expect(rows(snapshot), "a delivered turn never doubles into extra rows on its own").toBeLessThanOrEqual(2);
+      }
+
+      push(TERMINAL);
+      expect(text(await pending)).toContain("The declared output");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders deduplicated live updates without thinking", async () => {
     const frames =
       DISPATCH +

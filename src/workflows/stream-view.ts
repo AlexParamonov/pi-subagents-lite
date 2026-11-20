@@ -76,23 +76,16 @@ class NodeLines {
 
   append(channel: Channel, text: string): boolean {
     if (text === "") return false;
-    return this.apply(() => {
-      if (this.turn.full !== null) this.closeTurn();
-      this.turn.append(channel, text);
-    });
+    return this.contribute((turn) => turn.append(channel, text));
   }
 
   /**
-   * A full-turn frame is its own turn's boundary: its text replaces whatever the chunks of that turn
-   * contributed, and whatever arrives next belongs to the following turn.
+   * A full-turn frame is the turn it delivers: its text replaces whatever that turn's chunks
+   * contributed, and the frame after it opens the next turn whatever its text says.
    */
   fullTurn(text: string): boolean {
-    if (this.turn.full === text) return false;
-    return this.apply(() => {
-      // A second full-turn frame with other text is the next turn's: a run that streams no chunks
-      // emits one per turn with nothing between them.
-      if (this.turn.full !== null) this.closeTurn();
-      this.turn.full = text;
+    return this.contribute((turn) => {
+      turn.full = text;
     });
   }
 
@@ -108,15 +101,17 @@ class NodeLines {
     return true;
   }
 
+  /** The turn a full-turn frame closed is over: what arrives next is the next turn's contribution. */
+  private contribute(update: (turn: TurnText) => void): boolean {
+    const before = this.texts;
+    if (this.turn.full !== null) this.closeTurn();
+    update(this.turn);
+    return !sameLines(before, this.texts);
+  }
+
   private closeTurn(): void {
     if (this.turn.text !== "") this.closed.push(this.turn.text);
     this.turn = new TurnText();
-  }
-
-  private apply(update: () => void): boolean {
-    const before = this.texts;
-    update();
-    return !sameLines(before, this.texts);
   }
 }
 

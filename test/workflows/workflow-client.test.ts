@@ -550,6 +550,61 @@ describe("monitor display", () => {
     expect(textLines(watch.snapshots.at(-1)!)).toEqual([closedTurn, nextTurn]);
   });
 
+  it("shows both turns when a buffered run delivers the same text twice", async () => {
+    // A buffered run emits no chunks at all (`SessionExecutor`'s doc: "a buffered run emits no chunk
+    // events and stays silent"), so its turns arrive as consecutive full-turn frames, and two turns
+    // can say the same thing. The producer's per-turn order: llm_completed, assistant_turn, tool_call,
+    // tool_result.
+    const turn = "Checking the parser";
+    const frames =
+      DISPATCH +
+      progressFrame("spend") +
+      progressFrame("assistant-turn", turn) +
+      progressFrame("tool-call") +
+      progressFrame("tool-result") +
+      progressFrame("spend") +
+      progressFrame("assistant-turn", turn);
+    const server = await remote({ streams: [frames], holdStream: true });
+    const run = await client(server.url);
+
+    const { snapshots, settled, until } = follow(run, server);
+    await until((s) => textLines(s).length === 2, settled, "both delivered turns are on screen");
+    server.releaseStream();
+    await settled;
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: RECORDED.toolName },
+      { type: "text", node: "analysis", text: turn },
+      { type: "text", node: "analysis", text: turn },
+    ]);
+  });
+
+  it("counts the turn a full-turn frame delivers even with nothing delivered between", async () => {
+    // What closes a turn is the boundary frame itself, not the activity around it: a tool turn's
+    // `assistant_turn` and the final turn's `llm_response` can arrive back to back on a buffered run.
+    const turn = "Checking the parser";
+    const frames =
+      DISPATCH +
+      progressFrame("spend") +
+      progressFrame("assistant-turn", turn) +
+      progressFrame("spend") +
+      progressFrame("full-turn", turn);
+    const server = await remote({ streams: [frames], holdStream: true });
+    const run = await client(server.url);
+
+    const { snapshots, settled, until } = follow(run, server);
+    await until((s) => textLines(s).length === 2, settled, "the back-to-back turns are both on screen");
+    server.releaseStream();
+    await settled;
+
+    expect(snapshots.at(-1)).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: turn },
+      { type: "text", node: "analysis", text: turn },
+    ]);
+  });
+
   it("shows nothing new for a full turn that only repeats the turn's chunks", async () => {
     const turn = "Reading the diff, then three findings.";
     let push: (frame: string) => void = () => {
@@ -568,8 +623,8 @@ describe("monitor display", () => {
     push(DISPATCH + textFrame(turn));
     await vi.waitFor(() => expect(textLines(watch.snapshots.at(-1)!)).toEqual([turn]));
 
-    // The boundary frame carries the text the chunks already delivered, and the push channel may
-    // hand the same frame over again: neither is a new line, and neither is the same line twice.
+    // The boundary frame carries the text this turn's chunks already delivered: it replaces that
+    // turn's contribution, so it is neither a new line nor the same line twice.
     push(progressFrame("full-turn", turn));
     push(progressFrame("tool-call"));
     await vi.waitFor(() =>
@@ -580,7 +635,7 @@ describe("monitor display", () => {
     );
     expect(watch.snapshots).toHaveLength(2);
 
-    push(progressFrame("full-turn", turn) + lifecycle("node_complete", "analysis"));
+    push(lifecycle("node_complete", "analysis"));
     await vi.waitFor(() =>
       expect(
         watch.snapshots.at(-1)!.some((item) => item.type === "node-status" && item.status === "completed"),
