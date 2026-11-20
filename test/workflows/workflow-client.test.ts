@@ -47,13 +47,9 @@ import {
   type EndpointOptions,
   type TestEndpoint,
 } from "./fixtures.js";
-import type {
-  WorkflowCreate,
-  WorkflowOutcome,
-  WorkflowDisplayItem,
-  WorkflowEndpoint,
-  WorkflowView,
-} from "../../src/workflows/workflow-client.js";
+import type { WorkflowCreate, WorkflowOutcome, WorkflowView } from "../../src/workflows/workflow-client.js";
+import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
+import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
 
 let servers: TestEndpoint[] = [];
 

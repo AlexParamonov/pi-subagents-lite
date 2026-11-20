@@ -14,9 +14,6 @@ import { StreamView } from "./stream-view.ts";
 import type { WorkflowDisplayItem } from "./stream-view.ts";
 import type { WorkflowEndpoint } from "./endpoints.ts";
 
-export type { WorkflowEndpoint } from "./endpoints.ts";
-export type { WorkflowDisplayItem, WorkflowNodeStatus } from "./stream-view.ts";
-
 /** What a run needs: the prompt, the parsed Workflow file, and the working directory to inject. */
 export interface WorkflowRunRequest {
   prompt: string;
