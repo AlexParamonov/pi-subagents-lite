@@ -254,6 +254,21 @@ describe("endpoint names are data, not prototype keys", () => {
     });
   });
 
+  for (const name of ["constructor", "toString"]) {
+    it(`reads the global endpoint ${name} as an ordinary configured target`, () => {
+      const url = `http://${name}.invalid:4001`;
+      writeGlobalRaw(JSON.stringify({ workflows: { endpoints: { [name]: { url } }, defaultEndpoint: name } }));
+
+      const { merged } = warnedLoad(createConfigIO());
+
+      expect(Object.keys(merged.workflows!.endpoints!)).toContain(name);
+      expect(resolveWorkflowEndpoint(mergeDefaults(merged).workflows)).toEqual({
+        ok: true,
+        endpoint: { name, url },
+      });
+    });
+  }
+
   it("applies a project url under the name __proto__ instead of setting the table's prototype", () => {
     writeGlobalRaw('{"workflows":{"endpoints":{"__proto__":{"url":"http://proto.invalid:4001","apiKey":"k"}}}}');
     writeProjectRaw('{"workflows":{"endpoints":{"__proto__":{"url":"http://project.invalid:4001"}}}}');

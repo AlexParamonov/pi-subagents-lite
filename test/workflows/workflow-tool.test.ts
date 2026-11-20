@@ -1,6 +1,6 @@
 /**
- * workflow-tool.test.ts — The `Workflow` tool's own surface: the call line while arguments are
- * still streaming, and the schema re-registration a listing change requires.
+ * workflow-tool.test.ts — The `Workflow` tool surface: endpoint routing and refusal, the call line while
+ * arguments are still streaming, and schema re-registration after a listing change.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -117,8 +117,9 @@ interface Sent {
 }
 
 /**
- * Call the tool with a fake transport: every request it asked for, and any returned refusal. A refused
- * target must ask for nothing, so both are always observable.
+ * Call the tool with a fake transport and report every request plus the returned tool error or thrown error.
+ * The error may be a refusal before sending or a rejection from an endpoint after sending; a refused target
+ * must ask for nothing, so both outcomes stay observable.
  */
 async function callTool(params: Record<string, unknown>): Promise<{ sent: Sent[]; refusal: string }> {
   const sent: Sent[] = [];
