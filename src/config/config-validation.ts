@@ -173,8 +173,8 @@ export interface ProjectWorkflowRule {
 /**
  * Decide a project's Workflow settings against what the global file declares. One walk of the section as
  * the file wrote it, and the one answer three consumers read: the merge applies `urls`, this file's
- * validation warns only at the paths the layer owns, and the load names `ignored`. Membership is an own
- * key, so a name `Object.prototype` carries is not one the global file named.
+ * validation warns only at the paths the layer owns, and the load names `ignored`. Membership uses own
+ * keys: inherited names such as `constructor` do not count unless the global file declares them itself.
  */
 export function projectWorkflowRule(global: RawWorkflows | undefined, project: unknown): ProjectWorkflowRule {
   const rule: ProjectWorkflowRule = { urls: [], malformedEntries: [], ignored: [] };

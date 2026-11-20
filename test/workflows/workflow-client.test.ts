@@ -120,6 +120,17 @@ describe("create", () => {
     expect(createRequests(server)[0]!.contentType).toMatch(/^application\/json(?:\s*;|$)/i);
   });
 
+  it("refuses a successful create response that does not identify its run", async () => {
+    const url = "http://workflow.example:4001";
+    const transport: typeof fetch = async () => new Response("{}", { status: 201 });
+
+    const run = await (await client(url, undefined, transport)).create(request());
+
+    expect(error(run)).toContain(url);
+    expect(error(run)).toContain("created a run it did not identify");
+    expect(error(run)).toContain("the response carried no workflow id");
+  });
+
   it("keeps the file's own prompt vars next to the injected working directory", async () => {
     const server = await remote();
 

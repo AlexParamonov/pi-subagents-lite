@@ -254,6 +254,21 @@ describe("endpoint names are data, not prototype keys", () => {
     });
   });
 
+  for (const name of ["constructor", "toString"]) {
+    it(`reads the global endpoint ${name} as an ordinary configured target`, () => {
+      const url = `http://${name}.invalid:4001`;
+      writeGlobalRaw(JSON.stringify({ workflows: { endpoints: { [name]: { url } }, defaultEndpoint: name } }));
+
+      const { merged } = warnedLoad(createConfigIO());
+
+      expect(Object.keys(merged.workflows!.endpoints!)).toContain(name);
+      expect(resolveWorkflowEndpoint(mergeDefaults(merged).workflows)).toEqual({
+        ok: true,
+        endpoint: { name, url },
+      });
+    });
+  }
+
   it("applies a project url under the name __proto__ instead of setting the table's prototype", () => {
     writeGlobalRaw('{"workflows":{"endpoints":{"__proto__":{"url":"http://proto.invalid:4001","apiKey":"k"}}}}');
     writeProjectRaw('{"workflows":{"endpoints":{"__proto__":{"url":"http://project.invalid:4001"}}}}');
@@ -514,26 +529,6 @@ describe("createConfigIO — the workflows section on disk", () => {
 // setting it carries has no effect, and "no effect" is only honest when the load says so - the same
 // warning an ignored agent key already gets.
 describe("createConfigIO — warning about a Workflow setting the project layer cannot set", () => {
-  it("warns that a project-only endpoint name is ignored", () => {
-    writeGlobal(ENDPOINTS);
-    writeProject({ workflows: { endpoints: { staging: { url: "https://staging.invalid:4001" } } } });
-
-    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
-
-    expect(warnings).toContain("workflows.endpoints.staging");
-    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
-  });
-
-  it("warns that a defaultEndpoint the project sets is ignored", () => {
-    writeGlobal(ENDPOINTS);
-    writeProject({ workflows: { defaultEndpoint: "staging" } });
-
-    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
-
-    expect(warnings).toContain("workflows.defaultEndpoint");
-    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
-  });
-
   // The probe from the review: a key, a name and a default, all supplied by the project, all inert.
   it("names all three ignored Workflow settings in one warning", () => {
     writeGlobal({ workflows: { endpoints: { release: { url: "https://release.invalid:4001" } } } });

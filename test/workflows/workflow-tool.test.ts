@@ -1,6 +1,6 @@
 /**
- * workflow-tool.test.ts — The `Workflow` tool's own surface: the call line while arguments are
- * still streaming, and the schema re-registration a listing change requires.
+ * workflow-tool.test.ts — The `Workflow` tool surface: endpoint routing and refusal, the call line while
+ * arguments are still streaming, and schema re-registration after a listing change.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -117,19 +117,23 @@ interface Sent {
 }
 
 /**
- * Call the tool with a fake transport: every request it asked for, and the message it refused with
- * (empty when it never refused). A refused target must ask for nothing, so both are always observable.
+ * Call the tool with a fake transport and report every request plus the returned tool error or thrown error.
+ * The error may be a refusal before sending or a rejection from an endpoint after sending; a refused target
+ * must ask for nothing, so both outcomes stay observable.
  */
 async function callTool(params: Record<string, unknown>): Promise<{ sent: Sent[]; refusal: string }> {
   const sent: Sent[] = [];
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     sent.push({ url: request.url, authorization: request.headers.get("authorization") });
-    return new Response("{}", { status: 200 });
+    return new Response(JSON.stringify({ error: "Controlled endpoint rejection" }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    });
   });
   try {
-    await runTool(params);
-    return { sent, refusal: "" };
+    const result = await runTool(params);
+    return { sent, refusal: result.isError ? text(result) : "" };
   } catch (err) {
     return { sent, refusal: (err as Error).message };
   } finally {
@@ -179,9 +183,8 @@ describe("Workflow endpoint", () => {
     projectEndpoints({ test: { apiKey: "project-key" } });
     await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
 
-    const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
+    const { sent } = await callTool({ workflow: "audit", prompt: "Review changes" });
 
-    expect(refusal).toBe("");
     expect(sent).toEqual([{ url: "http://127.0.0.1:1/api/workflows", authorization: "Bearer global-key" }]);
   });
 

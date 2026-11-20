@@ -131,9 +131,9 @@ export interface RawConcurrency {
 }
 
 /**
- * One named Workflow endpoint as stored. `url` is whatever the file declared, usable or not: a
- * configured target keeps its name so the run that selects it is refused instead of being sent to
- * another endpoint (US-34).
+ * One named Workflow endpoint as stored. `url` is whatever the file declared, usable or not: an
+ * unusable configured target keeps its name so the run that selects it is refused instead of being
+ * sent to another endpoint (US-34).
  */
 export interface RawWorkflowEndpoint {
   url?: unknown;
@@ -325,13 +325,10 @@ export function mergeLayers(global: RawConfig, project: RawConfig | null): RawCo
 
 /**
  * Merge the workflow layers. A trusted project may override only the URL of an endpoint the global
- * file names: endpoint names, keys and the default stay global (US-6, ADR-0008 as amended). A URL the
- * project declares wins even when it is not usable - inheriting the global URL back would answer for
- * the target the project replaced (US-34) - while a URL it does not declare inherits (ADR-0008:
- * inheritance is absence, so an unsupported key never erases the value the global file configured).
- * A URL the project declares wins even when it is not usable: inheriting the global URL back would
- * answer for the target the project replaced (US-34). `projectWorkflowRule` is that decision, and what
- * it drops is named by `ignoredProjectKeys`, which warns about it once at load.
+ * file names: endpoint names, keys and the default stay global (US-6, ADR-0008 as amended). A declared
+ * URL wins even when unusable, so a broken project target is refused rather than silently replaced by
+ * the global URL (US-34); an absent URL inherits, and an unsupported key cannot erase the global value.
+ * `projectWorkflowRule` drives both this merge and the load warning for settings it excludes.
  */
 function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflows | undefined): RawWorkflows {
   const { urls } = projectWorkflowRule(global, project);

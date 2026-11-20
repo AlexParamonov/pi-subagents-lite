@@ -4,8 +4,8 @@
  * The Workflow file's own `endpoint` key wins, otherwise the configured default. An unknown name, an
  * entry that declares no usable URL and a URL that is not http(s) each refuse the call and name the
  * offender: the config layers keep what was written, and only here is usability decided, so a
- * configured target is never answered by another endpoint. A name is looked up by own key only, so a
- * name `Object.prototype` carries (`constructor`, `__proto__`) is an unconfigured name, not an entry.
+ * configured target is never answered by another endpoint. Lookup uses own keys: inherited names such
+ * as `constructor` and `__proto__` are not entries, but remain valid when explicitly configured.
  */
 
 import type { SubagentsConfig } from "../models/model-precedence.ts";
