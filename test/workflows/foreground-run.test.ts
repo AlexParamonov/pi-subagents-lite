@@ -539,16 +539,27 @@ describe("foreground workflow execution", () => {
   });
 
   for (const status of ["failed", "interrupted"] as const) {
-    it(`reports a remote ${status} with its reason`, async () => {
+    it(`reports a remote ${status} with its reason and keeps it on the settled record`, async () => {
       const remote = await server({ states: [readState({ status, error: "Runner lost its lease" })] });
       install(remote);
-      const tool = executable(await start());
+      const capture = await start();
+      const tool = executable(capture);
+      const args = { workflow: "audit", prompt: "Review changes" };
 
-      const result = await outcome(tool);
+      const result = await run(tool, args);
+      const settled = resultView(tool, result, args, undefined, {});
+      const listed = await run(executable(capture, "AgentStatus"), {});
 
       expect(result.isError).toBe(true);
-      expect(result.text).toContain("Runner lost its lease");
-      if (status === "interrupted") expect(result.text).toMatch(/interrupt/i);
+      expect(text(result)).toContain("Runner lost its lease");
+      // Once the record has settled it is the row's outcome source, and only record.error carries
+      // this line: the repaint of a failed or interrupted run reads the record, not the call.
+      expect(settled).toContain("Runner lost its lease");
+      // US-18: a run the endpoint interrupted is an error record, never a stopped or completed one.
+      expect(text(listed)).toContain("audit");
+      expect(text(listed)).toMatch(/\berror\b/i);
+      expect(text(listed)).not.toMatch(/stopped|completed|running/i);
+      if (status === "interrupted") expect(text(result)).toMatch(/interrupt/i);
     });
   }
 

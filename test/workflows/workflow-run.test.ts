@@ -149,6 +149,8 @@ describe("a foreground run's record and result", () => {
     expect(result.details?.agentId).toBeTypeOf("string");
     const record = manager.listAgents()[0];
     expect(record.lifecycle.status).toBe("completed");
+    expect(record.result).toBe("The declared output");
+    expect(record.error).toBeUndefined();
     expect(record.workflow).toEqual({
       name: "audit",
       endpoint: "local",
@@ -158,7 +160,7 @@ describe("a foreground run's record and result", () => {
     expect(shown.views.at(-1)).toBe("✓ analysis completed\nThe declared output");
   });
 
-  it("reports a failed run as an error carrying the endpoint's reason", async () => {
+  it("settles a failed run as an error record carrying the endpoint's reason", async () => {
     const manager = new AgentManager();
     const client = fakeClient();
 
@@ -170,10 +172,13 @@ describe("a foreground run's record and result", () => {
 
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("validator rejected the diff");
-    expect(manager.listAgents()[0].lifecycle.status).toBe("error");
+    const record = manager.listAgents()[0];
+    expect(record.lifecycle.status).toBe("error");
+    expect(record.error).toBe("Workflow run failed: validator rejected the diff");
+    expect(record.result).toBeUndefined();
   });
 
-  it("reports an interrupted run as interrupted, reason and all", async () => {
+  it("settles an interrupted run as an error record keeping the endpoint's reason", async () => {
     const manager = new AgentManager();
     const client = fakeClient();
 
@@ -186,6 +191,10 @@ describe("a foreground run's record and result", () => {
     expect(result.isError).toBe(true);
     expect(text(result)).toMatch(/interrupt/i);
     expect(text(result)).toContain("the journal was never written");
+    const record = manager.listAgents()[0];
+    expect(record.lifecycle.status).toBe("error");
+    expect(record.error).toBe("Workflow run was interrupted: the journal was never written");
+    expect(record.result).toBeUndefined();
   });
 
   it("hands back an unknown-state note and keeps watching, leaving the record running", async () => {
