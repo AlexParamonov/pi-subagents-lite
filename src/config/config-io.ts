@@ -18,7 +18,7 @@ import * as path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { SubagentsConfig } from "../models/model-precedence.ts";
 import { CONFIG_AGENT_NON_MODEL_KEYS } from "./types.ts";
-import { isPlainObject, validateRawLayer } from "./config-validation.ts";
+import { isPlainObject, validateProjectLayer, validateRawLayer } from "./config-validation.ts";
 
 /** File name of the config in both the global agent dir and a project's .pi dir. */
 const CONFIG_FILE_NAME = "subagents-lite.json";
@@ -250,16 +250,17 @@ export function mergeLayers(global: RawConfig, project: RawConfig | null): RawCo
 }
 
 /**
- * Merge the workflow layers. A trusted project may override only the URL of an endpoint the
- * global file names: endpoint names, keys and the default stay global (US-6, ADR-0008 as amended).
- * The project's URL wins even when it is not usable - inheriting the global URL back would send a
- * run whose project config named a broken target to the target the project replaced (US-34).
+ * Merge the workflow layers. A trusted project may override only the URL of an endpoint the global
+ * file names: endpoint names, keys and the default stay global (US-6, ADR-0008 as amended). A URL the
+ * project declares wins even when it is not usable - inheriting the global URL back would answer for
+ * the target the project replaced (US-34) - while a URL it does not declare inherits (ADR-0008:
+ * inheritance is absence, so an unsupported key never erases the value the global file configured).
  */
 function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflows | undefined): RawWorkflows {
   const endpoints = { ...global?.endpoints };
   for (const [name, entry] of Object.entries(project?.endpoints ?? {})) {
     const inherited = endpoints[name];
-    if (!inherited) continue;
+    if (!inherited || !isPlainObject(entry) || !("url" in entry)) continue;
     endpoints[name] = { ...inherited, url: entry.url };
   }
   const merged: RawWorkflows = { endpoints };
@@ -306,7 +307,8 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
       // A name the files configured keeps its own entry, usable or not: the built-ins are only for
       // a name nobody configured (US-34).
       endpoints: { ...DEFAULT_WORKFLOW_ENDPOINTS, ...raw.workflows?.endpoints },
-      defaultEndpoint: raw.workflows?.defaultEndpoint ?? DEFAULT_WORKFLOW_ENDPOINT,
+      defaultEndpoint:
+        raw.workflows?.defaultEndpoint === undefined ? DEFAULT_WORKFLOW_ENDPOINT : raw.workflows.defaultEndpoint,
     },
   };
 }
@@ -357,7 +359,7 @@ function readProjectRaw(projectPath: string): ProjectRead {
   // Per-value validation first so dropped keys warn once (type error), not
   // twice (type error plus unknown-key). Unknown keys are computed on the
   // cleaned layer; the file bytes stay untouched.
-  const cleaned = validateRawLayer(raw, projectPath);
+  const cleaned = validateProjectLayer(raw, projectPath);
   const unknownKeys = Object.keys(cleaned.agent ?? {}).filter((key) => !isProjectAllowedAgentKey(key));
   return { raw: cleaned, unknownKeys };
 }

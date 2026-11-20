@@ -89,8 +89,8 @@ describe("resolveWorkflowEndpoint", () => {
   }
 
   // A default that names no usable target: falling back to the built-in target would run the workflow
-  // against a server nobody chose (US-34).
-  for (const name of [4001, "", ["local"]]) {
+  // against a server nobody chose (US-34). null is a configured value, not absence.
+  for (const name of [4001, "", ["local"], null]) {
     it(`refuses the configured default ${JSON.stringify(name)} rather than picking another target`, () => {
       const resolution = resolveWorkflowEndpoint(
         settings({ "anagen-x.local": { url: "http://localhost:4001" } }, name),
@@ -100,4 +100,10 @@ describe("resolveWorkflowEndpoint", () => {
       expect((resolution as { error: string }).error).toContain(String(name));
     });
   }
+
+  it("refuses a default that would become a configured name only by coercion", () => {
+    const resolution = resolveWorkflowEndpoint(settings({ "4001": { url: "http://localhost:4001" } }, 4001));
+
+    expect(resolution.ok).toBe(false);
+  });
 });

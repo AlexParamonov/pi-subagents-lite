@@ -101,8 +101,39 @@ function text(result: AgentToolResult<Record<string, unknown>>): string {
 function endpointAt(url: string): void {
   write(
     join(agentDir, "subagents-lite.json"),
-    JSON.stringify({ workflows: { endpoints: { test: { url } }, defaultEndpoint: "test" } }),
+    JSON.stringify({ workflows: { endpoints: { test: { url, apiKey: "global-key" } }, defaultEndpoint: "test" } }),
   );
+}
+
+/** A project override the trusted project's own config file carries. */
+function projectEndpoints(endpoints: unknown): void {
+  write(join(project, ".pi", "subagents-lite.json"), JSON.stringify({ workflows: { endpoints } }));
+}
+
+interface Sent {
+  url: string;
+  authorization: string | null;
+}
+
+/**
+ * Call the tool with a fake transport: every request it asked for, and the message it refused with
+ * (empty when it never refused). A refused target must ask for nothing, so both are always observable.
+ */
+async function callTool(params: Record<string, unknown>): Promise<{ sent: Sent[]; refusal: string }> {
+  const sent: Sent[] = [];
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init);
+    sent.push({ url: request.url, authorization: request.headers.get("authorization") });
+    return new Response("{}", { status: 200 });
+  });
+  try {
+    await runTool(params);
+    return { sent, refusal: "" };
+  } catch (err) {
+    return { sent, refusal: (err as Error).message };
+  } finally {
+    vi.unstubAllGlobals();
+  }
 }
 
 describe("Workflow endpoint", () => {
@@ -114,19 +145,54 @@ describe("Workflow endpoint", () => {
       JSON.stringify({ workflows: { endpoints: { "anagen-x.local": { url: "" } } } }),
     );
     await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
-    const asked: string[] = [];
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
-      asked.push(String(input instanceof Request ? input.url : input));
-      return new Response("{}", { status: 200 });
-    });
 
-    try {
-      await expect(runTool({ workflow: "audit", prompt: "Review changes" })).rejects.toThrow(/anagen-x\.local/i);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
 
-    expect(asked).toEqual([]);
+    expect(refusal).toContain("anagen-x.local");
+    expect(sent).toEqual([]);
+  });
+
+  it("refuses a default the file set to null instead of sending the run to another target", async () => {
+    // US-34: null is a configured default that cannot be used, not an absent one - neither the built-in
+    // target nor the perfectly usable endpoint named beside it may answer for it.
+    write(
+      join(agentDir, "subagents-lite.json"),
+      JSON.stringify({
+        workflows: { endpoints: { release: { url: "http://127.0.0.1:1" } }, defaultEndpoint: null },
+      }),
+    );
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
+
+    const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
+
+    expect(refusal).toContain("null");
+    expect(refusal).toContain("release");
+    expect(sent).toEqual([]);
+  });
+
+  // Declared versus not declared (ADR-0008): what the project entry does not declare it inherits -
+  // including its unsupported apiKey, which is ignored and erases nothing - while a URL it does
+  // declare is the target the run is refused against even when unusable.
+  it("sends to the global URL and key a trusted project's entry leaves undeclared", async () => {
+    endpointAt("http://127.0.0.1:1");
+    projectEndpoints({ test: { apiKey: "project-key" } });
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
+
+    const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
+
+    expect(refusal).toBe("");
+    expect(sent).toEqual([{ url: "http://127.0.0.1:1/api/workflows", authorization: "Bearer global-key" }]);
+  });
+
+  it("refuses the unusable URL a trusted project's entry declares instead of inheriting the global one", async () => {
+    endpointAt("http://127.0.0.1:1");
+    projectEndpoints({ test: { url: "" } });
+    await startSession({ "audit.yaml": workflowFile("audit", "Inspect a repository") });
+
+    const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
+
+    expect(refusal).toContain('"test" has an unusable URL ""');
+    expect(sent).toEqual([]);
   });
 });
 

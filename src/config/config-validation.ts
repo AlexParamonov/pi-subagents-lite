@@ -3,11 +3,12 @@
  *
  * One runtime schema per known key (single source of truth for rules and
  * warning text). Each invalid value is dropped from the effective config so
- * built-in defaults apply, valid keys are kept, file bytes are untouched,
- * and one loud warning per bad value names the file, key, got, expected,
+ * built-in defaults apply, valid keys are kept, file bytes are untouched, and
+ * one loud warning per bad value names the file, key, got, expected,
  * and fix hint. A Workflow endpoint target is the exception: an unusable URL
  * is kept so the run naming that endpoint is refused instead of being sent to
- * another endpoint (US-34). Never migrates fork shapes or throws.
+ * another endpoint (US-34), and that refusal is promised only by the layer
+ * whose value decides the target. Never migrates fork shapes or throws.
  */
 import { Type, type TSchema } from "typebox";
 import { Check } from "typebox/value";
@@ -136,6 +137,23 @@ function warnUnusableTarget(filePath: string, keyPath: string, value: unknown, e
   );
 }
 
+/**
+ * Which file a layer came from. Only the global layer configures an endpoint or its default; a project
+ * layer overrides one endpoint's URL and nothing else, so the same bad value means something different
+ * in each (ADR-0008).
+ */
+export type ConfigLayer = "global" | "project";
+
+/**
+ * Warn about a Workflow value this layer cannot turn into a usable target. A global value is what a run
+ * is refused against; a project value the layer cannot set is ignored, so only the global warning may
+ * promise a refusal (ADR-0008).
+ */
+function warnUnusableForLayer(filePath: string, keyPath: string, value: unknown, expected: string, layer: ConfigLayer) {
+  if (layer === "global") warnUnusableTarget(filePath, keyPath, value, expected);
+  else warnIncompatible(filePath, keyPath, value, expected);
+}
+
 /** Plain-object guard, shared with config-io for its project malformed checks. */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -158,11 +176,24 @@ function isValidValue(spec: KeySpec, value: unknown): boolean {
 }
 
 /**
- * Validate one raw file layer, dropping invalid values from the result.
+ * Validate one global file layer, dropping invalid values from the result.
  * Pure except for one console.warn per dropped value. Never throws on
  * bad input: unknown shapes fall back to empty sections.
  */
 export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
+  return validateLayer(raw, filePath, "global");
+}
+
+/**
+ * Validate one trusted project's override layer. Model, concurrency and an endpoint's URL are its own;
+ * a Workflow value it cannot set is dropped or ignored, and no warning promises a refusal it cannot
+ * cause (ADR-0008).
+ */
+export function validateProjectLayer(raw: unknown, filePath: string): RawConfig {
+  return validateLayer(raw, filePath, "project");
+}
+
+function validateLayer(raw: unknown, filePath: string, layer: ConfigLayer): RawConfig {
   const cleaned: RawConfig = {};
   if (!isPlainObject(raw)) {
     warnIncompatible(filePath, "(config)", raw, EXPECTED_OBJECT);
@@ -184,7 +215,7 @@ export function validateRawLayer(raw: unknown, filePath: string): RawConfig {
   }
 
   if (raw.workflows !== undefined) {
-    const workflows = cleanWorkflowsSection(raw.workflows, filePath);
+    const workflows = cleanWorkflowsSection(raw.workflows, filePath, layer);
     if (Object.keys(workflows).length > 0) cleaned.workflows = workflows;
   }
 
@@ -208,29 +239,37 @@ function cleanAgentEntries(agent: Record<string, unknown>, filePath: string): Re
 }
 
 /**
- * Keep valid workflow settings. An endpoint entry keeps its name whatever its URL holds, and so does
- * an unusable default name: dropping either would let another target answer for a configuration that
- * named one (US-34).
+ * Keep valid workflow settings. An endpoint entry keeps its name whatever its URL holds, and so does an
+ * unusable default name: dropping either would let another target answer for a configuration that named
+ * one (US-34). The refusal warning is made only where the layer's value decides the run's target.
  */
-function cleanWorkflowsSection(workflows: unknown, filePath: string): NonNullable<RawConfig["workflows"]> {
+function cleanWorkflowsSection(
+  workflows: unknown,
+  filePath: string,
+  layer: ConfigLayer,
+): NonNullable<RawConfig["workflows"]> {
   const kept: NonNullable<RawConfig["workflows"]> = {};
   if (!isPlainObject(workflows)) {
     warnIncompatible(filePath, "workflows", workflows, EXPECTED_OBJECT);
     return kept;
   }
-  const endpoints = cleanWorkflowEndpoints(workflows.endpoints, filePath);
+  const endpoints = cleanWorkflowEndpoints(workflows.endpoints, filePath, layer);
   if (endpoints) kept.endpoints = endpoints;
   const name = workflows.defaultEndpoint;
   if (name !== undefined) {
     if (typeof name !== "string" || name === "") {
-      warnUnusableTarget(filePath, "workflows.defaultEndpoint", name, "non-empty endpoint name");
+      warnUnusableForLayer(filePath, "workflows.defaultEndpoint", name, "non-empty endpoint name", layer);
     }
     kept.defaultEndpoint = name;
   }
   return kept;
 }
 
-function cleanWorkflowEndpoints(endpoints: unknown, filePath: string): Record<string, RawWorkflowEndpoint> | undefined {
+function cleanWorkflowEndpoints(
+  endpoints: unknown,
+  filePath: string,
+  layer: ConfigLayer,
+): Record<string, RawWorkflowEndpoint> | undefined {
   if (endpoints === undefined) return undefined;
   if (!isPlainObject(endpoints)) {
     warnIncompatible(filePath, "workflows.endpoints", endpoints, EXPECTED_OBJECT);
@@ -240,13 +279,17 @@ function cleanWorkflowEndpoints(endpoints: unknown, filePath: string): Record<st
   for (const [name, entry] of Object.entries(endpoints)) {
     const keyPath = `workflows.endpoints.${name}`;
     if (!isPlainObject(entry)) {
-      warnUnusableTarget(filePath, keyPath, entry, EXPECTED_OBJECT);
+      warnUnusableForLayer(filePath, keyPath, entry, EXPECTED_OBJECT, layer);
       kept[name] = {};
       continue;
     }
     const endpoint: RawWorkflowEndpoint = {};
-    if ("url" in entry) endpoint.url = entry.url;
-    if (typeof entry.url !== "string" || entry.url === "") {
+    if ("url" in entry) {
+      endpoint.url = entry.url;
+      if (typeof entry.url !== "string" || entry.url === "") {
+        warnUnusableTarget(filePath, `${keyPath}.url`, entry.url, "non-empty URL string");
+      }
+    } else if (layer === "global") {
       warnUnusableTarget(filePath, `${keyPath}.url`, entry.url, "non-empty URL string");
     }
     if (entry.apiKey !== undefined) {

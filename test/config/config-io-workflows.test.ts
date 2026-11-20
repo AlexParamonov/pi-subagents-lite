@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vite-
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import type { ConfigIO, RawConfig } from "../../src/config/config-io.js";
 
 const MOCK_AGENT_DIR = mkdtempSync(join(tmpdir(), "pi-subagents-global-"));
 const GLOBAL_CONFIG_PATH = join(MOCK_AGENT_DIR, "subagents-lite.json");
@@ -19,7 +20,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 const { createConfigIO, mergeLayers, mergeDefaults } = await import("../../src/config/config-io.js");
-const { validateRawLayer } = await import("../../src/config/config-validation.js");
+const { validateRawLayer, validateProjectLayer } = await import("../../src/config/config-validation.js");
 const { ConfigStore } = await import("../../src/config/config-store.js");
 const { resolveWorkflowEndpoint } = await import("../../src/workflows/endpoints.js");
 const { memIO } = await import("./config-store-helpers.js");
@@ -45,6 +46,15 @@ function writeGlobal(config: unknown): void {
 
 function writeProject(config: unknown): void {
   writeFileSync(join(projectDir, "subagents-lite.json"), JSON.stringify(config));
+}
+
+/** Load one config, keeping what it warned about and the layer the store would run on. */
+function warnedLoad(io: ConfigIO): { warnings: string; merged: RawConfig } {
+  let layers: ReturnType<ConfigIO["load"]> | undefined;
+  const warnings = warned(() => {
+    layers = io.load();
+  });
+  return { warnings, merged: mergeLayers(layers!.global, layers!.project) };
 }
 
 function warned(action: () => unknown): string {
@@ -100,6 +110,8 @@ describe("validateRawLayer — workflows", () => {
     expect(warnings).toContain("workflows.endpoints.keyless");
     expect(warnings).toContain("workflows.endpoints.numeric");
     expect(warnings).toContain("workflows.endpoints.blank");
+    // The global layer names the target, so it owes the run the refusal it is heading into.
+    expect(warnings).toContain("another endpoint");
   });
 
   it("drops an endpoint that is not an object at all, keeping its name refused", () => {
@@ -109,6 +121,7 @@ describe("validateRawLayer — workflows", () => {
       endpoints: { odd: {} },
     });
     expect(warnings).toContain("workflows.endpoints.odd");
+    expect(warnings).toContain("another endpoint");
   });
 
   it("keeps an endpoint whose key is the wrong shape and drops just the key", () => {
@@ -131,14 +144,53 @@ describe("validateRawLayer — workflows", () => {
   });
 
   it("keeps a defaultEndpoint that is not a name, so the run is refused rather than defaulted", () => {
-    for (const name of [4001, ""]) {
+    for (const name of [4001, "", null]) {
       const warnings = warned(() => validateRawLayer({ workflows: { defaultEndpoint: name } }, "/g.json"));
 
       expect(validateRawLayer({ workflows: { defaultEndpoint: name } }, "/g.json").workflows).toEqual({
         defaultEndpoint: name,
       });
+      // The global layer is the one that names the target, so it is the one that owes the refusal.
       expect(warnings).toContain("workflows.defaultEndpoint");
+      expect(warnings).toContain("another endpoint");
     }
+  });
+});
+
+// A project layer decides one thing: the URL of an endpoint the global file names. So the promise a
+// warning makes has to match the layer - a value the project declares is the target a run is refused
+// against, a value it cannot set is ignored (ADR-0008).
+describe("validateProjectLayer — what a project layer may decide", () => {
+  it("says nothing about an entry that declares no url, because the global url is inherited", () => {
+    const project = { workflows: { endpoints: { release: {} } } };
+
+    expect(validateProjectLayer(project, "/p.json").workflows).toEqual({ endpoints: { release: {} } });
+    expect(warned(() => validateProjectLayer(project, "/p.json"))).toBe("");
+  });
+
+  it("keeps the refusal warning for a url the project itself declares", () => {
+    const warnings = warned(() =>
+      validateProjectLayer({ workflows: { endpoints: { release: { url: "" } } } }, "/p.json"),
+    );
+
+    expect(warnings).toContain("workflows.endpoints.release.url");
+    expect(warnings).toContain("another endpoint");
+  });
+
+  it("warns that an entry which is not an object is dropped instead of refused", () => {
+    const project = { workflows: { endpoints: { release: "http://typoed-out:4001" } } } as unknown as RawConfig;
+
+    expect(validateProjectLayer(project, "/p.json").workflows).toEqual({ endpoints: { release: {} } });
+    const warnings = warned(() => validateProjectLayer(project, "/p.json"));
+    expect(warnings).toContain("workflows.endpoints.release");
+    expect(warnings).not.toContain("another endpoint");
+  });
+
+  it("warns that a default the project sets is not what the run uses", () => {
+    const warnings = warned(() => validateProjectLayer({ workflows: { defaultEndpoint: 4001 } }, "/p.json"));
+
+    expect(warnings).toContain("workflows.defaultEndpoint");
+    expect(warnings).not.toContain("another endpoint");
   });
 });
 
@@ -162,10 +214,42 @@ describe("mergeLayers — a project layer may override a url only", () => {
     expect(merged.workflows).toEqual(ENDPOINTS.workflows);
   });
 
+  // A project entry decides the target only by declaring a url. Declaring one - usable or not - wins;
+  // declaring none inherits (ADR-0008: inheritance is absence, and an unsupported key is ignored).
+  it("inherits the global url when the project entry declares no url key", () => {
+    const merged = mergeLayers(ENDPOINTS, { workflows: { endpoints: { "anagen-x.local": {} } } });
+
+    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
+  });
+
+  it("ignores a project entry's unsupported apiKey and inherits the global url and key", () => {
+    const merged = mergeLayers(ENDPOINTS, {
+      workflows: { endpoints: { "anagen-x.local": { apiKey: "project-key" } } },
+    });
+
+    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
+  });
+
+  it("inherits the global url when the project entry is not an object at all", () => {
+    const project = {
+      workflows: { endpoints: { "anagen-x.local": "http://typoed-out:4001" } },
+    } as unknown as RawConfig;
+
+    expect(mergeLayers(ENDPOINTS, project).workflows).toEqual(ENDPOINTS.workflows);
+  });
+
+  // Present but unusable: the project named the target it wants, so that name must not quietly be
+  // answered by the global target - it is the target the run is refused against (US-34).
   it("lets an unusable project url override the global one instead of inheriting it", () => {
     const merged = mergeLayers(ENDPOINTS, { workflows: { endpoints: { "anagen-x.local": { url: "" } } } });
 
     expect(merged.workflows?.endpoints?.["anagen-x.local"]).toEqual({ url: "", apiKey: "global-key" });
+  });
+
+  it("lets a project url the layer carries as null override the global one", () => {
+    const merged = mergeLayers(ENDPOINTS, { workflows: { endpoints: { "anagen-x.local": { url: null } } } });
+
+    expect(merged.workflows?.endpoints?.["anagen-x.local"]).toEqual({ url: null, apiKey: "global-key" });
   });
 
   it("with no project section the global one passes through", () => {
@@ -193,6 +277,15 @@ describe("mergeDefaults — the built-in local endpoint", () => {
     });
   });
 
+  it("keeps a defaultEndpoint the file set to null, so no built-in target answers for it", () => {
+    // US-34: an explicitly null default is a configured value that cannot be used, not absence.
+    const config = mergeDefaults({
+      workflows: { endpoints: { release: { url: "https://release.invalid:4001" } }, defaultEndpoint: null },
+    });
+
+    expect(config.workflows.defaultEndpoint).toBeNull();
+  });
+
   it("bakes a built-in target only under a name nothing configured", () => {
     const configured = mergeDefaults({ workflows: { endpoints: { "anagen-x.local": { url: "" } } } });
 
@@ -218,7 +311,7 @@ describe("a configured target that cannot be used", () => {
 
   it("stays refused when a trusted project's override is the broken one", () => {
     const global = validateRawLayer(ENDPOINTS, "/g.json");
-    const project = validateRawLayer(
+    const project = validateProjectLayer(
       { workflows: { endpoints: { "anagen-x.local": { url: "not a url" } } } },
       "/p.json",
     );
@@ -227,6 +320,49 @@ describe("a configured target that cannot be used", () => {
 
     expect(resolution.ok).toBe(false);
     expect((resolution as { error: string }).error).toContain("not a url");
+  });
+
+  // The other probe from the review: a null default is a configured value, so the usable named
+  // endpoint beside it must not be reached and neither must the built-in target (US-34).
+  it("refuses a null default instead of answering with another target", () => {
+    const validated = validateRawLayer(
+      { workflows: { endpoints: { release: { url: "https://release.invalid:4001" } }, defaultEndpoint: null } },
+      "/g.json",
+    );
+
+    const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(validated, null)).workflows);
+
+    expect(resolution.ok).toBe(false);
+    expect((resolution as { error: string }).error).toContain("null");
+  });
+
+  it("names an endpoint that declares no URL at all as the offender", () => {
+    // The other half of the wording a reader acts on: nothing anywhere declared a URL for this name, so
+    // the file that names the endpoint is the file to fix - not the one that sets the default.
+    const validated = validateRawLayer({ workflows: { endpoints: { "anagen-x.local": {} } } }, "/g.json");
+
+    const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(validated, null)).workflows);
+
+    expect(resolution.ok).toBe(false);
+    expect((resolution as { error: string }).error).toContain("declares no usable URL");
+  });
+
+  it("reaches the global target a trusted project's entry leaves undeclared", () => {
+    const global = validateRawLayer(
+      {
+        workflows: {
+          endpoints: { release: { url: "https://release.invalid:4001", apiKey: "global-key" } },
+          defaultEndpoint: "release",
+        },
+      },
+      "/g.json",
+    );
+    const project = validateProjectLayer({ workflows: { endpoints: { release: {} } } }, "/p.json");
+
+    expect(resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows)).toEqual({
+      ok: true,
+      endpoint: { name: "release", url: "https://release.invalid:4001", apiKey: "global-key" },
+    });
   });
 });
 
@@ -242,6 +378,16 @@ describe("createConfigIO — the workflows section on disk", () => {
       url: "http://internal:4001",
       apiKey: "global-key",
     });
+  });
+
+  it("reads a project entry that declares no url as the endpoint the global file named", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: { endpoints: { "anagen-x.local": { apiKey: "project-key" } } } });
+
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toBe("");
+    expect(merged.workflows).toEqual(ENDPOINTS.workflows);
   });
 
   it("never reads a project layer without a project dir", () => {
@@ -297,6 +443,34 @@ describe("ConfigStore — the effective workflows section", () => {
       endpoints: { "anagen-x.local": { url: "" } },
       defaultEndpoint: "anagen-x.local",
     });
+  });
+
+  it("keeps a defaultEndpoint the file set to null instead of the built-in name", () => {
+    const { io } = memIO({
+      global: {
+        workflows: { endpoints: { release: { url: "https://release.invalid:4001" } }, defaultEndpoint: null },
+      },
+      project: null,
+      projectStatus: "absent",
+    });
+
+    expect(new ConfigStore(io).workflows).toEqual({
+      endpoints: {
+        release: { url: "https://release.invalid:4001" },
+        "anagen-x.local": { url: "http://localhost:4001" },
+      },
+      defaultEndpoint: null,
+    });
+  });
+
+  it("inherits the endpoint a project entry leaves undeclared", () => {
+    const { io } = memIO({
+      global: { workflows: { endpoints: { local: { url: "http://g:1", apiKey: "k" } }, defaultEndpoint: "local" } },
+      project: { workflows: { endpoints: { local: { apiKey: "project-key" } } } },
+      projectStatus: "loaded",
+    });
+
+    expect(new ConfigStore(io).workflows.endpoints.local).toEqual({ url: "http://g:1", apiKey: "k" });
   });
 
   for (const target of ["global", "project", "all"] as const) {
