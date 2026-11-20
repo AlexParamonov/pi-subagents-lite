@@ -284,9 +284,7 @@ export class AgentManager {
         this.stopAgent(record, "user");
         return id;
       }
-      const handler = () => this.abort(id, "user");
-      options.signal.addEventListener("abort", handler, { once: true });
-      this.parentBindings.set(record, { signal: options.signal, handler });
+      this.attachParentBinding(record, options.signal);
     }
 
     if (queued) return id;
@@ -468,6 +466,13 @@ export class AgentManager {
     if (!resolve) return;
     this.gateResolvers.delete(id);
     resolve(value);
+  }
+
+  /** Bind a record to the interrupt of the tool call that created it: an abort stops the record. */
+  private attachParentBinding(record: AgentRecord, signal: AbortSignal): void {
+    const handler = () => this.abort(record.id, "user");
+    signal.addEventListener("abort", handler, { once: true });
+    this.parentBindings.set(record, { signal, handler });
   }
 
   /** Remove a record's parent-interrupt binding; a later abort of the signal is a no-op. */
@@ -691,11 +696,7 @@ export class AgentManager {
     };
     this.agents.set(id, record);
     record.execution.promise = this.createCompletionGate(id);
-    if (args.signal) {
-      const handler = () => this.abort(id, "user");
-      args.signal.addEventListener("abort", handler, { once: true });
-      this.parentBindings.set(record, { signal: args.signal, handler });
-    }
+    if (args.signal) this.attachParentBinding(record, args.signal);
     this.onStart?.(record);
     return record;
   }
