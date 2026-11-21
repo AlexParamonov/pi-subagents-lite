@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unknown Workflow stream events are ignored instead of ending the connection. A frame whose `event:` name this build does not know - one `Object.prototype` happens to carry (`constructor`, `toString`, `__proto__`, `hasOwnProperty`) or one a newer producer invents - used to be looked up on the lifecycle table through the prototype chain, so it set a bogus node status that threw once the progress lines were built, and that throw ended the stream and started a `GET` early; the same frame rearmed the lifecycle silence window and moved where the next unnamed text chunk was attributed. Recognition now happens before anything changes: an unknown name changes no node status, repaints no source node, rearms nothing, asks for no read and throws nothing, so a connection delivering only unknown frames still falls back to `GET` when the silence window expires, and a recognized frame behaves exactly as before (US-12, US-19, US-35).
 - Parallel tool calls starting in the same millisecond no longer overwrite each other in the widget's active-tool list.
 - Two `bash` calls running at once read `running 2 commands…` in the widget's activity line instead of `running command 2 files…`.
 
