@@ -326,6 +326,22 @@ describe("the spellings a base and a credential produce", () => {
     );
   });
 
+  it("redacts a credential the path carries across a segment boundary", () => {
+    const text = published("http://release.invalid:4001/key%2B/part/v1", "key+/part");
+
+    expect(text.shown("Input refused for /key%2B/part/v1/api/workflows")).toBe(
+      "Input refused for /[redacted]/v1/api/workflows",
+    );
+  });
+
+  it("redacts a one-character credential the path percent-escaped", () => {
+    const text = published("http://release.invalid:4001/</v1", "<");
+
+    expect(text.shown("Input refused for /%3C/v1/api/workflows")).toBe(
+      "Input refused for /[redacted]/v1/api/workflows",
+    );
+  });
+
   it("redacts nothing of a prefix that carries no credential", () => {
     const text = published("http://release.invalid:4001/gateway/workflows-v1", "release-key");
     const diagnostic = "connect ECONNREFUSED 127.0.0.1:4001 /gateway/workflows-v1/api/workflows";

@@ -84,27 +84,36 @@ export function displayUrl(base: ValidatedBase): string {
 }
 
 /**
- * Every spelling of `apiKey` this base and this client's routing can put on the wire: the key, the
- * form Fetch sends for it, and a base path segment whose decoded text carries the key as the parser
- * wrote it. A server that answers with the request target it received reflects those, and the key
- * itself is not a substring of any of them. A segment that does not carry the key is no spelling of
- * it, so ordinary path data stays readable in a diagnostic.
+ * Every form `apiKey` can reach published text in for this base: the key, the form Fetch encodes it
+ * in, and each span of the base's own path that decodes to the key. A server that answers with the
+ * request target it received reflects those, and the configured text is not a substring of any of
+ * them. A path that carries no credential contributes nothing, so ordinary path data stays readable.
  */
 export function transportSpellings(base: ValidatedBase, apiKey: string): string[] {
   const forms = new Set<string>([apiKey, encodeURIComponent(apiKey)]);
-  for (const segment of new URL(base).pathname.split("/")) {
-    if (segment !== "" && decodedSegment(segment).includes(apiKey)) forms.add(segment);
-  }
+  for (const span of new URL(base).pathname.matchAll(pathForm(apiKey))) forms.add(span[0]);
   return [...forms];
 }
 
-/** A path segment as written when it holds a `%` the parser never produced, such as `/100%`. */
-function decodedSegment(segment: string): string {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return segment;
-  }
+/** The credential as a request path carries it: each character literal or percent-escaped. */
+function pathForm(credential: string): RegExp {
+  return new RegExp(credential.replace(/./gu, characterForm), "g");
+}
+
+/**
+ * One character of it, as written or as its whole `%XX` escape in either hex case, so a match is
+ * always bytes the transport sent and never half an escape.
+ */
+function characterForm(character: string): string {
+  const escaped = [...Buffer.from(character, "utf8")]
+    .map((byte) => `%${byte.toString(16).padStart(2, "0")}`)
+    .join("")
+    .replace(/[A-Za-z]/g, (hex) => `[${hex.toLowerCase()}${hex.toUpperCase()}]`);
+  return `(?:${escapeRegExp(character)}|${escaped})`;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 type Minted = { ok: true; url: ValidatedBase } | { ok: false; problem: string };

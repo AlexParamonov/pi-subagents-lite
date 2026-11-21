@@ -308,22 +308,28 @@ describe("create", () => {
     expect(error(run)).not.toContain(key);
   });
 
-  it("keeps the credential a rejection reflects back as its own request target out of the error", async () => {
-    // The transport percent-encodes the path the run is routed under, so a server that answers with
-    // the target it received reflects a spelling of the key the key itself never matches.
-    const key = "k<7>";
-    const server = await remote({
-      prefix: `/${encodeURIComponent(key)}/v1`,
-      echoTarget: true,
-      rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
-    });
+  it.for([
+    { key: "k<7>", configured: "/k<7>/v1", served: "/k%3C7%3E/v1", reflected: "k%3C7%3E" },
+    { key: "<", configured: "/</v1", served: "/%3C/v1", reflected: "%3C" },
+    { key: "key+/part", configured: "/key%2B/part/v1", served: "/key%2B/part/v1", reflected: "key%2B/part" },
+  ])(
+    "keeps the credential a rejection reflects back as its own request target out of the error: $reflected",
+    async ({ key, configured, served, reflected }) => {
+      // The transport percent-encodes the path the run is routed under, so a server that answers with
+      // the target it received reflects a spelling of the key the key itself never matches.
+      const server = await remote({
+        prefix: served,
+        echoTarget: true,
+        rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+      });
 
-    const run = await (await client(`${server.url}/${key}/v1`, key)).create(request());
+      const run = await (await client(`${server.url}${configured}`, key)).create(request());
 
-    expect(error(run)).toContain("Input refused for /[redacted]/v1/api/workflows");
-    expect(error(run)).not.toContain(encodeURIComponent(key));
-    expect(error(run)).not.toContain(key);
-  });
+      expect(error(run)).toContain("Input refused for /[redacted]/v1/api/workflows");
+      expect(error(run)).not.toContain(reflected);
+      expect(error(run)).not.toContain(key);
+    },
+  );
 
   it("caps reported server text, so a proxy's page cannot fill the row", async () => {
     const filler = "The upstream endpoint is unavailable. ";

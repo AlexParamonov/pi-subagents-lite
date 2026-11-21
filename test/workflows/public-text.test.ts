@@ -84,9 +84,11 @@ describe("public text", () => {
     expect(text.shown("target /k-token-suffix/api")).toBe("target /[redacted]/api");
   });
 
-  it("ignores a transport spelling too short to tell from ordinary text", () => {
-    const text = createPublicText(KEY, ["v1", "api"]);
+  it("redacts a transport spelling of any length, because every spelling it is handed is the key", () => {
+    const text = createPublicText("<", ["%3C"]);
 
-    expect(text.shown("the /v1/api/workflows route")).toBe("the /v1/api/workflows route");
+    expect(text.shown("Input refused for /%3C/v1/api/workflows")).toBe(
+      "Input refused for /[redacted]/v1/api/workflows",
+    );
   });
 });

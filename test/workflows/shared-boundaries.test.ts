@@ -540,25 +540,31 @@ describe("workflow credentials", () => {
     ).toBe(false);
   });
 
-  it("redacts the credential a rejection reflects back as its own request target", async () => {
-    // What the transport sent is percent-encoded, so the reflected target carries a spelling of the
-    // key that the key itself does not match.
-    const key = "k<7>";
-    const remote = await server({
-      echoTarget: true,
-      prefix: `/${encodeURIComponent(key)}/v1`,
-      rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
-    });
-    install(`${remote.url}/${key}/v1`, key);
-    const logs = consoleLines();
+  it.for([
+    { key: "k<7>", configured: "/k<7>/v1", served: "/k%3C7%3E/v1", reflected: "k%3C7%3E" },
+    { key: "<", configured: "/</v1", served: "/%3C/v1", reflected: "%3C" },
+    { key: "key+/part", configured: "/key%2B/part/v1", served: "/key%2B/part/v1", reflected: "key%2B/part" },
+  ])(
+    "redacts the credential a rejection reflects back as its own request target: $reflected",
+    async ({ key, configured, served, reflected }) => {
+      // What the transport sent is percent-encoded, so the reflected target carries a spelling of the
+      // key that the key itself does not match.
+      const remote = await server({
+        echoTarget: true,
+        prefix: served,
+        rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+      });
+      install(`${remote.url}${configured}`, key);
+      const logs = consoleLines();
 
-    const result = await report(run(await start()));
+      const result = await report(run(await start()));
 
-    authenticates(remote, key);
-    expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
-    publishes(result.text, "Input refused for /[redacted]/v1/api/workflows", key, "the tool error");
-    expect(logs.join("\n")).not.toContain(encodeURIComponent(key));
-  });
+      authenticates(remote, key);
+      expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
+      publishes(result.text, "Input refused for /[redacted]/v1/api/workflows", key, "the tool error");
+      expect(logs.join("\n")).not.toContain(reflected);
+    },
+  );
 
   it("redacts the transport credential in a stream diagnostic", async () => {
     const remote = await server({ holdStream: true, streams: [DISPATCH], reads: [declaredOutputRead()] });
