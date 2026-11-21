@@ -548,7 +548,10 @@ function runRoutes(workflowId: string): { read: Route; stream: Route; stop: Rout
 /**
  * Whether an id arrives as the bytes its path segment travels as. A segment `encodeURIComponent`
  * changes is a spelling a forwarding hop can rewrite, a dot segment walks out of the run's own route
- * once Fetch normalizes it, and an unpaired surrogate has no encoding.
+ * once Fetch normalizes it, and an unpaired surrogate has no encoding. The empty check is not
+ * reachable through `create`, which reads the id through `field` (non-empty by construction); it is
+ * here because an empty segment would route the collection route, and a later caller that admits an
+ * id from elsewhere must not have to re-derive that fact.
  */
 function literalSegment(id: string): boolean {
   let encoded: string;

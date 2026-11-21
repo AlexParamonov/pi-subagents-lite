@@ -302,6 +302,32 @@ describe("a base whose path carries a percent escape or a plus", () => {
     });
   }
 
+  // The rule is on the assembled base, so a host the URL parser itself rewrites into one of these
+  // characters refuses too - and an IPv6 literal, which carries neither, still resolves.
+  for (const url of ["http://a+b.invalid:4001/gateway", "http://a%2Bb.invalid:4001/gateway"]) {
+    it(`refuses the escape or plus in the authority of ${url}`, () => {
+      const error = expectBrokenEndpointRefusal({ url, apiKey: "release-key" });
+
+      expect(error).toContain("workflows.endpoints[broken].url");
+      expect(error).toMatch(/percent|plus/i);
+      for (const value of ["a+b", "a-b", "a%2db", "release.invalid", "release-key"]) expect(error).not.toContain(value);
+    });
+  }
+
+  it("resolves an IPv6 literal base, whose brackets and colons carry no rewrite hazard", () => {
+    expect(
+      resolveWorkflowEndpoint(settings({ local: { url: "http://[::1]:4001/gateway" } }, "local"), "local"),
+    ).toEqual({ ok: true, endpoint: { name: "local", url: "http://[::1]:4001/gateway" } });
+  });
+
+  // A host escape the parser decodes into a harmless byte is not a rewrite hazard: what goes on the
+  // wire is the decoded host, so containment and display both see exactly that.
+  it("resolves a host escape the URL parser decodes, to the host it actually sends", () => {
+    expect(
+      resolveWorkflowEndpoint(settings({ local: { url: "http://a%2db.invalid:4001/gateway" } }, "local"), "local"),
+    ).toEqual({ ok: true, endpoint: { name: "local", url: "http://a-b.invalid:4001/gateway" } });
+  });
+
   // The pairing `+`-as-space decoding used to leave accepted refuses on the base alone, before the
   // credential is judged at all.
   it("refuses the plus base carrying a key with a space in it, naming only the url", () => {

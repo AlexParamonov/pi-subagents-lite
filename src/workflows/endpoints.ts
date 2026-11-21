@@ -119,10 +119,13 @@ function validatedBase(value: string): Minted {
   // Presence comes from the serialized URL: `.search`/`.hash` report "" for a bare `?` or `#`.
   if (parsed.href.includes("?")) return { ok: false, problem: "carries a query" };
   if (parsed.href.includes("#")) return { ok: false, problem: "carries a fragment" };
-  // `%` and `+` are the two path characters a hop can rewrite into another spelling of the same bytes,
-  // so a base carrying either is refused and every target it feeds stays literal.
-  if (/%|\+/.test(parsed.pathname)) return { ok: false, problem: "carries a percent escape or a plus in its path" };
-  return { ok: true, url: `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "") as ValidatedBase };
+  // `%` and `+` are the two characters a hop can rewrite into another spelling of the same bytes, so a
+  // base carrying either anywhere - host or path - is refused and every target and display string it
+  // feeds stays literal. Checked on the assembled base, because the parser itself decodes percent
+  // escapes in a host (`http://a%2Bb/` arrives here as the host `a+b`).
+  const base = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
+  if (/%|\+/.test(base)) return { ok: false, problem: "carries a percent escape or a plus" };
+  return { ok: true, url: base as ValidatedBase };
 }
 
 function refused(detail: string, configured: string[]): ResolvedEndpoint {
