@@ -364,11 +364,21 @@ export const DEFAULT_RESULT = {
   termination_reason: "final_answer",
 };
 
+/** The id as it appears in a route, or a stand-in for an id that has no encoding at all. */
+function safeSegment(id: string): string {
+  try {
+    return encodeURIComponent(id);
+  } catch {
+    return "id-without-encoding";
+  }
+}
+
 export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpoint> {
   const run = options.run ?? REMOTE_ID;
   // The client puts the id it was answered into a path segment, so the run's routes live under that
-  // encoding and not under the raw id.
-  const segment = encodeURIComponent(run);
+  // encoding and not under the raw id. An id with no encoding (an unpaired surrogate) is refused by
+  // the client's create gate, so this endpoint serves no route for it and its segment says nothing.
+  const segment = safeSegment(run);
   const prefix = options.prefix ?? "";
   const requests: EndpointRequest[] = [];
   const arrivals = new Map<number, ReturnType<typeof deferred<EndpointRequest>>>();

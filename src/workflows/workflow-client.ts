@@ -113,7 +113,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
    * a minted id spells can span the joins between the route, the id and its suffixes.
    */
   function unusableId(id: string): string | null {
-    if (!routableSegment(id)) return "the workflow id it answered cannot be used as a path segment";
+    if (!literalSegment(id)) return "the workflow id it answered is not a literal path segment";
     if (key === undefined) return null;
     const routes = runRoutes(id);
     const carries = [routes.read, routes.stream, routes.stop].some((route) => targetCarriesCredential(url(route), key));
@@ -546,17 +546,18 @@ function runRoutes(workflowId: string): { read: Route; stream: Route; stop: Rout
 }
 
 /**
- * Whether an id the endpoint answered can be routed as one path segment: a dot segment would walk
- * out of the run's own route once Fetch normalizes it, and an unpaired surrogate has no encoding.
+ * Whether an id arrives as the bytes its path segment travels as. A segment `encodeURIComponent`
+ * changes is a spelling a forwarding hop can rewrite, a dot segment walks out of the run's own route
+ * once Fetch normalizes it, and an unpaired surrogate has no encoding.
  */
-function routableSegment(id: string): boolean {
+function literalSegment(id: string): boolean {
   let encoded: string;
   try {
     encoded = encodeURIComponent(id);
   } catch {
     return false;
   }
-  return encoded !== "" && encoded !== "." && encoded !== "..";
+  return encoded === id && encoded !== "" && encoded !== "." && encoded !== "..";
 }
 
 function parseError(body: string): string | null {

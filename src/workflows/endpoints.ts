@@ -84,33 +84,13 @@ function effectiveCredential(declared: unknown): Credential {
   return USABLE_CREDENTIAL.test(effective) ? { ok: true, apiKey: effective } : { ok: false };
 }
 
-/** How many percent-decodes past the bytes on the wire a target is followed through. */
-const MAX_DECODE_DEPTH = 8;
-
 /**
- * Whether any layer of a request target carries the credential. The target is checked as sent, then
- * percent-decoded to a fixed point; an undecodable layer or one still changing at the depth limit is
- * refused as unprovable.
- *
- * This covers percent-decoding only. A hop that adds characters to the target, or one that decodes
- * `+` to a space inside a path, can still echo a spelling of the key. The latter is reachable when
- * the configured prefix contains `+` and the key contains a space. Published text is not decoded or
- * rewritten to address these residual cases.
+ * Every byte the client puts in a request target is a byte no transport or intermediary rewrites, so a
+ * credential can appear in a target, or in any echo of it, only as its literal bytes - which the
+ * publisher's needle always matches.
  */
 export function targetCarriesCredential(target: string, apiKey: string): boolean {
-  let layer = target;
-  for (let depth = 0; ; depth++) {
-    if (layer.includes(apiKey)) return true;
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(layer);
-    } catch {
-      return true;
-    }
-    if (decoded === layer) return false;
-    if (depth === MAX_DECODE_DEPTH) return true;
-    layer = decoded;
-  }
+  return target.includes(apiKey);
 }
 
 /** A base and a credential that are each usable, but whose joined request path carries the credential. */

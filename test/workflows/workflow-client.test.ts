@@ -175,11 +175,16 @@ describe("create", () => {
     expect(error(run)).toContain("the response carried no workflow id");
   });
 
-  // A run id the endpoint chooses becomes a route segment here, so an id that walks a route or that
-  // Fetch cannot encode has to be refused as a create outcome and never reach a follow-up request.
+  // A run id the endpoint chooses becomes a route segment here, so it is admitted only as the literal
+  // bytes that segment travels as: one that Fetch would percent-encode is a spelling a forwarding hop
+  // can rewrite, and a rewritten target is exactly what no redaction of the literal can catch.
   for (const [label, id] of [
     ["a parent segment", ".."],
+    ["a self segment", "."],
     ["an unpaired surrogate", "\ud800"],
+    ["a percent sign", "wf%3C7%3E"],
+    ["a plus", "wf+1"],
+    ["a space and a slash", "wf 1/2"],
   ] as const) {
     it(`treats a created run identified by ${label} as an unknown outcome that asks for nothing`, async () => {
       const targets: string[] = [];
@@ -197,20 +202,21 @@ describe("create", () => {
       expect(error(created)).toContain(FAKED_URL);
       expect(error(created)).toMatch(/unknown outcome/i);
       expect(error(created)).toMatch(/was not retried/i);
-      expect(error(created)).not.toContain(id);
+      // A lone dot is ordinary punctuation in the fault's own sentences.
+      if (id.length > 1) expect(error(created)).not.toContain(id);
       expect(targets).toEqual([`${FAKED_URL}/api/workflows`]);
     });
   }
 
-  // An id the endpoint mints can spell the run's own credential once it becomes a route, in a spelling
-  // that no published text can redact (the route is percent-escaped, the key is not). The three routes
-  // this id would be followed on are therefore judged at this same gate, assembled exactly as the
-  // requests assemble them - which is what catches a credential spanning the route/id or id/join.
+  // An id the endpoint mints can spell the run's own credential once it becomes a route, and the
+  // credential can appear only once the route, the id and the id's suffixes are joined. The three
+  // routes this id would be followed on are therefore judged at this same gate, assembled exactly as
+  // the requests assemble them - which is what catches a credential spanning the route/id or id/join.
   for (const [where, key, id] of [
-    ["inside the id itself", "minted<7>", "wf-minted<7>-suffix"],
+    ["inside the id itself", "minted-7", "wf-minted-7-suffix"],
     ["across the route/id join", "flows/ab", "ab-1"],
-    ["across the id/stream join", "7%3E/stream", "run-7>"],
-    ["across the id/stop join", "7%3E/stop", "run-7>"],
+    ["across the id/stream join", "1/stream", "run-1"],
+    ["across the id/stop join", "1/stop", "run-1"],
   ] as const) {
     it(`treats a created run whose routes carry the credential ${where} as an unknown outcome`, async () => {
       const targets: string[] = [];
@@ -233,13 +239,15 @@ describe("create", () => {
     });
   }
 
-  // Percent-encoding an id is not the same as refusing one: an id that merely needs it still routes.
-  it("routes a created run whose id needs percent-encoding as one segment on every follow-up route", async () => {
+  // The create gate judges the create response; `monitor` and `stop` take an id from their caller.
+  // The one assembly both use keeps any id inside its own path segment, so a route can never be
+  // walked out of, whatever the id's spelling.
+  it("routes an id handed straight to monitor or stop as one segment on every follow-up route", async () => {
     const targets: string[] = [];
     const transport: typeof fetch = async (input) => {
       const url = String(input instanceof Request ? input.url : input);
       targets.push(url);
-      if (url.endsWith("/api/workflows")) return jsonResponse(201, { workflow_id: "wf 1/2", task_id: "wf 1/2" });
+      if (url.endsWith("/api/workflows")) return jsonResponse(201, { workflow_id: "wf-9", task_id: "wf-9" });
       if (url.endsWith("/stream")) return new Response("", { headers: { "content-type": "text/event-stream" } });
       if (url.endsWith("/stop")) return jsonResponse(200, stopAck("stopped", "wf 1/2"));
       return jsonResponse(200, readState());

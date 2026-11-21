@@ -543,6 +543,8 @@ describe("workflow credentials", () => {
   it.for([
     { key: "probe123", path: "/probe123/api" },
     { key: "release-key", path: "/customer-release-key/v1" },
+    // A base that is the credential and nothing else, with no escape or plus in it.
+    { key: "tenant-token", path: "/tenant-token" },
   ])(
     "refuses the endpoint whose request path carries the credential $key before sending anything",
     async ({ key, path }) => {
@@ -629,6 +631,86 @@ describe("workflow credentials", () => {
     expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
     publishes(result.text, `Input refused for ${path}/api/workflows`, key, "the tool error");
     expect(wire(remote)).toEqual([`POST ${path}/api/workflows`]);
+  });
+
+  // An id the endpoint answers becomes three request targets, so the create answer is where this
+  // client decides what may reach a request, a row, a record or a log line: an id in any spelling a
+  // forwarding hop could rewrite is refused, and so is one that spells the run's own credential.
+  it.for([
+    { why: "a percent sign", id: "wf%3C7%3E", spellings: ["wf%3C7%3E", "wf%253C7%253E"] },
+    { why: "a plus", id: "wf+1", spellings: ["wf+1", "wf%2B1"] },
+    { why: "a space", id: "wf 1", spellings: ["wf 1", "wf%201"] },
+    { why: "a slash", id: "wf/1", spellings: ["wf/1", "wf%2F1"] },
+    { why: "a parent segment", id: "..", spellings: [] },
+    { why: "a self segment", id: ".", spellings: [] },
+    { why: "an unpaired surrogate", id: "wf\ud800", spellings: ["wf\ud800"] },
+    { why: "the run's own credential", id: `wf-${KEY}-1`, spellings: [`wf-${KEY}-1`] },
+  ])("publishes nothing about a created run identified by $why", async ({ id, spellings }) => {
+    const remote = await server({
+      prefix: "/gateway/v1",
+      run: id,
+      echoTarget: true,
+      streams: [DISPATCH + textFrame(`Progress on ${TARGET_ECHO}`)],
+      reads: [stateReply({ status: "failed", error: `Run failed on ${TARGET_ECHO}` })],
+    });
+    install(`${remote.url}/gateway/v1`, KEY);
+    const logs = consoleLines();
+    const capture = await start();
+    const row = resultRow(capture);
+    const updates: Result[] = [];
+
+    const pending = run(capture, undefined, (update) => {
+      updates.push(update);
+      row.paint(update);
+    });
+    const reported = await report(pending);
+    const painted = row.paint(await pending);
+
+    expect.soft(reported.isError, "an id this client cannot route leaves the create outcome unknown").toBe(true);
+    expect.soft(reported.text).toMatch(/unknown outcome/i);
+    expect.soft(reported.text, "one of the two refused causes").toMatch(/path segment|credential/i);
+    expect
+      .soft(wire(remote), "no follow-up request may be built from an id this client cannot route")
+      .toEqual(["POST /gateway/v1/api/workflows"]);
+    expect
+      .soft(await status(capture), "a run whose routes cannot be built is never registered")
+      .not.toContain("audit workflow");
+    const surfaces = [
+      [reported.text, "the tool error"],
+      [painted, "the call's row"],
+      [updates.map(text).join("\n"), "what the call published"],
+      [logs.join("\n"), "diagnostics"],
+    ] as const;
+    for (const [surface, name] of surfaces) {
+      for (const value of [...spellings, KEY]) {
+        expect.soft(surface.includes(value), `${name} must not publish ${JSON.stringify(value)}`).toBe(false);
+      }
+    }
+  });
+
+  // A literal id needs no encoding at all, so the target the endpoint echoes carries the id's own
+  // bytes: published text shows them whole, with nothing for a redaction needle to miss.
+  it("publishes a literal run id in its target exactly as the endpoint echoed it", async () => {
+    const remote = await server({
+      prefix: "/gateway/v1",
+      run: "wf-7",
+      echoTarget: true,
+      streams: [DISPATCH + textFrame(`Progress on ${TARGET_ECHO}`)],
+      reads: [stateReply({ status: "failed", error: `Run failed on ${TARGET_ECHO}` })],
+    });
+    install(`${remote.url}/gateway/v1`, KEY);
+    const capture = await start();
+
+    const result = await report(run(capture));
+
+    authenticates(remote, KEY);
+    expect.soft(result.isError, "a failed run is still an error").toBe(true);
+    publishes(result.text, "Run failed on /gateway/v1/api/workflows/wf-7", KEY, "the tool error");
+    expect(wire(remote)).toEqual([
+      "POST /gateway/v1/api/workflows",
+      "GET /gateway/v1/api/workflows/wf-7/stream",
+      "GET /gateway/v1/api/workflows/wf-7",
+    ]);
   });
 
   // An endpoint can mint a run id out of the credential it was given. The routes built from that id
