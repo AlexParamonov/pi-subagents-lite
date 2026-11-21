@@ -95,7 +95,8 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   const transport = options.fetch ?? fetch;
   const key = endpoint.apiKey;
   const base = endpoint.url;
-  // The one URL any published text may name; the base itself may carry the key in its path prefix.
+  // The one URL any published text may name: a base whose path carries percent escapes cannot be
+  // shown as the bytes the transport sends.
   const display = displayUrl(base);
   const published = createPublicText(key);
   // Observation state lives here because one client is one run's: a hand-back leaves this where it
