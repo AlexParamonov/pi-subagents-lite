@@ -42,6 +42,7 @@ import {
   REMOTE_ID,
   REPLAY_COMPLETED_STREAM,
   REPLAY_FAILED_STREAM,
+  stopAck,
   stopRequests,
   streamRequests,
   TARGET_ECHO,
@@ -174,6 +175,50 @@ describe("create", () => {
     expect(error(run)).toContain(url);
     expect(error(run)).toContain("created a run it did not identify");
     expect(error(run)).toContain("the response carried no workflow id");
+  });
+
+  // A run id the endpoint chooses becomes a route segment here, so an id that walks a route or that
+  // Fetch cannot encode has to be refused as a create outcome and never reach a follow-up request.
+  for (const [label, id] of [
+    ["a parent segment", ".."],
+    ["an unpaired surrogate", "\ud800"],
+  ] as const) {
+    it(`treats a created run identified by ${label} as an unknown outcome that asks for nothing`, async () => {
+      const targets: string[] = [];
+      const transport: typeof fetch = async (input) => {
+        const url = String(input instanceof Request ? input.url : input);
+        targets.push(url);
+        return url.endsWith("/api/workflows")
+          ? jsonResponse(201, { workflow_id: id, task_id: id })
+          : jsonResponse(200, readState());
+      };
+      const run = await client(FAKED_URL, "example-private-key", transport);
+
+      const created = await run.create(request());
+
+      expect(error(created)).toContain(FAKED_URL);
+      expect(error(created)).toMatch(/unknown outcome/i);
+      expect(error(created)).toMatch(/was not retried/i);
+      expect(error(created)).not.toContain(id);
+      expect(targets).toEqual([`${FAKED_URL}/api/workflows`]);
+    });
+  }
+
+  it("routes a created run whose id needs percent-encoding as one path segment", async () => {
+    const targets: string[] = [];
+    const transport: typeof fetch = async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      targets.push(url);
+      return url.endsWith("/api/workflows")
+        ? jsonResponse(201, { workflow_id: "wf 1/2", task_id: "wf 1/2" })
+        : jsonResponse(200, stopAck("stopped", "wf 1/2"));
+    };
+    const run = await client(FAKED_URL, undefined, transport);
+    await run.create(request());
+
+    await expect(run.stop("wf 1/2")).resolves.toEqual({ ok: true, status: "stopped" });
+
+    expect(targets).toEqual([`${FAKED_URL}/api/workflows`, `${FAKED_URL}/api/workflows/wf%201%2F2/stop`]);
   });
 
   it("keeps the file's own prompt vars next to the injected working directory", async () => {

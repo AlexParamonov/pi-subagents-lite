@@ -220,6 +220,15 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       const ids = runIds(sent.body);
       if (!ids)
         return { ok: false, error: fault("created a run it did not identify", "the response carried no workflow id") };
+      if (!routableSegment(ids.workflowId))
+        return {
+          ok: false,
+          error: fault(
+            "has an unknown outcome",
+            "the workflow id it answered cannot be used as a path segment. " +
+              "The run may still be running remotely; it was not retried.",
+          ),
+        };
       lastKnown = "running";
       return { ok: true, ...ids };
     },
@@ -496,6 +505,20 @@ function runIds(body: string): { workflowId: string; taskId: string } | null {
   const ids = parseRecord(body);
   const workflowId = field(ids, "workflow_id");
   return workflowId === undefined ? null : { workflowId, taskId: field(ids, "task_id") ?? "" };
+}
+
+/**
+ * Whether an id the endpoint answered can be routed as one path segment: a dot segment would walk
+ * out of the run's own route once Fetch normalizes it, and an unpaired surrogate has no encoding.
+ */
+function routableSegment(id: string): boolean {
+  let encoded: string;
+  try {
+    encoded = encodeURIComponent(id);
+  } catch {
+    return false;
+  }
+  return encoded !== "" && encoded !== "." && encoded !== "..";
 }
 
 function parseError(body: string): string | null {

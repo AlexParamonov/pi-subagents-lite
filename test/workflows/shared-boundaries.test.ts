@@ -428,6 +428,20 @@ describe("workflow request base", () => {
       .toBe(false);
   });
 
+  // The run id comes from the endpoint and becomes a route segment here: Fetch normalizes a dot
+  // segment, so an id like `..` sent authenticated requests outside the run's own routes.
+  it("asks nothing further of a created run whose id is not a usable path segment", async () => {
+    const remote = await server({ run: ".." });
+    install(remote.url);
+
+    const result = await report(run(await start()));
+
+    expect.soft(result.isError, "an unusable run id leaves the create outcome unknown").toBe(true);
+    expect
+      .soft(wire(remote), "no follow-up request may be built from an id that walks out of the run's route")
+      .toEqual(["POST /api/workflows"]);
+  });
+
   it("refuses an explicit null endpoint selection before contacting the default", async () => {
     const remote = await server();
     install(remote.url, undefined, `${workflow()}endpoint: null\n`);
