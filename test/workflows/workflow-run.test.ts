@@ -219,13 +219,6 @@ describe("a foreground run's record and result", () => {
       expectedUrl: "http://127.0.0.1:4100/gateway/v1",
       hidden: [KEY],
     },
-    {
-      name: "withholds a percent-escaped prefix from the record's display copies",
-      url: "http://127.0.0.1:4100/k%3C7%3E/v1",
-      apiKey: KEY,
-      expectedUrl: "http://127.0.0.1:4100",
-      hidden: ["k%3C7%3E", "k<7>", KEY],
-    },
   ]) {
     it(name, async () => {
       const manager = new AgentManager();

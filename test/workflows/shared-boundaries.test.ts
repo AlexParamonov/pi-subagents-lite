@@ -541,10 +541,8 @@ describe("workflow credentials", () => {
   });
 
   it.for([
-    { key: "key+/part", path: "/key%2B/part/v1" },
-    { key: "key+/api", path: "/key%2B" },
-    // The bytes a gateway that decodes once forwards still carry: `/gateway/double%3C7%3E`.
-    { key: "double<7>", path: "/gateway/double%253C7%253E" },
+    { key: "probe123", path: "/probe123/api" },
+    { key: "release-key", path: "/customer-release-key/v1" },
   ])(
     "refuses the endpoint whose request path carries the credential $key before sending anything",
     async ({ key, path }) => {
@@ -576,13 +574,47 @@ describe("workflow credentials", () => {
     },
   );
 
+  // A percent escape or a plus in the configured path is refused on the base alone: those are the two
+  // path characters a hop can rewrite, so a base carrying either cannot promise a literal target.
   it.for([
-    // `%3C` decodes to `<`, not to `C+`, and `%253C` to `%3C`: neither path holds a credential, so
-    // nothing in the echoed target is touched and the endpoint's own words arrive byte for byte.
-    { key: "C+", path: "/%3C%2b/v1" },
-    { key: "release-key", path: "/gateway/double%253C7%253E" },
-    // `+` is literal path data; form-style plus-to-space decoding is outside the documented guard.
-    { key: "a b", path: "/gateway/a+b" },
+    { path: "/gateway/double%253C7%253E", key: "double<7>" },
+    { path: "/gateway/a+b", key: "a b" },
+    { path: "/x/%2Bb/y", key: "release-key" },
+    { path: "/k%3C7%3E/v1", key: "k<7>" },
+  ])(
+    "refuses the base whose path carries an escape or a plus ($path) before sending anything",
+    async ({ path, key }) => {
+      const remote = await server({
+        prefix: path,
+        echoTarget: true,
+        rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+      });
+      install(`${remote.url}${path}`, key);
+      const logs = consoleLines();
+
+      const refusal = await report(run(await start()));
+
+      expect.soft(remote.requests, "a base no hop can promise to forward literally is refused first").toEqual([]);
+      expect.soft(refusal.isError, "the refused run must not report success").toBe(true);
+      expect
+        .soft(
+          refusal.text.includes(
+            `"release-gateway" (workflows.endpoints[release-gateway].url) carries a percent escape or a plus`,
+          ),
+          "the refusal must name the url setting alone and its problem",
+        )
+        .toBe(true);
+      const published = `${refusal.text}\n${logs.join("\n")}`;
+      for (const value of [key, encodeURIComponent(key), path, remote.url, "%", "+"]) {
+        expect.soft(published.includes(value), `the refusal must not quote ${value}`).toBe(false);
+      }
+    },
+  );
+
+  it.for([
+    // Nothing in this prefix is a credential, so nothing in the echoed target is touched and the
+    // endpoint's own words arrive byte for byte.
+    { key: "release-key", path: "/gateway/v1" },
   ])("publishes a prefix that carries no credential exactly as the endpoint echoed it", async ({ key, path }) => {
     const remote = await server({
       prefix: path,
@@ -688,61 +720,61 @@ describe("workflow credentials", () => {
     expect(text(result)).toBe(ANSWER);
   });
 
-  it.for([
-    { path: "/gateway/v1", displayPath: "/gateway/v1", hidden: [] as string[] },
-    { path: "/k%3C7%3E/v1", displayPath: "", hidden: ["/k%3C7%3E/v1", "k<7>"] },
-  ])("uses a safe display URL for the prefix $path", async ({ path, displayPath, hidden }) => {
-    const remote = await server({
-      prefix: path,
-      echoAuth: true,
-      holdStream: true,
-      streams: [DISPATCH],
-      reads: [stateReply({ result: `Answer received ${AUTH_ECHO}` })],
-    });
-    install(`${remote.url}${path}`, KEY);
-    const { capture, widgetText } = await startWithWidget();
-    const pending = run(capture);
-    await beforeEnd(remote.streamOpened, pending, "the configured prefix reached the wire");
+  it.for([{ path: "/gateway/v1", displayPath: "/gateway/v1", hidden: [] as string[] }])(
+    "uses a safe display URL for the prefix $path",
+    async ({ path, displayPath, hidden }) => {
+      const remote = await server({
+        prefix: path,
+        echoAuth: true,
+        holdStream: true,
+        streams: [DISPATCH],
+        reads: [stateReply({ result: `Answer received ${AUTH_ECHO}` })],
+      });
+      install(`${remote.url}${path}`, KEY);
+      const { capture, widgetText } = await startWithWidget();
+      const pending = run(capture);
+      await beforeEnd(remote.streamOpened, pending, "the configured prefix reached the wire");
 
-    const menu = await runningMenu(capture);
-    const widget = widgetText();
-    remote.releaseStream();
-    const result = await pending;
+      const menu = await runningMenu(capture);
+      const widget = widgetText();
+      remote.releaseStream();
+      const result = await pending;
 
-    authenticates(remote, KEY);
-    publishes(text(result), "Answer received Bearer [redacted]", KEY, "the inline result");
-    for (const [surface, name] of [
-      [menu, "running-agents menu"],
-      [widget, "widget"],
-    ]) {
-      expect.soft(surface.includes("audit workflow"), `the ${name} must show this run`).toBe(true);
-      publishes(surface, `${remote.url}${displayPath}${name === "widget" ? " " : "\n"}`, KEY, name);
-      for (const withheld of hidden) {
-        expect.soft(surface.includes(withheld), `the ${name} must not show ${withheld}`).toBe(false);
+      authenticates(remote, KEY);
+      publishes(text(result), "Answer received Bearer [redacted]", KEY, "the inline result");
+      for (const [surface, name] of [
+        [menu, "running-agents menu"],
+        [widget, "widget"],
+      ]) {
+        expect.soft(surface.includes("audit workflow"), `the ${name} must show this run`).toBe(true);
+        publishes(surface, `${remote.url}${displayPath}${name === "widget" ? " " : "\n"}`, KEY, name);
+        for (const withheld of hidden) {
+          expect.soft(surface.includes(withheld), `the ${name} must not show ${withheld}`).toBe(false);
+        }
       }
-    }
-  });
+    },
+  );
 
-  it.for([
-    { path: "/gateway/v1", displayPath: "/gateway/v1", hidden: [] as string[] },
-    { path: "/k%3C7%3E/v1", displayPath: "", hidden: ["/k%3C7%3E/v1", "k<7>"] },
-  ])("uses the same safe URL in a transport failure for the prefix $path", async ({ path, displayPath, hidden }) => {
-    const dead = await server();
-    await dead.close();
-    install(`${dead.url}${path}`, KEY);
-    const logs = consoleLines();
+  it.for([{ path: "/gateway/v1", displayPath: "/gateway/v1", hidden: [] as string[] }])(
+    "uses the same safe URL in a transport failure for the prefix $path",
+    async ({ path, displayPath, hidden }) => {
+      const dead = await server();
+      await dead.close();
+      install(`${dead.url}${path}`, KEY);
+      const logs = consoleLines();
 
-    const result = await report(run(await start()));
+      const result = await report(run(await start()));
 
-    expect(result.isError).toBe(true);
-    expect
-      .soft(result.text.includes(`(${dead.url}${displayPath})`), "the fault must identify the same safe URL")
-      .toBe(true);
-    const published = `${result.text}\n${logs.join("\n")}`;
-    for (const withheld of [...hidden, KEY]) {
-      expect.soft(published.includes(withheld), `the fault must not publish ${withheld}`).toBe(false);
-    }
-  });
+      expect(result.isError).toBe(true);
+      expect
+        .soft(result.text.includes(`(${dead.url}${displayPath})`), "the fault must identify the same safe URL")
+        .toBe(true);
+      const published = `${result.text}\n${logs.join("\n")}`;
+      for (const withheld of [...hidden, KEY]) {
+        expect.soft(published.includes(withheld), `the fault must not publish ${withheld}`).toBe(false);
+      }
+    },
+  );
 
   it.for([
     { label: "an empty string", key: "" },

@@ -7,8 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { displayUrl, resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
-import type { ValidatedBase } from "../../src/workflows/endpoints.js";
+import { resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
 import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 
 function settings(
@@ -281,38 +280,46 @@ describe("the effective credential", () => {
   }
 });
 
-// The validated base is transport-only: what a surface shows is this value, and a needle matched
-// literally cannot catch a key the canonical path percent-escaped (US-35).
-describe("displayUrl", () => {
-  for (const [configured, shown] of [
-    ["http://release.invalid:4001", "http://release.invalid:4001"],
-    ["http://release.invalid:4001/gateway/v1", "http://release.invalid:4001/gateway/v1"],
-    ["http://release.invalid:4001/team@release/v1", "http://release.invalid:4001/team@release/v1"],
-    ["http://release.invalid:4001/k%3C7%3E/v1", "http://release.invalid:4001"],
-  ] as const) {
-    it(`shows ${shown} for the base ${configured}`, () => {
-      expect(displayUrl(mint(configured))).toBe(shown);
+// `%` and `+` are the two path characters a transport or an intermediary can turn into another spelling
+// of the same bytes, so a base carrying either refuses: from a base without them every byte this client
+// puts in a request target reaches the endpoint as its own bytes (US-35).
+describe("a base whose path carries a percent escape or a plus", () => {
+  for (const url of [
+    "http://release.invalid:4001/k%3C7%3E/v1",
+    "http://release.invalid:4001/gateway/double%253C7%253E",
+    "http://release.invalid:4001/a%zz/v1",
+    "http://release.invalid:4001/x/a+b/y",
+    "http://release.invalid:4001/x/%2Bb/y",
+  ]) {
+    it(`refuses ${url} whatever credential it carries, naming the url and quoting no URL value`, () => {
+      const error = expectBrokenEndpointRefusal({ url, apiKey: "release-key" });
+
+      expect(error).toContain("workflows.endpoints[broken].url");
+      expect(error).toMatch(/percent|plus/i);
+      for (const value of ["release.invalid", "4001", "/gateway", "/x/", "release-key", "%", "+"]) {
+        expect(error).not.toContain(value);
+      }
     });
   }
+
+  // The pairing `+`-as-space decoding used to leave accepted refuses on the base alone, before the
+  // credential is judged at all.
+  it("refuses the plus base carrying a key with a space in it, naming only the url", () => {
+    const error = expectBrokenEndpointRefusal({ url: "http://release.invalid:4001/x/a+b/y", apiKey: "a b" });
+
+    expect(error).toMatch(/percent|plus/i);
+    expect(error).not.toContain("apiKey");
+    for (const value of ["a b", "a+b", "release.invalid"]) expect(error).not.toContain(value);
+  });
 });
 
-/** A base only resolution may mint, for the tests that need one as input. */
-function mint(url: string): ValidatedBase {
-  const resolution = resolveWorkflowEndpoint(settings({ local: { url } }, "local"), "local");
-  if (!resolution.ok) throw new Error(`${JSON.stringify(url)} must resolve: ${resolution.error}`);
-  return resolution.endpoint.url;
-}
-
-// The only way a credential reaches published text in a form no literal redaction can match is a
-// path this configuration put it on: the parser percent-escapes it, and the escaped text is not the
-// key. Such a pair is refused as an unusable base or key is, so no request carries it (US-35).
+// A base and a credential that are each usable on their own, but whose joined request path carries the
+// credential as the literal bytes the endpoint will echo. Such a pair is refused as an unusable base or
+// key is, so no request carries it (US-35).
 describe("a base and credential that would meet on the request path", () => {
   for (const [key, url] of [
-    ["k<7>", "http://release.invalid:4001/k<7>/v1"],
-    ["<", "http://release.invalid:4001/</v1"],
-    ["key+/part", "http://release.invalid:4001/key%2B/part/v1"],
-    ["key+/api", "http://release.invalid:4001/key%2B"],
-    ["token", "http://release.invalid:4001/a%zz/v1"],
+    ["probe123", "http://release.invalid:4001/probe123/api"],
+    ["release-key", "http://release.invalid:4001/customer-release-key/v1"],
   ] as const) {
     it(`refuses ${url} configured with the credential it carries`, () => {
       const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
@@ -327,11 +334,9 @@ describe("a base and credential that would meet on the request path", () => {
   }
 
   for (const [key, url] of [
-    ["C+", "http://release.invalid:4001/%3C%2b/v1"],
     ["release-key", "http://release.invalid:4001/gateway/v1"],
+    ["other-key", "http://release.invalid:4001/customer-release-key/v1"],
     ["k<7>", "http://release.invalid:4001/gateway/v1"],
-    ["key+/api", "http://release.invalid:4001/key+/v1"],
-    ["release-key", "http://release.invalid:4001/gateway/double%253C7%253E"],
   ] as const) {
     it(`resolves ${url} configured with the credential ${JSON.stringify(key)}`, () => {
       const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
@@ -340,30 +345,15 @@ describe("a base and credential that would meet on the request path", () => {
       expect(resolution.endpoint).toEqual({ name: "local", url, apiKey: key });
     });
   }
-});
 
-// A forwarding gateway decodes the target it forwards and echoes what it decoded, so one decode of
-// the configured prefix proves nothing: the credential can surface a layer further down. Every layer
-// below the bytes this client sends is checked, and a target that cannot be settled is refused.
-describe("each decoding of the target a base and credential assemble", () => {
-  for (const [key, url, layer] of [
-    ["%3Cy", "http://release.invalid:4001/a%3Cy/v1", "the bytes as sent, which decoding erases"],
-    ["single<7>", "http://release.invalid:4001/gateway/single%3C7%3E", "one decode below them"],
-    ["double<7>", "http://release.invalid:4001/gateway/double%253C7%253E", "two decodes below them"],
-    ["deeper<7>", "http://release.invalid:4001/gateway/deeper%25253C7%25253E", "three decodes below them"],
-    [
-      "release-key",
-      "http://release.invalid:4001/x%25252525252525253C7%25252525252525253E",
-      "a target still escaping when the decodes run out",
-    ],
-  ] as const) {
-    it(`refuses ${url} with the credential ${JSON.stringify(key)} appearing at ${layer}`, () => {
-      const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
+  // The literal rule cannot tell a credential that happens to equal part of the route from one the
+  // configuration put there, so a key like this refuses whatever its base. Accepted over-refusal.
+  it("refuses a credential that equals part of the route every run is sent to", () => {
+    const resolution = resolveWorkflowEndpoint(
+      settings({ local: { url: "http://release.invalid:4001/gateway/v1", apiKey: "workflows" } }, "local"),
+      "local",
+    );
 
-      expect(resolution.ok).toBe(false);
-      const error = (resolution as { ok: false; error: string }).error;
-      expect(error).toMatch(/request path/i);
-      for (const value of [key, encodeURIComponent(key)]) expect(error).not.toContain(value);
-    });
-  }
+    expect(resolution.ok).toBe(false);
+  });
 });
