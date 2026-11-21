@@ -207,34 +207,6 @@ describe("a foreground run's record and result", () => {
     expect(shown.views.at(-1)).toBe("✓ analysis completed\nThe declared output");
   });
 
-  // The text the parent agent reads is the declared answer, so everything else the producer sent -
-  // a local handler's own payload, a Pi run's transcript - would be lost to everyone if the text were
-  // the only copy. `details` is what the UI and the export read and the model never reads.
-  it("keeps the whole value the producer sent in the details the UI and the export read", async () => {
-    const client = fakeClient();
-    const pending = run(client);
-    await started(client);
-    const value = { text: "The declared output", result: { deployed: true }, usage: { input_tokens: 5 } };
-    client.settleMonitor({ status: "completed", result: value });
-
-    const result = await pending;
-
-    expect(text(result)).toBe("The declared output");
-    expect(result.details?.result).toEqual(value);
-  });
-
-  it("carries no result value for a run that produced none", async () => {
-    const client = fakeClient();
-    const pending = run(client);
-    await started(client);
-    client.settleMonitor({ status: "failed", error: "the node died" });
-
-    const result = await pending;
-
-    expect(result.isError).toBe(true);
-    expect("result" in (result.details ?? {})).toBe(false);
-  });
-
   // The record's two URL copies are what the widget, the running-agents menu, the conversation viewer
   // and the details export show, and none of them holds this run's publisher: they are written already
   // safe, as one display value shared with the fault text (US-35). A prefix that carries the run's

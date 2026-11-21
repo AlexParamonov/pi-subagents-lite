@@ -65,10 +65,6 @@ export async function runWorkflowForeground(
   // what makes a shutdown reach a run whose create answer has not arrived yet.
   const ownership = manager.beginWorkflowRun(end);
   let settled = false;
-  // The value a completed run's endpoint answered, kept for the call's `details`: the answer text is
-  // the only part the parent agent reads, and the rest would otherwise exist nowhere else. Nothing
-  // here paints `details` and it carries no redaction, so a surface must not start showing it whole.
-  let answered: { value: unknown } | undefined;
   // Shutdown releases the waiter without settling. Every later observation or stop path is inert.
   let sessionEnded = false;
   let noteKind: "unknown" | "stop-failed" | undefined;
@@ -116,7 +112,7 @@ export async function runWorkflowForeground(
 
   void observe();
   const text = await Promise.race([record.execution.promise!, handed]);
-  const details = { agentId, progress: lines, ...(answered ? { result: answered.value } : {}) };
+  const details = { agentId, progress: lines };
   const content = [{ type: "text" as const, text }];
   return record.lifecycle.status === "error" ? { content, details, isError: true } : { content, details };
 
@@ -150,7 +146,6 @@ export async function runWorkflowForeground(
         continue;
       }
       const [status, settlement] = settlementOf(outcome);
-      if (outcome.status === "completed") answered = { value: outcome.result };
       settle(status, settlement);
       return;
     }

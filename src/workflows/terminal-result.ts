@@ -3,9 +3,10 @@
  *
  * The server owns the value: it is opaque, string-keyed JSON (US-37). One key is promised across
  * producers - `text` is the answer, and ADR-0023 requires it of a local handler - so that field is
- * what the parent agent reads and nothing else about the value is guessed at. Everything the
- * producer sent besides it reaches the reader through the call's `details`, which the model does not
- * read. Nothing here reads a streamed event, and nothing reshapes a producer's payload.
+ * what the parent agent reads and nothing else about the value is guessed at. What the value holds
+ * besides the answer is copied nowhere: every client-side home for it - tool `details` above all - is
+ * model-reachable or unredacted, and the endpoint's stored result stays the place to read it. Nothing
+ * here reads a streamed event, and nothing reshapes a producer's payload.
  */
 
 import { plainText } from "../ui/sanitize.ts";

@@ -486,8 +486,7 @@ describe("foreground workflow execution", () => {
 
   // The endpoint reported no reason - either by omitting the key or by the `nil` a strategy with no
   // reason field answers - so the answer is everything the reader gets: the line this used to print
-  // described a field the run never reported. The rest of the value is still there for the UI and the
-  // export, in the call's details.
+  // described a field the run never reported. Whatever else the value holds stays on the endpoint.
   it.for([{ reason: undefined }, { reason: null }])(
     "adds no provenance the endpoint did not report ($reason)",
     async ({ reason }) => {
@@ -499,7 +498,6 @@ describe("foreground workflow execution", () => {
       const result = await run(tool);
 
       expect(text(result)).toBe("Partial answer");
-      expect(result.details?.result).toEqual(value);
     },
   );
 
