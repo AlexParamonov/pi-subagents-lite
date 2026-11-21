@@ -11,7 +11,7 @@ Foreground and background agents with detailed model configuration, concurrency,
 
 ## Install
 
-Requires Node.js >= 22.19.0 and pi >= 0.99.0.
+Requires Node.js >= 22.19.0 and pi >= 1.5.1 (ending a session — Esc, `/new`, resume, fork or quit — stops the Workflow runs bound to it; pi's runtime only settles the active turn before quitting from 1.5.1, so an older pi would leave those runs running with nobody watching).
 
 ```bash
 pi install npm:pi-subagents-lite
