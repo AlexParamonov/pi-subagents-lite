@@ -295,10 +295,15 @@ export function errorBody(message: string): string {
 }
 
 export interface EndpointOptions {
+  /** Serve every route under this path prefix: a base URL's valid path prefix, kept verbatim. */
+  prefix?: string;
   /** Run id this endpoint mints for a created run; the captures decide which one a test needs. */
   run?: string;
   result?: unknown;
   states?: ReadState[];
+  /** Embed the Authorization header this endpoint received into the GET read's failure reason, so
+   * every published surface has the sent credential in front of it. */
+  echoAuth?: boolean;
   /** Recorded `GET /api/workflows/:id` answers, served in order, the last one repeating. */
   reads?: RecordedResponse[];
   streams?: string[];
@@ -309,17 +314,22 @@ export interface EndpointOptions {
   /** Stop rejection: captured status and body. */
   stopRejection?: RecordedResponse;
   /**
-   * Honest stop acknowledgement. `already_finished` (the default is `stopped`) means the log
-   * already holds a terminal event, so the run keeps its own terminal state from GET instead of
-   * the killed-run footprint a `stopped` ack leaves behind.
+   * Honest stop acknowledgement: `stopped` (the default), `already_finished` (the log already
+   * holds a terminal event, so the run keeps its own terminal state from GET), or `interrupted`
+   * (a terminal-less dead runner).
    */
-  stopOutcome?: "stopped" | "already_finished";
+  stopOutcome?: "stopped" | "already_finished" | "interrupted";
+  /** When a stop acknowledgement may release a held stream: `stopped` only (the honest rule — a
+   * non-`stopped` ack settles nothing, so the stream must stay held), or any acknowledgement. */
+  releaseStreamOn?: "stopped" | "any-ack";
   redirect?: string;
   loseCreateResponse?: boolean;
 }
 
 export interface TestEndpoint {
   url: string;
+  /** The path prefix every route is served under ("" when the base has none). */
+  prefix: string;
   /** The run id this endpoint hands out for a created run. */
   run: string;
   requests: Request[];
@@ -344,6 +354,7 @@ export const DEFAULT_RESULT = {
 
 export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpoint> {
   const run = options.run ?? REMOTE_ID;
+  const prefix = options.prefix ?? "";
   const requests: Request[] = [];
   const streamOpened = deferred<void>();
   const createReceived = deferred<void>();
@@ -381,7 +392,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       lastEventId: req.headers["last-event-id"] as string | undefined,
     });
 
-    if (req.method === "POST" && path === "/api/workflows") {
+    if (req.method === "POST" && path === `${prefix}/api/workflows`) {
       if (!/^application\/json(?:\s*;|$)/i.test(req.headers["content-type"] ?? "")) {
         json(res, 415, { error: "Expected a JSON request body" });
         return;
@@ -399,7 +410,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       } else {
         json(res, 201, { workflow_id: run, task_id: run });
       }
-    } else if (req.method === "GET" && path === `/api/workflows/${run}/stream`) {
+    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${run}/stream`) {
       if (res.socket) streamSockets.add(res.socket);
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(options.streams?.[streamIndex++] ?? DEFAULT_STREAM);
@@ -413,7 +424,15 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
             ? frameOf(REPLAY_FAILED, "workflow_failed")
             : frameOf(REPLAY_DECLARED, "workflow_engine_finished"),
       );
-    } else if (req.method === "GET" && path === `/api/workflows/${run}`) {
+    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${run}`) {
+      if (options.echoAuth) {
+        json(res, 200, {
+          workflow_id: run,
+          task_id: run,
+          ...readState({ status: "failed", error: req.headers.authorization ?? "no authorization header" }),
+        });
+        return;
+      }
       if (options.reads) {
         const read = options.reads[Math.min(readIndex++, options.reads.length - 1)]!;
         res.writeHead(read.status, { "content-type": "application/json" });
@@ -426,7 +445,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
           ? readState({ status: "running" })
           : states[Math.min(stateIndex++, states.length - 1)]!;
       json(res, 200, { workflow_id: run, task_id: run, ...state });
-    } else if (req.method === "POST" && path === `/api/workflows/${run}/stop`) {
+    } else if (req.method === "POST" && path === `${prefix}/api/workflows/${run}/stop`) {
       if (options.stopRejection) {
         res.writeHead(options.stopRejection.status, { "content-type": "application/json" });
         res.end(options.stopRejection.body);
@@ -436,7 +455,9 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
         // terminal state is whatever GET derives from the log.
         if (ack === "stopped") stopped = true;
         json(res, 200, stopAck(ack, run));
-        finishStream();
+        // A non-`stopped` acknowledgement settles nothing, so it must not end the held stream
+        // either — releasing it here would fake the immediate authoritative read the ack owes.
+        if (ack === "stopped" || options.releaseStreamOn !== "stopped") finishStream();
       }
       stopReceived.resolve();
     } else {
@@ -452,6 +473,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   const { port } = server.address() as AddressInfo;
   const endpoint: TestEndpoint = {
     url: `http://127.0.0.1:${port}`,
+    prefix,
     run,
     requests,
     streamSocketsOpen: () => streamSockets.size,
@@ -473,13 +495,15 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   return endpoint;
 }
 
-/** The requests this endpoint served for one of the client's four operations. */
+/** The requests this endpoint served for one of the client's four operations, under its prefix. */
 export function createRequests(server: TestEndpoint): TestEndpoint["requests"] {
-  return server.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/workflows");
+  return server.requests.filter((entry) => entry.method === "POST" && entry.path === `${server.prefix}/api/workflows`);
 }
 
 export function readRequests(server: TestEndpoint): TestEndpoint["requests"] {
-  return server.requests.filter((entry) => entry.method === "GET" && entry.path === `/api/workflows/${server.run}`);
+  return server.requests.filter(
+    (entry) => entry.method === "GET" && entry.path === `${server.prefix}/api/workflows/${server.run}`,
+  );
 }
 
 export function streamRequests(server: TestEndpoint): TestEndpoint["requests"] {
@@ -488,7 +512,7 @@ export function streamRequests(server: TestEndpoint): TestEndpoint["requests"] {
 
 export function stopRequests(server: TestEndpoint): TestEndpoint["requests"] {
   return server.requests.filter(
-    (entry) => entry.method === "POST" && entry.path === `/api/workflows/${server.run}/stop`,
+    (entry) => entry.method === "POST" && entry.path === `${server.prefix}/api/workflows/${server.run}/stop`,
   );
 }
 
@@ -525,8 +549,10 @@ export interface FetchFakeOptions {
   stream(push: (frame: string) => void, close: () => void): void;
   /** Answer `GET /api/workflows/:id`; called with the 1-based read number. */
   read(reads: number): Response;
-  /** Answer `POST /api/workflows/:id/stop`; the acknowledged stop unless the test says otherwise. */
-  stop?(): Response;
+  /** Answer `POST /api/workflows/:id/stop`; the acknowledged stop unless the test says otherwise.
+   * Receives the request's abort signal, so a held stop can honour an abort the way a real
+   * transport would. */
+  stop?(signal?: AbortSignal): Response | Promise<Response>;
 }
 
 export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
@@ -559,7 +585,7 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
       return options.read(reads);
     }
     if (method === "POST" && url.endsWith(`/api/workflows/${run}/stop`)) {
-      return options.stop?.() ?? jsonResponse(200, stopAck("stopped", run));
+      return options.stop?.(init?.signal ?? undefined) ?? jsonResponse(200, stopAck("stopped", run));
     }
     throw new Error(`Unexpected workflow test request: ${method} ${url}`);
   };
