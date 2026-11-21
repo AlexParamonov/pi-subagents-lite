@@ -1,12 +1,14 @@
 /**
  * terminal-result.ts — The one place a run's terminal `result` becomes text.
  *
- * The server owns the value: it is opaque, string-keyed JSON (US-37). One key is promised across
- * producers - `text` is the answer, and ADR-0023 requires it of a local handler - so that field is
- * what the parent agent reads and nothing else about the value is guessed at. What the value holds
- * besides the answer is copied nowhere: every client-side home for it - tool `details` above all - is
- * model-reachable or unredacted, and the endpoint's stored result stays the place to read it. Nothing
- * here reads a streamed event, and nothing reshapes a producer's payload.
+ * The server owns the value: it is opaque, string-keyed JSON (US-37), and `text` is the one key that
+ * declares an answer. So this publishes `text`, and publishes nothing else of the value: no other
+ * field, and no whole-value fallback for a shape the producer chose freely (a `local` handler's stored
+ * output is its own value, which the server's own acceptance test pins as textless data such as
+ * `{headline, chars}`). Whatever the value holds is copied nowhere either - every client-side home for
+ * it, tool `details` above all, is model-reachable or unredacted. The endpoint's stored result, read
+ * by an authorized GET, is the only place a full payload exists. Nothing here reads a streamed event,
+ * and nothing reshapes a producer's payload.
  */
 
 import { plainText } from "../ui/sanitize.ts";
@@ -21,15 +23,24 @@ const NATURAL_ANSWER = "final_answer";
 /** GET's `result: null` beside a completed status is an empty slot, not an empty answer. */
 const NO_OUTPUT = "The workflow run completed with no output.";
 
+/** A completed run whose stored output declares no `text`. The three outcomes are deliberately
+ * distinct: nothing stored, something stored with an empty answer, something stored with no answer.
+ */
+const UNDECLARED = "The workflow run stored its output on the endpoint without declaring an answer.";
+
 export function formatTerminalResult(result: unknown): string {
-  if (result === null) return NO_OUTPUT;
-  const body = record(result);
-  const text = typeof body?.text === "string" ? body.text : undefined;
-  // A value with no declared answer is its own answer, kept whole.
-  if (text === undefined) return plainText(unchanged(result));
+  const body = result === null ? undefined : record(result);
+  // A declared `text` is the answer. A bare string is the answer too: it carries no nested payload of
+  // any kind, so publishing it cannot smuggle a producer's internal field. Anything else - a map, an
+  // array, a number - is data whose shape the producer chose, and is not published.
+  const text = typeof body?.text === "string" ? body.text : typeof result === "string" ? result : undefined;
   // Computed before the empty answer, because an empty `text` is a delivered value and the reason is
   // then the only provenance the reader gets: a terminal-tool run completes with "".
-  return (text === "" ? NO_OUTPUT : plainText(text)) + provenance(body?.termination_reason);
+  const note = provenance(body?.termination_reason);
+  if (text !== undefined) return `${text === "" ? NO_OUTPUT : plainText(text)}${note}`;
+  // No declared answer, so none of the value is quoted: it can be any shape the producer chose, an
+  // earlier node's reasoning among them, and the reader is better served by the honest fact.
+  return `${result === null ? NO_OUTPUT : UNDECLARED}${note}`;
 }
 
 /**
@@ -41,11 +52,6 @@ export function formatTerminalResult(result: unknown): string {
 function provenance(reason: unknown): string {
   if (reason === undefined || reason === null || reason === NATURAL_ANSWER) return "";
   return `\n\n${plainText(`Termination reason: ${shown(reason)}`)}`;
-}
-
-function unchanged(value: unknown): string {
-  const json = JSON.stringify(value);
-  return json === undefined ? "null" : json;
 }
 
 /** The reason as the wire carried it: text stays itself, anything else is shown as its JSON. */

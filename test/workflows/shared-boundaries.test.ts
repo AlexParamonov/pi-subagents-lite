@@ -466,7 +466,7 @@ describe("workflow credentials", () => {
       echoAuth: true,
       holdStream: true,
       streams: [DISPATCH + textFrame(`Progress received ${AUTH_ECHO}`)],
-      reads: [stateReply({ result: { audit: { authorization: AUTH_ECHO } } })],
+      reads: [stateReply({ result: { text: `Audit received ${AUTH_ECHO}`, usage: {} } })],
     });
     install(remote.url, `${padding}${KEY}${padding}`);
     const capture = await start();
@@ -485,9 +485,8 @@ describe("workflow credentials", () => {
     authenticates(remote, KEY);
     publishes(display, "Progress received Bearer [redacted]", KEY, "rendered progress");
     publishes(JSON.stringify(update), "Progress received Bearer [redacted]", KEY, "Pi's partial result");
-    const redactedJson = /"authorization"\s*:\s*"Bearer \[redacted\]"/;
-    publishes(text(result), redactedJson, KEY, "the inline JSON result");
-    publishes(row.repaints.join("\n"), redactedJson, KEY, "the record's result on repaint");
+    publishes(text(result), "Audit received Bearer [redacted]", KEY, "the inline result");
+    publishes(row.repaints.join("\n"), "Audit received Bearer [redacted]", KEY, "the record's result on repaint");
     expect(result.isError ?? false).toBe(false);
   });
 
@@ -777,6 +776,23 @@ describe("workflow credentials", () => {
       expect(text(result)).not.toContain(encodeURIComponent(key));
     },
   );
+
+  // An output the endpoint stored without declaring `text` is not published at all, so a credential
+  // echoed inside it cannot reach any surface - the strongest form of the boundary.
+  it("publishes none of an undeclared result that echoes the credential", async () => {
+    const remote = await server({
+      echoAuth: true,
+      reads: [stateReply({ result: { audit: { authorization: AUTH_ECHO } } })],
+    });
+    install(remote.url, KEY);
+
+    const result = await run(await start());
+
+    authenticates(remote, KEY);
+    expect(text(result)).toBe("The workflow run stored its output on the endpoint without declaring an answer.");
+    expect(text(result)).not.toContain(KEY);
+    expect(text(result)).not.toContain(encodeURIComponent(KEY));
+  });
 
   it("redacts the transport credential in a stream diagnostic", async () => {
     const remote = await server({ holdStream: true, streams: [DISPATCH], reads: [declaredOutputRead()] });

@@ -462,6 +462,18 @@ describe("foreground workflow execution", () => {
     expect(text(result)).not.toContain(RECORDED.nodeResult);
   });
 
+  // The shape the server's own acceptance test pins for a `local` output node: the handler's inner
+  // value, stored as the run's output, with no declared answer in it.
+  it("publishes an undeclared output as that fact, and none of its data", async () => {
+    const remote = await server({ result: { headline: "a long build narrative", chars: 22 } });
+    install(remote);
+    const tool = executable(await start());
+
+    const result = await run(tool);
+
+    expect(text(result)).toBe("The workflow run stored its output on the endpoint without declaring an answer.");
+  });
+
   for (const reason of ["max_iterations"] as const) {
     it(`keeps ${String(reason)} termination provenance without leaking reasoning or usage`, async () => {
       const remote = await server({
@@ -501,31 +513,22 @@ describe("foreground workflow execution", () => {
     },
   );
 
+  // Whatever shape the producer's stored output has, an output with no declared `text` publishes that
+  // fact and none of its data.
   for (const [label, value] of [
-    ["object", { nested: null, values: [1, false] }],
+    ["map", { nested: null, values: [1, false] }],
     ["array", [{ text: "first" }, null] as unknown[]],
+    ["number", 0],
+    ["boolean", false],
   ] as const) {
-    it(`keeps a non-ReAct ${label} result as the JSON it is, nulls and all`, async () => {
+    it(`publishes an undeclared ${label} output as that fact and quotes none of it`, async () => {
       const remote = await server({ result: value });
       install(remote);
       const tool = executable(await start());
 
       const result = await run(tool);
 
-      expect(JSON.parse(text(result))).toEqual(value);
-    });
-  }
-
-  for (const value of [0, false] as const) {
-    it(`treats ${String(value)} as a delivered result`, async () => {
-      const remote = await server({ result: value });
-      install(remote);
-      const tool = executable(await start());
-
-      const result = await run(tool);
-
-      expect(text(result)).toMatch(new RegExp(`(?:^|[^0-9a-zA-Z.])${String(value)}(?:[^0-9a-zA-Z.]|$)`));
-      expect(text(result)).not.toMatch(/no.*output/i);
+      expect(text(result)).toBe("The workflow run stored its output on the endpoint without declaring an answer.");
     });
   }
 
