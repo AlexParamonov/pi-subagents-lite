@@ -62,11 +62,23 @@ export interface WorkflowRunInfo {
   /** Configured endpoint name the run went to. No message names it today: an error carries the
    * endpoint its own client was built with, not the record's copy. */
   endpoint: string;
-  /** The endpoint's URL, frozen at create: endpoints are re-read per call, so this is what still
-   * says which server the run went to after they change. */
+  /** The run's request base, frozen at create: endpoints are re-read per call, so this is what still
+   * says which server the run went to after they change. Resolution refuses a base that could carry
+   * the run's credential, so a surface may print this one. */
   url: string;
   /** The server's own run id (`workflow_id`). */
   remoteId: string;
+  /**
+   * The monitor's latest progress snapshot, kept current for the run's whole life, not just the
+   * tool call that first displayed it. Display data, never a status.
+   */
+  progress?: string[];
+  /**
+   * The monitor's latest running-state note, not a lifecycle status. A `running` read clears an
+   * unknown-state note but not a stop-failure note. A later hand-back can replace either note;
+   * settlement clears it. A noted run remains stoppable.
+   */
+  note?: string;
 }
 
 export interface EnvInfo {

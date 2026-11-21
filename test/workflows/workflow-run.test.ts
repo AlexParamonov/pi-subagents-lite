@@ -16,11 +16,12 @@ import type {
   WorkflowStop,
   WorkflowView,
 } from "../../src/workflows/workflow-client.js";
-import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
+import { mintEndpoint } from "./fixtures.js";
+import { expectGatePending } from "./gate-assertions.js";
 
-const ENDPOINT: WorkflowEndpoint = { name: "local", url: "http://127.0.0.1:4100" };
+const ENDPOINT = mintEndpoint("http://127.0.0.1:4100");
 const KEY = "sekrit-endpoint-value";
-const WITH_KEY: WorkflowEndpoint = { ...ENDPOINT, apiKey: KEY };
+const WITH_KEY = mintEndpoint("http://127.0.0.1:4100", KEY);
 const REMOTE_ID = "wf-remote-1";
 const DECLARED = { text: "The declared output", termination_reason: "final_answer", usage: {} };
 
@@ -35,10 +36,14 @@ interface FakeClient extends WorkflowClient {
   /** One entry per `monitor` call, in order: the view each call was given. */
   views: WorkflowView[];
   stops: number;
+  /** The signal each stop request was given, in order. */
+  stopSignals: (AbortSignal | undefined)[];
   /** Settle the oldest waiting monitor with its outcome; a monitor waits until this or a cancel. */
   settleMonitor(outcome: WorkflowOutcome): void;
   /** Hand over the held create answer. */
   releaseCreate(create?: WorkflowCreate): void;
+  /** Hand over the held stop answer. */
+  releaseStop(stop: WorkflowStop): void;
   /** Change what the endpoint answers a stop request with. */
   answerStop(stop: WorkflowStop): void;
 }
@@ -47,19 +52,24 @@ interface FakeOptions {
   create?: { ok: true; workflowId: string; taskId: string } | { ok: false; error: string };
   /** Hold the create answer until `releaseCreate`, so a shutdown can overtake it. */
   holdCreate?: boolean;
+  /** Hold the stop answer until `releaseStop`, so a shutdown can overtake that too. */
+  holdStop?: boolean;
   stop?: WorkflowStop;
 }
 
 function fakeClient(options: FakeOptions = {}): FakeClient {
   const creates: FakeClient["creates"] = [];
   const views: WorkflowView[] = [];
+  const stopSignals: (AbortSignal | undefined)[] = [];
   const waiters = new Set<(outcome: WorkflowOutcome) => void>();
   let heldCreate: ((create: WorkflowCreate) => void) | undefined;
+  let heldStop: ((stop: WorkflowStop) => void) | undefined;
   let stopAnswer = options.stop ?? { ok: true, status: "stopped" };
   const client: FakeClient = {
     creates,
     views,
     stops: 0,
+    stopSignals,
     async create(request) {
       creates.push({ prompt: request.prompt, definition: request.definition, workingDir: request.workingDir });
       if (!options.holdCreate) return options.create ?? { ok: true, workflowId: REMOTE_ID, taskId: REMOTE_ID };
@@ -93,9 +103,22 @@ function fakeClient(options: FakeOptions = {}): FakeClient {
     answerStop(stop) {
       stopAnswer = stop;
     },
-    async stop() {
+    releaseStop(stop) {
+      const answer = heldStop;
+      heldStop = undefined;
+      answer?.(stop);
+    },
+    async stop(_id, signal) {
       client.stops += 1;
-      return stopAnswer;
+      stopSignals.push(signal);
+      if (!options.holdStop) return stopAnswer;
+      // The transport ends a cancelled wait as a failed stop; the endpoint's late answer cannot.
+      return new Promise<WorkflowStop>((resolve) => {
+        heldStop = resolve;
+        signal?.addEventListener("abort", () => resolve({ ok: false, error: "the stop request was cancelled" }), {
+          once: true,
+        });
+      });
     },
     settleMonitor(outcome) {
       waiters.values().next().value?.(outcome);
@@ -179,9 +202,39 @@ describe("a foreground run's record and result", () => {
       endpoint: "local",
       url: "http://127.0.0.1:4100",
       remoteId: REMOTE_ID,
+      progress: ["\u2713 analysis completed"],
     });
     expect(shown.views.at(-1)).toBe("✓ analysis completed\nThe declared output");
   });
+
+  // The record's two URL copies are what the widget, the running-agents menu, the conversation viewer
+  // and the details export show, and none of them holds this run's publisher: they are written already
+  // safe, as one display value shared with the fault text (US-35). A prefix that carries the run's
+  // credential never reaches here - resolution refuses that configuration outright.
+  for (const { name, url, apiKey, expectedUrl, hidden } of [
+    {
+      name: "records a prefix that carries no credential whole in both display copies",
+      url: "http://127.0.0.1:4100/gateway/v1",
+      apiKey: KEY,
+      expectedUrl: "http://127.0.0.1:4100/gateway/v1",
+      hidden: [KEY],
+    },
+  ]) {
+    it(name, async () => {
+      const manager = new AgentManager();
+      const client = fakeClient();
+      const pending = run(client, manager, { endpoint: mintEndpoint(url, apiKey) });
+      await started(client);
+      client.settleMonitor({ status: "completed", result: DECLARED });
+      await pending;
+
+      const record = manager.listAgents()[0];
+      expect(record.workflow?.url).toBe(expectedUrl);
+      expect(record.display.description).toBe(expectedUrl);
+      const serialized = JSON.stringify(record);
+      for (const secret of hidden) expect(serialized).not.toContain(secret);
+    });
+  }
 
   it("settles a failed run as an error record carrying the endpoint's reason", async () => {
     const manager = new AgentManager();
@@ -531,5 +584,217 @@ describe("the live view", () => {
       ).toHaveLength(1);
     }
     expect(shown.views.at(-1)).toBe("\u2713 analysis completed\n  Inspecting the repository\nThe declared output");
+  });
+});
+
+describe("observation health on the record", () => {
+  /** A run driven to a degraded hand-back, with the record and the second waiter in hand. */
+  async function handedBack(manager: AgentManager, client: FakeClient) {
+    const pending = run(client, manager);
+    const first = await started(client);
+    first.onUpdate([{ type: "text", node: "analysis", text: "Inspecting the repository" }]);
+    client.settleMonitor({ status: "degraded", error: "The state is unknown after 5 observations." });
+    const result = await pending;
+    await vi.waitFor(() => expect(client.views).toHaveLength(2));
+    return { result, record: manager.listAgents()[0]!, next: client.views[1]! };
+  }
+
+  it("keeps the connection's latest progress on the record as well as in the call", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager);
+    const view = await started(client);
+    view.onUpdate([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
+    ]);
+
+    expect(manager.listAgents()[0]!.workflow?.progress).toEqual([
+      "\u25b6 analysis dispatched",
+      "  Inspecting the repository",
+    ]);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+  });
+
+  it("hands the unknown-state note to the record and leaves the run running and stoppable", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const { result, record } = await handedBack(manager, client);
+
+    expect(result.isError ?? false).toBe(false);
+    expect(record.lifecycle.status).toBe("running");
+    expect(record.workflow?.note).toContain("The state is unknown after 5 observations.");
+    expect(manager.abort(record.id, "user"), "the handed-back run is still this session's to stop").toBe(true);
+    await vi.waitFor(() => expect(client.stops).toBe(1));
+  });
+
+  it("clears the unknown-state note when an authoritative read lands running", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const { record, next } = await handedBack(manager, client);
+
+    next.onRead?.("running");
+
+    expect(record.workflow?.note).toBeUndefined();
+    expect(record.lifecycle.status).toBe("running");
+  });
+
+  it("keeps the stop-failed note through an authoritative running read", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient({ stop: { ok: false, error: "The endpoint refused the stop request." } });
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { signal: abort.signal });
+    await started(client);
+    abort.abort();
+    await pending;
+    await vi.waitFor(() => expect(client.views).toHaveLength(2));
+    const record = manager.listAgents()[0]!;
+
+    client.views[1]!.onRead?.("running");
+
+    expect(record.workflow?.note).toMatch(/stop failed/i);
+    expect(record.lifecycle.status).toBe("running");
+  });
+
+  it("keeps updating the record after the waiter is gone, and never re-labels the run", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const { record, next } = await handedBack(manager, client);
+
+    next.onUpdate([{ type: "node-status", node: "analysis", status: "completed" }]);
+    expect(record.workflow?.progress).toEqual(["\u2713 analysis completed"]);
+
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await expect(record.execution.promise!).resolves.toBe("The declared output");
+    expect(record.lifecycle.status).toBe("completed");
+    expect(record.workflow?.note).toBeUndefined();
+  });
+});
+
+describe("one settlement decider", () => {
+  it("settles stopped exactly once from the ack when the in-flight read was cancelled", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { signal: abort.signal });
+    await started(client);
+    abort.abort();
+
+    const result = await pending;
+    const record = manager.listAgents()[0]!;
+
+    expect(text(result)).toMatch(/acknowledged the stop/i);
+    expect(record.lifecycle.status).toBe("stopped");
+    expect(record.execution.settlementCount).toBe(1);
+    await expect(record.execution.promise!).resolves.toMatch(/acknowledged the stop/i);
+  });
+
+  it("leaves a settled terminal record inert against a later stop request", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager);
+    await started(client);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    const result = await pending;
+    const record = manager.listAgents()[0]!;
+
+    const stopped = manager.abort(record.id, "user");
+
+    expect(stopped, "a settled run answers for itself; the stop request is inert").toBe(false);
+    expect(record.lifecycle.status).toBe("completed");
+    expect(record.result).toBe("The declared output");
+    expect(text(result)).toBe("The declared output");
+    expect(client.stops).toBe(0);
+  });
+});
+
+describe("shutdown releases without publishing", () => {
+  // Pi awaits the aborted turn before it emits `session_shutdown`, so a bound run has already
+  // settled from its own stop acknowledgement by then: shutdown finds a settled record and must
+  // leave it alone and send nothing.
+  it("sends nothing and writes nothing when the teardown's abort settled the run first", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const shown = showPublished();
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { onUpdate: shown.publish, signal: abort.signal });
+    await started(client);
+    abort.abort();
+    const result = await pending;
+    const record = manager.listAgents()[0]!;
+    const settled = {
+      status: record.lifecycle.status,
+      completedAt: record.lifecycle.completedAt,
+      stoppedBy: record.lifecycle.stoppedBy,
+      result: record.result,
+      workflow: structuredClone(record.workflow ?? null),
+    };
+    const views = [...shown.views];
+
+    await manager.dispose();
+    await Promise.resolve();
+
+    expect(text(result)).toMatch(/acknowledged the stop/i);
+    expect(client.stops, "the abort's stop is the only stop this run ever sends").toBe(1);
+    expect(record.lifecycle.status).toBe(settled.status);
+    expect(record.lifecycle.completedAt, "shutdown rewrites no end time").toBe(settled.completedAt);
+    expect(record.lifecycle.stoppedBy, "shutdown rewrites no stop initiator").toBe(settled.stoppedBy);
+    expect(record.result).toBe(settled.result);
+    expect(record.workflow).toEqual(settled.workflow);
+    expect(record.execution.settlementCount).toBe(1);
+    expect(shown.views, "shutdown publishes nothing into a session that is gone").toEqual(views);
+  });
+
+  it("releases the watched run with a note that asserts nothing about a stop", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const shown = showPublished();
+
+    const pending = run(client, manager, { onUpdate: shown.publish });
+    await started(client);
+    const record = manager.listAgents()[0]!;
+
+    await manager.dispose();
+
+    const result = await pending;
+    expect(text(result)).toMatch(/no longer watched.*(?:outcome|state).*unknown/i);
+    expect(text(result)).not.toMatch(/left running remotely|nothing was stopped|was not stopped/i);
+    expect(record.lifecycle.status, "shutdown is not a settlement").toBe("running");
+    expect(shown.views, "nothing is published into a session that is gone").toEqual([]);
+    await expectGatePending(record.execution.promise!, "the release came from the note, not the gate");
+  });
+
+  it("releases the run whose stop is in flight and applies nothing that arrives after", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient({ holdStop: true });
+    const shown = showPublished();
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { onUpdate: shown.publish, signal: abort.signal });
+    await started(client);
+    const record = manager.listAgents()[0]!;
+    manager.abort(record.id, "user");
+    await vi.waitFor(() => expect(client.stopSignals).toHaveLength(1));
+    const stopSignal = client.stopSignals[0]!;
+
+    await manager.dispose();
+
+    const result = await pending;
+    expect(text(result)).toMatch(/no longer watched.*(?:outcome|state).*unknown/i);
+    expect(stopSignal.aborted, "the in-flight stop's local wait is cancelled with the session").toBe(true);
+    client.releaseStop({ ok: true, status: "stopped" });
+    await Promise.resolve();
+    expect(record.lifecycle.status).toBe("running");
+    expect(shown.views).toEqual([]);
+    expect(client.stops, "shutdown sends no second stop").toBe(1);
   });
 });

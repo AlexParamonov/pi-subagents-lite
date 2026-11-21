@@ -28,15 +28,24 @@ export interface FrameEffect {
   changed: boolean;
 }
 
-const LIFECYCLE: Record<string, WorkflowNodeStatus> = {
-  node_dispatched: "dispatched",
-  node_retry: "retry",
-  node_complete: "completed",
-  node_failed: "failed",
-};
+const LIFECYCLE = new Map<string, WorkflowNodeStatus>([
+  ["node_dispatched", "dispatched"],
+  ["node_retry", "retry"],
+  ["node_complete", "completed"],
+  ["node_failed", "failed"],
+]);
 
 /** Frames that mean "this connection has nothing more to say; read GET". */
 const RECONCILE = new Set(["workflow_engine_finished", "workflow_failed", "reconnect"]);
+
+/** The one named frame whose payload this view reads as text and tool activity. */
+const PROGRESS = "node_progress";
+
+/**
+ * Every event name whose meaning this view knows. A Map/Set lookup matches no `Object.prototype`
+ * member, so a name like `constructor` is an unknown event here and never a known one.
+ */
+const KNOWN_EVENTS = new Set([...LIFECYCLE.keys(), ...RECONCILE, PROGRESS]);
 
 type Channel = "raw" | "relay" | "delta";
 
@@ -127,6 +136,13 @@ export class StreamView {
 
   apply(frame: SseFrame): FrameEffect {
     const { event, data } = frame;
+    const effect: FrameEffect = { lifecycle: false, reconcile: false, changed: false };
+    // A name this view does not know means something a newer producer decided, and this view cannot
+    // guess what: it resets no silence window, asks for no read, and its payload names no node.
+    if (event !== null && !KNOWN_EVENTS.has(event)) return effect;
+    // A frame that only ends the connection carries the run's terminal payload. None of it is display
+    // state, and the node it names is not the node this connection's unnamed text belongs to.
+    if (event !== null && RECONCILE.has(event)) return { ...effect, reconcile: true };
     // Only a named frame carries a payload to read fields from: a raw frame's `data:` is text to
     // show, and a chunk that happens to look like JSON must not name a node.
     const payload = event === null ? null : parseRecord(data);
@@ -134,12 +150,8 @@ export class StreamView {
     if (named !== undefined) this.source = named;
     const node = named ?? this.source;
     const lines = this.linesFor(node);
-    const lifecycle = event === null ? undefined : LIFECYCLE[event];
-    const effect: FrameEffect = {
-      lifecycle: lifecycle !== undefined,
-      reconcile: event !== null && RECONCILE.has(event),
-      changed: false,
-    };
+    const lifecycle = event === null ? undefined : LIFECYCLE.get(event);
+    effect.lifecycle = lifecycle !== undefined;
 
     if (lifecycle !== undefined) {
       if (lifecycle === "dispatched" || lifecycle === "retry") lines.beginAttempt();
@@ -147,7 +159,7 @@ export class StreamView {
       effect.changed = true;
     } else if (event === null) {
       effect.changed = lines.append("raw", data);
-    } else if (event === "node_progress") {
+    } else if (event === PROGRESS) {
       effect.changed = applyProgress(lines, payload);
     }
     return effect;

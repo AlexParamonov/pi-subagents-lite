@@ -32,13 +32,6 @@ describe("public text", () => {
     expect(text.shown("auth sek\u001B[0mrit-endpoint-value")).toBe("auth [redacted]");
   });
 
-  it("redacts a key the configuration itself spaced with a control character", () => {
-    const text = createPublicText("sek\u0007rit-endpoint-value");
-
-    expect(text.shown("auth sek\u0007rit-endpoint-value")).toBe("auth [redacted]");
-    expect(text.shown("auth sekrit-endpoint-value")).toBe("auth [redacted]");
-  });
-
   it("cuts after the key is replaced, so the bound cannot leave a fragment of it", () => {
     const text = createPublicText(KEY);
 

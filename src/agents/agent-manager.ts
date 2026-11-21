@@ -910,9 +910,12 @@ export class AgentManager {
       if (claim.record) this.detachParentBinding(claim.record);
     }
     for (const record of this.agents.values()) {
-      // A Workflow run's lifetime ended with its claim above; it has no session to release.
+      // A Workflow run's lifetime ended with its claim above; it has no session to release, and
+      // nothing will ever settle a run whose session died: drop its gate resolver without opening
+      // it, so no settlement text or notification can reach the gone session.
       if (record.workflow) {
         this.detachParentBinding(record);
+        this.gateResolvers.delete(record.id);
         continue;
       }
       // Queued subagents never start: fail them honestly so the waiting tool

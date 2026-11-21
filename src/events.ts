@@ -244,13 +244,16 @@ export function setupEventListeners(pi: ExtensionAPI): void {
       const records = currentManager.listAgents();
       const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
-        // Only local work is killed by a reload. A remote run keeps executing, and its record goes
-        // with the reload too, so this is the only place its user would hear about it.
+        // Pi's teardown aborts the active turn and awaits it before emitting this event, and that
+        // abort is what stops a bound Workflow run. A run still running here is one whose stop was
+        // never acknowledged, or one whose call already handed the wait back, so this notice claims
+        // only that watching ended.
         const killed = active.filter((r) => !r.workflow).length;
         const detached = active.length - killed;
         const claims: string[] = [];
         if (killed > 0) claims.push(`${killed} agent(s) killed by reload`);
-        if (detached > 0) claims.push(`${detached} workflow run(s) left running remotely: nothing was stopped`);
+        if (detached > 0)
+          claims.push(`${detached} workflow run(s) are no longer watched; their remote outcomes are unknown`);
         ctx.ui.notify(claims.join(". "), "warning");
       }
     }

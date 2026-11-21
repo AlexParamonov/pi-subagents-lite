@@ -28,16 +28,23 @@ describe("the answer a completed run delivers", () => {
     expect(formatTerminalResult(result)).toBe("I ran out of turns.\n\nTermination reason: max_iterations");
   });
 
-  it("names an absent termination reason instead of implying an answer", () => {
+  // A producer that reports no reason at all has said nothing about how it ended, so nothing is
+  // said: `echo` and a narrow `local` handler complete with `{text, usage}` and no such field, and
+  // the line this used to print described a field the endpoint never sent.
+  it("says nothing about provenance the producer never reported", () => {
     const result = { text: "A partial answer.", usage: {} };
 
-    expect(formatTerminalResult(result)).toBe("A partial answer.\n\nTermination reason: absent");
+    expect(formatTerminalResult(result)).toBe("A partial answer.");
   });
 
-  it("echoes a null termination reason as the wire value it is", () => {
+  // A strategy with no termination reason carries `nil` (measured on anagen-x: a completed ReAct run
+  // answers `termination_reason: nil`). `null` and an absent key are the same fact to the reader - the
+  // endpoint did not say how the run ended - and echoing the wire's `null` presented an internal
+  // nothing as if it were a reason.
+  it("says nothing when the reason is spelled `null`, which is how a strategy with none reports it", () => {
     const result = { text: "A partial answer.", termination_reason: null };
 
-    expect(formatTerminalResult(result)).toBe("A partial answer.\n\nTermination reason: null");
+    expect(formatTerminalResult(result)).toBe("A partial answer.");
   });
 
   it("echoes a termination reason the wire delivered as a value, not a word", () => {
@@ -53,6 +60,14 @@ describe("the answer a completed run delivers", () => {
     const result = { text: "Visible answer \u001b[?25l safe suffix", termination_reason: "final_answer" };
 
     expect(formatTerminalResult(result)).toBe("Visible answer  safe suffix");
+  });
+
+  // The withheld-by-shape rule is what used to hide a reasoning block: any key outside the expected
+  // set moved the value to the print-it-whole branch, `thinking` with it.
+  it("keeps a reasoning block out of the answer whatever other fields the value carries", () => {
+    const result = { text: "The audit found two issues.", thinking: "private chain of thought", notes: 2 };
+
+    expect(formatTerminalResult(result)).toBe("The audit found two issues.");
   });
 });
 
@@ -73,10 +88,18 @@ describe("a result from another kind of producer", () => {
     expect(formatTerminalResult("reviewed 3 files")).toBe('"reviewed 3 files"');
   });
 
-  it("is untouched when it merely carries a status of its own", () => {
-    const result = { status: "completed", text: "A declared output that happens to name a status." };
+  // `text` is the answer contract every producer keeps (ADR-0023 requires it of a local handler),
+  // so the rest of the value - a local handler's own payload, a Pi run's transcript - is no longer
+  // dumped into the text the parent agent reads. It reaches the reader through the call's details.
+  it("is the declared answer alone, whatever else the value carries", () => {
+    const result = {
+      status: "completed",
+      text: "A declared output that happens to name a status.",
+      result: { deployed: true },
+      raw_messages: [{ role: "assistant", content: "..." }],
+    };
 
-    expect(JSON.parse(formatTerminalResult(result))).toEqual(result);
+    expect(formatTerminalResult(result)).toBe("A declared output that happens to name a status.");
   });
 });
 
@@ -99,9 +122,7 @@ describe("a completed run with nothing in the result slot", () => {
     );
   });
 
-  it("keeps the provenance when an empty answer carries no reason either", () => {
-    expect(formatTerminalResult({ text: "" })).toBe(
-      "The workflow run completed with no output.\n\nTermination reason: absent",
-    );
+  it("says no provenance when an empty answer carries no reason either", () => {
+    expect(formatTerminalResult({ text: "" })).toBe("The workflow run completed with no output.");
   });
 });

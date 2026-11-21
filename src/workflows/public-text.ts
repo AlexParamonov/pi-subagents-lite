@@ -1,11 +1,12 @@
 /**
  * public-text.ts — The one rule for text a Workflow endpoint supplied (US-35).
  *
- * Sanitize, then redact the endpoint's configured key, then bound the text - that order, so neither
- * an escape sequence inside the key nor the bound cutting through it can leave a fragment behind.
- * Every surface that publishes endpoint text (errors, progress, results, diagnostics) goes through
- * an instance built from the key of the endpoint that supplied it; `ui/sanitize.ts` owns the
- * control-character step this applies.
+ * Sanitize, then redact the endpoint's credential as the literal bytes it is, then bound the text -
+ * that order, so neither an escape sequence inside the key nor the bound cutting through it can leave
+ * a fragment behind. Every surface that publishes endpoint text (errors, progress, results,
+ * diagnostics) goes through an instance built from the key of the endpoint that supplied it;
+ * `ui/sanitize.ts` owns the control-character step, and `endpoints.ts` why no other form of the key
+ * can reach this text.
  */
 
 import { truncateWithEllipsis } from "../utils.ts";
@@ -30,7 +31,7 @@ export function createPublicText(apiKey?: string): PublicText {
   const needle = apiKey === undefined ? undefined : plainText(apiKey);
   const sanitized = (text: string): string => {
     const stripped = plainText(text);
-    return needle ? stripped.split(needle).join(REDACTED) : stripped;
+    return needle === undefined ? stripped : stripped.split(needle).join(REDACTED);
   };
   return {
     shown: sanitized,

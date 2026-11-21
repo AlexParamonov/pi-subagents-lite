@@ -49,6 +49,7 @@ import {
   REPLAY_COMPLETED_STREAM,
   REPLAY_DECLARED_STREAM,
   REPLAY_FAILED_STREAM,
+  stateReply,
   stopAck,
   stopRequests,
   streamRequests,
@@ -461,7 +462,7 @@ describe("foreground workflow execution", () => {
     expect(text(result)).not.toContain(RECORDED.nodeResult);
   });
 
-  for (const reason of ["max_iterations", null] as const) {
+  for (const reason of ["max_iterations"] as const) {
     it(`keeps ${String(reason)} termination provenance without leaking reasoning or usage`, async () => {
       const remote = await server({
         result: {
@@ -483,16 +484,22 @@ describe("foreground workflow execution", () => {
     });
   }
 
-  it("labels a ReAct result whose termination reason is absent", async () => {
-    const remote = await server({ result: { text: "Partial answer", usage: {} } });
-    install(remote);
-    const tool = executable(await start());
+  // The endpoint reported no reason - either by omitting the key or by the `nil` a strategy with no
+  // reason field answers - so the answer is everything the reader gets: the line this used to print
+  // described a field the run never reported. Whatever else the value holds stays on the endpoint.
+  it.for([{ reason: undefined }, { reason: null }])(
+    "adds no provenance the endpoint did not report ($reason)",
+    async ({ reason }) => {
+      const value = { text: "Partial answer", termination_reason: reason, usage: { input_tokens: 2 } };
+      const remote = await server({ result: value });
+      install(remote);
+      const tool = executable(await start());
 
-    const result = await run(tool);
+      const result = await run(tool);
 
-    expect(text(result)).toContain("Partial answer");
-    expect(text(result)).toMatch(/termination|reason|provenance/i);
-  });
+      expect(text(result)).toBe("Partial answer");
+    },
+  );
 
   for (const [label, value] of [
     ["object", { nested: null, values: [1, false] }],
@@ -1612,7 +1619,7 @@ describe("workflow endpoint and input errors", () => {
     it(`rejects an ${scenario} endpoint without contacting another server`, async () => {
       const remote = await server();
       write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-      const offender = scenario === "unknown-default" ? "missing-default" : "not a valid URL";
+      const offender = scenario === "unknown-default" ? "missing-default" : "invalid";
       write(
         join(ws.agentDir, "subagents-lite.json"),
         JSON.stringify({
@@ -1631,6 +1638,10 @@ describe("workflow endpoint and input errors", () => {
 
       expect(result.isError).toBe(true);
       expect(result.text).toContain(offender);
+      if (scenario === "invalid-url") {
+        expect(result.text).toContain("workflows.endpoints[invalid].url");
+        expect(result.text).not.toContain("not a valid URL");
+      }
       expect(remote.requests).toEqual([]);
     });
   }
@@ -1783,13 +1794,13 @@ describe("workflow cancellation and shutdown", () => {
 
   it("settles an already-finished stop from GET rather than a stopped label", async () => {
     // The stop reaches the endpoint after the run's terminal event was journaled, so the ack is
-    // `already_finished` and only GET carries the terminal state: the live connection never
-    // delivered that event, and only an acknowledged `stopped` outranks GET (US-18).
+    // `already_finished` and only GET carries the terminal state. The original held stream
+    // never delivered a terminal frame, and only an acknowledged `stopped` outranks GET (US-18).
     const remote = await server({
       holdStream: true,
       stopOutcome: "already_finished",
-      streams: [DEFAULT_STREAM],
-      states: [readState({ status: "failed", error: "Runner lost its lease" })],
+      streams: [DISPATCH, TERMINAL],
+      reads: [stateReply({ status: "failed", error: "Runner lost its lease" })],
     });
     install(remote);
     const capture = await start();
@@ -1801,10 +1812,8 @@ describe("workflow cancellation and shutdown", () => {
     await remote.stopReceived;
     await pending;
 
-    expect(await (await fetch(`${remote.url}/api/workflows/${REMOTE_ID}`)).json()).toMatchObject({
-      status: "failed",
-      error: "Runner lost its lease",
-    });
+    // Count the client's GET; reading the fixture's scripted reply would prove only the fixture.
+    expect(readRequests(remote)).toHaveLength(1);
     expect(stopRequests(remote)).toHaveLength(1);
 
     const status = await run(executable(capture, "AgentStatus"), {});
@@ -1841,7 +1850,7 @@ describe("workflow cancellation and shutdown", () => {
     expect(stopRequests(remote)).toHaveLength(1);
   });
 
-  it("ends local monitoring on shutdown without stopping the remote run", async () => {
+  it("ends local observation on shutdown alone, with no stop request of its own", async () => {
     let push: (frame: string) => void = () => {
       throw new Error("workflow stream did not open");
     };
@@ -1877,8 +1886,9 @@ describe("workflow cancellation and shutdown", () => {
       const atShutdown = remote.requests();
       const viewsAtShutdown = views.length;
 
-      // US-30: observation is over. A pushed frame and minutes of retry time change nothing,
-      // and the remote run is left alone.
+      // US-30: a shutdown that carried no abort ends observation. A pushed frame and minutes of
+      // retry time change nothing, and this path sends no stop: a teardown that aborts the active
+      // turn first stops the run through that abort, which `shared-boundaries.test.ts` pins.
       try {
         push("data: text after shutdown\n\n");
       } catch {
@@ -1887,10 +1897,9 @@ describe("workflow cancellation and shutdown", () => {
       await vi.advanceTimersByTimeAsync(300_000);
 
       expect(report).toMatch(/shutdown|session/i);
-      // A reload ends this session's observation and sends nothing: a notice that calls the run a
-      // killed agent is a false claim about the remote side, and the record does not outlive it.
-      expect(notices.join("\n")).toMatch(/left running remotely/i);
-      expect(notices.join("\n")).not.toMatch(/killed/i);
+      // A reload ends observation. It says nothing about the remote outcome.
+      expect(notices.join("\n")).toMatch(/no longer watched.*unknown/i);
+      expect(notices.join("\n")).not.toMatch(/killed|nothing was stopped|left running remotely/i);
       expect(remote.requests()).toEqual(atShutdown);
       expect(views).toHaveLength(viewsAtShutdown);
       expect(views.join("\n")).not.toContain("text after shutdown");

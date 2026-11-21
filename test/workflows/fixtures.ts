@@ -3,34 +3,37 @@
  * (create, SSE follow, GET reconcile, stop) on a loopback socket, plus the file and config
  * workspace the extension scans.
  *
- * Every protocol body and SSE frame comes out of `recorded/`: bytes the anagen-x workflow API wrote,
- * apart from the contract-derived declared-output payload `recorded/PROVENANCE.md` names. `lifecycle`
- * and `progressFrame` select a recorded frame and rename only the node it names; the progress frames
- * come from a hand-driven broadcast over the real writer, not from a run. `textFrame` and `crlf` build
- * the two framings a capture cannot give on demand (an arbitrary single line, and CRLF, which the
- * server itself normalizes to LF but an intermediary may send). A test that needs a value the capture
- * does not contain adds a capture, it does not invent a frame.
+ * Defaults come from the anagen-x API captures in `recorded/` and the contract-derived output in
+ * `recorded/PROVENANCE.md`. Scripted responses keep the captured shapes; deliberately unknown SSE
+ * names exercise forward compatibility and are not recordings. `lifecycle` and `progressFrame`
+ * adapt recorded frames. The progress frames come from a hand-driven broadcast over the real
+ * writer, not from a run. `textFrame` and `crlf` build single-line chunks and intermediary framing.
  *
- * `holdStream`/`holdCreate` and the release handles replace sleeping: a test waits on the
- * milestone it needs. GET answers the captured fixed key set for every run state, so an empty
- * result slot is `result: null` here exactly as it is on the wire. `fakeWorkflowFetch` serves the
- * same contract without a socket, for tests that push frames one at a time or run on fake timers.
+ * The hold/release handles let a test advance when the endpoint reaches a milestone. GET uses the
+ * captured key set, so an empty result slot is `result: null` here exactly as it is on the wire.
+ * `fakeWorkflowFetch` also serves that contract without a socket; `clockedLoopback` keeps the real
+ * HTTP exchange when the test needs to control only the application's clock.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createServer, type ServerResponse } from "node:http";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AddressInfo, Socket } from "node:net";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
+import { vi } from "vite-plus/test";
+import { resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
+import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
 
-interface Request {
+interface EndpointRequest {
   method: string;
   path: string;
   body: string;
   contentType: string | undefined;
   authorization: string | undefined;
   lastEventId: string | undefined;
+  receivedAt: number;
 }
 
 /** One `GET /api/workflows/:id` body: the fixed key set the endpoint answers for every run state. */
@@ -284,10 +287,10 @@ export function deferred<T>() {
   return { promise, resolve };
 }
 
-function json(res: ServerResponse, status: number, value: unknown): void {
-  res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify(value));
-}
+/** In echo mode, substitute what the endpoint actually received on the route sending these bytes. */
+export const AUTH_ECHO = "$received-authorization";
+/** In echo mode, substitute the request target the endpoint received, exactly as it arrived. */
+export const TARGET_ECHO = "$received-request-target";
 
 /** A rejection body in the shape every captured rejection uses. */
 export function errorBody(message: string): string {
@@ -295,43 +298,62 @@ export function errorBody(message: string): string {
 }
 
 export interface EndpointOptions {
+  /** Serve every route under this path prefix: a base URL's valid path prefix, kept verbatim. */
+  prefix?: string;
   /** Run id this endpoint mints for a created run; the captures decide which one a test needs. */
   run?: string;
   result?: unknown;
   states?: ReadState[];
+  /** Expand AUTH_ECHO in response bodies and stream frames to the received Authorization header. */
+  echoAuth?: boolean;
+  /** Expand TARGET_ECHO in served bytes to the request target this endpoint received. */
+  echoTarget?: boolean;
   /** Recorded `GET /api/workflows/:id` answers, served in order, the last one repeating. */
   reads?: RecordedResponse[];
   streams?: string[];
   holdStream?: boolean;
   holdCreate?: boolean;
+  /** Hold the supplied read body after its headers are sent. */
+  holdRead?: boolean;
+  /** Hold the stop acknowledgement after the endpoint receives the request. */
+  holdStop?: boolean;
   /** Create rejection: captured status and body. */
   rejection?: RecordedResponse;
-  /** Stop rejection: captured status and body. */
-  stopRejection?: RecordedResponse;
+  /** Stop refusal: a persistent response or a sequence consumed before accepting Stop again. */
+  stopRejection?: RecordedResponse | RecordedResponse[];
   /**
-   * Honest stop acknowledgement. `already_finished` (the default is `stopped`) means the log
-   * already holds a terminal event, so the run keeps its own terminal state from GET instead of
-   * the killed-run footprint a `stopped` ack leaves behind.
+   * Honest stop acknowledgement: `stopped` (the default), `already_finished` (the log already
+   * holds a terminal event, so the run keeps its own terminal state from GET), or `interrupted`
+   * (a terminal-less dead runner).
    */
-  stopOutcome?: "stopped" | "already_finished";
+  stopOutcome?: "stopped" | "already_finished" | "interrupted";
   redirect?: string;
   loseCreateResponse?: boolean;
 }
 
 export interface TestEndpoint {
   url: string;
+  /** The path prefix every route is served under ("" when the base has none). */
+  prefix: string;
   /** The run id this endpoint hands out for a created run. */
   run: string;
-  requests: Request[];
-  /** How many SSE connections this endpoint still has open on its side. */
+  /** The run id as it appears in the run's routes: encoded once, the way the client encodes it. */
+  segment: string;
+  requests: EndpointRequest[];
+  /** Wait for a request by its zero-based position in the wire log. */
+  requestAt(index: number): Promise<EndpointRequest>;
+  /** How many SSE responses this endpoint is holding open, excluding idle HTTP keep-alive sockets. */
   streamSocketsOpen(): number;
-  /** Resolves when this endpoint sees a stream socket it had open go away. */
+  /** Resolves when this endpoint sees the first open SSE response end or get cancelled. */
   streamSocketClosed(): Promise<void>;
   streamOpened: Promise<void>;
   createReceived: Promise<void>;
   stopReceived: Promise<void>;
+  sendStream(frames: string): void;
   releaseStream(): void;
   releaseCreate(): void;
+  releaseRead(): void;
+  releaseStop(): void;
   close(): Promise<void>;
 }
 
@@ -342,14 +364,34 @@ export const DEFAULT_RESULT = {
   termination_reason: "final_answer",
 };
 
+/** The id as it appears in a route, or a stand-in for an id that has no encoding at all. */
+function safeSegment(id: string): string {
+  try {
+    return encodeURIComponent(id);
+  } catch {
+    return "id-without-encoding";
+  }
+}
+
 export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpoint> {
   const run = options.run ?? REMOTE_ID;
-  const requests: Request[] = [];
+  // The client puts the id it was answered into a path segment, so the run's routes live under that
+  // encoding and not under the raw id. An id with no encoding (an unpaired surrogate) is refused by
+  // the client's create gate, so this endpoint serves no route for it and its segment says nothing.
+  const segment = safeSegment(run);
+  const prefix = options.prefix ?? "";
+  const requests: EndpointRequest[] = [];
+  const arrivals = new Map<number, ReturnType<typeof deferred<EndpointRequest>>>();
   const streamOpened = deferred<void>();
   const createReceived = deferred<void>();
   const stopReceived = deferred<void>();
   const releaseStream = deferred<void>();
   const releaseCreate = deferred<void>();
+  const releaseRead = deferred<void>();
+  const releaseStop = deferred<void>();
+  const refusals = options.stopRejection;
+  let stopIndex = 0;
+  let sendFrames: ((frames: string) => void) | undefined;
   // `??` would turn an explicit empty result slot (null) into a delivered answer.
   const states = options.states ?? [
     readState({ result: options.result === undefined ? DEFAULT_RESULT : options.result }),
@@ -362,7 +404,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   let closed = false;
   // "One connection at a time" and "a walked-away connection is closed" are only testable from the
   // server's side: the client can keep a socket it will never read again.
-  const streamSockets = new Set<Socket>();
+  const openStreams = new Set<ServerResponse>();
   const socketClosed = deferred<void>();
   const finishStream = () => {
     streamReleased = true;
@@ -372,18 +414,39 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const path = req.url ?? "";
-    requests.push({
+    const request = {
       method: req.method ?? "",
       path,
       body: Buffer.concat(chunks).toString("utf8"),
       contentType: req.headers["content-type"],
       authorization: req.headers.authorization,
       lastEventId: req.headers["last-event-id"] as string | undefined,
-    });
+      receivedAt: Date.now(),
+    };
+    const index = requests.push(request) - 1;
+    arrivals.get(index)?.resolve(request);
+    arrivals.delete(index);
 
-    if (req.method === "POST" && path === "/api/workflows") {
+    function echo(body: string, received: string, target: string): string {
+      // A body carries these as JSON string data; a stream frame carries them as the bytes they
+      // arrived in.
+      const authorized = options.echoAuth ? body.replaceAll(AUTH_ECHO, () => received) : body;
+      return options.echoTarget ? authorized.replaceAll(TARGET_ECHO, () => target) : authorized;
+    }
+    const authorization = req.headers.authorization ?? "no authorization header";
+    const jsonAuthorization = JSON.stringify(authorization).slice(1, -1);
+    const jsonTarget = JSON.stringify(path).slice(1, -1);
+    function answer({ status, body }: RecordedResponse): void {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(echo(body, jsonAuthorization, jsonTarget));
+    }
+    function json(status: number, value: unknown): void {
+      answer({ status, body: JSON.stringify(value) });
+    }
+
+    if (req.method === "POST" && path === `${prefix}/api/workflows`) {
       if (!/^application\/json(?:\s*;|$)/i.test(req.headers["content-type"] ?? "")) {
-        json(res, 415, { error: "Expected a JSON request body" });
+        json(415, { error: "Expected a JSON request body" });
         return;
       }
       createReceived.resolve();
@@ -394,15 +457,23 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
         res.writeHead(307, { location: options.redirect });
         res.end();
       } else if (options.rejection) {
-        res.writeHead(options.rejection.status, { "content-type": "application/json" });
-        res.end(options.rejection.body);
+        answer(options.rejection);
       } else {
-        json(res, 201, { workflow_id: run, task_id: run });
+        json(201, { workflow_id: run, task_id: run });
       }
-    } else if (req.method === "GET" && path === `/api/workflows/${run}/stream`) {
-      if (res.socket) streamSockets.add(res.socket);
+    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${segment}/stream`) {
+      openStreams.add(res);
       res.writeHead(200, { "content-type": "text/event-stream" });
-      res.write(options.streams?.[streamIndex++] ?? DEFAULT_STREAM);
+      const send = (frames: string): void => {
+        res.write(echo(frames, authorization, path));
+      };
+      sendFrames = send;
+      res.on("close", () => {
+        if (sendFrames === send) sendFrames = undefined;
+        openStreams.delete(res);
+        socketClosed.resolve();
+      });
+      send(options.streams?.[streamIndex++] ?? DEFAULT_STREAM);
       streamOpened.resolve();
       if (options.holdStream) await releaseStream.promise;
       // The terminal frames the journal really holds: `workflow_failed` carries `reason`.
@@ -413,11 +484,17 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
             ? frameOf(REPLAY_FAILED, "workflow_failed")
             : frameOf(REPLAY_DECLARED, "workflow_engine_finished"),
       );
-    } else if (req.method === "GET" && path === `/api/workflows/${run}`) {
+    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${segment}`) {
       if (options.reads) {
         const read = options.reads[Math.min(readIndex++, options.reads.length - 1)]!;
-        res.writeHead(read.status, { "content-type": "application/json" });
-        res.end(read.body);
+        if (options.holdRead) {
+          res.writeHead(read.status, { "content-type": "application/json" });
+          res.flushHeaders();
+          await releaseRead.promise;
+          res.end(echo(read.body, jsonAuthorization, jsonTarget));
+        } else {
+          answer(read);
+        }
         return;
       }
       const state = stopped
@@ -425,46 +502,60 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
         : !streamReleased
           ? readState({ status: "running" })
           : states[Math.min(stateIndex++, states.length - 1)]!;
-      json(res, 200, { workflow_id: run, task_id: run, ...state });
-    } else if (req.method === "POST" && path === `/api/workflows/${run}/stop`) {
-      if (options.stopRejection) {
-        res.writeHead(options.stopRejection.status, { "content-type": "application/json" });
-        res.end(options.stopRejection.body);
+      json(200, readBody(run, state));
+    } else if (req.method === "POST" && path === `${prefix}/api/workflows/${segment}/stop`) {
+      stopReceived.resolve();
+      if (options.holdStop) await releaseStop.promise;
+      const rejection = Array.isArray(refusals) ? refusals[stopIndex++] : refusals;
+      if (rejection) {
+        answer(rejection);
       } else {
         const ack = options.stopOutcome ?? "stopped";
         // Only a live kill leaves the terminated footprint; an already-finished run's own
         // terminal state is whatever GET derives from the log.
-        if (ack === "stopped") stopped = true;
-        json(res, 200, stopAck(ack, run));
-        finishStream();
+        if (ack === "stopped") {
+          stopped = true;
+          finishStream();
+        }
+        json(200, stopAck(ack, run));
       }
-      stopReceived.resolve();
     } else {
-      json(res, 404, { error: "Workflow not found" });
+      json(404, { error: "Workflow not found" });
     }
   });
-  server.on("connection", (socket) =>
-    socket.on("close", () => {
-      if (streamSockets.delete(socket)) socketClosed.resolve();
-    }),
-  );
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   const endpoint: TestEndpoint = {
     url: `http://127.0.0.1:${port}`,
+    prefix,
     run,
+    segment,
     requests,
-    streamSocketsOpen: () => streamSockets.size,
+    requestAt(index) {
+      if (requests[index]) return Promise.resolve(requests[index]);
+      const next = arrivals.get(index) ?? deferred<EndpointRequest>();
+      arrivals.set(index, next);
+      return next.promise;
+    },
+    streamSocketsOpen: () => openStreams.size,
     streamSocketClosed: () => socketClosed.promise,
     streamOpened: streamOpened.promise,
     createReceived: createReceived.promise,
     stopReceived: stopReceived.promise,
+    sendStream(frames) {
+      if (!sendFrames) throw new Error("No open stream to send frames to");
+      sendFrames(frames);
+    },
     releaseStream: finishStream,
     releaseCreate: () => releaseCreate.resolve(),
+    releaseRead: () => releaseRead.resolve(),
+    releaseStop: () => releaseStop.resolve(),
     close: async () => {
       if (closed) return;
       closed = true;
       releaseCreate.resolve();
+      releaseRead.resolve();
+      releaseStop.resolve();
       finishStream();
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
@@ -473,13 +564,25 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
   return endpoint;
 }
 
-/** The requests this endpoint served for one of the client's four operations. */
+/** The only way a test gets an endpoint: resolution mints the request base, nothing casts it. */
+export function mintEndpoint(url: string, apiKey?: string): WorkflowEndpoint {
+  const resolution = resolveWorkflowEndpoint(
+    { endpoints: { local: { url, ...(apiKey ? { apiKey } : {}) } }, defaultEndpoint: "local" },
+    "local",
+  );
+  if (!resolution.ok) throw new Error(`the fixture endpoint ${JSON.stringify(url)} must resolve: ${resolution.error}`);
+  return resolution.endpoint;
+}
+
+/** The requests this endpoint served for one of the client's four operations, under its prefix. */
 export function createRequests(server: TestEndpoint): TestEndpoint["requests"] {
-  return server.requests.filter((entry) => entry.method === "POST" && entry.path === "/api/workflows");
+  return server.requests.filter((entry) => entry.method === "POST" && entry.path === `${server.prefix}/api/workflows`);
 }
 
 export function readRequests(server: TestEndpoint): TestEndpoint["requests"] {
-  return server.requests.filter((entry) => entry.method === "GET" && entry.path === `/api/workflows/${server.run}`);
+  return server.requests.filter(
+    (entry) => entry.method === "GET" && entry.path === `${server.prefix}/api/workflows/${server.segment}`,
+  );
 }
 
 export function streamRequests(server: TestEndpoint): TestEndpoint["requests"] {
@@ -488,7 +591,7 @@ export function streamRequests(server: TestEndpoint): TestEndpoint["requests"] {
 
 export function stopRequests(server: TestEndpoint): TestEndpoint["requests"] {
   return server.requests.filter(
-    (entry) => entry.method === "POST" && entry.path === `/api/workflows/${server.run}/stop`,
+    (entry) => entry.method === "POST" && entry.path === `${server.prefix}/api/workflows/${server.segment}/stop`,
   );
 }
 
@@ -505,11 +608,64 @@ export async function beforeEnd(milestone: Promise<unknown>, ended: Promise<unkn
   ]);
 }
 
-/**
- * A `fetch` fake for the timing tests, where fake timers must not govern the
- * transport's own timers: the client code under test stays real, only the
- * socket is replaced.
- */
+/** Run real loopback HTTP with a virtual application clock. Restore globals before restoring timers. */
+export function clockedLoopback() {
+  // Undici also schedules socket timers. Keep those real, so a pending clock job means the
+  // extension left work behind, not that the HTTP connection pool is still alive.
+  const network = new AsyncLocalStorage<true>();
+  const nativeSet = setTimeout;
+  const nativeClear = clearTimeout;
+  const nativeFetch = fetch;
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  const virtualSet = setTimeout;
+  const virtualClear = clearTimeout;
+  const virtualHandles = new WeakSet<NodeJS.Timeout>();
+  vi.stubGlobal("setTimeout", (...args: Parameters<typeof setTimeout>) => {
+    if (network.getStore()) return nativeSet(...args);
+    const handle = virtualSet(...args);
+    virtualHandles.add(handle);
+    return handle;
+  });
+  vi.stubGlobal("clearTimeout", (handle: Parameters<typeof clearTimeout>[0]) => {
+    if (typeof handle === "object" && virtualHandles.has(handle)) virtualClear(handle);
+    else nativeClear(handle);
+  });
+
+  // Synchronize virtual clock steps to real I/O without replacing Fetch or presuming how the
+  // application reads JSON. Only the small, finite JSON replies are observed to their end.
+  const exchanges: Array<{ path: string; method: string; at: number; opened: Promise<void>; bodyRead: Promise<void> }> =
+    [];
+  vi.stubGlobal("fetch", (async (input, init) => {
+    const opened = deferred<void>();
+    const bodyRead = deferred<void>();
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    exchanges.push({
+      path: new URL(url).pathname,
+      method: init?.method ?? (input instanceof Request ? input.method : "GET"),
+      at: Date.now(),
+      opened: opened.promise,
+      bodyRead: bodyRead.promise,
+    });
+    try {
+      return await network.run(true, async () => {
+        const response = await nativeFetch(input, init);
+        if (response.headers.get("content-type")?.startsWith("application/json")) {
+          const received = () => bodyRead.resolve();
+          void response.clone().arrayBuffer().then(received, received);
+        }
+        return response;
+      });
+    } catch (error) {
+      bodyRead.resolve();
+      throw error;
+    } finally {
+      opened.resolve();
+    }
+  }) satisfies typeof fetch);
+  return exchanges;
+}
+
+/** An in-memory Fetch substitute for tests that do not need an HTTP socket. */
 export interface FetchFake {
   fetch: typeof fetch;
   /** Every request the client made, in order, with the full URL it targeted. */
@@ -525,13 +681,16 @@ export interface FetchFakeOptions {
   stream(push: (frame: string) => void, close: () => void): void;
   /** Answer `GET /api/workflows/:id`; called with the 1-based read number. */
   read(reads: number): Response;
-  /** Answer `POST /api/workflows/:id/stop`; the acknowledged stop unless the test says otherwise. */
-  stop?(): Response;
+  /** Answer `POST /api/workflows/:id/stop`; the acknowledged stop unless the test says otherwise.
+   * Receives the request's abort signal, so a held stop can honour an abort the way a real
+   * transport would. */
+  stop?(signal?: AbortSignal): Response | Promise<Response>;
 }
 
 export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
   const encoder = new TextEncoder();
   const run = options.run ?? REMOTE_ID;
+  const segment = encodeURIComponent(run);
   const requests: Array<{ method: string; url: string; authorization: string | undefined }> = [];
   let reads = 0;
   const fetchFake: typeof fetch = async (input, init) => {
@@ -541,7 +700,7 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
     if (method === "POST" && url.endsWith("/api/workflows")) {
       return jsonResponse(201, { workflow_id: run, task_id: run });
     }
-    if (method === "GET" && url.endsWith(`/api/workflows/${run}/stream`)) {
+    if (method === "GET" && url.endsWith(`/api/workflows/${segment}/stream`)) {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(control) {
@@ -554,12 +713,12 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
         { headers: { "content-type": "text/event-stream" } },
       );
     }
-    if (method === "GET" && url.endsWith(`/api/workflows/${run}`)) {
+    if (method === "GET" && url.endsWith(`/api/workflows/${segment}`)) {
       reads += 1;
       return options.read(reads);
     }
-    if (method === "POST" && url.endsWith(`/api/workflows/${run}/stop`)) {
-      return options.stop?.() ?? jsonResponse(200, stopAck("stopped", run));
+    if (method === "POST" && url.endsWith(`/api/workflows/${segment}/stop`)) {
+      return options.stop?.(init?.signal ?? undefined) ?? jsonResponse(200, stopAck("stopped", run));
     }
     throw new Error(`Unexpected workflow test request: ${method} ${url}`);
   };
@@ -580,6 +739,15 @@ export function jsonResponse(status: number, body: unknown): Response {
 
 export function readState(overrides: Partial<ReadState> = {}): ReadState {
   return { status: "completed", result: null, error: null, events: [], ...overrides };
+}
+
+function readBody(run: string, state: ReadState) {
+  return { workflow_id: run, task_id: run, ...state };
+}
+
+/** A scripted read with the exact keys the endpoint answers for every known run. */
+export function stateReply(overrides: Partial<ReadState>): RecordedResponse {
+  return { status: 200, body: JSON.stringify(readBody(REMOTE_ID, readState(overrides))) };
 }
 
 /** The stop acknowledgement: the captured ack answers with the run id next to the status. */
@@ -603,7 +771,7 @@ const capturedKeySets = Object.entries(capturedStatuses)
   );
 
 for (const [name, keys] of capturedKeySets) {
-  const built = name.startsWith("stop-") ? stopAck("stopped", "x") : { workflow_id: "", task_id: "", ...readState() };
+  const built = name.startsWith("stop-") ? stopAck("stopped", "x") : readBody("x", readState());
   const builtKeys = Object.keys(built).sort().join(",");
   if (builtKeys !== keys) {
     throw new Error(`the test endpoint's ${builtKeys} keys are not the captured ${name} keys ${keys}`);

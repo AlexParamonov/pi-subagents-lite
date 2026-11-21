@@ -117,7 +117,10 @@ export function renderWorkflowResult(
     record && record.lifecycle.status !== "running"
       ? (record.error ?? record.result ?? "")
       : (result.content.find((part) => part.type === "text")?.text ?? "");
-  const progress = Array.isArray(details.progress) ? (details.progress as string[]) : [];
+  // The monitor keeps the record's snapshot current after this call returned; `details.progress`
+  // is only what the wait had seen when it ended.
+  const progress =
+    record?.workflow?.progress ?? (Array.isArray(details.progress) ? (details.progress as string[]) : []);
   const rows = [...progress, outcome].map((row) => plainText(row)).filter((row) => row !== "");
   const mark = context?.isError ? theme.fg("error", "\u2717") : "";
   const body = rows.map((row) => `  ${theme.fg("toolOutput", row)}`).join("\n");
