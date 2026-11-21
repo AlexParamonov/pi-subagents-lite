@@ -1097,6 +1097,16 @@ describe("monitor reconcile", () => {
   it.for([
     { status: 409, names: "HTTP 409", body: { status: "queued", events: [{ text: PRIVATE }] } },
     { status: 200, names: "queued", body: { status: "queued", result: { text: PRIVATE } } },
+    {
+      status: 500,
+      names: "HTTP 500",
+      body: { status: "running", events: [{ type: "thinking_delta", text: PRIVATE }], result: { text: PRIVATE } },
+    },
+    {
+      status: 503,
+      names: "HTTP 503",
+      body: { status: "running", events: [{ type: "thinking_delta", text: PRIVATE }], result: { text: PRIVATE } },
+    },
   ])(
     "names a $status state read that answers nothing it can use, without quoting the run's envelope",
     async ({ status, names, body }) => {

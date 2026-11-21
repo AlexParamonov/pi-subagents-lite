@@ -429,22 +429,14 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         ? { kind: "cancelled" }
         : { kind: "unreachable", error: fault("did not answer the state read", polled.reason) };
     }
-    if (polled.status >= 500) {
-      return {
-        kind: "unreachable",
-        error: fault("did not answer the state read", `HTTP ${polled.status}: ${rejection(polled.body)}`),
-      };
-    }
     if (polled.status < 200 || polled.status >= 300) {
-      // A refusal carries no run status either: it is a read that failed, never a state the run is in.
-      // Its envelope is the run's state and journal, so an endpoint that gives no `error` gets a local
-      // diagnostic instead of a quotation.
+      // Every non-2xx answer carries no run status: the read failed, and that is the whole message.
+      // Its body is the run's envelope whatever the status said, so the endpoint's `error` field is
+      // the only remote text quoted here, and a read that gives none gets a local diagnostic.
+      const what = polled.status >= 500 ? "did not answer the state read" : "refused the state read";
       return {
         kind: "unreachable",
-        error: fault(
-          "refused the state read",
-          `HTTP ${polled.status}: ${reason(polled.body) ?? "the endpoint answered with no reason"}`,
-        ),
+        error: fault(what, `HTTP ${polled.status}: ${reason(polled.body) ?? "the endpoint answered with no reason"}`),
       };
     }
     const body = parseRecord(polled.body);

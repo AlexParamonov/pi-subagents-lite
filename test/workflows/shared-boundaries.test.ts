@@ -879,23 +879,67 @@ describe("workflow monitor continuity", () => {
     expect(row.repaints).toEqual([`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`]);
   });
 
-  it("redacts the endpoint's reason when a rejected read hands the waiter back", async () => {
-    const remote = await server({
-      echoAuth: true,
-      streams: [DISPATCH],
-      reads: [{ status: 503, body: errorBody(`Read refused: ${AUTH_ECHO}`) }],
-    });
-    install(remote.url, `${KEY}\t`);
-    const capture = await start();
-    const exchanges = clockedLoopback();
+  it.for([{ code: 500 }, { code: 503 }])(
+    "redacts the endpoint's reason when a $code read hands the waiter back",
+    async ({ code }) => {
+      const remote = await server({
+        echoAuth: true,
+        streams: [DISPATCH],
+        reads: [{ status: code, body: errorBody(`Read refused: ${AUTH_ECHO}`) }],
+      });
+      install(remote.url, `${KEY}\t`);
+      const capture = await start();
+      const exchanges = clockedLoopback();
 
-    const handed = await handBack(exchanges, remote, run(capture));
+      const handed = await handBack(exchanges, remote, run(capture));
 
-    authenticates(remote, KEY);
-    expect(handed.isError ?? false).toBe(false);
-    expect(text(handed)).toMatch(/unknown/i);
-    publishes(text(handed), "Read refused: Bearer [redacted]", KEY, "the hand-back note");
-  });
+      authenticates(remote, KEY);
+      expect(handed.isError ?? false).toBe(false);
+      expect(text(handed)).toMatch(/unknown/i);
+      publishes(text(handed), "Read refused: Bearer [redacted]", KEY, "the hand-back note");
+    },
+  );
+
+  it.for([{ code: 500 }, { code: 503 }])(
+    "hands a $code read back with a local diagnostic, never the run's envelope",
+    async ({ code }) => {
+      // A 5xx answer is a read that failed, and its body is still the run's own envelope: journal and
+      // result text. None of it belongs in the note or the row, quoted or redacted.
+      const remote = await server({
+        echoAuth: true,
+        streams: [DISPATCH],
+        reads: [
+          {
+            status: code,
+            body: JSON.stringify({
+              status: "running",
+              events: [{ type: "thinking_delta", text: `Thinking the run never published: ${AUTH_ECHO}` }],
+              result: { text: ANSWER },
+            }),
+          },
+        ],
+      });
+      install(remote.url, `${KEY}\t`);
+      const capture = await start();
+      const exchanges = clockedLoopback();
+      const row = resultRow(capture);
+
+      const handed = await handBack(exchanges, remote, run(capture));
+
+      authenticates(remote, KEY);
+      expect(handed.isError ?? false).toBe(false);
+      const note = text(handed);
+      expect(note).toMatch(/unknown/i);
+      expect(note).toMatch(new RegExp(`HTTP ${code}: the endpoint answered with no reason`));
+      for (const surface of [note, row.paint(handed)]) {
+        expect(surface).not.toContain("Thinking the run never published");
+        expect(surface).not.toContain(ANSWER);
+        expect(surface).not.toContain(KEY);
+        expect(surface).not.toContain(JSON.stringify(`Bearer ${KEY}`).slice(1, -1));
+      }
+      expect(await status(capture)).toMatch(/audit workflow\) running/);
+    },
+  );
 
   it("hands a read that answers no run status back with a local diagnostic, never the run's envelope", async () => {
     // The body of a state read is the run's state envelope: its text is journal data, and a note
