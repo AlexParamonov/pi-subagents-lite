@@ -139,12 +139,34 @@ describe("validateRawLayer — workflows", () => {
     expect(warnings).toContain("another endpoint");
   });
 
-  it("keeps an endpoint whose key is the wrong shape and drops just the key", () => {
-    const warnings = warned(() =>
-      validateRawLayer({ workflows: { endpoints: { odd: { url: "http://h:1", apiKey: 7 } } } }, "/g.json"),
-    );
+  // US-8: a declared key is a configured credential, so dropping an unusable one here would send the
+  // run unauthenticated. The value stays and the run naming it is refused - later, by resolution -
+  // and the load warning names the path without ever naming the value (US-35).
+  for (const [key, hidden] of [
+    ["", ""],
+    [7, "7"],
+    [null, "null"],
+    [{ token: "declared-secret" }, "declared-secret"],
+  ] as const) {
+    it(`keeps the declared apiKey ${JSON.stringify(key)} and names the path, never the value`, () => {
+      const config = { workflows: { endpoints: { odd: { url: "http://h:1", apiKey: key } } } };
 
-    expect(warnings).toContain("workflows.endpoints.odd.apiKey");
+      const warnings = warned(() => validateRawLayer(config, "/g.json"));
+
+      expect(validateRawLayer(config, "/g.json").workflows).toEqual(config.workflows);
+      expect(warnings).toContain("workflows.endpoints.odd.apiKey");
+      expect(warnings).toContain("stays configured");
+      if (hidden !== "") expect(warnings).not.toContain(hidden);
+    });
+  }
+
+  // Any text a file declares may still become the effective credential (outer SP/TAB aside), so
+  // usability is decided once, at resolution, and the layer keeps the value silently.
+  it("keeps a declared apiKey the layer cannot judge, unwarned", () => {
+    const config = { workflows: { endpoints: { odd: { url: "http://h:1", apiKey: " \t " } } } };
+
+    expect(warned(() => validateRawLayer(config, "/g.json"))).toBe("");
+    expect(validateRawLayer(config, "/g.json").workflows).toEqual(config.workflows);
   });
 
   it("drops malformed sections and values instead of crashing", () => {
@@ -469,6 +491,44 @@ describe("a configured target that cannot be used", () => {
     expect(resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows)).toEqual({
       ok: true,
       endpoint: { name: "release", url: "https://release.invalid:4001", apiKey: "global-key" },
+    });
+  });
+
+  // The kept value has to survive validation, the merge and the defaults to reach the refusal: a
+  // layer that dropped it would leave a keyless run to answer for it (US-8).
+  for (const key of ["", 7, null]) {
+    it(`resolves the declared apiKey ${JSON.stringify(key)} to a refusal, not to a keyless endpoint`, () => {
+      const validated = validateRawLayer(
+        {
+          workflows: {
+            endpoints: { release: { url: "https://release.invalid:4001", apiKey: key } },
+            defaultEndpoint: "release",
+          },
+        },
+        "/g.json",
+      );
+
+      const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(validated, null)).workflows);
+
+      expect(resolution.ok).toBe(false);
+      expect((resolution as { error: string }).error).toContain("release");
+      expect((resolution as { error: string }).error).toContain("apiKey");
+    });
+  }
+
+  // ADR-0008: the project layer narrows what a run authenticates with exactly as much as what it is
+  // sent to - a project URL-only override carries the global key into the effective credential.
+  it("inherits the global key through a trusted project's URL-only override", () => {
+    const global = validateRawLayer(ENDPOINTS, "/g.json");
+    const project = validateProjectLayer(
+      { workflows: { endpoints: { "anagen-x.local": { url: "http://project.invalid:4001" } } } },
+      "/p.json",
+      global.workflows,
+    );
+
+    expect(resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows)).toEqual({
+      ok: true,
+      endpoint: { name: "anagen-x.local", url: "http://project.invalid:4001", apiKey: "global-key" },
     });
   });
 });

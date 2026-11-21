@@ -3,10 +3,10 @@
  * against (US-6, US-7, US-21, US-34, US-35).
  *
  * The file's own `endpoint` key wins, otherwise the configured default; the config layers keep what
- * was written and only here is usability decided. Lookup uses own keys, and every refusal names the
- * endpoint, its setting and the configured keys while quoting no URL value. `validatedBase` is the
- * only mint for `ValidatedBase`; tasks/workflows/waves/1r-shared-boundaries/plan.md holds the
- * measurement behind each rule.
+ * was written and only here is usability decided - the request base and the effective credential are
+ * both derived here. Lookup uses own keys, and every refusal names the endpoint, its setting and the
+ * configured keys while quoting no URL value. `validatedBase` is the only mint for `ValidatedBase`;
+ * tasks/workflows/waves/1r-shared-boundaries/plan.md holds the measurement behind each rule.
  */
 
 import type { SubagentsConfig } from "../models/model-precedence.ts";
@@ -20,6 +20,7 @@ export type ValidatedBase = string & { readonly [validatedBaseBrand]: true };
 export interface WorkflowEndpoint {
   name: string;
   url: ValidatedBase;
+  /** The effective credential: the exact bytes of the `Bearer` value and the exact redaction needle. */
   apiKey?: string;
 }
 
@@ -44,13 +45,33 @@ export function resolveWorkflowEndpoint(
       configured,
     );
   }
-  if (typeof entry.url !== "string") return refused(about(requested, "declares no usable URL"), configured);
+  if (typeof entry.url !== "string") return refused(about(requested, "url", "declares no usable URL"), configured);
   const base = validatedBase(entry.url);
-  if (!base.ok) return refused(about(requested, base.problem), configured);
+  if (!base.ok) return refused(about(requested, "url", base.problem), configured);
+  const key = effectiveCredential(entry.apiKey);
+  if (!key.ok) return refused(about(requested, "apiKey", "declares an unusable credential"), configured);
   return {
     ok: true,
-    endpoint: { name: requested, url: base.url, ...(entry.apiKey ? { apiKey: entry.apiKey } : {}) },
+    endpoint: { name: requested, url: base.url, ...(key.apiKey === undefined ? {} : { apiKey: key.apiKey }) },
   };
+}
+
+/** The credential one run authenticates with and redacts with, or the reason it cannot be either. */
+type Credential = { ok: true; apiKey?: string } | { ok: false };
+
+/** Printable ASCII except `"` and `\`: every other byte is one a transport, a display or a JSON body rewrites. */
+const USABLE_CREDENTIAL = /^[\x20-\x21\x23-\x5b\x5d-\x7e]+$/;
+
+/**
+ * One value for both sides of the boundary: outer SP/TAB is normalized because the wire strips it
+ * from a header value, and anything the transport, a display layer or a JSON body would rewrite
+ * before the redaction needle can match it is refused rather than sent. Only absence is keyless.
+ */
+function effectiveCredential(declared: unknown): Credential {
+  if (declared === undefined) return { ok: true };
+  if (typeof declared !== "string") return { ok: false };
+  const effective = declared.replace(/^[ \t]+|[ \t]+$/g, "");
+  return USABLE_CREDENTIAL.test(effective) ? { ok: true, apiKey: effective } : { ok: false };
 }
 
 /**
@@ -90,8 +111,8 @@ function refused(detail: string, configured: string[]): ResolvedEndpoint {
 }
 
 /** Which endpoint and which setting the problem is in, with no URL value quoted. */
-function about(endpoint: string, problem: string): string {
-  return `${shown(endpoint)} (workflows.endpoints[${endpoint}].url) ${problem}`;
+function about(endpoint: string, setting: "url" | "apiKey", problem: string): string {
+  return `${shown(endpoint)} (workflows.endpoints[${endpoint}].${setting}) ${problem}`;
 }
 
 /**

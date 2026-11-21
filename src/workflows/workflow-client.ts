@@ -7,6 +7,7 @@
  */
 
 import { errorMessage } from "../utils.ts";
+import { displayUrl } from "./endpoints.ts";
 import { createPublicText } from "./public-text.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
@@ -89,6 +90,8 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   const transport = options.fetch ?? fetch;
   const key = endpoint.apiKey;
   const base = endpoint.url;
+  // The one URL any published text may name; the base itself may carry the key in its path prefix.
+  const display = displayUrl(base);
   const published = createPublicText(key);
 
   /** One route of the run's validated base - never an absolute path resolved against it. */
@@ -98,7 +101,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 
   /** A failure named by the endpoint it happened against, in text safe to publish. */
   function fault(what: string, detail: string): string {
-    return published.shown(`Workflow endpoint "${endpoint.name}" (${base}) ${what}: ${detail}`).trim();
+    return published.shown(`Workflow endpoint "${endpoint.name}" (${display}) ${what}: ${detail}`).trim();
   }
 
   /** Why a request or a read task died: the message, plus the cause's when the transport nested one. */

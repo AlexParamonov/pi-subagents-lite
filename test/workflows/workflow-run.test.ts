@@ -183,6 +183,44 @@ describe("a foreground run's record and result", () => {
     expect(shown.views.at(-1)).toBe("✓ analysis completed\nThe declared output");
   });
 
+  // The record's two URL copies are what the widget, the running-agents menu, the conversation viewer
+  // and the details export show, and none of them holds this run's publisher: they are written already
+  // safe, as one display value shared with the fault text (US-35).
+  it("records the display URL with the credential redacted, not the request base", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const keyed = mintEndpoint(`http://127.0.0.1:4100/${KEY}/v1`, KEY);
+
+    const pending = run(client, manager, { endpoint: keyed });
+    await started(client);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+
+    const record = manager.listAgents()[0];
+    expect(record.workflow?.url).toBe("http://127.0.0.1:4100/[redacted]/v1");
+    expect(record.display.description).toBe("http://127.0.0.1:4100/[redacted]/v1");
+    expect(JSON.stringify(record)).not.toContain(KEY);
+  });
+
+  // A prefix the parser percent-escaped is a prefix no literal needle can catch, so the path is
+  // withheld and the record says which host the run went to and nothing more.
+  it("withholds a percent-escaped prefix from the record's display copies", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const escaped = mintEndpoint("http://127.0.0.1:4100/k<7>/v1", "k<7>");
+
+    const pending = run(client, manager, { endpoint: escaped });
+    await started(client);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+
+    const record = manager.listAgents()[0];
+    expect(record.workflow?.url).toBe("http://127.0.0.1:4100");
+    expect(record.display.description).toBe("http://127.0.0.1:4100");
+    expect(JSON.stringify(record)).not.toContain("k%3C7%3E");
+    expect(JSON.stringify(record)).not.toContain("k<7>");
+  });
+
   it("settles a failed run as an error record carrying the endpoint's reason", async () => {
     const manager = new AgentManager();
     const client = fakeClient();

@@ -5,10 +5,10 @@
  * warning text). Each invalid value is dropped from the effective config so
  * built-in defaults apply, valid keys are kept, file bytes are untouched, and
  * one loud warning per bad value names the file, key, got, expected,
- * and fix hint. A Workflow endpoint target is the exception: an unusable URL
- * is kept so the run naming that endpoint is refused instead of being sent to
- * another endpoint (US-34), and that refusal is promised only where the layer's
- * value decides the target. `projectWorkflowRule` is that decision for a project
+ * and fix hint. A Workflow endpoint target and credential are the exception: an unusable URL or
+ * `apiKey` is kept so every run naming that endpoint is refused, rather than falling back to another
+ * endpoint or going out unauthenticated (US-34, US-8), and that refusal is promised only where the
+ * layer's value decides the target. `projectWorkflowRule` is that decision for a project
  * file, and the layer merge and the load warning read it too. Diagnostics go to
  * a sink the caller supplies, so a read that must stay silent gets silence.
  * Never migrates fork shapes or throws.
@@ -137,6 +137,17 @@ function warnUnusableTarget(reader: LayerReader, keyPath: string, value: unknown
   reader.warn(
     `${formatIncompatibleWarning(reader.filePath, keyPath, value, expected)} ` +
       "It stays configured, so a run naming this endpoint is refused instead of sent to another endpoint.",
+  );
+}
+
+/**
+ * The same kept-and-refused warning for a credential path, without the value's own description: a
+ * configured key is never echoed, not even as the shape it came in (US-35).
+ */
+function warnUnusableCredential(reader: LayerReader, keyPath: string): void {
+  reader.warn(
+    `[subagents] Unusable value in ${reader.filePath}: "${keyPath}" must hold a text API key. ` +
+      "It stays configured, so a run naming this endpoint is refused instead of sent without a credential.",
   );
 }
 
@@ -409,9 +420,11 @@ function cleanGlobalWorkflowEndpoints(
     if (typeof entry.url !== "string" || entry.url === "") {
       warnUnusableTarget(reader, `${keyPath}.url`, entry.url, "non-empty URL string");
     }
-    if (entry.apiKey !== undefined) {
-      if (typeof entry.apiKey === "string") endpoint.apiKey = entry.apiKey;
-      else warnIncompatible(reader, `${keyPath}.apiKey`, entry.apiKey, "string");
+    if ("apiKey" in entry) {
+      // A declared key is a configured credential: keeping it is what makes the run refused instead
+      // of sent without one, and only resolution decides usability (US-8).
+      endpoint.apiKey = entry.apiKey;
+      if (typeof entry.apiKey !== "string" || entry.apiKey === "") warnUnusableCredential(reader, `${keyPath}.apiKey`);
     }
     kept.push([name, endpoint]);
   }

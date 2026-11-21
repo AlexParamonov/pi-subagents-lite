@@ -33,6 +33,16 @@ function refusal(url: string): string {
   return (resolution as { error: string }).error;
 }
 
+/** The refusal one configured apiKey earns, naming the `broken` endpoint it belongs to. */
+function keyRefusal(apiKey: unknown): string {
+  const resolution = resolveWorkflowEndpoint(
+    settings({ broken: { url: "http://localhost:4001", apiKey } }, "broken"),
+    "broken",
+  );
+  expect(resolution.ok, `${JSON.stringify(apiKey)} must be refused`).toBe(false);
+  return (resolution as { error: string }).error;
+}
+
 describe("resolveWorkflowEndpoint", () => {
   it("takes the endpoint the Workflow file names", () => {
     expect(resolveWorkflowEndpoint(CONFIGURED, "release")).toEqual({
@@ -217,6 +227,68 @@ describe("resolveWorkflowEndpoint", () => {
 
     expect(resolution.ok).toBe(false);
   });
+});
+
+// One credential authenticates and redacts, so the bytes the transport puts in `Authorization: Bearer`
+// and the bytes the publisher matches have to be one value: outer SP/TAB is normalized here, because
+// the wire strips them anyway (US-8, US-35).
+describe("the effective credential", () => {
+  for (const [configured, effective] of [
+    ["release-key", "release-key"],
+    [" release-key", "release-key"],
+    ["release-key ", "release-key"],
+    ["\trelease-key\t", "release-key"],
+    [" \trelease key\t ", "release key"],
+  ] as const) {
+    it(`resolves the configured apiKey ${JSON.stringify(configured)} to the effective ${JSON.stringify(effective)}`, () => {
+      expect(
+        resolveWorkflowEndpoint(
+          settings({ local: { url: "http://localhost:4001", apiKey: configured } }, "local"),
+          "local",
+        ),
+      ).toEqual({ ok: true, endpoint: { name: "local", url: "http://localhost:4001", apiKey: effective } });
+    });
+  }
+
+  // Anything else a file declares as a key cannot be both sent and redacted as the same bytes - no
+  // bytes at all, bytes the transport or a publisher would rewrite, bytes a loopback host refuses -
+  // so it refuses the run rather than sending something no surface can redact (US-8, US-35).
+  for (const key of [
+    "",
+    " ",
+    "\t",
+    " \t ",
+    "\u00a0release-key",
+    "release-key\u00a0",
+    "release\tkey",
+    'release"key',
+    "release\\key",
+    "releasé-key",
+    "release\u0000key",
+    "release\u007fkey",
+  ]) {
+    it(`refuses the configured apiKey ${JSON.stringify(key)} naming the setting and echoing no value`, () => {
+      const error = keyRefusal(key);
+
+      expect(error).toContain('"broken"');
+      expect(error).toContain("workflows.endpoints[broken].apiKey");
+      expect(error).toMatch(/unusable|not a usable credential/i);
+      const quoted = JSON.stringify(key).slice(1, -1);
+      if (quoted.trim() !== "") expect(error).not.toContain(quoted);
+    });
+  }
+
+  // A declared value that is not a string at all is a configured credential, not an absent one:
+  // treating it as absence is a silent unauthenticated send (US-8).
+  for (const key of [null, 4001, true, { token: "release-key" }, ["release-key"]]) {
+    it(`refuses the declared apiKey ${JSON.stringify(key)} rather than sending without a credential`, () => {
+      const error = keyRefusal(key);
+
+      expect(error).toContain('"broken"');
+      expect(error).toContain("workflows.endpoints[broken].apiKey");
+      expect(error).toMatch(/unusable|not a usable credential/i);
+    });
+  }
 });
 
 // The validated base is transport-only: what a surface shows is this value, and a needle matched

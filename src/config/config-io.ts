@@ -131,13 +131,13 @@ export interface RawConcurrency {
 }
 
 /**
- * One named Workflow endpoint as stored. `url` is whatever the file declared, usable or not: an
- * unusable configured target keeps its name so the run that selects it is refused instead of being
- * sent to another endpoint (US-34).
+ * One named Workflow endpoint as stored. `url` and `apiKey` are whatever the file declared, usable or
+ * not: an unusable configured target or key keeps its name so the run that selects it is refused
+ * instead of being sent to another endpoint or going out unauthenticated (US-34, US-8).
  */
 export interface RawWorkflowEndpoint {
   url?: unknown;
-  apiKey?: string;
+  apiKey?: unknown;
 }
 
 /**

@@ -122,6 +122,27 @@ describe("request routes", () => {
   });
 });
 
+// A fault names the URL the run's own record carries - the display URL - never the request base:
+// a base's path prefix can hold the effective credential, and once the parser percent-escaped it the
+// redaction needle cannot match what it shows (US-35, US-21).
+describe("the URL a fault names", () => {
+  for (const [key, shown] of [
+    ["example-private-key", "/[redacted]/v1"],
+    ["k<7>", ""],
+  ] as const) {
+    it(`names ${JSON.stringify(shown)} for the prefix that carries ${JSON.stringify(key)}`, async () => {
+      const server = await remote({ prefix: `/${encodeURIComponent(key)}/v1` });
+      await server.close();
+
+      const run = await (await client(`${server.url}/${key}/v1`, key)).create(request());
+
+      expect(error(run)).toContain(`(${server.url}${shown})`);
+      expect(error(run)).not.toContain(key);
+      expect(error(run)).not.toContain(encodeURIComponent(key));
+    });
+  }
+});
+
 describe("create", () => {
   it("posts the prompt and the file's config with its endpoint key stripped", async () => {
     const server = await remote();
