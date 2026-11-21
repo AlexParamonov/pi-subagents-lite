@@ -11,7 +11,6 @@ import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/p
 import type { AgentManager } from "../agents/agent-manager.ts";
 import type { AgentRecord, WorkflowRunInfo, WorkflowSettlementStatus } from "../types.ts";
 import { createPublicText } from "./public-text.ts";
-import { displayUrl } from "./endpoints.ts";
 import { formatTerminalResult } from "./terminal-result.ts";
 import { progressLines } from "./stream-view.ts";
 import type { WorkflowDisplayItem } from "./stream-view.ts";
@@ -54,9 +53,9 @@ export async function runWorkflowForeground(
   // Every string this run publishes - notes, progress lines, settlement text - crosses the one
   // boundary that makes endpoint text safe (US-35).
   const published = createPublicText(args.endpoint.apiKey);
-  // The base is transport-only: the record's two URL copies show the display URL, and each crosses
-  // this publisher because the surfaces that read them have no publisher of their own (US-35).
-  const shownUrl = published.shown(displayUrl(args.endpoint.url));
+  // The record's two URL copies cross this publisher because the surfaces that read them have no
+  // publisher of their own (US-35).
+  const shownUrl = published.shown(args.endpoint.url);
 
   if (args.signal?.aborted) {
     return failure("The workflow run was cancelled before it was sent; nothing reached the endpoint.");

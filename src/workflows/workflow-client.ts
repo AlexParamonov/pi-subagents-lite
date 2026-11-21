@@ -9,7 +9,7 @@
  */
 
 import { errorMessage } from "../utils.ts";
-import { displayUrl, targetCarriesCredential } from "./endpoints.ts";
+import { targetCarriesCredential } from "./endpoints.ts";
 import { createPublicText } from "./public-text.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
@@ -95,9 +95,6 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   const transport = options.fetch ?? fetch;
   const key = endpoint.apiKey;
   const base = endpoint.url;
-  // The one URL any published text may name: a base whose path carries percent escapes cannot be
-  // shown as the bytes the transport sends.
-  const display = displayUrl(base);
   const published = createPublicText(key);
   // Observation state lives here because one client is one run's: a hand-back leaves this where it
   // is and the next `monitor` entry continues from it, so the backoff never restarts at the base.
@@ -125,7 +122,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 
   /** A failure named by the endpoint it happened against, in text safe to publish. */
   function fault(what: string, detail: string): string {
-    return published.shown(`Workflow endpoint "${endpoint.name}" (${display}) ${what}: ${detail}`).trim();
+    return published.shown(`Workflow endpoint "${endpoint.name}" (${base}) ${what}: ${detail}`).trim();
   }
 
   /** Why a request or a read task died: the message, plus the cause's when the transport nested one. */

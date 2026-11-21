@@ -62,9 +62,9 @@ export interface WorkflowRunInfo {
   /** Configured endpoint name the run went to. No message names it today: an error carries the
    * endpoint its own client was built with, not the record's copy. */
   endpoint: string;
-  /** The endpoint's display URL (`displayUrl`), frozen at create: endpoints are re-read per call, so
-   * this is what still says which server the run went to after they change. Never the request base -
-   * a path prefix can carry the run's credential. */
+  /** The run's request base, frozen at create: endpoints are re-read per call, so this is what still
+   * says which server the run went to after they change. Resolution refuses a base that could carry
+   * the run's credential, so a surface may print this one. */
   url: string;
   /** The server's own run id (`workflow_id`). */
   remoteId: string;

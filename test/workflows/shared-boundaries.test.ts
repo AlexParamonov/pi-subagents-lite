@@ -720,61 +720,52 @@ describe("workflow credentials", () => {
     expect(text(result)).toBe(ANSWER);
   });
 
-  it.for([{ path: "/gateway/v1", displayPath: "/gateway/v1", hidden: [] as string[] }])(
-    "uses a safe display URL for the prefix $path",
-    async ({ path, displayPath, hidden }) => {
-      const remote = await server({
-        prefix: path,
-        echoAuth: true,
-        holdStream: true,
-        streams: [DISPATCH],
-        reads: [stateReply({ result: `Answer received ${AUTH_ECHO}` })],
-      });
-      install(`${remote.url}${path}`, KEY);
-      const { capture, widgetText } = await startWithWidget();
-      const pending = run(capture);
-      await beforeEnd(remote.streamOpened, pending, "the configured prefix reached the wire");
+  // The record's two URL copies are what the widget and the running-agents menu print, and neither
+  // surface holds this run's publisher: they are written already safe, from the validated base.
+  it("shows the run's own base whole on the widget and the running-agents menu", async () => {
+    const path = "/gateway/v1";
+    const remote = await server({
+      prefix: path,
+      echoAuth: true,
+      holdStream: true,
+      streams: [DISPATCH],
+      reads: [stateReply({ result: `Answer received ${AUTH_ECHO}` })],
+    });
+    install(`${remote.url}${path}`, KEY);
+    const { capture, widgetText } = await startWithWidget();
+    const pending = run(capture);
+    await beforeEnd(remote.streamOpened, pending, "the configured prefix reached the wire");
 
-      const menu = await runningMenu(capture);
-      const widget = widgetText();
-      remote.releaseStream();
-      const result = await pending;
+    const menu = await runningMenu(capture);
+    const widget = widgetText();
+    remote.releaseStream();
+    const result = await pending;
 
-      authenticates(remote, KEY);
-      publishes(text(result), "Answer received Bearer [redacted]", KEY, "the inline result");
-      for (const [surface, name] of [
-        [menu, "running-agents menu"],
-        [widget, "widget"],
-      ]) {
-        expect.soft(surface.includes("audit workflow"), `the ${name} must show this run`).toBe(true);
-        publishes(surface, `${remote.url}${displayPath}${name === "widget" ? " " : "\n"}`, KEY, name);
-        for (const withheld of hidden) {
-          expect.soft(surface.includes(withheld), `the ${name} must not show ${withheld}`).toBe(false);
-        }
-      }
-    },
-  );
+    authenticates(remote, KEY);
+    publishes(text(result), "Answer received Bearer [redacted]", KEY, "the inline result");
+    for (const [surface, name] of [
+      [menu, "running-agents menu"],
+      [widget, "widget"],
+    ]) {
+      expect.soft(surface.includes("audit workflow"), `the ${name} must show this run`).toBe(true);
+      publishes(surface, `${remote.url}${path}${name === "widget" ? " " : "\n"}`, KEY, name);
+    }
+  });
 
-  it.for([{ path: "/gateway/v1", displayPath: "/gateway/v1", hidden: [] as string[] }])(
-    "uses the same safe URL in a transport failure for the prefix $path",
-    async ({ path, displayPath, hidden }) => {
-      const dead = await server();
-      await dead.close();
-      install(`${dead.url}${path}`, KEY);
-      const logs = consoleLines();
+  it("names that same base in a transport failure, and no credential", async () => {
+    const path = "/gateway/v1";
+    const dead = await server();
+    await dead.close();
+    install(`${dead.url}${path}`, KEY);
+    const logs = consoleLines();
 
-      const result = await report(run(await start()));
+    const result = await report(run(await start()));
 
-      expect(result.isError).toBe(true);
-      expect
-        .soft(result.text.includes(`(${dead.url}${displayPath})`), "the fault must identify the same safe URL")
-        .toBe(true);
-      const published = `${result.text}\n${logs.join("\n")}`;
-      for (const withheld of [...hidden, KEY]) {
-        expect.soft(published.includes(withheld), `the fault must not publish ${withheld}`).toBe(false);
-      }
-    },
-  );
+    expect(result.isError).toBe(true);
+    expect.soft(result.text.includes(`(${dead.url}${path})`), "the fault must identify the base").toBe(true);
+    const published = `${result.text}\n${logs.join("\n")}`;
+    expect.soft(published.includes(KEY), "the fault must not publish the credential").toBe(false);
+  });
 
   it.for([
     { label: "an empty string", key: "" },

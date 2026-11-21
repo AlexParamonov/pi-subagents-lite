@@ -126,23 +126,21 @@ describe("request routes", () => {
   });
 });
 
-// A fault names the URL the run's own record carries - the display URL - never the request base,
-// and the two differ once the path is percent-escaped, because escaped bytes cannot be shown safely
-// (US-35, US-21). A path that carries no credential is shown whole.
+// A fault names the base the run was sent to - the same value the run's record carries, through the
+// publisher - and never the credential configured beside it (US-35, US-21).
 describe("the URL a fault names", () => {
-  for (const [path, shown] of [["/gateway/v1", "/gateway/v1"]] as const) {
-    it(`names ${JSON.stringify(shown)} for the prefix ${path}`, async () => {
-      const key = "example-private-key";
-      const server = await remote({ prefix: path });
-      await server.close();
+  it("names the whole base the run was sent to", async () => {
+    const path = "/gateway/v1";
+    const key = "example-private-key";
+    const server = await remote({ prefix: path });
+    await server.close();
 
-      const run = await (await client(`${server.url}${path}`, key)).create(request());
+    const run = await (await client(`${server.url}${path}`, key)).create(request());
 
-      expect(error(run)).toContain(`(${server.url}${shown})`);
-      expect(error(run)).not.toContain(key);
-      expect(error(run)).not.toContain(encodeURIComponent(key));
-    });
-  }
+    expect(error(run)).toContain(`(${server.url}${path})`);
+    expect(error(run)).not.toContain(key);
+    expect(error(run)).not.toContain(encodeURIComponent(key));
+  });
 });
 
 describe("create", () => {

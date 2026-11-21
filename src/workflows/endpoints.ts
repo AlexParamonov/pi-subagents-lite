@@ -84,15 +84,6 @@ function effectiveCredential(declared: unknown): Credential {
   return USABLE_CREDENTIAL.test(effective) ? { ok: true, apiKey: effective } : { ok: false };
 }
 
-/**
- * The URL a published surface may show: the base itself, or its origin alone once the path carries a
- * percent escape the credential redactor cannot match against the value it holds. A base's `%` is always
- * path data (a host carrying `%` fails to parse) and a base is already `origin + pathname`.
- */
-export function displayUrl(base: ValidatedBase): string {
-  return base.includes("%") ? new URL(base).origin : base;
-}
-
 /** How many percent-decodes past the bytes on the wire a target is followed through. */
 const MAX_DECODE_DEPTH = 8;
 
