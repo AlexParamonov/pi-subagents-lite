@@ -3,7 +3,9 @@
  *
  * `create` pushes a run, `monitor` follows it (SSE for display, GET for state), `stop` asks for a
  * kill. Run state comes from GET alone (ADR-0013); the stream is display-only and its event ids are
- * never read. Every failure comes back as a domain result, never as an HTTP or transport exception.
+ * never read. The observation state - backoff, failure budget, last known state - is the client's,
+ * and one client is one run's: a hand-back continues the cadence instead of restarting it. Every
+ * failure comes back as a domain result, never as an HTTP or transport exception.
  */
 
 import { errorMessage } from "../utils.ts";
@@ -49,6 +51,8 @@ export interface WorkflowClientOptions {
 export interface WorkflowView {
   /** Complete display state for the current connection; a new connection replaces the last. */
   onUpdate(items: readonly WorkflowDisplayItem[]): void;
+  /** An authoritative read answered `running`: the run is live again. Never fired for any other state. */
+  onRead?: (state: "running") => void;
   signal?: AbortSignal;
 }
 
@@ -76,7 +80,8 @@ export type WorkflowStop = { ok: true; status: StopStatus } | { ok: false; error
 export interface WorkflowClient {
   create(request: WorkflowRunRequest): Promise<WorkflowCreate>;
   monitor(workflowId: string, view: WorkflowView): Promise<WorkflowOutcome>;
-  stop(workflowId: string): Promise<WorkflowStop>;
+  /** `signal` cancels the local wait for the acknowledgement; it retracts nothing already sent. */
+  stop(workflowId: string, signal?: AbortSignal): Promise<WorkflowStop>;
 }
 
 type Answer =
@@ -93,6 +98,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   // The one URL any published text may name; the base itself may carry the key in its path prefix.
   const display = displayUrl(base);
   const published = createPublicText(key);
+  // Observation state lives here because one client is one run's: a hand-back leaves this where it
+  // is and the next `monitor` entry continues from it, so the backoff never restarts at the base.
+  let failedReads = 0;
+  let lastKnown: "running" | "unknown" = "unknown";
+  let bypassNextDelay = false;
 
   /** One route of the run's validated base - never an absolute path resolved against it. */
   function url(route: Route): string {
@@ -117,7 +127,9 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     try {
       return { ok: true, status: opened.response.status, body: await opened.response.text() };
     } catch (reason) {
-      return { ok: false, kind: "transport", reason: failureReason(reason) };
+      // A body read that died because the caller went away is a cancellation, not a failure the
+      // endpoint owes a read attempt for.
+      return { ok: false, kind: signal?.aborted ? "cancelled" : "transport", reason: failureReason(reason) };
     } finally {
       opened.close();
     }
@@ -208,19 +220,31 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       const ids = runIds(sent.body);
       if (!ids)
         return { ok: false, error: fault("created a run it did not identify", "the response carried no workflow id") };
+      lastKnown = "running";
       return { ok: true, ...ids };
     },
 
     async monitor(workflowId, view): Promise<WorkflowOutcome> {
-      let failedReads = 0;
+      // The delay a failed read owed is carried, not cancelled: a re-entry after a hand-back waits
+      // it out before its first read. Only a non-`stopped` stop acknowledgement skips the delay.
+      if (bypassNextDelay) bypassNextDelay = false;
+      else if (failedReads > 0) await sleep(readBackoff(failedReads), view.signal);
       while (!view.signal?.aborted) {
-        await push(workflowId, view);
-        if (view.signal?.aborted) return { status: "aborted" };
+        // A stream opens only while the last known state is `running` (a create or a read that
+        // answered so); while it is not, the read is the only voice, and no open connection can
+        // defer it.
+        if (lastKnown === "running") {
+          await push(workflowId, view);
+          if (view.signal?.aborted) return { status: "aborted" };
+        }
 
         const run = await read(workflowId, view.signal);
-        if (run.kind === "cancelled") return { status: "aborted" };
+        // A read that answered after the wait was cancelled belongs to a caller that is gone: it
+        // charges no failure and changes no state.
+        if (view.signal?.aborted || run.kind === "cancelled") return { status: "aborted" };
         if (run.kind === "unreachable") {
           failedReads += 1;
+          lastKnown = "unknown";
           if (failedReads >= FAILED_READS_BEFORE_DEGRADED) {
             return {
               status: "degraded",
@@ -230,12 +254,14 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
               ),
             };
           }
-          await sleep(Math.min(READ_BACKOFF_START_MS * 2 ** (failedReads - 1), READ_BACKOFF_CAP_MS), view.signal);
+          await sleep(readBackoff(failedReads), view.signal);
           continue;
         }
 
         failedReads = 0;
         if (run.kind === "running") {
+          lastKnown = "running";
+          view.onRead?.("running");
           await sleep(RECONNECT_DELAY_MS, view.signal);
           continue;
         }
@@ -244,8 +270,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       return { status: "aborted" };
     },
 
-    async stop(workflowId): Promise<WorkflowStop> {
-      const sent = await answer("POST", `/api/workflows/${encodeURIComponent(workflowId)}/stop`);
+    async stop(workflowId, signal): Promise<WorkflowStop> {
+      // Any stop request takes the stream away: the run's own state after a stop is whatever the
+      // next authoritative read says.
+      lastKnown = "unknown";
+      const sent = await answer("POST", `/api/workflows/${encodeURIComponent(workflowId)}/stop`, undefined, signal);
       if (!sent.ok) return { ok: false, error: fault("did not answer the stop request", sent.reason) };
       if (sent.status < 200 || sent.status >= 300) {
         return { ok: false, error: fault("refused the stop request", `HTTP ${sent.status}: ${rejection(sent.body)}`) };
@@ -257,6 +286,9 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
           error: fault("answered the stop request unreadably", `no stop status in ${published.bounded(sent.body)}`),
         };
       }
+      // An acknowledgement that is not `stopped` says the run's own state must be read now: the
+      // next entry skips its owed delay for exactly that one authoritative read.
+      if (status !== "stopped") bypassNextDelay = true;
       return { ok: true, status };
     },
   };
@@ -431,6 +463,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
 const RUN_STATUSES = ["running", "completed", "failed", "interrupted"] as const;
 
 type RunStatus = (typeof RUN_STATUSES)[number];
+
+/** The growing, capped pause owed after `failed` consecutive failed reads. */
+function readBackoff(failed: number): number {
+  return Math.min(READ_BACKOFF_START_MS * 2 ** (failed - 1), READ_BACKOFF_CAP_MS);
+}
 
 /** The states GET settles a run in; `running` is never one of them. */
 type TerminalStatus = Exclude<RunStatus, "running">;

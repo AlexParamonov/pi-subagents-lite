@@ -407,8 +407,10 @@ function textLines(snapshot: readonly WorkflowDisplayItem[]): string[] {
   return snapshot.flatMap((item) => (item.type === "text" ? [item.text] : []));
 }
 
-/** Run the monitor over a stream the test controls; `settled` carries the outcome. */
-function follow(run: Awaited<ReturnType<typeof client>>, server: TestEndpoint, signal?: AbortSignal) {
+/** Run the monitor over a stream the test controls; `settled` carries the outcome. The run is
+ * created first: a client that never created opens no stream until a read answers `running`. */
+async function follow(run: Awaited<ReturnType<typeof client>>, server: TestEndpoint, signal?: AbortSignal) {
+  await run.create(request());
   const watch = watcher(signal);
   const settled = run.monitor(server.run, watch.view);
   return { ...watch, settled };
@@ -425,7 +427,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => s.length >= 3, settled, "each node has a status line");
     server.releaseStream();
     await settled;
@@ -444,7 +446,7 @@ describe("monitor display", () => {
     });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => s.some((item) => item.type === "text"), settled, "the chunk is on screen");
     server.releaseStream();
     await settled;
@@ -468,7 +470,7 @@ describe("monitor display", () => {
     });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => s.some((item) => item.type === "text"), settled, "the text chunk is on screen");
     server.releaseStream();
     await settled;
@@ -486,7 +488,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => s.some((item) => item.type === "text"), settled, "the text is on screen");
     server.releaseStream();
     await settled;
@@ -506,6 +508,7 @@ describe("monitor display", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
 
     const watch = watcher();
     const settled = run.monitor(REMOTE_ID, watch.view);
@@ -538,7 +541,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => textLines(s).length === 2, settled, "both turns of the node are on screen");
     server.releaseStream();
     await settled;
@@ -557,7 +560,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => textLines(s).length === 2, settled, "the text after the full turn is on screen");
     server.releaseStream();
     await settled;
@@ -583,6 +586,7 @@ describe("monitor display", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
 
     const watch = watcher();
     const settled = run.monitor(REMOTE_ID, watch.view);
@@ -617,7 +621,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => textLines(s).length === 2, settled, "both delivered turns are on screen");
     server.releaseStream();
     await settled;
@@ -643,7 +647,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => textLines(s).length === 2, settled, "the back-to-back turns are both on screen");
     server.releaseStream();
     await settled;
@@ -667,6 +671,7 @@ describe("monitor display", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
 
     const watch = watcher();
     const settled = run.monitor(REMOTE_ID, watch.view);
@@ -706,7 +711,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until((s) => textLines(s).includes("Reading the release notes "), settled, "the new attempt streams");
     server.releaseStream();
     await settled;
@@ -729,7 +734,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [frames], holdStream: true });
     const run = await client(server.url);
 
-    const { snapshots, settled, until } = follow(run, server);
+    const { snapshots, settled, until } = await follow(run, server);
     await until(
       (s) => textLines(s).includes(secondTurn) && textLines(s).includes("Drafting the summary"),
       settled,
@@ -754,7 +759,7 @@ describe("monitor display", () => {
     const server = await remote({ streams: [recorded("node-progress-frames.sse")] });
     const run = await client(server.url);
 
-    const { snapshots, settled } = follow(run, server);
+    const { snapshots, settled } = await follow(run, server);
     await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
 
     expect(snapshots.at(-1)).toEqual([
@@ -775,7 +780,7 @@ describe("monitor display", () => {
     });
     const run = await client(server.url);
 
-    const { snapshots, settled } = follow(run, server);
+    const { snapshots, settled } = await follow(run, server);
     const outcome = await settled;
 
     expect(outcome).toEqual({ status: "completed", result: DEFAULT_RESULT });
@@ -804,6 +809,7 @@ describe("monitor display", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
 
     const watch = watcher();
     const settled = run.monitor(REMOTE_ID, watch.view);
@@ -828,7 +834,7 @@ describe("monitor display", () => {
     });
     const run = await client(server.url);
 
-    const { snapshots, settled } = follow(run, server);
+    const { snapshots, settled } = await follow(run, server);
     await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
 
     expect(texts(snapshots)).toEqual(["old-only text", "new-only text"]);
@@ -853,6 +859,7 @@ describe("monitor reconcile", () => {
       reads: [declaredOutputRead()],
     });
     const run = await client(server.url);
+    await run.create(request());
 
     const outcome = (await run.monitor(server.run, watcher().view)) as { status: string; result: unknown };
 
@@ -878,7 +885,7 @@ describe("monitor reconcile", () => {
     });
     const run = await client(server.url);
 
-    const { snapshots, settled } = follow(run, server);
+    const { snapshots, settled } = await follow(run, server);
 
     await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
     expect(streamRequests(server)).toHaveLength(2);
@@ -908,6 +915,7 @@ describe("monitor reconcile", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
 
     // The window counts lifecycle events only: reaching it with pings and text in between is
     // what makes a ping or a chunk resetting it observable.
@@ -936,6 +944,7 @@ describe("monitor reconcile", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
     const w = watcher();
 
     const settled = run.monitor(REMOTE_ID, w.view);
@@ -955,6 +964,7 @@ describe("monitor reconcile", () => {
       read: () => jsonResponse(503, { error: "Temporarily unavailable" }),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
     const abort = new AbortController();
 
     const waiting = run.monitor(REMOTE_ID, watcher(abort.signal).view);
@@ -966,11 +976,16 @@ describe("monitor reconcile", () => {
     expect(readsAtReturn).toBeGreaterThanOrEqual(2);
 
     const resumed = run.monitor(REMOTE_ID, watcher(abort.signal).view);
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(socket.reads(), "the carried delay is owed once, not restarted").toBe(readsAtReturn);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(resumed).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
     expect(socket.reads()).toBeGreaterThan(readsAtReturn);
 
+    const again = run.monitor(REMOTE_ID, watcher(abort.signal).view);
+    await vi.advanceTimersByTimeAsync(1_000);
     abort.abort();
-    await expect(resumed).resolves.toEqual({ status: "aborted" });
+    await expect(again).resolves.toEqual({ status: "aborted" });
   });
 
   it("hands a refused read back as an unknown state, naming the endpoint and never the key", async () => {
@@ -1031,6 +1046,7 @@ describe("monitor reconcile", () => {
       read: () => jsonResponse(200, readState({ status: "failed", error: "Runner lost its lease" })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
     const w = watcher();
 
     const settled = run.monitor(FAILED_RUN, w.view);
@@ -1099,6 +1115,7 @@ describe("monitor reconcile", () => {
       return socket.fetch(input as string, init);
     });
     const run = await client(FAKED_URL);
+    await run.create(request());
     const abort = new AbortController();
 
     const settled = run.monitor(REMOTE_ID, watcher(abort.signal).view);
@@ -1112,6 +1129,7 @@ describe("monitor reconcile", () => {
   it("stops watching and asks for nothing when the caller cancels", async () => {
     const server = await remote({ holdStream: true });
     const run = await client(server.url);
+    await run.create(request());
     const abort = new AbortController();
 
     const settled = run.monitor(server.run, watcher(abort.signal).view);
@@ -1119,7 +1137,7 @@ describe("monitor reconcile", () => {
     abort.abort();
 
     await expect(settled).resolves.toEqual({ status: "aborted" });
-    expect(server.requests.filter((entry) => entry.method !== "GET")).toEqual([]);
+    expect(server.requests.filter((entry) => entry.method === "POST" && entry.path.endsWith("/stop"))).toEqual([]);
     expect(readRequests(server)).toEqual([]);
   });
 
@@ -1128,6 +1146,7 @@ describe("monitor reconcile", () => {
     // endpoint goes on streaming a run nobody is watching.
     const server = await remote({ streams: [DISPATCH], holdStream: true });
     const run = await client(server.url);
+    await run.create(request());
     const abort = new AbortController();
     const w = watcher(abort.signal);
 
@@ -1158,6 +1177,7 @@ describe("monitor reconcile", () => {
       return socket.fetch(input as string, init);
     });
     const run = await client(FAKED_URL);
+    await run.create(request());
 
     await expect(run.monitor(REMOTE_ID, watcher().view)).resolves.toEqual({
       status: "completed",
@@ -1181,6 +1201,7 @@ describe("monitor reconcile", () => {
       read: () => jsonResponse(200, readState()),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
     const abort = new AbortController();
     const w = watcher(abort.signal);
 
@@ -1230,6 +1251,7 @@ describe("monitor reconcile", () => {
       read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
     });
     const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
 
     const outcome = await run.monitor(REMOTE_ID, {
       onUpdate: () => {
@@ -1248,6 +1270,7 @@ describe("monitor reconcile", () => {
     const connecting: AbortSignal[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/workflows")) return jsonResponse(201, { workflow_id: REMOTE_ID, task_id: REMOTE_ID });
       if (!url.endsWith("/stream")) return jsonResponse(404, { error: "Workflow not found" });
       if (init?.signal) connecting.push(init.signal);
       await opening.promise;
@@ -1257,8 +1280,10 @@ describe("monitor reconcile", () => {
     });
     const abort = new AbortController();
     const w = watcher(abort.signal);
+    const run = await client(FAKED_URL);
+    await run.create(request());
 
-    const settled = (await client(FAKED_URL)).monitor(REMOTE_ID, w.view);
+    const settled = run.monitor(REMOTE_ID, w.view);
     await vi.waitFor(() => expect(connecting).toHaveLength(1));
     abort.abort();
     opening.resolve();
@@ -1369,5 +1394,218 @@ describe("stop", () => {
 
     expect(stop).toEqual({ ok: false, error: expect.stringContaining("Workflow not found") });
     expect((stop as { error: string }).error).toContain(server.url);
+  });
+
+  it("answers a cancelled stop as the local cancellation it is, never as an acknowledgement", async () => {
+    // Disposal cancels a stop already on the wire. The cancelled wait ends as a failed stop at once,
+    // and the acknowledgement that arrives later changes nothing that was already answered.
+    let endpointAnswer!: (response: Response) => void;
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => jsonResponse(200, readState()),
+      stop: (signal) =>
+        new Promise<Response>((resolve, reject) => {
+          endpointAnswer = resolve;
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    const cancel = new AbortController();
+
+    const waiting = run.stop(REMOTE_ID, cancel.signal);
+    cancel.abort();
+
+    await expect(waiting).resolves.toEqual({
+      ok: false,
+      error: expect.stringContaining("did not answer the stop request"),
+    });
+    endpointAnswer(jsonResponse(200, { status: "stopped", workflow_id: REMOTE_ID }));
+    await expect(waiting).resolves.toMatchObject({ ok: false });
+  });
+});
+
+// ── monitor continuity: the observation state belongs to the run, not to one wait ──
+
+describe("monitor continuity", () => {
+  it("keeps the 2/4/8/16/30/30 read cadence across a hand-back, capped and held", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const start = Date.now();
+    const stamps: number[] = [];
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => {
+        stamps.push(Date.now() - start);
+        return jsonResponse(503, { error: "Temporarily unavailable" });
+      },
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
+
+    const first = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(first).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
+
+    const second = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(second).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+
+    const third = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(third).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000, 60_000, 90_000]);
+  });
+
+  it("starts the cadence over only an authoritative running read resets it", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const start = Date.now();
+    const stamps: number[] = [];
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: (reads) => {
+        stamps.push(Date.now() - start);
+        return reads === 5
+          ? jsonResponse(200, readState({ status: "running" }))
+          : jsonResponse(503, { error: "Temporarily unavailable" });
+      },
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
+
+    const watching = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(61_000);
+    await expect(watching).resolves.toEqual({
+      status: "degraded",
+      error: expect.stringContaining("unknown"),
+    });
+
+    // Four failures, then `running`, then the failures start their count again from the base.
+    expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000, 31_000, 33_000, 37_000, 45_000, 61_000]);
+  });
+
+  it("reports an authoritative running read to the view, and nothing else", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: (reads) => jsonResponse(200, readState(reads === 1 ? { status: "running" } : { result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
+    const onRead = vi.fn();
+
+    const watching = run.monitor(REMOTE_ID, { onUpdate: () => {}, onRead });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(watching).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+
+    expect(onRead.mock.calls).toEqual([["running"]]);
+  });
+
+  it("reads GET at the silence deadline of a connection carrying only unknown events", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    let push: (frame: string) => void = () => {
+      throw new Error("the stream did not open");
+    };
+    const socket = fakeWorkflowFetch({
+      stream: (send) => {
+        push = send;
+        send(DISPATCH);
+      },
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
+
+    const watching = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(0);
+    push(
+      ["constructor", "toString", "__proto__", "hasOwnProperty", "future_node_event"]
+        .map((name) => `event: ${name}\ndata: {"node_id":"foreign-node"}\n\n`)
+        .join(""),
+    );
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(socket.reads(), "unknown names must not start an early read").toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(watching).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+  });
+
+  it("charges no failed read for a read the wait cancelled", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const start = Date.now();
+    const stamps: number[] = [];
+    let bodies = 0;
+    const transport: typeof fetch = async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/api/workflows")) return jsonResponse(201, { workflow_id: REMOTE_ID, task_id: REMOTE_ID });
+      if (url.endsWith("/stream")) return new Response(null, { status: 200 });
+      stamps.push(Date.now() - start);
+      bodies += 1;
+      if (bodies <= 4) return jsonResponse(503, { error: "Temporarily unavailable" });
+      if (bodies === 6) return jsonResponse(200, readState({ status: "running" }));
+      if (bodies >= 7) return jsonResponse(200, readState());
+      // The body never arrives; only the request's own cancellation ends this read.
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(control) {
+            init?.signal?.addEventListener("abort", () => control.error(init.signal?.reason), { once: true });
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const run = await client(FAKED_URL, undefined, transport);
+    await run.create(request());
+    const abort = new AbortController();
+
+    const waiting = run.monitor(REMOTE_ID, watcher(abort.signal).view);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
+
+    abort.abort();
+    await expect(waiting).resolves.toEqual({ status: "aborted" });
+
+    // The cancelled read charged nothing: the next entry owes the four failures' 16s, not the
+    // fifth's 30s, and a `running` answer takes the run on from there.
+    const resumed = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000, 46_000]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(resumed).resolves.toEqual({ status: "completed", result: null });
+  });
+
+  it("reads GET before opening any stream while no read has answered running", async () => {
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+
+    await expect(run.monitor(REMOTE_ID, watcher().view)).resolves.toEqual({
+      status: "completed",
+      result: DEFAULT_RESULT,
+    });
+
+    expect(socket.requests().map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+      `GET ${FAKED_URL}/api/workflows/${REMOTE_ID}`,
+    ]);
+  });
+
+  it("opens its stream only once a read has answered running", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: (reads) => jsonResponse(200, readState(reads === 1 ? { status: "running" } : { result: DEFAULT_RESULT })),
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+
+    const watching = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(watching).resolves.toEqual({
+      status: "completed",
+      result: DEFAULT_RESULT,
+    });
+
+    const runPath = `${FAKED_URL}/api/workflows/${REMOTE_ID}`;
+    expect(socket.requests().map((entry) => entry.url)).toEqual([`${runPath}`, `${runPath}/stream`, `${runPath}`]);
   });
 });
