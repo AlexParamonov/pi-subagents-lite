@@ -398,6 +398,18 @@ function cleanProjectWorkflows(workflows: unknown, rule: ProjectWorkflowRule, re
   return kept as RawWorkflows;
 }
 
+/** Outer SP/TAB - the only characters resolution strips before it judges a key (US-8). */
+const BLANK_CREDENTIAL = /^[ \t]*$/;
+
+/**
+ * What this layer can prove holds no credential. Resolution stays the authority that refuses, and it
+ * rejects more than this - the characters a transport, a display or a JSON body rewrites are kept
+ * silently here, and refused when the run asks for them.
+ */
+function holdsNoCredential(declared: unknown): boolean {
+  return typeof declared !== "string" || BLANK_CREDENTIAL.test(declared);
+}
+
 function cleanGlobalWorkflowEndpoints(
   endpoints: unknown,
   reader: LayerReader,
@@ -424,7 +436,7 @@ function cleanGlobalWorkflowEndpoints(
       // A declared key is a configured credential: keeping it is what makes the run refused instead
       // of sent without one, and only resolution decides usability (US-8).
       endpoint.apiKey = entry.apiKey;
-      if (typeof entry.apiKey !== "string" || entry.apiKey === "") warnUnusableCredential(reader, `${keyPath}.apiKey`);
+      if (holdsNoCredential(entry.apiKey)) warnUnusableCredential(reader, `${keyPath}.apiKey`);
     }
     kept.push([name, endpoint]);
   }

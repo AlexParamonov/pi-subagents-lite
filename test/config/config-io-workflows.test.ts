@@ -160,10 +160,37 @@ describe("validateRawLayer — workflows", () => {
     });
   }
 
-  // Any text a file declares may still become the effective credential (outer SP/TAB aside), so
-  // usability is decided once, at resolution, and the layer keeps the value silently.
+  // A key holding nothing but the outer SP/TAB resolution strips cannot be the credential either side
+  // of the boundary, so the load says so. Resolution stays the authority that refuses (US-8), and the
+  // value is kept exactly as configured, so the run is refused rather than sent without a credential.
+  for (const blank of ["   ", "\t"]) {
+    it(`warns once about the blank apiKey ${JSON.stringify(blank)} and keeps it verbatim`, () => {
+      const config = { workflows: { endpoints: { odd: { url: "http://h:1", apiKey: blank } } } };
+
+      const warnings = warningsOf(() => validateRawLayer(config, "/g.json"));
+
+      expect(warnings.filter((warning) => warning.includes('"workflows.endpoints.odd.apiKey"'))).toHaveLength(1);
+      expect(warnings.join("\n")).toContain("stays configured");
+      expect(validateRawLayer(config, "/g.json").workflows).toEqual(config.workflows);
+    });
+  }
+
+  // Text this layer cannot judge stays silent: a value may still become the effective credential
+  // (outer SP/TAB aside), and the characters resolution refuses for the other reasons - ones a
+  // transport, a display or a JSON body rewrites - are its decision alone.
   it("keeps a declared apiKey the layer cannot judge, unwarned", () => {
-    const config = { workflows: { endpoints: { odd: { url: "http://h:1", apiKey: " \t " } } } };
+    for (const apiKey of ["secret\tkey", "clé"]) {
+      const config = { workflows: { endpoints: { odd: { url: "http://h:1", apiKey } } } };
+
+      expect(warned(() => validateRawLayer(config, "/g.json"))).toBe("");
+      expect(validateRawLayer(config, "/g.json").workflows).toEqual(config.workflows);
+    }
+  });
+
+  // A padded key is a usable one: the run trims it, so the load has nothing to warn about, and the
+  // bytes the file wrote stay.
+  it("keeps a padded apiKey the run can use, unwarned", () => {
+    const config = { workflows: { endpoints: { odd: { url: "http://h:1", apiKey: " a " } } } };
 
     expect(warned(() => validateRawLayer(config, "/g.json"))).toBe("");
     expect(validateRawLayer(config, "/g.json").workflows).toEqual(config.workflows);
