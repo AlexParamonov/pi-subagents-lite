@@ -1,10 +1,10 @@
 /**
  * workflow-run.ts — Follow a foreground Workflow run under the session's claim.
  *
- * The AgentManager claim owns the run's lifetime from before create. This loop applies GET's
- * terminal outcome or an acknowledged stop, which outranks the endpoint's footprint. Handing the
- * call back leaves observation running; session shutdown ends observation without settling.
- * See `docs/adr/0013-get-authoritative-workflow-client.md`.
+ * The AgentManager claim owns the run beyond the tool waiter's lifetime. Progress and observation
+ * health stay on the record; the per-run client retains retry pacing. The waiter only views the run,
+ * and a hand-back does not stop observation. Session shutdown releases the waiter without settling
+ * the run. See `docs/adr/0013-get-authoritative-workflow-client.md`.
  */
 
 import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";

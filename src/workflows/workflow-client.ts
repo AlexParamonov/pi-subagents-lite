@@ -3,9 +3,9 @@
  *
  * `create` pushes a run, `monitor` follows it (SSE for display, GET for state), `stop` asks for a
  * kill. Run state comes from GET alone (ADR-0013); the stream is display-only and its event ids are
- * never read. The observation state - backoff, failure budget, last known state - is the client's,
- * and one client is one run's: a hand-back continues the cadence instead of restarting it. Every
- * failure comes back as a domain result, never as an HTTP or transport exception.
+ * never read. This per-run client retains retry pacing across hand-backs; the run record retains
+ * progress and observation health. The tool waiter only views the run and may return before it ends.
+ * Every failure comes back as a domain result, never as an HTTP or transport exception.
  */
 
 import { errorMessage } from "../utils.ts";
