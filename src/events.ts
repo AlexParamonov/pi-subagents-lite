@@ -250,7 +250,8 @@ export function setupEventListeners(pi: ExtensionAPI): void {
         const detached = active.length - killed;
         const claims: string[] = [];
         if (killed > 0) claims.push(`${killed} agent(s) killed by reload`);
-        if (detached > 0) claims.push(`${detached} workflow run(s) left running remotely: nothing was stopped`);
+        if (detached > 0)
+          claims.push(`${detached} workflow run(s) are no longer watched; their remote outcomes are unknown`);
         ctx.ui.notify(claims.join(". "), "warning");
       }
     }

@@ -68,6 +68,18 @@ export interface WorkflowRunInfo {
   url: string;
   /** The server's own run id (`workflow_id`). */
   remoteId: string;
+  /**
+   * The monitor's latest progress snapshot, kept current for the run's whole life, not just the
+   * tool call that first displayed it. Display data, never a status.
+   */
+  progress?: string[];
+  /**
+   * The run's observation-health note while it applies: the state is unknown (a read that kept
+   * failing, cleared by the next authoritative read) or a stop failed (kept until settlement).
+   * A running-state annotation, never a lifecycle status: a noted run is still running and
+   * stoppable.
+   */
+  note?: string;
 }
 
 export interface EnvInfo {
