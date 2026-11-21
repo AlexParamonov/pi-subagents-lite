@@ -97,12 +97,20 @@ export function displayUrl(base: ValidatedBase): string {
 const MAX_DECODE_DEPTH = 8;
 
 /**
- * Whether a request target carries the credential at any depth a forwarding intermediary can strip.
- * A gateway decodes the target it forwards and can echo what it decoded, so the bytes this client
- * sends are only the first layer: the target is decoded to a fixed point and the credential is looked
- * for in every layer, including the raw bytes (a key carrying `%` lives in them and in no other).
- * A layer that cannot be decoded, or a target still changing when `MAX_DECODE_DEPTH` is reached,
- * cannot be proven credential-free and counts as carrying it. Whatever the answer, it is decided
+ * Whether a request target carries the credential at any depth of percent-decoding a forwarding
+ * intermediary can undo. A gateway decodes the target it forwards and can echo what it decoded, so
+ * the bytes this client sends are only the first layer: the target is decoded to a fixed point and
+ * the credential is looked for in every layer, including the raw bytes (a key carrying `%` lives in
+ * them and in no other). A layer that cannot be decoded, or a target still changing when
+ * `MAX_DECODE_DEPTH` is reached, cannot be proven credential-free and counts as carrying it.
+ *
+ * The covered transformation is percent-decoding, and nothing else. Two transformations are outside
+ * it and are not refused: a hop that ADDS characters to the target, which breaks the credential into
+ * a non-contiguous span no layer contains, and a hop that decodes `+` to a space INSIDE a path, which
+ * is the `application/x-www-form-urlencoded` rule and not a path rule (RFC 3986 leaves `+` literal in
+ * a path; `encodeURIComponent` here emits `%2B`, so a bare `+` only ever comes from the operator's own
+ * prefix). The second is reachable: key `a b` with prefix `/x/a+b/y` publishes the echoed `/x/a+b/y/...`
+ * rather than refusing. Neither is closed by decoding published text, which this wave forbids. Whatever the answer, it is decided
  * before anything is sent: nothing here decodes or rewrites text an endpoint published.
  */
 export function targetCarriesCredential(target: string, apiKey: string): boolean {
