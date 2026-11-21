@@ -54,12 +54,12 @@ export function resolveWorkflowEndpoint(
 }
 
 /**
- * The URL a published surface may show: origin plus path, dropping a path whose percent escapes the
- * credential redactor cannot match against the value it holds.
+ * The URL a published surface may show: the base itself, or its origin alone once the path carries a
+ * percent escape the credential redactor cannot match against the value it holds. A base's `%` is always
+ * path data (a host carrying `%` fails to parse) and a base is already `origin + pathname`.
  */
 export function displayUrl(base: ValidatedBase): string {
-  const { origin, pathname } = new URL(base);
-  return origin + (pathname.includes("%") ? "" : pathname.replace(/\/+$/, ""));
+  return base.includes("%") ? new URL(base).origin : base;
 }
 
 type Minted = { ok: true; url: ValidatedBase } | { ok: false; problem: string };

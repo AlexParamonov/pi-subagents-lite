@@ -82,6 +82,9 @@ type Answer =
   | { ok: true; status: number; body: string }
   | { ok: false; kind: "cancelled" | "transport"; reason: string };
 
+/** A route the join can append: an unrooted tail would extend the base's host instead. */
+type Route = `/${string}`;
+
 export function createWorkflowClient(endpoint: WorkflowEndpoint, options: WorkflowClientOptions = {}): WorkflowClient {
   const transport = options.fetch ?? fetch;
   const key = endpoint.apiKey;
@@ -89,7 +92,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   const published = createPublicText(key);
 
   /** One route of the run's validated base - never an absolute path resolved against it. */
-  function url(route: string): string {
+  function url(route: Route): string {
     return `${base}${route}`;
   }
 
@@ -105,7 +108,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     return cause instanceof Error ? `${errorMessage(reason)}: ${errorMessage(cause)}` : errorMessage(reason);
   }
 
-  async function answer(method: "GET" | "POST", path: string, body?: string, signal?: AbortSignal): Promise<Answer> {
+  async function answer(method: "GET" | "POST", path: Route, body?: string, signal?: AbortSignal): Promise<Answer> {
     const opened = await open(method, path, body, signal);
     if (!opened.ok) return opened;
     try {
@@ -125,7 +128,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
    */
   async function open(
     method: "GET" | "POST",
-    path: string,
+    path: Route,
     body?: string,
     signal?: AbortSignal,
   ): Promise<
@@ -239,8 +242,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     },
 
     async stop(workflowId): Promise<WorkflowStop> {
-      const path = `/api/workflows/${encodeURIComponent(workflowId)}/stop`;
-      const sent = await answer("POST", path);
+      const sent = await answer("POST", `/api/workflows/${encodeURIComponent(workflowId)}/stop`);
       if (!sent.ok) return { ok: false, error: fault("did not answer the stop request", sent.reason) };
       if (sent.status < 200 || sent.status >= 300) {
         return { ok: false, error: fault("refused the stop request", `HTTP ${sent.status}: ${rejection(sent.body)}`) };
