@@ -140,6 +140,9 @@ export class StreamView {
     // A name this view does not know means something a newer producer decided, and this view cannot
     // guess what: it resets no silence window, asks for no read, and its payload names no node.
     if (event !== null && !KNOWN_EVENTS.has(event)) return effect;
+    // A frame that only ends the connection carries the run's terminal payload. None of it is display
+    // state, and the node it names is not the node this connection's unnamed text belongs to.
+    if (event !== null && RECONCILE.has(event)) return { ...effect, reconcile: true };
     // Only a named frame carries a payload to read fields from: a raw frame's `data:` is text to
     // show, and a chunk that happens to look like JSON must not name a node.
     const payload = event === null ? null : parseRecord(data);
@@ -149,7 +152,6 @@ export class StreamView {
     const lines = this.linesFor(node);
     const lifecycle = event === null ? undefined : LIFECYCLE.get(event);
     effect.lifecycle = lifecycle !== undefined;
-    effect.reconcile = event !== null && RECONCILE.has(event);
 
     if (lifecycle !== undefined) {
       if (lifecycle === "dispatched" || lifecycle === "retry") lines.beginAttempt();

@@ -89,6 +89,9 @@ function request(prompt = "Review the repository", workingDir = "/srv/checkout")
   return { prompt, definition: DEFINITION, workingDir };
 }
 
+/** Text only the run's own record carries: it must never reach a note about a failed read. */
+const PRIVATE = "the model decided to rewrite the parser";
+
 function createBody(server: TestEndpoint): Record<string, unknown> {
   const [create] = createRequests(server);
   expect(create, "the endpoint must receive the create request").toBeDefined();
@@ -519,6 +522,20 @@ describe("monitor display", () => {
       { type: "activity", node: "analysis", activity: RECORDED.toolName },
       { type: "text", node: "analysis", text: "Visible progress" },
     ]);
+  });
+
+  it("shows nothing a terminal frame's own chunk delivered after it", async () => {
+    // The frames a terminal frame shares a chunk with belong to a run that is already over: the read
+    // is what answers next, so nothing past that frame reaches the display.
+    const server = await remote({
+      streams: [DISPATCH + textFrame("Inspecting the ") + TERMINAL + textFrame("after the terminal frame")],
+    });
+    const run = await client(server.url);
+
+    const { snapshots, settled } = await follow(run, server);
+    await expect(settled).resolves.toEqual({ status: "completed", result: DEFAULT_RESULT });
+
+    expect(texts(snapshots)).toEqual(["Inspecting the "]);
   });
 
   it("suppresses thinking on both the named and the batched path", async () => {
@@ -1070,6 +1087,31 @@ describe("monitor reconcile", () => {
     expect((outcome as { error: string }).error).toContain(FAKED_URL);
     expect((outcome as { error: string }).error).not.toContain(key);
   });
+
+  it.for([
+    { status: 409, names: "HTTP 409", body: { status: "queued", events: [{ text: PRIVATE }] } },
+    { status: 200, names: "queued", body: { status: "queued", result: { text: PRIVATE } } },
+  ])(
+    "names a $status state read that answers nothing it can use, without quoting the run's envelope",
+    async ({ status, names, body }) => {
+      // ADR-0013 reads `status`, `result` and `error` only. The envelope also carries the run's result
+      // and journal text, and none of that belongs in the note a failed read hands back.
+      vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+      const socket = fakeWorkflowFetch({
+        stream: (_push, close) => close(),
+        read: () => jsonResponse(status, body),
+      });
+      const run = await client(FAKED_URL, undefined, socket.fetch);
+      await run.create(request());
+
+      const waiting = run.monitor(REMOTE_ID, watcher().view);
+      await vi.advanceTimersByTimeAsync(90_000);
+      const outcome = (await waiting) as { error: string };
+
+      expect(outcome.error).toContain(names);
+      expect(outcome.error).not.toContain(PRIVATE);
+    },
+  );
 
   it("takes a failed run's message from GET, never the frame's reason", async () => {
     // The captured journal ends in a `workflow_failed` frame whose text is `reason`, not `error`;

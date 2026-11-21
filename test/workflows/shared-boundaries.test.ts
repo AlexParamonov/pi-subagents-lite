@@ -682,6 +682,11 @@ function unknown(node: string, ...names: string[]): string {
   return names.map((name) => `event: ${name}\ndata: ${JSON.stringify({ node_id: node })}\n\n`).join("");
 }
 
+/** A terminal frame as the journal sends it: its payload names a node and carries the run's answer. */
+function terminalFrame(node: string): string {
+  return `event: workflow_engine_finished\ndata: ${JSON.stringify({ node_id: node, result: "a copy no read takes" })}\n\n`;
+}
+
 const PROTOTYPE_NAMES = ["constructor", "toString", "__proto__", "hasOwnProperty"];
 
 describe("workflow stream event admission", () => {
@@ -727,6 +732,31 @@ describe("workflow stream event admission", () => {
     await expectReadAtDeadline(exchanges, remote);
     expect(text(await pending)).toBe(ANSWER);
     expect(readRequests(remote)).toHaveLength(1);
+  });
+
+  it("keeps a terminal frame's node and the bytes behind it out of the settled row", async () => {
+    // A terminal frame ends this connection: the node its payload names and any chunk that shares
+    // the read with it are not this connection's display state.
+    const remote = await server({
+      holdStream: true,
+      streams: [DISPATCH + textFrame("Inspecting the ")],
+      reads: [declaredOutputRead()],
+    });
+    install(remote.url);
+    const capture = await start();
+    const row = resultRow(capture);
+    const live = deferred<void>();
+    const pending = run(capture, undefined, (update) => {
+      row.paint(update);
+      live.resolve();
+    });
+    await beforeEnd(live.promise, pending, "the first chunk rendered");
+
+    remote.sendStream(terminalFrame("foreign-node") + textFrame("after the terminal frame"));
+
+    const result = await pending;
+    expect(text(result)).toBe(ANSWER);
+    expect(row.repaints).toEqual([`\u25b6 analysis dispatched\nInspecting the\n${ANSWER}`]);
   });
 
   it("uses GET at the original silence deadline when no recognized events arrive", async () => {
@@ -843,19 +873,12 @@ describe("workflow monitor continuity", () => {
     expect(row.repaints).toEqual([`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`]);
   });
 
-  it.for([
-    {
-      label: "a rejected read",
-      response: { status: 503, body: errorBody(`Read refused: ${AUTH_ECHO}`) },
-      echo: "Read refused: Bearer [redacted]",
-    },
-    {
-      label: "an unreadable read",
-      response: { status: 200, body: JSON.stringify({ detail: `Unrecognized body: ${AUTH_ECHO}` }) },
-      echo: "Unrecognized body: Bearer [redacted]",
-    },
-  ])("redacts the remote diagnostic when $label hands the waiter back", async ({ response, echo }) => {
-    const remote = await server({ echoAuth: true, streams: [DISPATCH], reads: [response] });
+  it("redacts the endpoint's reason when a rejected read hands the waiter back", async () => {
+    const remote = await server({
+      echoAuth: true,
+      streams: [DISPATCH],
+      reads: [{ status: 503, body: errorBody(`Read refused: ${AUTH_ECHO}`) }],
+    });
     install(remote.url, `${KEY}\t`);
     const capture = await start();
     const exchanges = clockedLoopback();
@@ -865,7 +888,31 @@ describe("workflow monitor continuity", () => {
     authenticates(remote, KEY);
     expect(handed.isError ?? false).toBe(false);
     expect(text(handed)).toMatch(/unknown/i);
-    publishes(text(handed), echo, KEY, "the hand-back note");
+    publishes(text(handed), "Read refused: Bearer [redacted]", KEY, "the hand-back note");
+  });
+
+  it("hands a read that answers no run status back with a local diagnostic, never the run's envelope", async () => {
+    // The body of a state read is the run's state envelope: its text is journal data, and a note
+    // about a failed read quotes none of it, redacted or not.
+    const remote = await server({
+      echoAuth: true,
+      streams: [DISPATCH],
+      reads: [{ status: 200, body: JSON.stringify({ detail: `Unrecognized body: ${AUTH_ECHO}` }) }],
+    });
+    install(remote.url, `${KEY}\t`);
+    const capture = await start();
+    const exchanges = clockedLoopback();
+
+    const handed = await handBack(exchanges, remote, run(capture));
+
+    authenticates(remote, KEY);
+    expect(handed.isError ?? false).toBe(false);
+    const note = text(handed);
+    expect(note).toMatch(/unknown/i);
+    expect(note).toMatch(/unreadable|no run status/i);
+    expect(note).not.toContain("Unrecognized body");
+    expect(note).not.toContain(KEY);
+    expect(note).not.toContain(JSON.stringify(`Bearer ${KEY}`).slice(1, -1));
   });
 });
 

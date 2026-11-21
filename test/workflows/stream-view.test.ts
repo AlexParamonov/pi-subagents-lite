@@ -143,3 +143,22 @@ describe("a frame whose name this view knows", () => {
     ]);
   });
 });
+
+// A frame that only means "this connection is over, read GET" carries the run's terminal payload, and
+// a node named inside that payload is no reason to move the channel unnamed text belongs to.
+describe("a frame that only asks for the authoritative read", () => {
+  it.for(["workflow_engine_finished", "workflow_failed", "reconnect"] as const)(
+    "names no node and changes no display state for %s",
+    (event) => {
+      const view = new StreamView();
+      view.apply(named("node_dispatched", "analysis"));
+      view.apply(chunk("Inspecting the "));
+
+      const effect = view.apply(named(event, "foreign-node", { result: "The declared output" }));
+      view.apply(chunk("diff."));
+
+      expect(effect).toEqual({ lifecycle: false, reconcile: true, changed: false });
+      expect(progressLines(view.snapshot())).toEqual(["\u25b6 analysis dispatched", "  Inspecting the diff."]);
+    },
+  );
+});

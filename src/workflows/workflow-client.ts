@@ -189,9 +189,19 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     }
   }
 
-  /** The endpoint's own words for a rejection, or the text it answered with. */
+  /**
+   * The endpoint's own reason for refusing something: its `error` field, or nothing. A body that is
+   * not a refusal - a run's state, its journal - is never a reason, and quoting it publishes run data
+   * as if the endpoint had explained itself.
+   */
+  function reason(body: string): string | null {
+    const stated = parseError(body);
+    return stated === null ? null : published.bounded(stated);
+  }
+
+  /** What a create or stop rejection answered; a body with no `error` field is quoted as its words. */
   function rejection(body: string): string {
-    const stated = published.bounded(parseError(body) ?? body);
+    const stated = reason(body) ?? published.bounded(body);
     return stated === "" ? "no reason given" : stated;
   }
 
@@ -364,7 +374,10 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
             const effect = connection.apply(frame);
             changed ||= effect.changed;
             lifecycle ||= effect.lifecycle;
-            ending ||= effect.reconcile;
+            if (effect.reconcile) {
+              ending = true;
+              break;
+            }
           }
           if (lifecycle) arm();
           // A wait that has ended belongs to a caller that is gone: nothing more reaches it.
@@ -424,17 +437,26 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     }
     if (polled.status < 200 || polled.status >= 300) {
       // A refusal carries no run status either: it is a read that failed, never a state the run is in.
+      // Its envelope is the run's state and journal, so an endpoint that gives no `error` gets a local
+      // diagnostic instead of a quotation.
       return {
         kind: "unreachable",
-        error: fault("refused the state read", `HTTP ${polled.status}: ${rejection(polled.body)}`),
+        error: fault(
+          "refused the state read",
+          `HTTP ${polled.status}: ${reason(polled.body) ?? "the endpoint answered with no reason"}`,
+        ),
       };
     }
     const body = parseRecord(polled.body);
     const status = RUN_STATUSES.find((known) => known === body?.status);
     if (!body || !status) {
+      const found =
+        typeof body?.status === "string"
+          ? `its status was ${JSON.stringify(published.bounded(body.status))}`
+          : "it carried no status";
       return {
         kind: "unreachable",
-        error: fault("answered the state read unreadably", `no run status in ${published.bounded(polled.body)}`),
+        error: fault("answered the state read unreadably", `no run status this client can read: ${found}`),
       };
     }
     if (status === "running") return { kind: "running" };
