@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A background run's result no longer vanishes when you press Esc while the parent is still working. It used to be handed to pi as a steering message, and pi keeps that in a queue which Esc empties while restoring only your own typed text to the editor, so the result was never shown, never recorded, and not recoverable (measured on a real pi 1.0.3 session: queued at handoff, nothing restored, absent from the session after the Esc and after the next prompt). It is now committed to the session at the end of the parent's current turn, including when that turn is the one you just interrupted, and measured on the same real session as exactly one `custom_message` record with the same content: still there after your next prompt, still there when the session file is reopened, and read by the parent's next model request. A result delivered to an idle parent still starts a turn on it. The cost: a result that arrives while the parent is composing its final answer is committed and read at its next request, but no longer forces one extra turn (measured).
 - Parallel tool calls starting in the same millisecond no longer overwrite each other in the widget's active-tool list.
 - Two `bash` calls running at once read `running 2 commands…` in the widget's activity line instead of `running command 2 files…`.
 
